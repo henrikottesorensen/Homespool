@@ -1,8 +1,6 @@
-using Duende.IdentityModel;
-
 namespace PrinterService.Api;
 
-public static class ClaimTypes
+public static class PsClaimTypes
 {
     /// <summary>
     /// The printer's surrogate key. This is the internal <c>Printer.Id</c>, not the public

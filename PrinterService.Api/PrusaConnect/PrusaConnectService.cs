@@ -1,11 +1,10 @@
 using System;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading.Tasks;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using PrinterService.Api.Exceptions;
 using PrinterService.Data;
@@ -19,21 +18,25 @@ public class PrusaConnectService
     private readonly CodeGenerator _codeGenerator;
     private readonly TokenService _tokenService;
     private readonly ILogger<PrusaConnectService> _logger;
+    private readonly PrusaConnectOptions _options;
 
     public PrusaConnectService(PSDbContext dbContext,
                           CodeGenerator codeGenerator,
                           TokenService tokenService,
-                          ILogger<PrusaConnectService> logger)
+                          ILogger<PrusaConnectService> logger,
+                          IOptions<PrusaConnectOptions> options)
     {
         _dbContext = dbContext;
         _codeGenerator = codeGenerator;
         _tokenService = tokenService;
         _logger = logger;
+        _options = options.Value;
     }
     
     public async Task<DTO.CodeResponseDTO> GetPrinterCode(DTO.RegisterPrinterRequestDTO printer)
     {
         DateTimeOffset now = TimeProvider.System.GetUtcNow();
+        DateTimeOffset codeExpiry = now + _options.RegistrationCodeLifetime;
         PrusaConnectAuthenticationData? auth = await _dbContext.PrusaConnectAuthentication.SingleOrDefaultAsync(a => a.FingerPrint == printer.FingerPrint);
         
         if (auth is null)
@@ -44,8 +47,8 @@ public class PrusaConnectService
                     FingerPrint = printer.FingerPrint,
                     SerialNumber = printer.SerialNumber,
                     TemporaryCode = _codeGenerator.GenerateCode(printer.SerialNumber),
-                    TemporaryCodeExpiry = now.AddHours(1),
-                    CreatedAt = TimeProvider.System.GetUtcNow(),
+                    TemporaryCodeExpiry = codeExpiry,
+                    CreatedAt = now,
                 });
             
             auth = newAuth.Entity;
@@ -55,7 +58,7 @@ public class PrusaConnectService
         else if (auth.TemporaryCodeExpiry < now)
         {
             auth.TemporaryCode = _codeGenerator.GenerateCode(printer.SerialNumber);
-            auth.TemporaryCodeExpiry = now.AddHours(1);
+            auth.TemporaryCodeExpiry = codeExpiry;
             
             _logger.LogInformation("PrusaConnect printer {@Printer} asking for a Connect Code renewal {TemporaryCode}", printer, auth.TemporaryCode);
         }
@@ -65,7 +68,6 @@ public class PrusaConnectService
         return new DTO.CodeResponseDTO
         {
             TemporaryCode = auth.TemporaryCode,
-            Date = auth.CreatedAt,
             Expires = auth.TemporaryCodeExpiry,
         };
     }

@@ -19,6 +19,7 @@ using PrinterService.Api.PrusaConnect.DTO;
 namespace PrinterService.Api.Controllers;                          
 
 // [Authorize(Authorization.Policies.PrusaConnectPrinter)]
+[ApiController]
 public class PrusaConnectPrinterController : ControllerBase
 {
     private readonly PrusaConnectService _prusaConnectService;
@@ -40,7 +41,7 @@ public class PrusaConnectPrinterController : ControllerBase
     {
         try
         {
-            //PrinterClientHeaders clientHeaders = new(Request);
+            PrinterClientHeaders clientHeaders = new(Request);
             
             if (HttpContext.WebSockets.IsWebSocketRequest)
             {
@@ -51,11 +52,11 @@ public class PrusaConnectPrinterController : ControllerBase
                     KeepAliveTimeout = TimeSpan.FromSeconds(120),
                 });
 
-                // _logger.LogDebug("Connected websocket from {Client}:{Port} {Printer} {Fingerprint}",
-                //     HttpContext.Connection.RemoteIpAddress,
-                //     HttpContext.Connection.RemotePort,
-                //     clientHeaders.Printer,
-                //     clientHeaders.FingerPrint);
+                _logger.LogDebug("Connected websocket from {Client}:{Port} {Printer} {Fingerprint}",
+                    HttpContext.Connection.RemoteIpAddress,
+                    HttpContext.Connection.RemotePort,
+                    clientHeaders.Printer,
+                    clientHeaders.FingerPrint);
                 
                 using IWebSocketPipe pipe = webSocket.CreatePipe(true);
 
@@ -75,12 +76,16 @@ public class PrusaConnectPrinterController : ControllerBase
     [AllowAnonymous]
     [HttpPost]
     [Route("/p/register")]
-    public async Task<ActionResult<string>> RegisterPrinter(RegisterPrinterRequestDTO printer)
+    public async Task<ActionResult<string>> RegisterPrinter([FromBody] RegisterPrinterRequestDTO printer)
     {
         try
         {
-            PrinterClientHeaders clientHeaders = new(Request);
-            
+            // [FromBody] is required. Without it - and without [ApiController], which is deliberately
+            // not used here (see ApiExplorerVisibilityConvention) - MVC binds complex parameters from
+            // form data, not the JSON body, leaving every property null. The insert then died on
+            // NOT NULL SerialNumber. Everything this action needs is in the body; the printer sends
+            // no headers at all on this request.
+
             // Get code for printer.
             CodeResponseDTO code = await _prusaConnectService.GetPrinterCode(printer);
 
@@ -107,12 +112,14 @@ public class PrusaConnectPrinterController : ControllerBase
         {
             PrinterClientHeaders clientHeaders = new(Request);
 
-            if (clientHeaders.TemporaryCode is null)
+            // The printer identifies itself by the code alone here: Buddy's poll carries a Code
+            // header and nothing else.
+            if (clientHeaders.Code is null)
             {
-                return BadRequest("Temporary code missing");
+                return BadRequest("Code missing");
             }
 
-            string? token = await _prusaConnectService.GetToken(clientHeaders.FingerPrint, clientHeaders.TemporaryCode);
+            string? token = await _prusaConnectService.GetToken(clientHeaders.Code);
 
             if (string.IsNullOrWhiteSpace(token))
             {

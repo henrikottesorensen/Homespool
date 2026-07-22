@@ -54,6 +54,19 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
             return AuthenticateResult.Fail("Printer unknown");
         }
 
+        if (auth.Printer is null)
+        {
+            // Should be unreachable: GetToken only issues a token once PrinterId is set, so a hashed
+            // token implies a claimed printer. If the pair ever comes apart the row is inconsistent,
+            // and refusing to authenticate is safer than dereferencing null. AGENT-NOTES §3 recorded
+            // this as a latent NPE while Printer was declared non-nullable; making it nullable turned
+            // it into a compile error, which is how it got fixed.
+            Logger.LogWarning("PrusaConnect authentication failed: registration {AuthId} has a token "
+                              + "but no claimed printer.", auth.Id);
+
+            return AuthenticateResult.Fail("Printer registration incomplete");
+        }
+
         if (_tokenService.VerifyToken(token.ToString(), auth.HashedToken))
         {
             ClaimsPrincipal principal = new

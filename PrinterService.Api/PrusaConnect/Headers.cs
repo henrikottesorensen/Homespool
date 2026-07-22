@@ -1,7 +1,3 @@
-using System.Net.Http.Headers;
-
-using Microsoft.Net.Http.Headers;
-
 namespace PrinterService.Api.PrusaConnect;
 
 public static class Headers

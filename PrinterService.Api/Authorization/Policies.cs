@@ -1,5 +1,3 @@
-using Microsoft.AspNetCore.Authorization;
-
 namespace PrinterService.Api.Authorization;
 
 public static class Policies

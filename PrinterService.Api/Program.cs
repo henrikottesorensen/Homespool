@@ -2,10 +2,9 @@ using System;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.IdentityModel.JsonWebTokens;
 
 using PrinterService.Api.Authentication;
 using PrinterService.Data;
@@ -28,8 +27,13 @@ public static class Program
 
         try
         {
-            WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+            // Microsoft made a decision back in the day to remap all claims to their equivalent WS-Identity url identifier.
+            // So the JWT 'name' claim becomes http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name in the ClaimsPrincipal.
+            // This method disables remapping.
+            JsonWebTokenHandler.DefaultInboundClaimTypeMap.Clear();
 
+            WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+            
             // Add services to the container.
             builder.Services.AddSerilog((services, lc) => lc
                    .ReadFrom.Configuration(builder.Configuration)

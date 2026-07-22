@@ -158,7 +158,7 @@ public class WebSocketHandlerParsingTests
         DbContextOptions<PSDbContext> options = new DbContextOptionsBuilder<PSDbContext>()
                                                 .UseSqlite("Filename=:memory:")
                                                 .Options;
-
+        
         return new WebSocketHandler(new PSDbContext(options), NullLogger<WebSocketHandler>.Instance);
     }
 

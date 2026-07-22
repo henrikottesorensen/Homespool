@@ -1,5 +1,3 @@
-using System;
-
 namespace PrinterService.Model.Entities;
 
 /// <summary>

@@ -11,6 +11,8 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using PrinterService.Api.Authentication;
 using PrinterService.Data;
 
+using Scalar.AspNetCore;
+
 using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
@@ -73,9 +75,13 @@ public static class Program
 
             builder.Services.AddRazorPages();
             
-            builder.Services.AddControllers();
+            builder.Services.AddControllers(options =>
+                options.Conventions.Add(new ApiExplorerVisibilityConvention()));
 
             builder.Services.AddOpenApi();
+
+            builder.Services.Configure<PrusaConnect.PrusaConnectOptions>(
+                builder.Configuration.GetSection(PrusaConnect.PrusaConnectOptions.SectionName));
 
             builder.Services.Configure<Services.SmtpOptions>(
                 builder.Configuration.GetSection(Services.SmtpOptions.SectionName));
@@ -109,6 +115,7 @@ public static class Program
             if (app.Environment.IsDevelopment())
             {
                 app.MapOpenApi();
+                app.MapScalarApiReference();
             }
             app.UseSerilogRequestLogging();
             

@@ -7,5 +7,5 @@ public class SetValue : ICommand
     // For names that relate to stuff we have more of… like nozzles.
     public int Index { get; set; }
     
-    public object Value { get; set; }
+    public required object Value { get; set; }
 }

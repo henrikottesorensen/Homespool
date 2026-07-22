@@ -4,5 +4,5 @@ public class Command
 {
     public uint CommandId { get; set; }
     
-    public ICommand CommandData { get; set; }
+    public required ICommand CommandData { get; set; }
 }

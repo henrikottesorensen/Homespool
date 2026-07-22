@@ -2,6 +2,6 @@ namespace PrinterService.Api.PrusaConnect.Commands;
 
 public class Broken : ICommand
 {
-    public string Reason { get; set; }
+    public required string Reason { get; set; }
 }
 

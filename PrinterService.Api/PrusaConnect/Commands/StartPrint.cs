@@ -2,7 +2,7 @@ namespace PrinterService.Api.PrusaConnect.Commands;
 
 public class StartPrint : ICommand
 {
-    public string Path { get; set; }
+    public required string Path { get; set; }
     
-    public ToolMapping Tool { get; set; }
+    public required ToolMapping Tool { get; set; }
 }

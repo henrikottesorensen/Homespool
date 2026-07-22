@@ -2,5 +2,5 @@ namespace PrinterService.Api.PrusaConnect.Commands;
 
 public class DeleteFolder : ICommand
 {
-    public string Path { set; get; }
+    public required string Path { set; get; }
 }

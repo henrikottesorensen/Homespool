@@ -8,5 +8,7 @@ riderModule.iml
 **/*.user
 # Local compose secrets (SMTP password etc.) - never commit
 .env
-**/*.Sqlite
-*.Sqlite
+
+# SQLite database and its WAL sidecars (-wal, -shm, -journal). Never commit: once phase 1.5
+**/*.Sqlite*
+*.Sqlite*

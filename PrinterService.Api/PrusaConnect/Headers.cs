@@ -4,8 +4,6 @@ public static class Headers
 {
     public const string Code = nameof(Code);
     
-    public const string Date = nameof(Date);
-    
     public const string Expires = nameof(Expires);
     
     public const string Fingerprint = nameof(Fingerprint);

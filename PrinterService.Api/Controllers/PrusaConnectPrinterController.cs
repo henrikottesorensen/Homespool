@@ -88,7 +88,6 @@ public class PrusaConnectPrinterController : ControllerBase
             Response.Headers.TryAdd(Headers.Code, code.TemporaryCode);
             Response.Headers.TryAdd(Headers.TemporaryCode, code.TemporaryCode);
 
-            Response.Headers.TryAdd(Headers.Date, $"{code.Date:R}");
             Response.Headers.TryAdd(Headers.Expires, $"{code.Expires:R}");
 
             return Content(string.Empty, MediaTypeNames.Text.Html);

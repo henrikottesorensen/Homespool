@@ -54,6 +54,13 @@ public class WebSocketHandlerParsingTests
     private const string EventWithNonAsciiPath =
         """{"event":"FILE_INFO","command_id":42,"state":"PRINTING","data":{"path":"/usb/målestok-90°.bgcode","display_name":"Målestok 90° — udkast"}}""";
 
+    /// <summary>
+    /// One JSON message split across reads at 1, 2, 7, 64 and 4096 bytes arrives as one message.
+    /// </summary>
+    /// <remarks>
+    /// A read boundary has nothing to do with a document boundary. The single-byte case is the
+    /// pathological one and is the reason the handler cannot simply parse whatever a read returns.
+    /// </remarks>
     [Theory]
     [InlineData(1)]
     [InlineData(2)]
@@ -69,6 +76,15 @@ public class WebSocketHandlerParsingTests
         received[0].Should().Contain("\"job_id\":301");
     }
 
+    /// <summary>
+    /// A message split part-way through a multi-byte UTF-8 character still reassembles intact.
+    /// </summary>
+    /// <remarks>
+    /// Not hypothetical: the SDK forbids <c>¯</c> and <c>°</c> in filenames precisely because they
+    /// reach <c>FILE_INFO.path</c>, so non-ASCII really does travel on this wire. Splitting mid
+    /// character is what breaks a handler that decodes each read independently instead of buffering
+    /// bytes until a document completes.
+    /// </remarks>
     [Fact]
     public async Task MessageSplitMidUtf8CharacterIsReassembled()
     {
@@ -89,6 +105,14 @@ public class WebSocketHandlerParsingTests
         received[0].Should().Contain("Målestok");
     }
 
+    /// <summary>
+    /// Several objects run together with no separator are each delivered.
+    /// </summary>
+    /// <remarks>
+    /// One of the two framings the capture actually shows, and what happens whenever the printer
+    /// outruns the reader. Asserting the <i>count</i> is the point: a reader that stops after the
+    /// first object passes any assertion made only inside the loop.
+    /// </remarks>
     [Theory]
     [InlineData(1)]
     [InlineData(7)]
@@ -103,6 +127,14 @@ public class WebSocketHandlerParsingTests
         received.Should().HaveCount(3);
     }
 
+    /// <summary>
+    /// The other framing in the capture - objects separated by newlines - is handled too.
+    /// </summary>
+    /// <remarks>
+    /// Trailing whitespace is the trap here. With default reader options
+    /// <c>JsonDocument.TryParseValue</c> throws rather than returning false when the remaining buffer
+    /// holds no token, and a single newline after the last object is enough to trigger it.
+    /// </remarks>
     [Theory]
     [InlineData(1)]
     [InlineData(7)]
@@ -117,6 +149,14 @@ public class WebSocketHandlerParsingTests
         received.Should().HaveCount(3);
     }
 
+    /// <summary>
+    /// A full telemetry message and a reduced one stay distinguishable after reassembly.
+    /// </summary>
+    /// <remarks>
+    /// The firmware alternates deliberately - <c>SendTelemetry::Mode</c> is Full or Reduced, and
+    /// roughly 45% of the capture is reduced. A reduced message must not be mistaken for a full one
+    /// reporting nulls, or the merge in phase 3 would overwrite good values with absent ones.
+    /// </remarks>
     [Fact]
     public async Task BothTelemetryShapesSurviveAndRemainDistinguishable()
     {
@@ -130,6 +170,14 @@ public class WebSocketHandlerParsingTests
         received[1].Should().NotContain("temp_nozzle");
     }
 
+    /// <summary>
+    /// Genuinely broken input still closes the socket with <c>PolicyViolation</c>.
+    /// </summary>
+    /// <remarks>
+    /// Guards the opposite direction from the fragmentation tests. Tolerating a partial document
+    /// because more bytes may arrive must not become tolerating garbage forever - a printer sending
+    /// nonsense should be disconnected, not waited on.
+    /// </remarks>
     [Fact]
     public async Task MalformedJsonClosesTheConnection()
     {

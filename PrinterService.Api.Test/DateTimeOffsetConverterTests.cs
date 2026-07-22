@@ -66,6 +66,14 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// One instant expressed in three different offsets stores as one value.
+    /// </summary>
+    /// <remarks>
+    /// The property everything else rests on. <c>ToUnixTimeMilliseconds</c> normalises to UTC before
+    /// producing the number, so the offset cannot leak into the stored representation - which is
+    /// exactly where EF's own <c>DateTimeOffsetToBinaryConverter</c> goes wrong.
+    /// </remarks>
     [Fact]
     public void SameInstantInDifferentOffsetsStoresIdenticalValue()
     {
@@ -78,6 +86,14 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
         toStorage(utc.ToOffset(TimeSpan.FromHours(-8))).Should().Be(toStorage(utc));
     }
 
+    /// <summary>
+    /// Chronologically ordered instants stay ordered once converted, even with mixed offsets.
+    /// </summary>
+    /// <remarks>
+    /// Monotonicity is what makes a SQL comparison mean the same thing as a CLR one. EF applies the
+    /// converter to the parameter and compares stored representations, so a non-monotonic converter
+    /// produces <i>wrong results</i> rather than an error.
+    /// </remarks>
     [Fact]
     public void StorageOrderMatchesChronologicalOrderAcrossOffsets()
     {
@@ -105,6 +121,14 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
                                               + "DateTimeOffsetToBinaryConverter and this note can go");
     }
 
+    /// <summary>
+    /// The column really is an INTEGER, so the converter is actually being applied.
+    /// </summary>
+    /// <remarks>
+    /// It is registered by convention in <c>ConfigureConventions</c> rather than per property. If that
+    /// registration were ever dropped, EF would silently fall back to TEXT and every timestamp
+    /// comparison would start throwing at runtime instead of failing here.
+    /// </remarks>
     [Fact]
     public async Task SqliteStoresTimestampsAsIntegers()
     {
@@ -122,6 +146,13 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
         (await command.ExecuteScalarAsync())?.ToString().Should().Be("integer");
     }
 
+    /// <summary>
+    /// <c>ORDER BY</c> executed by SQLite returns mixed-offset rows in chronological order.
+    /// </summary>
+    /// <remarks>
+    /// Rows are inserted in shuffled order so that a pass cannot come from insertion order. Ordering
+    /// correct in memory is not enough - it has to survive the round trip through the provider.
+    /// </remarks>
     [Fact]
     public async Task SqlOrderByMatchesChronologicalOrderAcrossOffsets()
     {
@@ -144,6 +175,14 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
         sorted.Should().Equal(ChronologicalOrder.Select(s => s.ToUniversalTime()));
     }
 
+    /// <summary>
+    /// A range filter evaluated in SQL keeps rows recorded at a positive offset.
+    /// </summary>
+    /// <remarks>
+    /// The precise failure reported against <c>DateTimeOffsetToBinaryConverter</c>: +13:00 rows fall
+    /// out of a window they belong in, silently and with no error. The fixture places two of them
+    /// inside the window deliberately.
+    /// </remarks>
     [Fact]
     public async Task SqlRangeFilterKeepsRowsAtAPositiveOffset()
     {
@@ -194,6 +233,15 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
         (await context.PrusaConnectAuthentication.CountAsync()).Should().Be(4);
     }
 
+    /// <summary>
+    /// Documents the two things this storage format deliberately discards.
+    /// </summary>
+    /// <remarks>
+    /// The original offset is not stored - values return as UTC - and precision truncates to
+    /// milliseconds. Neither costs anything here: every timestamp originates from
+    /// <c>TimeProvider.System.GetUtcNow()</c>, and the fastest telemetry cadence in the firmware is
+    /// 750 ms. Asserted rather than described so the trade-off cannot drift unnoticed.
+    /// </remarks>
     [Fact]
     public async Task ValuesRoundTripAsUtcTruncatedToMilliseconds()
     {
@@ -216,6 +264,14 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
         (original - readBack).Should().BeLessThan(TimeSpan.FromMilliseconds(1));
     }
 
+    /// <summary>
+    /// A null <c>DateTimeOffset?</c> stays null through a converter declared over the non-nullable type.
+    /// </summary>
+    /// <remarks>
+    /// <c>TokenCreatedAt</c> is nullable, and the convention registers
+    /// <c>Properties&lt;DateTimeOffset&gt;()</c>. EF is expected to lift the conversion over the
+    /// nullable form; this confirms it rather than assuming it.
+    /// </remarks>
     [Fact]
     public async Task NullableTimestampsSurviveTheConversion()
     {

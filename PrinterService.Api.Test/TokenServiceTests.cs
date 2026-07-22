@@ -10,6 +10,13 @@ public class TokenServiceTests
 {
     private readonly TokenService  _tokenService = new();
     
+    /// <summary>
+    /// A generated token is non-empty, within the declared length, and valid base64.
+    /// </summary>
+    /// <remarks>
+    /// The token is returned to the printer in a <c>Token</c> header and stored by it verbatim, so it
+    /// has to be header-safe and bounded. Buddy copies it into a fixed buffer.
+    /// </remarks>
     [Fact]
     public void GenerateToken()
     {
@@ -21,6 +28,14 @@ public class TokenServiceTests
         convertToByteArray.Should().NotThrow();
     }
 
+    /// <summary>
+    /// The stored hash is the expected <c>$</c>-delimited envelope, not a bare digest.
+    /// </summary>
+    /// <remarks>
+    /// Six segments carrying the algorithm name, iteration count, salt and hash. Verifying the shape
+    /// matters because the parameters have to travel <i>with</i> the hash: changing the algorithm or
+    /// iteration count later must not invalidate tokens already issued.
+    /// </remarks>
     [Fact]
     public void HashToken()
     {
@@ -38,6 +53,12 @@ public class TokenServiceTests
         Convert.FromBase64String(split[4]).Length.Should().Be(TokenService.HashLength);
     }
 
+    /// <summary>
+    /// A token verifies against its own hash.
+    /// </summary>
+    /// <remarks>
+    /// The round trip that the printer authentication handler performs on every request.
+    /// </remarks>
     [Fact]
     public void TokenVerifies()
     {
@@ -47,6 +68,13 @@ public class TokenServiceTests
         _tokenService.VerifyToken(token, hash).Should().BeTrue();
     }
     
+    /// <summary>
+    /// A wrong token, an empty string and null all fail verification.
+    /// </summary>
+    /// <remarks>
+    /// The empty and null cases are the interesting ones: a missing <c>Token</c> header must not
+    /// authenticate. Buddy sends the header on every request, but the server cannot assume it.
+    /// </remarks>
     [Fact]
     public void InvalidTokenDoesNotVerify()
     {

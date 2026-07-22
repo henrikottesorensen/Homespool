@@ -34,6 +34,14 @@ public class JsonDotNetDeserialiseTests
     /// </summary>
     private const int AwkwardBufferSize = 3;
 
+    /// <summary>
+    /// Both wire framings parse when the whole stream is available at once.
+    /// </summary>
+    /// <remarks>
+    /// The baseline case. Asserting the object <i>count</i> after the loop is what gives this teeth -
+    /// a reader that stops after the first object satisfies any assertion made inside the loop, and
+    /// that is precisely the failure being guarded against.
+    /// </remarks>
     [Theory]
     [InlineData("example.newlinedelimited.json")]
     [InlineData("example.concatenated.json")]
@@ -46,6 +54,14 @@ public class JsonDotNetDeserialiseTests
         AssertTelemetryObjects(parsed);
     }
 
+    /// <summary>
+    /// The same two framings parse when the stream is delivered in awkwardly sized chunks.
+    /// </summary>
+    /// <remarks>
+    /// Buffer boundaries land mid-token rather than politely between objects, which is the realistic
+    /// case: a read boundary has nothing to do with a document boundary. Same fixtures and same
+    /// assertions as above, so a difference in outcome isolates the buffering rather than the parser.
+    /// </remarks>
     [Theory]
     [InlineData("example.newlinedelimited.json")]
     [InlineData("example.concatenated.json")]

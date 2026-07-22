@@ -11,9 +11,19 @@ namespace PrinterService.Data;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <c>journal_mode=WAL</c> is persisted in the database file itself, so setting it repeatedly is
-/// harmless. <c>synchronous</c> and <c>busy_timeout</c> are per-connection and must be reapplied
-/// each time — which is why this is an interceptor rather than one-off startup code.
+/// <c>synchronous</c> and <c>busy_timeout</c> are per-connection and must be reapplied on every
+/// open — which is why this is an interceptor. Neither is a write, so both are safe on a
+/// read-only connection.
+/// </para>
+/// <para>
+/// <b><c>journal_mode</c> is deliberately NOT set here.</b> It is persisted in the database file,
+/// so it only needs setting once, and issuing it per connection was a latent startup crash:
+/// <c>Migrator.Migrate()</c> calls <c>SqliteDatabaseCreator.Exists()</c>, which opens the
+/// connection <i>read-only</i> so that testing for existence cannot create a file. Setting WAL on
+/// a database not already in WAL mode is a write, so it failed there with SQLITE_READONLY —
+/// invisibly, because on a database already in WAL mode the same statement is a no-op read.
+/// Any non-WAL database, most realistically a restored backup, crashed the service at boot.
+/// It is now applied once by <see cref="DataServiceCollectionExtensions.MigratePrinterServiceData"/>.
 /// </para>
 /// <para>
 /// WAL lets readers proceed while the telemetry writer commits, which matters because the writer
@@ -61,10 +71,8 @@ public class SqlitePragmaInterceptor : DbConnectionInterceptor
 
         command.CommandText = string.Create(CultureInfo.InvariantCulture,
             $"""
-             PRAGMA journal_mode = WAL;
              PRAGMA synchronous = NORMAL;
              PRAGMA busy_timeout = {_busyTimeoutMilliseconds};
-             PRAGMA foreign_keys = ON;
              """);
 
         command.ExecuteNonQuery();

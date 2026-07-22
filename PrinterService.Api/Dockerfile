@@ -1,6 +1,10 @@
 ﻿FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
-USER $APP_UID
 WORKDIR /app
+# Create the database directory *before* dropping to the app user. A named volume mounted here
+# inherits this ownership; if the path did not exist in the image, Docker would create it owned
+# by root and the non-root app could not write, failing on the first migration.
+RUN mkdir -p /app/data && chown $APP_UID /app/data
+USER $APP_UID
 EXPOSE 8080
 EXPOSE 8081
 

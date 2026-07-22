@@ -136,8 +136,9 @@ public class WebSocketHandlerParsingTests
         // Guards the other direction: the fragmentation handling must not swallow genuinely
         // broken input. A printer sending garbage should still be disconnected.
         using FakeWebSocketPipe pipe = new();
+        using PSDbContext context = CreateContext();
 
-        WebSocketHandler handler = CreateHandler();
+        WebSocketHandler handler = new(context, NullLogger<WebSocketHandler>.Instance);
 
         Task run = handler.HandlePrusaWebsocket(pipe, CancellationToken.None);
 
@@ -152,14 +153,21 @@ public class WebSocketHandlerParsingTests
         pipe.CloseStatus.Should().Be(WebSocketCloseStatus.PolicyViolation);
     }
 
-    private static WebSocketHandler CreateHandler()
+    /// <summary>
+    /// The handler does not touch the context yet, but it is a constructor dependency.
+    /// </summary>
+    /// <remarks>
+    /// Returns the context rather than constructing the handler, so the caller owns its lifetime and
+    /// can scope it with <c>using</c>. Creating it inside and returning only the handler left it
+    /// undisposed on every test.
+    /// </remarks>
+    private static PSDbContext CreateContext()
     {
-        // The handler does not touch the context yet, but it is a constructor dependency.
         DbContextOptions<PSDbContext> options = new DbContextOptionsBuilder<PSDbContext>()
                                                 .UseSqlite("Filename=:memory:")
                                                 .Options;
-        
-        return new WebSocketHandler(new PSDbContext(options), NullLogger<WebSocketHandler>.Instance);
+
+        return new PSDbContext(options);
     }
 
     private static Task<IReadOnlyList<string>> RunHandlerAsync(string payload, int chunkSize) =>
@@ -176,11 +184,12 @@ public class WebSocketHandlerParsingTests
     private static async Task<IReadOnlyList<string>> RunHandlerAsync(byte[] payload, int[] chunkSizes)
     {
         using FakeWebSocketPipe pipe = new();
+        using PSDbContext context = CreateContext();
 
-        WebSocketHandler handler = CreateHandler();
+        WebSocketHandler handler = new(context, NullLogger<WebSocketHandler>.Instance);
 
         TextWriter originalOut = Console.Out;
-        StringWriter captured = new();
+        using StringWriter captured = new();
 
         try
         {

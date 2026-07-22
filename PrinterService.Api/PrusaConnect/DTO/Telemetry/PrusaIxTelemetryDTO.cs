@@ -14,8 +14,8 @@ public class PrusaIxTelemetryDTO
     public float AmbientTemperature { get; set; }
 
     [JsonPropertyName("extruder_fs_state")]
-    public string ExtruderFilamentSesnorStatus { get; set; }
+    public string? ExtruderFilamentSensorStatus { get; set; }
     
     [JsonPropertyName("remote_fs_state")]
-    public string RmmoteFilamentSesnorStatus { get; set; }
+    public string? RemoteFilamentSensorStatus { get; set; }
 }

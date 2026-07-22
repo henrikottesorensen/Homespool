@@ -100,6 +100,11 @@ public class SystemTextJsonDeserialiseTests
         buffer = buffer.Slice(sequenceReader.Position);
     }
 
+    // CA2000: ownership of each JsonDocument transfers to the consumer, which is the point of an
+    // iterator. The caller disposes every yielded document in its own finally - see the loop at the
+    // bottom of this file. The analyser cannot see across the yield.
+    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+                     Justification = "Ownership of the yielded JsonDocument transfers to the consumer, which disposes it.")]
     private static async IAsyncEnumerable<JsonDocument> ParseJsonDocument(PipeReader reader)
     {
         while (true)

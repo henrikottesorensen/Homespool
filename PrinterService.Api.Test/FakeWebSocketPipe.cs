@@ -39,17 +39,17 @@ public sealed class FakeWebSocketPipe : IWebSocketPipe
     /// <summary>True once the handler asked to close, whatever the reason.</summary>
     public bool CompleteAsyncCalled { get; private set; }
 
-    public Task CompleteAsync(WebSocketCloseStatus? closeStatus = null, string? statusDescription = null)
+    public Task CompleteAsync(WebSocketCloseStatus? closeStatus = null, string? closeStatusDescription = null)
     {
         CompleteAsyncCalled = true;
         CloseStatus = closeStatus;
-        CloseStatusDescription = statusDescription ?? string.Empty;
+        CloseStatusDescription = closeStatusDescription ?? string.Empty;
         _closed = true;
 
         return Task.CompletedTask;
     }
 
-    public Task RunAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task RunAsync(CancellationToken cancellation = default) => Task.CompletedTask;
 
     /// <summary>
     /// Writes <paramref name="payload"/> to the handler in <paramref name="chunkSize"/>-byte

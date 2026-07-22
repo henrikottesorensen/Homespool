@@ -6,7 +6,7 @@ public class ToolsTelemetryDTO
 {
     // Why isn't this a JSON array?
     [JsonPropertyName("1")]
-    public ToolTelemetryDTO Tool1 { get; set; }
+    public ToolTelemetryDTO? Tool1 { get; set; }
 
     [JsonPropertyName("2")]
     public ToolTelemetryDTO? Tool2 { get; set; }
@@ -48,7 +48,7 @@ public class ToolsTelemetryDTO
 public class ToolTelemetryDTO
 {
     [JsonPropertyName("material")]
-    public string Material { get; set; }
+    public string? Material { get; set; }
     
     [JsonPropertyName("temp")]
     public float Temperature { get; set; }

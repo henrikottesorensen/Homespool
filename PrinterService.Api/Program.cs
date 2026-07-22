@@ -2,6 +2,7 @@ using System;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -51,8 +52,9 @@ public static class Program
             builder.Services.AddAuthentication()
                             .AddPrusaConnectPrinterAuthentication();
 
-            builder.Services.AddDefaultIdentity<Model.Entities.PSUser>(options => options.SignIn.RequireConfirmedAccount = true)
-                            .AddEntityFrameworkStores<PSDbContext>();
+            builder.Services.AddIdentity<Model.Entities.PSUser, IdentityRole<long>>(options => options.SignIn.RequireConfirmedAccount = true)
+                            .AddEntityFrameworkStores<PSDbContext>()
+                            .AddDefaultTokenProviders();
             
             builder.Services.ConfigureApplicationCookie(options =>
             {
@@ -73,6 +75,8 @@ public static class Program
             builder.Services.AddControllers();
 
             builder.Services.AddOpenApi();
+
+            builder.Services.AddScoped<Services.IEmailSender, Services.LoggingEmailSender>();
 
             builder.Services.AddScoped<PrusaConnect.PrusaConnectService>()
                             .AddScoped<PrusaConnect.WebSocketHandler>()

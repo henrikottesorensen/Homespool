@@ -8,11 +8,11 @@ using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
 
+using PrinterService.Api.Services;
 using PrinterService.Model.Entities;
 
 namespace PrinterService.Api.Pages.Account
@@ -68,7 +68,7 @@ namespace PrinterService.Api.Pages.Account
                 string callbackUrl = Url.Page(
                     "/Account/ResetPassword",
                     pageHandler: null,
-                    values: new { area = "Identity", code },
+                    values: new { code },
                     protocol: Request.Scheme);
 
                 await _emailSender.SendEmailAsync(

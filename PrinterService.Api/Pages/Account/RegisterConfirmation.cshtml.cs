@@ -6,10 +6,10 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
+using PrinterService.Api.Services;
 using PrinterService.Model.Entities;
 
 namespace PrinterService.Api.Pages.Account
@@ -69,7 +69,7 @@ namespace PrinterService.Api.Pages.Account
                 EmailConfirmationUrl = Url.Page(
                     "/Account/ConfirmEmail",
                     pageHandler: null,
-                    values: new { area = "Identity", userId = userId, code = code, returnUrl = returnUrl },
+                    values: new { userId = userId, code = code, returnUrl = returnUrl },
                     protocol: Request.Scheme);
             }
 

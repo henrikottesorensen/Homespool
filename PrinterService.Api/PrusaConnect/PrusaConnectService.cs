@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 
 using PrinterService.Api.Exceptions;
 using PrinterService.Data;
-using PrinterService.Model;
+using PrinterService.Model.Entities;
 
 namespace PrinterService.Api.PrusaConnect;
 
@@ -45,6 +45,7 @@ public class PrusaConnectService
                     SerialNumber = printer.SerialNumber,
                     TemporaryCode = _codeGenerator.GenerateCode(printer.SerialNumber),
                     TemporaryCodeExpiry = now.AddHours(1),
+                    CreatedAt = TimeProvider.System.GetUtcNow(),
                 });
             
             auth = newAuth.Entity;
@@ -78,7 +79,7 @@ public class PrusaConnectService
             throw new PrinterNotFoundException(fingerPrint);
         }
 
-        if (auth.PrinterUuid == null)
+        if (auth.PrinterId == null)
         {
             return null;
         }

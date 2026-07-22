@@ -13,6 +13,7 @@ using Microsoft.Extensions.Primitives;
 using PrinterService.Api.PrusaConnect;
 using PrinterService.Data;
 using PrinterService.Model;
+using PrinterService.Model.Entities;
 
 namespace PrinterService.Api.Authentication;
 
@@ -60,7 +61,7 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
             (
                 new ClaimsIdentity(
                 [
-                    new Claim(ClaimTypes.PrinterUuid, $"{auth.PrinterUuid}"),
+                    new Claim(ClaimTypes.PrinterId, $"{auth.PrinterId}"),
                     new Claim(ClaimTypes.Owner, $"{auth.Printer.Owner}"),
                     new Claim(JwtClaimTypes.Name, $"{auth.Printer.Name}"),
                 ])

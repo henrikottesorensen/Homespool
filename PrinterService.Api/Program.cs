@@ -37,11 +37,8 @@ public static class Program
                    .Enrich.FromLogContext()
                    .WriteTo.Console(new RenderedCompactJsonFormatter()));
             
-            builder.Services.AddDbContext<PSDbContext>(ef =>
-            {
-                ef.UseSqlite(builder.Configuration.GetConnectionString("PrinterServiceDb"));
-            });
-            
+            builder.Services.AddPrinterServiceData(builder.Configuration);
+
             builder.Services.AddDatabaseDeveloperPageExceptionFilter();
             
             builder.Services.AddDataProtection()
@@ -80,6 +77,8 @@ public static class Program
             
             WebApplication app = builder.Build();
 
+            app.Services.MigratePrinterServiceData();
+
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
             {
@@ -106,6 +105,11 @@ public static class Program
             });
 
             app.Run();
+        }
+        catch (HostAbortedException)
+        {
+            // Thrown by design-time tooling (dotnet-ef) after it has built the service provider.
+            // Not a failure, and logging it as Fatal makes every migration command look broken.
         }
         catch (Exception ex)
         {

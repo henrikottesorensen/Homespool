@@ -1,15 +1,15 @@
 using System;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace PrinterService.Model;
+namespace PrinterService.Model.Entities;
 
 public class PrusaConnectAuthenticationData
 {
     public long Id { get; set; }
     
-    public Guid? PrinterUuid { get; set; }
+    public int? PrinterId { get; set; }
     
-    [ForeignKey(nameof(PrinterUuid))]
+    [ForeignKey(nameof(PrinterId))]
     public virtual Printer Printer { get; set; }
     
     public string SerialNumber { get; set; }

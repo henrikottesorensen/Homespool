@@ -1,0 +1,5 @@
+# EF Core generates these files. They are not hand-maintained, so linting them only produces
+# noise that cannot be fixed without the next scaffold undoing the fix.
+[*.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.severity = none

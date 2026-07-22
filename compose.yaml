@@ -1,0 +1,7 @@
+﻿services:
+  printerservice.api:
+    image: printerservice.api
+    build:
+      context: .
+      dockerfile: PrinterService.Api/Dockerfile
+

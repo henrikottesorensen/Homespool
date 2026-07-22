@@ -1,0 +1,10 @@
+namespace PrinterService.Api.PrusaConnect.Commands;
+
+public class StartConnectDownload : ICommand
+{
+    public string Path { set; get; }
+    
+    public ushort? Port { set; get; }
+    
+    public long OriginalSize { set; get; }
+}

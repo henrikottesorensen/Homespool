@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="compose.yaml" />
+  </Folder>
+  <Project Path="PrinterService.Api.Test/PrinterService.Api.Test.csproj" />
+  <Project Path="PrinterService.Api/PrinterService.Api.csproj" />
+  <Project Path="PrinterService.Data/PrinterService.Data.csproj" />
+  <Project Path="PrinterService.Model\PrinterService.Model.csproj" />
+</Solution>

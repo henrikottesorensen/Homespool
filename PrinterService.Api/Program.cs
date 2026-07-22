@@ -3,6 +3,7 @@ using System;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -76,7 +77,24 @@ public static class Program
 
             builder.Services.AddOpenApi();
 
-            builder.Services.AddScoped<Services.IEmailSender, Services.LoggingEmailSender>();
+            builder.Services.Configure<Services.SmtpOptions>(
+                builder.Configuration.GetSection(Services.SmtpOptions.SectionName));
+
+            Services.SmtpOptions smtpOptions = new();
+            builder.Configuration.GetSection(Services.SmtpOptions.SectionName).Bind(smtpOptions);
+
+            // Which sender is registered is decided by configuration alone, never by probing the network, so that a
+            // mail server being down cannot quietly change how accounts are created. See SmtpOptions.IsConfigured.
+            if (smtpOptions.IsConfigured)
+            {
+                builder.Services.AddScoped<Services.IEmailSender, Services.SmtpEmailSender>();
+            }
+            else
+            {
+                builder.Services.AddScoped<Services.IEmailSender, Services.LoggingEmailSender>();
+            }
+
+            builder.Services.AddHostedService<Services.SmtpConnectivityProbe>();
 
             builder.Services.AddScoped<PrusaConnect.PrusaConnectService>()
                             .AddScoped<PrusaConnect.WebSocketHandler>()

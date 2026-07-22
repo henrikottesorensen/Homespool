@@ -8,7 +8,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Options;
+
 using PrinterService.Api.Services;
 using PrinterService.Model.Entities;
 
@@ -18,12 +19,12 @@ namespace PrinterService.Api.Pages.Account
     public class RegisterConfirmationModel : PageModel
     {
         private readonly UserManager<PSUser> _userManager;
-        private readonly IEmailSender _sender;
+        private readonly SmtpOptions _smtpOptions;
 
-        public RegisterConfirmationModel(UserManager<PSUser> userManager, IEmailSender sender)
+        public RegisterConfirmationModel(UserManager<PSUser> userManager, IOptions<SmtpOptions> smtpOptions)
         {
             _userManager = userManager;
-            _sender = sender;
+            _smtpOptions = smtpOptions.Value;
         }
 
         /// <summary>
@@ -33,18 +34,17 @@ namespace PrinterService.Api.Pages.Account
         public string Email { get; set; }
 
         /// <summary>
-        ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        /// Whether outgoing mail is configured. When it is not, the account was created already confirmed and
+        /// there is nothing for the user to wait for.
         /// </summary>
-        public bool DisplayConfirmAccountLink { get; set; }
+        public bool SmtpConfigured { get; set; }
 
         /// <summary>
-        ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        /// The confirmation mail could not be sent, so the account cannot be confirmed without operator help.
         /// </summary>
-        public string EmailConfirmationUrl { get; set; }
+        public bool EmailFailed { get; set; }
 
-        public async Task<IActionResult> OnGetAsync(string email, string returnUrl = null)
+        public async Task<IActionResult> OnGetAsync(string email, string returnUrl = null, bool emailFailed = false)
         {
             if (email == null)
             {
@@ -59,19 +59,14 @@ namespace PrinterService.Api.Pages.Account
             }
 
             Email = email;
-            // Once you add a real email sender, you should remove this code that lets you confirm the account
-            DisplayConfirmAccountLink = true;
-            if (DisplayConfirmAccountLink)
-            {
-                string userId = await _userManager.GetUserIdAsync(user);
-                string code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-                code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
-                EmailConfirmationUrl = Url.Page(
-                    "/Account/ConfirmEmail",
-                    pageHandler: null,
-                    values: new { userId = userId, code = code, returnUrl = returnUrl },
-                    protocol: Request.Scheme);
-            }
+            EmailFailed = emailFailed;
+            SmtpConfigured = _smtpOptions.IsConfigured;
+
+            // The stock scaffold rendered a working confirmation link here whenever no real email sender was
+            // registered. That is removed deliberately, and there is no mode in which it should come back:
+            // with SMTP configured it would let anyone confirm an address they do not control, bypassing
+            // confirmation entirely; without SMTP the account is already created confirmed, so the link
+            // confirms something that needs no confirming.
 
             return Page();
         }

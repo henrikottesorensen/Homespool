@@ -5,3 +5,34 @@
       context: .
       dockerfile: PrinterService.Api/Dockerfile
 
+    environment:
+      # Point SQLite at the mounted volume. appsettings.json keeps a relative path so that
+      # running outside a container still works.
+      ConnectionStrings__PrinterServiceDb: "Data Source=/app/data/PrinterService.Sqlite"
+
+      # Outgoing mail. Values come from .env - copy .env.example to .env and edit that, rather
+      # than editing this file, so secrets stay out of the repository. Leaving SMTP_HOST empty
+      # runs without a mail server: accounts are created already confirmed, and password reset
+      # is unavailable.
+      Smtp__Host: "${SMTP_HOST:-}"
+      Smtp__Port: "${SMTP_PORT:-587}"
+      # true for implicit TLS on port 465; false for STARTTLS on 587.
+      Smtp__UseImplicitTls: "${SMTP_USE_IMPLICIT_TLS:-false}"
+      Smtp__UserName: "${SMTP_USERNAME:-}"
+      # Never put the real password here - compose.yaml is committed. Put SMTP_PASSWORD in a
+      # local .env file (gitignored) or export it in the shell before running compose.
+      Smtp__Password: "${SMTP_PASSWORD:-}"
+      Smtp__FromAddress: "${SMTP_FROM_ADDRESS:-}"
+      Smtp__FromName: "${SMTP_FROM_NAME:-PrinterService}"
+      # Connects and authenticates once at startup purely to report a broken configuration.
+      # Set false if the mail server lives in this stack and starts after this container.
+      Smtp__ProbeOnStartup: "${SMTP_PROBE_ON_STARTUP:-true}"
+
+    volumes:
+      - printerservice-data:/app/data
+
+volumes:
+  # Keeps the SQLite database across container replacement. Use a local docker volume or a
+  # bind-mount to local disk - do NOT put this on NFS/CIFS/a NAS share, where SQLite WAL
+  # locking is unreliable and will corrupt the database.
+  printerservice-data:

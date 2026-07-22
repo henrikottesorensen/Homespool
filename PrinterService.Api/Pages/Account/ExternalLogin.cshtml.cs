@@ -19,6 +19,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+
 using PrinterService.Api.Services;
 using PrinterService.Model.Entities;
 
@@ -35,13 +37,15 @@ namespace PrinterService.Api.Pages.Account
         private readonly IUserEmailStore<PSUser> _emailStore;
         private readonly IEmailSender _emailSender;
         private readonly ILogger<ExternalLoginModel> _logger;
+        private readonly SmtpOptions _smtpOptions;
 
         public ExternalLoginModel(
             SignInManager<PSUser> signInManager,
             UserManager<PSUser> userManager,
             IUserStore<PSUser> userStore,
             ILogger<ExternalLoginModel> logger,
-            IEmailSender emailSender)
+            IEmailSender emailSender,
+            IOptions<SmtpOptions> smtpOptions)
         {
             _signInManager = signInManager;
             _userManager = userManager;
@@ -49,6 +53,7 @@ namespace PrinterService.Api.Pages.Account
             _emailStore = GetEmailStore();
             _logger = logger;
             _emailSender = emailSender;
+            _smtpOptions = smtpOptions.Value;
         }
 
         /// <summary>
@@ -162,6 +167,9 @@ namespace PrinterService.Api.Pages.Account
                 await _userStore.SetUserNameAsync(user, Input.Email, CancellationToken.None);
                 await _emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None);
 
+                // See RegisterModel: confirmed at creation when no SMTP is configured.
+                user.EmailConfirmed = !_smtpOptions.IsConfigured;
+
                 IdentityResult result = await _userManager.CreateAsync(user);
                 if (result.Succeeded)
                 {
@@ -179,13 +187,17 @@ namespace PrinterService.Api.Pages.Account
                             values: new { userId = userId, code = code },
                             protocol: Request.Scheme);
 
-                        await _emailSender.SendEmailAsync(Input.Email, "Confirm your email",
+                        EmailSendResult sendResult = await _emailSender.SendEmailAsync(Input.Email, "Confirm your email",
                             $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+
+                        // Own address, just supplied by the external provider - safe to report. See RegisterModel.
+                        bool emailFailed = sendResult == EmailSendResult.Failed;
 
                         // If account confirmation is required, we need to show the link if we don't have a real email sender
                         if (_userManager.Options.SignIn.RequireConfirmedAccount)
                         {
-                            return RedirectToPage("./RegisterConfirmation", new { Email = Input.Email });
+                            return RedirectToPage("./RegisterConfirmation",
+                                                  new { Email = Input.Email, emailFailed = emailFailed });
                         }
 
                         await _signInManager.SignInAsync(user, isPersistent: false, info.LoginProvider);

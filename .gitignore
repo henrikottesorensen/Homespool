@@ -6,3 +6,7 @@ riderModule.iml
 **/.idea/
 **/.DS_Store
 **/*.user
+# Local compose secrets (SMTP password etc.) - never commit
+.env
+**/*.Sqlite
+*.Sqlite

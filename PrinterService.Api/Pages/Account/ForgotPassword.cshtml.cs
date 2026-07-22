@@ -71,7 +71,11 @@ namespace PrinterService.Api.Pages.Account
                     values: new { code },
                     protocol: Request.Scheme);
 
-                await _emailSender.SendEmailAsync(
+                // Result deliberately discarded. The send is only attempted when the account exists and is
+                // confirmed - see the early return above - so surfacing a failure here would distinguish
+                // "account exists, mail broke" from "no such account", which is exactly what that early return
+                // is written to hide. The failure is in the log and in the startup SMTP probe instead.
+                _ = await _emailSender.SendEmailAsync(
                     Input.Email,
                     "Reset Password",
                     $"Please reset your password by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");

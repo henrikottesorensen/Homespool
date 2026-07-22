@@ -8,6 +8,7 @@
 
     <ItemGroup>
         <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.10" />
+        <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.10" />
         <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.10" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.Analyzers" Version="10.0.10" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10">
@@ -24,4 +25,12 @@
     <ItemGroup>
       <ProjectReference Include="..\PrinterService.Model\PrinterService.Model.csproj" />
     </ItemGroup>
+
+    <ItemGroup>
+        <!-- Temporary workaround until vulnerability fixed: https://github.com/dotnet/efcore/issues/38257
+             Microsoft.Data.Sqlite pulls SQLitePCLRaw 2.1.11 (NU1903). Fix promised for EF 10.0.11.
+             Remove this once EF ships a bundle without the advisory. -->
+        <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" VersionOverride="3.0.4" />
+    </ItemGroup>
+
 </Project>

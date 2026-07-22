@@ -18,6 +18,10 @@
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+        <!-- Only used by JsonDotNetDeserialiseTests, which exists to compare Json.NET against
+             System.Text.Json on the framings the printer actually sends. Production code uses
+             System.Text.Json exclusively, so this reference belongs here and not in Api. -->
+        <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
         <PackageReference Include="xunit" Version="2.9.3"/>
         <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
           <PrivateAssets>all</PrivateAssets>

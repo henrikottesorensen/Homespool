@@ -108,11 +108,9 @@ namespace PrinterService.Data.Migrations
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserLogin<long>", b =>
                 {
                     b.Property<string>("LoginProvider")
-                        .HasMaxLength(128)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ProviderKey")
-                        .HasMaxLength(128)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ProviderDisplayName")
@@ -149,11 +147,9 @@ namespace PrinterService.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("LoginProvider")
-                        .HasMaxLength(128)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
-                        .HasMaxLength(128)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Value")
@@ -187,8 +183,8 @@ namespace PrinterService.Data.Migrations
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTimeOffset?>("LockoutEnd")
-                        .HasColumnType("TEXT");
+                    b.Property<long?>("LockoutEnd")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("NormalizedEmail")
                         .HasMaxLength(256)
@@ -235,8 +231,8 @@ namespace PrinterService.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Firmware")
                         .HasColumnType("TEXT");
@@ -262,8 +258,8 @@ namespace PrinterService.Data.Migrations
                     b.Property<int>("Type")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<long>("UpdatedAt")
+                        .HasColumnType("INTEGER");
 
                     b.Property<Guid>("Uuid")
                         .HasColumnType("TEXT");
@@ -306,8 +302,8 @@ namespace PrinterService.Data.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTimeOffset>("Timestamp")
-                        .HasColumnType("TEXT");
+                    b.Property<long>("Timestamp")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
@@ -402,8 +398,8 @@ namespace PrinterService.Data.Migrations
                     b.Property<int?>("JobId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTimeOffset>("LastSeenAt")
-                        .HasColumnType("TEXT");
+                    b.Property<long>("LastSeenAt")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Material")
                         .HasColumnType("TEXT");
@@ -470,8 +466,8 @@ namespace PrinterService.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("FingerPrint")
                         .IsRequired()
@@ -491,11 +487,11 @@ namespace PrinterService.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTimeOffset>("TemporaryCodeExpiry")
-                        .HasColumnType("TEXT");
+                    b.Property<long>("TemporaryCodeExpiry")
+                        .HasColumnType("INTEGER");
 
-                    b.Property<DateTimeOffset?>("TokenCreatedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<long?>("TokenCreatedAt")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
@@ -504,8 +500,7 @@ namespace PrinterService.Data.Migrations
 
                     b.HasIndex("PrinterId");
 
-                    b.HasIndex("SerialNumber")
-                        .IsUnique();
+                    b.HasIndex("SerialNumber");
 
                     b.HasIndex("TemporaryCode");
 
@@ -614,8 +609,8 @@ namespace PrinterService.Data.Migrations
                     b.Property<int?>("TimeToFilamentChange")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTimeOffset>("Timestamp")
-                        .HasColumnType("TEXT");
+                    b.Property<long>("Timestamp")
+                        .HasColumnType("INTEGER");
 
                     b.Property<float?>("XAxis")
                         .HasColumnType("REAL");

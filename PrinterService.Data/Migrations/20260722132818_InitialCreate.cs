@@ -43,7 +43,7 @@ namespace PrinterService.Data.Migrations
                     PhoneNumber = table.Column<string>(type: "TEXT", nullable: true),
                     PhoneNumberConfirmed = table.Column<bool>(type: "INTEGER", nullable: false),
                     TwoFactorEnabled = table.Column<bool>(type: "INTEGER", nullable: false),
-                    LockoutEnd = table.Column<DateTimeOffset>(type: "TEXT", nullable: true),
+                    LockoutEnd = table.Column<long>(type: "INTEGER", nullable: true),
                     LockoutEnabled = table.Column<bool>(type: "INTEGER", nullable: false),
                     AccessFailedCount = table.Column<int>(type: "INTEGER", nullable: false)
                 },
@@ -81,8 +81,8 @@ namespace PrinterService.Data.Migrations
                     Firmware = table.Column<string>(type: "TEXT", nullable: true),
                     Status = table.Column<int>(type: "INTEGER", nullable: false),
                     LoadedMaterial = table.Column<string>(type: "TEXT", nullable: true),
-                    CreatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
-                    UpdatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false)
+                    CreatedAt = table.Column<long>(type: "INTEGER", nullable: false),
+                    UpdatedAt = table.Column<long>(type: "INTEGER", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -135,8 +135,8 @@ namespace PrinterService.Data.Migrations
                 name: "AspNetUserLogins",
                 columns: table => new
                 {
-                    LoginProvider = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                    ProviderKey = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
+                    LoginProvider = table.Column<string>(type: "TEXT", nullable: false),
+                    ProviderKey = table.Column<string>(type: "TEXT", nullable: false),
                     ProviderDisplayName = table.Column<string>(type: "TEXT", nullable: true),
                     UserId = table.Column<long>(type: "INTEGER", nullable: false)
                 },
@@ -180,8 +180,8 @@ namespace PrinterService.Data.Migrations
                 columns: table => new
                 {
                     UserId = table.Column<long>(type: "INTEGER", nullable: false),
-                    LoginProvider = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                    Name = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
+                    LoginProvider = table.Column<string>(type: "TEXT", nullable: false),
+                    Name = table.Column<string>(type: "TEXT", nullable: false),
                     Value = table.Column<string>(type: "TEXT", nullable: true)
                 },
                 constraints: table =>
@@ -202,7 +202,7 @@ namespace PrinterService.Data.Migrations
                     Id = table.Column<long>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
                     PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
-                    Timestamp = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
+                    Timestamp = table.Column<long>(type: "INTEGER", nullable: false),
                     EventType = table.Column<string>(type: "TEXT", nullable: false),
                     Status = table.Column<int>(type: "INTEGER", nullable: false),
                     JobId = table.Column<int>(type: "INTEGER", nullable: true),
@@ -226,7 +226,7 @@ namespace PrinterService.Data.Migrations
                 columns: table => new
                 {
                     PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
-                    LastSeenAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
+                    LastSeenAt = table.Column<long>(type: "INTEGER", nullable: false),
                     Status = table.Column<int>(type: "INTEGER", nullable: false),
                     JobId = table.Column<int>(type: "INTEGER", nullable: true),
                     Progress = table.Column<int>(type: "INTEGER", nullable: true),
@@ -286,9 +286,9 @@ namespace PrinterService.Data.Migrations
                     FingerPrint = table.Column<string>(type: "TEXT", nullable: false),
                     HashedToken = table.Column<string>(type: "TEXT", nullable: true),
                     TemporaryCode = table.Column<string>(type: "TEXT", nullable: false),
-                    TemporaryCodeExpiry = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
-                    CreatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
-                    TokenCreatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: true)
+                    TemporaryCodeExpiry = table.Column<long>(type: "INTEGER", nullable: false),
+                    CreatedAt = table.Column<long>(type: "INTEGER", nullable: false),
+                    TokenCreatedAt = table.Column<long>(type: "INTEGER", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -307,7 +307,7 @@ namespace PrinterService.Data.Migrations
                     Id = table.Column<long>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
                     PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
-                    Timestamp = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
+                    Timestamp = table.Column<long>(type: "INTEGER", nullable: false),
                     Status = table.Column<int>(type: "INTEGER", nullable: false),
                     JobId = table.Column<int>(type: "INTEGER", nullable: true),
                     Progress = table.Column<int>(type: "INTEGER", nullable: true),
@@ -472,8 +472,7 @@ namespace PrinterService.Data.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_PrusaConnectAuthentication_SerialNumber",
                 table: "PrusaConnectAuthentication",
-                column: "SerialNumber",
-                unique: true);
+                column: "SerialNumber");
 
             migrationBuilder.CreateIndex(
                 name: "IX_PrusaConnectAuthentication_TemporaryCode",

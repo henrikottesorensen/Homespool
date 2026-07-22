@@ -1,3 +1,5 @@
+using System;
+
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -45,6 +47,26 @@ public class PSDbContext : IdentityDbContext<PSUser, IdentityRole<long>, long>, 
     {
     }
 
+    /// <summary>
+    /// Stores every <see cref="DateTimeOffset"/> as epoch milliseconds in an INTEGER column.
+    /// </summary>
+    /// <remarks>
+    /// Applied as a convention rather than property by property, so a timestamp added later cannot
+    /// silently fall back to the untranslatable TEXT mapping. See
+    /// <see cref="DateTimeOffsetToUnixMillisecondsConverter"/> for why the default mapping — and EF's
+    /// own <c>DateTimeOffsetToBinaryConverter</c> — are both unusable here. This also covers
+    /// Identity's own <c>LockoutEnd</c>.
+    /// </remarks>
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        ArgumentNullException.ThrowIfNull(configurationBuilder);
+
+        base.ConfigureConventions(configurationBuilder);
+
+        configurationBuilder.Properties<DateTimeOffset>()
+                            .HaveConversion<DateTimeOffsetToUnixMillisecondsConverter>();
+    }
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -68,8 +90,22 @@ public class PSDbContext : IdentityDbContext<PSUser, IdentityRole<long>, long>, 
             entity.HasIndex(e => e.FingerPrint)
                   .IsUnique();
 
-            entity.HasIndex(e => e.SerialNumber)
-                  .IsUnique();
+            // Deliberately NOT unique. The fingerprint is SHA-256 of
+            // (STM32 CPU UUID || factory MAC || serial number), so it already subsumes the serial:
+            // two different serials cannot produce one fingerprint, and uniqueness here protects
+            // nothing that the fingerprint index does not already cover.
+            //
+            // It did cause harm. A mainboard replacement - where service re-burns the printer's
+            // original serial onto a new board - changes the CPU UUID and MAC, so the fingerprint
+            // changes while the serial does not. GetPrinterCode then finds no row by fingerprint,
+            // inserts, and hits UNIQUE constraint failed: SerialNumber -> 500. The firmware retries
+            // the initial POST three times (registrator.hpp, starting_retries = 3) and then abandons
+            // registration for good, so the printer becomes permanently unregisterable without
+            // manual database surgery.
+            //
+            // Without the constraint the replacement board simply registers as a new printer, which
+            // is honest - it is new hardware - and the old row is stale data rather than a blocker.
+            entity.HasIndex(e => e.SerialNumber);
 
             // Registration polls GET /p/register until the code is claimed.
             entity.HasIndex(e => e.TemporaryCode);

@@ -99,6 +99,15 @@ public static class Program
             // Resolves the "confirm accounts at creation" rule once from SmtpOptions, so account-creation
             // pages inject this instead of SmtpOptions. Singleton: SMTP config is fixed at startup.
             builder.Services.AddSingleton<Services.AccountConfirmationPolicy>();
+
+            // Holds the first-run bootstrap secret and the one-way "an admin exists" flag; seeded once
+            // by SeedAdminBootstrap after migration. Singleton so the flag is process-wide.
+            builder.Services.AddSingleton<Services.SetupState>();
+
+            // Factory-activated (IMiddleware) so it is resolved from the container. Singleton: it holds
+            // no per-request state, only the singleton SetupState.
+            builder.Services.AddSingleton<Services.SetupGateMiddleware>();
+
             builder.Services.AddScoped<PrusaConnect.PrusaConnectService>()
                             .AddScoped<PrusaConnect.WebSocketHandler>()
                             .AddScoped<PrusaConnect.TokenService>()
@@ -107,6 +116,10 @@ public static class Program
             WebApplication app = builder.Build();
 
             app.Services.MigratePrinterServiceData();
+
+            // Ensure the admin role exists and, if no administrator has been created yet, mint and log
+            // the one-time /setup token. Runs inline so setup state is settled before the first request.
+            Services.AdminBootstrap.SeedAdminBootstrap(app.Services);
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
@@ -119,6 +132,10 @@ public static class Program
             app.UseHttpsRedirection();
 
             app.UseRouting();
+
+            // Before an administrator exists, funnel every navigable page to /setup. No-op once setup
+            // completes. Placed after routing so static-asset and printer endpoints resolve normally.
+            app.UseMiddleware<Services.SetupGateMiddleware>();
 
             app.UseAuthentication();
             app.UseAuthorization();

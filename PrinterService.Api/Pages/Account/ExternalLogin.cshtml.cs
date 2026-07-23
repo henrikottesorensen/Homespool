@@ -19,7 +19,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 using PrinterService.Api.Services;
 using PrinterService.Model.Entities;
@@ -37,7 +36,7 @@ namespace PrinterService.Api.Pages.Account
         private readonly IUserEmailStore<PSUser> _emailStore;
         private readonly IEmailSender _emailSender;
         private readonly ILogger<ExternalLoginModel> _logger;
-        private readonly SmtpOptions _smtpOptions;
+        private readonly AccountConfirmationPolicy _accountConfirmationPolicy;
 
         public ExternalLoginModel(
             SignInManager<PSUser> signInManager,
@@ -45,7 +44,7 @@ namespace PrinterService.Api.Pages.Account
             IUserStore<PSUser> userStore,
             ILogger<ExternalLoginModel> logger,
             IEmailSender emailSender,
-            IOptions<SmtpOptions> smtpOptions)
+            AccountConfirmationPolicy accountConfirmationPolicy)
         {
             _signInManager = signInManager;
             _userManager = userManager;
@@ -53,7 +52,7 @@ namespace PrinterService.Api.Pages.Account
             _emailStore = GetEmailStore();
             _logger = logger;
             _emailSender = emailSender;
-            _smtpOptions = smtpOptions.Value;
+            _accountConfirmationPolicy = accountConfirmationPolicy;
         }
 
         /// <summary>
@@ -167,8 +166,7 @@ namespace PrinterService.Api.Pages.Account
                 await _userStore.SetUserNameAsync(user, Input.Email, CancellationToken.None);
                 await _emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None);
 
-                // See RegisterModel: confirmed at creation when no SMTP is configured.
-                user.EmailConfirmed = !_smtpOptions.IsConfigured;
+                _accountConfirmationPolicy.Apply(user);
 
                 IdentityResult result = await _userManager.CreateAsync(user);
                 if (result.Succeeded)

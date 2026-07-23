@@ -16,7 +16,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 using PrinterService.Api.Services;
 using PrinterService.Model.Entities;
@@ -31,7 +30,7 @@ namespace PrinterService.Api.Pages.Account
         private readonly IUserEmailStore<PSUser> _emailStore;
         private readonly ILogger<RegisterModel> _logger;
         private readonly IEmailSender _emailSender;
-        private readonly SmtpOptions _smtpOptions;
+        private readonly AccountConfirmationPolicy _accountConfirmationPolicy;
 
         public RegisterModel(
             UserManager<PSUser> userManager,
@@ -39,7 +38,7 @@ namespace PrinterService.Api.Pages.Account
             SignInManager<PSUser> signInManager,
             ILogger<RegisterModel> logger,
             IEmailSender emailSender,
-            IOptions<SmtpOptions> smtpOptions)
+            AccountConfirmationPolicy accountConfirmationPolicy)
         {
             _userManager = userManager;
             _userStore = userStore;
@@ -47,7 +46,7 @@ namespace PrinterService.Api.Pages.Account
             _signInManager = signInManager;
             _logger = logger;
             _emailSender = emailSender;
-            _smtpOptions = smtpOptions.Value;
+            _accountConfirmationPolicy = accountConfirmationPolicy;
         }
 
         /// <summary>
@@ -121,10 +120,7 @@ namespace PrinterService.Api.Pages.Account
 
                 await _userStore.SetUserNameAsync(user, Input.Email, CancellationToken.None);
                 await _emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None);
-                // With no SMTP configured a confirmation mail can never arrive, so the account is confirmed at
-                // creation. The RequireConfirmedAccount policy itself stays on - deciding per account rather than
-                // by flipping the policy means configuring SMTP later cannot retroactively lock out existing users.
-                user.EmailConfirmed = !_smtpOptions.IsConfigured;
+                _accountConfirmationPolicy.Apply(user);
 
                 IdentityResult result = await _userManager.CreateAsync(user, Input.Password);
 

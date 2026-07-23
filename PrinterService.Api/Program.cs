@@ -96,6 +96,9 @@ public static class Program
 
             builder.Services.AddHostedService<Services.SmtpConnectivityProbe>();
 
+            // Resolves the "confirm accounts at creation" rule once from SmtpOptions, so account-creation
+            // pages inject this instead of SmtpOptions. Singleton: SMTP config is fixed at startup.
+            builder.Services.AddSingleton<Services.AccountConfirmationPolicy>();
             builder.Services.AddScoped<PrusaConnect.PrusaConnectService>()
                             .AddScoped<PrusaConnect.WebSocketHandler>()
                             .AddScoped<PrusaConnect.TokenService>()

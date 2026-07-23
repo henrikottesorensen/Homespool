@@ -112,6 +112,10 @@ public static class Program
                             .AddScoped<PrusaConnect.WebSocketHandler>()
                             .AddScoped<PrusaConnect.TokenService>()
                             .AddScoped<PrusaConnect.CodeGenerator>();
+
+            // Scoped, unlike their singleton neighbors above, because they hold the scoped PSDbContext.
+            builder.Services.AddScoped<Services.TeamService>();
+            builder.Services.AddScoped<Services.UnitOfWork>();
             
             WebApplication app = builder.Build();
 

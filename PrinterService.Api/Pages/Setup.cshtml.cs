@@ -1,5 +1,6 @@
 #nullable disable
 
+using System;
 using System.ComponentModel.DataAnnotations;
 using System.Threading;
 using System.Threading.Tasks;
@@ -7,6 +8,8 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 
 using PrinterService.Api.Services;
@@ -27,6 +30,8 @@ public class SetupModel : PageModel
     private readonly SignInManager<PSUser> _signInManager;
     private readonly SetupState _setupState;
     private readonly AccountConfirmationPolicy _accountConfirmationPolicy;
+    private readonly TeamService _teamService;
+    private readonly UnitOfWork _unitOfWork;
     private readonly ILogger<SetupModel> _logger;
 
     public SetupModel(
@@ -35,6 +40,8 @@ public class SetupModel : PageModel
         SignInManager<PSUser> signInManager,
         SetupState setupState,
         AccountConfirmationPolicy accountConfirmationPolicy,
+        TeamService teamService,
+        UnitOfWork unitOfWork,
         ILogger<SetupModel> logger)
     {
         _userManager = userManager;
@@ -43,6 +50,8 @@ public class SetupModel : PageModel
         _signInManager = signInManager;
         _setupState = setupState;
         _accountConfirmationPolicy = accountConfirmationPolicy;
+        _teamService = teamService;
+        _unitOfWork = unitOfWork;
         _logger = logger;
     }
 
@@ -106,36 +115,49 @@ public class SetupModel : PageModel
 
         PSUser user = new();
 
-        await _userStore.SetUserNameAsync(user, Input.Email, CancellationToken.None);
-        await _emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None);
+        // Everything below - the Identity user, its admin role, and its default team (§15 — "admin
+        // first, backfill team") - shares this one transaction, because a user without a team cannot
+        // own a printer and a user without the admin role leaves setup stuck. Any early return before
+        // CommitAsync leaves the transaction disposed uncommitted, which rolls back every write made
+        // through it so far - no compensating delete needed on any failure path.
+        await using IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(CancellationToken.None);
 
-        _accountConfirmationPolicy.Apply(user);
-
-        IdentityResult createResult = await _userManager.CreateAsync(user, Input.Password);
-
-        if (!createResult.Succeeded)
+        try
         {
-            AddErrors(createResult);
+            await _userStore.SetUserNameAsync(user, Input.Email, CancellationToken.None);
+            await _emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None);
+
+            _accountConfirmationPolicy.Apply(user);
+
+            IdentityResult createResult = await _userManager.CreateAsync(user, Input.Password);
+
+            if (!createResult.Succeeded)
+            {
+                AddErrors(createResult);
+
+                return Page();
+            }
+
+            IdentityResult roleResult = await _userManager.AddToRoleAsync(user, AdminBootstrap.AdminRole);
+
+            if (!roleResult.Succeeded)
+            {
+                AddErrors(roleResult);
+
+                return Page();
+            }
+
+            await _teamService.AddDefaultTeamAsync(user.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+
+            await transaction.CommitAsync(CancellationToken.None);
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogError(ex, "Failed to complete first-time setup; rolling back the account.");
+            ModelState.AddModelError(string.Empty, "Could not complete setup. Please try again.");
 
             return Page();
         }
-
-        IdentityResult roleResult = await _userManager.AddToRoleAsync(user, AdminBootstrap.AdminRole);
-
-        if (!roleResult.Succeeded)
-        {
-            // The account exists but is not an administrator, which would leave setup stuck: a retry
-            // with the same email fails on the duplicate. Undo the half-done creation so the operator
-            // can simply try again.
-            await _userManager.DeleteAsync(user);
-            AddErrors(roleResult);
-
-            return Page();
-        }
-
-        // TODO(phase-1.5 step 5): mint this admin's default Team + TeamMember here once those entities
-        // exist. Deferred deliberately - "admin first, backfill team" (Henrik, 2026-07-23). Printer
-        // claiming (step 7) cannot resolve an owner until then, but nothing claims yet.
 
         _setupState.MarkComplete();
 

@@ -163,6 +163,45 @@ namespace PrinterService.Data.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("PrinterService.Model.Entities.Invitation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("ExpiresAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("HashedToken")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("InvitedBy")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("TeamId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("UsedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HashedToken")
+                        .IsUnique();
+
+                    b.HasIndex("TeamId");
+
+                    b.ToTable("Invitations");
+                });
+
             modelBuilder.Entity("PrinterService.Model.Entities.PSUser", b =>
                 {
                     b.Property<long>("Id")
@@ -252,10 +291,10 @@ namespace PrinterService.Data.Migrations
                     b.Property<string>("Name")
                         .HasColumnType("TEXT");
 
-                    b.Property<long>("Owner")
+                    b.Property<int>("Status")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("Status")
+                    b.Property<int>("TeamId")
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("Type")
@@ -269,7 +308,7 @@ namespace PrinterService.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Owner");
+                    b.HasIndex("TeamId");
 
                     b.HasIndex("Uuid")
                         .IsUnique();
@@ -510,6 +549,55 @@ namespace PrinterService.Data.Migrations
                     b.ToTable("PrusaConnectAuthentication");
                 });
 
+            modelBuilder.Entity("PrinterService.Model.Entities.Team", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CreatedBy")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Teams");
+                });
+
+            modelBuilder.Entity("PrinterService.Model.Entities.TeamMember", b =>
+                {
+                    b.Property<int>("TeamId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("CanManage")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("CanRead")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("CanUse")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("TeamId", "UserId");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasFilter("\"IsDefault\"");
+
+                    b.ToTable("TeamMembers");
+                });
+
             modelBuilder.Entity("PrinterService.Model.Entities.TelemetrySample", b =>
                 {
                     b.Property<long>("Id")
@@ -714,6 +802,27 @@ namespace PrinterService.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("PrinterService.Model.Entities.Invitation", b =>
+                {
+                    b.HasOne("PrinterService.Model.Entities.Team", "Team")
+                        .WithMany()
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Team");
+                });
+
+            modelBuilder.Entity("PrinterService.Model.Entities.Printer", b =>
+                {
+                    b.HasOne("PrinterService.Model.Entities.Team", "Team")
+                        .WithMany()
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Team");
+                });
+
             modelBuilder.Entity("PrinterService.Model.Entities.PrinterEvent", b =>
                 {
                     b.HasOne("PrinterService.Model.Entities.Printer", "Printer")
@@ -756,6 +865,17 @@ namespace PrinterService.Data.Migrations
                     b.Navigation("Printer");
                 });
 
+            modelBuilder.Entity("PrinterService.Model.Entities.TeamMember", b =>
+                {
+                    b.HasOne("PrinterService.Model.Entities.Team", "Team")
+                        .WithMany("Members")
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Team");
+                });
+
             modelBuilder.Entity("PrinterService.Model.Entities.TelemetrySample", b =>
                 {
                     b.HasOne("PrinterService.Model.Entities.Printer", "Printer")
@@ -781,6 +901,11 @@ namespace PrinterService.Data.Migrations
             modelBuilder.Entity("PrinterService.Model.Entities.PrinterLiveState", b =>
                 {
                     b.Navigation("Slots");
+                });
+
+            modelBuilder.Entity("PrinterService.Model.Entities.Team", b =>
+                {
+                    b.Navigation("Members");
                 });
 
             modelBuilder.Entity("PrinterService.Model.Entities.TelemetrySample", b =>

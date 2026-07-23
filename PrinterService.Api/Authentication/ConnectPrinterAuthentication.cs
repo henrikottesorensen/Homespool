@@ -74,7 +74,7 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
                 new ClaimsIdentity(
                 [
                     new Claim(PsClaimTypes.PrinterId, $"{auth.PrinterId}"),
-                    new Claim(PsClaimTypes.Owner, $"{auth.Printer.Owner}"),
+                    new Claim(PsClaimTypes.Owner, $"{auth.Printer.TeamId}"),
                     new Claim(JwtClaimTypes.Name, $"{auth.Printer.Name}"),
                 ])
             );

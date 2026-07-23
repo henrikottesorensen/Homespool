@@ -67,26 +67,18 @@ namespace PrinterService.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "Printers",
+                name: "Teams",
                 columns: table => new
                 {
                     Id = table.Column<int>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
-                    Uuid = table.Column<Guid>(type: "TEXT", nullable: false),
-                    Type = table.Column<int>(type: "INTEGER", nullable: false),
-                    Owner = table.Column<long>(type: "INTEGER", nullable: false),
                     Name = table.Column<string>(type: "TEXT", nullable: true),
-                    Model = table.Column<string>(type: "TEXT", nullable: true),
-                    Location = table.Column<string>(type: "TEXT", nullable: true),
-                    Firmware = table.Column<string>(type: "TEXT", nullable: true),
-                    Status = table.Column<int>(type: "INTEGER", nullable: false),
-                    LoadedMaterial = table.Column<string>(type: "TEXT", nullable: true),
-                    CreatedAt = table.Column<long>(type: "INTEGER", nullable: false),
-                    UpdatedAt = table.Column<long>(type: "INTEGER", nullable: false)
+                    CreatedBy = table.Column<long>(type: "INTEGER", nullable: false),
+                    CreatedAt = table.Column<long>(type: "INTEGER", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_Printers", x => x.Id);
+                    table.PrimaryKey("PK_Teams", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -191,6 +183,82 @@ namespace PrinterService.Data.Migrations
                         name: "FK_AspNetUserTokens_AspNetUsers_UserId",
                         column: x => x.UserId,
                         principalTable: "AspNetUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Invitations",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    HashedToken = table.Column<string>(type: "TEXT", nullable: false),
+                    Email = table.Column<string>(type: "TEXT", nullable: false),
+                    CreatedAt = table.Column<long>(type: "INTEGER", nullable: false),
+                    ExpiresAt = table.Column<long>(type: "INTEGER", nullable: false),
+                    UsedAt = table.Column<long>(type: "INTEGER", nullable: true),
+                    InvitedBy = table.Column<long>(type: "INTEGER", nullable: false),
+                    TeamId = table.Column<int>(type: "INTEGER", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Invitations", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Invitations_Teams_TeamId",
+                        column: x => x.TeamId,
+                        principalTable: "Teams",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Printers",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    Uuid = table.Column<Guid>(type: "TEXT", nullable: false),
+                    Type = table.Column<int>(type: "INTEGER", nullable: false),
+                    TeamId = table.Column<int>(type: "INTEGER", nullable: false),
+                    Name = table.Column<string>(type: "TEXT", nullable: true),
+                    Model = table.Column<string>(type: "TEXT", nullable: true),
+                    Location = table.Column<string>(type: "TEXT", nullable: true),
+                    Firmware = table.Column<string>(type: "TEXT", nullable: true),
+                    Status = table.Column<int>(type: "INTEGER", nullable: false),
+                    LoadedMaterial = table.Column<string>(type: "TEXT", nullable: true),
+                    CreatedAt = table.Column<long>(type: "INTEGER", nullable: false),
+                    UpdatedAt = table.Column<long>(type: "INTEGER", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Printers", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Printers_Teams_TeamId",
+                        column: x => x.TeamId,
+                        principalTable: "Teams",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "TeamMembers",
+                columns: table => new
+                {
+                    TeamId = table.Column<int>(type: "INTEGER", nullable: false),
+                    UserId = table.Column<long>(type: "INTEGER", nullable: false),
+                    CanRead = table.Column<bool>(type: "INTEGER", nullable: false),
+                    CanUse = table.Column<bool>(type: "INTEGER", nullable: false),
+                    CanManage = table.Column<bool>(type: "INTEGER", nullable: false),
+                    IsDefault = table.Column<bool>(type: "INTEGER", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TeamMembers", x => new { x.TeamId, x.UserId });
+                    table.ForeignKey(
+                        name: "FK_TeamMembers_Teams_TeamId",
+                        column: x => x.TeamId,
+                        principalTable: "Teams",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                 });
@@ -438,6 +506,17 @@ namespace PrinterService.Data.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_Invitations_HashedToken",
+                table: "Invitations",
+                column: "HashedToken",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Invitations_TeamId",
+                table: "Invitations",
+                column: "TeamId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_PrinterEvents_PrinterId_JobId",
                 table: "PrinterEvents",
                 columns: new[] { "PrinterId", "JobId" });
@@ -448,9 +527,9 @@ namespace PrinterService.Data.Migrations
                 columns: new[] { "PrinterId", "Timestamp" });
 
             migrationBuilder.CreateIndex(
-                name: "IX_Printers_Owner",
+                name: "IX_Printers_TeamId",
                 table: "Printers",
-                column: "Owner");
+                column: "TeamId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Printers_Uuid",
@@ -478,6 +557,13 @@ namespace PrinterService.Data.Migrations
                 name: "IX_PrusaConnectAuthentication_TemporaryCode",
                 table: "PrusaConnectAuthentication",
                 column: "TemporaryCode");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TeamMembers_UserId",
+                table: "TeamMembers",
+                column: "UserId",
+                unique: true,
+                filter: "\"IsDefault\"");
 
             migrationBuilder.CreateIndex(
                 name: "IX_TelemetrySamples_PrinterId_Timestamp",
@@ -513,6 +599,9 @@ namespace PrinterService.Data.Migrations
                 name: "DataProtectionKeys");
 
             migrationBuilder.DropTable(
+                name: "Invitations");
+
+            migrationBuilder.DropTable(
                 name: "PrinterEvents");
 
             migrationBuilder.DropTable(
@@ -520,6 +609,9 @@ namespace PrinterService.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "PrusaConnectAuthentication");
+
+            migrationBuilder.DropTable(
+                name: "TeamMembers");
 
             migrationBuilder.DropTable(
                 name: "TelemetrySlotSamples");
@@ -538,6 +630,9 @@ namespace PrinterService.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "Printers");
+
+            migrationBuilder.DropTable(
+                name: "Teams");
         }
     }
 }

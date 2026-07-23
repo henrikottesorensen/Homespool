@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace PrinterService.Model.Entities;
 
@@ -40,9 +41,23 @@ public class Printer
     public Guid Uuid { get; set; }
 
     public PrinterType Type { get; set; }
-    
-    public long Owner { get; set; }
-    
+
+    /// <summary>
+    /// The team that owns this printer. Printers belong to teams, not users (phase-1.5 §15): this
+    /// is what makes sharing a printer between people a matter of team membership rather than a
+    /// schema change later.
+    /// </summary>
+    /// <remarks>
+    /// Replaces the earlier <c>Owner</c> (a user id). Keeping both would put authority in two
+    /// places — the same mistake the <c>Material</c>/<c>LoadedMaterial</c> duplication (§13) removed.
+    /// An <see cref="int"/> foreign key rather than the team's own surrogate width for the same
+    /// reason <see cref="Id"/> is an int: it is cheap and this is a self-hosted service.
+    /// </remarks>
+    public int TeamId { get; set; }
+
+    [ForeignKey(nameof(TeamId))]
+    public virtual Team? Team { get; set; }
+
     /// <summary>
     /// User-chosen display name. Null means the user has not customised it — resolve for display
     /// as <c>Name ?? Model ?? SerialNumber</c>.

@@ -582,11 +582,22 @@ public sealed class PrinterRegistrationTests : IDisposable
 
     private static async Task ClaimAsync(PSDbContext context)
     {
+        // A printer belongs to a team, and foreign keys are enforced, so the owning team has to
+        // exist before the printer can reference it.
+        Team team = new()
+        {
+            CreatedBy = 1,
+            CreatedAt = DateTimeOffset.UtcNow,
+        };
+
+        context.Teams.Add(team);
+        await context.SaveChangesAsync();
+
         Printer printer = new()
         {
             Uuid = Guid.NewGuid(),
             Type = default,
-            Owner = 1,
+            TeamId = team.Id,
             Status = default,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,

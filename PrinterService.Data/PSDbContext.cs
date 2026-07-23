@@ -42,6 +42,15 @@ public class PSDbContext : IdentityDbContext<PSUser, IdentityRole<long>, long>, 
     /// <summary>Per-slot telemetry history. Swept by cascade when its parent sample is deleted.</summary>
     public DbSet<TelemetrySlotSample> TelemetrySlotSamples { get; set; }
 
+    /// <summary>Ownership groups. Printers belong to a team; every user has a default one.</summary>
+    public DbSet<Team> Teams { get; set; }
+
+    /// <summary>Team membership with per-team permissions. One row per user per team.</summary>
+    public DbSet<TeamMember> TeamMembers { get; set; }
+
+    /// <summary>Outstanding and spent invitations. Single-use, email-bound, expiring.</summary>
+    public DbSet<Invitation> Invitations { get; set; }
+
     public PSDbContext(DbContextOptions<PSDbContext> options)
         : base(options)
     {
@@ -78,8 +87,17 @@ public class PSDbContext : IdentityDbContext<PSUser, IdentityRole<long>, long>, 
             entity.HasIndex(e => e.Uuid)
                   .IsUnique();
 
-            // Listing printers is always scoped to their owner.
-            entity.HasIndex(e => e.Owner);
+            // Listing printers is always scoped to their owning team.
+            entity.HasIndex(e => e.TeamId);
+
+            // Printers belong to a team. Restrict, not cascade: deleting a team that still owns
+            // printers should fail loudly rather than silently take the printers (and their
+            // telemetry) with it. Team lifecycle — reassigning or blocking deletion of a team with
+            // printers — is a phase-1.5 open question, not resolved by a cascade here.
+            entity.HasOne(e => e.Team)
+                  .WithMany()
+                  .HasForeignKey(e => e.TeamId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
 
         builder.Entity<PrusaConnectAuthenticationData>(entity =>
@@ -175,6 +193,43 @@ public class PSDbContext : IdentityDbContext<PSUser, IdentityRole<long>, long>, 
             // the enum. The volume does not justify the two bytes saved.
             entity.Property(e => e.EventType)
                   .HasConversion<string>();
+        });
+
+        builder.Entity<TeamMember>(entity =>
+        {
+            // One row per user per team.
+            entity.HasKey(e => new { e.TeamId, e.UserId });
+
+            entity.HasOne(e => e.Team)
+                  .WithMany(e => e.Members)
+                  .HasForeignKey(e => e.TeamId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            // "A user must have exactly one default team" enforced in the database rather than in
+            // application code, which cannot make it atomic. SQLite honours partial indexes, so the
+            // uniqueness applies only to the rows where IsDefault is set: a user has any number of
+            // non-default memberships but at most one default. EF emits the WHERE clause from
+            // HasFilter; the column name is the raw SQL identifier, so it is "IsDefault", not the
+            // CLR property path.
+            entity.HasIndex(e => e.UserId)
+                  .IsUnique()
+                  .HasFilter("\"IsDefault\"");
+        });
+
+        builder.Entity<Invitation>(entity =>
+        {
+            // Accept looks the invite up by the hash of the presented token, so that lookup must be
+            // indexed and cannot collide. Two invites sharing a hash would make acceptance ambiguous.
+            entity.HasIndex(e => e.HashedToken)
+                  .IsUnique();
+
+            // A nullable team target: null invites mint a new account with its own default team,
+            // non-null ones join an existing team. Restrict so an invite cannot outlive its target
+            // team silently — a dangling team id would send accept down the wrong branch.
+            entity.HasOne(e => e.Team)
+                  .WithMany()
+                  .HasForeignKey(e => e.TeamId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

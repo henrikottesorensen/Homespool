@@ -13,6 +13,7 @@ using Serilog.Extensions.Logging;
 using PrinterService.Host.Exceptions;
 using PrinterService.Host.PrusaConnect;
 using PrinterService.Host.PrusaConnect.DTO;
+using PrinterService.Host.Services;
 using PrinterService.Data;
 using PrinterService.Model.Entities;
 
@@ -46,6 +47,7 @@ public sealed class PrinterRegistrationTests : IDisposable
         new(context,
             new CodeGenerator(),
             new TokenService(),
+            new TeamService(context),
             logger ?? NullLogger<PrusaConnectService>.Instance,
             Options.Create(new PrusaConnectOptions { RegistrationCodeLifetimeMinutes = lifetimeMinutes }));
 

@@ -79,6 +79,16 @@ public class TeamService
         return _dbContext.TeamMembers.SingleOrDefaultAsync(m => m.TeamId == teamId && m.UserId == userId, cancellationToken);
     }
 
+    /// <summary>
+    /// The caller's default team membership - where a printer claim lands when it doesn't name a
+    /// team (phase-1.5 §15 step 7). Every account has exactly one, enforced by the filtered unique
+    /// index on <c>(UserId) WHERE IsDefault</c>.
+    /// </summary>
+    public Task<TeamMember?> GetDefaultTeamMembershipAsync(long userId, CancellationToken cancellationToken)
+    {
+        return _dbContext.TeamMembers.SingleOrDefaultAsync(m => m.UserId == userId && m.IsDefault, cancellationToken);
+    }
+
     public Task<List<TeamMember>> GetMembersAsync(int teamId, CancellationToken cancellationToken)
     {
         return _dbContext.TeamMembers.Where(m => m.TeamId == teamId).ToListAsync(cancellationToken);

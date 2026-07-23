@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.EntityFrameworkCore;
@@ -8,6 +9,8 @@ using Microsoft.Extensions.Options;
 
 using PrinterService.Data;
 using PrinterService.Host.Exceptions;
+using PrinterService.Host.Services;
+using PrinterService.Model;
 using PrinterService.Model.Entities;
 
 namespace PrinterService.Host.PrusaConnect;
@@ -17,18 +20,21 @@ public class PrusaConnectService
     private readonly PSDbContext _dbContext;
     private readonly CodeGenerator _codeGenerator;
     private readonly TokenService _tokenService;
+    private readonly TeamService _teamService;
     private readonly ILogger<PrusaConnectService> _logger;
     private readonly PrusaConnectOptions _options;
 
     public PrusaConnectService(PSDbContext dbContext,
                           CodeGenerator codeGenerator,
                           TokenService tokenService,
+                          TeamService teamService,
                           ILogger<PrusaConnectService> logger,
                           IOptions<PrusaConnectOptions> options)
     {
         _dbContext = dbContext;
         _codeGenerator = codeGenerator;
         _tokenService = tokenService;
+        _teamService = teamService;
         _logger = logger;
         _options = options.Value;
     }
@@ -157,12 +163,7 @@ public class PrusaConnectService
     {
         DateTimeOffset now = TimeProvider.System.GetUtcNow();
 
-        // An expired code is treated as no code at all: filtered out here rather than found and then
-        // rejected, so expiry and non-existence take the identical path and produce the identical 404.
-        // Nothing distinguishes "wrong code" from "code you waited too long to use", which is also the
-        // right answer for someone holding a credential they should no longer hold.
-        PrusaConnectAuthenticationData? auth = await _dbContext.PrusaConnectAuthentication
-            .SingleOrDefaultAsync(a => a.TemporaryCode == temporaryCode && a.TemporaryCodeExpiry > now);
+        PrusaConnectAuthenticationData? auth = await FindActiveRegistrationAsync(temporaryCode, now);
 
         if (auth is null)
         {
@@ -196,5 +197,109 @@ public class PrusaConnectService
         await _dbContext.SaveChangesAsync();
 
         return token;
+    }
+
+    /// <summary>
+    /// Looked up by code, filtering out expired rows in the same predicate <see cref="GetToken"/> and
+    /// <see cref="ClaimPrinterAsync"/> both rely on, so the two callers cannot drift into disagreeing
+    /// about what "still valid" means. <c>TemporaryCode</c> is deliberately non-uniquely indexed (see
+    /// <see cref="GetToken"/>'s remarks), so a collision surfaces as <see cref="SingleOrDefaultAsync"/>
+    /// throwing rather than silently picking a row.
+    /// </summary>
+    private Task<PrusaConnectAuthenticationData?> FindActiveRegistrationAsync(string temporaryCode, DateTimeOffset now)
+    {
+        return _dbContext.PrusaConnectAuthentication
+            .SingleOrDefaultAsync(a => a.TemporaryCode == temporaryCode && a.TemporaryCodeExpiry > now);
+    }
+
+    /// <summary>
+    /// The app-facing half of the claim: a signed-in user redeems the code the printer is displaying,
+    /// creating the <see cref="Printer"/> row and linking it to the registration. Distinct from
+    /// <see cref="GetToken"/> - the printer's own poll - which only starts succeeding once this has run.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Does not consume the code.</b> Unlike <see cref="GetToken"/>, claiming isn't the credential
+    /// exchange - the printer still has to poll <c>GET /p/register</c> and redeem the code itself to get
+    /// its token. Consuming it here would strand a printer that hasn't polled since the claim.
+    /// </para>
+    /// <para>
+    /// <b>Rejects a second claim of the same code</b> rather than silently overwriting the printer the
+    /// first claim created - the concrete answer to the "concurrent claim" question AGENT-NOTES
+    /// phase-1.5 §15 step 7 left open as "even 'last write wins' is fine".
+    /// </para>
+    /// <para>
+    /// <paramref name="teamId"/> given names an existing team the caller must hold <c>CanManage</c> on
+    /// - adding a printer is treated as a structural change to the team, the same tier as inviting a
+    /// member. Omitted, the printer lands in the caller's default team.
+    /// </para>
+    /// </remarks>
+    public async Task<Printer> ClaimPrinterAsync(string temporaryCode, string? name, string? location, int? teamId, long userId)
+    {
+        DateTimeOffset now = TimeProvider.System.GetUtcNow();
+
+        PrusaConnectAuthenticationData? auth = await FindActiveRegistrationAsync(temporaryCode, now);
+
+        if (auth is null)
+        {
+            throw PrinterNotFoundException.ForUnknownRegistrationCode();
+        }
+
+        if (auth.PrinterId is not null)
+        {
+            throw new RegistrationAlreadyClaimedException();
+        }
+
+        int resolvedTeamId;
+
+        if (teamId is int explicitTeamId)
+        {
+            TeamMember? membership = await _teamService.GetMemberAsync(explicitTeamId, userId, CancellationToken.None);
+
+            if (membership is null || !membership.CanManage)
+            {
+                throw new TeamAccessDeniedException();
+            }
+
+            resolvedTeamId = explicitTeamId;
+        }
+        else
+        {
+            TeamMember? defaultMembership = await _teamService.GetDefaultTeamMembershipAsync(userId, CancellationToken.None);
+
+            // Should be unreachable: every account is given a default team at creation
+            // (TeamProvisioning.AddDefaultTeam). Fail closed rather than create a teamless printer.
+            if (defaultMembership is null)
+            {
+                throw new TeamAccessDeniedException();
+            }
+
+            resolvedTeamId = defaultMembership.TeamId;
+        }
+
+        Printer printer = new()
+        {
+            Uuid = Guid.NewGuid(),
+            Type = PrinterType.PrusaConnect,
+            TeamId = resolvedTeamId,
+            Name = name,
+            Location = location,
+            Status = PrinterStatus.Unknown,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+
+        await _dbContext.Printers.AddAsync(printer);
+
+        // Assigning the navigation rather than PrinterId directly: the printer's Id isn't generated
+        // until SaveChanges runs the insert, and EF fixes up the foreign key from this once it is.
+        auth.Printer = printer;
+
+        await _dbContext.SaveChangesAsync();
+
+        _logger.LogInformation("PrusaConnect registration {RegistrationId} claimed as printer {PrinterUuid} in team {TeamId}.",
+            auth.Id, printer.Uuid, resolvedTeamId);
+
+        return printer;
     }
 }

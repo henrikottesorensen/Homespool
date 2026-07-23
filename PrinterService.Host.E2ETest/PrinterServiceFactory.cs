@@ -11,7 +11,7 @@ using PrinterService.Host.Controllers;
 
 using Serilog.Core;
 
-namespace PrinterService.Host.Test;
+namespace PrinterService.Host.E2ETest;
 
 /// <summary>
 /// A <see cref="WebApplicationFactory{TEntryPoint}"/> pointed at an isolated temp-file SQLite

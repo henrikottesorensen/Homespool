@@ -15,7 +15,7 @@ using Microsoft.Extensions.DependencyInjection;
 using PrinterService.Host.Services;
 using PrinterService.Model.Entities;
 
-namespace PrinterService.Host.Test;
+namespace PrinterService.Host.E2ETest;
 
 /// <summary>
 /// Drives the real <c>/setup</c> page over HTTP - antiforgery token and all - rather than calling

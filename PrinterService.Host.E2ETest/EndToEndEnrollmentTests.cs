@@ -22,7 +22,7 @@ using PrinterService.Host.PrusaConnect;
 using PrinterService.Host.Services;
 using PrinterService.Model.Entities;
 
-namespace PrinterService.Host.Test;
+namespace PrinterService.Host.E2ETest;
 
 /// <summary>
 /// The full enrollment loop through the real ASP.NET Core pipeline - routing, the setup gate,

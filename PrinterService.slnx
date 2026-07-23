@@ -3,6 +3,7 @@
     <File Path="compose.yaml" />
   </Folder>
   <Project Path="PrinterService.Data/PrinterService.Data.csproj" />
+  <Project Path="PrinterService.Host.E2ETest/PrinterService.Host.E2ETest.csproj" />
   <Project Path="PrinterService.Host.IntegrationTest/PrinterService.Host.IntegrationTest.csproj" />
   <Project Path="PrinterService.Host.Test\PrinterService.Host.Test.csproj" />
   <Project Path="PrinterService.Host\PrinterService.Host.csproj" />

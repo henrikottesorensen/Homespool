@@ -4,7 +4,7 @@ using System.Linq;
 using Serilog.Core;
 using Serilog.Events;
 
-namespace PrinterService.Host.Test;
+namespace PrinterService.Host.E2ETest;
 
 /// <summary>
 /// A Serilog <see cref="ILogEventSink"/> that records every event, registered in DI so
@@ -17,8 +17,9 @@ namespace PrinterService.Host.Test;
 /// <remarks>
 /// Reads structured properties directly off the captured <see cref="LogEvent"/> rather than the
 /// rendered message string, so a lookup doesn't depend on message wording or whitespace - the same
-/// reasoning <c>PrinterRegistrationTests.CapturingSink</c> uses for its own assertions, just exposed
-/// by property name here instead of by substring.
+/// reasoning <c>PrinterService.Host.Test</c>'s <c>PrinterRegistrationTests.CapturingSink</c> (a
+/// separate, private nested class in that project) uses for its own assertions, just exposed by
+/// property name here instead of by substring.
 /// </remarks>
 public sealed class CapturingSink : ILogEventSink
 {

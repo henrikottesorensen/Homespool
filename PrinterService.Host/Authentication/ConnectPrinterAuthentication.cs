@@ -44,9 +44,16 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
             return AuthenticateResult.NoResult();
         }
 
+        // StringValues, not string: passing it straight into the LINQ query left EF Core unable to
+        // bind it as a SQLite parameter ("No mapping exists from object type
+        // Microsoft.Extensions.Primitives.StringValues to a known managed provider native type"),
+        // a 500 rather than a clean auth failure. Never caught before, because nothing exercised this
+        // handler while [Authorize] was disabled on the WebSocket controller.
+        string fingerprintValue = fingerprint.ToString();
+
         PrusaConnectAuthenticationData? auth = await _dbContext.PrusaConnectAuthentication
             .Include(prusaConnectAuthentication => prusaConnectAuthentication.Printer)
-            .SingleOrDefaultAsync(p => p.FingerPrint == fingerprint);
+            .SingleOrDefaultAsync(p => p.FingerPrint == fingerprintValue);
 
         if (auth?.HashedToken is null)
         {
@@ -69,6 +76,10 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
 
         if (_tokenService.VerifyToken(token.ToString(), auth.HashedToken))
         {
+            // The claims-only ClaimsIdentity constructor leaves AuthenticationType null, so
+            // Identity.IsAuthenticated stays false even though this scheme "succeeded" -
+            // DenyAnonymousAuthorizationRequirement then rejects it as anonymous (403). The
+            // authenticationType argument is what makes the identity actually count as authenticated.
             ClaimsPrincipal principal = new
             (
                 new ClaimsIdentity(
@@ -76,7 +87,7 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
                     new Claim(PsClaimTypes.PrinterId, $"{auth.PrinterId}"),
                     new Claim(PsClaimTypes.Owner, $"{auth.Printer.TeamId}"),
                     new Claim(JwtClaimTypes.Name, $"{auth.Printer.Name}"),
-                ])
+                ], Authentication.Schemes.PrusaConnectPrinter)
             );
 
             return AuthenticateResult.Success(new AuthenticationTicket(principal,

@@ -32,7 +32,7 @@ public class WebSocketHandler
         AllowMultipleValues = true,
     };
 
-    public async Task HandlePrusaWebsocket(IWebSocketPipe pipe, CancellationToken cancellationToken)
+    public async Task HandlePrusaWebsocket(IWebSocketPipe pipe, int printerId, CancellationToken cancellationToken)
     {
         while (pipe.State <= WebSocketState.Open && !cancellationToken.IsCancellationRequested)
         {
@@ -69,7 +69,7 @@ public class WebSocketHandler
                     // on every single telemetry message.
                     using (jsonDocument)
                     {
-                        JsonMessageReceived(jsonDocument);
+                        JsonMessageReceived(printerId, jsonDocument);
                     }
 
                     buffer = buffer.Slice(jsonReader.BytesConsumed);
@@ -113,8 +113,8 @@ public class WebSocketHandler
         buffer = buffer.Slice(sequenceReader.Position);
     }
 
-    private void JsonMessageReceived(JsonDocument jsonDocument)
+    private void JsonMessageReceived(int printerId, JsonDocument jsonDocument)
     {
-        Console.WriteLine(jsonDocument.RootElement.GetRawText());
+        Console.WriteLine($"[{printerId}] {jsonDocument.RootElement.GetRawText()}");
     }
 }

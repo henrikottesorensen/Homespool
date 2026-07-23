@@ -208,7 +208,7 @@ public class WebSocketHandlerParsingTests
         WebSocketHandler handler = new(context, NullLogger<WebSocketHandler>.Instance);
 
         // Act
-        Task run = handler.HandlePrusaWebsocket(pipe, CancellationToken.None);
+        Task run = handler.HandlePrusaWebsocket(pipe, printerId: 1, CancellationToken.None);
 
         await pipe.WriteInChunksAsync(Encoding.UTF8.GetBytes("""{"job_id":301,,,}"""), chunkSize: 4096);
         await pipe.FinishAsync();
@@ -264,7 +264,7 @@ public class WebSocketHandlerParsingTests
         {
             Console.SetOut(captured);
 
-            Task run = handler.HandlePrusaWebsocket(pipe, CancellationToken.None);
+            Task run = handler.HandlePrusaWebsocket(pipe, printerId: 1, CancellationToken.None);
 
             if (chunkSizes.Length == 1)
             {

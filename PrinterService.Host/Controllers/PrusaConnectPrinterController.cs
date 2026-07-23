@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Net.Mime;
 using System.Net.WebSockets;
+using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -16,9 +17,9 @@ using PrinterService.Host.Exceptions;
 using PrinterService.Host.PrusaConnect;
 using PrinterService.Host.PrusaConnect.DTO;
 
-namespace PrinterService.Host.Controllers;                          
+namespace PrinterService.Host.Controllers;
 
-// [Authorize(Authorization.Policies.PrusaConnectPrinter)]
+[Authorize(Authorization.Policies.PrusaConnectPrinter)]
 [ApiController]
 public class PrusaConnectPrinterController : ControllerBase
 {
@@ -42,9 +43,14 @@ public class PrusaConnectPrinterController : ControllerBase
         try
         {
             PrinterClientHeaders clientHeaders = new(Request);
-            
+
             if (HttpContext.WebSockets.IsWebSocketRequest)
             {
+                // Guaranteed present: [Authorize] above only lets the request through once
+                // PrusaConnectPrinterAuthenticationHandler has already resolved the Fingerprint
+                // header to a Printer and issued this claim.
+                int printerId = int.Parse(User.FindFirstValue(PsClaimTypes.PrinterId)!);
+
                 using WebSocket webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync(new WebSocketAcceptContext
                 {
                     SubProtocol = Headers.Values.WSProtocolPrusaConnect,
@@ -52,15 +58,16 @@ public class PrusaConnectPrinterController : ControllerBase
                     KeepAliveTimeout = TimeSpan.FromSeconds(120),
                 });
 
-                _logger.LogDebug("Connected websocket from {Client}:{Port} {Printer} {Fingerprint}",
+                _logger.LogDebug("Connected websocket from {Client}:{Port} {Printer} {Fingerprint} {PrinterId}",
                     HttpContext.Connection.RemoteIpAddress,
                     HttpContext.Connection.RemotePort,
                     clientHeaders.Printer,
-                    clientHeaders.FingerPrint);
-                
+                    clientHeaders.FingerPrint,
+                    printerId);
+
                 using IWebSocketPipe pipe = webSocket.CreatePipe(true);
 
-                await Task.WhenAll(_webSocketHandler.HandlePrusaWebsocket(pipe, CancellationToken.None), pipe.RunAsync());
+                await Task.WhenAll(_webSocketHandler.HandlePrusaWebsocket(pipe, printerId, CancellationToken.None), pipe.RunAsync());
 
                 return Ok();
             }

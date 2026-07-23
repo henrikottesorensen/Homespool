@@ -4,21 +4,14 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
-using System.Security.Claims;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 
-using PrinterService.Host.PrusaConnect;
 using PrinterService.Host.Services;
 using PrinterService.Model.Entities;
 
@@ -88,55 +81,6 @@ public sealed class EndToEndEnrollmentTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
-    /// Seeds an ordinary account with its default team - the same creation dance
-    /// <c>Setup.cshtml.cs</c>/<c>Register.cshtml.cs</c> perform - and mints a cookie for it via the
-    /// exact <see cref="CookieAuthenticationOptions.TicketDataFormat"/> real sign-in would use, so the
-    /// server validates it through the genuine cookie-auth pipeline. Bypasses the Login page's
-    /// antiforgery-protected form, which isn't what this suite is testing.
-    /// </summary>
-    private async Task<(PSUser User, HttpClient Client)> CreateAuthenticatedUserAsync(string email)
-    {
-        using IServiceScope scope = _factory.Services.CreateScope();
-
-        IUserStore<PSUser> userStore = scope.ServiceProvider.GetRequiredService<IUserStore<PSUser>>();
-        IUserEmailStore<PSUser> emailStore = (IUserEmailStore<PSUser>)userStore;
-        UserManager<PSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<PSUser>>();
-        SignInManager<PSUser> signInManager = scope.ServiceProvider.GetRequiredService<SignInManager<PSUser>>();
-        AccountConfirmationPolicy confirmationPolicy = scope.ServiceProvider.GetRequiredService<AccountConfirmationPolicy>();
-        TeamService teamService = scope.ServiceProvider.GetRequiredService<TeamService>();
-
-        PSUser user = new();
-        await userStore.SetUserNameAsync(user, email, CancellationToken.None);
-        await emailStore.SetEmailAsync(user, email, CancellationToken.None);
-        confirmationPolicy.Apply(user);
-
-        IdentityResult createResult = await userManager.CreateAsync(user, "Correct-Horse-Battery-Staple-1!");
-        createResult.Succeeded.Should().BeTrue("account creation is setup for this test, not what it verifies");
-
-        await teamService.AddDefaultTeamAsync(user.Id, DateTimeOffset.UtcNow, CancellationToken.None);
-
-        ClaimsPrincipal principal = await signInManager.CreateUserPrincipalAsync(user);
-        CookieAuthenticationOptions cookieOptions = scope.ServiceProvider
-            .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
-            .Get(IdentityConstants.ApplicationScheme);
-
-        AuthenticationTicket ticket = new(principal, IdentityConstants.ApplicationScheme);
-        string protectedTicket = cookieOptions.TicketDataFormat.Protect(ticket);
-
-        HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        client.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={protectedTicket}");
-
-        return (user, client);
-    }
-
-    private static async Task<HttpResponseMessage> SendPrinterRegisterAsync(HttpClient client, object body)
-    {
-        using HttpRequestMessage request = new(HttpMethod.Post, "/p/register") { Content = JsonContent.Create(body) };
-
-        return await client.SendAsync(request);
-    }
-
-    /// <summary>
     /// The whole loop, in order: a printer registers itself and receives a code; before anyone
     /// claims it, polling reports "not yet"; a signed-in user claims it through the app API; the
     /// printer's next poll now returns a real token; and that same user can list, read and patch the
@@ -149,7 +93,7 @@ public sealed class EndToEndEnrollmentTests : IAsyncLifetime, IDisposable
 
         // ---------- printer: POST /p/register ----------
 
-        HttpResponseMessage registerResponse = await SendPrinterRegisterAsync(anonymous, new
+        HttpResponseMessage registerResponse = await EnrollmentFlowHelper.SendPrinterRegisterAsync(anonymous, new
         {
             sn = "E2E-SERIAL-0001",
             fingerprint = "E2E-FINGERPRINT-0001",
@@ -163,12 +107,12 @@ public sealed class EndToEndEnrollmentTests : IAsyncLifetime, IDisposable
 
         // ---------- printer: GET /p/register before anyone has claimed it ----------
 
-        HttpResponseMessage prePollResponse = await SendPollAsync(anonymous, code);
+        HttpResponseMessage prePollResponse = await EnrollmentFlowHelper.SendPollAsync(anonymous, code);
         prePollResponse.StatusCode.Should().Be(HttpStatusCode.Accepted, "nobody has claimed the printer yet");
 
         // ---------- app: a signed-in user claims it ----------
 
-        (PSUser claimer, HttpClient appClient) = await CreateAuthenticatedUserAsync("claimer@example.com");
+        (PSUser claimer, HttpClient appClient) = await EnrollmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "claimer@example.com");
         using (appClient)
         {
             HttpResponseMessage claimResponse = await appClient.PostAsJsonAsync("/api/v1/printers/register", new
@@ -187,7 +131,7 @@ public sealed class EndToEndEnrollmentTests : IAsyncLifetime, IDisposable
 
             // ---------- printer: GET /p/register now that it has been claimed ----------
 
-            HttpResponseMessage postPollResponse = await SendPollAsync(anonymous, code);
+            HttpResponseMessage postPollResponse = await EnrollmentFlowHelper.SendPollAsync(anonymous, code);
             postPollResponse.StatusCode.Should().Be(HttpStatusCode.OK);
             postPollResponse.Headers.GetValues("Token").Single().Should().NotBeNullOrWhiteSpace();
 
@@ -283,14 +227,6 @@ public sealed class EndToEndEnrollmentTests : IAsyncLifetime, IDisposable
                 }
             }
         }
-    }
-
-    private static async Task<HttpResponseMessage> SendPollAsync(HttpClient client, string code)
-    {
-        using HttpRequestMessage request = new(HttpMethod.Get, "/p/register");
-        request.Headers.Add(Headers.Code, code);
-
-        return await client.SendAsync(request);
     }
 
 }

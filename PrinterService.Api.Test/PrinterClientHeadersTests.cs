@@ -36,8 +36,10 @@ public class PrinterClientHeadersTests
     [Fact]
     public void ReadingARequestWithNoHeadersAtAllDoesNotThrow()
     {
+        // Act
         PrinterClientHeaders headers = new(RequestWith());
 
+        // Assert
         headers.Printer.Should().BeNull();
         headers.FirmwareVersion.Should().BeNull();
         headers.FingerPrint.Should().BeNull();
@@ -53,6 +55,7 @@ public class PrinterClientHeadersTests
     [Fact]
     public void CodeIsReadFromTheCodeHeader()
     {
+        // Assert
         new PrinterClientHeaders(RequestWith(("Code", "MUF4RZJF5R")))
             .Code.Should().Be("MUF4RZJF5R");
     }
@@ -68,6 +71,7 @@ public class PrinterClientHeadersTests
     [Fact]
     public void TemporaryCodeHeaderIsNotMistakenForTheCode()
     {
+        // Assert
         new PrinterClientHeaders(RequestWith(("Temporary-Code", "MUF4RZJF5R")))
             .Code.Should().BeNull("no client sends Temporary-Code; only the server emits it");
     }
@@ -76,11 +80,13 @@ public class PrinterClientHeadersTests
     [Fact]
     public void BuddysPollHeadersAreReadCorrectly()
     {
+        // Act
         PrinterClientHeaders headers = new(RequestWith(
             ("User-Agent-Printer", "MK3.5"),
             ("User-Agent-Version", "6.4.0+11974"),
             ("Code", "MUF4RZJF5R")));
 
+        // Assert
         headers.Printer.Should().Be("MK3.5");
         headers.FirmwareVersion.Should().Be("6.4.0+11974");
         headers.Code.Should().Be("MUF4RZJF5R");
@@ -91,6 +97,7 @@ public class PrinterClientHeadersTests
     [Fact]
     public void FingerprintIsReadWhenAClientDoesSendIt()
     {
+        // Assert
         new PrinterClientHeaders(RequestWith(("Fingerprint", "SUDBAJQ78CTJBNA8"), ("Code", "X")))
             .FingerPrint.Should().Be("SUDBAJQ78CTJBNA8");
     }
@@ -106,9 +113,11 @@ public class PrinterClientHeadersTests
     [Fact]
     public void RepeatedHeaderIsTreatedAsAbsentRatherThanGuessed()
     {
+        // Arrange
         DefaultHttpContext context = new();
         context.Request.Headers["Code"] = new[] { "FIRST", "SECOND" };
 
+        // Assert
         new PrinterClientHeaders(context.Request)
             .Code.Should().BeNull("picking one of two conflicting values would be a guess");
     }

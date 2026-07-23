@@ -30,6 +30,7 @@ public class CodeGeneratorTests
     [Fact]
     public void GeneratedCodeFitsInsideTheFirmwareBuffer()
     {
+        // Assert
         for (int i = 0; i < 50; i++)
         {
             _generator.GenerateCode($"15715-{i}").Length.Should()
@@ -50,6 +51,7 @@ public class CodeGeneratorTests
     [Fact]
     public void GeneratedCodeUsesOnlyUppercaseBase36()
     {
+        // Assert
         // The capture shows Prusa's own codes in this alphabet, and it keeps the code safe to carry
         // in an HTTP header and read aloud off a printer screen.
         _generator.GenerateCode("15715-4842441651816441")
@@ -67,11 +69,13 @@ public class CodeGeneratorTests
     [Fact]
     public void SameSerialProducesADifferentCodeEachTime()
     {
+        // Act
         // A nonce is mixed in, so a code is not derivable from the serial number - which is printed
         // on the machine and travels in the registration body.
         string first = _generator.GenerateCode("15715-4842441651816441");
         string second = _generator.GenerateCode("15715-4842441651816441");
 
+        // Assert
         second.Should().NotBe(first);
     }
 
@@ -87,11 +91,13 @@ public class CodeGeneratorTests
     [Fact]
     public void CodesDoNotCollideAcrossManyGenerations()
     {
+        // Act
         // TemporaryCode is deliberately non-uniquely indexed, and GetToken uses SingleOrDefaultAsync,
         // so a collision surfaces as a 400 rather than a wrong lookup. This is a smoke check that the
         // space is not trivially small.
         HashSet<string> codes = [.. Enumerable.Range(0, 2_000).Select(i => _generator.GenerateCode($"sn-{i}"))];
 
+        // Assert
         codes.Should().HaveCount(2_000);
     }
 
@@ -113,8 +119,10 @@ public class CodeGeneratorTests
     [Fact]
     public void GeneratingACodeDoesNotThrowOnThisPlatform()
     {
+        // Arrange
         Action generate = () => _generator.GenerateCode("15715-4842441651816441");
 
+        // Assert
         generate.Should().NotThrow<PlatformNotSupportedException>(
             "SHA-3 is absent on macOS and on Linux without OpenSSL 1.1.1+, so the algorithm has to be "
             + "chosen against SHA3_384.IsSupported rather than assumed");
@@ -126,6 +134,7 @@ public class CodeGeneratorTests
     [Fact]
     public void GeneratedCodeIsExactlyTheExpectedLength()
     {
+        // Assert
         for (int i = 0; i < 50; i++)
         {
             _generator.GenerateCode($"15715-{i}").Length.Should().Be(24);
@@ -145,8 +154,10 @@ public class CodeGeneratorTests
     [Fact]
     public void EitherHashAlgorithmProducesEnoughBase36CharactersToTruncate()
     {
+        // Arrange
         byte[] input = Encoding.UTF8.GetBytes("15715-4842441651816441");
 
+        // Assert
         SimpleBase.Base36.UpperCase.Encode(SHA384.HashData(input)).Length.Should().BeGreaterThanOrEqualTo(24);
 
         if (SHA3_384.IsSupported)

@@ -47,10 +47,13 @@ public class JsonDotNetDeserialiseTests
     [InlineData("example.concatenated.json")]
     public void MultiObjectJsonParses(string filename)
     {
+        // Arrange
         using Stream file = File.OpenRead(filename);
 
+        // Act
         List<JObject> parsed = ReadAll(file);
 
+        // Assert
         AssertTelemetryObjects(parsed);
     }
 
@@ -67,11 +70,14 @@ public class JsonDotNetDeserialiseTests
     [InlineData("example.concatenated.json")]
     public void AwkwardSizedReadsParses(string filename)
     {
+        // Arrange
         using Stream file = File.OpenRead(filename);
         using BufferedStream bufferedStream = new(file, AwkwardBufferSize);
 
+        // Act
         List<JObject> parsed = ReadAll(bufferedStream);
 
+        // Assert
         AssertTelemetryObjects(parsed);
     }
 

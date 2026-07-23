@@ -52,8 +52,10 @@ public class SystemTextJsonDeserialiseTests
     [InlineData("example.concatenated.json")]
     public async Task MultiObjectJsonParses(string filename)
     {
+        // Arrange
         await using Stream file = File.OpenRead(filename);
 
+        // Assert
         await AssertTelemetryObjectsAsync(file);
     }
 
@@ -70,10 +72,12 @@ public class SystemTextJsonDeserialiseTests
     [InlineData("example.concatenated.json")]
     public async Task AwkwardSizedReadsParses(string filename)
     {
+        // Arrange
         // BufferedReadStream hands out data in AwkwardBufferSize-byte chunks, so documents are
         // guaranteed to straddle reads.
         await using Stream file = new BufferedReadStream(File.OpenRead(filename), AwkwardBufferSize);
 
+        // Assert
         await AssertTelemetryObjectsAsync(file);
     }
 

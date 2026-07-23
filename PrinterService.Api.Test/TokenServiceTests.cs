@@ -20,9 +20,11 @@ public class TokenServiceTests
     [Fact]
     public void GenerateToken()
     {
+        // Act
         string token = _tokenService.GenerateToken();
         Action convertToByteArray = () => Convert.FromBase64String(token);
-        
+
+        // Assert
         token.Should().NotBeNullOrWhiteSpace();
         token.Length.Should().BeLessThanOrEqualTo(TokenService.TokenLength);
         convertToByteArray.Should().NotThrow();
@@ -39,11 +41,13 @@ public class TokenServiceTests
     [Fact]
     public void HashToken()
     {
+        // Act
         string token = _tokenService.GenerateToken();
         string hash = _tokenService.HashToken(token);
-        
+
+        // Assert
         hash.Should().NotBeNullOrWhiteSpace();
-        
+
         string[] split = hash.Split('$');
         split.Length.Should().Be(6);
         
@@ -62,9 +66,11 @@ public class TokenServiceTests
     [Fact]
     public void TokenVerifies()
     {
+        // Arrange
         string token = _tokenService.GenerateToken();
         string hash = _tokenService.HashToken(token);
 
+        // Assert
         _tokenService.VerifyToken(token, hash).Should().BeTrue();
     }
     
@@ -78,12 +84,14 @@ public class TokenServiceTests
     [Fact]
     public void InvalidTokenDoesNotVerify()
     {
+        // Arrange
         string token = _tokenService.GenerateToken();
         string hash = _tokenService.HashToken(token);
 
+        // Assert
         string invalidToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(TokenService.TokenLength));
         _tokenService.VerifyToken(invalidToken, hash).Should().BeFalse();
-        
+
         _tokenService.VerifyToken(string.Empty, hash).Should().BeFalse();
         _tokenService.VerifyToken(null, hash).Should().BeFalse();
     }
@@ -107,9 +115,11 @@ public class TokenServiceTests
     [InlineData("AAAA====AAAA")]
     public void MalformedTokenDoesNotVerifyAndDoesNotThrow(string malformedToken)
     {
+        // Arrange
         string hash = _tokenService.HashToken(_tokenService.GenerateToken());
         Func<bool> verify = () => _tokenService.VerifyToken(malformedToken, hash);
 
+        // Assert
         verify.Should().NotThrow();
         verify().Should().BeFalse();
     }
@@ -124,8 +134,10 @@ public class TokenServiceTests
     [Fact]
     public void WrongLengthTokenDoesNotVerify()
     {
+        // Arrange
         string hash = _tokenService.HashToken(_tokenService.GenerateToken());
 
+        // Assert
         _tokenService.VerifyToken("AAAA", hash).Should().BeFalse();
         _tokenService.VerifyToken(Convert.ToBase64String(RandomNumberGenerator.GetBytes(3)), hash).Should().BeFalse();
     }
@@ -137,8 +149,10 @@ public class TokenServiceTests
     [Fact]
     public void HashTokenRejectsNonBase64Token()
     {
+        // Arrange
         Action hashToken = () => _tokenService.HashToken("not base64!");
 
+        // Assert
         hashToken.Should().Throw<ArgumentException>()
                  .Which.Message.Should().NotContain("not base64!");
     }
@@ -159,12 +173,14 @@ public class TokenServiceTests
     [InlineData("NOTAHASH")]
     public void UnsupportedHashAlgorithmIsRejected(string algorithm)
     {
+        // Arrange
         string token = _tokenService.GenerateToken();
         string[] split = _tokenService.HashToken(token).Split('$');
 
         string tampered = $"${algorithm}${split[2]}${split[3]}${split[4]}$";
         Action verify = () => _tokenService.VerifyToken(token, tampered);
 
+        // Assert
         verify.Should().Throw<ArgumentException>();
     }
 
@@ -185,12 +201,14 @@ public class TokenServiceTests
     [InlineData("")]
     public void OutOfRangeIterationCountIsRejected(string iterations)
     {
+        // Arrange
         string token = _tokenService.GenerateToken();
         string[] split = _tokenService.HashToken(token).Split('$');
 
         string tampered = $"${split[1]}${iterations}${split[3]}${split[4]}$";
         Action verify = () => _tokenService.VerifyToken(token, tampered);
 
+        // Assert
         verify.Should().Throw<ArgumentException>();
     }
 
@@ -205,6 +223,7 @@ public class TokenServiceTests
     [InlineData(4, "AAAA")]
     public void MalformedSaltOrHashIsRejected(int segment, string value)
     {
+        // Arrange
         string token = _tokenService.GenerateToken();
         string[] split = _tokenService.HashToken(token).Split('$');
         split[segment] = value;
@@ -212,6 +231,7 @@ public class TokenServiceTests
         string tampered = $"${split[1]}${split[2]}${split[3]}${split[4]}$";
         Action verify = () => _tokenService.VerifyToken(token, tampered);
 
+        // Assert
         verify.Should().Throw<ArgumentException>();
     }
 
@@ -226,14 +246,17 @@ public class TokenServiceTests
     [Fact]
     public void MalformedHashExceptionDoesNotLeakTheHash()
     {
+        // Arrange
         string token = _tokenService.GenerateToken();
         string[] split = _tokenService.HashToken(token).Split('$');
 
         string tampered = $"$MD5${split[2]}${split[3]}${split[4]}$";
         Action verify = () => _tokenService.VerifyToken(token, tampered);
 
+        // Act
         string message = verify.Should().Throw<ArgumentException>().Which.Message;
 
+        // Assert
         message.Should().NotContain(split[3]);
         message.Should().NotContain(split[4]);
         message.Should().NotContain(tampered);
@@ -251,6 +274,7 @@ public class TokenServiceTests
     [Fact]
     public void SupportedAlgorithmWithDifferentIterationsStillVerifies()
     {
+        // Arrange
         string token = _tokenService.GenerateToken();
         byte[] tokenData = Convert.FromBase64String(token);
         byte[] salt = RandomNumberGenerator.GetBytes(TokenService.SaltSize);
@@ -260,6 +284,7 @@ public class TokenServiceTests
 
         string hash = $"${HashAlgorithmName.SHA384.Name}${otherIterations}${Convert.ToBase64String(salt)}${Convert.ToBase64String(key)}$";
 
+        // Assert
         _tokenService.VerifyToken(token, hash).Should().BeTrue();
     }
 }

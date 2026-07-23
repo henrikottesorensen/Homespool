@@ -89,10 +89,13 @@ public sealed class PrinterRegistrationTests : IDisposable
     [Fact]
     public async Task FirstRegistrationPersistsTheSerialFingerprintAndCode()
     {
+        // Arrange
         await using PSDbContext context = await MigratedContextAsync();
 
+        // Act
         CodeResponseDTO response = await NewService(context).GetPrinterCode(Request());
 
+        // Assert
         PrusaConnectAuthenticationData stored = await context.PrusaConnectAuthentication.SingleAsync();
 
         stored.SerialNumber.Should().Be("15715-4842441651816441");
@@ -111,14 +114,17 @@ public sealed class PrinterRegistrationTests : IDisposable
     [Fact]
     public async Task RepeatedRegistrationReturnsTheSameCodeWhileItIsStillValid()
     {
+        // Arrange
         // The printer re-POSTs on every reconnect. It must not get a fresh code each time, or a user
         // reading one off the screen would be chasing a moving target.
         await using PSDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
+        // Act
         string first = (await service.GetPrinterCode(Request())).TemporaryCode;
         string second = (await service.GetPrinterCode(Request())).TemporaryCode;
 
+        // Assert
         second.Should().Be(first);
         (await context.PrusaConnectAuthentication.CountAsync()).Should().Be(1);
     }
@@ -134,10 +140,13 @@ public sealed class PrinterRegistrationTests : IDisposable
     [Fact]
     public async Task ExpiryIsExactlyTheConfiguredLifetimeAfterCreation()
     {
+        // Arrange
         await using PSDbContext context = await MigratedContextAsync();
 
+        // Act
         await NewService(context, lifetimeMinutes: 90).GetPrinterCode(Request());
 
+        // Assert
         PrusaConnectAuthenticationData stored = await context.PrusaConnectAuthentication.SingleAsync();
 
         (stored.TemporaryCodeExpiry - stored.CreatedAt).Should()
@@ -154,6 +163,7 @@ public sealed class PrinterRegistrationTests : IDisposable
     [Fact]
     public async Task AnExpiredCodeIsReplacedOnTheNextRegistration()
     {
+        // Arrange
         await using PSDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
@@ -163,8 +173,10 @@ public sealed class PrinterRegistrationTests : IDisposable
         stored.TemporaryCodeExpiry = DateTimeOffset.UtcNow.AddHours(-1);
         await context.SaveChangesAsync();
 
+        // Act
         string renewed = (await service.GetPrinterCode(Request())).TemporaryCode;
 
+        // Assert
         renewed.Should().NotBe(original);
         (await context.PrusaConnectAuthentication.CountAsync()).Should().Be(1, "the row is renewed, not duplicated");
     }
@@ -181,13 +193,16 @@ public sealed class PrinterRegistrationTests : IDisposable
     [Fact]
     public async Task AReplacementMainboardWithTheSameSerialCanStillRegister()
     {
+        // Arrange
         await using PSDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         await service.GetPrinterCode(Request(fingerprint: "FINGERPRINT-OF-ORIGINAL-BOARD"));
 
+        // Act
         Func<Task> replacement = () => service.GetPrinterCode(Request(fingerprint: "FINGERPRINT-OF-NEW-BOARD"));
 
+        // Assert
         await replacement.Should().NotThrowAsync();
         (await context.PrusaConnectAuthentication.CountAsync()).Should().Be(2);
     }
@@ -205,11 +220,13 @@ public sealed class PrinterRegistrationTests : IDisposable
     [Fact]
     public async Task PollingAnUnclaimedRegistrationReturnsNoToken()
     {
+        // Arrange
         await using PSDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         string code = (await service.GetPrinterCode(Request())).TemporaryCode;
 
+        // Assert
         (await service.GetToken(code)).Should().BeNull("the controller turns this into a 202");
     }
 
@@ -224,14 +241,17 @@ public sealed class PrinterRegistrationTests : IDisposable
     [Fact]
     public async Task PollingAClaimedRegistrationIssuesATokenAndStoresOnlyItsHash()
     {
+        // Arrange
         await using PSDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         string code = (await service.GetPrinterCode(Request())).TemporaryCode;
         await ClaimAsync(context);
 
+        // Act
         string? token = await service.GetToken(code);
 
+        // Assert
         token.Should().NotBeNullOrWhiteSpace();
 
         PrusaConnectAuthenticationData stored = await context.PrusaConnectAuthentication.SingleAsync();
@@ -250,10 +270,13 @@ public sealed class PrinterRegistrationTests : IDisposable
     [Fact]
     public async Task PollingWithAnUnknownCodeIsRejected()
     {
+        // Arrange
         await using PSDbContext context = await MigratedContextAsync();
 
+        // Act
         Func<Task> act = () => NewService(context).GetToken("NEVER-ISSUED");
 
+        // Assert
         await act.Should().ThrowAsync<PrinterNotFoundException>();
     }
 
@@ -268,6 +291,7 @@ public sealed class PrinterRegistrationTests : IDisposable
     [Fact]
     public async Task PollingWithAnExpiredCodeIsRejectedLikeAnUnknownOne()
     {
+        // Arrange
         await using PSDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
@@ -278,8 +302,10 @@ public sealed class PrinterRegistrationTests : IDisposable
         stored.TemporaryCodeExpiry = DateTimeOffset.UtcNow.AddSeconds(-1);
         await context.SaveChangesAsync();
 
+        // Act
         Func<Task> act = () => service.GetToken(code);
 
+        // Assert
         await act.Should().ThrowAsync<PrinterNotFoundException>();
     }
 
@@ -294,12 +320,15 @@ public sealed class PrinterRegistrationTests : IDisposable
     [Fact]
     public async Task TheExceptionForAnUnknownCodeDoesNotLeakTheCode()
     {
+        // Arrange
         // Exception messages reach logs, and the code is a credential: whoever holds it can claim the
         // printer.
         await using PSDbContext context = await MigratedContextAsync();
 
+        // Act
         Exception thrown = await Record.ExceptionAsync(() => NewService(context).GetToken("SECRET-CODE-VALUE"));
 
+        // Assert
         thrown.Should().BeOfType<PrinterNotFoundException>();
         thrown.Message.Should().NotContain("SECRET-CODE-VALUE");
     }
@@ -314,6 +343,7 @@ public sealed class PrinterRegistrationTests : IDisposable
     [Fact]
     public async Task ARedeemedCodeCannotBeRedeemedAgain()
     {
+        // Arrange
         await using PSDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
@@ -322,8 +352,10 @@ public sealed class PrinterRegistrationTests : IDisposable
 
         (await service.GetToken(code)).Should().NotBeNullOrWhiteSpace();
 
+        // Act
         Func<Task> replay = () => service.GetToken(code);
 
+        // Assert
         await replay.Should().ThrowAsync<PrinterNotFoundException>("a consumed code is indistinguishable from an unknown one");
     }
 
@@ -338,6 +370,7 @@ public sealed class PrinterRegistrationTests : IDisposable
     [Fact]
     public async Task AReplayedCodeDoesNotInvalidateTheTokenAlreadyIssued()
     {
+        // Arrange
         await using PSDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
@@ -346,8 +379,10 @@ public sealed class PrinterRegistrationTests : IDisposable
 
         string token = (await service.GetToken(code))!;
 
+        // Act
         await Record.ExceptionAsync(() => service.GetToken(code));
 
+        // Assert
         PrusaConnectAuthenticationData stored = await context.PrusaConnectAuthentication.SingleAsync();
 
         new TokenService().VerifyToken(token, stored.HashedToken!).Should()
@@ -366,11 +401,13 @@ public sealed class PrinterRegistrationTests : IDisposable
     [Fact]
     public async Task PollingRepeatedlyBeforeBeingClaimedDoesNotConsumeTheCode()
     {
+        // Arrange
         await using PSDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         string code = (await service.GetPrinterCode(Request())).TemporaryCode;
 
+        // Act
         for (int poll = 0; poll < 5; poll++)
         {
             (await service.GetToken(code)).Should().BeNull("nobody has claimed the printer yet");
@@ -378,6 +415,7 @@ public sealed class PrinterRegistrationTests : IDisposable
 
         await ClaimAsync(context);
 
+        // Assert
         (await service.GetToken(code)).Should().NotBeNullOrWhiteSpace("the code survived the polling loop");
     }
 
@@ -391,15 +429,18 @@ public sealed class PrinterRegistrationTests : IDisposable
     [Fact]
     public async Task IssuingATokenRecordsWhenItWasIssued()
     {
+        // Arrange
         await using PSDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         string code = (await service.GetPrinterCode(Request())).TemporaryCode;
         await ClaimAsync(context);
 
+        // Act
         DateTimeOffset before = DateTimeOffset.UtcNow;
         await service.GetToken(code);
 
+        // Assert
         PrusaConnectAuthenticationData stored = await context.PrusaConnectAuthentication.SingleAsync();
 
         stored.TokenCreatedAt.Should().NotBeNull();
@@ -423,11 +464,14 @@ public sealed class PrinterRegistrationTests : IDisposable
     [Fact]
     public async Task IssuingACodeDoesNotWriteTheCodeOrFingerprintToTheLog()
     {
+        // Arrange
         await using PSDbContext context = await MigratedContextAsync();
         using CapturingSink sink = new();
 
+        // Act
         string code = (await NewService(context, logger: sink.AsLogger<PrusaConnectService>()).GetPrinterCode(Request())).TemporaryCode;
 
+        // Assert
         sink.Entries.Should().NotBeEmpty("issuing a code is still worth an operational record");
         sink.Entries.Should().NotContainMatch($"*{code}*");
         sink.Entries.Should().NotContainMatch("*SUDBAJQ78CTJBNA8IHEMODUG43QD9H5GSBSFE0MMKBST8B9E0L*");
@@ -443,6 +487,7 @@ public sealed class PrinterRegistrationTests : IDisposable
     [Fact]
     public async Task RenewingACodeDoesNotWriteTheReplacementToTheLog()
     {
+        // Arrange
         await using PSDbContext context = await MigratedContextAsync();
         using CapturingSink sink = new();
         PrusaConnectService service = NewService(context, logger: sink.AsLogger<PrusaConnectService>());
@@ -453,8 +498,10 @@ public sealed class PrinterRegistrationTests : IDisposable
         stored.TemporaryCodeExpiry = DateTimeOffset.UtcNow.AddHours(-1);
         await context.SaveChangesAsync();
 
+        // Act
         string renewed = (await service.GetPrinterCode(Request())).TemporaryCode;
 
+        // Assert
         sink.Entries.Should().NotContainMatch($"*{renewed}*");
     }
 
@@ -468,11 +515,14 @@ public sealed class PrinterRegistrationTests : IDisposable
     [Fact]
     public async Task IssuingACodeLogsTheRegistrationIdForCorrelation()
     {
+        // Arrange
         await using PSDbContext context = await MigratedContextAsync();
         using CapturingSink sink = new();
 
+        // Act
         await NewService(context, logger: sink.AsLogger<PrusaConnectService>()).GetPrinterCode(Request());
 
+        // Assert
         PrusaConnectAuthenticationData stored = await context.PrusaConnectAuthentication.SingleAsync();
 
         stored.Id.Should().BeGreaterThan(0, "the key is assigned by the insert, so the log has to come after the save");

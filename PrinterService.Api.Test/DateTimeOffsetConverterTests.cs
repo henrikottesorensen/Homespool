@@ -77,11 +77,13 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     [Fact]
     public void SameInstantInDifferentOffsetsStoresIdenticalValue()
     {
+        // Arrange
         Func<DateTimeOffset, long> toStorage = new DateTimeOffsetToUnixMillisecondsConverter()
             .ConvertToProviderExpression.Compile();
 
         DateTimeOffset utc = new(2026, 3, 30, 11, 14, 1, TimeSpan.Zero);
 
+        // Assert
         toStorage(utc.ToOffset(TimeSpan.FromHours(13))).Should().Be(toStorage(utc));
         toStorage(utc.ToOffset(TimeSpan.FromHours(-8))).Should().Be(toStorage(utc));
     }
@@ -97,11 +99,14 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     [Fact]
     public void StorageOrderMatchesChronologicalOrderAcrossOffsets()
     {
+        // Arrange
         Func<DateTimeOffset, long> toStorage = new DateTimeOffsetToUnixMillisecondsConverter()
             .ConvertToProviderExpression.Compile();
 
+        // Act
         long[] stored = ChronologicalOrder.Select(toStorage).ToArray();
 
+        // Assert
         stored.Should().BeInAscendingOrder("the stored value must be monotonic in the instant, "
                                            + "or SQL comparisons mean something different from CLR ones");
     }
@@ -112,11 +117,14 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     [Fact]
     public void EfBuiltInBinaryConverterIsNotOrderPreserving_WhichIsWhyItIsNotUsed()
     {
+        // Arrange
         Func<DateTimeOffset, long> broken = new DateTimeOffsetToBinaryConverter()
             .ConvertToProviderExpression.Compile();
 
+        // Act
         long[] stored = ChronologicalOrder.Select(broken).ToArray();
 
+        // Assert
         stored.Should().NotBeInAscendingOrder("if this ever starts passing, EF has fixed "
                                               + "DateTimeOffsetToBinaryConverter and this note can go");
     }
@@ -132,17 +140,20 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     [Fact]
     public async Task SqliteStoresTimestampsAsIntegers()
     {
+        // Arrange
         await using PSDbContext context = NewContext();
         await context.Database.MigrateAsync();
 
         context.PrusaConnectAuthentication.Add(NewAuth("fp-1", ChronologicalOrder[0]));
         await context.SaveChangesAsync();
 
+        // Act
         await using System.Data.Common.DbConnection connection = context.Database.GetDbConnection();
         await connection.OpenAsync();
         await using System.Data.Common.DbCommand command = connection.CreateCommand();
         command.CommandText = "select typeof(TemporaryCodeExpiry) from PrusaConnectAuthentication limit 1";
 
+        // Assert
         (await command.ExecuteScalarAsync())?.ToString().Should().Be("integer");
     }
 
@@ -156,6 +167,7 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     [Fact]
     public async Task SqlOrderByMatchesChronologicalOrderAcrossOffsets()
     {
+        // Arrange
         await using PSDbContext context = NewContext();
         await context.Database.MigrateAsync();
 
@@ -167,11 +179,13 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
 
         await context.SaveChangesAsync();
 
+        // Act
         List<DateTimeOffset> sorted = await context.PrusaConnectAuthentication
             .OrderBy(a => a.TemporaryCodeExpiry)
             .Select(a => a.TemporaryCodeExpiry)
             .ToListAsync();
 
+        // Assert
         sorted.Should().Equal(ChronologicalOrder.Select(s => s.ToUniversalTime()));
     }
 
@@ -186,6 +200,7 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     [Fact]
     public async Task SqlRangeFilterKeepsRowsAtAPositiveOffset()
     {
+        // Arrange
         await using PSDbContext context = NewContext();
         await context.Database.MigrateAsync();
 
@@ -200,12 +215,14 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
         DateTimeOffset from = ChronologicalOrder[1];
         DateTimeOffset to = ChronologicalOrder[5];
 
+        // Act
         List<DateTimeOffset> matched = await context.PrusaConnectAuthentication
             .Where(a => a.TemporaryCodeExpiry >= from && a.TemporaryCodeExpiry <= to)
             .OrderBy(a => a.TemporaryCodeExpiry)
             .Select(a => a.TemporaryCodeExpiry)
             .ToListAsync();
 
+        // Assert
         matched.Should().Equal(ChronologicalOrder[1..6].Select(s => s.ToUniversalTime()));
     }
 
@@ -213,6 +230,7 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     [Fact]
     public async Task BulkDeleteByTimestampTranslatesAndDeletesTheRightRows()
     {
+        // Arrange
         await using PSDbContext context = NewContext();
         await context.Database.MigrateAsync();
 
@@ -225,10 +243,12 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
 
         DateTimeOffset cutoff = ChronologicalOrder[3];
 
+        // Act
         int deleted = await context.PrusaConnectAuthentication
             .Where(a => a.TemporaryCodeExpiry < cutoff)
             .ExecuteDeleteAsync();
 
+        // Assert
         deleted.Should().Be(3);
         (await context.PrusaConnectAuthentication.CountAsync()).Should().Be(4);
     }
@@ -245,6 +265,7 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     [Fact]
     public async Task ValuesRoundTripAsUtcTruncatedToMilliseconds()
     {
+        // Arrange
         await using PSDbContext context = NewContext();
         await context.Database.MigrateAsync();
 
@@ -257,8 +278,10 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
         await context.SaveChangesAsync();
         context.ChangeTracker.Clear();
 
+        // Act
         DateTimeOffset readBack = (await context.PrusaConnectAuthentication.SingleAsync()).TemporaryCodeExpiry;
 
+        // Assert
         readBack.Offset.Should().Be(TimeSpan.Zero, "values round-trip as UTC; the offset is not stored");
         readBack.Should().Be(original.ToUniversalTime().AddTicks(-4567), "precision truncates to milliseconds");
         (original - readBack).Should().BeLessThan(TimeSpan.FromMilliseconds(1));
@@ -275,15 +298,19 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     [Fact]
     public async Task NullableTimestampsSurviveTheConversion()
     {
+        // Arrange
         await using PSDbContext context = NewContext();
         await context.Database.MigrateAsync();
 
         PrusaConnectAuthenticationData row = NewAuth("fp-null", ChronologicalOrder[0]);
         row.TokenCreatedAt = null;
+
+        // Act
         context.PrusaConnectAuthentication.Add(row);
         await context.SaveChangesAsync();
         context.ChangeTracker.Clear();
 
+        // Assert
         (await context.PrusaConnectAuthentication.SingleAsync()).TokenCreatedAt.Should().BeNull();
     }
 

@@ -69,8 +69,10 @@ public class WebSocketHandlerParsingTests
     [InlineData(4096)]
     public async Task FragmentedMessageIsReassembled(int chunkSize)
     {
+        // Act
         IReadOnlyList<string> received = await RunHandlerAsync(FullTelemetry, chunkSize);
 
+        // Assert
         // A single message split across frames must still arrive exactly once, intact.
         received.Should().ContainSingle();
         received[0].Should().Contain("\"job_id\":301");
@@ -88,6 +90,7 @@ public class WebSocketHandlerParsingTests
     [Fact]
     public async Task MessageSplitMidUtf8CharacterIsReassembled()
     {
+        // Arrange
         byte[] payload = Encoding.UTF8.GetBytes(EventWithNonAsciiPath);
 
         // '°' is two bytes in UTF-8. Splitting between them means neither half is valid UTF-8 on
@@ -96,10 +99,12 @@ public class WebSocketHandlerParsingTests
 
         degreeSignIndex.Should().BeGreaterThan(0, "the fixture must actually contain a multi-byte character");
 
+        // Act
         IReadOnlyList<string> received = await RunHandlerSplitOnceAsync(
             EventWithNonAsciiPath,
             splitAt: degreeSignIndex + 1);
 
+        // Assert
         received.Should().ContainSingle();
         received[0].Should().Contain("90°", "the multi-byte character must survive reassembly");
         received[0].Should().Contain("Målestok");
@@ -119,11 +124,14 @@ public class WebSocketHandlerParsingTests
     [InlineData(4096)]
     public async Task ConcatenatedMessagesAreAllDelivered(int chunkSize)
     {
+        // Arrange
         // No separator at all between objects — one of the two framings seen on the wire.
         string payload = FullTelemetry + SlimTelemetry + FullTelemetry;
 
+        // Act
         IReadOnlyList<string> received = await RunHandlerAsync(payload, chunkSize);
 
+        // Assert
         received.Should().HaveCount(3);
     }
 
@@ -141,11 +149,14 @@ public class WebSocketHandlerParsingTests
     [InlineData(4096)]
     public async Task NewlineDelimitedMessagesAreAllDelivered(int chunkSize)
     {
+        // Arrange
         // The other framing, including a trailing newline after the final object.
         string payload = FullTelemetry + "\n" + SlimTelemetry + "\n" + FullTelemetry + "\n";
 
+        // Act
         IReadOnlyList<string> received = await RunHandlerAsync(payload, chunkSize);
 
+        // Assert
         received.Should().HaveCount(3);
     }
 
@@ -160,8 +171,10 @@ public class WebSocketHandlerParsingTests
     [Fact]
     public async Task BothTelemetryShapesSurviveAndRemainDistinguishable()
     {
+        // Act
         IReadOnlyList<string> received = await RunHandlerAsync(FullTelemetry + "\n" + SlimTelemetry, chunkSize: 3);
 
+        // Assert
         received.Should().HaveCount(2);
 
         // The merge logic in phase 3 depends on being able to tell these apart: the slim message
@@ -181,6 +194,7 @@ public class WebSocketHandlerParsingTests
     [Fact]
     public async Task MalformedJsonClosesTheConnection()
     {
+        // Arrange
         // Guards the other direction: the fragmentation handling must not swallow genuinely
         // broken input. A printer sending garbage should still be disconnected.
         using FakeWebSocketPipe pipe = new();
@@ -188,6 +202,7 @@ public class WebSocketHandlerParsingTests
 
         WebSocketHandler handler = new(context, NullLogger<WebSocketHandler>.Instance);
 
+        // Act
         Task run = handler.HandlePrusaWebsocket(pipe, CancellationToken.None);
 
         await pipe.WriteInChunksAsync(Encoding.UTF8.GetBytes("""{"job_id":301,,,}"""), chunkSize: 4096);
@@ -195,6 +210,7 @@ public class WebSocketHandlerParsingTests
 
         Func<Task> act = async () => await run.WaitAsync(TimeSpan.FromSeconds(10));
 
+        // Assert
         await act.Should().ThrowAsync<System.Text.Json.JsonException>();
 
         pipe.CompleteAsyncCalled.Should().BeTrue();

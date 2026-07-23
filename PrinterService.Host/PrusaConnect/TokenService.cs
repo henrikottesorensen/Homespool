@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Text;
 using System.Linq;
 using System.Security.Cryptography;
 
@@ -14,12 +15,12 @@ public class TokenService
     /// <summary>
     /// Prusa Firmware has a maximum length of 20 bytes.
     /// </summary>
-    public const int TokenLength = 20;
+    public const int PrinterTokenLength = 20;
 
     /// <summary>
     /// After Base64 encoding, that gives us 15 bytes (120 bit) of randomness.
     /// </summary>
-    private const int TokenSize = TokenLength * 3 / 4;
+    private const int TokenSize = PrinterTokenLength * 3 / 4;
 
     /// <summary>
     /// Hash length.
@@ -66,6 +67,8 @@ public class TokenService
     /// </summary>
     private const int MaximumIterations = 1_000_000;
 
+    private const int MaximumTokenLength = 128;
+
     /// <summary>
     /// SHA(3-)384 Hasher for data at rest security.
     /// </summary>
@@ -90,52 +93,51 @@ public class TokenService
 
     public string GenerateToken()
     {
-        byte[] tokenData = RandomNumberGenerator.GetBytes(TokenSize);
+        return GenerateToken(TokenSize);
+    }
+    
+    public string GenerateToken(int bytes)
+    {
+        byte[] tokenData = RandomNumberGenerator.GetBytes(bytes);
 
-        return Convert.ToBase64String(tokenData);
+        return Base64Url.EncodeToString(tokenData);
     }
 
-    /// <exception cref="ArgumentException">
-    /// <paramref name="token"/> is not a base64 encoding of exactly <see cref="TokenSize"/> bytes.
-    /// </exception>
     public string HashToken(string token)
     {
-        if (!TryDecodeBase64(token, TokenSize, out byte[] tokenData))
+        if (token.Length is < PrinterTokenLength or > MaximumTokenLength)
         {
-            // The token itself is never quoted back: it is a live credential, and this message ends
-            // up in logs.
-            throw new ArgumentException($"Token is not base64 of {TokenSize} bytes.", nameof(token));
+            throw new ArgumentException("Invalid token: unexpected length.", nameof(token));
         }
 
-        return HashToken(tokenData);
+        if (TryDecodeBase64(token, out Span<byte> tokenData))
+        {
+            return HashToken(tokenData);
+        }
+        
+        throw new ArgumentException("Invalid token: Could not decode.", nameof(token));
     }
 
-    public string HashToken(byte[] token)
+    private string HashToken(Span<byte> token)
     {
         byte[] salt = RandomNumberGenerator.GetBytes(SaltSize);
         byte[] key = Rfc2898DeriveBytes.Pbkdf2(token, salt, Iterations, HashAlgorithm, HashLength);
 
-        return $"${HashAlgorithm.Name}${Iterations}${Convert.ToBase64String(salt)}${Convert.ToBase64String(key)}$";
+        return $"${HashAlgorithm.Name}${Iterations}${Base64Url.EncodeToString(salt)}${Base64Url.EncodeToString(key)}$";
     }
 
     /// <summary>
     /// Verifies a token supplied by a caller against a stored hash.
     /// </summary>
     /// <remarks>
-    /// <paramref name="token"/> arrives straight off a request header and is therefore attacker
-    /// controlled and unvalidated: every malformed shape has to return <c>false</c>, not throw. An
-    /// exception here escapes the authentication handler and becomes a 500 on a pre-authentication
-    /// path, which is both an unauthenticated crash and a way to tell malformed input apart from a
-    /// wrong token.
-    /// <para>
-    /// <paramref name="knownHash"/> is ours and comes from the database, so a malformed one is a data
-    /// integrity fault rather than an attack, and still throws.
-    /// </para>
+    /// <paramref name="token"/> is attacker-controlled and off a request header, so every malformed
+    /// shape returns <c>false</c>; a throw here would be an unauthenticated 500. <paramref name="knownHash"/>
+    /// is ours, so a malformed one is a data fault and throws.
     /// </remarks>
     /// <exception cref="ArgumentException"><paramref name="knownHash"/> is malformed.</exception>
     public bool VerifyToken(string? token, string knownHash)
     {
-        if (string.IsNullOrWhiteSpace(token) || token.Length > TokenLength)
+        if (string.IsNullOrWhiteSpace(token) || token.Length is < PrinterTokenLength or > MaximumTokenLength)
         {
             return false;
         }
@@ -162,14 +164,14 @@ public class TokenService
             throw new ArgumentException("Invalid hash format: iteration count missing or out of range.", nameof(knownHash));
         }
 
-        if (!TryDecodeBase64(split[3], SaltSize, out byte[] salt) ||
-            !TryDecodeBase64(split[4], HashLength, out byte[] hash))
+        if (!TryDecodeBase64(split[3], out Span<byte> salt) ||
+            !TryDecodeBase64(split[4], out Span<byte> hash))
         {
-            throw new ArgumentException("Invalid hash format: salt or hash is not base64 of the expected length.", nameof(knownHash));
+            throw new ArgumentException("Invalid hash format: salt or hash is not valid base64.", nameof(knownHash));
         }
 
         // Caller-supplied, so a bad encoding is a failed authentication rather than an exception.
-        if (!TryDecodeBase64(token, TokenSize, out byte[] tokenData))
+        if (!TryDecodeBase64(token, out Span<byte> tokenData))
         {
             return false;
         }
@@ -181,21 +183,21 @@ public class TokenService
         return CryptographicOperations.FixedTimeEquals(hashedInputToken, hash);
     }
 
-    /// <summary>
-    /// Decodes base64 that is expected to be exactly <paramref name="expectedLength"/> bytes, without
-    /// throwing on malformed input.
-    /// </summary>
     /// <remarks>
-    /// The length is part of the test rather than a separate check. Every value passed through here
-    /// has a fixed size, so a short or long decode is malformed by definition, and rejecting it up
-    /// front keeps a wrong-sized token from reaching PBKDF2.
+    /// <see cref="Base64Url.TryDecodeFromChars"/> is not used: despite the name it throws
+    /// <see cref="FormatException"/> on malformed input, which on the token path would escape as a
+    /// pre-authentication 500. <see cref="Base64Url.IsValid(ReadOnlySpan{char})"/> is the non-throwing
+    /// gate.
     /// </remarks>
-    private static bool TryDecodeBase64(string? value, int expectedLength, out byte[] decoded)
+    private static bool TryDecodeBase64(string value, out Span<byte> output)
     {
-        decoded = new byte[expectedLength];
+        if (Base64Url.IsValid(value))
+        {
+            output = Base64Url.DecodeFromChars(value);
+            return true;
+        }
 
-        return value is not null &&
-               Convert.TryFromBase64String(value, decoded, out int written) &&
-               written == expectedLength;
+        output = default;
+        return false;
     }
 }

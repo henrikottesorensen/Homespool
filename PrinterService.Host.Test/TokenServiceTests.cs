@@ -1,4 +1,5 @@
-﻿using System.Security.Cryptography;
+using System.Buffers.Text;
+using System.Security.Cryptography;
 
 using AwesomeAssertions;
 
@@ -9,25 +10,50 @@ namespace PrinterService.Api.Test;
 public class TokenServiceTests
 {
     private readonly TokenService  _tokenService = new();
-    
+
     /// <summary>
-    /// A generated token is non-empty, within the declared length, and valid base64.
+    /// A generated token is non-empty, exactly the printer length, and uses the URL-safe base64
+    /// alphabet.
     /// </summary>
     /// <remarks>
     /// The token is returned to the printer in a <c>Token</c> header and stored by it verbatim, so it
-    /// has to be header-safe and bounded. Buddy copies it into a fixed buffer.
+    /// has to be header-safe and bounded; Buddy copies it into a fixed buffer. URL-safe base64 keeps it
+    /// free of <c>+</c>, <c>/</c> and <c>=</c>.
     /// </remarks>
     [Fact]
     public void GenerateToken()
     {
         // Act
         string token = _tokenService.GenerateToken();
-        Action convertToByteArray = () => Convert.FromBase64String(token);
+        Action decode = () => Base64Url.DecodeFromChars(token);
 
         // Assert
         token.Should().NotBeNullOrWhiteSpace();
-        token.Length.Should().BeLessThanOrEqualTo(TokenService.TokenLength);
-        convertToByteArray.Should().NotThrow();
+        token.Length.Should().Be(TokenService.PrinterTokenLength);
+        token.Should().MatchRegex("^[A-Za-z0-9_-]+$");
+        decode.Should().NotThrow();
+    }
+
+    /// <summary>
+    /// <see cref="TokenService.GenerateToken(int)"/> honors the requested byte count rather than always
+    /// generating <see cref="TokenService.PrinterTokenLength"/>-derived bytes.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="PrinterService.Host.Services.InvitationService.CreateAsync"/> calls this overload with
+    /// <c>InviteTokenLength = 32</c>, expecting a 32-byte token; a mint that silently ignored the
+    /// parameter would issue shorter, weaker invite tokens without any visible failure.
+    /// </remarks>
+    [Theory]
+    [InlineData(32)]
+    [InlineData(15)]
+    [InlineData(1)]
+    public void GenerateTokenWithExplicitLengthReturnsThatManyBytes(int bytes)
+    {
+        // Act
+        string token = _tokenService.GenerateToken(bytes);
+
+        // Assert
+        Base64Url.DecodeFromChars(token).Length.Should().Be(bytes);
     }
 
     /// <summary>
@@ -50,11 +76,11 @@ public class TokenServiceTests
 
         string[] split = hash.Split('$');
         split.Length.Should().Be(6);
-        
+
         split[1].Should().Be(TokenService.HashAlgorithm.Name);
         split[2].All(char.IsAsciiDigit).Should().BeTrue();
-        Convert.FromBase64String(split[3]).Length.Should().Be(TokenService.SaltSize);
-        Convert.FromBase64String(split[4]).Length.Should().Be(TokenService.HashLength);
+        Base64Url.DecodeFromChars(split[3]).Length.Should().Be(TokenService.SaltSize);
+        Base64Url.DecodeFromChars(split[4]).Length.Should().Be(TokenService.HashLength);
     }
 
     /// <summary>
@@ -73,13 +99,34 @@ public class TokenServiceTests
         // Assert
         _tokenService.VerifyToken(token, hash).Should().BeTrue();
     }
-    
+
     /// <summary>
-    /// A wrong token, an empty string and null all fail verification.
+    /// An invite-length token round-trips through the same single-length methods the printer path uses.
     /// </summary>
     /// <remarks>
-    /// The empty and null cases are the interesting ones: a missing <c>Token</c> header must not
-    /// authenticate. Buddy sends the header on every request, but the server cannot assume it.
+    /// Invitations no longer have a dedicated expected-length overload; they mint a longer (32-byte)
+    /// token via <see cref="TokenService.GenerateToken(int)"/> and then share
+    /// <see cref="TokenService.HashToken(string)"/> and <see cref="TokenService.VerifyToken"/>, so that
+    /// length has to hash and verify within the accepted bound.
+    /// </remarks>
+    [Fact]
+    public void InviteLengthTokenVerifies()
+    {
+        // Arrange
+        string token = _tokenService.GenerateToken(32);
+        string hash = _tokenService.HashToken(token);
+
+        // Assert
+        _tokenService.VerifyToken(token, hash).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// A different token, an empty string and null all fail verification.
+    /// </summary>
+    /// <remarks>
+    /// The other-token case is well-formed, so it decodes cleanly and fails at the constant-time
+    /// compare rather than short-circuiting earlier. The empty and null cases guard the missing
+    /// <c>Token</c> header: Buddy sends it on every request, but the server cannot assume it.
     /// </remarks>
     [Fact]
     public void InvalidTokenDoesNotVerify()
@@ -89,30 +136,29 @@ public class TokenServiceTests
         string hash = _tokenService.HashToken(token);
 
         // Assert
-        string invalidToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(TokenService.TokenLength));
-        _tokenService.VerifyToken(invalidToken, hash).Should().BeFalse();
+        string otherToken = _tokenService.GenerateToken();
+        _tokenService.VerifyToken(otherToken, hash).Should().BeFalse();
 
         _tokenService.VerifyToken(string.Empty, hash).Should().BeFalse();
         _tokenService.VerifyToken(null, hash).Should().BeFalse();
     }
 
     /// <summary>
-    /// A token that is not valid base64 fails verification instead of throwing.
+    /// A malformed token fails verification instead of throwing.
     /// </summary>
     /// <remarks>
-    /// The token arrives as a raw request header, so this is reachable by anyone who can open a
-    /// socket, before any authentication has happened. Previously <c>Convert.FromBase64String</c>
-    /// threw <see cref="FormatException"/> straight out of the authentication handler, turning
-    /// <c>Token: hello!</c> into a 500 - an unauthenticated crash, and an oracle distinguishing
-    /// malformed input from a wrong token.
+    /// The token arrives as a raw request header, reachable before any authentication. It must never
+    /// throw: a short or oversized token is turned away by the length guard, and a bad-alphabet one by
+    /// the non-throwing base64 decode. Either way the handler sees <c>false</c>, not a 500 that would
+    /// also distinguish malformed input from a wrong token.
     /// </remarks>
     [Theory]
     [InlineData("hello!")]
     [InlineData("not base64")]
     [InlineData("====")]
     [InlineData("A")]
-    [InlineData("\0\0\0\0")]
-    [InlineData("AAAA====AAAA")]
+    [InlineData("!!!!!!!!!!!!!!!!!!!!")]
+    [InlineData("AAAABBBBCCCC++//DDDD")]
     public void MalformedTokenDoesNotVerifyAndDoesNotThrow(string malformedToken)
     {
         // Arrange
@@ -125,36 +171,50 @@ public class TokenServiceTests
     }
 
     /// <summary>
-    /// Well-formed base64 of the wrong length fails verification.
+    /// A token outside the accepted length bound fails verification without throwing.
     /// </summary>
     /// <remarks>
-    /// Tokens are a fixed size, so a decode of any other length is malformed by definition and is
-    /// rejected before it reaches PBKDF2.
+    /// The exact byte size is no longer re-checked at decode; the guard is the
+    /// [<see cref="TokenService.PrinterTokenLength"/>, MaximumTokenLength] character bound, which keeps
+    /// an undersized or oversized token off PBKDF2. An in-range token of the wrong length still fails,
+    /// just later, at the constant-time compare.
     /// </remarks>
     [Fact]
-    public void WrongLengthTokenDoesNotVerify()
+    public void TokenOutsideLengthBoundsDoesNotVerify()
     {
         // Arrange
         string hash = _tokenService.HashToken(_tokenService.GenerateToken());
 
-        // Assert
+        // Assert - below PrinterTokenLength.
         _tokenService.VerifyToken("AAAA", hash).Should().BeFalse();
-        _tokenService.VerifyToken(Convert.ToBase64String(RandomNumberGenerator.GetBytes(3)), hash).Should().BeFalse();
+
+        // Above the maximum accepted length.
+        _tokenService.VerifyToken(new string('A', 129), hash).Should().BeFalse();
+
+        // In range but the wrong length: decodes, reaches PBKDF2, fails closed at the compare.
+        _tokenService.VerifyToken(_tokenService.GenerateToken(24), hash).Should().BeFalse();
     }
 
     /// <summary>
-    /// <see cref="TokenService.HashToken(string)"/> rejects a non-base64 token by argument, and does
-    /// not quote the token back in the message.
+    /// <see cref="TokenService.HashToken(string)"/> rejects a token that is the wrong length or not
+    /// decodable, and does not quote the token back in the message.
     /// </summary>
-    [Fact]
-    public void HashTokenRejectsNonBase64Token()
+    /// <remarks>
+    /// Unlike verification, hashing is never on an attacker path - it runs when <i>we</i> mint a
+    /// credential - so a bad token is a programming error and throws. The token is a live secret, so
+    /// the message must not echo it.
+    /// </remarks>
+    [Theory]
+    [InlineData("short")]
+    [InlineData("!!!!!!!!!!!!!!!!!!!!")]
+    public void HashTokenRejectsInvalidToken(string token)
     {
         // Arrange
-        Action hashToken = () => _tokenService.HashToken("not base64!");
+        Action hashToken = () => _tokenService.HashToken(token);
 
         // Assert
         hashToken.Should().Throw<ArgumentException>()
-                 .Which.Message.Should().NotContain("not base64!");
+                 .Which.Message.Should().NotContain(token);
     }
 
     /// <summary>
@@ -213,15 +273,20 @@ public class TokenServiceTests
     }
 
     /// <summary>
-    /// A stored salt or digest that is not base64 of the expected length is refused as malformed,
-    /// rather than throwing <see cref="FormatException"/> from inside the decode.
+    /// A stored salt or digest that is not decodable base64 is rejected as a data fault, rather than
+    /// surfacing <see cref="FormatException"/> from inside the decode.
     /// </summary>
+    /// <remarks>
+    /// <c>knownHash</c> is ours, so an undecodable segment is corruption, not attacker input, and
+    /// throwing is the right signal. The <c>+</c>/<c>/</c>/<c>=</c> cases also pin the URL-safe
+    /// alphabet: standard-base64 punctuation is not accepted here.
+    /// </remarks>
     [Theory]
     [InlineData(3, "not base64")]
-    [InlineData(3, "AAAA")]
+    [InlineData(3, "AAAA+/==")]
     [InlineData(4, "not base64")]
-    [InlineData(4, "AAAA")]
-    public void MalformedSaltOrHashIsRejected(int segment, string value)
+    [InlineData(4, "AAAA+/==")]
+    public void NonBase64SaltOrHashIsRejected(int segment, string value)
     {
         // Arrange
         string token = _tokenService.GenerateToken();
@@ -233,6 +298,34 @@ public class TokenServiceTests
 
         // Assert
         verify.Should().Throw<ArgumentException>();
+    }
+
+    /// <summary>
+    /// A stored salt or digest that is valid base64 but the wrong length fails verification closed,
+    /// without throwing.
+    /// </summary>
+    /// <remarks>
+    /// Exact length is no longer re-validated on the trusted hash, and it does not need to be: it can
+    /// never cause a false accept. <see cref="Rfc2898DeriveBytes"/> always emits
+    /// <see cref="TokenService.HashLength"/> bytes and <see cref="CryptographicOperations.FixedTimeEquals{T}"/>
+    /// requires equal length, so a mis-sized digest simply compares unequal.
+    /// </remarks>
+    [Theory]
+    [InlineData(3, "AAAA")]
+    [InlineData(4, "AAAA")]
+    public void WrongLengthSaltOrHashFailsVerification(int segment, string value)
+    {
+        // Arrange
+        string token = _tokenService.GenerateToken();
+        string[] split = _tokenService.HashToken(token).Split('$');
+        split[segment] = value;
+
+        string tampered = $"${split[1]}${split[2]}${split[3]}${split[4]}$";
+        Func<bool> verify = () => _tokenService.VerifyToken(token, tampered);
+
+        // Assert
+        verify.Should().NotThrow();
+        verify().Should().BeFalse();
     }
 
     /// <summary>
@@ -276,13 +369,13 @@ public class TokenServiceTests
     {
         // Arrange
         string token = _tokenService.GenerateToken();
-        byte[] tokenData = Convert.FromBase64String(token);
+        byte[] tokenData = Base64Url.DecodeFromChars(token);
         byte[] salt = RandomNumberGenerator.GetBytes(TokenService.SaltSize);
 
         const int otherIterations = 8192;
         byte[] key = Rfc2898DeriveBytes.Pbkdf2(tokenData, salt, otherIterations, HashAlgorithmName.SHA384, TokenService.HashLength);
 
-        string hash = $"${HashAlgorithmName.SHA384.Name}${otherIterations}${Convert.ToBase64String(salt)}${Convert.ToBase64String(key)}$";
+        string hash = $"${HashAlgorithmName.SHA384.Name}${otherIterations}${Base64Url.EncodeToString(salt)}${Base64Url.EncodeToString(key)}$";
 
         // Assert
         _tokenService.VerifyToken(token, hash).Should().BeTrue();

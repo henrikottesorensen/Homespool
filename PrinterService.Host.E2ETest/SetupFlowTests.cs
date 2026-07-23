@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -91,17 +90,6 @@ public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
         return token!;
     }
 
-    private static string ExtractAntiforgeryToken(string html)
-    {
-        Match inputTag = Regex.Match(html, """<input[^>]*name="__RequestVerificationToken"[^>]*>""");
-        inputTag.Success.Should().BeTrue("the setup page must render the antiforgery hidden field");
-
-        Match value = Regex.Match(inputTag.Value, "value=\"([^\"]+)\"");
-        value.Success.Should().BeTrue("the antiforgery input must carry a value");
-
-        return value.Groups[1].Value;
-    }
-
     /// <summary>
     /// The full happy path: GET for the antiforgery token, POST the logged bootstrap token with
     /// credentials, and the admin account is genuinely created - the gate closes, a second GET 404s,
@@ -117,7 +105,7 @@ public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
 
         HttpResponseMessage getResponse = await client.GetAsync("/setup");
         getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        string antiforgeryToken = ExtractAntiforgeryToken(await getResponse.Content.ReadAsStringAsync());
+        string antiforgeryToken = AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync());
 
         using FormUrlEncodedContent body = new(new Dictionary<string, string>
         {
@@ -154,7 +142,7 @@ public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         HttpResponseMessage getResponse = await client.GetAsync("/setup");
-        string antiforgeryToken = ExtractAntiforgeryToken(await getResponse.Content.ReadAsStringAsync());
+        string antiforgeryToken = AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync());
 
         using FormUrlEncodedContent body = new(new Dictionary<string, string>
         {

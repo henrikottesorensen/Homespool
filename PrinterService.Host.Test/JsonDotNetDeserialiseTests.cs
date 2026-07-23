@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using System.IO;
+
 using AwesomeAssertions;
 
 using Newtonsoft.Json;

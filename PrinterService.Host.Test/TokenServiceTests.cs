@@ -1,4 +1,6 @@
+using System;
 using System.Buffers.Text;
+using System.Linq;
 using System.Security.Cryptography;
 
 using AwesomeAssertions;

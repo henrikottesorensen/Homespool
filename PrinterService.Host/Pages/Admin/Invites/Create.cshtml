@@ -1,0 +1,56 @@
+@page
+@model CreateModel
+@{
+    ViewData["Title"] = "Create invitation";
+}
+
+<h1>@ViewData["Title"]</h1>
+
+@if (Model.AcceptLink is not null)
+{
+    <div class="alert alert-success" role="alert">
+        <p class="mb-1">
+            Invitation created.
+            @if (Model.EmailSent)
+            {
+                <text>An email with the accept link was sent.</text>
+            }
+            else
+            {
+                <text>No email was sent (mail is not configured, or the send failed) — copy the link below.</text>
+            }
+        </p>
+        <div class="input-group">
+            <input type="text" class="form-control" readonly value="@Model.AcceptLink" aria-label="Accept link" />
+        </div>
+    </div>
+}
+
+<div class="row">
+    <div class="col-md-6">
+        <form method="post">
+            <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
+            <div class="form-floating mb-3">
+                <input asp-for="Input.Email" class="form-control" autocomplete="off" placeholder="name@example.com" />
+                <label asp-for="Input.Email" class="form-label"></label>
+                <span asp-validation-for="Input.Email" class="text-danger"></span>
+            </div>
+            <div class="mb-3">
+                <label asp-for="Input.TeamId" class="form-label"></label>
+                <select asp-for="Input.TeamId" asp-items="@Model.TeamOptions" class="form-select"></select>
+                <span asp-validation-for="Input.TeamId" class="text-danger"></span>
+            </div>
+            <div class="form-floating mb-3">
+                <input asp-for="Input.ExpiresInHours" class="form-control" placeholder="48" />
+                <label asp-for="Input.ExpiresInHours" class="form-label"></label>
+                <span asp-validation-for="Input.ExpiresInHours" class="text-danger"></span>
+            </div>
+            <button type="submit" class="btn btn-primary">Create invitation</button>
+            <a class="btn btn-link" asp-page="Index">Back to invitations</a>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

@@ -1,0 +1,57 @@
+@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Invitations";
+}
+
+<h1>@ViewData["Title"]</h1>
+
+@if (!string.IsNullOrEmpty(Model.StatusMessage))
+{
+    <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
+}
+
+<p>
+    <a class="btn btn-primary" asp-page="Create">Create invitation</a>
+</p>
+
+@if (Model.Invitations.Count == 0)
+{
+    <p>No invitations yet.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Email</th>
+                <th>Target</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Expires</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var invite in Model.Invitations)
+        {
+            var status = IndexModel.StatusOf(invite);
+            <tr>
+                <td>@invite.Email</td>
+                <td>@Model.TargetOf(invite)</td>
+                <td>@status</td>
+                <td>@invite.CreatedAt.ToLocalTime().ToString("g")</td>
+                <td>@invite.ExpiresAt.ToLocalTime().ToString("g")</td>
+                <td>
+                    @if (status == "Outstanding")
+                    {
+                        <form method="post" asp-page-handler="Revoke" asp-route-id="@invite.Id">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">Revoke</button>
+                        </form>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}

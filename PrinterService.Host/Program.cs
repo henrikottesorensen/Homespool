@@ -80,6 +80,9 @@ public static class Program
             builder.Services.Configure<Services.SmtpOptions>(
                 builder.Configuration.GetSection(Services.SmtpOptions.SectionName));
 
+            builder.Services.Configure<Services.InvitationOptions>(
+                builder.Configuration.GetSection(Services.InvitationOptions.SectionName));
+
             Services.SmtpOptions smtpOptions = new();
             builder.Configuration.GetSection(Services.SmtpOptions.SectionName).Bind(smtpOptions);
 
@@ -116,6 +119,7 @@ public static class Program
             // Scoped, unlike their singleton neighbors above, because they hold the scoped PSDbContext.
             builder.Services.AddScoped<Services.TeamService>();
             builder.Services.AddScoped<Services.UnitOfWork>();
+            builder.Services.AddScoped<Services.InvitationService>();
             
             WebApplication app = builder.Build();
 

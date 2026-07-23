@@ -3,18 +3,18 @@
 #nullable disable
 
 using System;
-using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.Linq;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Authentication;
+
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 
 using PrinterService.Host.Services;
@@ -22,6 +22,11 @@ using PrinterService.Model.Entities;
 
 namespace PrinterService.Host.Pages.Account
 {
+    /// <summary>
+    /// Invite-accept page. Registration is invite-only (phase-1.5 §15 step 6): this page is reachable
+    /// only with a valid, unexpired, unused invite token, and creates the account bound to the invite's
+    /// email. It replaces the public self-service registration the Identity scaffold shipped with.
+    /// </summary>
     public class RegisterModel : PageModel
     {
         private readonly SignInManager<PSUser> _signInManager;
@@ -31,6 +36,9 @@ namespace PrinterService.Host.Pages.Account
         private readonly ILogger<RegisterModel> _logger;
         private readonly IEmailSender _emailSender;
         private readonly AccountConfirmationPolicy _accountConfirmationPolicy;
+        private readonly InvitationService _invitationService;
+        private readonly TeamService _teamService;
+        private readonly UnitOfWork _unitOfWork;
 
         public RegisterModel(
             UserManager<PSUser> userManager,
@@ -38,7 +46,10 @@ namespace PrinterService.Host.Pages.Account
             SignInManager<PSUser> signInManager,
             ILogger<RegisterModel> logger,
             IEmailSender emailSender,
-            AccountConfirmationPolicy accountConfirmationPolicy)
+            AccountConfirmationPolicy accountConfirmationPolicy,
+            InvitationService invitationService,
+            TeamService teamService,
+            UnitOfWork unitOfWork)
         {
             _userManager = userManager;
             _userStore = userStore;
@@ -47,136 +58,174 @@ namespace PrinterService.Host.Pages.Account
             _logger = logger;
             _emailSender = emailSender;
             _accountConfirmationPolicy = accountConfirmationPolicy;
+            _invitationService = invitationService;
+            _teamService = teamService;
+            _unitOfWork = unitOfWork;
         }
 
-        /// <summary>
-        ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
+        /// <summary>Invite id, carried in the accept link and echoed back on post via a hidden field.</summary>
+        [BindProperty(SupportsGet = true)]
+        public int InviteId { get; set; }
+
+        /// <summary>The Base64Url-encoded invite token from the accept link.</summary>
+        [BindProperty(SupportsGet = true)]
+        public string Code { get; set; }
+
         [BindProperty]
         public InputModel Input { get; set; }
 
-        /// <summary>
-        ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
         public string ReturnUrl { get; set; }
 
-        /// <summary>
-        ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public IList<AuthenticationScheme> ExternalLogins { get; set; }
+        /// <summary>True when the invite validated; the view shows the password form only then.</summary>
+        public bool InviteValid { get; private set; }
 
-        /// <summary>
-        ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
+        /// <summary>The invite's bound email, shown read-only. The account is created as this address.</summary>
+        public string Email { get; private set; }
+
         public class InputModel
         {
-            /// <summary>
-            ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-            ///     directly from your code. This API may change or be removed in future releases.
-            /// </summary>
-            [Required]
-            [EmailAddress]
-            [Display(Name = "Email")]
-            public string Email { get; set; }
-
-            /// <summary>
-            ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-            ///     directly from your code. This API may change or be removed in future releases.
-            /// </summary>
             [Required]
             [StringLength(100, ErrorMessage = "The {0} must be at least {2} and at max {1} characters long.", MinimumLength = 6)]
             [DataType(DataType.Password)]
             [Display(Name = "Password")]
             public string Password { get; set; }
 
-            /// <summary>
-            ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-            ///     directly from your code. This API may change or be removed in future releases.
-            /// </summary>
             [DataType(DataType.Password)]
             [Display(Name = "Confirm password")]
-            [Compare("Password", ErrorMessage = "The password and confirmation password do not match.")]
+            [Compare(nameof(Password), ErrorMessage = "The password and confirmation password do not match.")]
             public string ConfirmPassword { get; set; }
         }
 
-
-        public async Task OnGetAsync(string returnUrl = null)
+        public async Task OnGetAsync(string returnUrl, CancellationToken cancellationToken)
         {
             ReturnUrl = returnUrl;
-            ExternalLogins = (await _signInManager.GetExternalAuthenticationSchemesAsync()).ToList();
+
+            Invitation invitation = await _invitationService.ValidateAsync(InviteId, DecodeToken(Code), cancellationToken);
+
+            InviteValid = invitation is not null;
+            Email = invitation?.Email;
         }
 
-        public async Task<IActionResult> OnPostAsync(string returnUrl = null)
+        public async Task<IActionResult> OnPostAsync(string returnUrl, CancellationToken cancellationToken)
         {
             returnUrl ??= Url.Content("~/");
-            ExternalLogins = (await _signInManager.GetExternalAuthenticationSchemesAsync()).ToList();
-            if (ModelState.IsValid)
+            ReturnUrl = returnUrl;
+
+            // Re-validate on post: the token could be tampered with, and the invite could have expired or
+            // been spent since the form was rendered.
+            Invitation invitation = await _invitationService.ValidateAsync(InviteId, DecodeToken(Code), cancellationToken);
+
+            if (invitation is null)
             {
-                PSUser user = CreateUser();
+                InviteValid = false;
 
-                await _userStore.SetUserNameAsync(user, Input.Email, CancellationToken.None);
-                await _emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None);
-                _accountConfirmationPolicy.Apply(user);
-
-                IdentityResult result = await _userManager.CreateAsync(user, Input.Password);
-
-                if (result.Succeeded)
-                {
-                    _logger.LogInformation("User created a new account with password.");
-
-                    string userId = await _userManager.GetUserIdAsync(user);
-                    string code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-                    code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
-                    string callbackUrl = Url.Page(
-                        "/Account/ConfirmEmail",
-                        pageHandler: null,
-                        values: new { userId = userId, code = code, returnUrl = returnUrl },
-                        protocol: Request.Scheme);
-
-                    EmailSendResult sendResult = await _emailSender.SendEmailAsync(Input.Email, "Confirm your email",
-                        $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
-
-                    // The address was just typed by this user, so reporting a send failure reveals nothing about
-                    // anyone else's account - and staying silent would leave them waiting on a mail that is never
-                    // coming, unable to sign in because the account is unconfirmed.
-                    bool emailFailed = sendResult == EmailSendResult.Failed;
-
-                    if (_userManager.Options.SignIn.RequireConfirmedAccount)
-                    {
-                        return RedirectToPage("RegisterConfirmation",
-                                              new { email = Input.Email, returnUrl = returnUrl, emailFailed = emailFailed });
-                    }
-                    else
-                    {
-                        await _signInManager.SignInAsync(user, isPersistent: false);
-                        return LocalRedirect(returnUrl);
-                    }
-                }
-                foreach (IdentityError error in result.Errors)
-                {
-                    ModelState.AddModelError(string.Empty, error.Description);
-                }
+                return Page();
             }
 
-            // If we got this far, something failed, redisplay form
-            return Page();
-        }
+            InviteValid = true;
+            Email = invitation.Email;
 
-        private PSUser CreateUser()
-        {
+            if (!ModelState.IsValid)
+            {
+                return Page();
+            }
+
+            PSUser user = new();
+
+            // One transaction wraps the account, its team(s) and spending the invite - mirroring Setup.
+            // Any early return before CommitAsync disposes the transaction uncommitted, rolling back every
+            // write made through it, so no failure path needs a compensating delete.
+            await using IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
             try
             {
-                return Activator.CreateInstance<PSUser>();
+                // The account is bound to the invite's email, never anything the invitee typed (§15 dec. 3).
+                await _userStore.SetUserNameAsync(user, invitation.Email, cancellationToken);
+                await _emailStore.SetEmailAsync(user, invitation.Email, cancellationToken);
+                _accountConfirmationPolicy.Apply(user);
+
+                IdentityResult createResult = await _userManager.CreateAsync(user, Input.Password);
+
+                if (!createResult.Succeeded)
+                {
+                    AddErrors(createResult);
+
+                    return Page();
+                }
+
+                // Every user gets their own default team, so printer-claim identity resolution (step 7)
+                // always has one. A team-scoped invite additionally joins that existing team.
+                await _teamService.AddDefaultTeamAsync(user.Id, DateTimeOffset.UtcNow, cancellationToken);
+
+                if (invitation.TeamId is int teamId)
+                {
+                    await _teamService.AddMemberAsync(teamId, user.Id, canRead: true, canUse: true, canManage: false, cancellationToken);
+                }
+
+                await _invitationService.MarkUsedAsync(invitation, cancellationToken);
+
+                await transaction.CommitAsync(cancellationToken);
             }
-            catch
+            catch (DbUpdateException ex)
             {
-                throw new InvalidOperationException($"Can't create an instance of '{nameof(PSUser)}'. " +
-                    $"Ensure that '{nameof(PSUser)}' is not an abstract class and has a parameterless constructor, or alternatively " +
-                    $"override the register page in /Areas/Identity/Pages/Account/Register.cshtml");
+                _logger.LogError(ex, "Failed to accept invitation {InviteId}; rolling back the account.", InviteId);
+                ModelState.AddModelError(string.Empty, "Could not complete registration. Please try again.");
+
+                return Page();
+            }
+
+            _logger.LogInformation("Invitation {InviteId} accepted; account created for {Email}.", InviteId, invitation.Email);
+
+            // Follow AccountConfirmationPolicy (§15 decision 3): when SMTP is configured the account is
+            // unconfirmed, so send the confirmation mail and hold at RegisterConfirmation; otherwise it is
+            // already confirmed and we can sign straight in.
+            if (!user.EmailConfirmed)
+            {
+                string userId = await _userManager.GetUserIdAsync(user);
+                string confirmToken = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+                confirmToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(confirmToken));
+                string callbackUrl = Url.Page(
+                    "/Account/ConfirmEmail",
+                    pageHandler: null,
+                    values: new { userId, code = confirmToken, returnUrl },
+                    protocol: Request.Scheme);
+
+                EmailSendResult sendResult = await _emailSender.SendEmailAsync(invitation.Email, "Confirm your email",
+                    $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+
+                bool emailFailed = sendResult == EmailSendResult.Failed;
+
+                return RedirectToPage("RegisterConfirmation", new { email = invitation.Email, returnUrl, emailFailed });
+            }
+
+            await _signInManager.SignInAsync(user, isPersistent: false);
+
+            return LocalRedirect(returnUrl);
+        }
+
+        /// <summary>Reverses the Base64Url encoding the accept link uses. Null/invalid input yields null.</summary>
+        private static string DecodeToken(string code)
+        {
+            if (string.IsNullOrEmpty(code))
+            {
+                return null;
+            }
+
+            try
+            {
+                return Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(code));
+            }
+            catch (FormatException)
+            {
+                return null;
+            }
+        }
+
+        private void AddErrors(IdentityResult result)
+        {
+            foreach (IdentityError error in result.Errors)
+            {
+                ModelState.AddModelError(string.Empty, error.Description);
             }
         }
 

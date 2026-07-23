@@ -5,6 +5,12 @@
 <ul class="navbar-nav">
 @if (SignInManager.IsSignedIn(User))
 {
+    @if (User.IsInRole(AdminBootstrap.AdminRole))
+    {
+        <li class="nav-item">
+            <a id="invites" class="nav-link" asp-page="/Admin/Invites/Index" title="Invitations">Invites</a>
+        </li>
+    }
     <li class="nav-item">
         <a id="manage" class="nav-link" asp-page="/Account/Manage/Index" title="Manage">Hello @UserManager.GetUserName(User)!</a>
     </li>
@@ -16,9 +22,6 @@
 }
 else
 {
-    <li class="nav-item">
-        <a class="nav-link" id="register" asp-page="/Account/Register">Register</a>
-    </li>
     <li class="nav-item">
         <a class="nav-link" id="login" asp-page="/Account/Login">Login</a>
     </li>

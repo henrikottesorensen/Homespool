@@ -83,4 +83,16 @@ public class TeamService
     {
         return _dbContext.TeamMembers.Where(m => m.TeamId == teamId).ToListAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// All teams, oldest first, for admin surfaces that need to pick one (e.g. inviting a user into an
+    /// existing team). Read-only, so untracked.
+    /// </summary>
+    public async Task<IReadOnlyList<Team>> GetAllTeamsAsync(CancellationToken cancellationToken)
+    {
+        return await _dbContext.Teams
+                               .AsNoTracking()
+                               .OrderBy(t => t.Id)
+                               .ToListAsync(cancellationToken);
+    }
 }

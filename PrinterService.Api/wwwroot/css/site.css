@@ -11,6 +11,11 @@ a {
   color: #0077cc;
 }
 
+/* Lighter link colour under Bootstrap's dark colour mode, for contrast on a dark background. */
+[data-bs-theme="dark"] a {
+  color: #4dabf7;
+}
+
 .form-control:focus {
     border-color: #0077cc;
     box-shadow: 0 0 0 0.2rem #0077cc;
@@ -49,11 +54,12 @@ html {
   max-width: 700px;
 }
 
+/* Follow the active colour mode instead of a fixed light-grey, so borders adapt in dark mode. */
 .border-top {
-  border-top: 1px solid #e5e5e5;
+  border-top: 1px solid var(--bs-border-color);
 }
 .border-bottom {
-  border-bottom: 1px solid #e5e5e5;
+  border-bottom: 1px solid var(--bs-border-color);
 }
 
 .box-shadow {

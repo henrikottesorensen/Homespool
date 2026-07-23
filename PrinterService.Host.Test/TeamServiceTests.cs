@@ -76,4 +76,48 @@ public sealed class TeamServiceTests : IDisposable
         // Assert
         teams.Select(t => t.Id).Should().ContainInOrder(first.Id, second.Id);
     }
+
+    // ---------- GetTeamsForUserAsync ----------
+
+    /// <summary>
+    /// Only the caller's own memberships come back, each with its <see cref="Team"/> loaded - the
+    /// shape <c>GET /api/v1/user</c>'s <c>teams[]</c> needs.
+    /// </summary>
+    [Fact]
+    public async Task GetTeamsForUserAsyncReturnsOnlyTheCallersMembershipsWithTeamLoaded()
+    {
+        // Arrange
+        await using PSDbContext context = await MigratedContextAsync();
+
+        Team owned = new() { Name = "Mine", CreatedBy = 1, CreatedAt = DateTimeOffset.UtcNow };
+        Team someoneElses = new() { Name = "Not mine", CreatedBy = 2, CreatedAt = DateTimeOffset.UtcNow };
+        context.Teams.AddRange(owned, someoneElses);
+        await context.SaveChangesAsync();
+
+        await new TeamService(context).AddMemberAsync(owned.Id, 1, canRead: true, canUse: true, canManage: true, CancellationToken.None);
+        await new TeamService(context).AddMemberAsync(someoneElses.Id, 2, canRead: true, canUse: true, canManage: true, CancellationToken.None);
+
+        // Act
+        IReadOnlyList<TeamMember> memberships = await new TeamService(context).GetTeamsForUserAsync(1, CancellationToken.None);
+
+        // Assert
+        memberships.Should().ContainSingle();
+        memberships[0].TeamId.Should().Be(owned.Id);
+        memberships[0].Team.Should().NotBeNull();
+        memberships[0].Team!.Name.Should().Be("Mine");
+    }
+
+    /// <summary>No memberships yields an empty list, not null or an error.</summary>
+    [Fact]
+    public async Task GetTeamsForUserAsyncReturnsAnEmptyListWhenTheUserHasNoMemberships()
+    {
+        // Arrange
+        await using PSDbContext context = await MigratedContextAsync();
+
+        // Act
+        IReadOnlyList<TeamMember> memberships = await new TeamService(context).GetTeamsForUserAsync(1, CancellationToken.None);
+
+        // Assert
+        memberships.Should().BeEmpty();
+    }
 }

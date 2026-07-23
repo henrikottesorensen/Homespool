@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -25,8 +28,9 @@ namespace PrinterService.Host.Controllers;
 /// controller: this is a first-party surface we control, not a firmware-dictated contract.
 /// </summary>
 /// <remarks>
-/// Only the claim endpoint (step 7a) is implemented so far; the read/list/patch operations follow
-/// as a separate step.
+/// <c>GET /api/v1/init</c> is deliberately not implemented - its spec schema
+/// (<c>createdAt/updatedAt/finishedAt/failedAt</c>) doesn't correspond to anything in our model,
+/// and what it's even for isn't clear from the spec alone (Henrik, phase-1.5 §15 step 7b).
 /// </remarks>
 [Authorize]
 [ApiController]
@@ -34,16 +38,22 @@ namespace PrinterService.Host.Controllers;
 public class PrinterAppController : ControllerBase
 {
     private readonly PrusaConnectService _prusaConnectService;
+    private readonly PrinterQueryService _printerQueryService;
+    private readonly TeamService _teamService;
     private readonly UserManager<PSUser> _userManager;
     private readonly UnitOfWork _unitOfWork;
     private readonly ILogger<PrinterAppController> _logger;
 
     public PrinterAppController(PrusaConnectService prusaConnectService,
+                                PrinterQueryService printerQueryService,
+                                TeamService teamService,
                                 UserManager<PSUser> userManager,
                                 UnitOfWork unitOfWork,
                                 ILogger<PrinterAppController> logger)
     {
         _prusaConnectService = prusaConnectService;
+        _printerQueryService = printerQueryService;
+        _teamService = teamService;
         _userManager = userManager;
         _unitOfWork = unitOfWork;
         _logger = logger;
@@ -92,6 +102,97 @@ public class PrinterAppController : ControllerBase
         catch (DbUpdateException ex)
         {
             _logger.LogError(ex, "Failed to claim printer for registration code; rolling back.");
+
+            return StatusCode(StatusCodes.Status500InternalServerError);
+        }
+    }
+
+    [HttpGet]
+    [Route("user")]
+    public async Task<ActionResult<UserReadDTO>> GetCurrentUser(CancellationToken cancellationToken)
+    {
+        PSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return Forbid();
+        }
+
+        IReadOnlyList<TeamMember> memberships = await _teamService.GetTeamsForUserAsync(user.Id, cancellationToken);
+
+        return Ok(UserReadDTO.FromEntity(user, memberships));
+    }
+
+    [HttpGet]
+    [Route("printers")]
+    public async Task<ActionResult<IReadOnlyList<PrinterReadDTO>>> ListPrinters(CancellationToken cancellationToken)
+    {
+        PSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return Forbid();
+        }
+
+        IReadOnlyList<Printer> printers = await _printerQueryService.ListPrintersForUserAsync(user.Id, cancellationToken);
+
+        return Ok(printers.Select(PrinterReadDTO.FromEntity).ToList());
+    }
+
+    [HttpGet]
+    [Route("printers/{uuid:guid}")]
+    public async Task<ActionResult<PrinterReadDTO>> GetPrinter(Guid uuid, CancellationToken cancellationToken)
+    {
+        PSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return Forbid();
+        }
+
+        Printer? printer = await _printerQueryService.GetPrinterForUserAsync(uuid, user.Id, cancellationToken);
+
+        if (printer is null)
+        {
+            return NotFound();
+        }
+
+        return Ok(PrinterReadDTO.FromEntity(printer));
+    }
+
+    [HttpPatch]
+    [Route("printers/{uuid:guid}")]
+    public async Task<ActionResult<PrinterReadDTO>> PatchPrinter(Guid uuid, [FromBody] PrinterPatchInputDTO body, CancellationToken cancellationToken)
+    {
+        PSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return Forbid();
+        }
+
+        await using IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            Printer? printer = await _printerQueryService.UpdatePrinterAsync(uuid, user.Id, body.Name, body.Location, cancellationToken);
+
+            if (printer is null)
+            {
+                return NotFound();
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+
+            return Ok(PrinterReadDTO.FromEntity(printer));
+        }
+        catch (TeamAccessDeniedException)
+        {
+            return Forbid();
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogError(ex, "Failed to update printer {PrinterUuid}; rolling back.", uuid);
 
             return StatusCode(StatusCodes.Status500InternalServerError);
         }

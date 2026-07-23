@@ -105,4 +105,19 @@ public class TeamService
                                .OrderBy(t => t.Id)
                                .ToListAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// Every team <paramref name="userId"/> belongs to, with its own <see cref="Team"/> loaded -
+    /// the shape <c>GET /api/v1/user</c>'s <c>teams[]</c> needs (phase-1.5 §15 step 7b). Read-only,
+    /// so untracked.
+    /// </summary>
+    public async Task<IReadOnlyList<TeamMember>> GetTeamsForUserAsync(long userId, CancellationToken cancellationToken)
+    {
+        return await _dbContext.TeamMembers
+                               .AsNoTracking()
+                               .Include(m => m.Team)
+                               .Where(m => m.UserId == userId)
+                               .OrderBy(m => m.TeamId)
+                               .ToListAsync(cancellationToken);
+    }
 }

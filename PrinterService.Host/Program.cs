@@ -120,6 +120,7 @@ public static class Program
             builder.Services.AddScoped<Services.TeamService>();
             builder.Services.AddScoped<Services.UnitOfWork>();
             builder.Services.AddScoped<Services.InvitationService>();
+            builder.Services.AddScoped<Services.PrinterQueryService>();
             
             WebApplication app = builder.Build();
 

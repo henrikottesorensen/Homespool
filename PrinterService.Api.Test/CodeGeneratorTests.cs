@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+
 using AwesomeAssertions;
 
 using PrinterService.Api.PrusaConnect;
@@ -90,5 +93,65 @@ public class CodeGeneratorTests
         HashSet<string> codes = [.. Enumerable.Range(0, 2_000).Select(i => _generator.GenerateCode($"sn-{i}"))];
 
         codes.Should().HaveCount(2_000);
+    }
+
+    /// <summary>
+    /// Generating a code works on this platform at all.
+    /// </summary>
+    /// <remarks>
+    /// <c>SHA3_384.Create()</c> used to be called unguarded. .NET defers hashing to the OS, and SHA-3
+    /// exists only on Windows 11 build 25324+ and Linux with OpenSSL 1.1.1+ - never on macOS, where
+    /// .NET 10 also removed the last OpenSSL fallbacks. So this threw
+    /// <see cref="PlatformNotSupportedException"/> on macOS and took registration with it, while
+    /// passing in CI and in the Debian container image.
+    /// <para>
+    /// This test only proves the algorithm resolves <i>here</i>. On a SHA-3 capable box it exercises
+    /// SHA-3 and says nothing about the fallback, which is what
+    /// <see cref="EitherHashAlgorithmProducesEnoughBase36CharactersToTruncate"/> is for.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void GeneratingACodeDoesNotThrowOnThisPlatform()
+    {
+        Action generate = () => _generator.GenerateCode("15715-4842441651816441");
+
+        generate.Should().NotThrow<PlatformNotSupportedException>(
+            "SHA-3 is absent on macOS and on Linux without OpenSSL 1.1.1+, so the algorithm has to be "
+            + "chosen against SHA3_384.IsSupported rather than assumed");
+    }
+
+    /// <summary>
+    /// A code is exactly <c>CodeLength</c> characters, not merely within the firmware's buffer.
+    /// </summary>
+    [Fact]
+    public void GeneratedCodeIsExactlyTheExpectedLength()
+    {
+        for (int i = 0; i < 50; i++)
+        {
+            _generator.GenerateCode($"15715-{i}").Length.Should().Be(24);
+        }
+    }
+
+    /// <summary>
+    /// Either permitted digest encodes to at least a full code's worth of base36 characters.
+    /// </summary>
+    /// <remarks>
+    /// The generator truncates the encoded digest to <c>CodeLength</c>, which is only safe if the
+    /// encoding is always at least that long. Both algorithms produce 48 bytes, so both encode to
+    /// about 75 base36 characters and there is plenty of headroom - but the fallback path cannot be
+    /// executed on a machine that has SHA-3, so the property is asserted directly against both
+    /// digests instead. Without this, a macOS-only truncation failure would be invisible to CI.
+    /// </remarks>
+    [Fact]
+    public void EitherHashAlgorithmProducesEnoughBase36CharactersToTruncate()
+    {
+        byte[] input = Encoding.UTF8.GetBytes("15715-4842441651816441");
+
+        SimpleBase.Base36.UpperCase.Encode(SHA384.HashData(input)).Length.Should().BeGreaterThanOrEqualTo(24);
+
+        if (SHA3_384.IsSupported)
+        {
+            SimpleBase.Base36.UpperCase.Encode(SHA3_384.HashData(input)).Length.Should().BeGreaterThanOrEqualTo(24);
+        }
     }
 }

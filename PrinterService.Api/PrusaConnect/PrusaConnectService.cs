@@ -33,12 +33,31 @@ public class PrusaConnectService
         _options = options.Value;
     }
     
+    /// <summary>
+    /// Issues a registration code for a printer, or renews it once the previous one has expired.
+    /// </summary>
+    /// <remarks>
+    /// <b>The code itself is never logged.</b> It is a bearer credential - <see cref="GetToken"/>
+    /// looks up by code and by nothing else, so whoever holds it can claim the printer until it
+    /// expires. It used to be written at Information level on every issue and renewal, alongside a
+    /// destructured <see cref="DTO.RegisterPrinterRequestDTO"/> that carried the fingerprint too,
+    /// which put a live credential into the console sink and anything downstream of it.
+    /// <para>
+    /// <see cref="PrusaConnectAuthenticationData.Id"/> is logged in its place, which correlates an
+    /// issue with the later poll and claim without reproducing the secret. The logging happens after
+    /// <see cref="PSDbContext.SaveChangesAsync(System.Threading.CancellationToken)"/> because the
+    /// key is not assigned until the insert completes.
+    /// </para>
+    /// </remarks>
     public async Task<DTO.CodeResponseDTO> GetPrinterCode(DTO.RegisterPrinterRequestDTO printer)
     {
         DateTimeOffset now = TimeProvider.System.GetUtcNow();
         DateTimeOffset codeExpiry = now + _options.RegistrationCodeLifetime;
         PrusaConnectAuthenticationData? auth = await _dbContext.PrusaConnectAuthentication.SingleOrDefaultAsync(a => a.FingerPrint == printer.FingerPrint);
-        
+
+        bool registered = false;
+        bool renewed = false;
+
         if (auth is null)
         {
             EntityEntry<PrusaConnectAuthenticationData> newAuth = await _dbContext.PrusaConnectAuthentication.AddAsync(
@@ -50,20 +69,32 @@ public class PrusaConnectService
                     TemporaryCodeExpiry = codeExpiry,
                     CreatedAt = now,
                 });
-            
+
             auth = newAuth.Entity;
-            
-            _logger.LogInformation("PrusaConnect printer {@Printer} asked for a Connect Code {TemporaryCode}", printer, auth.TemporaryCode);
+            registered = true;
         }
         else if (auth.TemporaryCodeExpiry < now)
         {
             auth.TemporaryCode = _codeGenerator.GenerateCode(printer.SerialNumber);
             auth.TemporaryCodeExpiry = codeExpiry;
-            
-            _logger.LogInformation("PrusaConnect printer {@Printer} asking for a Connect Code renewal {TemporaryCode}", printer, auth.TemporaryCode);
+
+            renewed = true;
         }
-        
+
         await _dbContext.SaveChangesAsync();
+
+        if (registered)
+        {
+            _logger.LogInformation("PrusaConnect printer {SerialNumber} ({PrinterType}, firmware {Firmware}) "
+                                   + "registered as {RegistrationId}; Connect code issued, expiring {CodeExpiry:o}.",
+                                   printer.SerialNumber, printer.PrinterType, printer.Firmware, auth.Id, auth.TemporaryCodeExpiry);
+        }
+        else if (renewed)
+        {
+            _logger.LogInformation("PrusaConnect registration {RegistrationId} for printer {SerialNumber} "
+                                   + "renewed its Connect code, expiring {CodeExpiry:o}.",
+                                   auth.Id, printer.SerialNumber, auth.TemporaryCodeExpiry);
+        }
 
         return new DTO.CodeResponseDTO
         {
@@ -110,6 +141,17 @@ public class PrusaConnectService
     /// Against EF's default <see cref="DateTimeOffset"/> mapping the provider refuses to translate
     /// the comparison at all and throws at runtime.
     /// </para>
+    /// <para>
+    /// <b>The code is consumed once it is redeemed</b>, so it is single-use for the step that
+    /// actually hands out a credential while staying reusable for the polling that precedes it.
+    /// </para>
+    /// <para>
+    /// <b>This does not on its own stop a claimed printer being taken over.</b> A caller who knows
+    /// the fingerprint can still POST to <see cref="GetPrinterCode"/>, be handed a fresh code for
+    /// the existing registration, and redeem it here for a new token, because neither method checks
+    /// whether <see cref="PrusaConnectAuthenticationData.HashedToken"/> is already set. Consuming
+    /// the code closes the window on a code that has leaked; it does not close the handshake.
+    /// </para>
     /// </remarks>
     public async Task<string?> GetToken(string temporaryCode)
     {
@@ -129,11 +171,27 @@ public class PrusaConnectService
 
         if (auth.PrinterId is null)
         {
+            // Still unclaimed. The code is deliberately *not* consumed here: the printer polls this
+            // endpoint repeatedly while it waits for a user, so consuming on contact rather than on
+            // redemption would end registration on the first poll.
             return null;
         }
 
         string token = _tokenService.GenerateToken();
         auth.HashedToken = _tokenService.HashToken(token);
+        auth.TokenCreatedAt = now;
+
+        // Consume the code now that it has been redeemed: the handshake it belongs to is over, and
+        // leaving it live let anyone else holding it mint a second token for the rest of its
+        // lifetime - which also silently overwrote the hash and locked out the printer that had just
+        // registered.
+        //
+        // Expiring it reuses the filter in the query above rather than adding a second rule that
+        // could disagree with it. Blanking TemporaryCode would be worse than it looks: it is
+        // non-nullable, so it would need a sentinel, and the empty string is one a caller can
+        // actually send - the controller only rejects a missing Code header, not an empty one, so an
+        // empty code would match every consumed row.
+        auth.TemporaryCodeExpiry = now;
 
         await _dbContext.SaveChangesAsync();
 

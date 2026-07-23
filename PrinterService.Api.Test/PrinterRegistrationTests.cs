@@ -1,8 +1,14 @@
 using AwesomeAssertions;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+
+using Serilog;
+using Serilog.Core;
+using Serilog.Events;
+using Serilog.Extensions.Logging;
 
 using PrinterService.Api.Exceptions;
 using PrinterService.Api.PrusaConnect;
@@ -34,11 +40,13 @@ public sealed class PrinterRegistrationTests : IDisposable
         return new PSDbContext(options);
     }
 
-    private static PrusaConnectService NewService(PSDbContext context, int lifetimeMinutes = 60) =>
+    private static PrusaConnectService NewService(PSDbContext context,
+                                                  int lifetimeMinutes = 60,
+                                                  ILogger<PrusaConnectService>? logger = null) =>
         new(context,
             new CodeGenerator(),
             new TokenService(),
-            NullLogger<PrusaConnectService>.Instance,
+            logger ?? NullLogger<PrusaConnectService>.Instance,
             Options.Create(new PrusaConnectOptions { RegistrationCodeLifetimeMinutes = lifetimeMinutes }));
 
     private static RegisterPrinterRequestDTO Request(string serial = "15715-4842441651816441",
@@ -294,6 +302,232 @@ public sealed class PrinterRegistrationTests : IDisposable
 
         thrown.Should().BeOfType<PrinterNotFoundException>();
         thrown.Message.Should().NotContain("SECRET-CODE-VALUE");
+    }
+
+    /// <summary>
+    /// A code stops working the moment it has been redeemed for a token.
+    /// </summary>
+    /// <remarks>
+    /// It used to stay live for the rest of its lifetime - up to <c>RegistrationCodeLifetimeMinutes</c>,
+    /// an hour by default - so anyone else holding it could redeem it again.
+    /// </remarks>
+    [Fact]
+    public async Task ARedeemedCodeCannotBeRedeemedAgain()
+    {
+        await using PSDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        string code = (await service.GetPrinterCode(Request())).TemporaryCode;
+        await ClaimAsync(context);
+
+        (await service.GetToken(code)).Should().NotBeNullOrWhiteSpace();
+
+        Func<Task> replay = () => service.GetToken(code);
+
+        await replay.Should().ThrowAsync<PrinterNotFoundException>("a consumed code is indistinguishable from an unknown one");
+    }
+
+    /// <summary>
+    /// A replay does not overwrite the hash, so the printer that registered keeps working.
+    /// </summary>
+    /// <remarks>
+    /// The half of this that bites hardest. Re-redeeming minted a fresh token and overwrote
+    /// <c>HashedToken</c> with its hash, so the replay was not only a credential for the attacker but
+    /// a denial of service against the real printer - whose token silently stopped authenticating.
+    /// </remarks>
+    [Fact]
+    public async Task AReplayedCodeDoesNotInvalidateTheTokenAlreadyIssued()
+    {
+        await using PSDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        string code = (await service.GetPrinterCode(Request())).TemporaryCode;
+        await ClaimAsync(context);
+
+        string token = (await service.GetToken(code))!;
+
+        await Record.ExceptionAsync(() => service.GetToken(code));
+
+        PrusaConnectAuthenticationData stored = await context.PrusaConnectAuthentication.SingleAsync();
+
+        new TokenService().VerifyToken(token, stored.HashedToken!).Should()
+            .BeTrue("the printer's token must survive someone else replaying the code");
+    }
+
+    /// <summary>
+    /// Polling while unclaimed does not consume the code.
+    /// </summary>
+    /// <remarks>
+    /// The constraint that rules out the obvious implementation. Buddy polls this endpoint on a loop
+    /// for as long as it takes a user to claim the printer, so consuming on first contact - rather
+    /// than on redemption - would kill registration on poll two and leave the printer retrying a code
+    /// the server had already thrown away.
+    /// </remarks>
+    [Fact]
+    public async Task PollingRepeatedlyBeforeBeingClaimedDoesNotConsumeTheCode()
+    {
+        await using PSDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        string code = (await service.GetPrinterCode(Request())).TemporaryCode;
+
+        for (int poll = 0; poll < 5; poll++)
+        {
+            (await service.GetToken(code)).Should().BeNull("nobody has claimed the printer yet");
+        }
+
+        await ClaimAsync(context);
+
+        (await service.GetToken(code)).Should().NotBeNullOrWhiteSpace("the code survived the polling loop");
+    }
+
+    /// <summary>
+    /// Issuing a token stamps when it was issued.
+    /// </summary>
+    /// <remarks>
+    /// <c>TokenCreatedAt</c> was mapped and migrated but never written, so it read null for every row.
+    /// Redemption is the only moment it can mean anything.
+    /// </remarks>
+    [Fact]
+    public async Task IssuingATokenRecordsWhenItWasIssued()
+    {
+        await using PSDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        string code = (await service.GetPrinterCode(Request())).TemporaryCode;
+        await ClaimAsync(context);
+
+        DateTimeOffset before = DateTimeOffset.UtcNow;
+        await service.GetToken(code);
+
+        PrusaConnectAuthenticationData stored = await context.PrusaConnectAuthentication.SingleAsync();
+
+        stored.TokenCreatedAt.Should().NotBeNull();
+        stored.TokenCreatedAt.Should().BeOnOrAfter(before.AddSeconds(-1)).And.BeOnOrBefore(DateTimeOffset.UtcNow.AddSeconds(1));
+    }
+
+    // ---------- what reaches the log ----------
+
+    /// <summary>
+    /// Issuing a code does not write the code, or the fingerprint, to the log.
+    /// </summary>
+    /// <remarks>
+    /// The same reasoning as
+    /// <see cref="TheExceptionForAnUnknownCodeDoesNotLeakTheCode"/>, which the logging used to
+    /// contradict: both issue and renewal wrote the code at Information level, along with a
+    /// destructured request DTO carrying the fingerprint. Serilog's minimum level is Debug and the
+    /// sink is the console, so in the container that is stdout and every code went wherever those
+    /// logs are shipped. <see cref="PrusaConnectService.GetToken"/> looks a printer up by code and by
+    /// nothing else, so a reader of the logs could claim any printer registered in the last hour.
+    /// </remarks>
+    [Fact]
+    public async Task IssuingACodeDoesNotWriteTheCodeOrFingerprintToTheLog()
+    {
+        await using PSDbContext context = await MigratedContextAsync();
+        using CapturingSink sink = new();
+
+        string code = (await NewService(context, logger: sink.AsLogger<PrusaConnectService>()).GetPrinterCode(Request())).TemporaryCode;
+
+        sink.Entries.Should().NotBeEmpty("issuing a code is still worth an operational record");
+        sink.Entries.Should().NotContainMatch($"*{code}*");
+        sink.Entries.Should().NotContainMatch("*SUDBAJQ78CTJBNA8IHEMODUG43QD9H5GSBSFE0MMKBST8B9E0L*");
+    }
+
+    /// <summary>
+    /// Renewing an expired code does not write the replacement to the log either.
+    /// </summary>
+    /// <remarks>
+    /// The renewal branch is separate from the issue branch and leaked independently, so it needs its
+    /// own guard.
+    /// </remarks>
+    [Fact]
+    public async Task RenewingACodeDoesNotWriteTheReplacementToTheLog()
+    {
+        await using PSDbContext context = await MigratedContextAsync();
+        using CapturingSink sink = new();
+        PrusaConnectService service = NewService(context, logger: sink.AsLogger<PrusaConnectService>());
+
+        await service.GetPrinterCode(Request());
+
+        PrusaConnectAuthenticationData stored = await context.PrusaConnectAuthentication.SingleAsync();
+        stored.TemporaryCodeExpiry = DateTimeOffset.UtcNow.AddHours(-1);
+        await context.SaveChangesAsync();
+
+        string renewed = (await service.GetPrinterCode(Request())).TemporaryCode;
+
+        sink.Entries.Should().NotContainMatch($"*{renewed}*");
+    }
+
+    /// <summary>
+    /// The registration's row id is logged, so an issue can still be correlated with the later poll.
+    /// </summary>
+    /// <remarks>
+    /// The point of removing the code was not to stop logging. Without a stable identifier the
+    /// records would be untraceable, and the temptation would be to put the code back.
+    /// </remarks>
+    [Fact]
+    public async Task IssuingACodeLogsTheRegistrationIdForCorrelation()
+    {
+        await using PSDbContext context = await MigratedContextAsync();
+        using CapturingSink sink = new();
+
+        await NewService(context, logger: sink.AsLogger<PrusaConnectService>()).GetPrinterCode(Request());
+
+        PrusaConnectAuthenticationData stored = await context.PrusaConnectAuthentication.SingleAsync();
+
+        stored.Id.Should().BeGreaterThan(0, "the key is assigned by the insert, so the log has to come after the save");
+        sink.Entries.Should().ContainMatch($"RegistrationId={stored.Id}");
+    }
+
+    /// <summary>
+    /// Captures what a sink would receive, through a real Serilog pipeline.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Deliberately not a bare <see cref="ILogger{T}"/> stub. The first version of this was, and it
+    /// made the fingerprint half of these assertions vacuous: <c>Microsoft.Extensions.Logging</c>'s
+    /// default formatter calls <see cref="object.ToString"/> on the argument, so <c>{@Printer}</c>
+    /// captured the literal string <c>PrinterService.Api.PrusaConnect.DTO.RegisterPrinterRequestDTO</c>
+    /// and the assertion passed against the very code it was written to catch. Destructuring is a
+    /// Serilog feature and only happens in Serilog's pipeline - which is what runs in production.
+    /// </para>
+    /// <para>
+    /// Both the rendered message and the properties are flattened, because
+    /// <c>RenderedCompactJsonFormatter</c> writes both and a value can reach the sink as a property
+    /// without appearing in the text.
+    /// </para>
+    /// </remarks>
+    private sealed class CapturingSink : ILogEventSink, IDisposable
+    {
+        private readonly List<LogEvent> _events = [];
+        private SerilogLoggerFactory? _factory;
+
+        public IEnumerable<string> Entries => _events.SelectMany(Flatten);
+
+        public void Emit(LogEvent logEvent) => _events.Add(logEvent);
+
+        public ILogger<T> AsLogger<T>()
+        {
+            // Owned rather than left to the finalizer so the pipeline is torn down with the test.
+            _factory ??= new SerilogLoggerFactory(
+                new LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(this).CreateLogger());
+
+            return _factory.CreateLogger<T>();
+        }
+
+        public void Dispose() => _factory?.Dispose();
+
+        private static IEnumerable<string> Flatten(LogEvent logEvent)
+        {
+            yield return logEvent.RenderMessage();
+
+            foreach (KeyValuePair<string, LogEventPropertyValue> property in logEvent.Properties)
+            {
+                // ToString on a StructureValue renders its nested members, so a destructured object
+                // is covered without walking the tree by hand.
+                yield return $"{property.Key}={property.Value}";
+            }
+        }
     }
 
     private static async Task ClaimAsync(PSDbContext context)

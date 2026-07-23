@@ -3,7 +3,7 @@ using AwesomeAssertions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace PrinterService.Api.Test;
+namespace PrinterService.Host.Test;
 
 /// <summary>
 /// Characterises how Json.NET copes with the two framings a Prusa printer actually puts on the

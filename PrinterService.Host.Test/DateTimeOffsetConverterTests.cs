@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PrinterService.Data;
 using PrinterService.Model.Entities;
 
-namespace PrinterService.Api.Test;
+namespace PrinterService.Host.Test;
 
 /// <summary>
 /// Holds down the one property <see cref="DateTimeOffsetToUnixMillisecondsConverter"/> depends on:

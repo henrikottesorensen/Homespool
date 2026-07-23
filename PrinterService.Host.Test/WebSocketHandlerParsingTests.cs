@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using PrinterService.Host.PrusaConnect;
 using PrinterService.Data;
 
-namespace PrinterService.Api.Test;
+namespace PrinterService.Host.Test;
 
 /// <summary>
 /// Covers <c>WebSocketHandler</c>'s parsing loop against the framings a Prusa printer actually

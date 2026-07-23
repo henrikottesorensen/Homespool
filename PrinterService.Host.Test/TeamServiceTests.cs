@@ -6,7 +6,7 @@ using PrinterService.Data;
 using PrinterService.Host.Services;
 using PrinterService.Model.Entities;
 
-namespace PrinterService.Api.Test;
+namespace PrinterService.Host.Test;
 
 /// <summary>
 /// <see cref="TeamService.GetAllTeamsAsync"/> - the admin lookup used to populate the team picker when

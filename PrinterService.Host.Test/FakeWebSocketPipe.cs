@@ -3,7 +3,7 @@ using System.Net.WebSockets;
 
 using Devlooped.Net;
 
-namespace PrinterService.Api.Test;
+namespace PrinterService.Host.Test;
 
 /// <summary>
 /// An <see cref="IWebSocketPipe"/> backed by an in-memory <see cref="Pipe"/>, so a test can

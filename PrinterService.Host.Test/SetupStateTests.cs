@@ -2,7 +2,7 @@ using AwesomeAssertions;
 
 using PrinterService.Host.Services;
 
-namespace PrinterService.Api.Test;
+namespace PrinterService.Host.Test;
 
 /// <summary>
 /// Covers the first-run bootstrap secret: the check that gates <c>/setup</c> and the one-way close

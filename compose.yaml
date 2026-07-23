@@ -1,9 +1,9 @@
 ﻿services:
-  printerservice.api:
-    image: printerservice.api
+  printerservice:
+    image: printerservice
     build:
       context: .
-      dockerfile: PrinterService.Api/Dockerfile
+      dockerfile: PrinterService.Host/Dockerfile
 
     environment:
       # Point SQLite at the mounted volume. appsettings.json keeps a relative path so that

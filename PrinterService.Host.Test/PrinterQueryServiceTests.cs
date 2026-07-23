@@ -8,7 +8,7 @@ using PrinterService.Host.Services;
 using PrinterService.Model;
 using PrinterService.Model.Entities;
 
-namespace PrinterService.Api.Test;
+namespace PrinterService.Host.Test;
 
 /// <summary>
 /// <see cref="PrinterQueryService"/> - team-permission-checked reads and edits of a printer for the

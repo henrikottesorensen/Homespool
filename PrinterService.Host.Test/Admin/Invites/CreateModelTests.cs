@@ -17,7 +17,7 @@ using PrinterService.Host.Pages.Admin.Invites;
 using PrinterService.Host.Services;
 using PrinterService.Model.Entities;
 
-namespace PrinterService.Api.Test;
+namespace PrinterService.Host.Test;
 
 /// <summary>
 /// The admin "create invitation" page: mints a token, mails the accept link, and shows it back

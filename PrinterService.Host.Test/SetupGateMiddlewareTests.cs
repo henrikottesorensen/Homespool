@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Http;
 
 using PrinterService.Host.Services;
 
-namespace PrinterService.Api.Test;
+namespace PrinterService.Host.Test;
 
 /// <summary>
 /// The first-run gate: while no administrator exists it must funnel navigable pages to <c>/setup</c>,

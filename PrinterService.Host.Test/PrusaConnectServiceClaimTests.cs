@@ -12,7 +12,7 @@ using PrinterService.Host.Services;
 using PrinterService.Model;
 using PrinterService.Model.Entities;
 
-namespace PrinterService.Api.Test;
+namespace PrinterService.Host.Test;
 
 /// <summary>
 /// <see cref="PrusaConnectService.ClaimPrinterAsync"/> - the app-facing half of enrollment, where a

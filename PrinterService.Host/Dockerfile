@@ -11,25 +11,25 @@ EXPOSE 8081
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-COPY ["PrinterService.Api/PrinterService.Api.csproj", "PrinterService.Api/"]
-RUN dotnet restore "PrinterService.Api/PrinterService.Api.csproj"
+COPY ["PrinterService.Host/PrinterService.Host.csproj", "PrinterService.Host/"]
+RUN dotnet restore "PrinterService.Host/PrinterService.Host.csproj"
 # Restore the LibMan CLI pinned in .config/dotnet-tools.json (copied first so this layer caches on
 # the manifest, not the whole tree).
 COPY [".config/dotnet-tools.json", ".config/"]
 RUN dotnet tool restore
 COPY . .
-WORKDIR "/src/PrinterService.Api"
+WORKDIR "/src/PrinterService.Host"
 # Fetch the client-side libraries (bootstrap, jquery, ...) into wwwroot/lib per libman.json. They are
 # gitignored rather than committed, so they must be materialised here before publish captures the
 # static web assets.
 RUN dotnet libman restore
-RUN dotnet build "./PrinterService.Api.csproj" -c $BUILD_CONFIGURATION -o /app/build
+RUN dotnet build "./PrinterService.Host.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./PrinterService.Api.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "./PrinterService.Host.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "PrinterService.Api.dll"]
+ENTRYPOINT ["dotnet", "PrinterService.Host.dll"]

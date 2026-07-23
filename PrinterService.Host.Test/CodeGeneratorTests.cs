@@ -5,7 +5,7 @@ using AwesomeAssertions;
 
 using PrinterService.Host.PrusaConnect;
 
-namespace PrinterService.Api.Test;
+namespace PrinterService.Host.Test;
 
 public class CodeGeneratorTests
 {

@@ -7,7 +7,7 @@ using AwesomeAssertions;
 
 using Microsoft.AspNetCore.WebUtilities;
 
-namespace PrinterService.Api.Test;
+namespace PrinterService.Host.Test;
 
 /// <summary>
 /// Characterises how <c>System.Text.Json</c> copes with the two framings a Prusa printer actually

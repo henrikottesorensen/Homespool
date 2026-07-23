@@ -13,7 +13,7 @@ using PrinterService.Data;
 using PrinterService.Host.Services;
 using PrinterService.Model.Entities;
 
-namespace PrinterService.Api.Test;
+namespace PrinterService.Host.Test;
 
 /// <summary>
 /// An <see cref="IEmailSender"/> that records what it was asked to send instead of sending it, so a

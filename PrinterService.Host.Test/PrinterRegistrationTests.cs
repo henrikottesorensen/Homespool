@@ -17,7 +17,7 @@ using PrinterService.Host.Services;
 using PrinterService.Data;
 using PrinterService.Model.Entities;
 
-namespace PrinterService.Api.Test;
+namespace PrinterService.Host.Test;
 
 /// <summary>
 /// The registration code exchange: POST /p/register issues a code, the printer polls GET /p/register

@@ -8,7 +8,7 @@ using PrinterService.Host.PrusaConnect;
 using PrinterService.Host.Services;
 using PrinterService.Model.Entities;
 
-namespace PrinterService.Api.Test;
+namespace PrinterService.Host.Test;
 
 /// <summary>
 /// Issuing, validating, spending and revoking invitations - the single home for the invite token

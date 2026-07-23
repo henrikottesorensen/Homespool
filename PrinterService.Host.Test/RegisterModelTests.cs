@@ -18,7 +18,7 @@ using PrinterService.Host.PrusaConnect;
 using PrinterService.Host.Services;
 using PrinterService.Model.Entities;
 
-namespace PrinterService.Api.Test;
+namespace PrinterService.Host.Test;
 
 /// <summary>
 /// The invite-accept flow: creates the account bound to the invite's email, joins a team when the

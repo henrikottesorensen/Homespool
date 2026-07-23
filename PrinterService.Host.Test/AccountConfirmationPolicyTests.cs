@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 using PrinterService.Host.Services;
 using PrinterService.Model.Entities;
 
-namespace PrinterService.Api.Test;
+namespace PrinterService.Host.Test;
 
 /// <summary>
 /// The rule deciding whether a newly created account is confirmed at creation. It is security-relevant

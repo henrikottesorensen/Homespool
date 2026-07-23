@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Http;
 
 using PrinterService.Host.PrusaConnect;
 
-namespace PrinterService.Api.Test;
+namespace PrinterService.Host.Test;
 
 /// <summary>
 /// Covers the header contract of the two registration endpoints, which is dictated entirely by the

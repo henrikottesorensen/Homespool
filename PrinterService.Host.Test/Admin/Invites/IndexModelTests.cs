@@ -10,7 +10,7 @@ using PrinterService.Host.Pages.Admin.Invites;
 using PrinterService.Host.Services;
 using PrinterService.Model.Entities;
 
-namespace PrinterService.Api.Test;
+namespace PrinterService.Host.Test;
 
 /// <summary>
 /// The admin invitation list: status/target display and the revoke action

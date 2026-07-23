@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
@@ -9,11 +8,9 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 
 using PrinterService.Host.Services;
 using PrinterService.Model.Entities;
@@ -103,23 +100,6 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
         ["Input.Password"] = password,
     });
 
-    /// <summary>
-    /// Whether <paramref name="response"/> actually signed someone in - a <c>Set-Cookie</c> header is
-    /// present on every response regardless of outcome (the antiforgery cookie refreshes on each
-    /// request), so this checks for the specific Identity application cookie by name rather than
-    /// "any cookie at all".
-    /// </summary>
-    private bool SetTheIdentityApplicationCookie(HttpResponseMessage response)
-    {
-        using IServiceScope scope = _factory.Services.CreateScope();
-        CookieAuthenticationOptions cookieOptions = scope.ServiceProvider
-            .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
-            .Get(IdentityConstants.ApplicationScheme);
-
-        return response.Headers.TryGetValues("Set-Cookie", out IEnumerable<string>? cookies)
-               && cookies.Any(c => c.StartsWith($"{cookieOptions.Cookie.Name}=", StringComparison.Ordinal));
-    }
-
     /// <summary>The full happy path: correct credentials sign the user in and redirect to the app root.</summary>
     [Fact]
     public async Task PostingCorrectCredentialsSignsTheUserInAndRedirects()
@@ -141,7 +121,7 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
         // Assert
         postResponse.StatusCode.Should().Be(HttpStatusCode.Redirect, "a successful login redirects to the return URL");
         postResponse.Headers.Location!.OriginalString.Should().Be("/");
-        SetTheIdentityApplicationCookie(postResponse).Should().BeTrue("signing in issues the Identity application cookie");
+        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, postResponse).Should().BeTrue("signing in issues the Identity application cookie");
     }
 
     /// <summary>A wrong password is rejected without signing anyone in.</summary>
@@ -163,7 +143,7 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
 
         // Assert
         postResponse.StatusCode.Should().Be(HttpStatusCode.OK, "a rejected login re-renders the page rather than redirecting");
-        SetTheIdentityApplicationCookie(postResponse).Should().BeFalse("a rejected login must not sign anyone in");
+        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, postResponse).Should().BeFalse("a rejected login must not sign anyone in");
 
         string html = await postResponse.Content.ReadAsStringAsync();
         html.Should().Contain("Invalid login attempt");
@@ -193,7 +173,7 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
 
         // Assert
         postResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        SetTheIdentityApplicationCookie(postResponse).Should().BeFalse();
+        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, postResponse).Should().BeFalse();
 
         string html = await postResponse.Content.ReadAsStringAsync();
         html.Should().Contain("Invalid login attempt");
@@ -226,6 +206,6 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
 
         // Assert
         postResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        SetTheIdentityApplicationCookie(postResponse).Should().BeFalse();
+        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, postResponse).Should().BeFalse();
     }
 }

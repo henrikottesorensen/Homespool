@@ -1,7 +1,6 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-using MailKit.Net.Smtp;
 using MailKit.Security;
 
 using Microsoft.Extensions.Logging;
@@ -22,11 +21,13 @@ namespace PrinterService.Host.Services;
 public class SmtpEmailSender : IEmailSender
 {
     private readonly SmtpOptions _options;
+    private readonly ISmtpTransportFactory _transportFactory;
     private readonly ILogger<SmtpEmailSender> _logger;
 
-    public SmtpEmailSender(IOptions<SmtpOptions> options, ILogger<SmtpEmailSender> logger)
+    public SmtpEmailSender(IOptions<SmtpOptions> options, ISmtpTransportFactory transportFactory, ILogger<SmtpEmailSender> logger)
     {
         _options = options.Value;
+        _transportFactory = transportFactory;
         _logger = logger;
     }
 
@@ -39,15 +40,17 @@ public class SmtpEmailSender : IEmailSender
         message.Body = new TextPart(TextFormat.Html) { Text = htmlMessage };
 
         using CancellationTokenSource timeout = new(_options.Timeout);
-        using SmtpClient client = new();
+        using ISmtpTransport client = _transportFactory.Create();
 
         try
         {
             // SecureSocketOptions.StartTls *requires* the upgrade and fails if the server does not offer it, which is
             // what we want on 587: silently falling back to plaintext would send credentials in the clear.
-            SecureSocketOptions socketOptions = _options.UseImplicitTls
-                ? SecureSocketOptions.SslOnConnect
-                : SecureSocketOptions.StartTls;
+            SecureSocketOptions socketOptions = _options.DisableTls
+                ? SecureSocketOptions.None
+                : _options.UseImplicitTls
+                    ? SecureSocketOptions.SslOnConnect
+                    : SecureSocketOptions.StartTls;
 
             await client.ConnectAsync(_options.Host, _options.Port, socketOptions, timeout.Token);
 

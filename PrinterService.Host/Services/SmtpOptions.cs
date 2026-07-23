@@ -30,6 +30,20 @@ public class SmtpOptions
     /// </remarks>
     public bool UseImplicitTls { get; set; }
 
+    /// <summary>
+    /// Disables encryption entirely, connecting in the clear. <b>Never set this for anything reached
+    /// over an untrusted network</b> - it exists for trusted local/dev SMTP relays that don't offer
+    /// TLS at all (e.g. Mailpit's default configuration in a Docker container on the same host),
+    /// where <see cref="UseImplicitTls"/>'s two encrypted modes have nothing to negotiate with.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately a separate, explicit opt-in rather than a silent fallback when a TLS mode fails -
+    /// that would reintroduce exactly the "credentials sent in the clear" risk documented on
+    /// <see cref="SmtpEmailSender"/>'s <c>StartTls</c> choice. Default <c>false</c> keeps every
+    /// existing deployment's behaviour unchanged.
+    /// </remarks>
+    public bool DisableTls { get; set; }
+
     /// <summary>Username for SMTP AUTH. Empty means connect without authenticating.</summary>
     public string UserName { get; set; } = string.Empty;
 

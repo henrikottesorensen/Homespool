@@ -2,7 +2,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-using MailKit.Net.Smtp;
 using MailKit.Security;
 
 using Microsoft.Extensions.Hosting;
@@ -29,11 +28,13 @@ namespace PrinterService.Host.Services;
 public class SmtpConnectivityProbe : BackgroundService
 {
     private readonly SmtpOptions _options;
+    private readonly ISmtpTransportFactory _transportFactory;
     private readonly ILogger<SmtpConnectivityProbe> _logger;
 
-    public SmtpConnectivityProbe(IOptions<SmtpOptions> options, ILogger<SmtpConnectivityProbe> logger)
+    public SmtpConnectivityProbe(IOptions<SmtpOptions> options, ISmtpTransportFactory transportFactory, ILogger<SmtpConnectivityProbe> logger)
     {
         _options = options.Value;
+        _transportFactory = transportFactory;
         _logger = logger;
     }
 
@@ -57,11 +58,13 @@ public class SmtpConnectivityProbe : BackgroundService
 
         try
         {
-            using SmtpClient client = new();
+            using ISmtpTransport client = _transportFactory.Create();
 
-            SecureSocketOptions socketOptions = _options.UseImplicitTls
-                ? SecureSocketOptions.SslOnConnect
-                : SecureSocketOptions.StartTls;
+            SecureSocketOptions socketOptions = _options.DisableTls
+                ? SecureSocketOptions.None
+                : _options.UseImplicitTls
+                    ? SecureSocketOptions.SslOnConnect
+                    : SecureSocketOptions.StartTls;
 
             await client.ConnectAsync(_options.Host, _options.Port, socketOptions, timeout.Token);
 

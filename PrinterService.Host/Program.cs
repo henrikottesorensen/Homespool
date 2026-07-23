@@ -86,6 +86,9 @@ public static class Program
             Services.SmtpOptions smtpOptions = new();
             builder.Configuration.GetSection(Services.SmtpOptions.SectionName).Bind(smtpOptions);
 
+            // Stateless, so a singleton is fine; it exists purely so tests can substitute a fake transport.
+            builder.Services.AddSingleton<Services.ISmtpTransportFactory, Services.MailKitSmtpTransportFactory>();
+
             // Which sender is registered is decided by configuration alone, never by probing the network, so that a
             // mail server being down cannot quietly change how accounts are created. See SmtpOptions.IsConfigured.
             if (smtpOptions.IsConfigured)

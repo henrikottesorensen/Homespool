@@ -13,16 +13,11 @@ using AwesomeAssertions;
 
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
-using PrinterService.Data;
-using PrinterService.Host.Controllers;
 using PrinterService.Host.PrusaConnect;
 using PrinterService.Host.Services;
 using PrinterService.Model.Entities;
@@ -42,6 +37,12 @@ namespace PrinterService.Host.Test;
 /// project follows, for the same reason: <c>PSDbContext</c>'s <c>DateTimeOffset</c> comparisons only
 /// translate against the real provider.
 /// </remarks>
+// Program.Main reassigns Serilog's process-wide static Log.Logger at startup, so two
+// WebApplicationFactory-hosted test classes starting concurrently race on it - one host's logger
+// configuration can silently clobber another's mid-startup. [Collection] groups every such class
+// under one name so xUnit runs them sequentially against each other rather than in parallel; other
+// collections are unaffected.
+[Collection("WebApplicationFactory")]
 public sealed class EndToEndEnrollmentTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-e2e-{Guid.NewGuid():N}.db");
@@ -292,38 +293,4 @@ public sealed class EndToEndEnrollmentTests : IAsyncLifetime, IDisposable
         return await client.SendAsync(request);
     }
 
-    private sealed class PrinterServiceFactory : WebApplicationFactory<PrinterAppController>
-    {
-        private readonly string _connectionString;
-
-        public PrinterServiceFactory(string connectionString)
-        {
-            _connectionString = connectionString;
-        }
-
-        protected override void ConfigureWebHost(IWebHostBuilder builder)
-        {
-            // ConfigureAppConfiguration's in-memory override was tried first and silently lost to
-            // appsettings.json's ConnectionStrings:PrinterServiceDb - WebApplicationFactory's minimal-
-            // hosting interception doesn't guarantee this runs after Program's own configuration
-            // sources. Every run was therefore hitting the one real PrinterService.Sqlite in the test
-            // output directory instead of an isolated file, so a "before claim" assertion could see a
-            // printer a *previous* run had already claimed (the code stays valid for
-            // RegistrationCodeLifetimeMinutes, so GetPrinterCode kept returning that old row's code).
-            // Replacing the DbContextOptions<PSDbContext> registration directly sidesteps configuration
-            // precedence entirely - the same pattern Microsoft's own integration-testing docs use.
-            builder.ConfigureServices(services =>
-            {
-                ServiceDescriptor? descriptor = services.SingleOrDefault(
-                    d => d.ServiceType == typeof(DbContextOptions<PSDbContext>));
-
-                if (descriptor is not null)
-                {
-                    services.Remove(descriptor);
-                }
-
-                services.AddDbContext<PSDbContext>(options => options.UseSqlite(_connectionString));
-            });
-        }
-    }
 }

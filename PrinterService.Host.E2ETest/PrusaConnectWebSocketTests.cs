@@ -38,11 +38,12 @@ namespace PrinterService.Host.E2ETest;
 public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-e2e-ws-{Guid.NewGuid():N}.db");
+    private readonly CapturingMessageDispatcher _dispatcher = new();
     private PrinterServiceFactory _factory = null!;
 
     public Task InitializeAsync()
     {
-        _factory = new PrinterServiceFactory($"Data Source={_databasePath}");
+        _factory = new PrinterServiceFactory($"Data Source={_databasePath}", _dispatcher);
 
         // Force the host to actually start (migrations + AdminBootstrap run at that point) before any
         // test touches it, rather than lazily on the first HttpClient call.
@@ -142,35 +143,27 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
             request.Headers[Headers.UserAgentVersion] = "6.4.0";
         };
 
-        TextWriter originalOut = Console.Out;
-        using StringWriter captured = new();
+        // Act
+        using WebSocket socket = await wsClient.ConnectAsync(new Uri("ws://localhost/p/ws"), CancellationToken.None);
 
-        try
-        {
-            Console.SetOut(captured);
+        socket.State.Should().Be(WebSocketState.Open);
 
-            // Act
-            using WebSocket socket = await wsClient.ConnectAsync(new Uri("ws://localhost/p/ws"), CancellationToken.None);
+        byte[] message = Encoding.UTF8.GetBytes("""{"state":"IDLE"}""");
+        await socket.SendAsync(message, WebSocketMessageType.Text, endOfMessage: true, CancellationToken.None);
 
-            socket.State.Should().Be(WebSocketState.Open);
+        // The server-side read loop runs on its own task; give it a moment to observe the message
+        // before tearing the connection down.
+        await Task.Delay(TimeSpan.FromMilliseconds(200));
 
-            byte[] message = Encoding.UTF8.GetBytes("""{"state":"IDLE"}""");
-            await socket.SendAsync(message, WebSocketMessageType.Text, endOfMessage: true, CancellationToken.None);
-
-            // The server-side read loop runs on its own task; give it a moment to observe the message
-            // before tearing the connection down.
-            await Task.Delay(TimeSpan.FromMilliseconds(200));
-
-            await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "test complete", CancellationToken.None);
-        }
-        finally
-        {
-            Console.SetOut(originalOut);
-        }
+        await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "test complete", CancellationToken.None);
 
         // Assert
-        captured.ToString().Should().Contain($"[{printerId}]",
-            "the id resolved from the Fingerprint header at upgrade must be the one threaded to the handler");
+        _dispatcher.Calls.Should().ContainSingle()
+            .Which.PrinterId.Should().Be(printerId,
+                "the id resolved from the Fingerprint header at upgrade must be the one threaded to the handler");
+
+        _dispatcher.Calls[0].Root.GetProperty("state").GetString().Should().Be("IDLE",
+                "the dispatcher must receive the message the printer actually sent, not just any message");
     }
 
     /// <summary>

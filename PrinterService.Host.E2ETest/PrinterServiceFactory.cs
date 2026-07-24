@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using PrinterService.Data;
 using PrinterService.Host.Controllers;
+using PrinterService.Host.PrusaConnect;
 
 using Serilog.Core;
 
@@ -47,10 +48,14 @@ public sealed class PrinterServiceFactory : WebApplicationFactory<PrinterAppCont
 {
     private readonly string _connectionString;
     private readonly IReadOnlyList<ILogEventSink> _extraSinks;
+    private readonly MessageDispatcher? _messageDispatcher;
 
-    public PrinterServiceFactory(string connectionString, params IReadOnlyList<ILogEventSink> extraSinks)
+    public PrinterServiceFactory(string connectionString,
+                                 MessageDispatcher? messageDispatcher = null,
+                                 params IReadOnlyList<ILogEventSink> extraSinks)
     {
         _connectionString = connectionString;
+        _messageDispatcher = messageDispatcher;
         _extraSinks = extraSinks;
     }
 
@@ -78,6 +83,24 @@ public sealed class PrinterServiceFactory : WebApplicationFactory<PrinterAppCont
             foreach (ILogEventSink sink in _extraSinks)
             {
                 services.AddSingleton(sink);
+            }
+
+            // Lets a test substitute a spy (e.g. CapturingMessageDispatcher) for the real, scoped
+            // MessageDispatcher, so it can assert on what actually reached the WebSocket handler chain
+            // instead of scraping console output. Singleton rather than scoped: the same instance must
+            // be the one both the request pipeline writes into and the test reads back afterward, and
+            // a scoped registration would hand each request its own throwaway copy.
+            if (_messageDispatcher is not null)
+            {
+                ServiceDescriptor? dispatcherDescriptor = services.SingleOrDefault(
+                    d => d.ServiceType == typeof(MessageDispatcher));
+
+                if (dispatcherDescriptor is not null)
+                {
+                    services.Remove(dispatcherDescriptor);
+                }
+
+                services.AddSingleton(_messageDispatcher);
             }
         });
     }

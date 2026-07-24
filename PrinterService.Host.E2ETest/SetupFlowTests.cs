@@ -44,7 +44,7 @@ public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
 
     public Task InitializeAsync()
     {
-        _factory = new PrinterServiceFactory($"Data Source={_databasePath}", _logs);
+        _factory = new PrinterServiceFactory($"Data Source={_databasePath}", extraSinks: [_logs]);
 
         // Forces the host to actually start - migrations and AdminBootstrap run at that point, which
         // is what mints and logs the bootstrap token this suite needs. Deliberately does *not* call

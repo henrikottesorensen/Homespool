@@ -21,9 +21,16 @@ public class StorageOptions
     public bool AutoMigrate { get; set; } = true;
 
     /// <summary>
-    /// How long to keep <see cref="TelemetrySample"/> rows. Events are never swept.
+    /// How long to keep <see cref="TelemetrySample"/> rows. Zero disables the retention sweep
+    /// entirely. Events are never swept.
     /// </summary>
-    public int TelemetryRetentionDays { get; set; } = 14;
+    /// <remarks>
+    /// <c>ushort</c>, not <c>int</c>: negative retention is meaningless, and an unsigned type
+    /// rules it out at the config-binding level instead of needing a runtime check. 65,535 days
+    /// (~180 years) is a ceiling nobody will ever hit but zero still reads unambiguously as
+    /// "off".
+    /// </remarks>
+    public ushort TelemetryRetentionDays { get; set; } = 14;
 
     /// <summary>
     /// Minimum seconds between stored samples per printer. Zero (default) stores every message.

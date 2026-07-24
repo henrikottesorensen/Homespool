@@ -136,6 +136,10 @@ public static class Program
             builder.Services.AddSingleton<PrusaConnect.ITelemetrySink>(sp => sp.GetRequiredService<PrusaConnect.TelemetryWriter>());
             builder.Services.AddHostedService(sp => sp.GetRequiredService<PrusaConnect.TelemetryWriter>());
 
+            // Sweeps TelemetrySample rows past StorageOptions.TelemetryRetentionDays. No interface
+            // registration needed, unlike TelemetryWriter above - nothing else ever needs to reach it.
+            builder.Services.AddHostedService<Services.TelemetryRetentionService>();
+
             // Scoped, unlike their singleton neighbors above, because they hold the scoped PSDbContext.
             builder.Services.AddScoped<Services.TeamService>();
             builder.Services.AddScoped<Services.UnitOfWork>();

@@ -120,6 +120,22 @@ public static class Program
                             .AddScoped<PrusaConnect.CodeGenerator>()
                             .AddScoped<PrusaConnect.MessageDispatcher>();
 
+            // Singleton, not scoped like its neighbors above: one drain loop and one in-memory
+            // live-state cache for the whole process, fed by every request's scoped
+            // MessageDispatcher through the ITelemetrySink interface - so a request never hands
+            // the writer its own PSDbContext, only a DTO.
+            //
+            // The writer still needs PSDbContext to persist, which is the usual trap for a
+            // singleton: inject the scoped context directly and it gets captured once, reused
+            // forever, single-threaded and stale, for the life of the process. TelemetryWriter
+            // avoids this by injecting IServiceScopeFactory instead - itself a singleton, safe to
+            // hold - and calling CreateScope() fresh in HydrateAsync and FlushAsync, each wrapped
+            // in a `using` that disposes the scope (and its PSDbContext) the moment that one
+            // read or write finishes. No PSDbContext field ever exists on TelemetryWriter itself.
+            builder.Services.AddSingleton<PrusaConnect.TelemetryWriter>();
+            builder.Services.AddSingleton<PrusaConnect.ITelemetrySink>(sp => sp.GetRequiredService<PrusaConnect.TelemetryWriter>());
+            builder.Services.AddHostedService(sp => sp.GetRequiredService<PrusaConnect.TelemetryWriter>());
+
             // Scoped, unlike their singleton neighbors above, because they hold the scoped PSDbContext.
             builder.Services.AddScoped<Services.TeamService>();
             builder.Services.AddScoped<Services.UnitOfWork>();

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 
 using AwesomeAssertions;
@@ -6,6 +7,8 @@ using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using PrinterService.Host.PrusaConnect;
+using PrinterService.Host.PrusaConnect.DTO.EventMessages;
+using PrinterService.Host.PrusaConnect.DTO.Telemetry;
 
 namespace PrinterService.Host.Test;
 
@@ -27,7 +30,8 @@ public class MessageDispatcherTests
     {
         // Arrange
         using JsonDocument document = JsonDocument.Parse(InlineTransferChunkRequest);
-        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance);
+        RecordingTelemetrySink sink = new();
+        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance, sink);
 
         // Act
         // TelemetryDTO.Status is required, so mis-routing this into the telemetry branch would throw
@@ -37,6 +41,11 @@ public class MessageDispatcherTests
 
         // Assert
         act.Should().NotThrow();
+
+        // Nothing to persist yet for this message shape - the transfer feature isn't built - so it
+        // must not silently produce a telemetry or event row either.
+        sink.TelemetryCalls.Should().BeEmpty();
+        sink.EventCalls.Should().BeEmpty();
     }
 
     /// <summary>Minimal valid telemetry - only the one required field, <c>state</c>. Every other
@@ -48,7 +57,8 @@ public class MessageDispatcherTests
     {
         // Arrange
         using JsonDocument document = JsonDocument.Parse(MinimalTelemetry);
-        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance);
+        RecordingTelemetrySink sink = new();
+        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance, sink);
 
         // Act
         // No "event" and no "transfer":"inline" marker, so this must fall through to the telemetry
@@ -57,6 +67,24 @@ public class MessageDispatcherTests
 
         // Assert
         act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void TelemetryMessageIsHandedToTheSink()
+    {
+        // Arrange
+        using JsonDocument document = JsonDocument.Parse(MinimalTelemetry);
+        RecordingTelemetrySink sink = new();
+        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance, sink);
+
+        // Act
+        dispatcher.Dispatch(printerId: 7, document.RootElement);
+
+        // Assert
+        sink.TelemetryCalls.Should().ContainSingle();
+        sink.TelemetryCalls[0].PrinterId.Should().Be(7);
+        sink.TelemetryCalls[0].Telemetry.Status.Should().Be("PRINTING");
+        sink.EventCalls.Should().BeEmpty();
     }
 
     /// <summary>Minimal valid event - <c>event</c> and <c>state</c> are the only required fields on
@@ -68,12 +96,50 @@ public class MessageDispatcherTests
     {
         // Arrange
         using JsonDocument document = JsonDocument.Parse(MinimalEvent);
-        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance);
+        RecordingTelemetrySink sink = new();
+        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance, sink);
 
         // Act
         Action act = () => dispatcher.Dispatch(printerId: 1, document.RootElement);
 
         // Assert
         act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void EventMessageIsHandedToTheSink()
+    {
+        // Arrange
+        using JsonDocument document = JsonDocument.Parse(MinimalEvent);
+        RecordingTelemetrySink sink = new();
+        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance, sink);
+
+        // Act
+        dispatcher.Dispatch(printerId: 3, document.RootElement);
+
+        // Assert
+        sink.EventCalls.Should().ContainSingle();
+        sink.EventCalls[0].PrinterId.Should().Be(3);
+        sink.EventCalls[0].Event.EventType.Should().Be(PrinterService.Model.Events.Info);
+        sink.TelemetryCalls.Should().BeEmpty();
+    }
+
+    /// <summary>Records every call instead of acting on it, matching this project's hand-rolled,
+    /// no-mocking-framework style for fakes (e.g. <c>StaticOptionsMonitor</c>).</summary>
+    private sealed class RecordingTelemetrySink : ITelemetrySink
+    {
+        public List<(int PrinterId, DateTimeOffset ReceivedAt, TelemetryDTO Telemetry)> TelemetryCalls { get; } = [];
+
+        public List<(int PrinterId, DateTimeOffset ReceivedAt, EventDTO Event)> EventCalls { get; } = [];
+
+        public void Enqueue(int printerId, DateTimeOffset receivedAt, TelemetryDTO telemetry)
+        {
+            TelemetryCalls.Add((printerId, receivedAt, telemetry));
+        }
+
+        public void Enqueue(int printerId, DateTimeOffset receivedAt, EventDTO eventDto)
+        {
+            EventCalls.Add((printerId, receivedAt, eventDto));
+        }
     }
 }

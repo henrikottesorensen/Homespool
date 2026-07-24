@@ -8,11 +8,11 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using PrinterService.Host.PrusaConnect;
-using PrinterService.Data;
+using PrinterService.Host.PrusaConnect.DTO.EventMessages;
+using PrinterService.Host.PrusaConnect.DTO.Telemetry;
 
 namespace PrinterService.Host.Test;
 
@@ -197,9 +197,8 @@ public class WebSocketHandlerParsingTests
         // Guards the other direction: the fragmentation handling must not swallow genuinely
         // broken input. A printer sending garbage should still be disconnected.
         using FakeWebSocketPipe pipe = new();
-        using PSDbContext context = CreateContext();
 
-        WebSocketHandler handler = new(context, NullLogger<WebSocketHandler>.Instance, new RecordingMessageDispatcher());
+        WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, new RecordingMessageDispatcher());
 
         // Act
         Task run = handler.HandlePrusaWebsocket(pipe, printerId: 1, CancellationToken.None);
@@ -216,23 +215,6 @@ public class WebSocketHandlerParsingTests
         pipe.CloseStatus.Should().Be(WebSocketCloseStatus.PolicyViolation);
     }
 
-    /// <summary>
-    /// The handler does not touch the context yet, but it is a constructor dependency.
-    /// </summary>
-    /// <remarks>
-    /// Returns the context rather than constructing the handler, so the caller owns its lifetime and
-    /// can scope it with <c>using</c>. Creating it inside and returning only the handler left it
-    /// undisposed on every test.
-    /// </remarks>
-    private static PSDbContext CreateContext()
-    {
-        DbContextOptions<PSDbContext> options = new DbContextOptionsBuilder<PSDbContext>()
-                                                .UseSqlite("Filename=:memory:")
-                                                .Options;
-
-        return new PSDbContext(options);
-    }
-
     private static Task<IReadOnlyList<string>> RunHandlerAsync(string payload, int chunkSize) =>
         RunHandlerAsync(Encoding.UTF8.GetBytes(payload), [chunkSize]);
 
@@ -247,10 +229,9 @@ public class WebSocketHandlerParsingTests
     private static async Task<IReadOnlyList<string>> RunHandlerAsync(byte[] payload, int[] chunkSizes)
     {
         using FakeWebSocketPipe pipe = new();
-        using PSDbContext context = CreateContext();
 
         RecordingMessageDispatcher dispatcher = new();
-        WebSocketHandler handler = new(context, NullLogger<WebSocketHandler>.Instance, dispatcher);
+        WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, dispatcher);
 
         Task run = handler.HandlePrusaWebsocket(pipe, printerId: 1, CancellationToken.None);
 
@@ -281,13 +262,30 @@ public class WebSocketHandlerParsingTests
     /// <summary>Captures each dispatched message's raw text instead of routing it anywhere, so
     /// these tests can assert on reassembly without depending on <see cref="MessageDispatcher"/>'s
     /// deserialization behavior (covered separately by <c>CaptureReplayTests</c>).</summary>
-    private sealed class RecordingMessageDispatcher() : MessageDispatcher(NullLogger<MessageDispatcher>.Instance)
+    private sealed class RecordingMessageDispatcher()
+        : MessageDispatcher(NullLogger<MessageDispatcher>.Instance, new NullTelemetrySink())
     {
         public List<string> Received { get; } = [];
 
         public override void Dispatch(int printerId, JsonElement root)
         {
             Received.Add(root.GetRawText());
+        }
+    }
+
+    /// <summary>
+    /// A no-op sink for tests exercising <see cref="MessageDispatcher"/> subclasses that override
+    /// <see cref="MessageDispatcher.Dispatch"/> entirely and never call the base implementation - the
+    /// sink is a required constructor dependency here but is never actually invoked.
+    /// </summary>
+    private sealed class NullTelemetrySink : ITelemetrySink
+    {
+        public void Enqueue(int printerId, DateTimeOffset receivedAt, TelemetryDTO telemetry)
+        {
+        }
+
+        public void Enqueue(int printerId, DateTimeOffset receivedAt, EventDTO eventDto)
+        {
         }
     }
 }

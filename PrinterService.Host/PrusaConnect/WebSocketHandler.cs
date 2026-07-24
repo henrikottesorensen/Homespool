@@ -10,19 +10,15 @@ using Devlooped.Net;
 
 using Microsoft.Extensions.Logging;
 
-using PrinterService.Data;
-
 namespace PrinterService.Host.PrusaConnect;
 
 public class WebSocketHandler
 {
-    private readonly PSDbContext _context;
     private readonly ILogger<WebSocketHandler> _logger;
     private readonly MessageDispatcher _dispatcher;
 
-    public WebSocketHandler(PSDbContext context, ILogger<WebSocketHandler> logger, MessageDispatcher dispatcher)
+    public WebSocketHandler(ILogger<WebSocketHandler> logger, MessageDispatcher dispatcher)
     {
-        _context = context;
         _logger = logger;
         _dispatcher = dispatcher;
     }

@@ -1,3 +1,4 @@
+using System;
 using System.Text.Json;
 
 using Microsoft.Extensions.Logging;
@@ -14,26 +15,32 @@ namespace PrinterService.Host.PrusaConnect;
 /// <c>POST /p/events</c>) can reuse it unchanged.
 /// </summary>
 /// <remarks>
-/// Phase 2 only dispatches and deserializes; there is no sink to hand the DTOs to yet
-/// (<c>TelemetryWriter</c> and live-state coalescing are phase 3), so for now the result is just
-/// logged.
+/// Deserializes and logs, same as before, then hands the DTO to <see cref="ITelemetrySink"/> for
+/// <see cref="TelemetryWriter"/> to persist. The log lines stay - they were the only visibility into
+/// the stream before persistence existed, and remain useful for anything not yet queryable from the
+/// database.
 /// </remarks>
 public class MessageDispatcher
 {
     private readonly ILogger<MessageDispatcher> _logger;
+    private readonly ITelemetrySink _sink;
 
-    public MessageDispatcher(ILogger<MessageDispatcher> logger)
+    public MessageDispatcher(ILogger<MessageDispatcher> logger, ITelemetrySink sink)
     {
         _logger = logger;
+        _sink = sink;
     }
 
     public virtual void Dispatch(int printerId, JsonElement root)
     {
+        DateTimeOffset receivedAt = TimeProvider.System.GetUtcNow();
+
         if (root.TryGetProperty("event", out _))
         {
             EventDTO eventDto = root.Deserialize<EventDTO>()!;
 
             _logger.LogDebug("[{PrinterId}] event {EventType}", printerId, eventDto.EventType);
+            _sink.Enqueue(printerId, receivedAt, eventDto);
         }
         else if (root.TryGetProperty("transfer", out JsonElement transfer) && transfer.ValueEquals("inline"))
         {
@@ -41,7 +48,7 @@ public class MessageDispatcher
             // next chunk of a Connect-initiated file upload. Has neither "event" nor "state", so it
             // would otherwise fall into the telemetry branch and fail TelemetryDTO's required Status.
             // Serving chunks back is a separate, much larger feature (notes/transfer-protocol.md);
-            // recognized-but-out-of-scope for now, not an error.
+            // recognized-but-out-of-scope for now, not an error, and nothing to persist yet either.
             _logger.LogDebug("[{PrinterId}] inline transfer chunk request (not yet served)", printerId);
         }
         else
@@ -52,6 +59,7 @@ public class MessageDispatcher
             // printer, vs. events/transfer requests, which are merely frequent-per-printer rather
             // than continuous.
             _logger.LogTrace("[{PrinterId}] telemetry state={State}", printerId, telemetryDto.Status);
+            _sink.Enqueue(printerId, receivedAt, telemetryDto);
         }
     }
 }

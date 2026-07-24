@@ -1,9 +1,12 @@
+using System;
 using System.Collections.Generic;
 using System.Text.Json;
 
 using Microsoft.Extensions.Logging.Abstractions;
 
 using PrinterService.Host.PrusaConnect;
+using PrinterService.Host.PrusaConnect.DTO.EventMessages;
+using PrinterService.Host.PrusaConnect.DTO.Telemetry;
 
 namespace PrinterService.Host.E2ETest;
 
@@ -21,7 +24,7 @@ namespace PrinterService.Host.E2ETest;
 internal sealed class CapturingMessageDispatcher : MessageDispatcher
 {
     public CapturingMessageDispatcher()
-        : base(NullLogger<MessageDispatcher>.Instance)
+        : base(NullLogger<MessageDispatcher>.Instance, new NullTelemetrySink())
     {
     }
 
@@ -32,5 +35,20 @@ internal sealed class CapturingMessageDispatcher : MessageDispatcher
         // Cloned: WebSocketHandler disposes the JsonDocument backing root immediately after this call
         // returns, so a test inspecting Calls afterward would otherwise hit ObjectDisposedException.
         Calls.Add((printerId, root.Clone()));
+    }
+
+    /// <summary>
+    /// A required constructor dependency this spy never actually uses - <see cref="Dispatch"/> is
+    /// overridden entirely and never calls the base implementation that would invoke it.
+    /// </summary>
+    private sealed class NullTelemetrySink : ITelemetrySink
+    {
+        public void Enqueue(int printerId, DateTimeOffset receivedAt, TelemetryDTO telemetry)
+        {
+        }
+
+        public void Enqueue(int printerId, DateTimeOffset receivedAt, EventDTO eventDto)
+        {
+        }
     }
 }

@@ -1,0 +1,46 @@
+@page
+@model ClaimModel
+@{
+    ViewData["Title"] = "Claim printer (code)";
+}
+
+<h1>@ViewData["Title"]</h1>
+
+<p>
+    Enter the code shown on the printer's screen. <strong>Ignore the QR code</strong> - it points
+    at Prusa's own servers, not this one. The code underneath it is what you want.
+</p>
+
+<div class="row">
+    <div class="col-md-6">
+        <form method="post">
+            <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
+            <div class="form-floating mb-3">
+                <input asp-for="Input.Code" class="form-control" placeholder="MUF4RZJF5R" autocomplete="off" />
+                <label asp-for="Input.Code" class="form-label"></label>
+                <span asp-validation-for="Input.Code" class="text-danger"></span>
+            </div>
+            <div class="form-floating mb-3">
+                <input asp-for="Input.Name" class="form-control" placeholder="Bench printer" />
+                <label asp-for="Input.Name" class="form-label"></label>
+                <span asp-validation-for="Input.Name" class="text-danger"></span>
+            </div>
+            <div class="form-floating mb-3">
+                <input asp-for="Input.Location" class="form-control" placeholder="Workshop" />
+                <label asp-for="Input.Location" class="form-label"></label>
+                <span asp-validation-for="Input.Location" class="text-danger"></span>
+            </div>
+            <div class="mb-3">
+                <label asp-for="Input.TeamId" class="form-label"></label>
+                <select asp-for="Input.TeamId" asp-items="@Model.TeamOptions" class="form-select"></select>
+                <span asp-validation-for="Input.TeamId" class="text-danger"></span>
+            </div>
+            <button type="submit" class="btn btn-primary">Claim printer</button>
+            <a class="btn btn-link" asp-page="Index">Back to printers</a>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

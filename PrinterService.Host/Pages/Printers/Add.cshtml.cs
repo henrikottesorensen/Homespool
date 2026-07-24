@@ -163,9 +163,6 @@ public class AddModel : PageModel
 
         IReadOnlyList<TeamMember> memberships = await _teamService.GetTeamsForUserAsync(user.Id, cancellationToken);
 
-        TeamOptions = memberships
-            .Where(m => m.CanManage)
-            .Select(m => new SelectListItem(m.Team?.Name ?? $"Team #{m.TeamId}", m.TeamId.ToString(), m.IsDefault))
-            .ToList();
+        TeamOptions = TeamOptionSelectListBuilder.BuildManageableOptions(memberships);
     }
 }

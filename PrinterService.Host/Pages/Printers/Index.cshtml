@@ -8,7 +8,7 @@
 
 @if (!string.IsNullOrEmpty(Model.StatusMessage))
 {
-    <div class="alert alert-warning" role="alert">@Model.StatusMessage</div>
+    <div class="alert @(Model.StatusSuccess ? "alert-success" : "alert-warning")" role="alert">@Model.StatusMessage</div>
 }
 
 @if (Model.Snippet is not null)
@@ -17,6 +17,7 @@
 }
 
 <p>
+    <a class="btn btn-outline-primary" asp-page="Claim">Claim printer (code)</a>
     <a class="btn btn-primary" asp-page="Add">Add printer (USB key)</a>
 </p>
 

@@ -49,6 +49,14 @@ public class IndexModel : PageModel
     [TempData]
     public string? StatusMessage { get; set; }
 
+    /// <summary>
+    /// Whether <see cref="StatusMessage"/> reports success rather than a failure. Defaults false so
+    /// every existing caller (only <see cref="OnPostRegenerateAsync"/> sets the message today, and
+    /// only on failure) keeps rendering the warning styling unchanged.
+    /// </summary>
+    [TempData]
+    public bool StatusSuccess { get; set; }
+
     /// <summary>The printer a regenerate just succeeded for, so the view can show its snippet once.</summary>
     public int? RegeneratedPrinterId { get; private set; }
 

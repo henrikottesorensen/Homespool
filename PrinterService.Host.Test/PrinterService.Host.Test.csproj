@@ -45,6 +45,11 @@
       <Content Include="example.concatenated.json">
         <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       </Content>
+      <!-- A real capture from a Prusa Core One (2025-12-22), credentials/identity fields
+           redacted - see CaptureReplayTests for why. -->
+      <Content Include="websocket.capture">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </Content>
     </ItemGroup>
 
 </Project>

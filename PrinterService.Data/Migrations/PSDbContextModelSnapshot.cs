@@ -508,8 +508,11 @@ namespace PrinterService.Data.Migrations
                     b.Property<long>("EnrolledAt")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("FingerPrint")
+                    b.Property<string>("FingerPrintKey")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FullFingerPrint")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("HashedToken")
@@ -521,7 +524,7 @@ namespace PrinterService.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("FingerPrint")
+                    b.HasIndex("FingerPrintKey")
                         .IsUnique();
 
                     b.HasIndex("PrinterId");

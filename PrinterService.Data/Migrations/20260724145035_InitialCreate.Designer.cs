@@ -11,7 +11,7 @@ using PrinterService.Data;
 namespace PrinterService.Data.Migrations
 {
     [DbContext(typeof(PSDbContext))]
-    [Migration("20260722132818_InitialCreate")]
+    [Migration("20260724145035_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -511,8 +511,11 @@ namespace PrinterService.Data.Migrations
                     b.Property<long>("EnrolledAt")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("FingerPrint")
+                    b.Property<string>("FingerPrintKey")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FullFingerPrint")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("HashedToken")
@@ -524,7 +527,7 @@ namespace PrinterService.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("FingerPrint")
+                    b.HasIndex("FingerPrintKey")
                         .IsUnique();
 
                     b.HasIndex("PrinterId");

@@ -59,11 +59,15 @@ else
                     }
                 </td>
                 <td>
-                    @if (row.AwaitingUsbProvisioning)
+                    @* Offered for an enrolled printer too: reissuing here is the supported way to put a
+                       fresh credential on one that is already connected, and the only safe one -
+                       adding it again from scratch would create a second printer whose token the
+                       server refuses to bind. *@
+                    @if (row.AwaitingUsbProvisioning || row.Enrolled)
                     {
                         <form method="post" asp-page-handler="Regenerate" asp-route-printerId="@row.Printer.Id">
                             <button type="submit" class="btn btn-sm btn-outline-secondary">
-                                Regenerate USB token
+                                @(row.Enrolled ? "Reissue USB token" : "Regenerate USB token")
                             </button>
                         </form>
                     }

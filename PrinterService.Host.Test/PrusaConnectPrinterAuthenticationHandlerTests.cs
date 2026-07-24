@@ -32,7 +32,13 @@ namespace PrinterService.Host.Test;
 /// </remarks>
 public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
 {
-    private const string Fingerprint = "SUDBAJQ78CTJBNA8IHEMODUG43QD9H5GSBSFE0MMKBST8B9E0L";
+    /// <summary>
+    /// The fingerprint as it arrives on a header - the truncated 16-character form, which is the only
+    /// one an authenticated request ever carries and therefore the only one this handler sees. The
+    /// full 50-character form belongs to <c>/p/register</c>'s body; using it here would test a request
+    /// no printer makes. See <c>PrinterFingerprint</c> and <c>PrusaConnectFingerprintIdentityTests</c>.
+    /// </summary>
+    private const string Fingerprint = "SUDBAJQ78CTJBNA8";
 
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-auth-{Guid.NewGuid():N}.db");
 
@@ -148,7 +154,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
         context.PrusaConnectAuthentication.Add(new PrusaConnectAuthenticationData
         {
             PrinterId = printer.Id,
-            FingerPrint = fingerprint,
+            FingerPrintKey = fingerprint,
             HashedToken = tokenService.HashToken(token),
             EnrolledAt = DateTimeOffset.UtcNow,
         });
@@ -282,7 +288,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
 
         PrusaConnectAuthenticationData enrolled = await verify.PrusaConnectAuthentication.SingleAsync();
         enrolled.PrinterId.Should().Be(printer.Id);
-        enrolled.FingerPrint.Should().Be(Fingerprint, "the presented fingerprint is bound to the printer");
+        enrolled.FingerPrintKey.Should().Be(Fingerprint, "the presented fingerprint is bound to the printer");
 
         (await verify.PrusaConnectProvisionings.AnyAsync()).Should()
             .BeFalse("the provisioning token is consumed by the promotion");
@@ -450,7 +456,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
 
         PrusaConnectAuthenticationData enrolled = await verify.PrusaConnectAuthentication.SingleAsync();
         enrolled.PrinterId.Should().Be(printer.Id);
-        enrolled.FingerPrint.Should().Be(Fingerprint);
+        enrolled.FingerPrintKey.Should().Be(Fingerprint);
 
         (await verify.PrusaConnectProvisionings.AnyAsync()).Should().BeFalse("the token is consumed exactly once");
     }

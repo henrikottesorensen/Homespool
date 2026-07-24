@@ -350,7 +350,8 @@ namespace PrinterService.Data.Migrations
                     Id = table.Column<long>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
                     PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
-                    FingerPrint = table.Column<string>(type: "TEXT", nullable: false),
+                    FingerPrintKey = table.Column<string>(type: "TEXT", nullable: false),
+                    FullFingerPrint = table.Column<string>(type: "TEXT", nullable: true),
                     HashedToken = table.Column<string>(type: "TEXT", nullable: false),
                     EnrolledAt = table.Column<long>(type: "INTEGER", nullable: false)
                 },
@@ -580,9 +581,9 @@ namespace PrinterService.Data.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_PrusaConnectAuthentication_FingerPrint",
+                name: "IX_PrusaConnectAuthentication_FingerPrintKey",
                 table: "PrusaConnectAuthentication",
-                column: "FingerPrint",
+                column: "FingerPrintKey",
                 unique: true);
 
             migrationBuilder.CreateIndex(

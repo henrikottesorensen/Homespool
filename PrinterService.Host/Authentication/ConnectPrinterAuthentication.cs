@@ -55,7 +55,10 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
         // bind it as a SQLite parameter ("No mapping exists from object type
         // Microsoft.Extensions.Primitives.StringValues to a known managed provider native type"),
         // a 500 rather than a clean auth failure.
-        string fingerprintValue = fingerprint.ToString();
+        // Headers carry the truncated fingerprint, so this is already the key form; normalising anyway
+        // keeps the handler correct whatever length arrives, and matches how the enrolled row was
+        // written (see PrinterFingerprint).
+        string fingerprintValue = PrinterFingerprint.Key(fingerprint.ToString());
         string tokenValue = token.ToString();
 
         // Hot path: one indexed lookup that covers every enrolled printer, code-exchange and USB-key
@@ -76,15 +79,13 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
 
     /// <summary>
     /// Returns null when no enrolled row carries the fingerprint (so the caller falls through to the
-    /// provisioning path); otherwise a definite Success or Fail. A wrong token against a known
-    /// enrolled printer is a Fail, never a fall-through — there is no provisioning row for an already
-    /// enrolled fingerprint.
+    /// provisioning path); otherwise a definite Success or Fail.
     /// </summary>
     private async Task<AuthenticateResult?> AuthenticateEnrolledAsync(string fingerprint, string token)
     {
         PrusaConnectAuthenticationData? auth = await _dbContext.PrusaConnectAuthentication
             .Include(a => a.Printer)
-            .SingleOrDefaultAsync(a => a.FingerPrint == fingerprint);
+            .SingleOrDefaultAsync(a => a.FingerPrintKey == fingerprint);
 
         if (auth is null)
         {
@@ -104,7 +105,75 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
             return AuthenticateResult.Success(BuildTicket(auth.PrinterId, auth.Printer));
         }
 
-        return AuthenticateResult.Fail("PrusaConnect invalid token.");
+        // The token does not match the enrolled credential. Before failing, consider the one benign
+        // explanation: an operator reissued this printer's provisioning token and has just written it
+        // to the printer, which is now presenting the new one.
+        return await RebindReissuedTokenAsync(auth, token);
+    }
+
+    /// <summary>
+    /// Binds a reissued provisioning token onto an existing enrollment, for a printer whose stored
+    /// token has been replaced from a freshly written USB stick.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Scoped to this printer's own outstanding token, by query.</b> The candidate row is selected
+    /// on <c>PrinterId</c>, so a token provisioned for some <em>other</em> printer can never bind here
+    /// however valid it is. That is the difference between a reissue and a takeover: anyone able to
+    /// provision a printer in a team of their own could otherwise write that stick to hardware someone
+    /// else owns and end up authenticating as it. The narrow query makes that impossible rather than
+    /// merely checked - the authorisation was done when
+    /// <c>PrusaConnectService.RegenerateProvisioningTokenAsync</c> demanded <c>CanManage</c> on this
+    /// printer's team.
+    /// </para>
+    /// <para>
+    /// A printer re-provisioned through <c>ProvisionPrinterAsync</c> instead gets a <em>new</em>
+    /// printer row, so its token is not this printer's and is refused here. That is deliberate: from
+    /// the wire there is no way to tell an operator's duplicate entry from an attempt on someone
+    /// else's printer, so it fails closed and the operator reissues against the printer they mean.
+    /// </para>
+    /// </remarks>
+    private async Task<AuthenticateResult> RebindReissuedTokenAsync(PrusaConnectAuthenticationData enrolled, string token)
+    {
+        PrusaConnectProvisioning? reissued = await _dbContext.PrusaConnectProvisionings
+            .SingleOrDefaultAsync(p => p.PrinterId == enrolled.PrinterId);
+
+        if (reissued is null || !_tokenService.VerifyToken(token, reissued.HashedToken))
+        {
+            Logger.LogInformation("PrusaConnect invalid token.");
+            return AuthenticateResult.Fail("PrusaConnect invalid token.");
+        }
+
+        try
+        {
+            await using IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(Context.RequestAborted);
+
+            // The hash moves across as-is, exactly as first contact does: the plaintext was shown once
+            // at reissue and the printer has just proved it holds it.
+            enrolled.HashedToken = reissued.HashedToken;
+            enrolled.EnrolledAt = TimeProvider.System.GetUtcNow();
+
+            _dbContext.PrusaConnectProvisionings.Remove(reissued);
+
+            await _dbContext.SaveChangesAsync(Context.RequestAborted);
+            await transaction.CommitAsync(Context.RequestAborted);
+
+            Logger.LogInformation("Printer {PrinterId} rebound to its reissued USB-key token.", enrolled.PrinterId);
+
+            return AuthenticateResult.Success(BuildTicket(enrolled.PrinterId, enrolled.Printer!));
+        }
+        catch (DbUpdateException)
+        {
+            // Lost a race with a concurrent request carrying the same reissued token: the winner has
+            // already rotated the credential and consumed the provisioning row. Roll back, then replay
+            // the plain enrolled check - which now succeeds against the winner's rotated hash.
+            _dbContext.ChangeTracker.Clear();
+
+            AuthenticateResult? replay = await AuthenticateEnrolledAsync(
+                PrinterFingerprint.Key(enrolled.FingerPrintKey), token);
+
+            return replay ?? AuthenticateResult.Fail("PrusaConnect invalid token.");
+        }
     }
 
     /// <summary>
@@ -152,7 +221,10 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
             await _dbContext.PrusaConnectAuthentication.AddAsync(new PrusaConnectAuthenticationData
             {
                 PrinterId = provisioning.PrinterId,
-                FingerPrint = fingerprint,
+                // Already the key form - the header is all a provisioned printer ever sends us. The
+                // full 50-character fingerprint stays unknown until /p/register or an INFO event
+                // carries it.
+                FingerPrintKey = fingerprint,
                 // The hash is copied across as-is: the plaintext was shown once at provisioning and is
                 // gone; the printer just proved it holds it by verifying above.
                 HashedToken = provisioning.HashedToken,

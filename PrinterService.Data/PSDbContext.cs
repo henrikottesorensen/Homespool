@@ -115,7 +115,11 @@ public class PSDbContext : IdentityDbContext<PSUser, IdentityRole<long>, long>, 
             // A printer is identified on the wire by its fingerprint, on every request and on
             // the WebSocket upgrade (AGENT-NOTES §9). That lookup is the hot path for every
             // connection, and two rows sharing a fingerprint would make identity ambiguous.
-            entity.HasIndex(e => e.FingerPrint)
+            //
+            // Keyed on the truncated 16-character form the headers carry, not the 50-character form
+            // /p/register's body carries, so both enrollment channels agree on what "the same printer"
+            // means - see PrinterFingerprint.
+            entity.HasIndex(e => e.FingerPrintKey)
                   .IsUnique();
 
             // The enrolled credential belongs to the printer: deleting the printer takes it with

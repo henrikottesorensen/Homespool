@@ -117,9 +117,12 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
 
         PrusaConnectAuthenticationData auth = await context.PrusaConnectAuthentication
             .Include(a => a.Printer)
-            .SingleAsync(a => a.FingerPrint == fingerprint);
+            .SingleAsync(a => a.FingerPrintKey == PrinterFingerprint.Key(fingerprint));
 
-        return (fingerprint, token, auth.Printer!.Id);
+        // The caller gets the truncated form back, because that is what a real printer would present
+        // on the upgrade: /p/register's body carries the whole fingerprint, every header carries only
+        // its first 16 characters (see PrinterFingerprint).
+        return (PrinterFingerprint.Key(fingerprint), token, auth.Printer!.Id);
     }
 
     /// <summary>

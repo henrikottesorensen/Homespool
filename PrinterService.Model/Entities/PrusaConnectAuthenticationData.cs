@@ -34,7 +34,20 @@ public class PrusaConnectAuthenticationData
     [ForeignKey(nameof(PrinterId))]
     public virtual Printer? Printer { get; set; }
 
-    public required string FingerPrint { get; set; }
+    /// <summary>
+    /// The value this printer is identified by: the 16-character form its firmware puts on every
+    /// header, including the WebSocket upgrade. See <c>PrinterFingerprint</c> for why this, and not
+    /// the longer form, is the key.
+    /// </summary>
+    public required string FingerPrintKey { get; set; }
+
+    /// <summary>
+    /// The full 50-character fingerprint, when it has been seen. Only <c>/p/register</c>'s body
+    /// carries it (and, once telemetry is persisted, the <c>INFO</c> event), so a printer enrolled by
+    /// USB key has null here until something tells us the rest. Recorded for diagnostics and future
+    /// cross-checking; never used to identify a printer.
+    /// </summary>
+    public string? FullFingerPrint { get; set; }
 
     public required string HashedToken { get; set; }
 

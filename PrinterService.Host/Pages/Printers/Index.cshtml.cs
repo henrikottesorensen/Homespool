@@ -96,7 +96,7 @@ public class IndexModel : PageModel
         }
         catch (ProvisioningTokenNotFoundException)
         {
-            StatusMessage = "That printer has no outstanding USB-key token to reissue - it may already be enrolled.";
+            StatusMessage = "That printer was never set up with a USB key, so there is no token to reissue.";
         }
 
         // Not a redirect: the whole point of this handler is to show a secret exactly once, and a

@@ -403,16 +403,25 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     }
 
     /// <summary>
-    /// Once the printer has enrolled there is nothing left to reissue, and the answer is deliberately
-    /// the same as for a printer that was never provisioned.
+    /// An already-enrolled printer gets a fresh outstanding token, rather than being refused: this is
+    /// the supported way to write a new USB stick for a printer that is already connected.
     /// </summary>
     /// <remarks>
-    /// Binding deletes the provisioning row (the credential has moved to the enrolled table), so
-    /// "already enrolled" and "never provisioned" are indistinguishable to a caller - which is the
-    /// intent, not an accident of the implementation.
+    /// <para>
+    /// Binding deletes the provisioning row, so an enrolled printer has none - the state is identical
+    /// to "never provisioned" in this table, and the two are told apart by the enrolled table. The
+    /// alternative to allowing it, provisioning the printer afresh, mints a second printer whose token
+    /// the auth handler will not bind to the existing enrollment (see
+    /// <c>PrusaConnectFingerprintIdentityTests</c>).
+    /// </para>
+    /// <para>
+    /// The enrolled credential is deliberately untouched here: the printer keeps authenticating with
+    /// the token it holds until the reissued one is actually presented, so writing a stick and never
+    /// using it costs nothing.
+    /// </para>
     /// </remarks>
     [Fact]
-    public async Task RegeneratingAnAlreadyEnrolledPrinterIsRejectedTheSameWay()
+    public async Task RegeneratingAnAlreadyEnrolledPrinterIssuesAFreshOutstandingToken()
     {
         // Arrange
         await using PSDbContext context = await MigratedContextAsync();
@@ -421,7 +430,52 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
         (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamId: null, userId: 1);
 
-        // simulate first contact having promoted the token into the enrolled table
+        // first contact: the token is promoted into the enrolled table and the provisioning row goes
+        TokenService tokenService = new();
+        string enrolledToken = tokenService.GenerateToken();
+
+        context.PrusaConnectProvisionings.RemoveRange(context.PrusaConnectProvisionings);
+        context.PrusaConnectAuthentication.Add(new PrusaConnectAuthenticationData
+        {
+            PrinterId = printer.Id,
+            FingerPrintKey = "SUDBAJQ78CTJBNA8",
+            HashedToken = tokenService.HashToken(enrolledToken),
+            EnrolledAt = DateTimeOffset.UtcNow,
+        });
+
+        await context.SaveChangesAsync();
+
+        // Act
+        string reissued = await service.RegenerateProvisioningTokenAsync(printer.Id, userId: 1);
+
+        // Assert
+        PrusaConnectProvisioning outstanding = await context.PrusaConnectProvisionings.SingleAsync();
+
+        outstanding.PrinterId.Should().Be(printer.Id);
+        tokenService.VerifyToken(reissued, outstanding.HashedToken).Should().BeTrue();
+
+        PrusaConnectAuthenticationData credential = await context.PrusaConnectAuthentication.SingleAsync();
+
+        tokenService.VerifyToken(enrolledToken, credential.HashedToken).Should()
+            .BeTrue("the printer must keep working until it is actually given the reissued token");
+
+        (await context.Printers.CountAsync()).Should().Be(1, "reissuing must not create a second printer");
+    }
+
+    /// <summary>
+    /// A printer that is neither provisioned nor enrolled has nothing for a reissued token to attach
+    /// to.
+    /// </summary>
+    [Fact]
+    public async Task RegeneratingAPrinterThatIsNeitherProvisionedNorEnrolledIsRejected()
+    {
+        // Arrange
+        await using PSDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamId: null, userId: 1);
+
         context.PrusaConnectProvisionings.RemoveRange(context.PrusaConnectProvisionings);
         await context.SaveChangesAsync();
 

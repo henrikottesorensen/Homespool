@@ -122,7 +122,7 @@ public sealed class IndexModelTests : IDisposable
         context.PrusaConnectAuthentication.Add(new PrusaConnectAuthenticationData
         {
             PrinterId = enrolled.Id,
-            FingerPrint = "fp-enrolled",
+            FingerPrintKey = "fp-enrolled",
             HashedToken = tokenService.HashToken(tokenService.GenerateToken()),
             EnrolledAt = DateTimeOffset.UtcNow,
         });
@@ -261,9 +261,18 @@ public sealed class IndexModelTests : IDisposable
         model.Snippet.Should().BeNull();
     }
 
-    /// <summary>A printer that has already enrolled has nothing outstanding to reissue.</summary>
+    /// <summary>
+    /// An already-enrolled printer can be reissued a USB token: that is how an operator puts a fresh
+    /// credential onto a printer that is already connected, and the snippet is rendered for it exactly
+    /// as it is for one awaiting first contact.
+    /// </summary>
+    /// <remarks>
+    /// Adding the printer again from scratch would mint a second printer whose token the auth handler
+    /// refuses to bind (it cannot tell that from an attempt on someone else's printer), so this path
+    /// existing is what makes re-provisioning possible at all.
+    /// </remarks>
     [Fact]
-    public async Task OnPostRegenerateAsyncForAnAlreadyEnrolledPrinterSetsAStatusMessage()
+    public async Task OnPostRegenerateAsyncForAnAlreadyEnrolledPrinterRendersASnippet()
     {
         // Arrange
         await using PSDbContext context = await MigratedContextAsync();
@@ -276,7 +285,7 @@ public sealed class IndexModelTests : IDisposable
         context.PrusaConnectAuthentication.Add(new PrusaConnectAuthenticationData
         {
             PrinterId = printer.Id,
-            FingerPrint = "fp-already-enrolled",
+            FingerPrintKey = "fp-already-enrolled",
             HashedToken = new TokenService().HashToken(new TokenService().GenerateToken()),
             EnrolledAt = DateTimeOffset.UtcNow,
         });
@@ -286,7 +295,8 @@ public sealed class IndexModelTests : IDisposable
         await model.OnPostRegenerateAsync(printer.Id, CancellationToken.None);
 
         // Assert
-        model.StatusMessage.Should().NotBeNullOrEmpty();
-        model.Snippet.Should().BeNull();
+        model.StatusMessage.Should().BeNullOrEmpty();
+        model.Snippet.Should().NotBeNullOrEmpty();
+        model.RegeneratedPrinterId.Should().Be(printer.Id);
     }
 }

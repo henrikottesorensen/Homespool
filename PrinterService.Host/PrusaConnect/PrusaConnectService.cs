@@ -127,9 +127,10 @@ public class PrusaConnectService
     /// enrolled table's single fingerprint lookup, and a replay of the (now absent) code is an
     /// ordinary 404. A re-registration of an already-enrolled printer reaches
     /// <see cref="MaterialiseEnrolledCredentialAsync"/> with a fingerprint that already has an
-    /// enrolled row; that row is updated in place rather than colliding on its unique index — the new
-    /// claim becomes the printer of record and the previously-claimed printer is left as stale data,
-    /// the same outcome a mainboard replacement already produces (AGENT-NOTES protocol-reference §570).
+    /// enrolled row; that row is updated in place rather than colliding on its unique index, rotating
+    /// the credential onto the printer <see cref="ClaimPrinterAsync"/> already linked the claim to. A
+    /// mainboard replacement changes the fingerprint itself and so still produces a second printer -
+    /// that one is genuinely different hardware (AGENT-NOTES protocol-reference §570).
     /// </para>
     /// <para>
     /// <c>TemporaryCode</c> is deliberately non-uniquely indexed, so a collision yields more than one
@@ -192,22 +193,30 @@ public class PrusaConnectService
     }
 
     /// <summary>
-    /// Upserts the enrolled credential by fingerprint. Insert is the normal case; the update branch
-    /// exists only for re-enrollment of a fingerprint that already has a row, where a plain insert
-    /// would violate the enrolled table's unique fingerprint index. Does not save — the caller owns
-    /// the transaction.
+    /// Upserts the enrolled credential, keyed on the truncated fingerprint the printer will actually
+    /// present on its later requests. Insert is the normal case; the update branch covers a
+    /// re-enrollment of a printer that already has a row, where a plain insert would violate the
+    /// enrolled table's unique index. Does not save — the caller owns the transaction.
     /// </summary>
-    private async Task MaterialiseEnrolledCredentialAsync(int printerId, string fingerPrint, string hashedToken, DateTimeOffset now)
+    /// <remarks>
+    /// <paramref name="fullFingerPrint"/> is the long form from <c>/p/register</c>'s body. It is
+    /// recorded, but the key is derived from it: keying on the long form left the credential
+    /// unreachable, since no later request ever carries it (see <see cref="PrinterFingerprint"/>).
+    /// </remarks>
+    private async Task MaterialiseEnrolledCredentialAsync(int printerId, string fullFingerPrint, string hashedToken, DateTimeOffset now)
     {
+        string key = PrinterFingerprint.Key(fullFingerPrint);
+
         PrusaConnectAuthenticationData? existing = await _dbContext.PrusaConnectAuthentication
-            .SingleOrDefaultAsync(a => a.FingerPrint == fingerPrint);
+            .SingleOrDefaultAsync(a => a.FingerPrintKey == key);
 
         if (existing is null)
         {
             await _dbContext.PrusaConnectAuthentication.AddAsync(new PrusaConnectAuthenticationData
             {
                 PrinterId = printerId,
-                FingerPrint = fingerPrint,
+                FingerPrintKey = key,
+                FullFingerPrint = fullFingerPrint,
                 HashedToken = hashedToken,
                 EnrolledAt = now,
             });
@@ -216,6 +225,7 @@ public class PrusaConnectService
         }
 
         existing.PrinterId = printerId;
+        existing.FullFingerPrint = fullFingerPrint;
         existing.HashedToken = hashedToken;
         existing.EnrolledAt = now;
     }
@@ -254,6 +264,13 @@ public class PrusaConnectService
             throw new RegistrationAlreadyClaimedException();
         }
 
+        Printer? enrolled = await FindEnrolledPrinterAsync(registration.FingerPrint);
+
+        if (enrolled is not null)
+        {
+            return await LinkClaimToEnrolledPrinterAsync(registration, enrolled, userId);
+        }
+
         int resolvedTeamId = await ResolveTeamForWriteAsync(teamId, userId);
 
         Printer printer = NewPrinter(name, location, resolvedTeamId, now);
@@ -270,6 +287,55 @@ public class PrusaConnectService
             registration.Id, printer.Uuid, resolvedTeamId);
 
         return printer;
+    }
+
+    /// <summary>
+    /// The printer already enrolled under this fingerprint, if there is one. The registration carries
+    /// the long form from <c>/p/register</c>'s body; the enrolled table is keyed on the short form, so
+    /// the comparison happens on the key both channels share.
+    /// </summary>
+    private async Task<Printer?> FindEnrolledPrinterAsync(string fullFingerPrint)
+    {
+        string key = PrinterFingerprint.Key(fullFingerPrint);
+
+        PrusaConnectAuthenticationData? existing = await _dbContext.PrusaConnectAuthentication
+            .Include(a => a.Printer)
+            .SingleOrDefaultAsync(a => a.FingerPrintKey == key);
+
+        return existing?.Printer;
+    }
+
+    /// <summary>
+    /// Re-registering a printer that is already enrolled points the claim at the printer it already
+    /// is, rather than minting a second one for the same hardware.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Requires <c>CanManage</c> on the team that already owns it.</b> Reaching the printer's front
+    /// panel is enough to start a re-registration, so without this check anyone who can walk up to a
+    /// printer could take it over by claiming the code it displays. The permission is on the owning
+    /// team, not on any team the claimant nominated - the printer does not move, and
+    /// <paramref name="registration"/>'s requested name, location and team are deliberately ignored.
+    /// </para>
+    /// <para>
+    /// Refusing here is safe for the printer: it overwrites its stored token only once
+    /// <see cref="GetToken"/> has issued one, and that cannot happen while the registration is
+    /// unclaimed. A refused claim leaves the pending row for someone who does hold the permission.
+    /// </para>
+    /// </remarks>
+    private async Task<Printer> LinkClaimToEnrolledPrinterAsync(PrusaConnectRegistration registration, Printer enrolled, long userId)
+    {
+        await RequireManageAsync(enrolled.TeamId, userId);
+
+        registration.PrinterId = enrolled.Id;
+
+        await _dbContext.SaveChangesAsync();
+
+        _logger.LogInformation("PrusaConnect registration {RegistrationId} claimed for already-enrolled printer {PrinterUuid}; "
+                               + "its credential will be replaced when the printer next polls.",
+            registration.Id, enrolled.Uuid);
+
+        return enrolled;
     }
 
     /// <summary>
@@ -307,15 +373,31 @@ public class PrusaConnectService
     }
 
     /// <summary>
-    /// Reissues the pre-provisioned token for a printer whose USB stick was never written or whose
-    /// snippet was mistyped, without deleting and recreating the printer. Only valid while the token
-    /// is still <em>unbound</em>: once the printer has made first contact it is enrolled, its
-    /// credential lives in <see cref="PrusaConnectAuthenticationData"/>, and there is nothing here to
-    /// regenerate.
+    /// Issues a fresh pre-provisioned token for a printer that already exists here: one whose USB
+    /// stick was never written or whose snippet was mistyped, and equally one that is already enrolled
+    /// and needs a new credential written to it.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the supported way to re-provision a printer.</b> Provisioning again through
+    /// <see cref="ProvisionPrinterAsync"/> would mint a <em>second</em> printer for the same hardware,
+    /// and the printer would then present a token the enrolled row does not know - the auth handler
+    /// deliberately refuses to bind that (it cannot tell an accident from a takeover attempt). Here the
+    /// caller names the printer they mean and has proved <c>CanManage</c> on its team, so the new token
+    /// can be bound to the existing enrollment on first contact.
+    /// </para>
+    /// <para>
+    /// An enrolled printer keeps authenticating with its current token until the reissued one is
+    /// actually presented: the enrolled credential is untouched here, and only the outstanding
+    /// provisioning row carries the new hash. Writing a stick and never using it costs nothing.
+    /// </para>
+    /// </remarks>
     /// <exception cref="PrinterNotFoundException">No printer with that id.</exception>
     /// <exception cref="TeamAccessDeniedException">Caller lacks <c>CanManage</c> on the printer's team.</exception>
-    /// <exception cref="ProvisioningTokenNotFoundException">No outstanding (unbound) provisioning token.</exception>
+    /// <exception cref="ProvisioningTokenNotFoundException">
+    /// The printer was never provisioned and is not enrolled — there is no enrollment for a reissued
+    /// token to attach to.
+    /// </exception>
     public async Task<string> RegenerateProvisioningTokenAsync(int printerId, long userId)
     {
         Printer? printer = await _dbContext.Printers.SingleOrDefaultAsync(p => p.Id == printerId);
@@ -330,17 +412,32 @@ public class PrusaConnectService
         PrusaConnectProvisioning? provisioning = await _dbContext.PrusaConnectProvisionings
             .SingleOrDefaultAsync(p => p.PrinterId == printerId);
 
-        // A row exists only while the token is unbound: first contact promotes it into the enrolled
-        // table and deletes it. So absence means "never provisioned" or "already enrolled" alike -
-        // both are "nothing outstanding to reissue", and collapsing them stops a caller distinguishing
-        // the two.
-        if (provisioning is null)
-        {
-            throw new ProvisioningTokenNotFoundException();
-        }
-
         string token = _tokenService.GenerateToken();
-        provisioning.HashedToken = _tokenService.HashToken(token);
+
+        if (provisioning is not null)
+        {
+            provisioning.HashedToken = _tokenService.HashToken(token);
+        }
+        else
+        {
+            // No outstanding row. Either the printer has already enrolled - first contact promoted its
+            // token into the enrolled table and deleted this row - in which case a fresh row is exactly
+            // what a reissue means; or it was never provisioned at all, and there is nothing to reissue
+            // for.
+            bool isEnrolled = await _dbContext.PrusaConnectAuthentication.AnyAsync(a => a.PrinterId == printerId);
+
+            if (!isEnrolled)
+            {
+                throw new ProvisioningTokenNotFoundException();
+            }
+
+            await _dbContext.PrusaConnectProvisionings.AddAsync(new PrusaConnectProvisioning
+            {
+                PrinterId = printerId,
+                HashedToken = _tokenService.HashToken(token),
+                CreatedAt = TimeProvider.System.GetUtcNow(),
+            });
+        }
 
         await _dbContext.SaveChangesAsync();
 

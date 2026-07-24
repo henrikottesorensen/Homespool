@@ -60,16 +60,21 @@ namespace PrinterService.Host.PrusaConnect;
 /// indefinitely, and each one a discrete fact that never repeats.
 /// </para>
 /// <para>
-/// <b>Shutdown flushes whatever is still buffered</b> - the batches accumulated in memory, anything
-/// still sitting in the channel, <em>and</em> an item that was already dequeued but whose own
-/// processing (<see cref="HydrateAsync"/>'s DB read, on a printer's first sighting this process)
-/// was cut short mid-flight by <c>stoppingToken</c> cancelling - rather than discarding any of that
-/// once <see cref="ExecuteAsync"/> returns. All three needed a fix, found in that order: the batch
-/// and channel gaps were the obvious ones; the in-flight-item gap only surfaced once a test exercised
-/// real SQLite latency in <see cref="HydrateAsync"/>, racing it against cancellation deliberately.
-/// Confirmed missing in practice before any of this: a real MK3.5 session's telemetry and
-/// command-ack events from an active print vanished across a dev-server restart, because the only
-/// flush triggers were the batch-size and timer thresholds, neither of which shutdown necessarily hits.
+/// <b>Shutdown is completion, not cancellation.</b> <see cref="StopAsync"/> closes the channel's
+/// writer end and lets the drain loop finish on its own terms: it exits when the channel reports
+/// "completed and empty", and <em>no cancellation token is threaded into the work it does on the way
+/// out</em>. That is what makes losing buffered data on shutdown structurally impossible rather than
+/// something the loop has to defend against.
+/// </para>
+/// <para>
+/// This replaced a cancellation-driven shutdown that needed three separate fixes for three separate
+/// leaks - unflushed in-memory batches, items left unread in the channel, and an item already dequeued
+/// whose <see cref="HydrateAsync"/> read was sliced through mid-flight by the token - each found only
+/// after the previous one was fixed. All three are unrepresentable here: there is nothing to drain in
+/// a <c>finally</c> because the loop drains by definition, and nothing can interrupt an item
+/// mid-processing because nothing cancels it. The failure that started it was real: an MK3.5 session's
+/// telemetry and command-ack events from an active print vanished across a dev-server restart.
+/// <c>HostOptions.ShutdownTimeout</c> remains the backstop if the database is genuinely stuck.
 /// </para>
 /// </remarks>
 public sealed class TelemetryWriter : BackgroundService, ITelemetrySink
@@ -128,6 +133,25 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink
         _channel.Writer.TryWrite(new TelemetryWriteItem.EventItem(printerId, receivedAt, eventDto));
     }
 
+    /// <summary>
+    /// Stops accepting work, then waits for the drain loop to finish what it already has.
+    /// </summary>
+    /// <remarks>
+    /// Closing the writer is the whole shutdown signal: <see cref="ExecuteAsync"/>'s loop ends when
+    /// the channel is completed <em>and</em> empty, so everything queued at this moment is processed
+    /// and flushed first. Ordered before <c>base.StopAsync</c> deliberately - that is what cancels
+    /// <c>stoppingToken</c> and then awaits the loop, so the channel has to be closed before the wait
+    /// begins or the loop would have no reason to end. <see cref="Enqueue(int,DateTimeOffset,TelemetryDTO)"/>
+    /// silently no-ops after this point, which is correct: a socket handler mid-message during
+    /// shutdown has nowhere to put its data anyway.
+    /// </remarks>
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        _channel.Writer.TryComplete();
+
+        await base.StopAsync(cancellationToken);
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         Dictionary<int, LiveStateCacheEntry> cache = new();
@@ -141,73 +165,49 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink
         // on every pass through the outer loop would mean a busy printer's steady stream of channel
         // reads starves the timer branch forever, and low-traffic printers would never flush on
         // schedule.
-        Task<bool> timerTick = flushTimer.WaitForNextTickAsync(stoppingToken).AsTask();
+        Task<bool> timerTick = flushTimer.WaitForNextTickAsync().AsTask();
 
-        try
+        // Neither branch is cancellation-driven, and stoppingToken is deliberately never passed into
+        // the work below - see StopAsync and the class remarks. Both awaited tasks simply report a
+        // bool: the channel says "readable" or "completed and empty", the timer says "tick". So there
+        // is no OperationCanceledException to catch, no exception filter to get right, and no way for
+        // shutdown to land in the middle of processing an item.
+        while (true)
         {
-            while (!stoppingToken.IsCancellationRequested)
+            Task<bool> channelReadable = _channel.Reader.WaitToReadAsync().AsTask();
+
+            Task<bool> completed = await Task.WhenAny(channelReadable, timerTick);
+
+            if (completed == channelReadable)
             {
-                Task<bool> channelReadable = _channel.Reader.WaitToReadAsync(stoppingToken).AsTask();
-
-                Task<bool> completed = await Task.WhenAny(channelReadable, timerTick);
-
-                if (completed == channelReadable)
+                if (!await channelReadable)
                 {
-                    while (_channel.Reader.TryRead(out TelemetryWriteItem? item))
-                    {
-                        try
-                        {
-                            await ProcessItemAsync(item, cache, pendingSamples, pendingEvents, dirtyPrinterIds, stoppingToken);
-                        }
-                        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                        {
-                            // Shutdown fired while this item's own DB-touching step (HydrateAsync,
-                            // first sighting of a printer) was in flight. It's already dequeued, so
-                            // the finally block below can't recover it from the channel - finish
-                            // processing it now, with CancellationToken.None, rather than losing it.
-                            // No need to rethrow: stoppingToken is already cancelled, so the outer
-                            // while's own condition ends the loop normally right after this.
-                            await ProcessItemAsync(item, cache, pendingSamples, pendingEvents, dirtyPrinterIds, CancellationToken.None);
-                        }
+                    // Completed and drained: StopAsync closed the writer and every queued item has
+                    // been processed. The only loop exit.
+                    break;
+                }
 
-                        if (pendingSamples.Count + pendingEvents.Count >= _options.WriteBatchSize)
-                        {
-                            await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, stoppingToken);
-                        }
+                while (_channel.Reader.TryRead(out TelemetryWriteItem? item))
+                {
+                    await ProcessItemAsync(item, cache, pendingSamples, pendingEvents, dirtyPrinterIds, CancellationToken.None);
+
+                    if (pendingSamples.Count + pendingEvents.Count >= _options.WriteBatchSize)
+                    {
+                        await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, CancellationToken.None);
                     }
                 }
-                else
-                {
-                    await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, stoppingToken);
-
-                    timerTick = flushTimer.WaitForNextTickAsync(stoppingToken).AsTask();
-                }
             }
-        }
-        catch (OperationCanceledException)
-        {
-            // Normal shutdown - stoppingToken fired while awaiting the channel or the timer.
-        }
-        finally
-        {
-            // Whatever's still buffered when the process stops must not be silently lost - this is
-            // what closes the gap that let a real MK3.5 session's telemetry and command-ack events
-            // vanish across dev-server restarts (AGENT-NOTES #5). Drains whatever the channel already
-            // has queued too, not just what's in the buffers - a batch that arrived right as shutdown
-            // began would otherwise be dropped along with the channel itself once this method returns.
-            //
-            // Deliberately CancellationToken.None, not stoppingToken: stoppingToken is already
-            // cancelled by this point, so passing it would make the flush's own queries/save fail
-            // immediately instead of running. The host's own shutdown timeout still bounds how long
-            // BackgroundService.StopAsync waits for this method overall, so a database that's
-            // genuinely stuck doesn't hang shutdown indefinitely.
-            while (_channel.Reader.TryRead(out TelemetryWriteItem? item))
+            else
             {
-                await ProcessItemAsync(item, cache, pendingSamples, pendingEvents, dirtyPrinterIds, CancellationToken.None);
-            }
+                await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, CancellationToken.None);
 
-            await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, CancellationToken.None);
+                timerTick = flushTimer.WaitForNextTickAsync().AsTask();
+            }
         }
+
+        // Whatever the last partial batch left buffered. Reached only via the break above, so the
+        // channel is already empty - this is about the in-memory buffers, nothing else.
+        await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, CancellationToken.None);
     }
 
     private async Task ProcessItemAsync(TelemetryWriteItem item,

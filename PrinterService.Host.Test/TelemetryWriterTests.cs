@@ -219,6 +219,46 @@ public sealed class TelemetryWriterTests : IDisposable
         (await SampleCountAsync(verify)).Should().Be(1, "shutdown must flush whatever is buffered rather than discarding it");
     }
 
+    /// <summary>
+    /// The stronger form of the test above: a backlog of both item kinds queued at the moment
+    /// shutdown begins, none of it near either flush threshold. Nothing may be dropped - not the
+    /// items already moved into the in-memory buffers, and not the ones still sitting unread in the
+    /// channel. Shutdown-by-completion makes that one property rather than two separate rescues.
+    /// </summary>
+    [Fact]
+    public async Task EveryQueuedItemSurvivesShutdownNotJustTheFirst()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1000, flushIntervalSeconds: 30));
+        await SeedPrinterAsync();
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+
+        for (int i = 0; i < 25; i++)
+        {
+            writer.Enqueue(printerId: 1, now.AddSeconds(i), new TelemetryDTO { Status = "PRINTING", Progress = i });
+        }
+
+        writer.Enqueue(printerId: 1, now.AddSeconds(25), new EventDTO
+        {
+            EventType = Events.Finished,
+            Status = "PRINTING",
+            CommandId = 42,
+        });
+
+        // Act
+        await writer.StopAsync(CancellationToken.None);
+
+        // Assert
+        await using PSDbContext verify = NewVerificationContext();
+        (await SampleCountAsync(verify)).Should().Be(25);
+        (await verify.PrinterEvents.CountAsync()).Should().Be(1, "an event queued at shutdown is a discrete fact that never repeats");
+
+        // And the live state reflects the last message merged, not an arbitrary earlier one.
+        PrinterLiveState state = await verify.PrinterLiveStates.SingleAsync();
+        state.Progress.Should().Be(24);
+    }
+
     [Fact]
     public async Task TheThrottleSkipsTheSampleButTheLiveStateStillMerges()
     {

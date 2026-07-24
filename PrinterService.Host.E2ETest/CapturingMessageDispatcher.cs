@@ -24,7 +24,7 @@ namespace PrinterService.Host.E2ETest;
 internal sealed class CapturingMessageDispatcher : MessageDispatcher
 {
     public CapturingMessageDispatcher()
-        : base(NullLogger<MessageDispatcher>.Instance, new NullTelemetrySink())
+        : base(NullLogger<MessageDispatcher>.Instance, new NullTelemetrySink(), new PrinterCommandCorrelator())
     {
     }
 

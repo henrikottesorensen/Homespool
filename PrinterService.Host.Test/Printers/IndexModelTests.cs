@@ -71,6 +71,7 @@ public sealed class IndexModelTests : IDisposable
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
         PrusaConnectOptions options = new() { PublicHost = "printers.example.com" };
+        PrinterConnectionRegistry connectionRegistry = new();
 
         IndexModel model = new(
             new PrinterQueryService(context),
@@ -78,7 +79,10 @@ public sealed class IndexModelTests : IDisposable
                 NullLogger<PrusaConnectService>.Instance, Options.Create(options)),
             new TeamService(context),
             users,
-            Options.Create(options))
+            Options.Create(options),
+            connectionRegistry,
+            new PrinterCommandService(context, new TeamService(context),
+                new PrinterCommandTransport(connectionRegistry, new PrinterCommandCorrelator(), NullLogger<PrinterCommandTransport>.Instance, Options.Create(options))))
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };

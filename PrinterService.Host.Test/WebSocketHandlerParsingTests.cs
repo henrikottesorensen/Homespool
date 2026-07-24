@@ -263,7 +263,7 @@ public class WebSocketHandlerParsingTests
     /// these tests can assert on reassembly without depending on <see cref="MessageDispatcher"/>'s
     /// deserialization behavior (covered separately by <c>CaptureReplayTests</c>).</summary>
     private sealed class RecordingMessageDispatcher()
-        : MessageDispatcher(NullLogger<MessageDispatcher>.Instance, new NullTelemetrySink())
+        : MessageDispatcher(NullLogger<MessageDispatcher>.Instance, new NullTelemetrySink(), new PrinterCommandCorrelator())
     {
         public List<string> Received { get; } = [];
 

@@ -31,7 +31,7 @@ public class MessageDispatcherTests
         // Arrange
         using JsonDocument document = JsonDocument.Parse(InlineTransferChunkRequest);
         RecordingTelemetrySink sink = new();
-        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance, sink);
+        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance, sink, new PrinterCommandCorrelator());
 
         // Act
         // TelemetryDTO.Status is required, so mis-routing this into the telemetry branch would throw
@@ -58,7 +58,7 @@ public class MessageDispatcherTests
         // Arrange
         using JsonDocument document = JsonDocument.Parse(MinimalTelemetry);
         RecordingTelemetrySink sink = new();
-        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance, sink);
+        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance, sink, new PrinterCommandCorrelator());
 
         // Act
         // No "event" and no "transfer":"inline" marker, so this must fall through to the telemetry
@@ -75,7 +75,7 @@ public class MessageDispatcherTests
         // Arrange
         using JsonDocument document = JsonDocument.Parse(MinimalTelemetry);
         RecordingTelemetrySink sink = new();
-        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance, sink);
+        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance, sink, new PrinterCommandCorrelator());
 
         // Act
         dispatcher.Dispatch(printerId: 7, document.RootElement);
@@ -97,7 +97,7 @@ public class MessageDispatcherTests
         // Arrange
         using JsonDocument document = JsonDocument.Parse(MinimalEvent);
         RecordingTelemetrySink sink = new();
-        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance, sink);
+        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance, sink, new PrinterCommandCorrelator());
 
         // Act
         Action act = () => dispatcher.Dispatch(printerId: 1, document.RootElement);
@@ -112,7 +112,7 @@ public class MessageDispatcherTests
         // Arrange
         using JsonDocument document = JsonDocument.Parse(MinimalEvent);
         RecordingTelemetrySink sink = new();
-        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance, sink);
+        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance, sink, new PrinterCommandCorrelator());
 
         // Act
         dispatcher.Dispatch(printerId: 3, document.RootElement);
@@ -122,6 +122,48 @@ public class MessageDispatcherTests
         sink.EventCalls[0].PrinterId.Should().Be(3);
         sink.EventCalls[0].Event.EventType.Should().Be(PrinterService.Model.Events.Info);
         sink.TelemetryCalls.Should().BeEmpty();
+    }
+
+    /// <summary>An event whose <c>command_id</c> matches a pending command completes it with that
+    /// event's outcome - the real ack path (planner.cpp:667-790 at the pinned firmware ref), not a
+    /// heuristic.</summary>
+    private const string FinishedEventWithCommandId = """{"event":"FINISHED","state":"IDLE","command_id":42}""";
+
+    [Fact]
+    public async System.Threading.Tasks.Task MatchingCommandIdOnEventCompletesThePendingCommand()
+    {
+        // Arrange
+        using JsonDocument document = JsonDocument.Parse(FinishedEventWithCommandId);
+        RecordingTelemetrySink sink = new();
+        PrinterCommandCorrelator correlator = new();
+        correlator.TryBeginCommand(printerId: 1, commandId: 42, out System.Threading.Tasks.Task<CommandOutcome> outcome);
+        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance, sink, correlator);
+
+        // Act
+        dispatcher.Dispatch(printerId: 1, document.RootElement);
+
+        // Assert
+        CommandOutcome result = await outcome;
+        result.EventType.Should().Be(PrinterService.Model.Events.Finished);
+    }
+
+    [Fact]
+    public void NonMatchingCommandIdOnEventLeavesThePendingCommandOutstanding()
+    {
+        // Arrange
+        using JsonDocument document = JsonDocument.Parse(FinishedEventWithCommandId);
+        RecordingTelemetrySink sink = new();
+        PrinterCommandCorrelator correlator = new();
+        correlator.TryBeginCommand(printerId: 1, commandId: 99, out System.Threading.Tasks.Task<CommandOutcome> outcome);
+        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance, sink, correlator);
+
+        // Act
+        dispatcher.Dispatch(printerId: 1, document.RootElement);
+
+        // Assert
+        // command_id 42 on the wire doesn't match the pending 99, so the pending command must not be
+        // mistaken as answered by an unrelated event.
+        outcome.IsCompleted.Should().BeFalse();
     }
 
     /// <summary>Records every call instead of acting on it, matching this project's hand-rolled,

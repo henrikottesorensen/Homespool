@@ -25,14 +25,17 @@ public class PrusaConnectPrinterController : ControllerBase
 {
     private readonly PrusaConnectService _prusaConnectService;
     private readonly WebSocketHandler _webSocketHandler;
+    private readonly PrinterConnectionRegistry _connectionRegistry;
     private readonly ILogger<PrusaConnectPrinterController> _logger;
 
     public PrusaConnectPrinterController(PrusaConnectService prusaConnectService,
                                          WebSocketHandler webSocketHandler,
+                                         PrinterConnectionRegistry connectionRegistry,
                                          ILogger<PrusaConnectPrinterController> logger)
     {
         _prusaConnectService = prusaConnectService;
         _webSocketHandler = webSocketHandler;
+        _connectionRegistry = connectionRegistry;
         _logger = logger;
     }
     
@@ -67,7 +70,17 @@ public class PrusaConnectPrinterController : ControllerBase
 
                 using IWebSocketPipe pipe = webSocket.CreatePipe(true);
 
-                await Task.WhenAll(_webSocketHandler.HandlePrusaWebsocket(pipe, printerId, CancellationToken.None), pipe.RunAsync());
+                WebSocketPrinterConnection connection = new(pipe);
+                _connectionRegistry.Register(printerId, connection);
+
+                try
+                {
+                    await Task.WhenAll(_webSocketHandler.HandlePrusaWebsocket(pipe, printerId, CancellationToken.None), pipe.RunAsync());
+                }
+                finally
+                {
+                    _connectionRegistry.Unregister(printerId, connection);
+                }
 
                 return Ok();
             }

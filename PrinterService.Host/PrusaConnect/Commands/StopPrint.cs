@@ -1,5 +1,6 @@
 namespace PrinterService.Host.PrusaConnect.Commands;
 
-public class StopPrint : ICommand
+public class StopPrint : ISendableCommand
 {
+    public string WireName => "STOP_PRINT";
 }

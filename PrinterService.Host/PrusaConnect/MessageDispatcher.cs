@@ -24,11 +24,13 @@ public class MessageDispatcher
 {
     private readonly ILogger<MessageDispatcher> _logger;
     private readonly ITelemetrySink _sink;
+    private readonly IPrinterCommandCorrelator _correlator;
 
-    public MessageDispatcher(ILogger<MessageDispatcher> logger, ITelemetrySink sink)
+    public MessageDispatcher(ILogger<MessageDispatcher> logger, ITelemetrySink sink, IPrinterCommandCorrelator correlator)
     {
         _logger = logger;
         _sink = sink;
+        _correlator = correlator;
     }
 
     public virtual void Dispatch(int printerId, JsonElement root)
@@ -40,6 +42,7 @@ public class MessageDispatcher
             EventDTO eventDto = root.Deserialize<EventDTO>()!;
 
             _logger.LogDebug("[{PrinterId}] event {EventType}", printerId, eventDto.EventType);
+            _correlator.ObserveEvent(printerId, eventDto.CommandId, eventDto.EventType, eventDto.Reason);
             _sink.Enqueue(printerId, receivedAt, eventDto);
         }
         else if (root.TryGetProperty("transfer", out JsonElement transfer) && transfer.ValueEquals("inline"))

@@ -52,4 +52,19 @@ public class PrusaConnectOptions
 
     /// <summary>True once <see cref="PublicHost"/> has been set, i.e. a provisioning snippet can be produced.</summary>
     public bool IsPublicAddressConfigured => !string.IsNullOrWhiteSpace(PublicHost);
+
+    /// <summary>
+    /// How long <see cref="PrinterCommandTransport"/> waits for a printer's reply (a
+    /// <c>Finished</c>/<c>Rejected</c>/<c>StateChanged</c> event echoing the command's id) before
+    /// giving up. Default 10 seconds.
+    /// </summary>
+    /// <remarks>
+    /// The firmware answers essentially immediately for the commands this pass sends (see
+    /// <c>planner.cpp:667-790</c> at the pinned ref) - this mostly guards against a printer that
+    /// goes quiet mid-command (e.g. drops off the network) rather than genuine processing latency.
+    /// </remarks>
+    public double CommandResponseTimeoutSeconds { get; set; } = 10;
+
+    /// <summary><see cref="CommandResponseTimeoutSeconds"/> as a <see cref="TimeSpan"/>.</summary>
+    public TimeSpan CommandResponseTimeout => TimeSpan.FromSeconds(CommandResponseTimeoutSeconds);
 }

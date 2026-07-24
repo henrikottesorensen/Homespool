@@ -31,6 +31,11 @@ public class PrinterNotFoundException : Exception
     public static PrinterNotFoundException ForUnknownRegistrationCode() =>
         new("No printer registration matches the supplied registration code.", false);
 
+    /// <summary>No printer exists with the given id. Distinct from the fingerprint overloads above,
+    /// which are for callers on the registration path that never have an id.</summary>
+    public static PrinterNotFoundException ForId(int printerId) =>
+        new($"Printer {printerId} was not found.", false);
+
     protected PrinterNotFoundException()
     {
     }

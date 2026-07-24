@@ -35,6 +35,7 @@ else
                 <th>Team</th>
                 <th>Status</th>
                 <th></th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -69,6 +70,23 @@ else
                             <button type="submit" class="btn btn-sm btn-outline-secondary">
                                 @(row.Enrolled ? "Reissue USB token" : "Regenerate USB token")
                             </button>
+                        </form>
+                    }
+                </td>
+                <td>
+                    @* Sending is gated only on being connected right now, not on whether a print is
+                       actually running/paused - the firmware's own Rejected reply (e.g. "No print to
+                       pause") is the real guard, surfaced above via StatusMessage. *@
+                    @if (row.Connected)
+                    {
+                        <form method="post" asp-page-handler="Pause" asp-route-printerId="@row.Printer.Id" class="d-inline">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">Pause</button>
+                        </form>
+                        <form method="post" asp-page-handler="Resume" asp-route-printerId="@row.Printer.Id" class="d-inline">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">Resume</button>
+                        </form>
+                        <form method="post" asp-page-handler="Stop" asp-route-printerId="@row.Printer.Id" class="d-inline">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">Stop</button>
                         </form>
                     }
                 </td>

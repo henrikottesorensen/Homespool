@@ -197,6 +197,28 @@ public sealed class TelemetryWriterTests : IDisposable
         flushed.Should().BeTrue("the periodic timer must flush a low-traffic printer even though its batch never fills");
     }
 
+    /// <summary>
+    /// Confirmed missing in practice before this was fixed: a real MK3.5 session's telemetry from an
+    /// active print vanished across a dev-server restart, because the only flush triggers were the
+    /// batch-size and timer thresholds - shutdown didn't necessarily hit either.
+    /// </summary>
+    [Fact]
+    public async Task TelemetryIsFlushedOnGracefulShutdownEvenBelowBothThresholds()
+    {
+        // Arrange - neither the batch-size nor the timer could plausibly fire before shutdown.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1000, flushIntervalSeconds: 30));
+        await SeedPrinterAsync();
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
+
+        // Act
+        await writer.StopAsync(CancellationToken.None);
+
+        // Assert
+        await using PSDbContext verify = NewVerificationContext();
+        (await SampleCountAsync(verify)).Should().Be(1, "shutdown must flush whatever is buffered rather than discarding it");
+    }
+
     [Fact]
     public async Task TheThrottleSkipsTheSampleButTheLiveStateStillMerges()
     {

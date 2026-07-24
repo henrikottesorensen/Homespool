@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Net.WebSockets;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -29,16 +29,10 @@ namespace PrinterService.Host.Test;
 /// </para>
 /// <para>
 /// These tests drive the handler through <see cref="FakeWebSocketPipe"/>, which lets each case
-/// dictate exactly where the boundaries fall.
-/// </para>
-/// <para>
-/// Parallelism is disabled for this class because the handler currently reports parsed messages
-/// via <see cref="Console"/>, and capturing that means swapping global state. That capture is a
-/// temporary seam: once the dispatcher lands in phase 2 it should be injected, and these tests
-/// should assert against it directly rather than through stdout.
+/// dictate exactly where the boundaries fall. Parsed messages are asserted against directly via
+/// <see cref="RecordingMessageDispatcher"/> rather than through stdout.
 /// </para>
 /// </remarks>
-[Collection(nameof(ConsoleCapturingCollection))]
 public class WebSocketHandlerParsingTests
 {
     /// <summary>A full-shape telemetry message, matching the capture.</summary>
@@ -205,7 +199,7 @@ public class WebSocketHandlerParsingTests
         using FakeWebSocketPipe pipe = new();
         using PSDbContext context = CreateContext();
 
-        WebSocketHandler handler = new(context, NullLogger<WebSocketHandler>.Instance);
+        WebSocketHandler handler = new(context, NullLogger<WebSocketHandler>.Instance, new RecordingMessageDispatcher());
 
         // Act
         Task run = handler.HandlePrusaWebsocket(pipe, printerId: 1, CancellationToken.None);
@@ -255,47 +249,45 @@ public class WebSocketHandlerParsingTests
         using FakeWebSocketPipe pipe = new();
         using PSDbContext context = CreateContext();
 
-        WebSocketHandler handler = new(context, NullLogger<WebSocketHandler>.Instance);
+        RecordingMessageDispatcher dispatcher = new();
+        WebSocketHandler handler = new(context, NullLogger<WebSocketHandler>.Instance, dispatcher);
 
-        TextWriter originalOut = Console.Out;
-        using StringWriter captured = new();
+        Task run = handler.HandlePrusaWebsocket(pipe, printerId: 1, CancellationToken.None);
 
-        try
+        if (chunkSizes.Length == 1)
         {
-            Console.SetOut(captured);
-
-            Task run = handler.HandlePrusaWebsocket(pipe, printerId: 1, CancellationToken.None);
-
-            if (chunkSizes.Length == 1)
-            {
-                await pipe.WriteInChunksAsync(payload, chunkSizes[0]);
-            }
-            else
-            {
-                int offset = 0;
-
-                foreach (int size in chunkSizes)
-                {
-                    await pipe.WriteInChunksAsync(payload[offset..(offset + size)], size);
-                    offset += size;
-                }
-            }
-
-            await pipe.FinishAsync();
-
-            // A generous ceiling: this exists so a regression that spins or blocks fails the test
-            // instead of hanging the suite, which is how the old parsing spike used to behave.
-            await run.WaitAsync(TimeSpan.FromSeconds(10));
+            await pipe.WriteInChunksAsync(payload, chunkSizes[0]);
         }
-        finally
+        else
         {
-            Console.SetOut(originalOut);
+            int offset = 0;
+
+            foreach (int size in chunkSizes)
+            {
+                await pipe.WriteInChunksAsync(payload[offset..(offset + size)], size);
+                offset += size;
+            }
         }
 
-        return captured.ToString()
-                       .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+        await pipe.FinishAsync();
+
+        // A generous ceiling: this exists so a regression that spins or blocks fails the test
+        // instead of hanging the suite, which is how the old parsing spike used to behave.
+        await run.WaitAsync(TimeSpan.FromSeconds(10));
+
+        return dispatcher.Received;
+    }
+
+    /// <summary>Captures each dispatched message's raw text instead of routing it anywhere, so
+    /// these tests can assert on reassembly without depending on <see cref="MessageDispatcher"/>'s
+    /// deserialization behavior (covered separately by <c>CaptureReplayTests</c>).</summary>
+    private sealed class RecordingMessageDispatcher() : MessageDispatcher(NullLogger<MessageDispatcher>.Instance)
+    {
+        public List<string> Received { get; } = [];
+
+        public override void Dispatch(int printerId, JsonElement root)
+        {
+            Received.Add(root.GetRawText());
+        }
     }
 }
-
-[CollectionDefinition(nameof(ConsoleCapturingCollection), DisableParallelization = true)]
-public class ConsoleCapturingCollection;

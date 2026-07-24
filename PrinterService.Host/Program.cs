@@ -117,7 +117,8 @@ public static class Program
             builder.Services.AddScoped<PrusaConnect.PrusaConnectService>()
                             .AddScoped<PrusaConnect.WebSocketHandler>()
                             .AddScoped<PrusaConnect.TokenService>()
-                            .AddScoped<PrusaConnect.CodeGenerator>();
+                            .AddScoped<PrusaConnect.CodeGenerator>()
+                            .AddScoped<PrusaConnect.MessageDispatcher>();
 
             // Scoped, unlike their singleton neighbors above, because they hold the scoped PSDbContext.
             builder.Services.AddScoped<Services.TeamService>();

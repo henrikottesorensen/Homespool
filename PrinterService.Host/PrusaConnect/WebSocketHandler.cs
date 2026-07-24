@@ -18,11 +18,13 @@ public class WebSocketHandler
 {
     private readonly PSDbContext _context;
     private readonly ILogger<WebSocketHandler> _logger;
+    private readonly MessageDispatcher _dispatcher;
 
-    public WebSocketHandler(PSDbContext context, ILogger<WebSocketHandler> logger)
+    public WebSocketHandler(PSDbContext context, ILogger<WebSocketHandler> logger, MessageDispatcher dispatcher)
     {
         _context = context;
         _logger = logger;
+        _dispatcher = dispatcher;
     }
     
     private static readonly JsonReaderOptions ReaderOptions = new()
@@ -115,6 +117,6 @@ public class WebSocketHandler
 
     private void JsonMessageReceived(int printerId, JsonDocument jsonDocument)
     {
-        Console.WriteLine($"[{printerId}] {jsonDocument.RootElement.GetRawText()}");
+        _dispatcher.Dispatch(printerId, jsonDocument.RootElement);
     }
 }

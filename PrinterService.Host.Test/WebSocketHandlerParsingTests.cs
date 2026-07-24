@@ -28,7 +28,7 @@ namespace PrinterService.Host.Test;
 /// messages and without mistaking "not finished yet" for "malformed".
 /// </para>
 /// <para>
-/// These tests drive the handler through <see cref="FakeWebSocketPipe"/>, which lets each case
+/// These tests drive the handler through <see cref="InMemoryWebSocketPipe"/>, which lets each case
 /// dictate exactly where the boundaries fall. Parsed messages are asserted against directly via
 /// <see cref="RecordingMessageDispatcher"/> rather than through stdout.
 /// </para>
@@ -196,7 +196,7 @@ public class WebSocketHandlerParsingTests
         // Arrange
         // Guards the other direction: the fragmentation handling must not swallow genuinely
         // broken input. A printer sending garbage should still be disconnected.
-        using FakeWebSocketPipe pipe = new();
+        using InMemoryWebSocketPipe pipe = new();
 
         WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, new RecordingMessageDispatcher());
 
@@ -228,7 +228,7 @@ public class WebSocketHandlerParsingTests
 
     private static async Task<IReadOnlyList<string>> RunHandlerAsync(byte[] payload, int[] chunkSizes)
     {
-        using FakeWebSocketPipe pipe = new();
+        using InMemoryWebSocketPipe pipe = new();
 
         RecordingMessageDispatcher dispatcher = new();
         WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, dispatcher);

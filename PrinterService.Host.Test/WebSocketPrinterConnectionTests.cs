@@ -10,7 +10,7 @@ namespace PrinterService.Host.Test;
 
 /// <summary>
 /// <see cref="WebSocketPrinterConnection"/> - confirms bytes handed to <c>SendAsync</c> reach the
-/// underlying pipe's <c>Output</c> unchanged, using <see cref="FakeWebSocketPipe"/> in reverse: what
+/// underlying pipe's <c>Output</c> unchanged, using <see cref="InMemoryWebSocketPipe"/> in reverse: what
 /// the server writes to <c>Output</c> is what "the printer" would read from <c>Input</c>.
 /// </summary>
 public class WebSocketPrinterConnectionTests
@@ -19,7 +19,7 @@ public class WebSocketPrinterConnectionTests
     public async System.Threading.Tasks.Task SendAsyncWritesTheExactFrameBytesToThePipe()
     {
         // Arrange
-        using FakeWebSocketPipe pipe = new();
+        using InMemoryWebSocketPipe pipe = new();
         WebSocketPrinterConnection connection = new(pipe);
         byte[] frame = Encoding.ASCII.GetBytes("J0000002A{\"command\":\"PAUSE_PRINT\"}");
 
@@ -37,7 +37,7 @@ public class WebSocketPrinterConnectionTests
     public void IsOpenReflectsThePipesState()
     {
         // Arrange
-        using FakeWebSocketPipe pipe = new();
+        using InMemoryWebSocketPipe pipe = new();
         WebSocketPrinterConnection connection = new(pipe);
 
         // Act + Assert

@@ -9,15 +9,26 @@ using Devlooped.Net;
 namespace PrinterService.Host.Test;
 
 /// <summary>
-/// An <see cref="IWebSocketPipe"/> backed by an in-memory <see cref="Pipe"/>, so a test can
-/// deliver bytes to <c>WebSocketHandler</c> in precisely controlled chunks.
+/// A real, working <see cref="IWebSocketPipe"/> backed by an in-memory <see cref="Pipe"/> - a test
+/// dictates exactly where the frame boundaries fall on the way in, and can read back whatever the
+/// server wrote on the way out.
 /// </summary>
 /// <remarks>
-/// The chunking is the whole point: a real WebSocket frame boundary falls wherever the network
-/// puts it, with no regard for JSON document boundaries, and that is exactly the case the handler
-/// has to survive. Feeding a message a byte at a time is the harshest honest simulation of it.
+/// <para>
+/// Deliberately not a substitute, and not substitutable: the chunking is the whole point, and a
+/// mocking framework cannot fragment a byte stream. A real WebSocket frame boundary falls wherever
+/// the network puts it, with no regard for JSON document boundaries, and that is exactly the case
+/// <c>WebSocketHandler</c> has to survive - <c>WriteInChunksAsync</c> can feed it a message a byte
+/// at a time, splitting even a multi-byte UTF-8 character down the middle, which is the harshest
+/// honest simulation of it.
+/// </para>
+/// <para>
+/// The single underlying <see cref="Pipe"/> is also what lets it be used in reverse: bytes the
+/// server writes to <see cref="Output"/> are readable from <see cref="Input"/>, so a test can play
+/// "the printer" and assert on exactly what reached the wire.
+/// </para>
 /// </remarks>
-public sealed class FakeWebSocketPipe : IWebSocketPipe
+public sealed class InMemoryWebSocketPipe : IWebSocketPipe
 {
     private readonly Pipe _pipe = new();
 

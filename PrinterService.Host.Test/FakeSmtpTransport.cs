@@ -11,11 +11,17 @@ using PrinterService.Host.Services;
 namespace PrinterService.Host.Test;
 
 /// <summary>
-/// Hand-rolled <see cref="ISmtpTransport"/> double, matching this project's existing style of
-/// writing fakes directly (<c>FakeWebSocketPipe</c>) rather than pulling in a mocking framework.
-/// Records what was called with which arguments, and can be told to throw at any stage to exercise
+/// Hand-rolled <see cref="ISmtpTransport"/> double. Records what was called with which arguments,
+/// and can be told to throw at any stage to exercise
 /// <see cref="SmtpEmailSender"/>/<see cref="SmtpConnectivityProbe"/>'s failure paths.
 /// </summary>
+/// <remarks>
+/// Hand-rolled rather than an NSubstitute substitute (which this project does use, for stubs with no
+/// behaviour of their own) because it is a multi-stage protocol double: connect, authenticate, send,
+/// disconnect, each independently able to fail, with the sent message captured before
+/// <c>SmtpEmailSender</c> disposes it. Expressing that as substitute setup would be longer and
+/// harder to follow than the class itself. Same reasoning as <see cref="InMemoryWebSocketPipe"/>.
+/// </remarks>
 public sealed class FakeSmtpTransport : ISmtpTransport
 {
     public (string Host, int Port, SecureSocketOptions Options)? ConnectCall { get; private set; }

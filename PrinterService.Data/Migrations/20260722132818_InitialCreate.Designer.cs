@@ -508,7 +508,7 @@ namespace PrinterService.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<long>("CreatedAt")
+                    b.Property<long>("EnrolledAt")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("FingerPrint")
@@ -516,6 +516,57 @@ namespace PrinterService.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("HashedToken")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PrinterId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FingerPrint")
+                        .IsUnique();
+
+                    b.HasIndex("PrinterId");
+
+                    b.ToTable("PrusaConnectAuthentication");
+                });
+
+            modelBuilder.Entity("PrinterService.Model.Entities.PrusaConnectProvisioning", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("HashedToken")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PrinterId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PrinterId")
+                        .IsUnique();
+
+                    b.ToTable("PrusaConnectProvisionings");
+                });
+
+            modelBuilder.Entity("PrinterService.Model.Entities.PrusaConnectRegistration", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FingerPrint")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<int?>("PrinterId")
@@ -532,9 +583,6 @@ namespace PrinterService.Data.Migrations
                     b.Property<long>("TemporaryCodeExpiry")
                         .HasColumnType("INTEGER");
 
-                    b.Property<long?>("TokenCreatedAt")
-                        .HasColumnType("INTEGER");
-
                     b.HasKey("Id");
 
                     b.HasIndex("FingerPrint")
@@ -542,11 +590,9 @@ namespace PrinterService.Data.Migrations
 
                     b.HasIndex("PrinterId");
 
-                    b.HasIndex("SerialNumber");
-
                     b.HasIndex("TemporaryCode");
 
-                    b.ToTable("PrusaConnectAuthentication");
+                    b.ToTable("PrusaConnectRegistrations");
                 });
 
             modelBuilder.Entity("PrinterService.Model.Entities.Team", b =>
@@ -860,7 +906,30 @@ namespace PrinterService.Data.Migrations
                 {
                     b.HasOne("PrinterService.Model.Entities.Printer", "Printer")
                         .WithMany()
-                        .HasForeignKey("PrinterId");
+                        .HasForeignKey("PrinterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Printer");
+                });
+
+            modelBuilder.Entity("PrinterService.Model.Entities.PrusaConnectProvisioning", b =>
+                {
+                    b.HasOne("PrinterService.Model.Entities.Printer", "Printer")
+                        .WithMany()
+                        .HasForeignKey("PrinterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Printer");
+                });
+
+            modelBuilder.Entity("PrinterService.Model.Entities.PrusaConnectRegistration", b =>
+                {
+                    b.HasOne("PrinterService.Model.Entities.Printer", "Printer")
+                        .WithMany()
+                        .HasForeignKey("PrinterId")
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.Navigation("Printer");
                 });

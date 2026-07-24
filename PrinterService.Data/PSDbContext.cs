@@ -23,7 +23,17 @@ public class PSDbContext : IdentityDbContext<PSUser, IdentityRole<long>, long>, 
 {
     public DbSet<Printer> Printers { get; set; }
 
+    /// <summary>Enrolled printers' standing credentials, one row per enrolled printer. Read on the
+    /// hot path of every authenticated request. Both enrollment channels converge here.</summary>
     public DbSet<PrusaConnectAuthenticationData> PrusaConnectAuthentication { get; set; }
+
+    /// <summary>Pending code-exchange enrollments, from POST /p/register until the token is redeemed.
+    /// Transient — deleted once the enrolled credential is materialised.</summary>
+    public DbSet<PrusaConnectRegistration> PrusaConnectRegistrations { get; set; }
+
+    /// <summary>Pending USB-key enrollments: a token pre-provisioned for a printer, bound to a
+    /// fingerprint on first contact and then promoted to an enrolled credential.</summary>
+    public DbSet<PrusaConnectProvisioning> PrusaConnectProvisionings { get; set; }
 
     public DbSet<DataProtectionKey> DataProtectionKeys { get; set; }
 
@@ -108,25 +118,49 @@ public class PSDbContext : IdentityDbContext<PSUser, IdentityRole<long>, long>, 
             entity.HasIndex(e => e.FingerPrint)
                   .IsUnique();
 
-            // Deliberately NOT unique. The fingerprint is SHA-256 of
-            // (STM32 CPU UUID || factory MAC || serial number), so it already subsumes the serial:
-            // two different serials cannot produce one fingerprint, and uniqueness here protects
-            // nothing that the fingerprint index does not already cover.
-            //
-            // It did cause harm. A mainboard replacement - where service re-burns the printer's
-            // original serial onto a new board - changes the CPU UUID and MAC, so the fingerprint
-            // changes while the serial does not. GetPrinterCode then finds no row by fingerprint,
-            // inserts, and hits UNIQUE constraint failed: SerialNumber -> 500. The firmware retries
-            // the initial POST three times (registrator.hpp, starting_retries = 3) and then abandons
-            // registration for good, so the printer becomes permanently unregisterable without
-            // manual database surgery.
-            //
-            // Without the constraint the replacement board simply registers as a new printer, which
-            // is honest - it is new hardware - and the old row is stale data rather than a blocker.
-            entity.HasIndex(e => e.SerialNumber);
+            // The enrolled credential belongs to the printer: deleting the printer takes it with
+            // it. PrinterId is required now (enrolled means a printer exists), so this is a required
+            // relationship — cascade is the natural, and EF's default, behaviour for one.
+            entity.HasOne(e => e.Printer)
+                  .WithMany()
+                  .HasForeignKey(e => e.PrinterId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
 
-            // Registration polls GET /p/register until the code is claimed.
+        builder.Entity<PrusaConnectRegistration>(entity =>
+        {
+            // GetPrinterCode looks a pending registration up by fingerprint (to renew rather than
+            // duplicate a code); at most one may be in flight per fingerprint. Distinct from the
+            // enrolled table's fingerprint index — a re-registering printer can briefly hold a
+            // pending row here and a stale enrolled row there, in different tables.
+            entity.HasIndex(e => e.FingerPrint)
+                  .IsUnique();
+
+            // The poll (GET /p/register) looks the row up by code. Deliberately NOT unique: a
+            // collision should surface as SingleOrDefaultAsync throwing rather than being impossible,
+            // though at 24 base36 characters it will not happen.
             entity.HasIndex(e => e.TemporaryCode);
+
+            // Nullable FK: the printer does not exist until a user claims the code. Cascade so a
+            // deleted printer takes any pending registration referencing it along.
+            entity.HasOne(e => e.Printer)
+                  .WithMany()
+                  .HasForeignKey(e => e.PrinterId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<PrusaConnectProvisioning>(entity =>
+        {
+            // One outstanding provisioning token per printer; regenerate overwrites it in place. A
+            // row exists only while unbound — first contact promotes it into the enrolled table and
+            // deletes it — so no fingerprint or status column is needed here.
+            entity.HasIndex(e => e.PrinterId)
+                  .IsUnique();
+
+            entity.HasOne(e => e.Printer)
+                  .WithMany()
+                  .HasForeignKey(e => e.PrinterId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<PrinterLiveState>(entity =>

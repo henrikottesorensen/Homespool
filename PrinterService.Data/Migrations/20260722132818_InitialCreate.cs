@@ -349,14 +349,10 @@ namespace PrinterService.Data.Migrations
                 {
                     Id = table.Column<long>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
-                    PrinterId = table.Column<int>(type: "INTEGER", nullable: true),
-                    SerialNumber = table.Column<string>(type: "TEXT", nullable: false),
+                    PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
                     FingerPrint = table.Column<string>(type: "TEXT", nullable: false),
-                    HashedToken = table.Column<string>(type: "TEXT", nullable: true),
-                    TemporaryCode = table.Column<string>(type: "TEXT", nullable: false),
-                    TemporaryCodeExpiry = table.Column<long>(type: "INTEGER", nullable: false),
-                    CreatedAt = table.Column<long>(type: "INTEGER", nullable: false),
-                    TokenCreatedAt = table.Column<long>(type: "INTEGER", nullable: true)
+                    HashedToken = table.Column<string>(type: "TEXT", nullable: false),
+                    EnrolledAt = table.Column<long>(type: "INTEGER", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -365,7 +361,53 @@ namespace PrinterService.Data.Migrations
                         name: "FK_PrusaConnectAuthentication_Printers_PrinterId",
                         column: x => x.PrinterId,
                         principalTable: "Printers",
-                        principalColumn: "Id");
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "PrusaConnectProvisionings",
+                columns: table => new
+                {
+                    Id = table.Column<long>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
+                    HashedToken = table.Column<string>(type: "TEXT", nullable: false),
+                    CreatedAt = table.Column<long>(type: "INTEGER", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PrusaConnectProvisionings", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_PrusaConnectProvisionings_Printers_PrinterId",
+                        column: x => x.PrinterId,
+                        principalTable: "Printers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "PrusaConnectRegistrations",
+                columns: table => new
+                {
+                    Id = table.Column<long>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    PrinterId = table.Column<int>(type: "INTEGER", nullable: true),
+                    SerialNumber = table.Column<string>(type: "TEXT", nullable: false),
+                    FingerPrint = table.Column<string>(type: "TEXT", nullable: false),
+                    TemporaryCode = table.Column<string>(type: "TEXT", nullable: false),
+                    TemporaryCodeExpiry = table.Column<long>(type: "INTEGER", nullable: false),
+                    CreatedAt = table.Column<long>(type: "INTEGER", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PrusaConnectRegistrations", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_PrusaConnectRegistrations_Printers_PrinterId",
+                        column: x => x.PrinterId,
+                        principalTable: "Printers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
@@ -549,13 +591,25 @@ namespace PrinterService.Data.Migrations
                 column: "PrinterId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_PrusaConnectAuthentication_SerialNumber",
-                table: "PrusaConnectAuthentication",
-                column: "SerialNumber");
+                name: "IX_PrusaConnectProvisionings_PrinterId",
+                table: "PrusaConnectProvisionings",
+                column: "PrinterId",
+                unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_PrusaConnectAuthentication_TemporaryCode",
-                table: "PrusaConnectAuthentication",
+                name: "IX_PrusaConnectRegistrations_FingerPrint",
+                table: "PrusaConnectRegistrations",
+                column: "FingerPrint",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PrusaConnectRegistrations_PrinterId",
+                table: "PrusaConnectRegistrations",
+                column: "PrinterId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PrusaConnectRegistrations_TemporaryCode",
+                table: "PrusaConnectRegistrations",
                 column: "TemporaryCode");
 
             migrationBuilder.CreateIndex(
@@ -609,6 +663,12 @@ namespace PrinterService.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "PrusaConnectAuthentication");
+
+            migrationBuilder.DropTable(
+                name: "PrusaConnectProvisionings");
+
+            migrationBuilder.DropTable(
+                name: "PrusaConnectRegistrations");
 
             migrationBuilder.DropTable(
                 name: "TeamMembers");

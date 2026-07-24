@@ -31,4 +31,25 @@ public class PrusaConnectOptions
 
     /// <summary><see cref="RegistrationCodeLifetimeMinutes"/> as a <see cref="TimeSpan"/>.</summary>
     public TimeSpan RegistrationCodeLifetime => TimeSpan.FromMinutes(RegistrationCodeLifetimeMinutes);
+
+    /// <summary>
+    /// The hostname a printer should be pointed at to reach this server — the <c>hostname</c> value in
+    /// the <c>[service::connect]</c> section of a USB-key <c>prusa_printer_settings.ini</c>.
+    /// </summary>
+    /// <remarks>
+    /// Empty by default: there is no way to infer a self-hosted server's externally-reachable name from
+    /// inside the process (it sits behind whatever DNS, reverse proxy or LAN address the operator
+    /// chose). The provisioning UI cannot produce a usable snippet until this is set, and says so.
+    /// This is the server's own address, deliberately separate from any Prusa host.
+    /// </remarks>
+    public string PublicHost { get; set; } = string.Empty;
+
+    /// <summary>The port for the provisioning snippet. Prusa firmware defaults <c>connect_port</c> to 443.</summary>
+    public int PublicPort { get; set; } = 443;
+
+    /// <summary>Whether the printer should use TLS to reach this server. The firmware default is on.</summary>
+    public bool PublicTls { get; set; } = true;
+
+    /// <summary>True once <see cref="PublicHost"/> has been set, i.e. a provisioning snippet can be produced.</summary>
+    public bool IsPublicAddressConfigured => !string.IsNullOrWhiteSpace(PublicHost);
 }

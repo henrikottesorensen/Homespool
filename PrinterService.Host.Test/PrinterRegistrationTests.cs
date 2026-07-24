@@ -30,9 +30,11 @@ namespace PrinterService.Host.Test;
 /// until a user claims it, then receives its token.
 /// </summary>
 /// <remarks>
-/// Run against real SQLite rather than the in-memory provider, because several of these depend on
-/// provider behaviour — the timestamp comparison translating at all, and the deliberate absence of a
-/// unique constraint on SerialNumber.
+/// The pending state lives in <see cref="PrusaConnectRegistration"/>; the token issue materialises an
+/// enrolled <see cref="PrusaConnectAuthenticationData"/> row and deletes the registration. Run against
+/// real SQLite rather than the in-memory provider, because several of these depend on provider
+/// behaviour — the timestamp comparison translating at all, and the deliberate absence of a unique
+/// constraint on SerialNumber.
 /// </remarks>
 public sealed class PrinterRegistrationTests : IDisposable
 {
@@ -104,7 +106,7 @@ public sealed class PrinterRegistrationTests : IDisposable
         CodeResponseDTO response = await NewService(context).GetPrinterCode(Request());
 
         // Assert
-        PrusaConnectAuthenticationData stored = await context.PrusaConnectAuthentication.SingleAsync();
+        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync();
 
         stored.SerialNumber.Should().Be("15715-4842441651816441");
         stored.FingerPrint.Should().Be("SUDBAJQ78CTJBNA8IHEMODUG43QD9H5GSBSFE0MMKBST8B9E0L");
@@ -134,7 +136,7 @@ public sealed class PrinterRegistrationTests : IDisposable
 
         // Assert
         second.Should().Be(first);
-        (await context.PrusaConnectAuthentication.CountAsync()).Should().Be(1);
+        (await context.PrusaConnectRegistrations.CountAsync()).Should().Be(1);
     }
 
     /// <summary>
@@ -155,7 +157,7 @@ public sealed class PrinterRegistrationTests : IDisposable
         await NewService(context, lifetimeMinutes: 90).GetPrinterCode(Request());
 
         // Assert
-        PrusaConnectAuthenticationData stored = await context.PrusaConnectAuthentication.SingleAsync();
+        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync();
 
         (stored.TemporaryCodeExpiry - stored.CreatedAt).Should()
             .Be(TimeSpan.FromMinutes(90), "both come from a single clock read");
@@ -177,7 +179,7 @@ public sealed class PrinterRegistrationTests : IDisposable
 
         string original = (await service.GetPrinterCode(Request())).TemporaryCode;
 
-        PrusaConnectAuthenticationData stored = await context.PrusaConnectAuthentication.SingleAsync();
+        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync();
         stored.TemporaryCodeExpiry = DateTimeOffset.UtcNow.AddHours(-1);
         await context.SaveChangesAsync();
 
@@ -186,7 +188,7 @@ public sealed class PrinterRegistrationTests : IDisposable
 
         // Assert
         renewed.Should().NotBe(original);
-        (await context.PrusaConnectAuthentication.CountAsync()).Should().Be(1, "the row is renewed, not duplicated");
+        (await context.PrusaConnectRegistrations.CountAsync()).Should().Be(1, "the row is renewed, not duplicated");
     }
 
     /// <summary>
@@ -212,7 +214,7 @@ public sealed class PrinterRegistrationTests : IDisposable
 
         // Assert
         await replacement.Should().NotThrowAsync();
-        (await context.PrusaConnectAuthentication.CountAsync()).Should().Be(2);
+        (await context.PrusaConnectRegistrations.CountAsync()).Should().Be(2);
     }
 
     // ---------- GET /p/register ----------
@@ -239,7 +241,8 @@ public sealed class PrinterRegistrationTests : IDisposable
     }
 
     /// <summary>
-    /// Once claimed, polling issues a token - and only its hash is persisted.
+    /// Once claimed, polling issues a token, materialises the enrolled credential, and stores only the
+    /// token's hash.
     /// </summary>
     /// <remarks>
     /// The token is a long-lived credential authenticating every subsequent request, so a database
@@ -262,10 +265,12 @@ public sealed class PrinterRegistrationTests : IDisposable
         // Assert
         token.Should().NotBeNullOrWhiteSpace();
 
-        PrusaConnectAuthenticationData stored = await context.PrusaConnectAuthentication.SingleAsync();
-        stored.HashedToken.Should().NotBeNullOrWhiteSpace();
-        stored.HashedToken.Should().NotBe(token, "the token must never be stored in the clear");
-        new TokenService().VerifyToken(token, stored.HashedToken!).Should().BeTrue();
+        PrusaConnectAuthenticationData enrolled = await context.PrusaConnectAuthentication.SingleAsync();
+        enrolled.HashedToken.Should().NotBeNullOrWhiteSpace();
+        enrolled.HashedToken.Should().NotBe(token, "the token must never be stored in the clear");
+        new TokenService().VerifyToken(token, enrolled.HashedToken).Should().BeTrue();
+
+        (await context.PrusaConnectRegistrations.AnyAsync()).Should().BeFalse("the registration is consumed once the token is issued");
     }
 
     /// <summary>
@@ -306,7 +311,7 @@ public sealed class PrinterRegistrationTests : IDisposable
         string code = (await service.GetPrinterCode(Request())).TemporaryCode;
         await ClaimAsync(context);
 
-        PrusaConnectAuthenticationData stored = await context.PrusaConnectAuthentication.SingleAsync();
+        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync();
         stored.TemporaryCodeExpiry = DateTimeOffset.UtcNow.AddSeconds(-1);
         await context.SaveChangesAsync();
 
@@ -346,7 +351,8 @@ public sealed class PrinterRegistrationTests : IDisposable
     /// </summary>
     /// <remarks>
     /// It used to stay live for the rest of its lifetime - up to <c>RegistrationCodeLifetimeMinutes</c>,
-    /// an hour by default - so anyone else holding it could redeem it again.
+    /// an hour by default - so anyone else holding it could redeem it again. Now the registration is
+    /// deleted on redemption, so a replay finds nothing.
     /// </remarks>
     [Fact]
     public async Task ARedeemedCodeCannotBeRedeemedAgain()
@@ -371,9 +377,10 @@ public sealed class PrinterRegistrationTests : IDisposable
     /// A replay does not overwrite the hash, so the printer that registered keeps working.
     /// </summary>
     /// <remarks>
-    /// The half of this that bites hardest. Re-redeeming minted a fresh token and overwrote
-    /// <c>HashedToken</c> with its hash, so the replay was not only a credential for the attacker but
-    /// a denial of service against the real printer - whose token silently stopped authenticating.
+    /// The half of this that bites hardest. Re-redeeming used to mint a fresh token and overwrite
+    /// <c>HashedToken</c> with its hash, a denial of service against the real printer. Now the
+    /// registration is gone after the first redemption, so the replay throws before touching the
+    /// enrolled credential.
     /// </remarks>
     [Fact]
     public async Task AReplayedCodeDoesNotInvalidateTheTokenAlreadyIssued()
@@ -391,9 +398,9 @@ public sealed class PrinterRegistrationTests : IDisposable
         await Record.ExceptionAsync(() => service.GetToken(code));
 
         // Assert
-        PrusaConnectAuthenticationData stored = await context.PrusaConnectAuthentication.SingleAsync();
+        PrusaConnectAuthenticationData enrolled = await context.PrusaConnectAuthentication.SingleAsync();
 
-        new TokenService().VerifyToken(token, stored.HashedToken!).Should()
+        new TokenService().VerifyToken(token, enrolled.HashedToken).Should()
             .BeTrue("the printer's token must survive someone else replaying the code");
     }
 
@@ -428,14 +435,14 @@ public sealed class PrinterRegistrationTests : IDisposable
     }
 
     /// <summary>
-    /// Issuing a token stamps when it was issued.
+    /// Issuing a token stamps when enrollment completed.
     /// </summary>
     /// <remarks>
-    /// <c>TokenCreatedAt</c> was mapped and migrated but never written, so it read null for every row.
-    /// Redemption is the only moment it can mean anything.
+    /// The enrolled credential's <c>EnrolledAt</c> is set at the one moment it can mean anything -
+    /// redemption, when the token is issued and the row is materialised.
     /// </remarks>
     [Fact]
-    public async Task IssuingATokenRecordsWhenItWasIssued()
+    public async Task IssuingATokenRecordsWhenEnrollmentCompleted()
     {
         // Arrange
         await using PSDbContext context = await MigratedContextAsync();
@@ -449,10 +456,9 @@ public sealed class PrinterRegistrationTests : IDisposable
         await service.GetToken(code);
 
         // Assert
-        PrusaConnectAuthenticationData stored = await context.PrusaConnectAuthentication.SingleAsync();
+        PrusaConnectAuthenticationData enrolled = await context.PrusaConnectAuthentication.SingleAsync();
 
-        stored.TokenCreatedAt.Should().NotBeNull();
-        stored.TokenCreatedAt.Should().BeOnOrAfter(before.AddSeconds(-1)).And.BeOnOrBefore(DateTimeOffset.UtcNow.AddSeconds(1));
+        enrolled.EnrolledAt.Should().BeOnOrAfter(before.AddSeconds(-1)).And.BeOnOrBefore(DateTimeOffset.UtcNow.AddSeconds(1));
     }
 
     // ---------- what reaches the log ----------
@@ -502,7 +508,7 @@ public sealed class PrinterRegistrationTests : IDisposable
 
         await service.GetPrinterCode(Request());
 
-        PrusaConnectAuthenticationData stored = await context.PrusaConnectAuthentication.SingleAsync();
+        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync();
         stored.TemporaryCodeExpiry = DateTimeOffset.UtcNow.AddHours(-1);
         await context.SaveChangesAsync();
 
@@ -531,7 +537,7 @@ public sealed class PrinterRegistrationTests : IDisposable
         await NewService(context, logger: sink.AsLogger<PrusaConnectService>()).GetPrinterCode(Request());
 
         // Assert
-        PrusaConnectAuthenticationData stored = await context.PrusaConnectAuthentication.SingleAsync();
+        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync();
 
         stored.Id.Should().BeGreaterThan(0, "the key is assigned by the insert, so the log has to come after the save");
         sink.Entries.Should().ContainMatch($"RegistrationId={stored.Id}");
@@ -614,8 +620,8 @@ public sealed class PrinterRegistrationTests : IDisposable
         context.Printers.Add(printer);
         await context.SaveChangesAsync();
 
-        PrusaConnectAuthenticationData auth = await context.PrusaConnectAuthentication.SingleAsync();
-        auth.PrinterId = printer.Id;
+        PrusaConnectRegistration registration = await context.PrusaConnectRegistrations.SingleAsync();
+        registration.PrinterId = printer.Id;
         await context.SaveChangesAsync();
     }
 }

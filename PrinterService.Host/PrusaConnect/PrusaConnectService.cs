@@ -38,7 +38,7 @@ public class PrusaConnectService
         _logger = logger;
         _options = options.Value;
     }
-    
+
     /// <summary>
     /// Issues a registration code for a printer, or renews it once the previous one has expired.
     /// </summary>
@@ -49,8 +49,8 @@ public class PrusaConnectService
     /// destructured <see cref="DTO.RegisterPrinterRequestDTO"/> that carried the fingerprint too,
     /// which put a live credential into the console sink and anything downstream of it.
     /// <para>
-    /// <see cref="PrusaConnectAuthenticationData.Id"/> is logged in its place, which correlates an
-    /// issue with the later poll and claim without reproducing the secret. The logging happens after
+    /// <see cref="PrusaConnectRegistration.Id"/> is logged in its place, which correlates an issue
+    /// with the later poll and claim without reproducing the secret. The logging happens after
     /// <see cref="PSDbContext.SaveChangesAsync(System.Threading.CancellationToken)"/> because the
     /// key is not assigned until the insert completes.
     /// </para>
@@ -59,15 +59,16 @@ public class PrusaConnectService
     {
         DateTimeOffset now = TimeProvider.System.GetUtcNow();
         DateTimeOffset codeExpiry = now + _options.RegistrationCodeLifetime;
-        PrusaConnectAuthenticationData? auth = await _dbContext.PrusaConnectAuthentication.SingleOrDefaultAsync(a => a.FingerPrint == printer.FingerPrint);
+        PrusaConnectRegistration? registration = await _dbContext.PrusaConnectRegistrations
+            .SingleOrDefaultAsync(a => a.FingerPrint == printer.FingerPrint);
 
         bool registered = false;
         bool renewed = false;
 
-        if (auth is null)
+        if (registration is null)
         {
-            EntityEntry<PrusaConnectAuthenticationData> newAuth = await _dbContext.PrusaConnectAuthentication.AddAsync(
-                new PrusaConnectAuthenticationData
+            EntityEntry<PrusaConnectRegistration> newRegistration = await _dbContext.PrusaConnectRegistrations.AddAsync(
+                new PrusaConnectRegistration
                 {
                     FingerPrint = printer.FingerPrint,
                     SerialNumber = printer.SerialNumber,
@@ -76,13 +77,13 @@ public class PrusaConnectService
                     CreatedAt = now,
                 });
 
-            auth = newAuth.Entity;
+            registration = newRegistration.Entity;
             registered = true;
         }
-        else if (auth.TemporaryCodeExpiry < now)
+        else if (registration.TemporaryCodeExpiry < now)
         {
-            auth.TemporaryCode = _codeGenerator.GenerateCode(printer.SerialNumber);
-            auth.TemporaryCodeExpiry = codeExpiry;
+            registration.TemporaryCode = _codeGenerator.GenerateCode(printer.SerialNumber);
+            registration.TemporaryCodeExpiry = codeExpiry;
 
             renewed = true;
         }
@@ -93,19 +94,19 @@ public class PrusaConnectService
         {
             _logger.LogInformation("PrusaConnect printer {SerialNumber} ({PrinterType}, firmware {Firmware}) "
                                    + "registered as {RegistrationId}; Connect code issued, expiring {CodeExpiry:o}.",
-                                   printer.SerialNumber, printer.PrinterType, printer.Firmware, auth.Id, auth.TemporaryCodeExpiry);
+                                   printer.SerialNumber, printer.PrinterType, printer.Firmware, registration.Id, registration.TemporaryCodeExpiry);
         }
         else if (renewed)
         {
             _logger.LogInformation("PrusaConnect registration {RegistrationId} for printer {SerialNumber} "
                                    + "renewed its Connect code, expiring {CodeExpiry:o}.",
-                                   auth.Id, printer.SerialNumber, auth.TemporaryCodeExpiry);
+                                   registration.Id, printer.SerialNumber, registration.TemporaryCodeExpiry);
         }
 
         return new DTO.CodeResponseDTO
         {
-            TemporaryCode = auth.TemporaryCode,
-            Expires = auth.TemporaryCodeExpiry,
+            TemporaryCode = registration.TemporaryCode,
+            Expires = registration.TemporaryCodeExpiry,
         };
     }
 
@@ -118,16 +119,15 @@ public class PrusaConnectService
     /// sole identifier available: Buddy's <c>PollRequest</c> sends nothing but a <c>Code</c> header.
     /// </para>
     /// <para>
-    /// An optional fingerprint filter was tried and removed. It could not be a security control,
-    /// because a caller opts into it by sending the header — anyone holding a stolen code simply omits
-    /// it. And it applied only to the Python SDK, the one client that does send a fingerprint, so its
-    /// sole possible effect was to reject a client that Buddy's path would have accepted.
-    /// </para>
-    /// <para>
-    /// The previous version looked up by fingerprint and then compared the code in constant time,
-    /// which is the better security shape but is not available to us: without a fingerprint there is
-    /// nothing else to key on. The code is 24 base36 characters from <see cref="CodeGenerator"/>, so
-    /// it is a credential in its own right and is treated as one.
+    /// On success this <b>materialises the enrolled credential</b> in
+    /// <see cref="PrusaConnectAuthenticationData"/> and deletes the pending
+    /// <see cref="PrusaConnectRegistration"/>. From then on the printer authenticates through the
+    /// enrolled table's single fingerprint lookup, and a replay of the (now absent) code is an
+    /// ordinary 404. A re-registration of an already-enrolled printer reaches
+    /// <see cref="MaterialiseEnrolledCredentialAsync"/> with a fingerprint that already has an
+    /// enrolled row; that row is updated in place rather than colliding on its unique index — the new
+    /// claim becomes the printer of record and the previously-claimed printer is left as stale data,
+    /// the same outcome a mainboard replacement already produces (AGENT-NOTES protocol-reference §570).
     /// </para>
     /// <para>
     /// <c>TemporaryCode</c> is deliberately non-uniquely indexed, so a collision yields more than one
@@ -137,62 +137,39 @@ public class PrusaConnectService
     /// <para>
     /// <b>Expiry is enforced here, in the query.</b> <see cref="GetPrinterCode"/> only replaces an
     /// expired code on the printer's next POST, so without this a code stayed redeemable indefinitely
-    /// between expiring and being renewed - which made
-    /// <see cref="PrusaConnectOptions.RegistrationCodeLifetimeMinutes"/> control when a code was
-    /// *replaced* rather than when it stopped working.
-    /// </para>
-    /// <para>
-    /// The predicate compares timestamps in SQL, which is only possible because
-    /// <see cref="DateTimeOffsetToUnixMillisecondsConverter"/> stores them as epoch milliseconds.
-    /// Against EF's default <see cref="DateTimeOffset"/> mapping the provider refuses to translate
-    /// the comparison at all and throws at runtime.
-    /// </para>
-    /// <para>
-    /// <b>The code is consumed once it is redeemed</b>, so it is single-use for the step that
-    /// actually hands out a credential while staying reusable for the polling that precedes it.
-    /// </para>
-    /// <para>
-    /// <b>This does not on its own stop a claimed printer being taken over.</b> A caller who knows
-    /// the fingerprint can still POST to <see cref="GetPrinterCode"/>, be handed a fresh code for
-    /// the existing registration, and redeem it here for a new token, because neither method checks
-    /// whether <see cref="PrusaConnectAuthenticationData.HashedToken"/> is already set. Consuming
-    /// the code closes the window on a code that has leaked; it does not close the handshake.
+    /// between expiring and being renewed. The predicate compares timestamps in SQL, which is only
+    /// possible because <see cref="DateTimeOffsetToUnixMillisecondsConverter"/> stores them as epoch
+    /// milliseconds.
     /// </para>
     /// </remarks>
     public async Task<string?> GetToken(string temporaryCode)
     {
         DateTimeOffset now = TimeProvider.System.GetUtcNow();
 
-        PrusaConnectAuthenticationData? auth = await FindActiveRegistrationAsync(temporaryCode, now);
+        PrusaConnectRegistration? registration = await FindActiveRegistrationAsync(temporaryCode, now);
 
-        if (auth is null)
+        if (registration is null)
         {
             throw PrinterNotFoundException.ForUnknownRegistrationCode();
         }
 
-        if (auth.PrinterId is null)
+        if (registration.PrinterId is null)
         {
-            // Still unclaimed. The code is deliberately *not* consumed here: the printer polls this
-            // endpoint repeatedly while it waits for a user, so consuming on contact rather than on
-            // redemption would end registration on the first poll.
+            // Still unclaimed. The registration is deliberately *not* consumed here: the printer polls
+            // this endpoint repeatedly while it waits for a user, so consuming on contact rather than
+            // on redemption would end registration on the first poll.
             return null;
         }
 
         string token = _tokenService.GenerateToken();
-        auth.HashedToken = _tokenService.HashToken(token);
-        auth.TokenCreatedAt = now;
 
-        // Consume the code now that it has been redeemed: the handshake it belongs to is over, and
-        // leaving it live let anyone else holding it mint a second token for the rest of its
-        // lifetime - which also silently overwrote the hash and locked out the printer that had just
-        // registered.
-        //
-        // Expiring it reuses the filter in the query above rather than adding a second rule that
-        // could disagree with it. Blanking TemporaryCode would be worse than it looks: it is
-        // non-nullable, so it would need a sentinel, and the empty string is one a caller can
-        // actually send - the controller only rejects a missing Code header, not an empty one, so an
-        // empty code would match every consumed row.
-        auth.TemporaryCodeExpiry = now;
+        await MaterialiseEnrolledCredentialAsync(registration.PrinterId.Value, registration.FingerPrint,
+            _tokenService.HashToken(token), now);
+
+        // The handshake this registration belonged to is over. Removing it - rather than leaving a
+        // spent row - is what makes the code single-use: a replay finds nothing and is a 404, and it
+        // cannot be renewed back to life the way an expired-but-present code could.
+        _dbContext.PrusaConnectRegistrations.Remove(registration);
 
         await _dbContext.SaveChangesAsync();
 
@@ -206,16 +183,46 @@ public class PrusaConnectService
     /// <see cref="GetToken"/>'s remarks), so a collision surfaces as <see cref="SingleOrDefaultAsync"/>
     /// throwing rather than silently picking a row.
     /// </summary>
-    private Task<PrusaConnectAuthenticationData?> FindActiveRegistrationAsync(string temporaryCode, DateTimeOffset now)
+    private Task<PrusaConnectRegistration?> FindActiveRegistrationAsync(string temporaryCode, DateTimeOffset now)
     {
-        return _dbContext.PrusaConnectAuthentication
+        return _dbContext.PrusaConnectRegistrations
             .SingleOrDefaultAsync(a => a.TemporaryCode == temporaryCode && a.TemporaryCodeExpiry > now);
     }
 
     /// <summary>
-    /// The app-facing half of the claim: a signed-in user redeems the code the printer is displaying,
-    /// creating the <see cref="Printer"/> row and linking it to the registration. Distinct from
-    /// <see cref="GetToken"/> - the printer's own poll - which only starts succeeding once this has run.
+    /// Upserts the enrolled credential by fingerprint. Insert is the normal case; the update branch
+    /// exists only for re-enrollment of a fingerprint that already has a row, where a plain insert
+    /// would violate the enrolled table's unique fingerprint index. Does not save — the caller owns
+    /// the transaction.
+    /// </summary>
+    private async Task MaterialiseEnrolledCredentialAsync(int printerId, string fingerPrint, string hashedToken, DateTimeOffset now)
+    {
+        PrusaConnectAuthenticationData? existing = await _dbContext.PrusaConnectAuthentication
+            .SingleOrDefaultAsync(a => a.FingerPrint == fingerPrint);
+
+        if (existing is null)
+        {
+            await _dbContext.PrusaConnectAuthentication.AddAsync(new PrusaConnectAuthenticationData
+            {
+                PrinterId = printerId,
+                FingerPrint = fingerPrint,
+                HashedToken = hashedToken,
+                EnrolledAt = now,
+            });
+
+            return;
+        }
+
+        existing.PrinterId = printerId;
+        existing.HashedToken = hashedToken;
+        existing.EnrolledAt = now;
+    }
+
+    /// <summary>
+    /// The app-facing half of the code-exchange claim: a signed-in user redeems the code the printer
+    /// is displaying, creating the <see cref="Printer"/> row and linking it to the pending
+    /// registration. Distinct from <see cref="GetToken"/> - the printer's own poll - which only starts
+    /// succeeding once this has run.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -228,78 +235,162 @@ public class PrusaConnectService
     /// first claim created - the concrete answer to the "concurrent claim" question AGENT-NOTES
     /// phase-1.5 §15 step 7 left open as "even 'last write wins' is fine".
     /// </para>
-    /// <para>
-    /// <paramref name="teamId"/> given names an existing team the caller must hold <c>CanManage</c> on
-    /// - adding a printer is treated as a structural change to the team, the same tier as inviting a
-    /// member. Omitted, the printer lands in the caller's default team.
-    /// </para>
     /// </remarks>
     public async Task<Printer> ClaimPrinterAsync(string temporaryCode, string? name, string? location, int? teamId, long userId)
     {
         DateTimeOffset now = TimeProvider.System.GetUtcNow();
 
-        PrusaConnectAuthenticationData? auth = await FindActiveRegistrationAsync(temporaryCode, now);
+        PrusaConnectRegistration? registration = await FindActiveRegistrationAsync(temporaryCode, now);
 
-        if (auth is null)
+        if (registration is null)
         {
             throw PrinterNotFoundException.ForUnknownRegistrationCode();
         }
 
-        if (auth.PrinterId is not null)
+        if (registration.PrinterId is not null)
         {
             throw new RegistrationAlreadyClaimedException();
         }
 
-        int resolvedTeamId;
+        int resolvedTeamId = await ResolveTeamForWriteAsync(teamId, userId);
 
-        if (teamId is int explicitTeamId)
-        {
-            TeamMember? membership = await _teamService.GetMemberAsync(explicitTeamId, userId, CancellationToken.None);
-
-            if (membership is null || !membership.CanManage)
-            {
-                throw new TeamAccessDeniedException();
-            }
-
-            resolvedTeamId = explicitTeamId;
-        }
-        else
-        {
-            TeamMember? defaultMembership = await _teamService.GetDefaultTeamMembershipAsync(userId, CancellationToken.None);
-
-            // Should be unreachable: every account is given a default team at creation
-            // (TeamProvisioning.AddDefaultTeam). Fail closed rather than create a teamless printer.
-            if (defaultMembership is null)
-            {
-                throw new TeamAccessDeniedException();
-            }
-
-            resolvedTeamId = defaultMembership.TeamId;
-        }
-
-        Printer printer = new()
-        {
-            Uuid = Guid.NewGuid(),
-            Type = PrinterType.PrusaConnect,
-            TeamId = resolvedTeamId,
-            Name = name,
-            Location = location,
-            Status = PrinterStatus.Unknown,
-            CreatedAt = now,
-            UpdatedAt = now,
-        };
+        Printer printer = NewPrinter(name, location, resolvedTeamId, now);
 
         await _dbContext.Printers.AddAsync(printer);
 
         // Assigning the navigation rather than PrinterId directly: the printer's Id isn't generated
         // until SaveChanges runs the insert, and EF fixes up the foreign key from this once it is.
-        auth.Printer = printer;
+        registration.Printer = printer;
 
         await _dbContext.SaveChangesAsync();
 
         _logger.LogInformation("PrusaConnect registration {RegistrationId} claimed as printer {PrinterUuid} in team {TeamId}.",
-            auth.Id, printer.Uuid, resolvedTeamId);
+            registration.Id, printer.Uuid, resolvedTeamId);
 
         return printer;
+    }
+
+    /// <summary>
+    /// The USB-key enrollment channel: a signed-in user creates a <see cref="Printer"/> and a
+    /// pre-provisioned token up front, to be written into <c>prusa_printer_settings.ini</c> on a USB
+    /// stick. Returns the plaintext token once - only its hash is stored - so the caller can render
+    /// the snippet. The printer never touches <c>/p/register</c>; it presents this token on its first
+    /// request and the auth handler binds and promotes it there.
+    /// </summary>
+    public async Task<(Printer Printer, string Token)> ProvisionPrinterAsync(string? name, string? location, int? teamId, long userId)
+    {
+        DateTimeOffset now = TimeProvider.System.GetUtcNow();
+
+        int resolvedTeamId = await ResolveTeamForWriteAsync(teamId, userId);
+
+        Printer printer = NewPrinter(name, location, resolvedTeamId, now);
+        await _dbContext.Printers.AddAsync(printer);
+
+        string token = _tokenService.GenerateToken();
+
+        await _dbContext.PrusaConnectProvisionings.AddAsync(new PrusaConnectProvisioning
+        {
+            // Navigation, not PrinterId: the id isn't assigned until the insert runs (see ClaimPrinterAsync).
+            Printer = printer,
+            HashedToken = _tokenService.HashToken(token),
+            CreatedAt = now,
+        });
+
+        await _dbContext.SaveChangesAsync();
+
+        _logger.LogInformation("Printer {PrinterUuid} provisioned with a USB-key token in team {TeamId}.",
+            printer.Uuid, resolvedTeamId);
+
+        return (printer, token);
+    }
+
+    /// <summary>
+    /// Reissues the pre-provisioned token for a printer whose USB stick was never written or whose
+    /// snippet was mistyped, without deleting and recreating the printer. Only valid while the token
+    /// is still <em>unbound</em>: once the printer has made first contact it is enrolled, its
+    /// credential lives in <see cref="PrusaConnectAuthenticationData"/>, and there is nothing here to
+    /// regenerate.
+    /// </summary>
+    /// <exception cref="PrinterNotFoundException">No printer with that id.</exception>
+    /// <exception cref="TeamAccessDeniedException">Caller lacks <c>CanManage</c> on the printer's team.</exception>
+    /// <exception cref="ProvisioningTokenNotFoundException">No outstanding (unbound) provisioning token.</exception>
+    public async Task<string> RegenerateProvisioningTokenAsync(int printerId, long userId)
+    {
+        Printer? printer = await _dbContext.Printers.SingleOrDefaultAsync(p => p.Id == printerId);
+
+        if (printer is null)
+        {
+            throw new PrinterNotFoundException($"Printer {printerId} was not found.");
+        }
+
+        await RequireManageAsync(printer.TeamId, userId);
+
+        PrusaConnectProvisioning? provisioning = await _dbContext.PrusaConnectProvisionings
+            .SingleOrDefaultAsync(p => p.PrinterId == printerId);
+
+        // A row exists only while the token is unbound: first contact promotes it into the enrolled
+        // table and deletes it. So absence means "never provisioned" or "already enrolled" alike -
+        // both are "nothing outstanding to reissue", and collapsing them stops a caller distinguishing
+        // the two.
+        if (provisioning is null)
+        {
+            throw new ProvisioningTokenNotFoundException();
+        }
+
+        string token = _tokenService.GenerateToken();
+        provisioning.HashedToken = _tokenService.HashToken(token);
+
+        await _dbContext.SaveChangesAsync();
+
+        _logger.LogInformation("Provisioning token regenerated for printer {PrinterUuid}.", printer.Uuid);
+
+        return token;
+    }
+
+    private static Printer NewPrinter(string? name, string? location, int teamId, DateTimeOffset now) => new()
+    {
+        Uuid = Guid.NewGuid(),
+        Type = PrinterType.PrusaConnect,
+        TeamId = teamId,
+        Name = name,
+        Location = location,
+        Status = PrinterStatus.Unknown,
+        CreatedAt = now,
+        UpdatedAt = now,
+    };
+
+    /// <summary>
+    /// Resolves the team a newly-added printer lands in. An explicit <paramref name="teamId"/> requires
+    /// <c>CanManage</c> on it - adding a printer is treated as a structural change to the team, the
+    /// same tier as inviting a member. Omitted, the printer lands in the caller's default team.
+    /// </summary>
+    private async Task<int> ResolveTeamForWriteAsync(int? teamId, long userId)
+    {
+        if (teamId is int explicitTeamId)
+        {
+            await RequireManageAsync(explicitTeamId, userId);
+            return explicitTeamId;
+        }
+
+        TeamMember? defaultMembership = await _teamService.GetDefaultTeamMembershipAsync(userId, CancellationToken.None);
+
+        // Should be unreachable: every account is given a default team at creation
+        // (TeamProvisioning.AddDefaultTeam). Fail closed rather than create a teamless printer.
+        if (defaultMembership is null)
+        {
+            throw new TeamAccessDeniedException();
+        }
+
+        return defaultMembership.TeamId;
+    }
+
+    private async Task RequireManageAsync(int teamId, long userId)
+    {
+        TeamMember? membership = await _teamService.GetMemberAsync(teamId, userId, CancellationToken.None);
+
+        if (membership is null || !membership.CanManage)
+        {
+            throw new TeamAccessDeniedException();
+        }
     }
 }

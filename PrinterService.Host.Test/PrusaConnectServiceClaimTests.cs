@@ -126,7 +126,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         printer.Name.Should().Be("My printer");
         printer.Location.Should().Be("Office");
 
-        PrusaConnectAuthenticationData stored = await context.PrusaConnectAuthentication.SingleAsync();
+        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync();
         stored.PrinterId.Should().Be(printer.Id);
     }
 

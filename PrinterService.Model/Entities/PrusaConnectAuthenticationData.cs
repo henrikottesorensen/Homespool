@@ -3,35 +3,41 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace PrinterService.Model.Entities;
 
+/// <summary>
+/// An enrolled printer's standing credential: the fingerprint it presents on the wire and the hash of
+/// the token it authenticates with. One row per enrolled printer, read on the hot path of every
+/// authenticated request and the WebSocket upgrade (AGENT-NOTES §9).
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Enrolled state only.</b> This used to double as the pending code-exchange registration — a row
+/// mutated in place from "has a code, no token" to "claimed, token issued" — which is why
+/// <c>PrinterId</c> and <c>HashedToken</c> were once nullable and the auth handler carried a
+/// "should be unreachable" null check. The two pending channels now live in
+/// <see cref="PrusaConnectRegistration"/> (code exchange) and <see cref="PrusaConnectProvisioning"/>
+/// (USB key), each of which converges here on completion. Every field is required: a row existing
+/// <em>is</em> an enrolled printer.
+/// </para>
+/// <para>
+/// Because both enrollment channels materialise a row here, a provisioned printer authenticates
+/// through the identical single fingerprint lookup as a code-exchange one — there is no per-channel
+/// branch on the request path.
+/// </para>
+/// </remarks>
 public class PrusaConnectAuthenticationData
 {
     public long Id { get; set; }
-    
-    public int? PrinterId { get; set; }
-    
-    /// <summary>
-    /// The claimed printer, or null while the registration is still unclaimed.
-    /// </summary>
-    /// <remarks>
-    /// Nullable to match <see cref="PrinterId"/>: a registration exists from the moment the printer
-    /// POSTs to /p/register, but no printer row is created until a user claims the code. Declaring it
-    /// non-nullable made <c>auth.Printer.Owner</c> in the authentication handler look safe when it is
-    /// not - AGENT-NOTES §3 recorded that as a latent NPE. Now it is a compile error instead.
-    /// </remarks>
+
+    /// <summary>The enrolled printer. Never null — a credential without a printer is not enrollment.</summary>
+    public int PrinterId { get; set; }
+
     [ForeignKey(nameof(PrinterId))]
     public virtual Printer? Printer { get; set; }
-    
-    public required string SerialNumber { get; set; }
-    
+
     public required string FingerPrint { get; set; }
-    
-    public string? HashedToken { get; set; }
-    
-    public required string TemporaryCode { get; set; }
-    
-    public DateTimeOffset TemporaryCodeExpiry { get; set; }
-    
-    public DateTimeOffset CreatedAt { get; set; }
-    
-    public DateTimeOffset? TokenCreatedAt { get; set; }
+
+    public required string HashedToken { get; set; }
+
+    /// <summary>When enrollment completed — the token was issued (code exchange) or bound (USB key).</summary>
+    public DateTimeOffset EnrolledAt { get; set; }
 }

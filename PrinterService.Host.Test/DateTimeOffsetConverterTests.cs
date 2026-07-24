@@ -150,14 +150,14 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
         await using PSDbContext context = NewContext();
         await context.Database.MigrateAsync();
 
-        context.PrusaConnectAuthentication.Add(NewAuth("fp-1", ChronologicalOrder[0]));
+        context.PrusaConnectRegistrations.Add(NewRegistration("fp-1", ChronologicalOrder[0]));
         await context.SaveChangesAsync();
 
         // Act
         await using System.Data.Common.DbConnection connection = context.Database.GetDbConnection();
         await connection.OpenAsync();
         await using System.Data.Common.DbCommand command = connection.CreateCommand();
-        command.CommandText = "select typeof(TemporaryCodeExpiry) from PrusaConnectAuthentication limit 1";
+        command.CommandText = "select typeof(TemporaryCodeExpiry) from PrusaConnectRegistrations limit 1";
 
         // Assert
         (await command.ExecuteScalarAsync())?.ToString().Should().Be("integer");
@@ -180,13 +180,13 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
         // insert shuffled, so a passing result cannot come from insertion order
         foreach ((DateTimeOffset stamp, int i) in ChronologicalOrder.Select((s, i) => (s, i)).OrderBy(_ => Guid.NewGuid()))
         {
-            context.PrusaConnectAuthentication.Add(NewAuth($"fp-{i}", stamp));
+            context.PrusaConnectRegistrations.Add(NewRegistration($"fp-{i}", stamp));
         }
 
         await context.SaveChangesAsync();
 
         // Act
-        List<DateTimeOffset> sorted = await context.PrusaConnectAuthentication
+        List<DateTimeOffset> sorted = await context.PrusaConnectRegistrations
             .OrderBy(a => a.TemporaryCodeExpiry)
             .Select(a => a.TemporaryCodeExpiry)
             .ToListAsync();
@@ -212,7 +212,7 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
 
         foreach ((DateTimeOffset stamp, int i) in ChronologicalOrder.Select((s, i) => (s, i)))
         {
-            context.PrusaConnectAuthentication.Add(NewAuth($"fp-{i}", stamp));
+            context.PrusaConnectRegistrations.Add(NewRegistration($"fp-{i}", stamp));
         }
 
         await context.SaveChangesAsync();
@@ -222,7 +222,7 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
         DateTimeOffset to = ChronologicalOrder[5];
 
         // Act
-        List<DateTimeOffset> matched = await context.PrusaConnectAuthentication
+        List<DateTimeOffset> matched = await context.PrusaConnectRegistrations
             .Where(a => a.TemporaryCodeExpiry >= from && a.TemporaryCodeExpiry <= to)
             .OrderBy(a => a.TemporaryCodeExpiry)
             .Select(a => a.TemporaryCodeExpiry)
@@ -242,7 +242,7 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
 
         foreach ((DateTimeOffset stamp, int i) in ChronologicalOrder.Select((s, i) => (s, i)))
         {
-            context.PrusaConnectAuthentication.Add(NewAuth($"fp-{i}", stamp));
+            context.PrusaConnectRegistrations.Add(NewRegistration($"fp-{i}", stamp));
         }
 
         await context.SaveChangesAsync();
@@ -250,13 +250,13 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
         DateTimeOffset cutoff = ChronologicalOrder[3];
 
         // Act
-        int deleted = await context.PrusaConnectAuthentication
+        int deleted = await context.PrusaConnectRegistrations
             .Where(a => a.TemporaryCodeExpiry < cutoff)
             .ExecuteDeleteAsync();
 
         // Assert
         deleted.Should().Be(3);
-        (await context.PrusaConnectAuthentication.CountAsync()).Should().Be(4);
+        (await context.PrusaConnectRegistrations.CountAsync()).Should().Be(4);
     }
 
     /// <summary>
@@ -280,12 +280,12 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
             .AddTicks(4567)
             .ToOffset(TimeSpan.FromHours(13));
 
-        context.PrusaConnectAuthentication.Add(NewAuth("fp-rt", original));
+        context.PrusaConnectRegistrations.Add(NewRegistration("fp-rt", original));
         await context.SaveChangesAsync();
         context.ChangeTracker.Clear();
 
         // Act
-        DateTimeOffset readBack = (await context.PrusaConnectAuthentication.SingleAsync()).TemporaryCodeExpiry;
+        DateTimeOffset readBack = (await context.PrusaConnectRegistrations.SingleAsync()).TemporaryCodeExpiry;
 
         // Assert
         readBack.Offset.Should().Be(TimeSpan.Zero, "values round-trip as UTC; the offset is not stored");
@@ -297,9 +297,10 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     /// A null <c>DateTimeOffset?</c> stays null through a converter declared over the non-nullable type.
     /// </summary>
     /// <remarks>
-    /// <c>TokenCreatedAt</c> is nullable, and the convention registers
+    /// <c>Invitation.UsedAt</c> is nullable, and the convention registers
     /// <c>Properties&lt;DateTimeOffset&gt;()</c>. EF is expected to lift the conversion over the
-    /// nullable form; this confirms it rather than assuming it.
+    /// nullable form; this confirms it rather than assuming it. (An outstanding invite carries a null
+    /// here — this uses <c>Invitation</c> only as a convenient carrier of a nullable timestamp.)
     /// </remarks>
     [Fact]
     public async Task NullableTimestampsSurviveTheConversion()
@@ -308,19 +309,25 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
         await using PSDbContext context = NewContext();
         await context.Database.MigrateAsync();
 
-        PrusaConnectAuthenticationData row = NewAuth("fp-null", ChronologicalOrder[0]);
-        row.TokenCreatedAt = null;
+        Invitation row = new()
+        {
+            HashedToken = "hash",
+            Email = "someone@example.com",
+            CreatedAt = ChronologicalOrder[0],
+            ExpiresAt = ChronologicalOrder[0].AddHours(48),
+            UsedAt = null,
+        };
 
         // Act
-        context.PrusaConnectAuthentication.Add(row);
+        context.Invitations.Add(row);
         await context.SaveChangesAsync();
         context.ChangeTracker.Clear();
 
         // Assert
-        (await context.PrusaConnectAuthentication.SingleAsync()).TokenCreatedAt.Should().BeNull();
+        (await context.Invitations.SingleAsync()).UsedAt.Should().BeNull();
     }
 
-    private static PrusaConnectAuthenticationData NewAuth(string fingerPrint, DateTimeOffset expiry) => new()
+    private static PrusaConnectRegistration NewRegistration(string fingerPrint, DateTimeOffset expiry) => new()
     {
         FingerPrint = fingerPrint,
         SerialNumber = $"sn-{fingerPrint}",

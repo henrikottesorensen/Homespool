@@ -16,6 +16,11 @@
           <PrivateAssets>all</PrivateAssets>
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
+        <!-- FakeLogger, for asserting on what TelemetryWriter logs. Replaces a hand-rolled ILogger
+             that flattened every entry to a string: the level had to be asserted by substring-matching
+             the formatted text, and the structured properties the writer actually logs (PrinterId,
+             SampleCount, Kind) were discarded before a test could see them. -->
+        <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" Version="10.8.0" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
         <!-- Used only for pure interface stubs with no behaviour of their own. Doubles that actually
              simulate something - FakeWebSocketPipe (a real System.IO.Pipelines.Pipe, so a test can

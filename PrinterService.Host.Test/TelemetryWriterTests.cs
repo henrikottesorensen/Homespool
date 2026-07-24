@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -12,6 +11,7 @@ using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
 
 using PrinterService.Data;
@@ -40,8 +40,34 @@ public sealed class TelemetryWriterTests : IDisposable
     private TelemetryWriter? _writer;
     // A capturing rather than null logger: a flush failure is caught and logged rather than crashing
     // the writer (see TelemetryWriter.SafeFlushAsync), and a real logger here is what makes that
-    // visible while debugging a test failure instead of silently swallowed.
-    private readonly CapturingLogger<TelemetryWriter> _capturingLogger = new();
+    // visible while debugging a test failure instead of silently swallowed. FakeLogger keeps each
+    // entry structured, so the assertions below can check the level as a LogLevel and read the
+    // writer's own log properties, rather than substring-matching one flattened string.
+    private readonly FakeLogger<TelemetryWriter> _fakeLogger = new();
+
+    /// <summary>Every entry logged so far, newest last.</summary>
+    private IReadOnlyList<FakeLogRecord> LogRecords => _fakeLogger.Collector.GetSnapshot();
+
+    /// <summary>
+    /// True once an entry matching <paramref name="predicate"/> has been logged. Polled, because the
+    /// writer logs from its own drain loop - there is no moment a test can await directly.
+    /// </summary>
+    private Task<bool> LoggedAsync(Func<FakeLogRecord, bool> predicate) =>
+        WaitUntilAsync(() => Task.FromResult(LogRecords.Any(predicate)), TimeSpan.FromSeconds(5));
+
+    /// <summary>Renders the captured log for a failure message.</summary>
+    private string LogDump() =>
+        string.Join('\n', LogRecords.Select(r => $"{r.Level}: {r.Message}"));
+
+    /// <summary>
+    /// A failed flush, which <see cref="TelemetryWriter"/> catches and logs rather than letting it
+    /// kill the service. Requires the exception to be attached, not just matching text - a flush
+    /// failure with no exception would mean the writer swallowed the cause.
+    /// </summary>
+    private static bool FlushFailed(FakeLogRecord record) =>
+        record.Level == LogLevel.Error
+        && record.Exception is not null
+        && record.Message.Contains("flush failed");
 
     public void Dispose()
     {
@@ -82,7 +108,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
                                        Options.Create(options),
-                                       _capturingLogger);
+                                       _fakeLogger);
 
         await _writer.StartAsync(CancellationToken.None);
 
@@ -491,11 +517,11 @@ public sealed class TelemetryWriterTests : IDisposable
         }
 
         // Assert
-        bool warned = await WaitUntilAsync(
-            () => Task.FromResult(_capturingLogger.Lines.Any(line => line.Contains("Warning") && line.Contains("Dropped"))),
-            TimeSpan.FromSeconds(5));
+        bool warned = await LoggedAsync(record => record.Level == LogLevel.Warning
+                                              && record.Message.Contains("Dropped")
+                                              && record.StructuredState!.Any(kv => kv.Key == "PrinterId" && kv.Value == "1"));
 
-        warned.Should().BeTrue("a full channel under DropOldest must be logged, not silently discarded");
+        warned.Should().BeTrue($"a full channel under DropOldest must be logged, not silently discarded. Log:\n{LogDump()}");
     }
 
     /// <summary>
@@ -531,9 +557,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
 
-        bool firstAttemptFailed = await WaitUntilAsync(
-            () => Task.FromResult(_capturingLogger.Lines.Any(line => line.Contains("Telemetry flush failed"))),
-            TimeSpan.FromSeconds(5));
+        bool firstAttemptFailed = await LoggedAsync(FlushFailed);
 
         firstAttemptFailed.Should().BeTrue("the arrangement depends on at least one flush having failed already");
 
@@ -575,9 +599,7 @@ public sealed class TelemetryWriterTests : IDisposable
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING", Material = "PLA" });
         writer.Enqueue(printerId: 2, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
 
-        bool failed = await WaitUntilAsync(
-            () => Task.FromResult(_capturingLogger.Lines.Any(line => line.Contains("Telemetry flush failed"))),
-            TimeSpan.FromSeconds(5));
+        bool failed = await LoggedAsync(FlushFailed);
 
         failed.Should().BeTrue("the arrangement depends on printer 2's missing row making the batch fail");
 
@@ -610,24 +632,10 @@ public sealed class TelemetryWriterTests : IDisposable
         }
 
         // Assert
-        bool trimmed = await WaitUntilAsync(
-            () => Task.FromResult(_capturingLogger.Lines.Any(line => line.Contains("Discarded") && line.Contains("buffered telemetry samples"))),
-            TimeSpan.FromSeconds(5));
+        bool trimmed = await LoggedAsync(record => record.Level == LogLevel.Warning
+                                               && record.Message.Contains("Discarded")
+                                               && record.StructuredState!.Any(kv => kv.Key == "Count"));
 
-        trimmed.Should().BeTrue($"the pending sample buffer must not grow without bound while every flush keeps failing. Logs:\n{string.Join('\n', _capturingLogger.Lines)}");
-    }
-
-    private sealed class CapturingLogger<T> : ILogger<T>
-    {
-        public ConcurrentQueue<string> Lines { get; } = new();
-
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-        {
-            Lines.Enqueue($"{logLevel}: {formatter(state, exception)}{(exception is null ? "" : $" -- {exception}")}");
-        }
+        trimmed.Should().BeTrue($"the pending sample buffer must not grow without bound while every flush keeps failing. Log:\n{LogDump()}");
     }
 }

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -38,7 +37,9 @@ namespace PrinterService.Host.PrusaConnect;
 /// configured separately — four batches' worth of headroom is enough for a flush to fall behind
 /// briefly without losing anything, and one to tens of printers never come close to filling it.
 /// <see cref="BoundedChannelFullMode.DropOldest"/> per the accepted trade (AGENT-NOTES §5): the
-/// socket read loop must never block on a slow writer.
+/// socket read loop must never block on a slow writer. Dropping is silent to the printer - it never
+/// discovers this happened - but not to an operator: every drop logs a warning via the channel's
+/// <c>itemDropped</c> callback, since losing data unnoticed would be worse than the drop itself.
 /// </para>
 /// <para>
 /// <b>One bad message must not stop persistence for every other printer.</b>
@@ -47,11 +48,31 @@ namespace PrinterService.Host.PrusaConnect;
 /// permanently; nothing restarts it. Each item is processed in its own try/catch for exactly this
 /// reason — logged and skipped, rather than risking the whole writer.
 /// </para>
+/// <para>
+/// <b>Two independent safety nets guard against unbounded growth, for two different failure modes.</b>
+/// The bounded channel (above) protects against a <em>brief</em> lag - the writer falling a little
+/// behind a burst - by dropping the oldest queued message once <see cref="CapacityBatches"/> worth of
+/// headroom fills. <see cref="TrimExcessPendingSamples"/> protects against the opposite case: flushes
+/// that keep <em>failing</em> (a locked or unreachable database), where <see cref="SafeFlushAsync"/>
+/// deliberately keeps the buffers populated for a retry, and nothing would otherwise stop them growing
+/// for as long as the outage lasts. Only samples are ever trimmed this way - dense, redundant,
+/// already subject to retention - never <see cref="PrinterEvent"/> rows, which are rare, retained
+/// indefinitely, and each one a discrete fact that never repeats.
+/// </para>
 /// </remarks>
 public sealed class TelemetryWriter : BackgroundService, ITelemetrySink
 {
     /// <summary>Channel headroom as a multiple of one flush batch. See remarks above.</summary>
     private const int CapacityBatches = 4;
+
+    /// <summary>
+    /// How many batches' worth of samples the in-memory buffer may hold before the oldest are
+    /// discarded to cap memory - deliberately far larger than <see cref="CapacityBatches"/>, since
+    /// this is a safety net for a database that has been failing to accept flushes for a while, not
+    /// routine headroom. See the class remarks for why samples, and never events, are what this
+    /// discards.
+    /// </summary>
+    private const int MaxPendingSampleBatches = 20;
 
     private readonly Channel<TelemetryWriteItem> _channel;
     private readonly IServiceScopeFactory _scopeFactory;
@@ -64,12 +85,25 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink
         _options = options.Value;
         _logger = logger;
 
+        // itemDropped fires synchronously, on the producer's thread, exactly when DropOldest
+        // actually discards something - not an approximation from watching queue depth. Logged as
+        // a warning rather than silently: a drop means the writer is falling behind the printer(s)
+        // it's serving, which is worth an operator's attention, not just a debugging footnote.
         _channel = Channel.CreateBounded<TelemetryWriteItem>(new BoundedChannelOptions(Math.Max(_options.WriteBatchSize, 1) * CapacityBatches)
         {
             FullMode = BoundedChannelFullMode.DropOldest,
             SingleReader = true,
             SingleWriter = false,
-        });
+        }, OnItemDropped);
+    }
+
+    private void OnItemDropped(TelemetryWriteItem dropped)
+    {
+        string kind = dropped is TelemetryWriteItem.EventItem ? "event" : "telemetry";
+
+        _logger.LogWarning(
+            "Dropped a {Kind} message for printer {PrinterId} (received {ReceivedAt:o}) - the write channel is full, meaning the writer cannot keep up with the incoming rate.",
+            kind, dropped.PrinterId, dropped.ReceivedAt);
     }
 
     public void Enqueue(int printerId, DateTimeOffset receivedAt, TelemetryDTO telemetry)
@@ -190,7 +224,44 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink
         {
             pendingSamples.Add(PrinterLiveStateMerger.ToSample(entry.State, item.ReceivedAt));
             entry.LastSampledAt = item.ReceivedAt;
+
+            TrimExcessPendingSamples(pendingSamples);
         }
+    }
+
+    /// <summary>
+    /// Caps how large the buffer can grow while flushes keep failing (<see cref="SafeFlushAsync"/>
+    /// deliberately leaves it populated for the next attempt), discarding the oldest samples first.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Only ever called with <c>pendingSamples</c>.</b> There is no equivalent call for
+    /// <c>pendingEvents</c> - a stuck database should cost history density before it costs a
+    /// permanently missing, never-repeated event. That asymmetry is enforced by this method's
+    /// signature only ever accepting the sample buffer, not by a runtime check.
+    /// </para>
+    /// <para>
+    /// Without this, a database that is down or locked for an extended period - not just briefly
+    /// behind, which the channel's own headroom already covers - would let <c>pendingSamples</c>
+    /// grow without any ceiling, one dense telemetry message at a time, for as long as the outage
+    /// lasts.
+    /// </para>
+    /// </remarks>
+    private void TrimExcessPendingSamples(List<TelemetrySample> pendingSamples)
+    {
+        int cap = Math.Max(_options.WriteBatchSize, 1) * MaxPendingSampleBatches;
+
+        if (pendingSamples.Count <= cap)
+        {
+            return;
+        }
+
+        int excess = pendingSamples.Count - cap;
+        pendingSamples.RemoveRange(0, excess);
+
+        _logger.LogWarning(
+            "Discarded {Count} buffered telemetry samples to cap memory - the database has been failing to accept flushes for a while. Events are never discarded this way.",
+            excess);
     }
 
     private static void ProcessEvent(TelemetryWriteItem.EventItem item, List<PrinterEvent> pendingEvents)
@@ -274,6 +345,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink
     /// A no-op if nothing is pending, which the timer branch hits constantly on an idle deployment.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <b>Explicit per-entity <see cref="EntityState"/>, not <c>Update()</c>/<c>Add()</c>.</b> Those
     /// convenience methods decide Added-vs-Modified from whether an entity's key looks like a CLR
     /// default - which is useless here, since <see cref="PrinterLiveState"/> and
@@ -283,6 +355,15 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink
     /// <c>INSERT</c> - no exception, just a permanently missing slot. <see cref="LiveStateCacheEntry"/>
     /// already knows exactly which rows exist, from <see cref="HydrateAsync"/> and from every prior
     /// flush, so it is used directly instead of asking EF to infer it.
+    /// </para>
+    /// <para>
+    /// <b>"One transaction" is literal, including <c>Printer.LoadedMaterial</c>.</b> That update is a
+    /// tracked single-property change on an attached, unloaded stub - not
+    /// <c>ExecuteUpdateAsync</c>, which runs as its own immediate statement outside
+    /// <see cref="DbContext.SaveChangesAsync(CancellationToken)"/>'s implicit transaction and would
+    /// commit on its own even if the save below then failed. Every write in this method rises or
+    /// falls with that one call.
+    /// </para>
     /// </remarks>
     private async Task FlushAsync(Dictionary<int, LiveStateCacheEntry> cache,
                                   List<TelemetrySample> pendingSamples,
@@ -308,32 +389,77 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink
             context.PrinterEvents.AddRange(pendingEvents);
         }
 
+        // Every cache mutation below is recorded here rather than applied directly, and only
+        // carried out once SaveChangesAsync below actually succeeds. Applying any of them before
+        // the save is confirmed would leave the cache believing something is true in the database
+        // that a rolled-back save never actually wrote - permanently, for the rest of the process's
+        // life, since nothing else ever corrects it:
+        // - ExistsInDatabase: every later flush would choose Modified over Added and issue an
+        //   UPDATE against a row that was never created, failing forever even once whatever caused
+        //   the original failure is resolved.
+        // - ExistingSlotNumbers: the same failure, per slot.
+        // - PendingLoadedMaterial: clearing it here and having the save then fail would mean the
+        //   material is never retried, yet nothing else remembers the printer still needs it.
+        List<(LiveStateCacheEntry Entry, List<int> NewSlotNumbers, bool ClearsPendingMaterial)> newlyPersisted = [];
+
         foreach (int printerId in dirtyPrinterIds)
         {
             LiveStateCacheEntry entry = cache[printerId];
 
             context.Attach(entry.State);
             context.Entry(entry.State).State = entry.ExistsInDatabase ? EntityState.Modified : EntityState.Added;
-            entry.ExistsInDatabase = true;
+
+            List<int> newSlotNumbers = [];
 
             foreach (PrinterLiveSlotState slot in entry.State.Slots)
             {
                 bool slotExists = entry.ExistingSlotNumbers.Contains(slot.SlotNumber);
                 context.Entry(slot).State = slotExists ? EntityState.Modified : EntityState.Added;
-                entry.ExistingSlotNumbers.Add(slot.SlotNumber);
+
+                if (!slotExists)
+                {
+                    newSlotNumbers.Add(slot.SlotNumber);
+                }
             }
+
+            bool clearsPendingMaterial = false;
 
             if (entry.PendingLoadedMaterial is { } material)
             {
-                await context.Printers
-                    .Where(p => p.Id == printerId)
-                    .ExecuteUpdateAsync(setters => setters.SetProperty(p => p.LoadedMaterial, material), cancellationToken);
+                // A tracked single-property update, not ExecuteUpdateAsync: that runs as its own
+                // immediate statement against the database, independent of the SaveChangesAsync
+                // below - so if the save later failed, this would already have committed on its
+                // own, silently breaking the "one transaction" this method promises. Attaching an
+                // unloaded stub and marking only LoadedMaterial as changed folds it into the same
+                // SaveChangesAsync call as everything else, so it succeeds or rolls back with it.
+                Printer printerStub = new() { Id = printerId };
+                context.Attach(printerStub);
+                printerStub.LoadedMaterial = material;
+                context.Entry(printerStub).Property(p => p.LoadedMaterial).IsModified = true;
 
-                entry.PendingLoadedMaterial = null;
+                clearsPendingMaterial = true;
             }
+
+            newlyPersisted.Add((entry, newSlotNumbers, clearsPendingMaterial));
         }
 
         await context.SaveChangesAsync(cancellationToken);
+
+        // Only reached once the save above has actually succeeded.
+        foreach ((LiveStateCacheEntry entry, List<int> newSlotNumbers, bool clearsPendingMaterial) in newlyPersisted)
+        {
+            entry.ExistsInDatabase = true;
+
+            foreach (int slotNumber in newSlotNumbers)
+            {
+                entry.ExistingSlotNumbers.Add(slotNumber);
+            }
+
+            if (clearsPendingMaterial)
+            {
+                entry.PendingLoadedMaterial = null;
+            }
+        }
 
         pendingSamples.Clear();
         pendingEvents.Clear();

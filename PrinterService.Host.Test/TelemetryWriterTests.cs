@@ -411,6 +411,150 @@ public sealed class TelemetryWriterTests : IDisposable
         enqueueTask.IsFaulted.Should().BeFalse();
     }
 
+    /// <summary>
+    /// A dropped item must not vanish unremarked - it is real telemetry a printer sent that the
+    /// server is choosing to discard, which is worth an operator's attention.
+    /// </summary>
+    [Fact]
+    public async Task DroppingAnItemLogsAWarning()
+    {
+        // Arrange - batch size 1 -> channel capacity 4, so a fast burst overflows it well before
+        // the single reader (which does real async work per item) can keep pace.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1, flushIntervalSeconds: 30));
+
+        // Act
+        for (int i = 0; i < 200; i++)
+        {
+            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
+        }
+
+        // Assert
+        bool warned = await WaitUntilAsync(
+            () => Task.FromResult(_capturingLogger.Lines.Any(line => line.Contains("Warning") && line.Contains("Dropped"))),
+            TimeSpan.FromSeconds(5));
+
+        warned.Should().BeTrue("a full channel under DropOldest must be logged, not silently discarded");
+    }
+
+    /// <summary>
+    /// The buffer safety net that guards against a different failure mode than the channel does:
+    /// not a brief lag, but a database that keeps refusing every flush.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately does <b>not</b> seed a <see cref="Printer"/> row - every flush attempt then
+    /// fails on the same foreign-key violation <c>TelemetryIsPersistedOnceTheBatchSizeIsReached</c>
+    /// hit by accident while this suite was first being written, which makes "the database is stuck"
+    /// trivial to force deterministically rather than needing to fake I/O failure.
+    /// </remarks>
+    /// <summary>
+    /// A printer's live state must still persist correctly once whatever was blocking it resolves -
+    /// not be stuck retrying a doomed <c>UPDATE</c> forever because an earlier, failed attempt is
+    /// wrongly remembered as having already inserted the row.
+    /// </summary>
+    /// <remarks>
+    /// This is the bug <see cref="TelemetryWriter.FlushAsync"/>'s deferred
+    /// <c>ExistsInDatabase</c>/<c>ExistingSlotNumbers</c> update exists to prevent: marking either
+    /// before <c>SaveChangesAsync</c> is confirmed to have succeeded would leave the cache believing
+    /// a row exists the moment a save fails, so every later attempt chooses <c>Modified</c> over
+    /// <c>Added</c> and issues an <c>UPDATE</c> against a row that was never created - permanently,
+    /// for the rest of the process's life, even once the printer this test seeds partway through
+    /// makes the underlying cause go away.
+    /// </remarks>
+    [Fact]
+    public async Task APrinterStillPersistsAfterAnEarlierFlushFailedForIt()
+    {
+        // Arrange - no printer yet, so the first attempt(s) fail on the same foreign-key violation
+        // as the test above.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1, flushIntervalSeconds: 0.05));
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
+
+        bool firstAttemptFailed = await WaitUntilAsync(
+            () => Task.FromResult(_capturingLogger.Lines.Any(line => line.Contains("Telemetry flush failed"))),
+            TimeSpan.FromSeconds(5));
+
+        firstAttemptFailed.Should().BeTrue("the arrangement depends on at least one flush having failed already");
+
+        // Act - the underlying cause resolves; the row this printer needs now exists.
+        await SeedPrinterAsync();
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE" });
+
+        // Assert
+        bool persisted = await WaitUntilAsync(async () =>
+        {
+            await using PSDbContext context = NewVerificationContext();
+            PrinterLiveState? state = await context.PrinterLiveStates.SingleOrDefaultAsync();
+            return state?.Status == PrinterStatus.Idle;
+        }, TimeSpan.FromSeconds(5));
+
+        persisted.Should().BeTrue("a printer must not be stuck forever just because its very first flush attempt failed");
+    }
+
+    /// <summary>
+    /// A <c>Printer.LoadedMaterial</c> update must not survive a flush that otherwise failed - it
+    /// has to be genuinely part of the same transaction as everything else, not a separate
+    /// statement that already committed before the rest went wrong.
+    /// </summary>
+    /// <remarks>
+    /// Forces a real partial failure rather than trusting the code change alone: printer 1 exists
+    /// and is a perfectly valid target for the material update; printer 2 does not exist at all, so
+    /// its <see cref="PrinterLiveState"/> insert violates the foreign key. Batch size 2 guarantees
+    /// both land in the one <c>SaveChangesAsync</c> call this test needs to fail as a whole.
+    /// </remarks>
+    [Fact]
+    public async Task LoadedMaterialRollsBackWithTheRestOfTheFlushOnFailure()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 2, flushIntervalSeconds: 30));
+        await SeedPrinterAsync(printerId: 1);
+
+        // Act - both land in the same flush; printer 2's missing row makes the whole batch fail.
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING", Material = "PLA" });
+        writer.Enqueue(printerId: 2, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
+
+        bool failed = await WaitUntilAsync(
+            () => Task.FromResult(_capturingLogger.Lines.Any(line => line.Contains("Telemetry flush failed"))),
+            TimeSpan.FromSeconds(5));
+
+        failed.Should().BeTrue("the arrangement depends on printer 2's missing row making the batch fail");
+
+        // Assert
+        await using PSDbContext verify = NewVerificationContext();
+        Printer printer1 = await verify.Printers.SingleAsync(p => p.Id == 1);
+        printer1.LoadedMaterial.Should().BeNull("a failed flush must not leave a partial write behind");
+    }
+
+    [Fact]
+    public async Task PendingSamplesAreDiscardedRatherThanGrowingUnboundedWhileFlushesKeepFailing()
+    {
+        // Arrange - batch size 1 and a short interval so many flush attempts happen quickly; no
+        // printer exists, so every single one fails and SafeFlushAsync leaves the buffer as is.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1, flushIntervalSeconds: 0.05));
+
+        // Act - comfortably past the cap (WriteBatchSize(1) * 20 = 20 here). Yielding periodically
+        // matters: batch size 1 also makes the channel's own capacity tiny (1 * CapacityBatches),
+        // so a single tight synchronous burst would mostly self-inflict DropOldest against the
+        // channel before the reader is ever scheduled to drain it into the buffer this test is
+        // actually targeting - which is a different safety net (see the class remarks).
+        for (int i = 0; i < 500; i++)
+        {
+            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
+
+            if (i % 10 == 0)
+            {
+                await Task.Delay(1);
+            }
+        }
+
+        // Assert
+        bool trimmed = await WaitUntilAsync(
+            () => Task.FromResult(_capturingLogger.Lines.Any(line => line.Contains("Discarded") && line.Contains("buffered telemetry samples"))),
+            TimeSpan.FromSeconds(5));
+
+        trimmed.Should().BeTrue($"the pending sample buffer must not grow without bound while every flush keeps failing. Logs:\n{string.Join('\n', _capturingLogger.Lines)}");
+    }
+
     private sealed class CapturingLogger<T> : ILogger<T>
     {
         public ConcurrentQueue<string> Lines { get; } = new();

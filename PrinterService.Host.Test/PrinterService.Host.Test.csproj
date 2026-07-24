@@ -17,6 +17,17 @@
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+        <!-- Used only for pure interface stubs with no behaviour of their own. Doubles that actually
+             simulate something - FakeWebSocketPipe (a real System.IO.Pipelines.Pipe, so a test can
+             split a message mid-UTF8-character) and the MessageDispatcher subclasses - stay
+             hand-rolled: a substitute cannot fragment a byte stream, and substituting a concrete
+             class's virtuals is where this library gets fragile. The analyzer catches the main
+             footgun, substituting a non-virtual member and silently getting nothing. -->
+        <PackageReference Include="NSubstitute" Version="6.0.0" />
+        <PackageReference Include="NSubstitute.Analyzers.CSharp" Version="1.0.17">
+          <PrivateAssets>all</PrivateAssets>
+          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
         <!-- Only used by JsonDotNetDeserialiseTests, which exists to compare Json.NET against
              System.Text.Json on the framings the printer actually sends. Production code uses
              System.Text.Json exclusively, so this reference belongs here and not in Api. -->

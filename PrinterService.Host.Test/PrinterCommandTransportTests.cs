@@ -7,6 +7,9 @@ using AwesomeAssertions;
 
 using Microsoft.Extensions.Logging.Abstractions;
 
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
+
 using PrinterService.Host.PrusaConnect;
 using PrinterService.Host.PrusaConnect.Commands;
 using PrinterService.Model;
@@ -19,23 +22,28 @@ namespace PrinterService.Host.Test;
 /// </summary>
 public class PrinterCommandTransportTests
 {
-    private sealed class FakeConnection : IPrinterConnection
+    /// <summary>
+    /// An open connection that copies every frame written to it into <paramref name="sentFrames"/>.
+    /// The copy matters: the frame arrives as a <see cref="ReadOnlyMemory{T}"/> over a buffer the
+    /// transport is free to reuse, and one test reads the command id back out of it afterwards.
+    /// </summary>
+    private static IPrinterConnection OpenConnection(List<byte[]> sentFrames)
     {
-        public bool IsOpen { get; set; } = true;
-        public List<byte[]> SentFrames { get; } = [];
-        public Exception? ThrowOnSend { get; set; }
+        IPrinterConnection connection = OpenConnection();
 
-        public ValueTask SendAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken)
-        {
-            if (ThrowOnSend is not null)
-            {
-                throw ThrowOnSend;
-            }
+        connection.WhenForAnyArgs(c => c.SendAsync(default, default))
+                  .Do(call => sentFrames.Add(((ReadOnlyMemory<byte>)call[0]!).ToArray()));
 
-            SentFrames.Add(frame.ToArray());
+        return connection;
+    }
 
-            return ValueTask.CompletedTask;
-        }
+    /// <summary>An open connection that accepts and discards whatever is written to it.</summary>
+    private static IPrinterConnection OpenConnection()
+    {
+        IPrinterConnection connection = Substitute.For<IPrinterConnection>();
+        connection.IsOpen.Returns(true);
+
+        return connection;
     }
 
     private static PrinterCommandTransport NewTransport(PrinterConnectionRegistry registry, IPrinterCommandCorrelator correlator, TimeSpan? responseTimeout = null) =>
@@ -60,8 +68,8 @@ public class PrinterCommandTransportTests
     {
         // Arrange
         PrinterConnectionRegistry registry = new();
-        FakeConnection connection = new();
-        registry.Register(1, connection);
+        List<byte[]> sentFrames = [];
+        registry.Register(1, OpenConnection(sentFrames));
 
         PrinterCommandCorrelator correlator = new();
         PrinterCommandTransport transport = NewTransport(registry, correlator);
@@ -71,7 +79,7 @@ public class PrinterCommandTransportTests
         // The transport assigns the CommandId internally; the frame it wrote to the connection is
         // the only place to read it back from (bytes 1-8, 8 hex digits).
         await Task.Delay(TimeSpan.FromMilliseconds(50));
-        uint commandId = uint.Parse(System.Text.Encoding.ASCII.GetString(connection.SentFrames[0], 1, 8), System.Globalization.NumberStyles.HexNumber);
+        uint commandId = uint.Parse(System.Text.Encoding.ASCII.GetString(sentFrames[0], 1, 8), System.Globalization.NumberStyles.HexNumber);
 
         // Act
         correlator.ObserveEvent(1, commandId, Events.Finished, null);
@@ -80,7 +88,7 @@ public class PrinterCommandTransportTests
         // Assert
         result.Outcome.Should().Be(CommandSendOutcome.Completed);
         result.Response!.EventType.Should().Be(Events.Finished);
-        connection.SentFrames.Should().ContainSingle();
+        sentFrames.Should().ContainSingle();
     }
 
     [Fact]
@@ -88,8 +96,8 @@ public class PrinterCommandTransportTests
     {
         // Arrange
         PrinterConnectionRegistry registry = new();
-        FakeConnection connection = new();
-        registry.Register(1, connection);
+        List<byte[]> sentFrames = [];
+        registry.Register(1, OpenConnection(sentFrames));
 
         PrinterCommandCorrelator correlator = new();
         PrinterCommandTransport transport = NewTransport(registry, correlator);
@@ -102,7 +110,7 @@ public class PrinterCommandTransportTests
 
         // Assert
         secondResult.Outcome.Should().Be(CommandSendOutcome.AlreadyInFlight);
-        connection.SentFrames.Should().ContainSingle("the rejected second send must never reach the wire");
+        sentFrames.Should().ContainSingle("the rejected second send must never reach the wire");
 
         // Cleanup: let the first send's wait finish so the test process doesn't leak a pending task.
         correlator.Cancel(1);
@@ -122,7 +130,7 @@ public class PrinterCommandTransportTests
     {
         // Arrange
         PrinterConnectionRegistry registry = new();
-        FakeConnection connection = new();
+        IPrinterConnection connection = OpenConnection();
         registry.Register(1, connection);
 
         PrinterCommandCorrelator correlator = new();
@@ -156,7 +164,7 @@ public class PrinterCommandTransportTests
     {
         // Arrange
         PrinterConnectionRegistry registry = new();
-        FakeConnection connection = new();
+        IPrinterConnection connection = OpenConnection();
         registry.Register(1, connection);
 
         PrinterCommandCorrelator correlator = new();
@@ -178,7 +186,9 @@ public class PrinterCommandTransportTests
     {
         // Arrange
         PrinterConnectionRegistry registry = new();
-        FakeConnection connection = new() { ThrowOnSend = new InvalidOperationException("socket gone") };
+        IPrinterConnection connection = OpenConnection();
+        connection.WhenForAnyArgs(c => c.SendAsync(default, default))
+                  .Throw(new InvalidOperationException("socket gone"));
         registry.Register(1, connection);
 
         PrinterCommandCorrelator correlator = new();
@@ -200,7 +210,7 @@ public class PrinterCommandTransportTests
     {
         // Arrange
         PrinterConnectionRegistry registry = new();
-        FakeConnection connection = new();
+        IPrinterConnection connection = OpenConnection();
         registry.Register(1, connection);
 
         PrinterCommandCorrelator correlator = new();

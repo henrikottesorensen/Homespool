@@ -12,6 +12,8 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
+using NSubstitute;
+
 using PrinterService.Data;
 using PrinterService.Host.Pages.Printers;
 using PrinterService.Host.PrusaConnect;
@@ -167,17 +169,13 @@ public sealed class DetailModelTests : IDisposable
         model.Connected.Should().BeFalse();
 
         // Act - now connected
-        connectionRegistry.Register(printer.Id, new FakeConnection());
+        IPrinterConnection connection = Substitute.For<IPrinterConnection>();
+        connection.IsOpen.Returns(true);
+        connectionRegistry.Register(printer.Id, connection);
+
         await model.OnGetAsync(printer.Uuid, CancellationToken.None);
 
         // Assert
         model.Connected.Should().BeTrue();
-    }
-
-    private sealed class FakeConnection : IPrinterConnection
-    {
-        public bool IsOpen => true;
-
-        public ValueTask SendAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 }

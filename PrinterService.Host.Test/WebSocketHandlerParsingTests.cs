@@ -10,9 +10,9 @@ using AwesomeAssertions;
 
 using Microsoft.Extensions.Logging.Abstractions;
 
+using NSubstitute;
+
 using PrinterService.Host.PrusaConnect;
-using PrinterService.Host.PrusaConnect.DTO.EventMessages;
-using PrinterService.Host.PrusaConnect.DTO.Telemetry;
 
 namespace PrinterService.Host.Test;
 
@@ -259,33 +259,22 @@ public class WebSocketHandlerParsingTests
         return dispatcher.Received;
     }
 
-    /// <summary>Captures each dispatched message's raw text instead of routing it anywhere, so
-    /// these tests can assert on reassembly without depending on <see cref="MessageDispatcher"/>'s
-    /// deserialization behavior (covered separately by <c>CaptureReplayTests</c>).</summary>
+    /// <summary>
+    /// Captures each dispatched message's raw text instead of routing it anywhere.
+    /// Subclasses <see cref="MessageDispatcher"/> rather than substituting it: <c>Dispatch</c> is
+    /// overridden wholesale to capture raw text, so these tests assert on reassembly without
+    /// depending on deserialization behaviour (covered by <c>MessageDispatcherTests</c>). The sink
+    /// and correlator are required constructor dependencies that this override never reaches - a
+    /// bare substitute says exactly that, where a hand-written no-op class only implied it.
+    /// </summary>
     private sealed class RecordingMessageDispatcher()
-        : MessageDispatcher(NullLogger<MessageDispatcher>.Instance, new NullTelemetrySink(), new PrinterCommandCorrelator())
+        : MessageDispatcher(NullLogger<MessageDispatcher>.Instance, Substitute.For<ITelemetrySink>(), new PrinterCommandCorrelator())
     {
         public List<string> Received { get; } = [];
 
         public override void Dispatch(int printerId, JsonElement root)
         {
             Received.Add(root.GetRawText());
-        }
-    }
-
-    /// <summary>
-    /// A no-op sink for tests exercising <see cref="MessageDispatcher"/> subclasses that override
-    /// <see cref="MessageDispatcher.Dispatch"/> entirely and never call the base implementation - the
-    /// sink is a required constructor dependency here but is never actually invoked.
-    /// </summary>
-    private sealed class NullTelemetrySink : ITelemetrySink
-    {
-        public void Enqueue(int printerId, DateTimeOffset receivedAt, TelemetryDTO telemetry)
-        {
-        }
-
-        public void Enqueue(int printerId, DateTimeOffset receivedAt, EventDTO eventDto)
-        {
         }
     }
 }

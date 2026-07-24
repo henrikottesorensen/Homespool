@@ -13,6 +13,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
+
 using PrinterService.Data;
 using PrinterService.Host.Pages.Printers;
 using PrinterService.Host.PrusaConnect;
@@ -312,15 +315,6 @@ public sealed class IndexModelTests : IDisposable
 
     // ---------- OnPostPauseAsync (catch-all fallback) ----------
 
-    /// <summary>A transport that throws whatever's given, bypassing PrinterCommandTransport's own
-    /// correlator/timeout handling entirely - simulating an exception PrinterCommandService can't
-    /// predict, e.g. a WebSocket write racing a disconnect.</summary>
-    private sealed class ThrowingTransport(Exception exception) : IPrinterCommandTransport
-    {
-        public Task<CommandSendResult> SendAsync(int printerId, ISendableCommand commandData, CancellationToken cancellationToken) =>
-            throw exception;
-    }
-
     /// <summary>
     /// An exception type PrinterCommandService never throws itself - none of the typed catch clauses
     /// in OnPostPauseAsync's shared handler match it - falls through to the generic message instead
@@ -331,7 +325,14 @@ public sealed class IndexModelTests : IDisposable
     {
         // Arrange
         await using PSDbContext context = await MigratedContextAsync();
-        (IndexModel model, _, Team team) = await NewModelAsync(context, new ThrowingTransport(new InvalidOperationException("socket gone")));
+
+        // An exception PrinterCommandService never throws itself, bypassing PrinterCommandTransport's
+        // own correlator/timeout handling - as a WebSocket write racing a concurrent disconnect would.
+        IPrinterCommandTransport transport = Substitute.For<IPrinterCommandTransport>();
+        transport.SendAsync(Arg.Any<int>(), Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
+                 .ThrowsAsync(new InvalidOperationException("socket gone"));
+
+        (IndexModel model, _, Team team) = await NewModelAsync(context, transport);
 
         Printer printer = NewPrinter(team.Id);
         context.Printers.Add(printer);

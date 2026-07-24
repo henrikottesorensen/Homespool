@@ -8,6 +8,8 @@ using AwesomeAssertions;
 
 using Microsoft.EntityFrameworkCore;
 
+using NSubstitute;
+
 using PrinterService.Data;
 using PrinterService.Host.Exceptions;
 using PrinterService.Host.PrusaConnect;
@@ -100,19 +102,21 @@ public sealed class PrinterCommandServiceTests : IDisposable
         return printer;
     }
 
-    /// <summary>Forces a deterministic outcome instead of driving a real connection/correlator.</summary>
-    private sealed class FakeTransport : IPrinterCommandTransport
+    /// <summary>
+    /// Forces a deterministic outcome instead of driving a real connection and correlator - these
+    /// tests are about the permission gate and the outcome-to-exception mapping, not the wire.
+    /// </summary>
+    private static IPrinterCommandTransport TransportReturning(CommandSendResult result)
     {
-        public CommandSendResult Result { get; set; } = new(CommandSendOutcome.Completed, new CommandOutcome(Events.Finished, null));
-        public (int PrinterId, ISendableCommand Command)? LastCall { get; private set; }
+        IPrinterCommandTransport transport = Substitute.For<IPrinterCommandTransport>();
+        transport.SendAsync(Arg.Any<int>(), Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
+                 .Returns(result);
 
-        public Task<CommandSendResult> SendAsync(int printerId, ISendableCommand commandData, CancellationToken cancellationToken)
-        {
-            LastCall = (printerId, commandData);
-
-            return Task.FromResult(Result);
-        }
+        return transport;
     }
+
+    private static IPrinterCommandTransport TransportReturning(CommandSendOutcome outcome) =>
+        TransportReturning(new CommandSendResult(outcome, null));
 
     [Fact]
     public async Task SendCommandAsyncReturnsTheOutcomeWhenTheCallerCanUse()
@@ -123,7 +127,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: false);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
-        FakeTransport transport = new() { Result = new(CommandSendOutcome.Completed, new CommandOutcome(Events.Finished, null)) };
+        IPrinterCommandTransport transport = TransportReturning(new CommandSendResult(CommandSendOutcome.Completed, new CommandOutcome(Events.Finished, null)));
         PrinterCommandService service = new(context, new TeamService(context), transport);
         PausePrint command = new();
 
@@ -132,7 +136,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
 
         // Assert
         outcome.EventType.Should().Be(Events.Finished);
-        transport.LastCall.Should().Be((printer.Id, (ISendableCommand)command));
+        await transport.Received(1).SendAsync(printer.Id, command, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -144,7 +148,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: false, canManage: true);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
-        PrinterCommandService service = new(context, new TeamService(context), new FakeTransport());
+        PrinterCommandService service = new(context, new TeamService(context), TransportReturning(CommandSendOutcome.Completed));
 
         // Act
         Func<Task> act = () => service.SendCommandAsync(printer.Id, new PausePrint(), 1, CancellationToken.None);
@@ -162,7 +166,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         TeamMember someoneElses = await AddTeamAsync(context, userId: 2, canRead: true, canUse: true, canManage: true);
         Printer printer = await AddPrinterAsync(context, someoneElses.TeamId);
 
-        PrinterCommandService service = new(context, new TeamService(context), new FakeTransport());
+        PrinterCommandService service = new(context, new TeamService(context), TransportReturning(CommandSendOutcome.Completed));
 
         // Act
         Func<Task> act = () => service.SendCommandAsync(printer.Id, new PausePrint(), 1, CancellationToken.None);
@@ -177,7 +181,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         // Arrange
         await using PSDbContext context = await MigratedContextAsync();
 
-        PrinterCommandService service = new(context, new TeamService(context), new FakeTransport());
+        PrinterCommandService service = new(context, new TeamService(context), TransportReturning(CommandSendOutcome.Completed));
 
         // Act
         Func<Task> act = () => service.SendCommandAsync(999, new PausePrint(), 1, CancellationToken.None);
@@ -195,7 +199,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: true);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
-        FakeTransport transport = new() { Result = new(CommandSendOutcome.NotConnected, null) };
+        IPrinterCommandTransport transport = TransportReturning(CommandSendOutcome.NotConnected);
         PrinterCommandService service = new(context, new TeamService(context), transport);
 
         // Act
@@ -214,7 +218,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: true);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
-        FakeTransport transport = new() { Result = new(CommandSendOutcome.AlreadyInFlight, null) };
+        IPrinterCommandTransport transport = TransportReturning(CommandSendOutcome.AlreadyInFlight);
         PrinterCommandService service = new(context, new TeamService(context), transport);
 
         // Act
@@ -233,7 +237,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: true);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
-        FakeTransport transport = new() { Result = new(CommandSendOutcome.TimedOut, null) };
+        IPrinterCommandTransport transport = TransportReturning(CommandSendOutcome.TimedOut);
         PrinterCommandService service = new(context, new TeamService(context), transport);
 
         // Act

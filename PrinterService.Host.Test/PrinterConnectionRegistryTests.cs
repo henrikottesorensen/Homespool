@@ -4,6 +4,8 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using NSubstitute;
+
 using PrinterService.Host.PrusaConnect;
 
 namespace PrinterService.Host.Test;
@@ -14,11 +16,14 @@ namespace PrinterService.Host.Test;
 /// </summary>
 public class PrinterConnectionRegistryTests
 {
-    private sealed class FakeConnection : IPrinterConnection
+    /// <summary>An open connection that does nothing when written to - these tests only care about
+    /// registry bookkeeping, never about what reaches the wire.</summary>
+    private static IPrinterConnection OpenConnection()
     {
-        public bool IsOpen { get; set; } = true;
+        IPrinterConnection connection = Substitute.For<IPrinterConnection>();
+        connection.IsOpen.Returns(true);
 
-        public ValueTask SendAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        return connection;
     }
 
     [Fact]
@@ -26,7 +31,7 @@ public class PrinterConnectionRegistryTests
     {
         // Arrange
         PrinterConnectionRegistry registry = new();
-        FakeConnection connection = new();
+        IPrinterConnection connection = OpenConnection();
 
         // Act
         registry.Register(1, connection);
@@ -41,13 +46,14 @@ public class PrinterConnectionRegistryTests
     {
         // Arrange
         PrinterConnectionRegistry registry = new();
-        FakeConnection connection = new() { IsOpen = false };
+        IPrinterConnection connection = Substitute.For<IPrinterConnection>();
+        connection.IsOpen.Returns(false);
         registry.Register(1, connection);
 
         // Act + Assert
         registry.IsConnected(1).Should().BeFalse();
 
-        connection.IsOpen = true;
+        connection.IsOpen.Returns(true);
         registry.IsConnected(1).Should().BeTrue();
     }
 
@@ -56,8 +62,8 @@ public class PrinterConnectionRegistryTests
     {
         // Arrange
         PrinterConnectionRegistry registry = new();
-        FakeConnection connectionA = new();
-        FakeConnection connectionB = new();
+        IPrinterConnection connectionA = OpenConnection();
+        IPrinterConnection connectionB = OpenConnection();
 
         registry.Register(1, connectionA);
         // Simulates a fast reconnect: a new connection registers for the same printer before the
@@ -77,7 +83,7 @@ public class PrinterConnectionRegistryTests
     {
         // Arrange
         PrinterConnectionRegistry registry = new();
-        FakeConnection connection = new();
+        IPrinterConnection connection = OpenConnection();
         registry.Register(1, connection);
 
         // Act

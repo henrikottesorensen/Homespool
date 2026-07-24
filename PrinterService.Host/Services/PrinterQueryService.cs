@@ -20,6 +20,11 @@ namespace PrinterService.Host.Services;
 /// </summary>
 public class PrinterQueryService
 {
+    /// <summary>Rows shown on the printer detail page - a display choice, not a protocol knob, so
+    /// fixed constants rather than a config option.</summary>
+    private const int RecentSampleCount = 50;
+    private const int RecentEventCount = 20;
+
     private readonly PSDbContext _dbContext;
 
     public PrinterQueryService(PSDbContext dbContext)
@@ -91,4 +96,52 @@ public class PrinterQueryService
 
         return printer;
     }
+
+    /// <summary>
+    /// A printer's live state plus recent telemetry/event history, for the detail page. Same
+    /// "doesn't exist or caller can't even read it" rule as <see cref="GetPrinterForUserAsync"/> -
+    /// both cases return <c>null</c> so a 404 never confirms a UUID belongs to someone else's team.
+    /// </summary>
+    public async Task<PrinterStatistics?> GetPrinterStatisticsForUserAsync(Guid uuid, long userId, CancellationToken cancellationToken)
+    {
+        Printer? printer = await _dbContext.Printers
+            .AsNoTracking()
+            .Include(p => p.Team)
+            .SingleOrDefaultAsync(p => p.Uuid == uuid &&
+                                       _dbContext.TeamMembers.Any(m => m.TeamId == p.TeamId && m.UserId == userId && m.CanRead),
+                                  cancellationToken);
+
+        if (printer is null)
+        {
+            return null;
+        }
+
+        PrinterLiveState? liveState = await _dbContext.PrinterLiveStates
+            .AsNoTracking()
+            .SingleOrDefaultAsync(s => s.PrinterId == printer.Id, cancellationToken);
+
+        List<TelemetrySample> samples = await _dbContext.TelemetrySamples
+            .AsNoTracking()
+            .Where(s => s.PrinterId == printer.Id)
+            .OrderByDescending(s => s.Timestamp)
+            .Take(RecentSampleCount)
+            .ToListAsync(cancellationToken);
+
+        List<PrinterEvent> events = await _dbContext.PrinterEvents
+            .AsNoTracking()
+            .Where(e => e.PrinterId == printer.Id)
+            .OrderByDescending(e => e.Timestamp)
+            .Take(RecentEventCount)
+            .ToListAsync(cancellationToken);
+
+        return new PrinterStatistics(printer, liveState, samples, events);
+    }
 }
+
+/// <summary>Result of <see cref="PrinterQueryService.GetPrinterStatisticsForUserAsync"/> - a
+/// printer's live state plus recent history, newest first.</summary>
+public sealed record PrinterStatistics(
+    Printer Printer,
+    PrinterLiveState? LiveState,
+    IReadOnlyList<TelemetrySample> RecentSamples,
+    IReadOnlyList<PrinterEvent> RecentEvents);

@@ -42,7 +42,7 @@ else
         @foreach (var row in Model.Printers)
         {
             <tr>
-                <td>@(row.Printer.Name ?? row.Printer.Model ?? row.Printer.Uuid.ToString())</td>
+                <td><a asp-page="Detail" asp-route-uuid="@row.Printer.Uuid">@(row.Printer.Name ?? row.Printer.Model ?? row.Printer.Uuid.ToString())</a></td>
                 <td>@row.Printer.Location</td>
                 <td>@row.TeamName</td>
                 <td>

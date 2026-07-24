@@ -299,4 +299,153 @@ public sealed class PrinterQueryServiceTests : IDisposable
         // Assert
         updated!.UpdatedAt.Should().BeOnOrAfter(before.AddSeconds(-1));
     }
+
+    // ---------- GetPrinterStatisticsForUserAsync ----------
+
+    /// <summary>Unknown uuid returns null, same as GetPrinterForUserAsync.</summary>
+    [Fact]
+    public async Task GetPrinterStatisticsForUserAsyncReturnsNullForAnUnknownUuid()
+    {
+        // Arrange
+        await using PSDbContext context = await MigratedContextAsync();
+
+        // Act
+        PrinterStatistics? statistics = await new PrinterQueryService(context)
+            .GetPrinterStatisticsForUserAsync(Guid.NewGuid(), 1, CancellationToken.None);
+
+        // Assert
+        statistics.Should().BeNull();
+    }
+
+    /// <summary>A printer on a team the caller isn't a member of returns null - the same
+    /// "doesn't leak existence" rule GetPrinterForUserAsync follows.</summary>
+    [Fact]
+    public async Task GetPrinterStatisticsForUserAsyncReturnsNullWhenTheCallerIsNotOnItsTeam()
+    {
+        // Arrange
+        await using PSDbContext context = await MigratedContextAsync();
+
+        TeamMember someoneElses = await AddTeamAsync(context, userId: 2, canRead: true, canUse: true, canManage: true);
+        Printer printer = await AddPrinterAsync(context, someoneElses.TeamId);
+
+        // Act
+        PrinterStatistics? statistics = await new PrinterQueryService(context)
+            .GetPrinterStatisticsForUserAsync(printer.Uuid, 1, CancellationToken.None);
+
+        // Assert
+        statistics.Should().BeNull();
+    }
+
+    /// <summary>A membership with CanRead false is treated the same as no membership at all.</summary>
+    [Fact]
+    public async Task GetPrinterStatisticsForUserAsyncReturnsNullWithoutCanRead()
+    {
+        // Arrange
+        await using PSDbContext context = await MigratedContextAsync();
+
+        TeamMember noRead = await AddTeamAsync(context, userId: 1, canRead: false, canUse: true, canManage: true);
+        Printer printer = await AddPrinterAsync(context, noRead.TeamId);
+
+        // Act
+        PrinterStatistics? statistics = await new PrinterQueryService(context)
+            .GetPrinterStatisticsForUserAsync(printer.Uuid, 1, CancellationToken.None);
+
+        // Assert
+        statistics.Should().BeNull();
+    }
+
+    /// <summary>A printer with no telemetry yet returns a null live state and empty history,
+    /// not an exception.</summary>
+    [Fact]
+    public async Task GetPrinterStatisticsForUserAsyncReturnsEmptyHistoryForAPrinterWithNoTelemetryYet()
+    {
+        // Arrange
+        await using PSDbContext context = await MigratedContextAsync();
+
+        TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: true);
+        Printer printer = await AddPrinterAsync(context, membership.TeamId);
+
+        // Act
+        PrinterStatistics? statistics = await new PrinterQueryService(context)
+            .GetPrinterStatisticsForUserAsync(printer.Uuid, 1, CancellationToken.None);
+
+        // Assert
+        statistics.Should().NotBeNull();
+        statistics!.LiveState.Should().BeNull();
+        statistics.RecentSamples.Should().BeEmpty();
+        statistics.RecentEvents.Should().BeEmpty();
+    }
+
+    /// <summary>Live state, samples and events are all returned, samples and events newest first.</summary>
+    [Fact]
+    public async Task GetPrinterStatisticsForUserAsyncReturnsLiveStateAndHistoryNewestFirst()
+    {
+        // Arrange
+        await using PSDbContext context = await MigratedContextAsync();
+
+        TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: true);
+        Printer printer = await AddPrinterAsync(context, membership.TeamId);
+
+        context.PrinterLiveStates.Add(new PrinterLiveState
+        {
+            PrinterId = printer.Id,
+            LastSeenAt = DateTimeOffset.UtcNow,
+            Status = PrinterStatus.Printing,
+            Progress = 42,
+        });
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        context.TelemetrySamples.AddRange(
+            new TelemetrySample { PrinterId = printer.Id, Timestamp = now.AddMinutes(-2), Status = PrinterStatus.Printing, Progress = 40 },
+            new TelemetrySample { PrinterId = printer.Id, Timestamp = now, Status = PrinterStatus.Printing, Progress = 42 });
+        context.PrinterEvents.AddRange(
+            new PrinterEvent { PrinterId = printer.Id, Timestamp = now.AddMinutes(-1), EventType = Events.Info, Status = PrinterStatus.Printing },
+            new PrinterEvent { PrinterId = printer.Id, Timestamp = now, EventType = Events.Finished, Status = PrinterStatus.Printing, Reason = "No print to pause" });
+
+        await context.SaveChangesAsync();
+
+        // Act
+        PrinterStatistics? statistics = await new PrinterQueryService(context)
+            .GetPrinterStatisticsForUserAsync(printer.Uuid, 1, CancellationToken.None);
+
+        // Assert
+        statistics.Should().NotBeNull();
+        statistics!.LiveState.Should().NotBeNull();
+        statistics.LiveState!.Progress.Should().Be(42);
+
+        statistics.RecentSamples.Should().HaveCount(2);
+        statistics.RecentSamples[0].Progress.Should().Be(42, "newest first");
+        statistics.RecentSamples[1].Progress.Should().Be(40);
+
+        statistics.RecentEvents.Should().HaveCount(2);
+        statistics.RecentEvents[0].EventType.Should().Be(Events.Finished, "newest first");
+        statistics.RecentEvents[0].Reason.Should().Be("No print to pause");
+        statistics.RecentEvents[1].EventType.Should().Be(Events.Info);
+    }
+
+    /// <summary>More rows exist than the display cap - only the newest RecentSampleCount survive.</summary>
+    [Fact]
+    public async Task GetPrinterStatisticsForUserAsyncCapsTheSampleCountAtFifty()
+    {
+        // Arrange
+        await using PSDbContext context = await MigratedContextAsync();
+
+        TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: true);
+        Printer printer = await AddPrinterAsync(context, membership.TeamId);
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        for (int i = 0; i < 60; i++)
+        {
+            context.TelemetrySamples.Add(new TelemetrySample { PrinterId = printer.Id, Timestamp = now.AddSeconds(-i), Status = PrinterStatus.Printing, Progress = i });
+        }
+        await context.SaveChangesAsync();
+
+        // Act
+        PrinterStatistics? statistics = await new PrinterQueryService(context)
+            .GetPrinterStatisticsForUserAsync(printer.Uuid, 1, CancellationToken.None);
+
+        // Assert
+        statistics!.RecentSamples.Should().HaveCount(50);
+        statistics.RecentSamples[0].Progress.Should().Be(0, "the most recent (i=0, latest timestamp) sample must survive the cap");
+    }
 }

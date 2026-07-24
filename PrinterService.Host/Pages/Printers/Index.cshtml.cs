@@ -163,6 +163,16 @@ public class IndexModel : PageModel
         {
             (StatusMessage, StatusSuccess) = ("That printer didn't respond in time.", false);
         }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Everything above is a designed outcome PrinterCommandService can throw. This is the
+            // fallback for what it can't predict - e.g. a WebSocket write racing a disconnect
+            // (PrinterCommandTransport.SendAsync's `catch { ...; throw; }` around the send itself,
+            // which rethrows whatever the socket layer produced rather than a typed exception).
+            // Without this, that unlikely-but-real race surfaces as an unhandled 500 instead of a
+            // message. Excluded when the request itself was cancelled - nothing will render anyway.
+            (StatusMessage, StatusSuccess) = ("Something went wrong sending the command.", false);
+        }
 
         return RedirectToPage();
     }

@@ -100,5 +100,21 @@ public sealed class PrinterCommandTransport : IPrinterCommandTransport
 
             return new CommandSendResult(CommandSendOutcome.TimedOut, null);
         }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Neither our timeout nor the caller's own token: outcomeTask itself was cancelled
+            // directly - the printer's connection was unregistered (disconnected) while this command
+            // was still awaiting a reply (PrusaConnectPrinterController's finally calls
+            // IPrinterCommandCorrelator.Cancel on disconnect). Reported as NotConnected - accurate,
+            // and reuses an outcome the caller already handles rather than adding a new one.
+            //
+            // A genuine caller-initiated cancellation (e.g. the HTTP request itself was aborted)
+            // deliberately isn't caught here - it propagates as an ordinary OperationCanceledException,
+            // which ASP.NET Core already handles without a response ever being expected.
+            _logger.LogWarning("[{PrinterId}] command {CommandId} ({Command}) will not be answered - connection lost while waiting",
+                printerId, commandId, commandData.WireName);
+
+            return new CommandSendResult(CommandSendOutcome.NotConnected, null);
+        }
     }
 }

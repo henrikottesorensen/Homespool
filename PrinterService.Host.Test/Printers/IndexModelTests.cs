@@ -8,6 +8,7 @@ using AwesomeAssertions;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -15,6 +16,7 @@ using Microsoft.Extensions.Options;
 using PrinterService.Data;
 using PrinterService.Host.Pages.Printers;
 using PrinterService.Host.PrusaConnect;
+using PrinterService.Host.PrusaConnect.Commands;
 using PrinterService.Host.Services;
 using PrinterService.Model;
 using PrinterService.Model.Entities;
@@ -57,7 +59,10 @@ public sealed class IndexModelTests : IDisposable
         }
     }
 
-    private static async Task<(IndexModel Model, PSUser User, Team Team)> NewModelAsync(PSDbContext context)
+    private static Task<(IndexModel Model, PSUser User, Team Team)> NewModelAsync(PSDbContext context) =>
+        NewModelAsync(context, transport: null);
+
+    private static async Task<(IndexModel Model, PSUser User, Team Team)> NewModelAsync(PSDbContext context, IPrinterCommandTransport? transport)
     {
         (UserManager<PSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 
@@ -73,6 +78,8 @@ public sealed class IndexModelTests : IDisposable
         PrusaConnectOptions options = new() { PublicHost = "printers.example.com" };
         PrinterConnectionRegistry connectionRegistry = new();
 
+        transport ??= new PrinterCommandTransport(connectionRegistry, new PrinterCommandCorrelator(), NullLogger<PrinterCommandTransport>.Instance, Options.Create(options));
+
         IndexModel model = new(
             new PrinterQueryService(context),
             new PrusaConnectService(context, new CodeGenerator(), new TokenService(), new TeamService(context),
@@ -81,8 +88,7 @@ public sealed class IndexModelTests : IDisposable
             users,
             Options.Create(options),
             connectionRegistry,
-            new PrinterCommandService(context, new TeamService(context),
-                new PrinterCommandTransport(connectionRegistry, new PrinterCommandCorrelator(), NullLogger<PrinterCommandTransport>.Instance, Options.Create(options))))
+            new PrinterCommandService(context, new TeamService(context), transport))
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };
@@ -302,5 +308,41 @@ public sealed class IndexModelTests : IDisposable
         model.StatusMessage.Should().BeNullOrEmpty();
         model.Snippet.Should().NotBeNullOrEmpty();
         model.RegeneratedPrinterId.Should().Be(printer.Id);
+    }
+
+    // ---------- OnPostPauseAsync (catch-all fallback) ----------
+
+    /// <summary>A transport that throws whatever's given, bypassing PrinterCommandTransport's own
+    /// correlator/timeout handling entirely - simulating an exception PrinterCommandService can't
+    /// predict, e.g. a WebSocket write racing a disconnect.</summary>
+    private sealed class ThrowingTransport(Exception exception) : IPrinterCommandTransport
+    {
+        public Task<CommandSendResult> SendAsync(int printerId, ISendableCommand commandData, CancellationToken cancellationToken) =>
+            throw exception;
+    }
+
+    /// <summary>
+    /// An exception type PrinterCommandService never throws itself - none of the typed catch clauses
+    /// in OnPostPauseAsync's shared handler match it - falls through to the generic message instead
+    /// of propagating as an unhandled exception.
+    /// </summary>
+    [Fact]
+    public async Task OnPostPauseAsyncFallsBackToAGenericMessageForAnUnpredictedException()
+    {
+        // Arrange
+        await using PSDbContext context = await MigratedContextAsync();
+        (IndexModel model, _, Team team) = await NewModelAsync(context, new ThrowingTransport(new InvalidOperationException("socket gone")));
+
+        Printer printer = NewPrinter(team.Id);
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync();
+
+        // Act
+        IActionResult result = await model.OnPostPauseAsync(printer.Id, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<RedirectToPageResult>();
+        model.StatusMessage.Should().Be("Something went wrong sending the command.");
+        model.StatusSuccess.Should().BeFalse();
     }
 }

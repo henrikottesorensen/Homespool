@@ -26,16 +26,19 @@ public class PrusaConnectPrinterController : ControllerBase
     private readonly PrusaConnectService _prusaConnectService;
     private readonly WebSocketHandler _webSocketHandler;
     private readonly PrinterConnectionRegistry _connectionRegistry;
+    private readonly IPrinterCommandCorrelator _correlator;
     private readonly ILogger<PrusaConnectPrinterController> _logger;
 
     public PrusaConnectPrinterController(PrusaConnectService prusaConnectService,
                                          WebSocketHandler webSocketHandler,
                                          PrinterConnectionRegistry connectionRegistry,
+                                         IPrinterCommandCorrelator correlator,
                                          ILogger<PrusaConnectPrinterController> logger)
     {
         _prusaConnectService = prusaConnectService;
         _webSocketHandler = webSocketHandler;
         _connectionRegistry = connectionRegistry;
+        _correlator = correlator;
         _logger = logger;
     }
     
@@ -80,6 +83,11 @@ public class PrusaConnectPrinterController : ControllerBase
                 finally
                 {
                     _connectionRegistry.Unregister(printerId, connection);
+
+                    // If a command was sent and is still awaiting a reply when the socket goes away,
+                    // fail it immediately rather than making the caller wait out the response timeout
+                    // for an answer that will now never arrive.
+                    _correlator.Cancel(printerId);
                 }
 
                 return Ok();

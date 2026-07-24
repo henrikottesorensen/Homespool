@@ -106,7 +106,71 @@ public class PrinterCommandTransportTests
 
         // Cleanup: let the first send's wait finish so the test process doesn't leak a pending task.
         correlator.Cancel(1);
-        await Assert.ThrowsAsync<TaskCanceledException>(() => firstSend);
+        await firstSend;
+    }
+
+    /// <summary>
+    /// Mirrors what happens when the printer disconnects while a command is still awaiting a reply:
+    /// PrusaConnectPrinterController's finally block calls IPrinterCommandCorrelator.Cancel directly,
+    /// not via the response timeout. Before this was handled explicitly, the resulting
+    /// OperationCanceledException wasn't bound to timeoutCts and propagated unhandled - all the way
+    /// up through PrinterCommandService to the Razor Page, past every typed catch clause there, as an
+    /// unhandled 500 rather than a message.
+    /// </summary>
+    [Fact]
+    public async Task SendAsyncReturnsNotConnectedWhenTheCorrelatorIsCancelledDirectlyWhileWaiting()
+    {
+        // Arrange
+        PrinterConnectionRegistry registry = new();
+        FakeConnection connection = new();
+        registry.Register(1, connection);
+
+        PrinterCommandCorrelator correlator = new();
+        // Long timeout so a genuine timeout can't race the direct cancellation below and mask it.
+        PrinterCommandTransport transport = NewTransport(registry, correlator, TimeSpan.FromSeconds(30));
+
+        Task<CommandSendResult> sendTask = transport.SendAsync(1, new PausePrint(), CancellationToken.None);
+        await Task.Delay(TimeSpan.FromMilliseconds(50));
+
+        // Act
+        // Simulates the controller's disconnect handling - cancelling the correlator directly,
+        // not through the transport's own timeout.
+        correlator.Cancel(1);
+        CommandSendResult result = await sendTask;
+
+        // Assert
+        result.Outcome.Should().Be(CommandSendOutcome.NotConnected);
+
+        // Not wedged: a new send for the same printer can begin immediately.
+        bool began = correlator.TryBeginCommand(1, 789, out _);
+        began.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// The caller's own token (e.g. the HTTP request itself being aborted) is a different case from
+    /// the one above and must not be swallowed into a CommandSendResult nobody will ever read -
+    /// it propagates as an ordinary OperationCanceledException, which ASP.NET Core already handles.
+    /// </summary>
+    [Fact]
+    public async Task SendAsyncPropagatesCancellationFromTheCallersOwnToken()
+    {
+        // Arrange
+        PrinterConnectionRegistry registry = new();
+        FakeConnection connection = new();
+        registry.Register(1, connection);
+
+        PrinterCommandCorrelator correlator = new();
+        PrinterCommandTransport transport = NewTransport(registry, correlator, TimeSpan.FromSeconds(30));
+
+        using CancellationTokenSource cts = new();
+
+        // Act
+        Task<CommandSendResult> sendTask = transport.SendAsync(1, new PausePrint(), cts.Token);
+        await Task.Delay(TimeSpan.FromMilliseconds(50));
+        await cts.CancelAsync();
+
+        // Assert
+        await Assert.ThrowsAsync<TaskCanceledException>(() => sendTask);
     }
 
     [Fact]

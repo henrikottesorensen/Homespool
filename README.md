@@ -32,8 +32,6 @@ today, this is not it yet.
   transfer. The command classes are empty placeholders and there is no send path.
 - **No dashboard or statistics.** The web UI covers accounts, teams, invitations and a
   printer list; there is nothing that shows what a printer is doing.
-- **No web UI for the registration-code flow.** Claiming a printer by the code shown on its
-  screen currently requires an API call (see below). The USB-key flow does have a UI.
 - **No password reset without SMTP.** With no mail server configured, a forgotten password
   needs manual intervention, and there is no admin-side reset yet.
 
@@ -157,21 +155,40 @@ Requires `PrusaConnect:PublicHost` to be set; the page tells you if it is not.
 The flow Prusa's own firmware wizard uses: point the printer at your server, and it displays
 a short code for you to claim.
 
+#### Before the registration code works at all
+
+A printer fresh out of the box only knows Prusa's own servers
+(`buddy-a.connect.prusa3d.com`, compiled in as the default) and **there is no menu option to
+change that** — the hostname field under *Settings → Network → Prusa Connect* is read-only,
+not just hard to find. The only way to repoint it is loading a `prusa_printer_settings.ini`
+from USB.
+
+So the registration-code flow needs a USB step too, just a lighter one than full
+provisioning — write only the `[service::connect]` host/port/tls lines, no token:
+
+```ini
+[service::connect]
+hostname = printers.example.com
+port = 443
+tls = true
+```
+
+Load it (**Prusa Connect → Load Settings**), *then* **Add Printer to Connect** talks to your
+server instead of Prusa's, and displays a claimable code.
+
+This is worth doing over full USB-key provisioning when the person with the USB stick isn't
+the person who should claim the printer in the app — full provisioning needs `CanManage` on a
+team up front; this only needs someone willing to write four lines to a stick.
+
+#### Claiming the code
+
 > **Ignore the QR code the printer shows.** It is hardcoded to `connect.prusa3d.com` and will
 > send you to Prusa's site, not yours. The code is also shown as text underneath — that is the
 > part you want.
 
-**There is no web UI for this yet.** Claim the code with an authenticated API call:
-
-```bash
-curl -X POST https://printers.example.com/api/v1/printers/register \
-     -H 'Content-Type: application/json' \
-     --cookie 'your-session-cookie' \
-     -d '{"code":"CODE-FROM-PRINTER-SCREEN","name":"Bench MK4","location":"Workshop"}'
-```
-
-The printer polls until you do this, then receives its token automatically. Codes expire
-after an hour by default.
+**Printers → Claim printer**, enter the code, give it a name and location. The printer polls
+until you do this, then receives its token automatically. Codes expire after an hour by
+default.
 
 ---
 

@@ -57,21 +57,22 @@ multi-tenant service.
 ### Docker Compose
 
 ```bash
-cp .env.example .env      # optional: only needed for outgoing mail
+cp .env.example .env      # set at least PUBLIC_HOST before printers need to reach this server
 docker compose up --build
 ```
 
 The database lives in a named volume (`printerservice-data`) so it survives container
-replacement.
+replacement. The container publishes port `8080` by default (`PORT` in `.env` to change it).
 
 > **Do not put that volume on NFS, CIFS or a NAS share.** SQLite's WAL locking is unreliable
 > over network filesystems and will eventually corrupt the database. Use a local Docker
 > volume or a bind-mount to local disk.
 
-> **Note:** `compose.yaml` does not currently publish a port, and does not set
-> `PrusaConnect__PublicHost`. You will need to add a `ports:` mapping (the container listens
-> on 8080) and set that variable before printers can reach the server. See
-> [Configuration](#configuration).
+> **Set `PUBLIC_HOST` in `.env` before adding printers.** There is no way to infer your
+> server's externally-reachable address from inside the container, so USB-key provisioning
+> (below) won't produce a usable snippet until it's set. If a reverse proxy terminates TLS in
+> front of this container, `PUBLIC_HOST`/`PUBLIC_PORT`/`PUBLIC_TLS` describe the proxy's
+> address, not the container's. See [Configuration](#configuration).
 
 ### From source
 

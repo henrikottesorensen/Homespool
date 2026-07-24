@@ -5,10 +5,25 @@
       context: .
       dockerfile: PrinterService.Host/Dockerfile
 
+    ports:
+      # The container listens on 8080 (ASPNETCORE_HTTP_PORTS, baked into the base image - see
+      # the Dockerfile's EXPOSE). Change the host side if 8080 is already taken. Remove this
+      # block entirely if a reverse proxy publishes the port instead of Compose doing it directly.
+      - "${PORT:-8080}:8080"
+
     environment:
       # Point SQLite at the mounted volume. appsettings.json keeps a relative path so that
       # running outside a container still works.
       ConnectionStrings__PrinterServiceDb: "Data Source=/app/data/PrinterService.Sqlite"
+
+      # What a printer is told to dial for enrollment - not necessarily this container's own
+      # listen port or protocol. If a reverse proxy (Caddy, nginx, Traefik) terminates TLS in
+      # front of this container, these describe the proxy's public address, not port 8080.
+      # PublicHost is required for USB-key provisioning (Printers -> Add printer): the page
+      # cannot produce a usable ini snippet - and refuses to - until it is set.
+      PrusaConnect__PublicHost: "${PUBLIC_HOST:-}"
+      PrusaConnect__PublicPort: "${PUBLIC_PORT:-443}"
+      PrusaConnect__PublicTls: "${PUBLIC_TLS:-true}"
 
       # Outgoing mail. Values come from .env - copy .env.example to .env and edit that, rather
       # than editing this file, so secrets stay out of the repository. Leaving SMTP_HOST empty

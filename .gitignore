@@ -27,3 +27,7 @@ PrinterService.Host.IntegrationTest/.mailpit-tls/
 # SQLite database and its WAL sidecars (-wal, -shm, -journal). Never commit: once phase 1.5
 **/*.Sqlite*
 *.Sqlite*
+
+# Claude Code's personal-override file (permissions, local preferences) - not shared. .claude/
+# itself stays trackable so project-wide config (e.g. launch.json) can be committed.
+.claude/settings.local.json

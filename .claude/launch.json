@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "printerservice-host",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "PrinterService.Host", "--urls", "http://localhost:5052"],
+      "port": 5052
+    }
+  ]
+}

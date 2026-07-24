@@ -1,0 +1,56 @@
+@page
+@model AddModel
+@{
+    ViewData["Title"] = "Add printer (USB key)";
+}
+
+<h1>@ViewData["Title"]</h1>
+
+<p>
+    Provisions a printer and a token up front, for a USB stick - no need for the printer to
+    contact this server first. The printer enrolls itself the moment it connects using the token.
+</p>
+
+@if (Model.Snippet is not null)
+{
+    <partial name="_ConnectSnippet" model="Model.Snippet" />
+}
+
+@if (!Model.PublicAddressConfigured)
+{
+    <div class="alert alert-warning" role="alert">
+        This server's public address is not configured (<code>PrusaConnect:PublicHost</code>), so a
+        usable snippet cannot be produced yet. Ask your administrator to set it.
+    </div>
+}
+
+<div class="row">
+    <div class="col-md-6">
+        <form method="post">
+            <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
+            <div class="form-floating mb-3">
+                <input asp-for="Input.Name" class="form-control" placeholder="Bench printer" />
+                <label asp-for="Input.Name" class="form-label"></label>
+                <span asp-validation-for="Input.Name" class="text-danger"></span>
+            </div>
+            <div class="form-floating mb-3">
+                <input asp-for="Input.Location" class="form-control" placeholder="Workshop" />
+                <label asp-for="Input.Location" class="form-label"></label>
+                <span asp-validation-for="Input.Location" class="text-danger"></span>
+            </div>
+            <div class="mb-3">
+                <label asp-for="Input.TeamId" class="form-label"></label>
+                <select asp-for="Input.TeamId" asp-items="@Model.TeamOptions" class="form-select"></select>
+                <span asp-validation-for="Input.TeamId" class="text-danger"></span>
+            </div>
+            <button type="submit" class="btn btn-primary" disabled="@(!Model.PublicAddressConfigured)">
+                Provision printer
+            </button>
+            <a class="btn btn-link" asp-page="Index">Back to printers</a>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

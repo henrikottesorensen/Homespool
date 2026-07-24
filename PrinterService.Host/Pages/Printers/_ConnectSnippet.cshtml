@@ -1,0 +1,15 @@
+@model string
+
+<div class="alert alert-success" role="alert">
+    <p class="mb-1">
+        <strong>Copy this now.</strong> The token is shown once and cannot be retrieved again -
+        if it's lost before the printer connects, use "Regenerate" to issue a new one.
+    </p>
+    <p class="mb-2">
+        Paste this into the <code>[service::connect]</code> section of
+        <code>prusa_printer_settings.ini</code> on the printer's USB stick, alongside your own
+        <code>[network]</code> and wifi settings - this server never has wifi credentials to
+        supply, so that part of the file stays yours.
+    </p>
+    <textarea class="form-control font-monospace" rows="5" readonly onclick="this.select()">@Model</textarea>
+</div>

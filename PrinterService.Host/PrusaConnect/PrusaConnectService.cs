@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -347,6 +349,27 @@ public class PrusaConnectService
         return token;
     }
 
+    /// <summary>
+    /// Which of <paramref name="printerIds"/> are enrolled (have authenticated at least once) versus
+    /// still have an outstanding USB-key provisioning token awaiting first contact. A printer claimed
+    /// through the code exchange but not yet polled by its own printer appears in neither set - there
+    /// is nothing to show or act on for it here, only "waiting for the printer to connect".
+    /// </summary>
+    public async Task<PrinterEnrollmentStatus> GetEnrollmentStatusAsync(IReadOnlyCollection<int> printerIds, CancellationToken cancellationToken)
+    {
+        HashSet<int> enrolled = (await _dbContext.PrusaConnectAuthentication
+            .Where(a => printerIds.Contains(a.PrinterId))
+            .Select(a => a.PrinterId)
+            .ToListAsync(cancellationToken)).ToHashSet();
+
+        HashSet<int> awaitingProvisioning = (await _dbContext.PrusaConnectProvisionings
+            .Where(p => printerIds.Contains(p.PrinterId))
+            .Select(p => p.PrinterId)
+            .ToListAsync(cancellationToken)).ToHashSet();
+
+        return new PrinterEnrollmentStatus(enrolled, awaitingProvisioning);
+    }
+
     private static Printer NewPrinter(string? name, string? location, int teamId, DateTimeOffset now) => new()
     {
         Uuid = Guid.NewGuid(),
@@ -394,3 +417,6 @@ public class PrusaConnectService
         }
     }
 }
+
+/// <summary>See <see cref="PrusaConnectService.GetEnrollmentStatusAsync"/>.</summary>
+public sealed record PrinterEnrollmentStatus(IReadOnlySet<int> Enrolled, IReadOnlySet<int> AwaitingUsbProvisioning);

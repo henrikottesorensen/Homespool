@@ -1,0 +1,74 @@
+@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Printers";
+}
+
+<h1>@ViewData["Title"]</h1>
+
+@if (!string.IsNullOrEmpty(Model.StatusMessage))
+{
+    <div class="alert alert-warning" role="alert">@Model.StatusMessage</div>
+}
+
+@if (Model.Snippet is not null)
+{
+    <partial name="_ConnectSnippet" model="Model.Snippet" />
+}
+
+<p>
+    <a class="btn btn-primary" asp-page="Add">Add printer (USB key)</a>
+</p>
+
+@if (Model.Printers.Count == 0)
+{
+    <p>No printers yet.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Location</th>
+                <th>Team</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var row in Model.Printers)
+        {
+            <tr>
+                <td>@(row.Printer.Name ?? row.Printer.Model ?? row.Printer.Uuid.ToString())</td>
+                <td>@row.Printer.Location</td>
+                <td>@row.TeamName</td>
+                <td>
+                    @if (row.Enrolled)
+                    {
+                        <span class="badge text-bg-success">Enrolled</span>
+                    }
+                    else if (row.AwaitingUsbProvisioning)
+                    {
+                        <span class="badge text-bg-warning">Awaiting USB connection</span>
+                    }
+                    else
+                    {
+                        <span class="badge text-bg-secondary">Awaiting connection</span>
+                    }
+                </td>
+                <td>
+                    @if (row.AwaitingUsbProvisioning)
+                    {
+                        <form method="post" asp-page-handler="Regenerate" asp-route-printerId="@row.Printer.Id">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                Regenerate USB token
+                            </button>
+                        </form>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}

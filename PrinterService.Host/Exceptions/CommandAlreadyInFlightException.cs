@@ -9,8 +9,25 @@ namespace PrinterService.Host.Exceptions;
 /// </summary>
 public class CommandAlreadyInFlightException : Exception
 {
+    /// <summary>The one callers actually use - the message is not worth restating at each throw.</summary>
     public CommandAlreadyInFlightException(int printerId)
         : base($"Printer {printerId} is still processing a previous command.")
+    {
+    }
+
+    // The three constructors every public exception type is expected to carry (CA1032). See
+    // PrinterNotConnectedException for why they are here despite nothing calling them.
+    public CommandAlreadyInFlightException()
+    {
+    }
+
+    public CommandAlreadyInFlightException(string message)
+        : base(message)
+    {
+    }
+
+    public CommandAlreadyInFlightException(string message, Exception innerException)
+        : base(message, innerException)
     {
     }
 }

@@ -18,6 +18,18 @@ public interface IPrinterConnection
     ValueTask SendAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken);
 }
 
+/// <remarks>
+/// Deliberately not <see cref="IDisposable"/>, despite holding a <see cref="SemaphoreSlim"/>.
+/// Disposing one only matters if its <c>AvailableWaitHandle</c> was used, which allocates an event -
+/// this only ever calls <c>WaitAsync</c> and <c>Release</c>, so there is nothing to release. Making
+/// it disposable would mean disposing at the end of the accepting request, where a command send from
+/// another request can still be waiting on the lock: that turns a narrow teardown race into an
+/// <see cref="ObjectDisposedException"/> thrown into somebody's API call, in exchange for freeing
+/// nothing.
+/// </remarks>
+[System.Diagnostics.CodeAnalysis.SuppressMessage(
+    "Microsoft.Design", "CA1001:TypesThatOwnDisposableFieldsShouldBeDisposable",
+    Justification = "The semaphore allocates no wait handle, and disposing it would race in-flight sends. See the remarks.")]
 public sealed class WebSocketPrinterConnection : IPrinterConnection
 {
     private readonly WebSocket _webSocket;

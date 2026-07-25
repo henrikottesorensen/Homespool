@@ -31,8 +31,16 @@ public class PrinterCommandTransportTests
     {
         IPrinterConnection connection = OpenConnection();
 
-        connection.WhenForAnyArgs(c => c.SendAsync(default, default))
-                  .Do(call => sentFrames.Add(((ReadOnlyMemory<byte>)call[0]!).ToArray()));
+        // Configuring a substitute, not calling it: NSubstitute reads the ValueTask this "returns"
+        // as the call to set up, and never produces a task to consume. CA2012 cannot tell that apart
+        // from a real ValueTask being dropped, and every form of the NSubstitute API trips it for a
+        // ValueTask-returning member - WhenForAnyArgs(...).Do(...) discards it inside an Action
+        // instead, which is no better.
+#pragma warning disable CA2012
+        connection.SendAsync(default, default)
+                  .ReturnsForAnyArgs(ValueTask.CompletedTask)
+                  .AndDoes(call => sentFrames.Add(((ReadOnlyMemory<byte>)call[0]!).ToArray()));
+#pragma warning restore CA2012
 
         return connection;
     }
@@ -187,8 +195,8 @@ public class PrinterCommandTransportTests
         // Arrange
         PrinterConnectionRegistry registry = new();
         IPrinterConnection connection = OpenConnection();
-        connection.WhenForAnyArgs(c => c.SendAsync(default, default))
-                  .Throw(new InvalidOperationException("socket gone"));
+        connection.SendAsync(default, default)
+                  .ThrowsAsyncForAnyArgs(new InvalidOperationException("socket gone"));
         registry.Register(1, connection);
 
         PrinterCommandCorrelator correlator = new();

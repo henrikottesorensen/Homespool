@@ -77,7 +77,7 @@ namespace PrinterService.Host.PrusaConnect;
 /// <c>HostOptions.ShutdownTimeout</c> remains the backstop if the database is genuinely stuck.
 /// </para>
 /// </remarks>
-public sealed class TelemetryWriter : BackgroundService, ITelemetrySink
+public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITelemetryHealthSource
 {
     /// <summary>Channel headroom as a multiple of one flush batch. See remarks above.</summary>
     private const int CapacityBatches = 4;
@@ -104,6 +104,13 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink
     /// database outage measured in hours, which is a bigger problem than the events being dropped.
     /// </remarks>
     private const int MaxPendingEventBatches = 10;
+
+    // Written only by the drain loop, read by whatever calls Current (a health check, on a request
+    // thread). Published as one immutable snapshot rather than read field by field - see PublishHealth.
+    private volatile TelemetryHealthSnapshot _health = TelemetryHealthSnapshot.Initial;
+    private DateTimeOffset? _lastFlushAt;
+    private int _consecutiveFlushFailures;
+    private long _discardedEvents;
 
     private readonly Channel<TelemetryWriteItem> _channel;
     private readonly IServiceScopeFactory _scopeFactory;
@@ -146,6 +153,9 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink
     {
         _channel.Writer.TryWrite(new TelemetryWriteItem.EventItem(printerId, receivedAt, eventDto));
     }
+
+    /// <inheritdoc />
+    public TelemetryHealthSnapshot Current => _health;
 
     /// <summary>
     /// Stops accepting work, then waits for the drain loop to finish what it already has.
@@ -362,6 +372,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink
 
         int excess = pendingEvents.Count - cap;
         pendingEvents.RemoveRange(0, excess);
+        _discardedEvents += excess;
 
         _logger.LogError(
             "Discarded {Count} buffered printer events to cap memory - the database has been rejecting flushes long enough to exhaust even the event buffer. These events are lost.",
@@ -438,13 +449,34 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink
         try
         {
             await FlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, cancellationToken);
+
+            _consecutiveFlushFailures = 0;
+            _lastFlushAt = TimeProvider.System.GetUtcNow();
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
+            _consecutiveFlushFailures++;
+
             _logger.LogError(e, "Telemetry flush failed; {SampleCount} samples and {EventCount} events remain pending for the next attempt.",
                 pendingSamples.Count, pendingEvents.Count);
         }
+        finally
+        {
+            PublishHealth(pendingSamples.Count, pendingEvents.Count);
+        }
     }
+
+    /// <summary>
+    /// Republishes the health snapshot after a flush attempt.
+    /// </summary>
+    /// <remarks>
+    /// A whole record swapped by reference, rather than individually readable fields: the drain loop
+    /// writes these while a request thread reads them, and a single reference assignment is atomic
+    /// where a multi-field struct read is not. A health check should never be able to see half of one
+    /// flush and half of the next.
+    /// </remarks>
+    private void PublishHealth(int pendingSamples, int pendingEvents) =>
+        _health = new TelemetryHealthSnapshot(_lastFlushAt, _consecutiveFlushFailures, pendingSamples, pendingEvents, _discardedEvents);
 
     /// <summary>
     /// Writes everything buffered since the last flush in one transaction, then clears the buffers.

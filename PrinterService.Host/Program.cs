@@ -1,6 +1,12 @@
 using System;
+using System.Linq;
+using System.Text.Json;
+using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
@@ -143,7 +149,14 @@ public static class Program
             // read or write finishes. No PSDbContext field ever exists on TelemetryWriter itself.
             builder.Services.AddSingleton<PrusaConnect.TelemetryWriter>();
             builder.Services.AddSingleton<PrusaConnect.ITelemetrySink>(sp => sp.GetRequiredService<PrusaConnect.TelemetryWriter>());
+            builder.Services.AddSingleton<PrusaConnect.ITelemetryHealthSource>(sp => sp.GetRequiredService<PrusaConnect.TelemetryWriter>());
             builder.Services.AddHostedService(sp => sp.GetRequiredService<PrusaConnect.TelemetryWriter>());
+
+            // The process answering requests says nothing about whether it is still recording
+            // anything - a flush bug once made every write fail permanently while the service looked
+            // entirely healthy from outside. This is the hook a monitoring system can watch.
+            builder.Services.AddHealthChecks()
+                   .AddCheck<PrusaConnect.TelemetryPersistenceHealthCheck>("telemetry-persistence");
 
             // Sweeps TelemetrySample rows past StorageOptions.TelemetryRetentionDays. No interface
             // registration needed, unlike TelemetryWriter above - nothing else ever needs to reach it.
@@ -179,8 +192,14 @@ public static class Program
                 app.MapScalarApiReference();
             }
             app.UseSerilogRequestLogging();
-            
-            app.UseHttpsRedirection();
+
+            // Everything except /health. A probe runs inside the container over plain HTTP, and a
+            // 307 to https is not a failure to curl - so with redirection applied, a monitoring
+            // check would report success without ever reaching the health endpoint. Excluding the
+            // path keeps the probe honest wherever TLS is terminated.
+            app.UseWhen(
+                context => !context.Request.Path.StartsWithSegments(HealthEndpointPath, StringComparison.OrdinalIgnoreCase),
+                branch => branch.UseHttpsRedirection());
 
             app.UseRouting();
 
@@ -190,6 +209,14 @@ public static class Program
 
             app.UseAuthentication();
             app.UseAuthorization();
+
+            // Anonymous by design: a monitoring system holds no credentials, and the response carries
+            // only counters and timestamps about this service's own write path - nothing about
+            // printers, jobs or users.
+            app.MapHealthChecks(HealthEndpointPath, new HealthCheckOptions
+            {
+                ResponseWriter = WriteHealthResponseAsync,
+            });
 
             app.MapControllers();
             
@@ -217,5 +244,36 @@ public static class Program
         {
             Log.CloseAndFlush();
         }
+    }
+
+    /// <summary>Where the health endpoint lives. Shared so the HTTPS-redirection exclusion above
+    /// cannot drift away from the route itself.</summary>
+    private const string HealthEndpointPath = "/health";
+
+    /// <summary>
+    /// Writes the health report as JSON rather than the default bare status word.
+    /// </summary>
+    /// <remarks>
+    /// The status code is what a monitoring system alerts on - Healthy and Degraded are 200,
+    /// Unhealthy is 503 - but the body is what tells whoever gets paged which of the two very
+    /// different problems they have: a database that is briefly stuck, or one that has been stuck
+    /// long enough to lose events for good.
+    /// </remarks>
+    private static Task WriteHealthResponseAsync(HttpContext context, HealthReport report)
+    {
+        context.Response.ContentType = "application/json";
+
+        return context.Response.WriteAsync(JsonSerializer.Serialize(new
+        {
+            status = report.Status.ToString(),
+            totalDurationMs = report.TotalDuration.TotalMilliseconds,
+            checks = report.Entries.Select(entry => new
+            {
+                name = entry.Key,
+                status = entry.Value.Status.ToString(),
+                description = entry.Value.Description,
+                data = entry.Value.Data,
+            }),
+        }));
     }
 }

@@ -4,6 +4,13 @@ WORKDIR /app
 # inherits this ownership; if the path did not exist in the image, Docker would create it owned
 # by root and the non-root app could not write, failing on the first migration.
 RUN mkdir -p /app/data && chown $APP_UID /app/data
+# The aspnet base image ships no HTTP client, and HEALTHCHECK needs something to make the request
+# with. Installed before the USER switch because apt needs root. If you would rather not carry curl,
+# drop this and the HEALTHCHECK below and declare the probe in compose or your orchestrator instead -
+# the /health endpoint is the same either way.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl \
+ && rm -rf /var/lib/apt/lists/*
 USER $APP_UID
 EXPOSE 8080
 EXPOSE 8081
@@ -32,4 +39,12 @@ RUN dotnet publish "./PrinterService.Host.csproj" -c $BUILD_CONFIGURATION -o /ap
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
+
+# Unhealthy (503) is the only status that fails the probe: a briefly stuck database reports Degraded
+# and still answers 200, because restarting the container would not unstick it. Deliberately no
+# --location - the app excludes /health from HTTPS redirection so this cannot be quietly satisfied by
+# a 307 that never reached the endpoint. start-period covers migrations on first boot.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl --fail --silent --show-error --max-time 4 http://localhost:8080/health || exit 1
+
 ENTRYPOINT ["dotnet", "PrinterService.Host.dll"]

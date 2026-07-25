@@ -46,6 +46,19 @@
     volumes:
       - printerservice-data:/app/data
 
+    # No healthcheck block is needed: the image declares one against /health/live, so
+    # `docker compose ps` shows healthy/unhealthy out of the box, and `depends_on:
+    # condition: service_healthy` works against this service.
+    #
+    # /health/live answers only for faults a restart would fix - today, the telemetry drain loop
+    # having stopped. It stays healthy while the database is rejecting writes, because restarting
+    # would not fix that and would discard everything still buffered.
+    #
+    # /health is the fuller report and the one to point monitoring at: same information plus
+    # whether telemetry is actually reaching the database, as JSON, with counters. Both are
+    # anonymous and exempt from the setup gate, so they answer before the first administrator
+    # exists. Alert on /health; never restart on it.
+
 volumes:
   # Keeps the SQLite database across container replacement. Use a local docker volume or a
   # bind-mount to local disk - do NOT put this on NFS/CIFS/a NAS share, where SQLite WAL

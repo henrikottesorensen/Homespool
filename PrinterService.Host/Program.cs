@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 using PrinterService.Host.Authentication;
 using PrinterService.Data;
@@ -155,6 +156,15 @@ public static class Program
             builder.Services.AddScoped<Services.PrinterQueryService>();
             
             WebApplication app = builder.Build();
+
+            // Ctrl-C/SIGTERM is otherwise silent: the framework's own "Application is shutting
+            // down..." comes from Microsoft.Hosting.Lifetime, and Serilog's Microsoft override
+            // (appsettings.json) filters that namespace to Warning. An operator watching a blank
+            // console while telemetry drains has no way to tell progress from a hang, and reaches
+            // for SIGKILL - which is exactly what loses the buffered samples. TelemetryWriter logs
+            // the matching "drained" or "unwritten" line when it finishes.
+            app.Lifetime.ApplicationStopping.Register(() =>
+                app.Logger.LogInformation("Shutting down: draining buffered telemetry to the database. Please let this finish."));
 
             app.Services.MigratePrinterServiceData();
 

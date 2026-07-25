@@ -208,6 +208,21 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink
         // Whatever the last partial batch left buffered. Reached only via the break above, so the
         // channel is already empty - this is about the in-memory buffers, nothing else.
         await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, CancellationToken.None);
+
+        // The only place that can honestly report whether shutdown saved everything, and the signal
+        // an operator waiting out the drain is looking for. SafeFlushAsync leaves the buffers
+        // populated when a flush fails, so anything still here is about to die with the process -
+        // that is a Warning, not a silent exit.
+        if (pendingSamples.Count > 0 || pendingEvents.Count > 0)
+        {
+            _logger.LogWarning(
+                "Telemetry drain finished with {SampleCount} samples and {EventCount} events unwritten; they are lost with this process.",
+                pendingSamples.Count, pendingEvents.Count);
+        }
+        else
+        {
+            _logger.LogInformation("Telemetry drained to the database. Shutdown can complete safely.");
+        }
     }
 
     private async Task ProcessItemAsync(TelemetryWriteItem item,

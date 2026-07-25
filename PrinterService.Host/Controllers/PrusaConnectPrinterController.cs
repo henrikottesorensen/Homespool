@@ -99,16 +99,26 @@ public class PrusaConnectPrinterController : ControllerBase
                 using CancellationTokenSource connectionLifetime =
                     CancellationTokenSource.CreateLinkedTokenSource(HttpContext.RequestAborted, _lifetime.ApplicationStopping);
 
+                // Which status the close frame carries. Recorded rather than sent inline, so every
+                // exit closes in one place - after the connection has left the registry.
+                //
+                // NormalClosure covers both ways the handler returns without throwing: the printer
+                // closed its end (EOF on the reader), and cancellation landing between reads rather
+                // than inside one, where the loop condition ends it. The latter reaches here with the
+                // socket still open, so shutdown sends a real close frame when it wins that race and
+                // aborts the socket when it doesn't - both acceptable ends, and the printer
+                // reconnects from either.
+                WebSocketCloseStatus closeStatus = WebSocketCloseStatus.NormalClosure;
+
                 try
                 {
                     await _webSocketHandler.HandlePrusaWebsocket(input, printerId, connectionLifetime.Token);
-                    await CloseSocketAsync(webSocket, WebSocketCloseStatus.NormalClosure);
                 }
                 catch (JsonException)
                 {
                     // The handler's contract: malformed JSON is a protocol violation. Close on it,
                     // then let it surface - same as when the handler owned the close itself.
-                    await CloseSocketAsync(webSocket, WebSocketCloseStatus.PolicyViolation);
+                    closeStatus = WebSocketCloseStatus.PolicyViolation;
                     throw;
                 }
                 catch (WebSocketException e)
@@ -122,24 +132,33 @@ public class PrusaConnectPrinterController : ControllerBase
                     // Shutdown or teardown, per connectionLifetime above - including Kestrel aborting
                     // the connection outright, since ConnectionAbortedException derives from this.
                     // Ordinary ends to a WebSocket request, not faults: left unhandled they surfaced
-                    // as a logged 500. The close is a courtesy attempt - a no-op once the socket is
-                    // already aborted, which cancelling the receive will usually have done.
+                    // as a logged 500.
                     _logger.LogDebug(e, "[{PrinterId}] connection ended: shutting down or aborted", printerId);
-                    await CloseSocketAsync(webSocket, WebSocketCloseStatus.NormalClosure);
                 }
                 finally
                 {
                     await input.CompleteAsync();
 
+                    // Unregister before closing, not after: while the connection is still in the
+                    // registry a command can pass its IsOpen check and start writing to this socket,
+                    // and the close frame is a write too. Removing it first bounds that race to
+                    // callers already holding a reference, which WebSocketPrinterConnection's write
+                    // lock then serializes against the close itself.
                     _connectionRegistry.Unregister(printerId, connection);
 
                     // If a command was sent and is still awaiting a reply when the socket goes away,
                     // fail it immediately rather than making the caller wait out the response timeout
                     // for an answer that will now never arrive.
                     _correlator.Cancel(printerId);
+
+                    await connection.CloseOutputAsync(closeStatus);
                 }
 
-                return Ok();
+                // Not Ok(): the response started at the 101, and a status-code result sets
+                // Response.StatusCode during result execution - after this action returns, outside
+                // the try above - which throws "the response has already started" and surfaces as an
+                // unhandled error the client never sees, because the socket is closed by then.
+                return new EmptyResult();
             }
         }
         catch (Exception e) when (e is ArgumentNullException or InvalidOperationException)
@@ -148,27 +167,6 @@ public class PrusaConnectPrinterController : ControllerBase
         }
 
         return BadRequest();
-    }
-
-    /// <summary>
-    /// Sends the close frame if the socket can still take one. <c>CloseOutputAsync</c> rather than
-    /// <c>CloseAsync</c>: it completes the handshake when the printer already sent its close frame
-    /// (the normal path - the handler returns at that EOF), and when we initiate (policy violation)
-    /// it doesn't wait for an ack a misbehaving peer may never send.
-    /// </summary>
-    private static async Task CloseSocketAsync(WebSocket webSocket, WebSocketCloseStatus closeStatus)
-    {
-        if (webSocket.State is WebSocketState.Open or WebSocketState.CloseReceived)
-        {
-            try
-            {
-                await webSocket.CloseOutputAsync(closeStatus, statusDescription: null, CancellationToken.None);
-            }
-            catch (WebSocketException)
-            {
-                // The peer vanished between the state check and the close frame - nothing to do.
-            }
-        }
     }
 
     [AllowAnonymous]

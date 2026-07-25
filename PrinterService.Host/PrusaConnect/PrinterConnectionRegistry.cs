@@ -47,6 +47,50 @@ public sealed class WebSocketPrinterConnection : IPrinterConnection
             _writeLock.Release();
         }
     }
+
+    /// <summary>
+    /// How long the close frame waits for an in-flight command send. Long enough for any real send
+    /// to finish, short enough that a send wedged against a stalled peer cannot hold teardown open.
+    /// </summary>
+    private static readonly TimeSpan CloseWriteLockTimeout = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// Sends the close frame if the socket can still take one. <c>CloseOutputAsync</c> rather than
+    /// <c>CloseAsync</c>: it completes the handshake when the printer already sent its close frame,
+    /// and when we initiate it doesn't wait for an ack a misbehaving peer may never send.
+    /// </summary>
+    /// <remarks>
+    /// Takes <c>_writeLock</c>, because a close frame is a send: without it the one send that
+    /// changes the socket's state was the one send the lock didn't cover, so teardown could put a
+    /// close frame in the middle of a command a request thread was still writing. Giving up on the
+    /// lock is deliberate - the close is a courtesy, and a peer that never gets it sees a dropped
+    /// connection, which is what any abrupt disconnect looks like and which printers reconnect from.
+    /// </remarks>
+    public async Task CloseOutputAsync(WebSocketCloseStatus closeStatus)
+    {
+        if (!await _writeLock.WaitAsync(CloseWriteLockTimeout))
+        {
+            return;
+        }
+
+        try
+        {
+            // Checked under the lock: an in-flight send that faulted may have moved the socket out
+            // of a closeable state while this was waiting.
+            if (_webSocket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+            {
+                await _webSocket.CloseOutputAsync(closeStatus, statusDescription: null, CancellationToken.None);
+            }
+        }
+        catch (WebSocketException)
+        {
+            // The peer vanished between the state check and the close frame - nothing to do.
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
 }
 
 /// <summary>

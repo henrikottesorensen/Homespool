@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 
 using Serilog.Core;
@@ -26,6 +27,15 @@ public sealed class CapturingSink : ILogEventSink
     private readonly ConcurrentBag<LogEvent> _events = new();
 
     public void Emit(LogEvent logEvent) => _events.Add(logEvent);
+
+    /// <summary>
+    /// Every event at <see cref="LogEventLevel.Error"/> or above. A request that completes normally
+    /// should produce none, which makes this the assertion for "the server handled that without
+    /// anything going wrong behind the scenes" - errors thrown after the response has started are
+    /// invisible to the client and show up nowhere else.
+    /// </summary>
+    public IReadOnlyList<LogEvent> Failures =>
+        _events.Where(e => e.Level >= LogEventLevel.Error).ToList();
 
     /// <summary>
     /// The first scalar value logged under <paramref name="propertyName"/>, or <c>null</c> if nothing

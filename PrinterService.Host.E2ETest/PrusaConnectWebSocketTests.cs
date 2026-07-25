@@ -39,11 +39,12 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-e2e-ws-{Guid.NewGuid():N}.db");
     private readonly CapturingMessageDispatcher _dispatcher = new();
+    private readonly CapturingSink _logs = new();
     private PrinterServiceFactory _factory = null!;
 
     public Task InitializeAsync()
     {
-        _factory = new PrinterServiceFactory($"Data Source={_databasePath}", _dispatcher);
+        _factory = new PrinterServiceFactory($"Data Source={_databasePath}", _dispatcher, _logs);
 
         // Force the host to actually start (migrations + AdminBootstrap run at that point) before any
         // test touches it, rather than lazily on the first HttpClient call.
@@ -167,6 +168,94 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
 
         _dispatcher.Calls[0].Root.GetProperty("state").GetString().Should().Be("IDLE",
                 "the dispatcher must receive the message the printer actually sent, not just any message");
+    }
+
+    /// <summary>
+    /// Opens an authenticated socket the way a printer does, so a test can drive the close paths.
+    /// </summary>
+    private async Task<WebSocket> ConnectAsPrinterAsync(string fingerprintSeed)
+    {
+        (string fingerprint, string token, int _) = await EnrollAndClaimPrinterAsync(fingerprintSeed);
+
+        WebSocketClient wsClient = _factory.Server.CreateWebSocketClient();
+        wsClient.SubProtocols.Add(Headers.Values.WSProtocolPrusaConnect);
+        wsClient.ConfigureRequest = request =>
+        {
+            request.Headers[Headers.Fingerprint] = fingerprint;
+            request.Headers[Headers.Token] = token;
+            request.Headers[Headers.UserAgentPrinter] = "Buddy";
+            request.Headers[Headers.UserAgentVersion] = "6.4.0";
+        };
+
+        return await wsClient.ConnectAsync(new Uri("ws://localhost/p/ws"), CancellationToken.None);
+    }
+
+    /// <summary>
+    /// The printer closing its end gets a <c>NormalClosure</c> back, and the request finishes without
+    /// anything failing server-side.
+    /// </summary>
+    /// <remarks>
+    /// Closing moved from <c>WebSocketHandler</c> to the controller when WebSocketPipe was replaced,
+    /// and nothing covered the result. The log assertion is the load-bearing half: once the socket
+    /// has upgraded the response has already started, so an exception thrown after the action
+    /// returns - during result execution, outside the controller's own try - reaches neither the
+    /// client nor any assertion on the socket. It is only visible in the log.
+    /// </remarks>
+    [Fact]
+    public async Task CleanDisconnectClosesWithNormalClosureAndFailsNothingServerSide()
+    {
+        // Arrange
+        using WebSocket socket = await ConnectAsPrinterAsync("WS-FINGERPRINT-CLEAN-CLOSE");
+
+        // Act
+        await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "test complete", CancellationToken.None)
+                    .WaitAsync(TimeSpan.FromSeconds(10));
+
+        // Assert
+        socket.CloseStatus.Should().Be(WebSocketCloseStatus.NormalClosure,
+            "the server answers a clean disconnect with a normal close");
+
+        // Result execution runs after the action returns, so give any failure a chance to surface
+        // rather than asserting into a gap where it simply has not happened yet.
+        await WaitForFailuresOrTimeoutAsync();
+
+        _logs.Failures.Should().BeEmpty("a clean disconnect is not an error path");
+    }
+
+    /// <summary>
+    /// Malformed JSON is a protocol violation: the socket is closed with <c>PolicyViolation</c>, the
+    /// status the printer sees, rather than the connection merely dropping.
+    /// </summary>
+    [Fact]
+    public async Task MalformedJsonClosesWithPolicyViolation()
+    {
+        // Arrange
+        using WebSocket socket = await ConnectAsPrinterAsync("WS-FINGERPRINT-BAD-JSON");
+
+        // Act
+        byte[] garbage = Encoding.UTF8.GetBytes("""{"job_id":301,,,}""");
+        await socket.SendAsync(garbage, WebSocketMessageType.Text, endOfMessage: true, CancellationToken.None);
+
+        byte[] buffer = new byte[256];
+        WebSocketReceiveResult result = await socket.ReceiveAsync(buffer, CancellationToken.None)
+                                                    .WaitAsync(TimeSpan.FromSeconds(10));
+
+        // Assert
+        result.MessageType.Should().Be(WebSocketMessageType.Close,
+            "garbage on the wire ends the connection rather than being skipped");
+        socket.CloseStatus.Should().Be(WebSocketCloseStatus.PolicyViolation);
+    }
+
+    /// <summary>
+    /// Waits briefly for a server-side failure to appear, so an assertion that none occurred is
+    /// testing the server rather than racing it.
+    /// </summary>
+    private async Task WaitForFailuresOrTimeoutAsync()
+    {
+        for (int i = 0; i < 40 && _logs.Failures.Count == 0; i++)
+        {
+            await Task.Delay(50);
+        }
     }
 
     /// <summary>

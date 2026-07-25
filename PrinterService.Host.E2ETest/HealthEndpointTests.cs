@@ -102,4 +102,38 @@ public sealed class HealthEndpointTests : IAsyncLifetime, IDisposable
         check.GetProperty("data").TryGetProperty("pendingSamples", out _).Should().BeTrue();
         check.GetProperty("data").TryGetProperty("discardedEvents", out _).Should().BeTrue();
     }
+
+    /// <summary>
+    /// <c>/health/live</c> reports only the liveness check, never persistence.
+    /// </summary>
+    /// <remarks>
+    /// The filtering is the safety property, not a detail. Anything that can kill the container - a
+    /// Kubernetes livenessProbe, a Swarm healthcheck, an autoheal sidecar - is meant to point here,
+    /// and a restart does not fix a database that is rejecting writes; it discards everything still
+    /// buffered. If the persistence check ever leaked into this endpoint through a stray tag, a
+    /// recoverable outage would become a restart loop that destroys telemetry on every cycle, and
+    /// nothing else would notice.
+    /// </remarks>
+    [Fact]
+    public async Task LivenessReportsOnlyTheDrainLoopNotPersistence()
+    {
+        // Arrange
+        using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        // Act
+        HttpResponseMessage response = await client.GetAsync("/health/live");
+        string body = await response.Content.ReadAsStringAsync();
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using JsonDocument document = JsonDocument.Parse(body);
+        JsonElement checks = document.RootElement.GetProperty("checks");
+
+        checks.GetArrayLength().Should().Be(1, "only checks tagged for liveness belong here");
+        checks[0].GetProperty("name").GetString().Should().Be("telemetry-writer-alive");
+
+        body.Should().NotContain("telemetry-persistence",
+            "persistence health must never be able to trigger a restart");
+    }
 }

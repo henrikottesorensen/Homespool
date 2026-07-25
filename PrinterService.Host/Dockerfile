@@ -40,11 +40,15 @@ FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
 
-# Unhealthy (503) is the only status that fails the probe: a briefly stuck database reports Degraded
-# and still answers 200, because restarting the container would not unstick it. Deliberately no
-# --location - the app excludes /health from HTTPS redirection so this cannot be quietly satisfied by
-# a 307 that never reached the endpoint. start-period covers migrations on first boot.
+# /health/live, not /health. Docker marks the container unhealthy on failure, and orchestrators that
+# act on that (Swarm, autoheal sidecars) restart it - so this must only fail for faults a restart
+# fixes. A database rejecting writes is not one: restarting discards everything still buffered.
+# Scrape /health for that, from something that alerts rather than restarts.
+#
+# Deliberately no --location: the app excludes /health from HTTPS redirection, because curl --fail
+# treats a 307 as success and would otherwise report healthy without ever reaching the endpoint.
+# start-period covers migrations on first boot.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD curl --fail --silent --show-error --max-time 4 http://localhost:8080/health || exit 1
+    CMD curl --fail --silent --show-error --max-time 4 http://localhost:8080/health/live || exit 1
 
 ENTRYPOINT ["dotnet", "PrinterService.Host.dll"]

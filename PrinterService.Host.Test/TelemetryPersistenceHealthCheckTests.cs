@@ -25,6 +25,8 @@ public class TelemetryPersistenceHealthCheckTests
     private sealed class StubHealthSource : ITelemetryHealthSource
     {
         public TelemetryHealthSnapshot Current { get; set; } = TelemetryHealthSnapshot.Initial;
+
+        public bool IsDraining { get; set; } = true;
     }
 
     private static async Task<HealthCheckResult> CheckAsync(TelemetryHealthSnapshot snapshot)

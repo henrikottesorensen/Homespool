@@ -155,8 +155,12 @@ public static class Program
             // The process answering requests says nothing about whether it is still recording
             // anything - a flush bug once made every write fail permanently while the service looked
             // entirely healthy from outside. This is the hook a monitoring system can watch.
+            // Tagged, because the two endpoints below must not report the same thing. Only checks
+            // tagged "live" answer /health/live, and only a fault a restart would fix may carry that
+            // tag - see TelemetryWriterLivenessHealthCheck.
             builder.Services.AddHealthChecks()
-                   .AddCheck<PrusaConnect.TelemetryPersistenceHealthCheck>("telemetry-persistence");
+                   .AddCheck<PrusaConnect.TelemetryPersistenceHealthCheck>("telemetry-persistence")
+                   .AddCheck<PrusaConnect.TelemetryWriterLivenessHealthCheck>("telemetry-writer-alive", tags: [LivenessTag]);
 
             // Sweeps TelemetrySample rows past StorageOptions.TelemetryRetentionDays. No interface
             // registration needed, unlike TelemetryWriter above - nothing else ever needs to reach it.
@@ -213,8 +217,26 @@ public static class Program
             // Anonymous by design: a monitoring system holds no credentials, and the response carries
             // only counters and timestamps about this service's own write path - nothing about
             // printers, jobs or users.
+            //
+            // Everything, for monitoring and for humans. Alert on this; never restart on it.
             app.MapHealthChecks(HealthEndpointPath, new HealthCheckOptions
             {
+                ResponseWriter = WriteHealthResponseAsync,
+            });
+
+            // Liveness, and the safe target for anything that can kill the container: a Kubernetes
+            // livenessProbe, a Swarm healthcheck, an autoheal sidecar. Reports only faults a restart
+            // fixes, so a rejecting database can never trigger a restart loop that discards the
+            // buffered telemetry with every cycle.
+            //
+            // Also the right target for a startupProbe: migrations and admin bootstrap run before
+            // app.Run(), so Kestrel is not accepting connections until they finish - any successful
+            // response already means startup completed, and no separate endpoint is needed. And for a
+            // readinessProbe, since a degraded writer is a reason to alert, not a reason to stop
+            // accepting printer connections.
+            app.MapHealthChecks($"{HealthEndpointPath}/live", new HealthCheckOptions
+            {
+                Predicate = registration => registration.Tags.Contains(LivenessTag),
                 ResponseWriter = WriteHealthResponseAsync,
             });
 
@@ -246,9 +268,14 @@ public static class Program
         }
     }
 
-    /// <summary>Where the health endpoint lives. Shared so the HTTPS-redirection exclusion above
-    /// cannot drift away from the route itself.</summary>
+    /// <summary>Where the health endpoints live. Shared so the HTTPS-redirection exclusion and the
+    /// setup gate's allowance cannot drift away from the routes themselves. <c>/health/live</c> sits
+    /// underneath, so both are covered by one path prefix.</summary>
     private const string HealthEndpointPath = "/health";
+
+    /// <summary>Marks a check as safe for a liveness probe - that is, one whose failure a restart
+    /// would actually fix.</summary>
+    private const string LivenessTag = "live";
 
     /// <summary>
     /// Writes the health report as JSON rather than the default bare status word.

@@ -157,6 +157,9 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// <inheritdoc />
     public TelemetryHealthSnapshot Current => _health;
 
+    /// <inheritdoc />
+    public bool IsDraining => ExecuteTask is null or { IsCompleted: false };
+
     /// <summary>
     /// Stops accepting work, then waits for the drain loop to finish what it already has.
     /// </summary>

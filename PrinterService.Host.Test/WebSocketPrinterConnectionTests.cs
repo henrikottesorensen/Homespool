@@ -1,4 +1,4 @@
-using System.Buffers;
+using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
 
@@ -9,41 +9,42 @@ using PrinterService.Host.PrusaConnect;
 namespace PrinterService.Host.Test;
 
 /// <summary>
-/// <see cref="WebSocketPrinterConnection"/> - confirms bytes handed to <c>SendAsync</c> reach the
-/// underlying pipe's <c>Output</c> unchanged, using <see cref="InMemoryWebSocketPipe"/> in reverse: what
-/// the server writes to <c>Output</c> is what "the printer" would read from <c>Input</c>.
+/// <see cref="WebSocketPrinterConnection"/> - confirms a frame handed to <c>SendAsync</c> reaches
+/// the socket unchanged, and as a single Binary message. The message shape is asserted, not just
+/// the bytes: Binary-with-endOfMessage is what WebSocketPipe sent before the swap to the raw
+/// socket, i.e. the framing the firmware has been accepting all along.
 /// </summary>
 public class WebSocketPrinterConnectionTests
 {
     [Fact]
-    public async System.Threading.Tasks.Task SendAsyncWritesTheExactFrameBytesToThePipe()
+    public async System.Threading.Tasks.Task SendAsyncSendsTheExactFrameBytesAsOneBinaryMessage()
     {
         // Arrange
-        using InMemoryWebSocketPipe pipe = new();
-        WebSocketPrinterConnection connection = new(pipe);
+        using FakeWebSocket socket = new();
+        WebSocketPrinterConnection connection = new(socket);
         byte[] frame = Encoding.ASCII.GetBytes("J0000002A{\"command\":\"PAUSE_PRINT\"}");
 
         // Act
         await connection.SendAsync(frame, CancellationToken.None);
-        await pipe.FinishAsync();
-
-        System.IO.Pipelines.ReadResult result = await pipe.Input.ReadAsync();
 
         // Assert
-        result.Buffer.ToArray().Should().Equal(frame);
+        socket.Sent.Should().ContainSingle();
+        socket.Sent[0].Frame.Should().Equal(frame);
+        socket.Sent[0].MessageType.Should().Be(WebSocketMessageType.Binary);
+        socket.Sent[0].EndOfMessage.Should().BeTrue();
     }
 
     [Fact]
-    public void IsOpenReflectsThePipesState()
+    public void IsOpenReflectsTheSocketsState()
     {
         // Arrange
-        using InMemoryWebSocketPipe pipe = new();
-        WebSocketPrinterConnection connection = new(pipe);
+        using FakeWebSocket socket = new();
+        WebSocketPrinterConnection connection = new(socket);
 
         // Act + Assert
         connection.IsOpen.Should().BeTrue();
 
-        pipe.Close();
+        socket.Close();
         connection.IsOpen.Should().BeFalse();
     }
 }

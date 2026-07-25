@@ -5,13 +5,11 @@ using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Devlooped.Net;
-
 namespace PrinterService.Host.PrusaConnect;
 
 /// <summary>
 /// Write-only view of a printer's live connection. Command-sending code has no business touching
-/// <c>Input</c>, <c>State</c> transitions, or <c>CompleteAsync</c> - only writing a frame.
+/// the receive side, <c>State</c> transitions, or the close handshake - only writing a frame.
 /// </summary>
 public interface IPrinterConnection
 {
@@ -22,24 +20,27 @@ public interface IPrinterConnection
 
 public sealed class WebSocketPrinterConnection : IPrinterConnection
 {
-    private readonly IWebSocketPipe _pipe;
+    private readonly WebSocket _webSocket;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
-    public WebSocketPrinterConnection(IWebSocketPipe pipe)
+    public WebSocketPrinterConnection(WebSocket webSocket)
     {
-        _pipe = pipe;
+        _webSocket = webSocket;
     }
 
-    public bool IsOpen => _pipe.State == WebSocketState.Open;
+    public bool IsOpen => _webSocket.State == WebSocketState.Open;
 
     public async ValueTask SendAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken)
     {
+        // The lock is load-bearing: WebSocket.SendAsync forbids concurrent sends outright, and two
+        // requests can command the same printer at once.
         await _writeLock.WaitAsync(cancellationToken);
 
         try
         {
-            await _pipe.Output.WriteAsync(frame, cancellationToken);
-            await _pipe.Output.FlushAsync(cancellationToken);
+            // Binary, endOfMessage per frame: the exact wire shape WebSocketPipe produced, which is
+            // what the firmware has been accepting all along.
+            await _webSocket.SendAsync(frame, WebSocketMessageType.Binary, endOfMessage: true, cancellationToken);
         }
         finally
         {

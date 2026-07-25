@@ -4,7 +4,7 @@
     {
       "name": "printerservice-host",
       "runtimeExecutable": "dotnet",
-      "runtimeArgs": ["run", "--project", "PrinterService.Host", "--urls", "http://localhost:5052"],
+      "runtimeArgs": ["run", "--project", "PrinterService.Host", "--urls", "http://*:5052"],
       "port": 5052
     }
   ]

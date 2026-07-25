@@ -20,7 +20,7 @@ namespace PrinterService.Host.Test;
 /// behaviour of their own) because it is a multi-stage protocol double: connect, authenticate, send,
 /// disconnect, each independently able to fail, with the sent message captured before
 /// <c>SmtpEmailSender</c> disposes it. Expressing that as substitute setup would be longer and
-/// harder to follow than the class itself. Same reasoning as <see cref="InMemoryWebSocketPipe"/>.
+/// harder to follow than the class itself. Same reasoning as <see cref="FakeWebSocket"/>.
 /// </remarks>
 public sealed class FakeSmtpTransport : ISmtpTransport
 {

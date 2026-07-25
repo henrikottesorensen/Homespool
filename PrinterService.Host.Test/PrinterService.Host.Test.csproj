@@ -23,11 +23,12 @@
         <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" Version="10.8.0" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
         <!-- Used only for pure interface stubs with no behaviour of their own. Doubles that actually
-             simulate something - FakeWebSocketPipe (a real System.IO.Pipelines.Pipe, so a test can
-             split a message mid-UTF8-character) and the MessageDispatcher subclasses - stay
-             hand-rolled: a substitute cannot fragment a byte stream, and substituting a concrete
-             class's virtuals is where this library gets fragile. The analyzer catches the main
-             footgun, substituting a non-virtual member and silently getting nothing. -->
+             simulate something - the parsing tests' raw System.IO.Pipelines.Pipe (so a test can
+             split a message mid-UTF8-character), FakeWebSocket, and the MessageDispatcher
+             subclasses - stay hand-rolled: a substitute cannot fragment a byte stream, and
+             substituting a concrete class's virtuals is where this library gets fragile. The
+             analyzer catches the main footgun, substituting a non-virtual member and silently
+             getting nothing. -->
         <PackageReference Include="NSubstitute" Version="6.0.0" />
         <PackageReference Include="NSubstitute.Analyzers.CSharp" Version="1.0.17">
           <PrivateAssets>all</PrivateAssets>

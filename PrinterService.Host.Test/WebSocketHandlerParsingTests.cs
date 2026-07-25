@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Net.WebSockets;
+using System.IO.Pipelines;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -28,8 +28,10 @@ namespace PrinterService.Host.Test;
 /// messages and without mistaking "not finished yet" for "malformed".
 /// </para>
 /// <para>
-/// These tests drive the handler through <see cref="InMemoryWebSocketPipe"/>, which lets each case
-/// dictate exactly where the boundaries fall. Parsed messages are asserted against directly via
+/// These tests feed the handler a real in-memory <see cref="Pipe"/>, with
+/// <see cref="WriteInChunksAsync"/> dictating exactly where the boundaries fall - deliberately not
+/// a substitute, because a mocking framework cannot fragment a byte stream, and the fragmentation
+/// is the whole point. Parsed messages are asserted against directly via
 /// <see cref="RecordingMessageDispatcher"/> rather than through stdout.
 /// </para>
 /// </remarks>
@@ -183,7 +185,8 @@ public class WebSocketHandlerParsingTests
     }
 
     /// <summary>
-    /// Genuinely broken input still closes the socket with <c>PolicyViolation</c>.
+    /// Genuinely broken input throws <see cref="JsonException"/> out of the handler - the signal
+    /// the controller closes the socket (with <c>PolicyViolation</c>) on.
     /// </summary>
     /// <remarks>
     /// Guards the opposite direction from the fragmentation tests. Tolerating a partial document
@@ -191,28 +194,25 @@ public class WebSocketHandlerParsingTests
     /// nonsense should be disconnected, not waited on.
     /// </remarks>
     [Fact]
-    public async Task MalformedJsonClosesTheConnection()
+    public async Task MalformedJsonThrowsForTheCallerToCloseOn()
     {
         // Arrange
         // Guards the other direction: the fragmentation handling must not swallow genuinely
         // broken input. A printer sending garbage should still be disconnected.
-        using InMemoryWebSocketPipe pipe = new();
+        Pipe wire = new();
 
         WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, new RecordingMessageDispatcher());
 
         // Act
-        Task run = handler.HandlePrusaWebsocket(pipe, printerId: 1, CancellationToken.None);
+        Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 1, CancellationToken.None);
 
-        await pipe.WriteInChunksAsync(Encoding.UTF8.GetBytes("""{"job_id":301,,,}"""), chunkSize: 4096);
-        await pipe.FinishAsync();
+        await WriteInChunksAsync(wire.Writer, Encoding.UTF8.GetBytes("""{"job_id":301,,,}"""), chunkSize: 4096);
+        await wire.Writer.CompleteAsync();
 
         Func<Task> act = async () => await run.WaitAsync(TimeSpan.FromSeconds(10));
 
         // Assert
-        await act.Should().ThrowAsync<System.Text.Json.JsonException>();
-
-        pipe.CompleteAsyncCalled.Should().BeTrue();
-        pipe.CloseStatus.Should().Be(WebSocketCloseStatus.PolicyViolation);
+        await act.Should().ThrowAsync<JsonException>();
     }
 
     private static Task<IReadOnlyList<string>> RunHandlerAsync(string payload, int chunkSize) =>
@@ -228,16 +228,16 @@ public class WebSocketHandlerParsingTests
 
     private static async Task<IReadOnlyList<string>> RunHandlerAsync(byte[] payload, int[] chunkSizes)
     {
-        using InMemoryWebSocketPipe pipe = new();
+        Pipe wire = new();
 
         RecordingMessageDispatcher dispatcher = new();
         WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, dispatcher);
 
-        Task run = handler.HandlePrusaWebsocket(pipe, printerId: 1, CancellationToken.None);
+        Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 1, CancellationToken.None);
 
         if (chunkSizes.Length == 1)
         {
-            await pipe.WriteInChunksAsync(payload, chunkSizes[0]);
+            await WriteInChunksAsync(wire.Writer, payload, chunkSizes[0]);
         }
         else
         {
@@ -245,18 +245,37 @@ public class WebSocketHandlerParsingTests
 
             foreach (int size in chunkSizes)
             {
-                await pipe.WriteInChunksAsync(payload[offset..(offset + size)], size);
+                await WriteInChunksAsync(wire.Writer, payload[offset..(offset + size)], size);
                 offset += size;
             }
         }
 
-        await pipe.FinishAsync();
+        // Completing the writer is the peer closing the connection: the handler drains what is
+        // buffered and returns at the completed read.
+        await wire.Writer.CompleteAsync();
 
         // A generous ceiling: this exists so a regression that spins or blocks fails the test
         // instead of hanging the suite, which is how the old parsing spike used to behave.
         await run.WaitAsync(TimeSpan.FromSeconds(10));
 
         return dispatcher.Received;
+    }
+
+    /// <summary>
+    /// Writes <paramref name="payload"/> in <paramref name="chunkSize"/>-byte pieces, flushing each
+    /// one so it becomes a separate read - the equivalent of arriving in separate frames, with the
+    /// boundary falling wherever the test says, not where a document ends.
+    /// </summary>
+    private static async Task WriteInChunksAsync(PipeWriter writer, byte[] payload, int chunkSize)
+    {
+        for (int offset = 0; offset < payload.Length; offset += chunkSize)
+        {
+            int length = Math.Min(chunkSize, payload.Length - offset);
+
+            // PipeWriter.WriteAsync copies and flushes in one step, so each chunk becomes visible
+            // to the reader on its own.
+            await writer.WriteAsync(payload.AsMemory(offset, length));
+        }
     }
 
     /// <summary>

@@ -1,12 +1,8 @@
-using System;
 using System.Buffers;
 using System.IO.Pipelines;
-using System.Net.WebSockets;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-
-using Devlooped.Net;
 
 using Microsoft.Extensions.Logging;
 
@@ -30,11 +26,20 @@ public class WebSocketHandler
         AllowMultipleValues = true,
     };
 
-    public async Task HandlePrusaWebsocket(IWebSocketPipe pipe, int printerId, CancellationToken cancellationToken)
+    /// <summary>
+    /// Reads and dispatches printer messages until <paramref name="input"/> completes (the peer
+    /// closed) or <paramref name="cancellationToken"/> fires. Pure parsing over a
+    /// <see cref="PipeReader"/>: it never touches the socket, so closing it - normally on return,
+    /// with <c>PolicyViolation</c> on the <see cref="JsonException"/> this throws for malformed
+    /// input - is the caller's job.
+    /// </summary>
+    /// <exception cref="JsonException">The printer sent malformed JSON - a protocol violation, not
+    /// to be confused with a merely incomplete document, which is buffered instead.</exception>
+    public async Task HandlePrusaWebsocket(PipeReader input, int printerId, CancellationToken cancellationToken)
     {
-        while (pipe.State <= WebSocketState.Open && !cancellationToken.IsCancellationRequested)
+        while (!cancellationToken.IsCancellationRequested)
         {
-            ReadResult result = await pipe.Input.ReadAsync(cancellationToken);
+            ReadResult result = await input.ReadAsync(cancellationToken);
             ReadOnlySequence<byte> buffer = result.Buffer;
 
             try
@@ -75,26 +80,24 @@ public class WebSocketHandler
             }
             catch (JsonException e)
             {
-                // Bad data from printer, close connection on it and rethrow.
+                // Bad data from printer. Rethrow so the caller closes the connection on it.
                 _logger.LogError(e, "Bad JSON input received from Printer: ");
-                await pipe.CompleteAsync(WebSocketCloseStatus.PolicyViolation);
                 throw;
             }
 
-            // Consumed up to the end of the last complete document; examined everything. The pipe
+            // Consumed up to the end of the last complete document; examined everything. The reader
             // holds on to the remainder and will not wake us again until more bytes arrive, which
             // is what makes reassembly across reads free.
-            pipe.Input.AdvanceTo(buffer.Start, buffer.End);
+            input.AdvanceTo(buffer.Start, buffer.End);
 
-            // Without this the loop spins on an empty, completed pipe until the socket state
-            // happens to change — burning CPU, and hanging outright if it never does.
+            // The reader completes when the printer closes (or drops) the connection; the remaining
+            // bytes were just drained, so this is the natural end of the stream.
             if (result.IsCompleted)
             {
                 break;
             }
         }
 
-        await pipe.CompleteAsync(WebSocketCloseStatus.NormalClosure);
         _logger.LogInformation("WebSocket handler terminating");
     }
 

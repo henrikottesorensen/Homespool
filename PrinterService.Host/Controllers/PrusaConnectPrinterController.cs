@@ -1,16 +1,18 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Pipelines;
 using System.Net.Mime;
 using System.Net.WebSockets;
 using System.Security.Claims;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-
-using Devlooped.Net;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 using PrinterService.Host.Exceptions;
@@ -27,18 +29,21 @@ public class PrusaConnectPrinterController : ControllerBase
     private readonly WebSocketHandler _webSocketHandler;
     private readonly PrinterConnectionRegistry _connectionRegistry;
     private readonly IPrinterCommandCorrelator _correlator;
+    private readonly IHostApplicationLifetime _lifetime;
     private readonly ILogger<PrusaConnectPrinterController> _logger;
 
     public PrusaConnectPrinterController(PrusaConnectService prusaConnectService,
                                          WebSocketHandler webSocketHandler,
                                          PrinterConnectionRegistry connectionRegistry,
                                          IPrinterCommandCorrelator correlator,
+                                         IHostApplicationLifetime lifetime,
                                          ILogger<PrusaConnectPrinterController> logger)
     {
         _prusaConnectService = prusaConnectService;
         _webSocketHandler = webSocketHandler;
         _connectionRegistry = connectionRegistry;
         _correlator = correlator;
+        _lifetime = lifetime;
         _logger = logger;
     }
     
@@ -71,17 +76,61 @@ public class PrusaConnectPrinterController : ControllerBase
                     clientHeaders.FingerPrint,
                     printerId);
 
-                using IWebSocketPipe pipe = webSocket.CreatePipe(true);
+                // The read side: WebSocketStream (.NET 10) presents the socket as a plain byte
+                // stream - EOF at the peer's close frame - and StreamPipeReader gives the handler
+                // the PipeReader it parses from. Reads pull straight from the socket, so there is
+                // no pump task to run alongside the handler. Writes don't go through the stream at
+                // all (WebSocketPrinterConnection sends on the socket directly), so the message
+                // type here is inert; ownsWebSocket stays false because the close handshake is
+                // handled explicitly below.
+                using Stream socketStream = WebSocketStream.Create(webSocket, WebSocketMessageType.Binary);
+                PipeReader input = PipeReader.Create(socketStream, new StreamPipeReaderOptions(leaveOpen: true));
 
-                WebSocketPrinterConnection connection = new(pipe);
+                WebSocketPrinterConnection connection = new(webSocket);
                 _connectionRegistry.Register(printerId, connection);
+
+                // Two reasons this read loop should stop, neither of them the printer's doing:
+                // RequestAborted (the client vanished, or Kestrel aborted us) and ApplicationStopping.
+                // The second is the load-bearing one: a printer connection is idle-but-open for hours,
+                // so without it every shutdown parked here until Kestrel's timeout expired and killed
+                // the request - a ~30s stall that invites operators to SIGKILL instead, which is how
+                // buffered telemetry actually gets lost. Cancelling the receive aborts the socket, so
+                // the printer sees the connection drop and reconnects on its own retry timer.
+                using CancellationTokenSource connectionLifetime =
+                    CancellationTokenSource.CreateLinkedTokenSource(HttpContext.RequestAborted, _lifetime.ApplicationStopping);
 
                 try
                 {
-                    await Task.WhenAll(_webSocketHandler.HandlePrusaWebsocket(pipe, printerId, CancellationToken.None), pipe.RunAsync());
+                    await _webSocketHandler.HandlePrusaWebsocket(input, printerId, connectionLifetime.Token);
+                    await CloseSocketAsync(webSocket, WebSocketCloseStatus.NormalClosure);
+                }
+                catch (JsonException)
+                {
+                    // The handler's contract: malformed JSON is a protocol violation. Close on it,
+                    // then let it surface - same as when the handler owned the close itself.
+                    await CloseSocketAsync(webSocket, WebSocketCloseStatus.PolicyViolation);
+                    throw;
+                }
+                catch (WebSocketException e)
+                {
+                    // Routine, not exceptional: printers drop off the network without a close
+                    // handshake all the time. The socket is already gone - nothing to close.
+                    _logger.LogDebug(e, "[{PrinterId}] connection closed abruptly", printerId);
+                }
+                catch (OperationCanceledException e)
+                {
+                    // Shutdown or teardown, per connectionLifetime above - including Kestrel aborting
+                    // the connection outright, since ConnectionAbortedException derives from this.
+                    // Ordinary ends to a WebSocket request, not faults: left unhandled they surfaced
+                    // as a logged 500. The close is a courtesy attempt - a no-op once the socket is
+                    // already aborted, which cancelling the receive will usually have done.
+                    _logger.LogDebug(e, "[{PrinterId}] connection ended: shutting down or aborted", printerId);
+                    await CloseSocketAsync(webSocket, WebSocketCloseStatus.NormalClosure);
                 }
                 finally
                 {
+                    await input.CompleteAsync();
+
                     _connectionRegistry.Unregister(printerId, connection);
 
                     // If a command was sent and is still awaiting a reply when the socket goes away,
@@ -97,10 +146,31 @@ public class PrusaConnectPrinterController : ControllerBase
         {
             return BadRequest();
         }
-        
+
         return BadRequest();
     }
-    
+
+    /// <summary>
+    /// Sends the close frame if the socket can still take one. <c>CloseOutputAsync</c> rather than
+    /// <c>CloseAsync</c>: it completes the handshake when the printer already sent its close frame
+    /// (the normal path - the handler returns at that EOF), and when we initiate (policy violation)
+    /// it doesn't wait for an ack a misbehaving peer may never send.
+    /// </summary>
+    private static async Task CloseSocketAsync(WebSocket webSocket, WebSocketCloseStatus closeStatus)
+    {
+        if (webSocket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+        {
+            try
+            {
+                await webSocket.CloseOutputAsync(closeStatus, statusDescription: null, CancellationToken.None);
+            }
+            catch (WebSocketException)
+            {
+                // The peer vanished between the state check and the close frame - nothing to do.
+            }
+        }
+    }
+
     [AllowAnonymous]
     [HttpPost]
     [Route("/p/register")]

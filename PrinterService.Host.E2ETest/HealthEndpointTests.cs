@@ -136,4 +136,32 @@ public sealed class HealthEndpointTests : IAsyncLifetime, IDisposable
         body.Should().NotContain("telemetry-persistence",
             "persistence health must never be able to trigger a restart");
     }
+
+    /// <summary>
+    /// Pages still render with the health banner in the layout, and show nothing when healthy.
+    /// </summary>
+    /// <remarks>
+    /// The unit tests cover which problems become banners; this covers the half they cannot - that
+    /// the view component resolves its dependency and finds its view at all. Both failures throw
+    /// during rendering of <c>_Layout</c>, which means every page in the application, so getting one
+    /// page back at all is the assertion that matters.
+    /// </remarks>
+    [Fact]
+    public async Task PagesRenderWithTheHealthBannerAndShowNothingWhenHealthy()
+    {
+        // Arrange
+        using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        // Act - /setup is the one page reachable before an administrator exists, and it renders the
+        // shared layout like any other.
+        HttpResponseMessage response = await client.GetAsync("/setup");
+        string body = await response.Content.ReadAsStringAsync();
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            "a view component that cannot resolve its dependency or its view takes every page down with it");
+
+        body.Should().NotContain("Service problem",
+            "nothing has failed on a freshly started host, and a healthy service should look untouched");
+    }
 }

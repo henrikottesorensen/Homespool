@@ -62,6 +62,9 @@
 
     <div class="container">
         <partial name="_CookieConsentPartial" optional />
+        @* Above the page body on every page, because the failure it exists for is one the app gives
+           no other sign of: printing carries on, pages render, and nothing is being recorded. *@
+        @await Component.InvokeAsync("HealthBanner")
         <main role="main" class="pb-1">
             @RenderBody()
         </main>

@@ -101,6 +101,11 @@ public static class Program
             if (smtpOptions.IsConfigured)
             {
                 builder.Services.AddScoped<Services.IEmailSender, Services.SmtpEmailSender>();
+
+                // Only with a mail server to send through - otherwise this is a background service
+                // whose whole job is to log that it cannot do its job. The banner and /health cover
+                // deployments without SMTP.
+                builder.Services.AddHostedService<Services.TelemetryAlertService>();
             }
             else
             {

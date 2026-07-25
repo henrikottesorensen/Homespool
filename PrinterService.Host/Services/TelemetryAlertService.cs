@@ -84,7 +84,7 @@ public sealed class TelemetryAlertService : BackgroundService
         {
             HealthReport report = await _healthChecks.CheckHealthAsync(cancellationToken);
 
-            if (report.Status == HealthStatus.Healthy)
+            if (report.Status == HealthStatus.Healthy && ShouldRefreshRecipients())
             {
                 // Only while healthy, which is when the database is answering and there is no hurry.
                 await RefreshRecipientsAsync(cancellationToken);
@@ -150,6 +150,26 @@ public sealed class TelemetryAlertService : BackgroundService
 
         return anySent;
     }
+
+    /// <summary>
+    /// Read once, and only until there is somebody to read.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Reading a single time at startup would be enough if administrators existed by then, but a
+    /// fresh deployment starts before anyone has been through <c>/setup</c>, so the first read finds
+    /// nobody. Retrying only while the list is empty covers that without polling for something that
+    /// never changes: an ordinary start with an administrator already present reads once and stops,
+    /// and a new install picks the first one up within a poll of setup completing.
+    /// </para>
+    /// <para>
+    /// The consequence, accepted deliberately: administrators added later - or an address changed -
+    /// are not noticed until the service restarts. Alerting a former administrator, or missing a new
+    /// one, is a smaller cost than querying the database every minute forever for a list that
+    /// typically changes once in the life of a deployment.
+    /// </para>
+    /// </remarks>
+    private bool ShouldRefreshRecipients() => _recipients.Count == 0;
 
     private async Task RefreshRecipientsAsync(CancellationToken cancellationToken)
     {

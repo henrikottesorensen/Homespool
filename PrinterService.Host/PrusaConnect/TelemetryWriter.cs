@@ -466,6 +466,18 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink
         {
             LiveStateCacheEntry entry = cache[printerId];
 
+            // Cleared before attaching, every time. The Printer stub below is attached into this same
+            // context, and EF fixes up the relationship by writing it onto this navigation - onto the
+            // cached entry, which outlives the context it came from. Left in place, the next flush
+            // attaches that stale instance along with the live state and then collides with its own
+            // fresh stub ("another instance with the same key value is already being tracked"),
+            // failing every flush from then on. Nothing ever clears it, so the writer accepts
+            // telemetry it can never persist for the rest of the process's life.
+            //
+            // The cache is meant to hold no context-bound state at all - see HydrateAsync, which is
+            // careful to produce exactly that. This keeps it true after the first flush as well.
+            entry.State.Printer = null;
+
             context.Attach(entry.State);
             context.Entry(entry.State).State = entry.ExistsInDatabase ? EntityState.Modified : EntityState.Added;
 

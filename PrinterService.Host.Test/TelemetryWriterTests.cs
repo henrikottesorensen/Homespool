@@ -473,6 +473,61 @@ public sealed class TelemetryWriterTests : IDisposable
         populated.Should().BeTrue();
     }
 
+    /// <summary>
+    /// A printer reporting a material keeps persisting across flushes, not just on the first one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The shape the single-flush test above cannot see. A printing printer sends a material on
+    /// <i>every</i> telemetry message, so <c>PendingLoadedMaterial</c> is set again on every drain and
+    /// the <c>Printer</c>-stub branch in <c>FlushAsync</c> runs on every flush. Attaching that stub
+    /// alongside the cached <see cref="PrinterLiveState"/> made EF fix up the relationship and write
+    /// the stub onto <c>entry.State.Printer</c> - a cached object that outlives the per-flush
+    /// context. The next flush then dragged that stale instance in with the live state and collided
+    /// with the fresh stub: "another instance with the same key value is already being tracked".
+    /// </para>
+    /// <para>
+    /// Permanent once it starts, and silent: <c>SafeFlushAsync</c> logs and keeps the buffers, so the
+    /// writer goes on accepting telemetry it can never persist. Observed against a real MK3.5 on
+    /// 2026-07-25 as 176 consecutive failures and 285 lost samples across one print.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task MaterialKeepsPersistingAcrossFlushesNotJustTheFirst()
+    {
+        // Arrange - batch size 1, so each message is its own flush.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        // Act - what a printing printer actually sends: every message carries the material.
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING", Material = "PLA" });
+
+        bool firstFlushed = await WaitUntilAsync(async () =>
+        {
+            await using PSDbContext context = NewVerificationContext();
+            return await SampleCountAsync(context) == 1;
+        }, TimeSpan.FromSeconds(5));
+
+        firstFlushed.Should().BeTrue("the first flush has never been the broken one");
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING", Material = "PETG" });
+
+        // Assert
+        bool secondFlushed = await WaitUntilAsync(async () =>
+        {
+            await using PSDbContext context = NewVerificationContext();
+            return await SampleCountAsync(context) == 2;
+        }, TimeSpan.FromSeconds(5));
+
+        secondFlushed.Should().BeTrue($"every later flush must persist too, not just the first.\n{LogDump()}");
+
+        LogRecords.Where(FlushFailed).Should().BeEmpty("no flush should have failed at all");
+
+        await using PSDbContext verify = NewVerificationContext();
+        Printer printer = await verify.Printers.SingleAsync();
+        printer.LoadedMaterial.Should().Be("PETG", "the later material must reach the printer row as well");
+    }
+
     [Fact]
     public async Task EnqueueNeverBlocksOrThrowsUnderHeavyLoad()
     {

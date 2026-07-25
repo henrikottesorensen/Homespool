@@ -456,6 +456,79 @@ public class PrinterConnectionActorTests
     }
 
     /// <summary>
+    /// A command still queued when teardown begins is refused, not sent.
+    /// </summary>
+    /// <remarks>
+    /// The drain processes whatever the mailbox still holds, and a queued command would otherwise
+    /// pass every check and go out on the wire - on the clean-shutdown path the socket is still open
+    /// when this runs, so <c>IsOpen</c> does not catch it. It would then become the pending command
+    /// and be failed as NotConnected by the loop's finally: the operator told the printer was
+    /// unreachable by a command that had just executed on it.
+    /// </remarks>
+    [Fact]
+    public async Task ACommandStillQueuedWhenTeardownBeginsIsNotSent()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        using GatedTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), sink);
+
+        await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }), CancellationToken.None);
+        await WaitUntilAsync(() => sink.IsHeld);
+
+        // Queued behind the held message, exactly as a click landing during shutdown would be.
+        Task<CommandSendResult> queued = actor.SendCommandAsync(new PausePrint(), CancellationToken.None);
+
+        // Act
+        actor.Complete();
+        sink.Release();
+
+        // Assert
+        (await Eventually(queued)).Outcome.Should().Be(CommandSendOutcome.NotConnected);
+
+        await Eventually(actor.Completion);
+
+        sentFrames.Should().BeEmpty("a connection being torn down must not still carry the command to the printer");
+    }
+
+    /// <summary>
+    /// An ack already in the mailbox answers its command, even if the loop reaches it late.
+    /// </summary>
+    /// <remarks>
+    /// The deadline governs waiting, not processing. Checking it before draining meant a reply that
+    /// arrived comfortably inside the timeout could still be reported TimedOut because the loop was
+    /// busy - and the ack would then be persisted as an ordinary unmatched event, so the record
+    /// would disagree with what the caller was told.
+    /// </remarks>
+    [Fact]
+    public async Task AnAckAlreadyInTheMailboxBeatsTheDeadline()
+    {
+        // Arrange - a timeout short enough to expire while the loop is held.
+        List<byte[]> sentFrames = [];
+        using GatedTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), sink, responseTimeout: TimeSpan.FromMilliseconds(300));
+
+        Task<CommandSendResult> send = actor.SendCommandAsync(new PausePrint(), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+
+        // Park the loop, then let the printer's answer arrive behind the held message.
+        await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }), CancellationToken.None);
+        await WaitUntilAsync(() => sink.IsHeld);
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0])), CancellationToken.None);
+
+        // Act - the deadline passes while the ack sits in the mailbox, unread.
+        await Task.Delay(TimeSpan.FromMilliseconds(600));
+        sink.Release();
+
+        // Assert
+        (await Eventually(send)).Outcome.Should().Be(CommandSendOutcome.Completed,
+            "the reply arrived within the timeout; only the loop was late to it");
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
     /// Blocks the actor's loop on demand. <see cref="ITelemetrySink.Enqueue"/> is synchronous and
     /// called from the loop, which makes it the one place a test can hold the loop still without
     /// guessing at timing.

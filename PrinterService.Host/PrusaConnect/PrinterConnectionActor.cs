@@ -64,6 +64,11 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     private Pending? _pending;
     private uint _lastCommandId;
 
+    // The exception to that: written by whoever tears the connection down, read by the loop while
+    // it drains. Volatile because those are different threads; monotonic, so there is nothing to
+    // race - it only ever goes false to true.
+    private volatile bool _draining;
+
     private sealed record Pending(uint CommandId, string WireName, TaskCompletionSource<CommandSendResult> Completion, long SentAt);
 
     public PrinterConnectionActor(int printerId, IPrinterConnection connection, ITelemetrySink sink,
@@ -81,15 +86,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             FullMode = BoundedChannelFullMode.Wait,
         });
 
-        // A fresh connection restarts ids, and the printer can answer a command from a previous
-        // connection after reconnecting - a counter always starting at 1 would make that stale ack
-        // collide with the new connection's first command. A random start keeps ids unique within
-        // the only window that matters (one in-flight command), same as before, without that seam.
-        // CA5394: not security randomness - the id is a collision-avoidance nonce the printer
-        // echoes back in plaintext, the same role firmware's own rand_u() file_id plays.
-#pragma warning disable CA5394
-        _lastCommandId = unchecked((uint)Random.Shared.Next());
-#pragma warning restore CA5394
+        _lastCommandId = CommandIdSeed.Next();
 
         Completion = RunAsync();
     }
@@ -126,6 +123,11 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
 
     public void Complete()
     {
+        // Set before completing the writer, so the loop can never dequeue a command without knowing
+        // teardown has begun. The channel does not expose "writer completed" on its own - Reader
+        // .Completion only finishes once the drain is over, which is too late to be useful here.
+        _draining = true;
+
         _mailbox.Writer.TryComplete();
     }
 
@@ -135,49 +137,55 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         {
             while (true)
             {
-                if (_pending is null)
-                {
-                    if (!await _mailbox.Reader.WaitToReadAsync())
-                    {
-                        break;
-                    }
-                }
-                else
-                {
-                    // The one place a deadline exists: while a command is in flight, wait for the
-                    // next message only until the response timeout expires. The token never touches
-                    // the work itself - expiry is just "stop waiting", handled in one place, by the
-                    // one owner of the pending state.
-                    TimeSpan remaining = _responseTimeout - Stopwatch.GetElapsedTime(_pending.SentAt);
-
-                    if (remaining <= TimeSpan.Zero)
-                    {
-                        TimeOutPending();
-                        continue;
-                    }
-
-                    using CancellationTokenSource deadline = new(remaining);
-
-                    bool more;
-
-                    try
-                    {
-                        more = await _mailbox.Reader.WaitToReadAsync(deadline.Token);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        TimeOutPending();
-                        continue;
-                    }
-
-                    if (!more)
-                    {
-                        break;
-                    }
-                }
-
+                // Always drain what has already arrived before considering the deadline. The
+                // timeout governs *waiting*, not processing: an ack sitting in the mailbox arrived
+                // when it arrived, and reporting TimedOut because the loop was slow to reach it
+                // would both lie to the caller and leave the ack to be persisted as an ordinary
+                // unmatched event. FIFO bounds how far this can postpone the deadline - only
+                // messages that genuinely arrived first can come between.
                 if (!_mailbox.Reader.TryRead(out ConnectionMessage? message))
                 {
+                    if (_pending is null)
+                    {
+                        if (!await _mailbox.Reader.WaitToReadAsync())
+                        {
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        // The one place a deadline exists: while a command is in flight, wait for
+                        // the next message only until the response timeout expires. The token never
+                        // touches the work itself - expiry is just "stop waiting", handled in one
+                        // place, by the one owner of the pending state.
+                        TimeSpan remaining = _responseTimeout - Stopwatch.GetElapsedTime(_pending.SentAt);
+
+                        if (remaining <= TimeSpan.Zero)
+                        {
+                            TimeOutPending();
+                            continue;
+                        }
+
+                        using CancellationTokenSource deadline = new(remaining);
+
+                        bool more;
+
+                        try
+                        {
+                            more = await _mailbox.Reader.WaitToReadAsync(deadline.Token);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            TimeOutPending();
+                            continue;
+                        }
+
+                        if (!more)
+                        {
+                            break;
+                        }
+                    }
+
                     continue;
                 }
 
@@ -192,7 +200,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                     // owns the response timeout, so no caller has one of their own to fall back on.
                     if (message is SendCommandMessage send)
                     {
-                        send.Completion.TrySetException(e);
+                        Fail(send.Completion, e);
                     }
                     else
                     {
@@ -254,6 +262,18 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             return;
         }
 
+        if (_draining)
+        {
+            // Teardown has started and this was queued before anyone knew. Sending now would be
+            // worse than useless: the loop's finally reports whatever it leaves pending as
+            // NotConnected, so the caller would be told the printer was unreachable by a command
+            // that had in fact just executed. On the clean-shutdown path the socket is still open at
+            // this point - IsOpen below would not catch it - so the frame really would arrive.
+            send.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.NotConnected, null));
+
+            return;
+        }
+
         if (_pending is not null)
         {
             // One in-flight command per printer, matching the firmware's own limit
@@ -282,7 +302,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         {
             // Never reached the printer, so nothing is pending - the caller gets the real error and
             // the next command can begin immediately.
-            send.Completion.TrySetException(e);
+            Fail(send.Completion, e);
 
             return;
         }
@@ -306,6 +326,29 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         // Answering a command doesn't consume the event - it is still an ordinary event
         // (Finished/Rejected/StateChanged) and is persisted like any other.
         _sink.Enqueue(_printerId, message.ReceivedAt, eventDto);
+    }
+
+    /// <summary>
+    /// Faults a caller's completion, and marks the fault observed.
+    /// </summary>
+    /// <remarks>
+    /// The second half matters because the caller may already be gone: once its
+    /// <c>WaitAsync(token)</c> has lost to cancellation, nothing ever awaits this task, and .NET
+    /// raises <see cref="TaskScheduler.UnobservedTaskException"/> when it is finalised - confirmed
+    /// on .NET 10 rather than assumed. Teardown makes that the common case rather than a curiosity:
+    /// abandoning a wedged actor disposes the socket, which faults the outstanding send exactly when
+    /// no caller remains. Default runtime behaviour is only noise, but any host configured to
+    /// escalate unobserved exceptions would fail on it.
+    ///
+    /// Reading <c>Exception</c> is what marks it observed; a caller still waiting receives it
+    /// unchanged.
+    /// </remarks>
+    private static void Fail(TaskCompletionSource<CommandSendResult> completion, Exception error)
+    {
+        if (completion.TrySetException(error))
+        {
+            _ = completion.Task.Exception;
+        }
     }
 
     private void TimeOutPending()

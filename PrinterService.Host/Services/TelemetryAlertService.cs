@@ -163,10 +163,12 @@ public sealed class TelemetryAlertService : BackgroundService
     /// and a new install picks the first one up within a poll of setup completing.
     /// </para>
     /// <para>
-    /// The consequence, accepted deliberately: administrators added later - or an address changed -
-    /// are not noticed until the service restarts. Alerting a former administrator, or missing a new
-    /// one, is a smaller cost than querying the database every minute forever for a list that
-    /// typically changes once in the life of a deployment.
+    /// The list barely moves: <c>AddToRoleAsync</c> for the administrator role is called in exactly
+    /// one place, <c>Setup.OnPostAsync</c>, and nothing ever revokes it - so the population is fixed
+    /// at setup. The single way this cache can go stale is an administrator changing their own
+    /// address on Account/Manage/Email, after which alerts go to the old one until the service
+    /// restarts. Accepted deliberately: closing it means either a hook from that page into this
+    /// service, or re-reading on a schedule for a list that otherwise never changes at all.
     /// </para>
     /// </remarks>
     private bool ShouldRefreshRecipients() => _recipients.Count == 0;

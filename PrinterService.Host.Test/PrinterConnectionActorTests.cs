@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -8,6 +9,7 @@ using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using NSubstitute;
+using NSubstitute.Core;
 
 using PrinterService.Host.PrusaConnect;
 using PrinterService.Host.PrusaConnect.Commands;
@@ -35,16 +37,25 @@ public class PrinterConnectionActorTests
     {
         IPrinterConnection connection = OpenConnection();
 
-        // Configuring a substitute, not calling it: NSubstitute reads this "call" as the member to
-        // set up and never produces a ValueTask to consume, which CA2012 cannot distinguish from a
-        // real one being dropped. Every form of its API trips the rule for a ValueTask member.
-#pragma warning disable CA2012
-        connection.WhenForAnyArgs(c => c.SendAsync(default, default))
-                  .Do(call => sentFrames.Add(((ReadOnlyMemory<byte>)call[0]!).ToArray()));
-#pragma warning restore CA2012
+        OnSend(connection, call => sentFrames.Add(((ReadOnlyMemory<byte>)call[0]!).ToArray()));
 
         return connection;
     }
+
+    /// <summary>
+    /// Configures what a substitute connection does when a frame is sent to it.
+    /// </summary>
+    /// <remarks>
+    /// Exists to hold the suppression below in one place, over one line, rather than around each
+    /// call site. NSubstitute reads the <c>SendAsync</c> here as the member being configured and
+    /// never produces a <see cref="ValueTask"/> for anyone to consume - but CA2012 cannot tell that
+    /// apart from a real one being dropped, and every form of the API trips it for a
+    /// ValueTask-returning member.
+    /// </remarks>
+    [SuppressMessage("Reliability", "CA2012:Use ValueTasks correctly",
+                     Justification = "NSubstitute call specification, not an invocation; no ValueTask is produced to consume.")]
+    private static void OnSend(IPrinterConnection connection, Action<CallInfo> onSend) =>
+        connection.WhenForAnyArgs(c => c.SendAsync(default, default)).Do(onSend);
 
     /// <summary>An open connection that accepts and discards whatever is written to it.</summary>
     private static IPrinterConnection OpenConnection()
@@ -269,18 +280,15 @@ public class PrinterConnectionActorTests
 
         IPrinterConnection connection = Substitute.For<IPrinterConnection>();
         connection.IsOpen.Returns(true);
-#pragma warning disable CA2012 // Substitute configuration, not a dropped ValueTask - see above.
-        connection.WhenForAnyArgs(c => c.SendAsync(default, default))
-                  .Do(call =>
-                  {
-                      if (failSends)
-                      {
-                          throw new InvalidOperationException("socket gone");
-                      }
+        OnSend(connection, call =>
+        {
+            if (failSends)
+            {
+                throw new InvalidOperationException("socket gone");
+            }
 
-                      sentFrames.Add(((ReadOnlyMemory<byte>)call[0]!).ToArray());
-                  });
-#pragma warning restore CA2012
+            sentFrames.Add(((ReadOnlyMemory<byte>)call[0]!).ToArray());
+        });
 
         PrinterConnectionActor actor = NewActor(connection);
 

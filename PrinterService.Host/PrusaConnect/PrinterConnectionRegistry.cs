@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,9 +29,8 @@ public interface IPrinterConnection
 /// <see cref="ObjectDisposedException"/> thrown into somebody's API call, in exchange for freeing
 /// nothing.
 /// </remarks>
-[System.Diagnostics.CodeAnalysis.SuppressMessage(
-    "Microsoft.Design", "CA1001:TypesThatOwnDisposableFieldsShouldBeDisposable",
-    Justification = "The semaphore allocates no wait handle, and disposing it would race in-flight sends. See the remarks.")]
+[SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable",
+                 Justification = "The semaphore allocates no wait handle, and disposing it would race in-flight sends. See the remarks.")]
 public sealed class WebSocketPrinterConnection : IPrinterConnection
 {
     private readonly WebSocket _webSocket;

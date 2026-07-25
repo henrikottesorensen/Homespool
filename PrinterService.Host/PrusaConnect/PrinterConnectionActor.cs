@@ -110,7 +110,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
 
         try
         {
-            await _mailbox.Writer.WriteAsync(new SendCommandMessage(command, completion), cancellationToken);
+            await _mailbox.Writer.WriteAsync(new SendCommandMessage(command, completion, cancellationToken), cancellationToken);
         }
         catch (ChannelClosedException)
         {
@@ -238,6 +238,22 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
 
     private async Task HandleSendAsync(SendCommandMessage send)
     {
+        // Checked before anything else, because everything else has a cost the caller is no longer
+        // there to receive: writing to the printer, and taking the one in-flight slot until the
+        // answer or the timeout. Posting and executing being separate steps is what makes this
+        // possible at all - cancelling the caller ends its wait without touching the queued message.
+        //
+        // The window this closes is the whole queueing delay. What it cannot close is the few
+        // instructions between here and the write completing, and that is deliberate: the send takes
+        // CancellationToken.None because letting one caller's cancellation abort a write mid-frame
+        // would corrupt the stream for every other user of this connection.
+        if (send.CallerToken.IsCancellationRequested)
+        {
+            send.Completion.TrySetCanceled(send.CallerToken);
+
+            return;
+        }
+
         if (_pending is not null)
         {
             // One in-flight command per printer, matching the firmware's own limit

@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 using PrinterService.Host.PrusaConnect.Commands;
@@ -27,7 +28,16 @@ public abstract record ConnectionMessage
 /// <see cref="CommandSendOutcome.AlreadyInFlight"/>/<see cref="CommandSendOutcome.NotConnected"/>/
 /// <see cref="CommandSendOutcome.TimedOut"/> without one.
 /// </summary>
-public sealed record SendCommandMessage(ISendableCommand Command, TaskCompletionSource<CommandSendResult> Completion) : ConnectionMessage;
+/// <param name="CallerToken">
+/// The requesting caller's own token, carried so the loop can tell whether anyone is still waiting
+/// by the time it reaches this message. Posting and executing are separate steps here, so cancelling
+/// the caller ends only its wait - without this, an aborted request's command would still be written
+/// to the printer, and would still take the one in-flight slot on the way.
+/// </param>
+public sealed record SendCommandMessage(
+    ISendableCommand Command,
+    TaskCompletionSource<CommandSendResult> Completion,
+    CancellationToken CallerToken) : ConnectionMessage;
 
 /// <summary>
 /// An event parsed off the wire. May answer the in-flight command (matching <c>command_id</c>)

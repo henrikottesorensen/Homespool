@@ -10,6 +10,7 @@ namespace PrinterService.Host.PrusaConnect;
 /// <summary>
 /// Write-only view of a printer's live connection. Command-sending code has no business touching
 /// the receive side, <c>State</c> transitions, or the close handshake - only writing a frame.
+/// Frames come from the printer's <see cref="PrinterConnectionActor"/> loop, and only from there.
 /// </summary>
 public interface IPrinterConnection
 {
@@ -44,8 +45,10 @@ public sealed class WebSocketPrinterConnection : IPrinterConnection
 
     public async ValueTask SendAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken)
     {
-        // The lock is load-bearing: WebSocket.SendAsync forbids concurrent sends outright, and two
-        // requests can command the same printer at once.
+        // The lock survives the move to the actor, which serializes every command send onto one
+        // loop and would otherwise make it redundant. Teardown is why: the close below is sent from
+        // the request thread after a *bounded* wait on the actor's completion, so a send wedged
+        // against a stalled peer can still be outstanding when the close goes out.
         await _writeLock.WaitAsync(cancellationToken);
 
         try
@@ -106,31 +109,34 @@ public sealed class WebSocketPrinterConnection : IPrinterConnection
 }
 
 /// <summary>
-/// Maps a connected printer's id to its live connection, so a command can be sent from outside the
-/// request that accepted the WebSocket upgrade. Registered/unregistered by
+/// Maps a connected printer's id to its live <see cref="IPrinterConnectionActor"/>, so a command can
+/// be sent from outside the request that accepted the WebSocket upgrade. A directory of actors,
+/// nothing more: registered/unregistered by
 /// <see cref="Controllers.PrusaConnectPrinterController.ConnectWebSocket"/> for the lifetime of that
 /// request.
 /// </summary>
 public sealed class PrinterConnectionRegistry
 {
-    private readonly ConcurrentDictionary<int, IPrinterConnection> _connections = new();
+    private readonly ConcurrentDictionary<int, IPrinterConnectionActor> _actors = new();
 
-    public void Register(int printerId, IPrinterConnection connection)
+    public void Register(int printerId, IPrinterConnectionActor actor)
     {
-        _connections[printerId] = connection;
+        _actors[printerId] = actor;
     }
 
     /// <summary>
-    /// Conditional (instance-matching) remove. A fast reconnect registers a new connection for the
-    /// same <paramref name="printerId"/> before the old request's <c>finally</c> unregisters the old
-    /// one; an unconditional remove would delete the new, live connection instead of the stale one.
+    /// Conditional (instance-matching) remove. A fast reconnect registers a new actor for the same
+    /// <paramref name="printerId"/> before the old request's <c>finally</c> unregisters the old one;
+    /// an unconditional remove would delete the new, live actor instead of the stale one. (The race
+    /// is between two connection <i>lifetimes</i>, which the actor doesn't change - each connection
+    /// still has a request that ends at its own pace.)
     /// </summary>
-    public void Unregister(int printerId, IPrinterConnection connection)
+    public void Unregister(int printerId, IPrinterConnectionActor actor)
     {
-        _connections.TryRemove(new KeyValuePair<int, IPrinterConnection>(printerId, connection));
+        _actors.TryRemove(new KeyValuePair<int, IPrinterConnectionActor>(printerId, actor));
     }
 
-    public bool TryGet(int printerId, out IPrinterConnection? connection) => _connections.TryGetValue(printerId, out connection);
+    public bool TryGet(int printerId, out IPrinterConnectionActor? actor) => _actors.TryGetValue(printerId, out actor);
 
-    public bool IsConnected(int printerId) => _connections.TryGetValue(printerId, out IPrinterConnection? connection) && connection.IsOpen;
+    public bool IsConnected(int printerId) => _actors.TryGetValue(printerId, out IPrinterConnectionActor? actor) && actor.IsOpen;
 }

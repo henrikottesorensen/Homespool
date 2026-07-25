@@ -54,7 +54,7 @@ public class PrusaConnectOptions
     public bool IsPublicAddressConfigured => !string.IsNullOrWhiteSpace(PublicHost);
 
     /// <summary>
-    /// How long <see cref="PrinterCommandTransport"/> waits for a printer's reply (a
+    /// How long <see cref="PrinterConnectionActor"/> waits for a printer's reply (a
     /// <c>Finished</c>/<c>Rejected</c>/<c>StateChanged</c> event echoing the command's id) before
     /// giving up. Default 10 seconds.
     /// </summary>

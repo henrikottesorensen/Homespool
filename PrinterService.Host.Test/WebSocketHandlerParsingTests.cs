@@ -204,7 +204,7 @@ public class WebSocketHandlerParsingTests
         WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, new RecordingMessageDispatcher());
 
         // Act
-        Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 1, CancellationToken.None);
+        Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(), CancellationToken.None);
 
         await WriteInChunksAsync(wire.Writer, Encoding.UTF8.GetBytes("""{"job_id":301,,,}"""), chunkSize: 4096);
         await wire.Writer.CompleteAsync();
@@ -233,7 +233,7 @@ public class WebSocketHandlerParsingTests
         RecordingMessageDispatcher dispatcher = new();
         WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, dispatcher);
 
-        Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 1, CancellationToken.None);
+        Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(), CancellationToken.None);
 
         if (chunkSizes.Length == 1)
         {
@@ -279,21 +279,21 @@ public class WebSocketHandlerParsingTests
     }
 
     /// <summary>
-    /// Captures each dispatched message's raw text instead of routing it anywhere.
-    /// Subclasses <see cref="MessageDispatcher"/> rather than substituting it: <c>Dispatch</c> is
+    /// Captures each classified message's raw text instead of producing a typed message.
+    /// Subclasses <see cref="MessageDispatcher"/> rather than substituting it: <c>Classify</c> is
     /// overridden wholesale to capture raw text, so these tests assert on reassembly without
-    /// depending on deserialization behaviour (covered by <c>MessageDispatcherTests</c>). The sink
-    /// and correlator are required constructor dependencies that this override never reaches - a
-    /// bare substitute says exactly that, where a hand-written no-op class only implied it.
+    /// depending on deserialization behaviour (covered by <c>MessageDispatcherTests</c>). Returning
+    /// null makes the handler post nothing, so the actor above can stay a bare substitute.
     /// </summary>
-    private sealed class RecordingMessageDispatcher()
-        : MessageDispatcher(NullLogger<MessageDispatcher>.Instance, Substitute.For<ITelemetrySink>(), new PrinterCommandCorrelator())
+    private sealed class RecordingMessageDispatcher() : MessageDispatcher(NullLogger<MessageDispatcher>.Instance)
     {
         public List<string> Received { get; } = [];
 
-        public override void Dispatch(int printerId, JsonElement root)
+        public override ConnectionMessage? Classify(int printerId, JsonElement root)
         {
             Received.Add(root.GetRawText());
+
+            return null;
         }
     }
 }

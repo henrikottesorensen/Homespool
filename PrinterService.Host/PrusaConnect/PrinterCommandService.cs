@@ -13,20 +13,21 @@ namespace PrinterService.Host.PrusaConnect;
 
 /// <summary>
 /// Team-permission-checked entry point for sending a command to a printer - the first real
-/// consumer of <see cref="TeamMember.CanUse"/>. Kept separate from <see cref="PrinterCommandTransport"/>,
-/// which owns the wire send/correlation and has no database access.
+/// consumer of <see cref="TeamMember.CanUse"/>. Kept separate from
+/// <see cref="PrinterConnectionActor"/>, which owns the wire send/correlation and has no database
+/// access: permission checks stay off the actor's loop.
 /// </summary>
 public class PrinterCommandService
 {
     private readonly PSDbContext _dbContext;
     private readonly TeamService _teamService;
-    private readonly IPrinterCommandTransport _transport;
+    private readonly PrinterConnectionRegistry _registry;
 
-    public PrinterCommandService(PSDbContext dbContext, TeamService teamService, IPrinterCommandTransport transport)
+    public PrinterCommandService(PSDbContext dbContext, TeamService teamService, PrinterConnectionRegistry registry)
     {
         _dbContext = dbContext;
         _teamService = teamService;
-        _transport = transport;
+        _registry = registry;
     }
 
     /// <exception cref="PrinterNotFoundException" />
@@ -52,7 +53,12 @@ public class PrinterCommandService
             throw new TeamAccessDeniedException();
         }
 
-        CommandSendResult result = await _transport.SendAsync(printerId, commandData, cancellationToken);
+        if (!_registry.TryGet(printerId, out IPrinterConnectionActor? actor) || actor is null)
+        {
+            throw new PrinterNotConnectedException(printerId);
+        }
+
+        CommandSendResult result = await actor.SendCommandAsync(commandData, cancellationToken);
 
         return result.Outcome switch
         {

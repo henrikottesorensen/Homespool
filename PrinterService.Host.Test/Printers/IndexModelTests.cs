@@ -63,9 +63,9 @@ public sealed class IndexModelTests : IDisposable
     }
 
     private static Task<(IndexModel Model, PSUser User, Team Team)> NewModelAsync(PSDbContext context) =>
-        NewModelAsync(context, transport: null);
+        NewModelAsync(context, connectionRegistry: null);
 
-    private static async Task<(IndexModel Model, PSUser User, Team Team)> NewModelAsync(PSDbContext context, IPrinterCommandTransport? transport)
+    private static async Task<(IndexModel Model, PSUser User, Team Team)> NewModelAsync(PSDbContext context, PrinterConnectionRegistry? connectionRegistry)
     {
         (UserManager<PSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 
@@ -79,9 +79,8 @@ public sealed class IndexModelTests : IDisposable
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
         PrusaConnectOptions options = new() { PublicHost = "printers.example.com" };
-        PrinterConnectionRegistry connectionRegistry = new();
 
-        transport ??= new PrinterCommandTransport(connectionRegistry, new PrinterCommandCorrelator(), NullLogger<PrinterCommandTransport>.Instance, Options.Create(options));
+        connectionRegistry ??= new PrinterConnectionRegistry();
 
         IndexModel model = new(
             new PrinterQueryService(context),
@@ -91,7 +90,7 @@ public sealed class IndexModelTests : IDisposable
             users,
             Options.Create(options),
             connectionRegistry,
-            new PrinterCommandService(context, new TeamService(context), transport))
+            new PrinterCommandService(context, new TeamService(context), connectionRegistry))
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };
@@ -326,17 +325,20 @@ public sealed class IndexModelTests : IDisposable
         // Arrange
         await using PSDbContext context = await MigratedContextAsync();
 
-        // An exception PrinterCommandService never throws itself, bypassing PrinterCommandTransport's
-        // own correlator/timeout handling - as a WebSocket write racing a concurrent disconnect would.
-        IPrinterCommandTransport transport = Substitute.For<IPrinterCommandTransport>();
-        transport.SendAsync(Arg.Any<int>(), Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
-                 .ThrowsAsync(new InvalidOperationException("socket gone"));
-
-        (IndexModel model, _, Team team) = await NewModelAsync(context, transport);
+        // An exception PrinterCommandService never throws itself, bypassing the actor's own
+        // correlation/timeout handling - as a WebSocket write racing a concurrent disconnect would
+        // (the actor propagates a failed socket write to the caller as the real exception).
+        PrinterConnectionRegistry registry = new();
+        (IndexModel model, _, Team team) = await NewModelAsync(context, registry);
 
         Printer printer = NewPrinter(team.Id);
         context.Printers.Add(printer);
         await context.SaveChangesAsync();
+
+        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+        actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
+             .ThrowsAsync(new InvalidOperationException("socket gone"));
+        registry.Register(printer.Id, actor);
 
         // Act
         IActionResult result = await model.OnPostPauseAsync(printer.Id, CancellationToken.None);

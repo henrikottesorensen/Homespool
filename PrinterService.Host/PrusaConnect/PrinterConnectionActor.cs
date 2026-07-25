@@ -1,0 +1,304 @@
+using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
+
+using Microsoft.Extensions.Logging;
+
+using PrinterService.Host.PrusaConnect.Commands;
+
+namespace PrinterService.Host.PrusaConnect;
+
+/// <summary>
+/// The single-threaded owner of one printer's live connection - the socket write side, command-id
+/// allocation, the in-flight command and its ack correlation, and (once built) the transfer state
+/// machine. Everything arrives as a <see cref="ConnectionMessage"/> and is processed strictly in
+/// order, so none of that state needs a lock: same shape as <see cref="TelemetryWriter"/>, per
+/// notes/concurrency-model.md.
+/// </summary>
+public interface IPrinterConnectionActor
+{
+    /// <summary>Whether the underlying socket is open. Liveness for the UI, not a send guarantee.</summary>
+    bool IsOpen { get; }
+
+    /// <summary>Completes once the mailbox has been completed <b>and</b> drained - the actor's
+    /// equivalent of <see cref="TelemetryWriter"/>'s shutdown-by-completion.</summary>
+    Task Completion { get; }
+
+    /// <summary>Posts an inbound message from the read loop. Waits when the mailbox is full, which
+    /// deliberately stops the socket read and lets TCP push back on the printer.</summary>
+    ValueTask PostAsync(ConnectionMessage message, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Sends a command and awaits the printer's correlated reply. <paramref name="cancellationToken"/>
+    /// is the caller's own (e.g. the HTTP request being aborted) and propagates as an ordinary
+    /// <see cref="OperationCanceledException"/>; disconnect and timeout are the actor's business and
+    /// come back as <see cref="CommandSendOutcome"/> values instead.
+    /// </summary>
+    Task<CommandSendResult> SendCommandAsync(ISendableCommand command, CancellationToken cancellationToken);
+
+    /// <summary>Completes the mailbox. The loop drains what is already queued, fails any in-flight
+    /// command as <see cref="CommandSendOutcome.NotConnected"/>, and exits - no cancellation token
+    /// is threaded into the work at all.</summary>
+    void Complete();
+}
+
+public sealed class PrinterConnectionActor : IPrinterConnectionActor
+{
+    /// <summary>
+    /// Inbound messages arrive at ~1/s per printer (telemetry cadence), so this is minutes of slack;
+    /// it exists so a stalled loop surfaces as socket backpressure rather than unbounded memory.
+    /// </summary>
+    private const int MailboxCapacity = 64;
+
+    private readonly int _printerId;
+    private readonly IPrinterConnection _connection;
+    private readonly ITelemetrySink _sink;
+    private readonly ILogger<PrinterConnectionActor> _logger;
+    private readonly TimeSpan _responseTimeout;
+    private readonly Channel<ConnectionMessage> _mailbox;
+
+    // Loop-only state. No locks, no Interlocked, no ConcurrentDictionary: only the loop touches
+    // these, which is the entire point of the actor.
+    private Pending? _pending;
+    private uint _lastCommandId;
+
+    private sealed record Pending(uint CommandId, string WireName, TaskCompletionSource<CommandSendResult> Completion, long SentAt);
+
+    public PrinterConnectionActor(int printerId, IPrinterConnection connection, ITelemetrySink sink,
+        ILogger<PrinterConnectionActor> logger, TimeSpan responseTimeout)
+    {
+        _printerId = printerId;
+        _connection = connection;
+        _sink = sink;
+        _logger = logger;
+        _responseTimeout = responseTimeout;
+
+        _mailbox = Channel.CreateBounded<ConnectionMessage>(new BoundedChannelOptions(MailboxCapacity)
+        {
+            SingleReader = true,
+            FullMode = BoundedChannelFullMode.Wait,
+        });
+
+        // A fresh connection restarts ids, and the printer can answer a command from a previous
+        // connection after reconnecting - a counter always starting at 1 would make that stale ack
+        // collide with the new connection's first command. A random start keeps ids unique within
+        // the only window that matters (one in-flight command), same as before, without that seam.
+        // CA5394: not security randomness - the id is a collision-avoidance nonce the printer
+        // echoes back in plaintext, the same role firmware's own rand_u() file_id plays.
+#pragma warning disable CA5394
+        _lastCommandId = unchecked((uint)Random.Shared.Next());
+#pragma warning restore CA5394
+
+        Completion = RunAsync();
+    }
+
+    public bool IsOpen => _connection.IsOpen;
+
+    public Task Completion { get; }
+
+    public ValueTask PostAsync(ConnectionMessage message, CancellationToken cancellationToken) =>
+        _mailbox.Writer.WriteAsync(message, cancellationToken);
+
+    public async Task<CommandSendResult> SendCommandAsync(ISendableCommand command, CancellationToken cancellationToken)
+    {
+        // RunContinuationsAsynchronously: the loop completes this while processing the printer's
+        // answering event; without the flag the caller's continuation would run inline on the loop,
+        // delaying the next message until it's done.
+        TaskCompletionSource<CommandSendResult> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        try
+        {
+            await _mailbox.Writer.WriteAsync(new SendCommandMessage(command, completion), cancellationToken);
+        }
+        catch (ChannelClosedException)
+        {
+            // Mailbox already completed: the connection is gone (or going). The message never
+            // entered the mailbox, so nothing will ever answer it - report that directly.
+            return new CommandSendResult(CommandSendOutcome.NotConnected, null);
+        }
+
+        // WaitAsync binds only the caller's own token. Disconnect and timeout complete the task
+        // itself, from the loop - there is nothing here to distinguish, hence no exception filters.
+        return await completion.Task.WaitAsync(cancellationToken);
+    }
+
+    public void Complete()
+    {
+        _mailbox.Writer.TryComplete();
+    }
+
+    private async Task RunAsync()
+    {
+        try
+        {
+            while (true)
+            {
+                if (_pending is null)
+                {
+                    if (!await _mailbox.Reader.WaitToReadAsync())
+                    {
+                        break;
+                    }
+                }
+                else
+                {
+                    // The one place a deadline exists: while a command is in flight, wait for the
+                    // next message only until the response timeout expires. The token never touches
+                    // the work itself - expiry is just "stop waiting", handled in one place, by the
+                    // one owner of the pending state.
+                    TimeSpan remaining = _responseTimeout - Stopwatch.GetElapsedTime(_pending.SentAt);
+
+                    if (remaining <= TimeSpan.Zero)
+                    {
+                        TimeOutPending();
+                        continue;
+                    }
+
+                    using CancellationTokenSource deadline = new(remaining);
+
+                    bool more;
+
+                    try
+                    {
+                        more = await _mailbox.Reader.WaitToReadAsync(deadline.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        TimeOutPending();
+                        continue;
+                    }
+
+                    if (!more)
+                    {
+                        break;
+                    }
+                }
+
+                if (!_mailbox.Reader.TryRead(out ConnectionMessage? message))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    await HandleAsync(message);
+                }
+                catch (Exception e)
+                {
+                    // A message must never kill the loop: the connection would live on with an actor
+                    // that answers nothing, and every later SendCommandAsync would hang - the actor
+                    // owns the response timeout, so no caller has one of their own to fall back on.
+                    if (message is SendCommandMessage send)
+                    {
+                        send.Completion.TrySetException(e);
+                    }
+                    else
+                    {
+                        _logger.LogError(e, "[{PrinterId}] unhandled error processing {MessageType}", _printerId, message.GetType().Name);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            // Mailbox completed and drained: the connection is gone. A command still awaiting its
+            // reply will never get one - fail it now rather than making the caller wait out the
+            // response timeout. This line is what replaced the controller-finally-plus-exception-
+            // filter dance (notes/concurrency-model.md: "a line in a switch").
+            _pending?.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.NotConnected, null));
+            _pending = null;
+        }
+    }
+
+    private async Task HandleAsync(ConnectionMessage message)
+    {
+        switch (message)
+        {
+            case SendCommandMessage send:
+                await HandleSendAsync(send);
+                break;
+
+            case InboundEventMessage inboundEvent:
+                HandleEvent(inboundEvent);
+                break;
+
+            case InboundTelemetryMessage telemetry:
+                _sink.Enqueue(_printerId, telemetry.ReceivedAt, telemetry.Telemetry);
+                break;
+
+            case InboundTransferRequestMessage:
+                // Serving chunks back is the transfer feature (notes/transfer-protocol.md), not yet
+                // built. Recognized-but-unserved, same as before the actor existed.
+                _logger.LogDebug("[{PrinterId}] inline transfer chunk request (not yet served)", _printerId);
+                break;
+        }
+    }
+
+    private async Task HandleSendAsync(SendCommandMessage send)
+    {
+        if (_pending is not null)
+        {
+            // One in-flight command per printer, matching the firmware's own limit
+            // (connect.cpp:469-476 at the pinned ref). Enforced by an ordinary null check on
+            // loop-only state - this used to be a ConcurrentDictionary.TryAdd acting as a mutex.
+            send.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.AlreadyInFlight, null));
+
+            return;
+        }
+
+        if (!_connection.IsOpen)
+        {
+            send.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.NotConnected, null));
+
+            return;
+        }
+
+        uint commandId = unchecked(++_lastCommandId);
+        byte[] frame = CommandWireEncoder.Encode(commandId, send.Command);
+
+        try
+        {
+            await _connection.SendAsync(frame, CancellationToken.None);
+        }
+        catch (Exception e)
+        {
+            // Never reached the printer, so nothing is pending - the caller gets the real error and
+            // the next command can begin immediately.
+            send.Completion.TrySetException(e);
+
+            return;
+        }
+
+        _pending = new Pending(commandId, send.Command.WireName, send.Completion, Stopwatch.GetTimestamp());
+    }
+
+    private void HandleEvent(InboundEventMessage message)
+    {
+        DTO.EventMessages.EventDTO eventDto = message.Event;
+
+        if (_pending is not null && eventDto.CommandId == _pending.CommandId)
+        {
+            Pending answered = _pending;
+
+            _pending = null;
+            answered.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.Completed,
+                new CommandOutcome(eventDto.EventType, eventDto.Reason)));
+        }
+
+        // Answering a command doesn't consume the event - it is still an ordinary event
+        // (Finished/Rejected/StateChanged) and is persisted like any other.
+        _sink.Enqueue(_printerId, message.ReceivedAt, eventDto);
+    }
+
+    private void TimeOutPending()
+    {
+        Pending expired = _pending!;
+
+        _pending = null;
+        _logger.LogWarning("[{PrinterId}] command {CommandId} ({Command}) timed out waiting for a reply",
+            _printerId, expired.CommandId, expired.WireName);
+        expired.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.TimedOut, null));
+    }
+}

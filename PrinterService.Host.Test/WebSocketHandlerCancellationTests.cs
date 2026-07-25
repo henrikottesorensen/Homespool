@@ -54,7 +54,7 @@ public class WebSocketHandlerCancellationTests
         RecordingMessageDispatcher dispatcher = new();
         using CancellationTokenSource cts = new();
 
-        Task run = NewHandler(dispatcher).HandlePrusaWebsocket(wire.Reader, printerId: 1, cts.Token);
+        Task run = NewHandler(dispatcher).HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(), cts.Token);
 
         // Nothing is ever written, so once the loop has started there is exactly one place it can
         // be: awaiting ReadAsync. No race to lose - only a moment to let it get there.
@@ -94,7 +94,7 @@ public class WebSocketHandlerCancellationTests
 
         // Act
         Func<Task> act = async () =>
-            await NewHandler(dispatcher).HandlePrusaWebsocket(wire.Reader, printerId: 1, cts.Token)
+            await NewHandler(dispatcher).HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(), cts.Token)
                                         .WaitAsync(TimeSpan.FromSeconds(10));
 
         // Assert
@@ -105,14 +105,15 @@ public class WebSocketHandlerCancellationTests
     }
 
     /// <inheritdoc cref="WebSocketHandlerParsingTests"/>
-    private sealed class RecordingMessageDispatcher()
-        : MessageDispatcher(NullLogger<MessageDispatcher>.Instance, Substitute.For<ITelemetrySink>(), new PrinterCommandCorrelator())
+    private sealed class RecordingMessageDispatcher() : MessageDispatcher(NullLogger<MessageDispatcher>.Instance)
     {
         public List<string> Received { get; } = [];
 
-        public override void Dispatch(int printerId, JsonElement root)
+        public override ConnectionMessage? Classify(int printerId, JsonElement root)
         {
             Received.Add(root.GetRawText());
+
+            return null;
         }
     }
 }

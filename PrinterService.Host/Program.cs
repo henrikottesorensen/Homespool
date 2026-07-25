@@ -134,11 +134,12 @@ public static class Program
                             .AddScoped<PrusaConnect.PrinterCommandService>();
 
             // Plain singletons, not TelemetryWriter's singleton-with-IServiceScopeFactory pattern below:
-            // none of these three touch PSDbContext, only in-memory maps (live connections, pending
-            // command replies), so there is no scoped dependency to protect against capturing.
+            // neither touches PSDbContext, only in-memory state (the directory of live connection
+            // actors, and the actors' own singleton dependencies), so there is no scoped dependency
+            // to protect against capturing. The actors themselves are not registered at all - one is
+            // created per accepted WebSocket by the factory and lives exactly as long as that request.
             builder.Services.AddSingleton<PrusaConnect.PrinterConnectionRegistry>();
-            builder.Services.AddSingleton<PrusaConnect.IPrinterCommandCorrelator, PrusaConnect.PrinterCommandCorrelator>();
-            builder.Services.AddSingleton<PrusaConnect.IPrinterCommandTransport, PrusaConnect.PrinterCommandTransport>();
+            builder.Services.AddSingleton<PrusaConnect.PrinterConnectionActorFactory>();
 
             // Singleton, not scoped like its neighbors above: one drain loop and one in-memory
             // live-state cache for the whole process, fed by every request's scoped

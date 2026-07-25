@@ -169,9 +169,9 @@ public sealed class DetailModelTests : IDisposable
         model.Connected.Should().BeFalse();
 
         // Act - now connected
-        IPrinterConnection connection = Substitute.For<IPrinterConnection>();
-        connection.IsOpen.Returns(true);
-        connectionRegistry.Register(printer.Id, connection);
+        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+        actor.IsOpen.Returns(true);
+        connectionRegistry.Register(printer.Id, actor);
 
         await model.OnGetAsync(printer.Uuid, CancellationToken.None);
 

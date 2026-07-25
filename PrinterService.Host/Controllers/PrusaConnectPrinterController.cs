@@ -28,21 +28,28 @@ public class PrusaConnectPrinterController : ControllerBase
     private readonly PrusaConnectService _prusaConnectService;
     private readonly WebSocketHandler _webSocketHandler;
     private readonly PrinterConnectionRegistry _connectionRegistry;
-    private readonly IPrinterCommandCorrelator _correlator;
+    private readonly PrinterConnectionActorFactory _actorFactory;
     private readonly IHostApplicationLifetime _lifetime;
     private readonly ILogger<PrusaConnectPrinterController> _logger;
+
+    /// <summary>
+    /// How long teardown waits for the connection's actor to drain before abandoning it. Generous
+    /// for a mailbox that only ever holds seconds of traffic, and finite because the loop's socket
+    /// write is the one step no token cancels.
+    /// </summary>
+    private static readonly TimeSpan ActorDrainTimeout = TimeSpan.FromSeconds(5);
 
     public PrusaConnectPrinterController(PrusaConnectService prusaConnectService,
                                          WebSocketHandler webSocketHandler,
                                          PrinterConnectionRegistry connectionRegistry,
-                                         IPrinterCommandCorrelator correlator,
+                                         PrinterConnectionActorFactory actorFactory,
                                          IHostApplicationLifetime lifetime,
                                          ILogger<PrusaConnectPrinterController> logger)
     {
         _prusaConnectService = prusaConnectService;
         _webSocketHandler = webSocketHandler;
         _connectionRegistry = connectionRegistry;
-        _correlator = correlator;
+        _actorFactory = actorFactory;
         _lifetime = lifetime;
         _logger = logger;
     }
@@ -87,7 +94,8 @@ public class PrusaConnectPrinterController : ControllerBase
                 PipeReader input = PipeReader.Create(socketStream, new StreamPipeReaderOptions(leaveOpen: true));
 
                 WebSocketPrinterConnection connection = new(webSocket);
-                _connectionRegistry.Register(printerId, connection);
+                IPrinterConnectionActor actor = _actorFactory.Create(printerId, connection);
+                _connectionRegistry.Register(printerId, actor);
 
                 // Two reasons this read loop should stop, neither of them the printer's doing:
                 // RequestAborted (the client vanished, or Kestrel aborted us) and ApplicationStopping.
@@ -112,7 +120,7 @@ public class PrusaConnectPrinterController : ControllerBase
 
                 try
                 {
-                    await _webSocketHandler.HandlePrusaWebsocket(input, printerId, connectionLifetime.Token);
+                    await _webSocketHandler.HandlePrusaWebsocket(input, printerId, actor, connectionLifetime.Token);
                 }
                 catch (JsonException)
                 {
@@ -144,12 +152,34 @@ public class PrusaConnectPrinterController : ControllerBase
                     // and the close frame is a write too. Removing it first bounds that race to
                     // callers already holding a reference, which WebSocketPrinterConnection's write
                     // lock then serializes against the close itself.
-                    _connectionRegistry.Unregister(printerId, connection);
+                    _connectionRegistry.Unregister(printerId, actor);
 
-                    // If a command was sent and is still awaiting a reply when the socket goes away,
-                    // fail it immediately rather than making the caller wait out the response timeout
-                    // for an answer that will now never arrive.
-                    _correlator.Cancel(printerId);
+                    // Shutdown-by-completion, same as TelemetryWriter: complete the mailbox, let the
+                    // loop drain and exit. A command still awaiting its reply fails as NotConnected
+                    // in that drain - the actor's loop owns that, where this used to cancel the
+                    // correlator by hand.
+                    actor.Complete();
+
+                    // Bounded, unlike the drain itself. The loop's socket write is the one step
+                    // nothing cancels, so a send wedged against a stalled peer would hold this
+                    // request open with no ceiling at all - reintroducing the shutdown stall that
+                    // ApplicationStopping above exists to prevent, and without its 30s limit.
+                    // Abandoning the actor leaves that send to die with the request; the connection's
+                    // write lock is what keeps the close below from interleaving with it.
+                    try
+                    {
+                        await actor.Completion.WaitAsync(ActorDrainTimeout);
+                    }
+                    catch (TimeoutException)
+                    {
+                        _logger.LogWarning("[{PrinterId}] connection actor did not finish draining in time; abandoning it.", printerId);
+                    }
+                    catch (Exception e)
+                    {
+                        // Never rethrow from here: this is a finally, and would replace whatever
+                        // exception sent us into it.
+                        _logger.LogError(e, "[{PrinterId}] connection actor loop faulted.", printerId);
+                    }
 
                     await connection.CloseOutputAsync(closeStatus);
                 }

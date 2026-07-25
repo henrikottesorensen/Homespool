@@ -185,26 +185,63 @@ Notes on the payload:
 
 ### The QR is also a command channel
 
-**Verified.** Beyond provisioning, the camera accepts QR codes carrying configuration commands. The
-payload is parsed as JSON (nlohmann/json), unknown keys are rejected with a logged error, and each
-recognised action produces distinct audio feedback.
+**Verified, including against a live device.** Beyond provisioning, the camera accepts QR codes
+carrying configuration commands. The payload is a JSON object (parsed with nlohmann/json), and
+**values are strings** — not integers or booleans. Each recognised action produces distinct spoken
+audio feedback; an unrecognised payload plays `invalid_qr_code.wav`.
 
-| Action | Values |
-|---|---|
-| RTSP server mode | on / off |
-| WebRTC mode | on / off |
-| Video size | `sd`, `hd`, `fhd` |
-| Light / IR control | `auto`, `night`, `day` |
-| Volume | integer, range-checked |
-| Wi-Fi + token | `ssid`, `pwd`, `token` |
+The handler is `CheckQrCodeConfig` in `qr_recognize_service/xhr_qr_recognize_service.cpp`.
 
-Firmware-update and factory-reset paths also exist in this handler.
+| Key | Values | Effect | Status |
+|---|---|---|---|
+| `rtsp` | `on`, `off` | RTSP server mode | **confirmed** (`on`) |
+| `webrtc` | `on`, `off` | WebRTC mode | **confirmed** (`on`) |
+| `video_quality` | `sd`, `hd`, `fhd` | Stream resolution | **confirmed** (`fhd`) |
+| `light_control` | `auto`, `night`, `day` | IR / night mode | **confirmed** (`auto`, `night`) |
+| `code` | `42` | Easter egg — joke prompt, changes nothing | **confirmed** |
+| `order` | `66` | Easter egg, as above | **confirmed** |
+| `fw_update` | `start` | Begin firmware update | inferred — deliberately not tested |
 
-*Inferred, not confirmed:* the exact JSON key spellings for the command actions. The internal event
-names and the accepted value strings are known; the key names are not fully established. The
-provisioning keys (`ssid`, `pwd`, `token`) *are* confirmed, from a decoded QR.
+Every key above was exercised on a camera running `cam-3.1.4` except `fw_update`, which was left
+alone. Values marked in brackets are the specific ones tested; the remaining values for each key
+come from the same function's literal pool and follow the same shape.
 
-The camera enters scan mode on a single button press.
+For two of these, the value sets are corroborated as complete by Connect's own web UI, which offers
+exactly the options the firmware strings contain: `SD`/`HD`/`FHD` for video quality, and
+RTSP/WebRTC/Disable for streaming.
+
+**`light_control` is the exception, and the QR channel is more expressive than the UI there.** The
+firmware accepts three values (`auto`, `night`, `day`), but Connect presents IR as a two-state
+toggle, which cannot express all three. So a specific IR mode — in particular restoring `auto` —
+may be settable by QR when the web UI cannot cleanly select it.
+
+Volume is also settable and is range-checked, parsed via `stoi`. A factory-reset path exists in the
+same handler.
+
+**A QR-driven change propagates to Connect.** After setting WebRTC mode by QR, the Connect web UI
+reflected the new mode — so the camera reports its state upstream after local reconfiguration,
+rather than the two drifting apart. This is consistent with the firmware's `request update camera
+info` path to `POST /c/info`, though that specific correlation was not traced.
+
+Example, confirmed working on a camera running `cam-3.1.4`:
+
+```json
+{"rtsp":"on"}
+```
+
+Two properties confirmed on-device:
+
+- **Commands are absolute, not toggles.** Sending `{"rtsp":"on"}` to a camera already in RTSP mode
+  re-applies it and plays the enable prompt, rather than toggling it off. The Connect web UI
+  presents these as a toggle, but the QR command sets a specific state.
+- **Provisioning and commands share one flat JSON object format.** Provisioning uses the keys
+  `ssid`, `pwd` and `token`; commands use the keys above. There is no wrapper or envelope.
+
+The camera enters scan mode on a single button press, and announces entering and leaving it.
+
+> Note for anyone reproducing this: payloads this short cause many encoders to select **Micro QR**
+> by default. The codes confirmed here were standard QR symbols; whether the camera also accepts
+> Micro QR was not tested.
 
 ### Button gestures
 
@@ -304,9 +341,44 @@ Recent firmware supports two live-video modes, **both Connect-enabled and mutual
 - **RTSP** — the older mode. The stream is reachable on the local network.
 - **WebRTC** — newer, with NAT traversal so the stream is viewable from outside the LAN.
 
-*Reported behaviour:* upgrading firmware can switch a camera to WebRTC mode, which disables the
-LAN-reachable RTSP stream. Either mode can be selected afterwards via QR code or AT command, and
-the current mode persists in `config.rtsp_server_mode` / `config.webrtc_mode`.
+**Confirmed on a device running `cam-3.1.4`:** setting `{"webrtc":"on"}` by QR stops the RTSP
+server. A full TCP port scan of the camera immediately afterwards returned **all 65535 ports closed
+(connection refused)** — the host was up and its stack answering, but nothing was listening at all.
+
+Two consequences worth knowing:
+
+- **In WebRTC mode the camera has no inbound TCP surface.** It is purely outbound: it dials the
+  socket.io signalling server and negotiates ephemeral UDP via ICE. Good security posture, but it
+  means nothing on the LAN can reach it, and there is no local stream to consume.
+- **Reading video off the camera locally requires RTSP mode.** `rtsp://<camera-ip>/live` — the path
+  is confirmed from the firmware (`RTSP stream path: rtsp://IP/%s`), and the port is chosen at
+  runtime (`RTSP server started on port %d`), conventionally 554.
+
+*Observed:* a camera OTA-upgraded to firmware `3.1.4` booted into WebRTC mode, leaving it with no
+RTSP listener and no LAN reachability, with nothing to indicate why. Whether the upgrade changed a
+default, reset the setting, or introduced the mode was not determined. Either mode can be selected
+afterwards by QR code or AT command, and the choice persists in `config.rtsp_server_mode` /
+`config.webrtc_mode`.
+
+**Two independent flags underneath, presented as a three-way choice.** Confirmed: from WebRTC mode,
+sending `{"webrtc":"off"}` is accepted (the disable prompt plays) and RTSP does *not* automatically
+take over — a full 65535-port scan afterwards showed every port closed, with nothing relocated to a
+high port. So a **no-streaming state is reachable**, in which the camera provides no live video by
+any route.
+
+This is a supported state rather than an edge case. Connect's web UI exposes a `Streaming` dropdown
+whose options are RTSP, WebRTC and **Disable**, with Disable always selectable. The two firmware
+flags (`config.rtsp_server_mode`, `config.webrtc_mode`) back that three-way selector, and the UI
+reflects the camera's actual reported state rather than a local default — selecting Disable by QR
+is shown correctly in the UI without any further interaction.
+
+**This concerns live video only — stills are unaffected.** Confirmed: with streaming set to
+Disable, the camera continues capturing and uploading snapshots, and Connect's thumbnail keeps
+updating. `/c/snapshot` and the socket.io control channel are outbound paths independent of both
+streaming flags, so a camera with streaming disabled remains fully functional for periodic imaging.
+
+*Not established:* whether setting `{"rtsp":"on"}` while in WebRTC mode also disables WebRTC — i.e.
+whether exclusivity is enforced in that direction, or whether "both on" is likewise reachable.
 
 ### On-device timelapse
 

@@ -36,3 +36,7 @@ PrinterService.Host.IntegrationTest/.mailpit-tls/
 # Claude Code's personal-override file (permissions, local preferences) - not shared. .claude/
 # itself stays trackable so project-wide config (e.g. launch.json) can be committed.
 .claude/settings.local.json
+
+# Firmware archives left here by separate work that happens to share this directory. Large
+# binaries, and not build inputs of this project.
+firmware/

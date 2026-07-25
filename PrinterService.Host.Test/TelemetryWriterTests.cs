@@ -142,6 +142,38 @@ public sealed class TelemetryWriterTests : IDisposable
     private static async Task<int> SampleCountAsync(PSDbContext context) =>
         await context.TelemetrySamples.CountAsync();
 
+    /// <summary>
+    /// Feeds one item at a time until <paramref name="observed"/> holds or the deadline passes.
+    /// </summary>
+    /// <remarks>
+    /// The buffer-cap tests run at <c>WriteBatchSize: 1</c>, where every drained item triggers its
+    /// own flush - and in those tests every flush fails, which costs an EF exception each time. How
+    /// many items reach the buffer during a fixed-size burst therefore depends on how fast the
+    /// machine throws exceptions, and the burst is over long before a cold drain loop has caught up.
+    /// Feeding until the effect appears removes that dependence; a fixed burst made these tests pass
+    /// only when the rest of the suite had already warmed EF and SQLite.
+    /// </remarks>
+    private static async Task<bool> FeedUntilAsync(Action enqueueOne, Func<bool> observed, TimeSpan timeout)
+    {
+        DateTime deadline = DateTime.UtcNow + timeout;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            if (observed())
+            {
+                return true;
+            }
+
+            enqueueOne();
+
+            // Paced, not blasted: the channel's own capacity is 4 here, so an unbroken burst would
+            // mostly self-inflict DropOldest before the reader ever sees it.
+            await Task.Delay(2);
+        }
+
+        return observed();
+    }
+
     private static StorageOptions DefaultOptions(int batchSize = 500, double flushIntervalSeconds = 30, double throttleSeconds = 0) =>
         new()
         {
@@ -671,26 +703,49 @@ public sealed class TelemetryWriterTests : IDisposable
         // printer exists, so every single one fails and SafeFlushAsync leaves the buffer as is.
         TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1, flushIntervalSeconds: 0.05));
 
-        // Act - comfortably past the cap (WriteBatchSize(1) * 20 = 20 here). Yielding periodically
-        // matters: batch size 1 also makes the channel's own capacity tiny (1 * CapacityBatches),
-        // so a single tight synchronous burst would mostly self-inflict DropOldest against the
-        // channel before the reader is ever scheduled to drain it into the buffer this test is
-        // actually targeting - which is a different safety net (see the class remarks).
-        for (int i = 0; i < 500; i++)
-        {
-            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
-
-            if (i % 10 == 0)
-            {
-                await Task.Delay(1);
-            }
-        }
-
-        // Assert
-        bool trimmed = await LoggedAsync(record => record.Level == LogLevel.Warning
-                                               && record.Message.Contains("Discarded")
-                                               && record.StructuredState!.Any(kv => kv.Key == "Count"));
+        // Act + Assert - feed until the cap (WriteBatchSize(1) * 20 = 20 here) is exceeded and the
+        // trim fires.
+        bool trimmed = await FeedUntilAsync(
+            () => writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }),
+            () => LogRecords.Any(record => record.Level == LogLevel.Warning
+                                        && record.Message.Contains("Discarded")
+                                        && record.StructuredState!.Any(kv => kv.Key == "Count")),
+            TimeSpan.FromSeconds(30));
 
         trimmed.Should().BeTrue($"the pending sample buffer must not grow without bound while every flush keeps failing. Log:\n{LogDump()}");
+    }
+
+    /// <summary>
+    /// Events are capped too - far later than samples, but they are capped.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Events are deliberately the last thing to give way: a sample is one frame of a dense stream
+    /// and another arrives a second later, where an event happens once and is gone if dropped. But
+    /// "last" was previously "never", and an unbounded buffer in a service that runs for months ends
+    /// in the process dying - which loses every event it was protecting, plus the samples. A policy
+    /// that sheds the oldest events loses strictly less than one that eventually loses all of them.
+    /// </para>
+    /// <para>
+    /// Logged at Error rather than the sample trim's Warning: thinning history is degradation,
+    /// discarding an event is data loss.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task PendingEventsAreDiscardedRatherThanGrowingUnboundedWhileFlushesKeepFailing()
+    {
+        // Arrange - as above: no printer exists, so every flush fails and the buffer is left as is.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1, flushIntervalSeconds: 0.05));
+
+        // Act + Assert - feed until the event cap (WriteBatchSize(1) * 10 = 10 here) is exceeded.
+        bool trimmed = await FeedUntilAsync(
+            () => writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO { Status = "IDLE", EventType = Events.Info }),
+            () => LogRecords.Any(record => record.Level == LogLevel.Error
+                                        && record.Message.Contains("Discarded")
+                                        && record.Message.Contains("event")
+                                        && record.StructuredState!.Any(kv => kv.Key == "Count")),
+            TimeSpan.FromSeconds(30));
+
+        trimmed.Should().BeTrue($"the pending event buffer must have a ceiling too, even a distant one. Log:\n{LogDump()}");
     }
 }

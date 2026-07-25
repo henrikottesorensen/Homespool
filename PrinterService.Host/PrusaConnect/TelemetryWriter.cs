@@ -86,10 +86,24 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink
     /// How many batches' worth of samples the in-memory buffer may hold before the oldest are
     /// discarded to cap memory - deliberately far larger than <see cref="CapacityBatches"/>, since
     /// this is a safety net for a database that has been failing to accept flushes for a while, not
-    /// routine headroom. See the class remarks for why samples, and never events, are what this
-    /// discards.
+    /// routine headroom. See the class remarks for why samples give way before events.
     /// </summary>
     private const int MaxPendingSampleBatches = 20;
+
+    /// <summary>
+    /// The same ceiling for events, and the last thing to give way.
+    /// </summary>
+    /// <remarks>
+    /// Lower than <see cref="MaxPendingSampleBatches"/> in raw count, yet events still survive
+    /// several times longer in wall-clock terms, which is the ordering that actually matters: a
+    /// printing printer emits telemetry roughly ten times as often as it emits events, so the sample
+    /// buffer fills far faster. Both buffers are shared across every connected printer, so more
+    /// printers make each ceiling arrive sooner rather than making it larger.
+    ///
+    /// Sized as a bound on catastrophe, not as working headroom. Anything that outlives it is a
+    /// database outage measured in hours, which is a bigger problem than the events being dropped.
+    /// </remarks>
+    private const int MaxPendingEventBatches = 10;
 
     private readonly Channel<TelemetryWriteItem> _channel;
     private readonly IServiceScopeFactory _scopeFactory;
@@ -295,10 +309,11 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Only ever called with <c>pendingSamples</c>.</b> There is no equivalent call for
-    /// <c>pendingEvents</c> - a stuck database should cost history density before it costs a
-    /// permanently missing, never-repeated event. That asymmetry is enforced by this method's
-    /// signature only ever accepting the sample buffer, not by a runtime check.
+    /// <b>Only ever called with <c>pendingSamples</c>.</b> Events have their own, deliberately
+    /// distant ceiling in <see cref="TrimExcessPendingEvents"/> - a stuck database should cost
+    /// history density long before it costs a permanently missing, never-repeated event. That
+    /// asymmetry is enforced by each method's signature accepting only one buffer, not by a runtime
+    /// check.
     /// </para>
     /// <para>
     /// Without this, a database that is down or locked for an extended period - not just briefly
@@ -320,11 +335,40 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink
         pendingSamples.RemoveRange(0, excess);
 
         _logger.LogWarning(
-            "Discarded {Count} buffered telemetry samples to cap memory - the database has been failing to accept flushes for a while. Events are never discarded this way.",
+            "Discarded {Count} buffered telemetry samples to cap memory - the database has been failing to accept flushes for a while. Events are held far longer than this.",
             excess);
     }
 
-    private static void ProcessEvent(TelemetryWriteItem.EventItem item, List<PrinterEvent> pendingEvents)
+    /// <summary>
+    /// The same ceiling for events, reached only long after samples have started giving way.
+    /// </summary>
+    /// <remarks>
+    /// Events are the last thing to drop, but "last" cannot mean "never": an unbounded buffer in a
+    /// service that runs for months ends in the process dying, which loses every event this was
+    /// protecting <i>and</i> the samples. Shedding the oldest events loses strictly less than
+    /// eventually losing all of them.
+    ///
+    /// Logged at Error, where the sample trim logs Warning: thinning history is degradation,
+    /// discarding an event is data loss with nothing to reconstruct it from.
+    /// </remarks>
+    private void TrimExcessPendingEvents(List<PrinterEvent> pendingEvents)
+    {
+        int cap = Math.Max(_options.WriteBatchSize, 1) * MaxPendingEventBatches;
+
+        if (pendingEvents.Count <= cap)
+        {
+            return;
+        }
+
+        int excess = pendingEvents.Count - cap;
+        pendingEvents.RemoveRange(0, excess);
+
+        _logger.LogError(
+            "Discarded {Count} buffered printer events to cap memory - the database has been rejecting flushes long enough to exhaust even the event buffer. These events are lost.",
+            excess);
+    }
+
+    private void ProcessEvent(TelemetryWriteItem.EventItem item, List<PrinterEvent> pendingEvents)
     {
         EventDTO dto = item.Data;
 
@@ -339,6 +383,8 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink
             Reason = dto.Reason,
             Payload = dto.Data?.GetRawText(),
         });
+
+        TrimExcessPendingEvents(pendingEvents);
     }
 
     /// <summary>

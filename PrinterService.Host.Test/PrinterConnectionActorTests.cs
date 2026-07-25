@@ -132,7 +132,13 @@ public class PrinterConnectionActorTests
 
         // Answering a command doesn't consume the event: it must still reach the sink and be
         // persisted like any other (this is how command acks end up in PrinterEvents).
-        sink.EventCalls.Should().ContainSingle();
+        //
+        // Waited for, not read directly. HandleEvent completes the caller before calling the sink,
+        // and RunContinuationsAsynchronously means that continuation resumes on another thread - so
+        // the await above can return while the loop has not reached the sink yet. Reading straight
+        // away passed on an idle machine and failed under load.
+        await WaitUntilAsync(() => sink.EventCalls.Count == 1);
+
         sink.EventCalls[0].PrinterId.Should().Be(1);
 
         actor.Complete();
@@ -503,10 +509,13 @@ public class PrinterConnectionActorTests
     [Fact]
     public async Task AnAckAlreadyInTheMailboxBeatsTheDeadline()
     {
-        // Arrange - a timeout short enough to expire while the loop is held.
+        // Arrange - the timeout has to outlast the setup below and still expire while the loop is
+        // held, so it is generous on both sides: everything before the hold takes milliseconds, and
+        // the hold is 1.5x the timeout. A tighter margin failed under parallel load, when the
+        // deadline could expire before the loop was even parked.
         List<byte[]> sentFrames = [];
         using GatedTelemetrySink sink = new();
-        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), sink, responseTimeout: TimeSpan.FromMilliseconds(300));
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), sink, responseTimeout: TimeSpan.FromSeconds(1));
 
         Task<CommandSendResult> send = actor.SendCommandAsync(new PausePrint(), CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 1);
@@ -517,7 +526,7 @@ public class PrinterConnectionActorTests
         await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0])), CancellationToken.None);
 
         // Act - the deadline passes while the ack sits in the mailbox, unread.
-        await Task.Delay(TimeSpan.FromMilliseconds(600));
+        await Task.Delay(TimeSpan.FromMilliseconds(1500));
         sink.Release();
 
         // Assert

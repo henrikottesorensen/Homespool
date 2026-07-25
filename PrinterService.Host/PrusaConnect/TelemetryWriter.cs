@@ -105,6 +105,23 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// </remarks>
     private const int MaxPendingEventBatches = 10;
 
+    /// <summary>
+    /// How many times the shutdown flush is attempted before the buffers are declared lost.
+    /// </summary>
+    /// <remarks>
+    /// The only retried flush in the class, because it is the only one with no next attempt behind
+    /// it. While running, a failed flush costs nothing - the buffers are kept and the timer comes
+    /// round again seconds later. At shutdown the loop has already exited, so a single transient
+    /// failure (SQLite busy, a WAL checkpoint, a connection not yet released by whatever else just
+    /// used the file) silently takes everything buffered with it.
+    ///
+    /// Bounded and short: a database that is genuinely down will not recover inside a shutdown, and
+    /// nothing here should be able to hold the process open for long.
+    /// </remarks>
+    private const int FinalFlushAttempts = 3;
+
+    private static readonly TimeSpan FinalFlushRetryDelay = TimeSpan.FromMilliseconds(250);
+
     // Written only by the drain loop, read by whatever calls Current (a health check, on a request
     // thread). Published as one immutable snapshot rather than read field by field - see PublishHealth.
     private volatile TelemetryHealthSnapshot _health = TelemetryHealthSnapshot.Initial;
@@ -172,6 +189,38 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// silently no-ops after this point, which is correct: a socket handler mid-message during
     /// shutdown has nowhere to put its data anyway.
     /// </remarks>
+    /// <summary>Set by <see cref="ExecuteAsync"/>'s first statement; awaited by
+    /// <see cref="StartAsync"/> so that "started" means the loop is actually running.</summary>
+    private readonly TaskCompletionSource _executeEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>
+    /// Starts the drain loop, and does not return until it is genuinely running.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// On .NET 10, <see cref="BackgroundService.StartAsync"/> schedules <see cref="ExecuteAsync"/>
+    /// onto the thread pool instead of entering it synchronously - and <see cref="StopAsync"/>
+    /// cancels the stopping token, which cancels a work item that has not started yet. So a stop
+    /// racing a busy pool could cancel the loop <i>before its first line ran</i>: nothing drained,
+    /// nothing logged, everything queued silently discarded, and
+    /// <see cref="BackgroundService.StopAsync"/>'s WhenAny surfacing none of it. Reproduced 2000 out
+    /// of 2000 under a saturated pool; in this project's test suite it was an intermittent one-in-
+    /// ten "expected 25 rows, found 0" with an empty log.
+    /// </para>
+    /// <para>
+    /// Waiting for the loop's own first statement closes that window for every caller that awaits
+    /// StartAsync - the generic host does, and so do the tests. WhenAny with
+    /// <see cref="BackgroundService.ExecuteTask"/> so a loop that dies before its first line (start
+    /// token already cancelled) still lets startup complete rather than hang.
+    /// </para>
+    /// </remarks>
+    public override async Task StartAsync(CancellationToken cancellationToken)
+    {
+        await base.StartAsync(cancellationToken);
+
+        await Task.WhenAny(_executeEntered.Task, ExecuteTask ?? Task.CompletedTask);
+    }
+
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         _channel.Writer.TryComplete();
@@ -181,6 +230,8 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _executeEntered.TrySetResult();
+
         Dictionary<int, LiveStateCacheEntry> cache = new();
         List<TelemetrySample> pendingSamples = [];
         List<PrinterEvent> pendingEvents = [];
@@ -234,7 +285,28 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
         // Whatever the last partial batch left buffered. Reached only via the break above, so the
         // channel is already empty - this is about the in-memory buffers, nothing else.
-        await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, CancellationToken.None);
+        //
+        // Retried, unlike every flush before it: see FinalFlushAttempts. SafeFlushAsync leaves the
+        // buffers populated when it fails and clears them when it succeeds, so their emptiness is
+        // the success signal.
+        for (int attempt = 1; attempt <= FinalFlushAttempts; attempt++)
+        {
+            await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, CancellationToken.None);
+
+            if (pendingSamples.Count == 0 && pendingEvents.Count == 0)
+            {
+                break;
+            }
+
+            if (attempt < FinalFlushAttempts)
+            {
+                _logger.LogWarning(
+                    "Telemetry flush failed during shutdown (attempt {Attempt} of {Attempts}); retrying before giving up on {SampleCount} samples and {EventCount} events.",
+                    attempt, FinalFlushAttempts, pendingSamples.Count, pendingEvents.Count);
+
+                await Task.Delay(FinalFlushRetryDelay);
+            }
+        }
 
         // The only place that can honestly report whether shutdown saved everything, and the signal
         // an operator waiting out the drain is looking for. SafeFlushAsync leaves the buffers

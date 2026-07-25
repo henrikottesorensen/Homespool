@@ -210,6 +210,91 @@ public sealed class TelemetryWriterTests : IDisposable
         await context.SaveChangesAsync();
     }
 
+    /// <summary>
+    /// Removes the printer row so any flush referencing it violates a foreign key, and returns an
+    /// action that puts it back - a failure that can be switched off, rather than a permanent one.
+    /// </summary>
+    private async Task<Func<Task>> BreakThePrinterRowAsync(int printerId = 1)
+    {
+        await using PSDbContext context = NewVerificationContext();
+
+        Printer printer = await context.Printers.SingleAsync(p => p.Id == printerId);
+        int teamId = printer.TeamId;
+        Guid uuid = printer.Uuid;
+
+        context.Printers.Remove(printer);
+        await context.SaveChangesAsync();
+
+        return async () =>
+        {
+            await using PSDbContext restore = NewVerificationContext();
+
+            restore.Printers.Add(new Printer
+            {
+                Id = printerId,
+                Uuid = uuid,
+                Type = PrinterType.PrusaConnect,
+                TeamId = teamId,
+                Status = PrinterStatus.Unknown,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+            });
+
+            await restore.SaveChangesAsync();
+        };
+    }
+
+    /// <summary>
+    /// A shutdown flush that fails once still saves the buffers on a later attempt.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The shutdown flush is the only one with nothing behind it. While running, a failure costs
+    /// nothing - the buffers are kept and the timer comes round again seconds later - but once the
+    /// drain loop has exited there is no next attempt, so a single transient failure took everything
+    /// buffered with it. Suspected cause of an intermittent failure of
+    /// <see cref="EveryQueuedItemSurvivesShutdownNotJustTheFirst"/>, which asserts 25 samples and
+    /// occasionally saw 0: exactly the shape of one lost flush.
+    /// </para>
+    /// <para>
+    /// The failure here is switched off part-way through rather than simulated with timing: the
+    /// printer row is removed so the flush violates a foreign key, then restored once the writer has
+    /// logged its first failed attempt. Two retries remain after that, so a slow restore costs
+    /// nothing.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AShutdownFlushThatFailsOnceStillSavesTheBuffer()
+    {
+        // Arrange - nothing flushes until shutdown: the batch size is unreachable and the timer long.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1000, flushIntervalSeconds: 30));
+        await SeedPrinterAsync();
+
+        for (int i = 0; i < 25; i++)
+        {
+            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow.AddSeconds(i), new TelemetryDTO { Status = "PRINTING", Progress = i });
+        }
+
+        Func<Task> restorePrinter = await BreakThePrinterRowAsync();
+
+        // Act - stop while the database will reject the write, then repair it mid-retry.
+        Task stopping = writer.StopAsync(CancellationToken.None);
+
+        bool firstAttemptFailed = await LoggedAsync(record =>
+            record.Level == LogLevel.Warning && record.Message.Contains("during shutdown"));
+
+        firstAttemptFailed.Should().BeTrue($"the arrangement depends on the first shutdown flush failing.\n{LogDump()}");
+
+        await restorePrinter();
+        await stopping.WaitAsync(TimeSpan.FromSeconds(30));
+
+        // Assert
+        await using PSDbContext verify = NewVerificationContext();
+
+        (await SampleCountAsync(verify)).Should().Be(25,
+            $"a transient failure at shutdown must not lose the buffer - there is no later flush to save it.\n{LogDump()}");
+    }
+
     [Fact]
     public async Task TelemetryIsPersistedOnceTheBatchSizeIsReached()
     {
@@ -274,7 +359,13 @@ public sealed class TelemetryWriterTests : IDisposable
 
         // Assert
         await using PSDbContext verify = NewVerificationContext();
-        (await SampleCountAsync(verify)).Should().Be(1, "shutdown must flush whatever is buffered rather than discarding it");
+        // See TelemetryIsFlushedOnGracefulShutdownEvenBelowBothThresholds for why this is checked:
+        // a loop cancelled before it ever ran looks exactly like a clean stop from the call site.
+        writer.ExecuteTask!.Status.Should().Be(TaskStatus.RanToCompletion,
+            $"the drain loop must finish, not fault or cancel.\nLOG:\n{LogDump()}");
+
+        (await SampleCountAsync(verify)).Should().Be(1,
+            $"shutdown must flush whatever is buffered rather than discarding it.\nLOG:\n{LogDump()}");
     }
 
     /// <summary>
@@ -309,8 +400,20 @@ public sealed class TelemetryWriterTests : IDisposable
 
         // Assert
         await using PSDbContext verify = NewVerificationContext();
-        (await SampleCountAsync(verify)).Should().Be(25);
-        (await verify.PrinterEvents.CountAsync()).Should().Be(1, "an event queued at shutdown is a discrete fact that never repeats");
+
+        // BackgroundService.StopAsync waits via Task.WhenAny, which does not rethrow - so a drain
+        // loop that died of an exception is indistinguishable from a clean stop at the call site,
+        // and shows up only as missing rows. Checked explicitly, because that is exactly the shape
+        // this test failed in: zero rows and an empty log.
+        // See TelemetryIsFlushedOnGracefulShutdownEvenBelowBothThresholds for why this is checked:
+        // a loop cancelled before it ever ran looks exactly like a clean stop from the call site.
+        writer.ExecuteTask!.Status.Should().Be(TaskStatus.RanToCompletion,
+            $"the drain loop must finish, not fault or cancel.\nLOG:\n{LogDump()}");
+
+        LogRecords.Where(FlushFailed).Should().BeEmpty($"no flush should have failed.\n{LogDump()}");
+
+        (await SampleCountAsync(verify)).Should().Be(25, $"everything queued must survive the drain.\n{LogDump()}");
+        (await verify.PrinterEvents.CountAsync()).Should().Be(1, $"an event queued at shutdown is a discrete fact that never repeats.\n{LogDump()}");
 
         // And the live state reflects the last message merged, not an arbitrary earlier one.
         PrinterLiveState state = await verify.PrinterLiveStates.SingleAsync();

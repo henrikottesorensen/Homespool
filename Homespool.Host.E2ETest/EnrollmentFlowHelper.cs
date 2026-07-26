@@ -6,6 +6,8 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+using Homespool.Data;
+using Homespool.FakePrinter;
 using Homespool.Host.Controllers;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Services;
@@ -14,6 +16,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -40,6 +43,56 @@ public static class EnrollmentFlowHelper
         request.Headers.Add(Headers.Code, code);
 
         return await client.SendAsync(request);
+    }
+
+    /// <summary>
+    /// The one definition of "an enrolled printer" for tests that need one as <em>setup</em>: mints
+    /// a random <see cref="PrinterIdentity"/>, registers it through the real code-exchange flow,
+    /// claims it as a freshly seeded user, and polls the real token out. Credentials can only come
+    /// from that chain - tokens are PBKDF2-hashed, so they cannot be recovered from the database -
+    /// which is also what makes them genuinely valid against the auth handler afterwards.
+    /// </summary>
+    /// <remarks>
+    /// Extracted when <c>FakePrinterIntegrationTests</c> became the second class to reimplement
+    /// <c>PrusaConnectWebSocketTests</c>' private enroll-and-claim, so the two could not drift on
+    /// what "enrolled" means. Tests whose <em>subject</em> is the raw enrollment HTTP contract
+    /// (<see cref="EndToEndEnrollmentTests"/>) deliberately do not use this - they drive
+    /// <see cref="SendPrinterRegisterAsync"/>/<see cref="SendPollAsync"/> directly.
+    /// </remarks>
+    /// <returns>
+    /// The identity (its <see cref="PrinterIdentity.HeaderFingerprint"/> is what a real upgrade
+    /// presents), the issued token, the claimed printer's id, and the claiming user's id.
+    /// </returns>
+    public static async Task<(PrinterIdentity identity, string token, int printerId, long userId)> EnrollAndClaimFakePrinterAsync(
+        WebApplicationFactory<PrinterAppController> factory)
+    {
+        PrinterIdentity identity = PrinterIdentity.CreateRandom();
+        await using FakePrinterClient enrolling = new(identity);
+        using HttpClient anonymous = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        string code = await enrolling.RegisterAsync(anonymous);
+
+        (HSUser user, HttpClient appClient) = await CreateAuthenticatedUserAsync(
+            factory, $"{identity.HeaderFingerprint}@example.com");
+
+        using (appClient)
+        {
+            HttpResponseMessage claim = await appClient.PostAsJsonAsync(
+                "/api/v1/printers/register",
+                new { name = "Fake printer", location = "Test bench", code });
+            claim.EnsureSuccessStatusCode();
+        }
+
+        string? token = await enrolling.PollForTokenOnceAsync(anonymous, code);
+        token.Should().NotBeNull("the claim just happened, so the poll must redeem the code");
+
+        using IServiceScope scope = factory.Services.CreateScope();
+        HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+        PrusaConnectAuthenticationData auth = await context.PrusaConnectAuthentication
+            .Include(a => a.Printer)
+            .SingleAsync(a => a.FingerPrintKey == PrinterFingerprint.Key(identity.Fingerprint));
+
+        return (identity, token!, auth.Printer!.Id, user.Id);
     }
 
     /// <summary>

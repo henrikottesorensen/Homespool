@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Net.Http;
-using System.Net.Http.Json;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -308,35 +306,9 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         fake.ReplyFault.Should().BeNull("a faulted fake would invalidate what this test claims about the server");
     }
 
-    private async Task<(PrinterIdentity identity, string token, int printerId, long userId)> EnrollNewPrinterAsync()
+    private Task<(PrinterIdentity identity, string token, int printerId, long userId)> EnrollNewPrinterAsync()
     {
-        PrinterIdentity identity = PrinterIdentity.CreateRandom();
-        await using FakePrinterClient enrolling = new(identity);
-        using HttpClient anonymous = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-
-        string code = await enrolling.RegisterAsync(anonymous);
-
-        (HSUser user, HttpClient appClient) = await EnrollmentFlowHelper.CreateAuthenticatedUserAsync(
-            _factory, $"{identity.HeaderFingerprint}@example.com");
-
-        using (appClient)
-        {
-            HttpResponseMessage claim = await appClient.PostAsJsonAsync(
-                "/api/v1/printers/register",
-                new { name = "Fake printer", location = "Test bench", code });
-            claim.EnsureSuccessStatusCode();
-        }
-
-        string? token = await enrolling.PollForTokenOnceAsync(anonymous, code);
-        token.Should().NotBeNull("the claim just happened, so the poll must redeem the code");
-
-        using IServiceScope scope = _factory.Services.CreateScope();
-        HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
-        PrusaConnectAuthenticationData auth = await context.PrusaConnectAuthentication
-            .Include(a => a.Printer)
-            .SingleAsync(a => a.FingerPrintKey == PrinterFingerprint.Key(identity.Fingerprint));
-
-        return (identity, token!, auth.Printer!.Id, user.Id);
+        return EnrollmentFlowHelper.EnrollAndClaimFakePrinterAsync(_factory);
     }
 
     /// <summary>

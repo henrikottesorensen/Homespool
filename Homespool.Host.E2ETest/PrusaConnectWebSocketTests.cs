@@ -1,21 +1,15 @@
 using System;
 using System.IO;
-using System.Linq;
-using System.Net.Http;
-using System.Net.Http.Json;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-using Homespool.Data;
+using Homespool.FakePrinter;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Services;
-using Homespool.Model.Entities;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Homespool.Host.E2ETest;
@@ -75,56 +69,6 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
-    /// A valid Fingerprint/Token pair, only obtainable by actually registering and claiming a printer
-    /// through the real HTTP flow - the same one <c>EndToEndEnrollmentTests</c> drives - rather than
-    /// hand-hashing a token straight into the database. The point of this suite is to prove the real
-    /// handler chain accepts what it should, so the credentials it uses have to come from that chain.
-    /// </summary>
-    private async Task<(string fingerprint, string token, int printerId)> EnrollAndClaimPrinterAsync(string fingerprint)
-    {
-        using HttpClient anonymous = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-
-        HttpResponseMessage registerResponse = await EnrollmentFlowHelper.SendPrinterRegisterAsync(anonymous, new
-        {
-            sn = $"SN-{fingerprint}",
-            fingerprint,
-            printer_type = "1.3.5",
-            firmware = "6.4.0+11974",
-        });
-        registerResponse.EnsureSuccessStatusCode();
-        string code = registerResponse.Headers.GetValues("Code").Single();
-
-        (HSUser _, HttpClient appClient) = await EnrollmentFlowHelper.CreateAuthenticatedUserAsync(_factory, $"{fingerprint}@example.com");
-        using (appClient)
-        {
-            HttpResponseMessage claimResponse = await appClient.PostAsJsonAsync("/api/v1/printers/register", new
-            {
-                name = "WS test printer",
-                location = "Bench",
-                code,
-            });
-
-            claimResponse.EnsureSuccessStatusCode();
-        }
-
-        HttpResponseMessage pollResponse = await EnrollmentFlowHelper.SendPollAsync(anonymous, code);
-        pollResponse.EnsureSuccessStatusCode();
-        string token = pollResponse.Headers.GetValues("Token").Single();
-
-        using IServiceScope scope = _factory.Services.CreateScope();
-        HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
-
-        PrusaConnectAuthenticationData auth = await context.PrusaConnectAuthentication
-            .Include(a => a.Printer)
-            .SingleAsync(a => a.FingerPrintKey == PrinterFingerprint.Key(fingerprint));
-
-        // The caller gets the truncated form back, because that is what a real printer would present
-        // on the upgrade: /p/register's body carries the whole fingerprint, every header carries only
-        // its first 16 characters (see PrinterFingerprint).
-        return (PrinterFingerprint.Key(fingerprint), token, auth.Printer!.Id);
-    }
-
-    /// <summary>
     /// A genuinely claimed printer's Fingerprint/Token upgrades the connection, and the printer id
     /// resolved from that Fingerprint at the auth handler - not just any id - is what reaches
     /// <c>WebSocketHandler.JsonMessageReceived</c>.
@@ -133,13 +77,16 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
     public async Task ValidCredentialsUpgradeTheConnectionAndReachTheHandlerWithTheClaimedPrinterId()
     {
         // Arrange
-        (string fingerprint, string token, int printerId) = await EnrollAndClaimPrinterAsync("WS-FINGERPRINT-VALID");
+        // Enrollment via the shared helper; the upgrade presents the identity's 16-character
+        // header form, the same truncation a real printer sends (see PrinterFingerprint).
+        (PrinterIdentity identity, string token, int printerId, long _) =
+            await EnrollmentFlowHelper.EnrollAndClaimFakePrinterAsync(_factory);
 
         WebSocketClient wsClient = _factory.Server.CreateWebSocketClient();
         wsClient.SubProtocols.Add(Headers.Values.WSProtocolPrusaConnect);
         wsClient.ConfigureRequest = request =>
         {
-            request.Headers[Headers.Fingerprint] = fingerprint;
+            request.Headers[Headers.Fingerprint] = identity.HeaderFingerprint;
             request.Headers[Headers.Token] = token;
             request.Headers[Headers.UserAgentPrinter] = "Buddy";
             request.Headers[Headers.UserAgentVersion] = "6.4.0";
@@ -171,15 +118,16 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
     /// <summary>
     /// Opens an authenticated socket the way a printer does, so a test can drive the close paths.
     /// </summary>
-    private async Task<WebSocket> ConnectAsPrinterAsync(string fingerprintSeed)
+    private async Task<WebSocket> ConnectAsPrinterAsync()
     {
-        (string fingerprint, string token, int _) = await EnrollAndClaimPrinterAsync(fingerprintSeed);
+        (PrinterIdentity identity, string token, int _, long _) =
+            await EnrollmentFlowHelper.EnrollAndClaimFakePrinterAsync(_factory);
 
         WebSocketClient wsClient = _factory.Server.CreateWebSocketClient();
         wsClient.SubProtocols.Add(Headers.Values.WSProtocolPrusaConnect);
         wsClient.ConfigureRequest = request =>
         {
-            request.Headers[Headers.Fingerprint] = fingerprint;
+            request.Headers[Headers.Fingerprint] = identity.HeaderFingerprint;
             request.Headers[Headers.Token] = token;
             request.Headers[Headers.UserAgentPrinter] = "Buddy";
             request.Headers[Headers.UserAgentVersion] = "6.4.0";
@@ -203,7 +151,7 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
     public async Task CleanDisconnectClosesWithNormalClosureAndFailsNothingServerSide()
     {
         // Arrange
-        using WebSocket socket = await ConnectAsPrinterAsync("WS-FINGERPRINT-CLEAN-CLOSE");
+        using WebSocket socket = await ConnectAsPrinterAsync();
 
         // Act
         await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "test complete", CancellationToken.None)
@@ -228,7 +176,7 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
     public async Task MalformedJsonClosesWithPolicyViolation()
     {
         // Arrange
-        using WebSocket socket = await ConnectAsPrinterAsync("WS-FINGERPRINT-BAD-JSON");
+        using WebSocket socket = await ConnectAsPrinterAsync();
 
         // Act
         byte[] garbage = Encoding.UTF8.GetBytes("""{"job_id":301,,,}""");

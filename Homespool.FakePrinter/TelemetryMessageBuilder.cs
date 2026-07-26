@@ -89,6 +89,16 @@ public static class TelemetryMessageBuilder
         writer.WriteNumber("job_id", device.JobId.Value);
         writer.WriteNumber("time_printing", readings.TimePrinting);
         writer.WriteNumber("time_remaining", readings.TimeRemaining);
+
+        // Between time_remaining and progress, and only when a pause is scheduled - the firmware
+        // gates it on time_to_pause being valid (render.cpp:164), so an ordinary print omits it
+        // entirely rather than sending zero. Confirmed twice: the rig sent this shape live, and
+        // Prusa's own render.cpp "Telemetry - reduced" golden string carries the same six fields.
+        if (readings.TimeToFilamentChange is { } untilChange)
+        {
+            writer.WriteNumber("filament_change_in", untilChange);
+        }
+
         writer.WriteNumber("progress", readings.Progress);
     }
 }

@@ -343,6 +343,62 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         second.Should().NotBeNullOrEmpty("the endpoint must still answer a printer after a minute's worth of polling");
     }
 
+    /// <summary>
+    /// A scheduled filament change survives the whole path - fake, wire, dispatcher, merge, database -
+    /// landing in both <see cref="PrinterLiveState"/> and the dense <see cref="TelemetrySample"/>.
+    /// </summary>
+    /// <remarks>
+    /// Before this, <c>TimeToFilamentChange</c> was parsed, merged and persisted by code no test
+    /// touched anywhere: the firmware emits <c>filament_change_in</c> only while a pause is scheduled
+    /// (render.cpp:164), so the committed capture holds none and a hardware session would need a print
+    /// with a deliberate M600 in it. The fake is the only practical way to exercise it - which is
+    /// exactly what a fake is for.
+    /// </remarks>
+    [Fact]
+    public async Task AScheduledFilamentChangeReachesLiveStateAndTheSample()
+    {
+        // Arrange
+        (PrinterIdentity identity, string token, int printerId, long _) = await EnrollNewPrinterAsync();
+
+        SyntheticTelemetrySource source = new()
+        {
+            PrintingInterval = TimeSpan.FromMilliseconds(50),
+            IdleInterval = TimeSpan.FromMilliseconds(50),
+            Readings = new TelemetryReadings(TimeToFilamentChange: 300),
+        };
+
+        await using FakePrinterClient fake = new(identity, new FakePrinterOptions { TelemetrySource = source });
+        fake.Token = token;
+        fake.Device.StartPrint(jobId: 77);
+
+        await fake.ConnectAsync(ConnectViaTestServerAsync);
+        Task run = fake.RunAsync(CancellationToken.None);
+
+        // Act
+        bool persisted = await WaitUntilAsync(async () =>
+        {
+            using IServiceScope scope = _factory.Services.CreateScope();
+            HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+
+            return await context.TelemetrySamples
+                .AnyAsync(sample => sample.PrinterId == printerId && sample.TimeToFilamentChange == 300);
+        }, TimeSpan.FromSeconds(20));
+
+        // Assert
+        persisted.Should().BeTrue("the countdown must reach a dense sample, not be dropped in the merge");
+
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+            PrinterLiveState liveState = await context.PrinterLiveStates.SingleAsync(l => l.PrinterId == printerId);
+
+            liveState.TimeToFilamentChange.Should().Be(300,
+                "the live view is what a UI reads, so the merge has to keep it");
+        }
+
+        await EndRunAsync(fake, run);
+    }
+
     private Task<(PrinterIdentity identity, string token, int printerId, long userId)> EnrollNewPrinterAsync()
     {
         return EnrollmentFlowHelper.EnrollAndClaimFakePrinterAsync(_factory);
@@ -414,6 +470,28 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         }
 
         throw new TimeoutException($"Printer {printerId} never appeared in the connection registry.");
+    }
+
+    /// <summary>
+    /// Polls a database predicate until it holds - the writer batches on its own loop, so there is no
+    /// moment a test can await directly. Sibling of <see cref="WaitForCountAsync"/> for the cases where
+    /// the question is "did this row appear?" rather than "how many are there?".
+    /// </summary>
+    private async Task<bool> WaitUntilAsync(Func<Task<bool>> predicate, TimeSpan timeout)
+    {
+        DateTime deadline = DateTime.UtcNow + timeout;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            if (await predicate())
+            {
+                return true;
+            }
+
+            await Task.Delay(100);
+        }
+
+        return false;
     }
 
     private async Task<int> WaitForCountAsync(Func<HSDbContext, Task<int>> count, int atLeast)

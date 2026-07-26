@@ -38,6 +38,14 @@ else
             <tr><th>Progress</th><td>@(liveState.Progress is { } progress ? $"{progress}%" : "-")</td></tr>
             <tr><th>Time printing</th><td>@(liveState.TimePrinting is { } tp ? TimeSpan.FromSeconds(tp).ToString("g") : "-")</td></tr>
             <tr><th>Time remaining</th><td>@(liveState.TimeRemaining is { } tr ? TimeSpan.FromSeconds(tr).ToString("g") : "-")</td></tr>
+            @* Only rendered when the printer actually reports it: the firmware emits filament_change_in
+               only while a pause is scheduled (render.cpp:164, gated on time_to_pause), so on a print
+               with no M600 the field is absent rather than zero. A "-" row would imply "no swap due" on
+               every ordinary print, which is noise. *@
+            @if (liveState.TimeToFilamentChange is { } untilChange)
+            {
+                <tr><th>Filament change in</th><td>@TimeSpan.FromSeconds(untilChange).ToString("g")</td></tr>
+            }
             <tr><th>Nozzle temperature</th><td>@(liveState.NozzleTemperature?.ToString("0.0") ?? "-")&deg; / target @(liveState.TargetNozzleTemperature?.ToString("0.0") ?? "-")&deg;</td></tr>
             <tr><th>Bed temperature</th><td>@(liveState.BedTemperature?.ToString("0.0") ?? "-")&deg; / target @(liveState.TargetBedTemperature?.ToString("0.0") ?? "-")&deg;</td></tr>
             <tr><th>Material</th><td>@(liveState.Material ?? "-")</td></tr>

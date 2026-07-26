@@ -37,7 +37,17 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Homespool.FakePrinter\Homespool.FakePrinter.csproj" />
       <ProjectReference Include="..\Homespool.Host\Homespool.Host.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <!-- The redacted capture lives in Homespool.Host.Test (see CaptureReplayTests there for the
+           redaction story); linked rather than duplicated so there is exactly one copy to keep
+           honest. FakePrinterIntegrationTests replays it against the full pipeline. -->
+      <Content Include="..\Homespool.Host.Test\websocket.capture" Link="websocket.capture">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
     </ItemGroup>
 
 </Project>

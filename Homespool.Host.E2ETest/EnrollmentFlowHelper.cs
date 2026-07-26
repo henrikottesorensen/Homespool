@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+using Homespool.Host.Controllers;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
@@ -48,7 +49,7 @@ public static class EnrollmentFlowHelper
     /// server validates it through the genuine cookie-auth pipeline. Bypasses the Login page's
     /// antiforgery-protected form, which isn't what these suites are testing.
     /// </summary>
-    public static async Task<(HSUser user, HttpClient client)> CreateAuthenticatedUserAsync(HomespoolFactory factory, string email)
+    public static async Task<(HSUser user, HttpClient client)> CreateAuthenticatedUserAsync(WebApplicationFactory<PrinterAppController> factory, string email)
     {
         using IServiceScope scope = factory.Services.CreateScope();
 

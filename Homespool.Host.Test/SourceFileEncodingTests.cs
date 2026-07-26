@@ -46,7 +46,7 @@ public class SourceFileEncodingTests
     private static readonly HashSet<string> SkippedDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
         "obj", "bin", ".git", ".idea", ".vs", "node_modules", "lib",
-        "firmware", "logs", "notes", "private-captures", "Homespool.Mvc",
+        "firmware", "logs", "notes", "private-captures",
     };
 
     /// <summary>Recorded wire data, kept byte-exact - see <c>.gitattributes</c>.</summary>

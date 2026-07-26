@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 
@@ -70,7 +71,7 @@ public sealed class DetailModelTests : IDisposable
 
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
-        PrinterConnectionRegistry connectionRegistry = new();
+        PrinterConnectionRegistry connectionRegistry = new(NullLogger<PrinterConnectionRegistry>.Instance);
 
         DetailModel model = new(new PrinterQueryService(context), connectionRegistry, users)
         {

@@ -13,6 +13,7 @@ using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
 namespace Homespool.Host.Test;
@@ -110,7 +111,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
              .Returns(result);
 
-        PrinterConnectionRegistry registry = new();
+        PrinterConnectionRegistry registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
         registry.Register(printerId, actor);
 
         return (registry, actor);
@@ -183,7 +184,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         // Arrange
         await using HSDbContext context = await MigratedContextAsync();
 
-        PrinterCommandService service = new(context, new TeamService(context), new PrinterConnectionRegistry());
+        PrinterCommandService service = new(context, new TeamService(context), new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance));
 
         // Act
         Func<Task> act = () => service.SendCommandAsync(999, new PausePrint(), 1, CancellationToken.None);
@@ -202,7 +203,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
         // An empty registry: the printer has no live connection at all.
-        PrinterCommandService service = new(context, new TeamService(context), new PrinterConnectionRegistry());
+        PrinterCommandService service = new(context, new TeamService(context), new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance));
 
         // Act
         Func<Task> act = () => service.SendCommandAsync(printer.Id, new PausePrint(), 1, CancellationToken.None);

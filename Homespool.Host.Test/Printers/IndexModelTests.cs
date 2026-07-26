@@ -77,7 +77,7 @@ public sealed class IndexModelTests : IDisposable
 
         PrusaConnectOptions options = new() { PublicHost = "printers.example.com" };
 
-        connectionRegistry ??= new PrinterConnectionRegistry();
+        connectionRegistry ??= new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance);
 
         IndexModel model = new(
             new PrinterQueryService(context),
@@ -325,7 +325,7 @@ public sealed class IndexModelTests : IDisposable
         // An exception PrinterCommandService never throws itself, bypassing the actor's own
         // correlation/timeout handling - as a WebSocket write racing a concurrent disconnect would
         // (the actor propagates a failed socket write to the caller as the real exception).
-        PrinterConnectionRegistry registry = new();
+        PrinterConnectionRegistry registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
         (IndexModel model, _, Team team) = await NewModelAsync(context, registry);
 
         Printer printer = NewPrinter(team.Id);

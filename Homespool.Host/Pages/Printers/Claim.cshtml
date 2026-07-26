@@ -7,16 +7,33 @@
 <h1>@ViewData["Title"]</h1>
 
 <p>
-    Enter the code shown on the printer's screen. <strong>Ignore the QR code</strong> - it points
-    at Prusa's own servers, not this one. The code underneath it is what you want.
+    On the printer, go to <em>Settings &rarr; Network &rarr; Prusa Connect &rarr; Add Printer to
+    Connect</em>, then enter the code it displays.
 </p>
+
+@* The printer's registration dialog is hardcoded to Prusa's production instance - the QR URL and the
+   "visit prusa.io/add" line are both compile-time literals no configuration reaches, unchanged across
+   every published firmware release (notes/protocol-reference.md, "The QR is not a gate"). So this
+   warning is permanent, not a workaround for something Prusa might fix. *@
+<div class="alert alert-warning" role="alert">
+    <strong>Ignore the QR code and the <em>prusa.io/add</em> link on the printer's screen.</strong>
+    Both are built into the firmware and always point at Prusa's own servers, never at this one.
+    Scanning the QR will take you to Prusa, where this code does not exist. Only the code printed
+    underneath it is of any use here - type it in below.
+    <hr />
+    This also assumes the printer is already pointed at this server (its
+    <code>prusa_printer_settings.ini</code> sets the hostname). If it still talks to Prusa Connect,
+    the code on its screen came from <em>them</em> and will never work here.
+</div>
 
 <div class="row">
     <div class="col-md-6">
         <form method="post">
             <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
             <div class="form-floating mb-3">
-                <input asp-for="Input.Code" class="form-control" placeholder="MUF4RZJF5R" autocomplete="off" />
+                @* 24 characters, per CodeGenerator.CodeLength - not Prusa's 10-character format, which
+                   this placeholder used to show and which understated the length users must type. *@
+                <input asp-for="Input.Code" class="form-control" placeholder="1JLQKG8JVN4O3OO5Q28J6HIF" autocomplete="off" />
                 <label asp-for="Input.Code" class="form-label"></label>
                 <span asp-validation-for="Input.Code" class="text-danger"></span>
             </div>

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net.Http;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -304,6 +305,42 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         await run.WaitAsync(TimeSpan.FromSeconds(10));
 
         fake.ReplyFault.Should().BeNull("a faulted fake would invalidate what this test claims about the server");
+    }
+
+    /// <summary>
+    /// A printer polling and registering at its natural rate is never rate-limited. The limits on
+    /// <c>/p/register</c> exist because it is anonymous and internet-reachable (it creates a database
+    /// row per POST and is a guessing oracle on GET), but rejecting a real printer is expensive: the
+    /// firmware treats any non-2xx as <c>OnlineError::Server</c> and burns one of only three POST
+    /// retries before abandoning registration for good.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately a rate test, not a limit test: it asserts that ordinary behaviour stays under the
+    /// ceiling, which is the property that matters and the one a future tightening of the limits would
+    /// break. Sends well past a single printer's per-minute traffic (one POST, then polls at 12/min).
+    /// </remarks>
+    [Fact]
+    public async Task APrinterRegisteringAndPollingAtItsNaturalRateIsNeverRateLimited()
+    {
+        // Arrange
+        PrinterIdentity identity = PrinterIdentity.CreateRandom();
+        await using FakePrinterClient fake = new(identity);
+        using HttpClient anonymous = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        // Act - one register, then far more polls than a real printer manages in a minute.
+        string code = await fake.RegisterAsync(anonymous);
+
+        for (int i = 0; i < 40; i++)
+        {
+            string? token = await fake.PollForTokenOnceAsync(anonymous, code);
+            token.Should().BeNull("nothing has claimed this registration, so every poll is a pending 202");
+        }
+
+        // Assert - a 429 anywhere above would have surfaced as an exception from
+        // EnsureSuccessStatusCode inside the helpers; assert the endpoint is still serving normally.
+        string second = await fake.RegisterAsync(anonymous);
+
+        second.Should().NotBeNullOrEmpty("the endpoint must still answer a printer after a minute's worth of polling");
     }
 
     private Task<(PrinterIdentity identity, string token, int printerId, long userId)> EnrollNewPrinterAsync()

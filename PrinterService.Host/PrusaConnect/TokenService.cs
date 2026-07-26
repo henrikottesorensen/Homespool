@@ -95,7 +95,7 @@ public class TokenService
     {
         return GenerateToken(TokenSize);
     }
-    
+
     public string GenerateToken(int bytes)
     {
         byte[] tokenData = RandomNumberGenerator.GetBytes(bytes);
@@ -114,7 +114,7 @@ public class TokenService
         {
             return HashToken(tokenData);
         }
-        
+
         throw new ArgumentException("Invalid token: Could not decode.", nameof(token));
     }
 

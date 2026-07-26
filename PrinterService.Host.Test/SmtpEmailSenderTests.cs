@@ -23,7 +23,7 @@ namespace PrinterService.Host.Test;
 /// </summary>
 public sealed class SmtpEmailSenderTests
 {
-    private static (SmtpEmailSender Sender, FakeSmtpTransport Transport) NewSender(SmtpOptions? options = null)
+    private static (SmtpEmailSender sender, FakeSmtpTransport transport) NewSender(SmtpOptions? options = null)
     {
         FakeSmtpTransport transport = new();
         FakeSmtpTransportFactory factory = new(transport);
@@ -95,7 +95,7 @@ public sealed class SmtpEmailSenderTests
         await sender.SendEmailAsync("recipient@example.com", "Subject", "Body");
 
         // Assert
-        transport.ConnectCall!.Value.Options.Should().Be(SecureSocketOptions.StartTls);
+        transport.ConnectCall!.Value.options.Should().Be(SecureSocketOptions.StartTls);
     }
 
     /// <summary>UseImplicitTls true connects already encrypted, for port 465-style servers.</summary>
@@ -111,7 +111,7 @@ public sealed class SmtpEmailSenderTests
         await sender.SendEmailAsync("recipient@example.com", "Subject", "Body");
 
         // Assert
-        transport.ConnectCall!.Value.Options.Should().Be(SecureSocketOptions.SslOnConnect);
+        transport.ConnectCall!.Value.options.Should().Be(SecureSocketOptions.SslOnConnect);
     }
 
     /// <summary>DisableTls is the explicit, separate opt-in for a trusted unencrypted relay (e.g. Mailpit).</summary>
@@ -128,7 +128,7 @@ public sealed class SmtpEmailSenderTests
         await sender.SendEmailAsync("recipient@example.com", "Subject", "Body");
 
         // Assert
-        transport.ConnectCall!.Value.Options.Should().Be(SecureSocketOptions.None);
+        transport.ConnectCall!.Value.options.Should().Be(SecureSocketOptions.None);
     }
 
     /// <summary>Connect is always given the configured host and port.</summary>
@@ -145,8 +145,8 @@ public sealed class SmtpEmailSenderTests
         await sender.SendEmailAsync("recipient@example.com", "Subject", "Body");
 
         // Assert
-        transport.ConnectCall!.Value.Host.Should().Be("mail.internal");
-        transport.ConnectCall!.Value.Port.Should().Be(2525);
+        transport.ConnectCall!.Value.host.Should().Be("mail.internal");
+        transport.ConnectCall!.Value.port.Should().Be(2525);
     }
 
     // ---------- authentication ----------
@@ -166,8 +166,8 @@ public sealed class SmtpEmailSenderTests
 
         // Assert
         transport.AuthenticateCall.Should().NotBeNull();
-        transport.AuthenticateCall!.Value.UserName.Should().Be("relay-account");
-        transport.AuthenticateCall.Value.Password.Should().Be("hunter2");
+        transport.AuthenticateCall!.Value.userName.Should().Be("relay-account");
+        transport.AuthenticateCall.Value.password.Should().Be("hunter2");
     }
 
     /// <summary>No username configured means no authentication attempt - an unauthenticated relay is valid.</summary>

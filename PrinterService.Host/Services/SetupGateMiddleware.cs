@@ -58,6 +58,7 @@ public sealed class SetupGateMiddleware : IMiddleware
             || path.StartsWithSegments("/p", StringComparison.OrdinalIgnoreCase)
             || path.StartsWithSegments("/scalar", StringComparison.OrdinalIgnoreCase)
             || path.StartsWithSegments("/openapi", StringComparison.OrdinalIgnoreCase)
+
             // Not navigable, and a container is never "not started yet" from a monitor's point of
             // view just because nobody has created the first administrator. Redirecting this to
             // /setup would make a fresh deployment answer probes with a 302 instead of its health -

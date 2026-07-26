@@ -32,6 +32,13 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-login-{Guid.NewGuid():N}.db");
     private PrinterServiceFactory _factory = null!;
 
+    private static FormUrlEncodedContent LoginBody(string antiforgeryToken, string email, string password) => new(new Dictionary<string, string>
+    {
+        ["__RequestVerificationToken"] = antiforgeryToken,
+        ["Input.Email"] = email,
+        ["Input.Password"] = password,
+    });
+
     public Task InitializeAsync()
     {
         _factory = new PrinterServiceFactory($"Data Source={_databasePath}");
@@ -92,13 +99,6 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
         IdentityResult result = await userManager.CreateAsync(user, Password);
         result.Succeeded.Should().BeTrue("account creation is setup for this test, not what it verifies");
     }
-
-    private static FormUrlEncodedContent LoginBody(string antiforgeryToken, string email, string password) => new(new Dictionary<string, string>
-    {
-        ["__RequestVerificationToken"] = antiforgeryToken,
-        ["Input.Email"] = email,
-        ["Input.Password"] = password,
-    });
 
     /// <summary>The full happy path: correct credentials sign the user in and redirect to the app root.</summary>
     [Fact]

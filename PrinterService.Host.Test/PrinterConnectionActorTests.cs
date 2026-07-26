@@ -150,7 +150,7 @@ public class PrinterConnectionActorTests
         // away passed on an idle machine and failed under load.
         await WaitUntilAsync(() => sink.EventCalls.Count == 1);
 
-        sink.EventCalls[0].PrinterId.Should().Be(1);
+        sink.EventCalls[0].printerId.Should().Be(1);
 
         actor.Complete();
         await Eventually(actor.Completion);
@@ -212,6 +212,7 @@ public class PrinterConnectionActorTests
     {
         // Arrange
         List<byte[]> sentFrames = [];
+
         // Long timeout so a genuine timeout can't race the completion below and mask it.
         PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), responseTimeout: TimeSpan.FromSeconds(30));
 
@@ -376,9 +377,9 @@ public class PrinterConnectionActorTests
         await WaitUntilAsync(() => sink.TelemetryCalls.Count == 1);
 
         // Assert
-        sink.TelemetryCalls[0].PrinterId.Should().Be(7);
-        sink.TelemetryCalls[0].ReceivedAt.Should().Be(receivedAt);
-        sink.TelemetryCalls[0].Telemetry.Status.Should().Be("PRINTING");
+        sink.TelemetryCalls[0].printerId.Should().Be(7);
+        sink.TelemetryCalls[0].receivedAt.Should().Be(receivedAt);
+        sink.TelemetryCalls[0].telemetry.Status.Should().Be("PRINTING");
 
         actor.Complete();
         await Eventually(actor.Completion);
@@ -557,6 +558,13 @@ public class PrinterConnectionActorTests
         private int _telemetryCount;
 
         /// <summary>True while the loop is parked inside this sink.</summary>
+        /// <remarks>
+        /// A field rather than a property because it is <c>volatile</c>, and that is load-bearing: the
+        /// actor loop writes it while the test thread reads it. C# has no volatile property, so the
+        /// property SA1401 asks for would silently drop the guarantee this exists to provide.
+        /// </remarks>
+        [SuppressMessage("Design", "SA1401:Fields should be private",
+                         Justification = "Volatile cross-thread flag on a test double; a property cannot carry the volatile semantics.")]
         public volatile bool IsHeld;
 
         public int TelemetryCount
@@ -602,9 +610,9 @@ public class PrinterConnectionActorTests
     /// <c>Arg.Is&lt;&gt;</c> lambda, which is why this stays a class rather than a substitute.</summary>
     private sealed class RecordingTelemetrySink : ITelemetrySink
     {
-        public List<(int PrinterId, DateTimeOffset ReceivedAt, TelemetryDTO Telemetry)> TelemetryCalls { get; } = [];
+        public List<(int printerId, DateTimeOffset receivedAt, TelemetryDTO telemetry)> TelemetryCalls { get; } = [];
 
-        public List<(int PrinterId, DateTimeOffset ReceivedAt, EventDTO Event)> EventCalls { get; } = [];
+        public List<(int printerId, DateTimeOffset receivedAt, EventDTO eventDto)> EventCalls { get; } = [];
 
         public void Enqueue(int printerId, DateTimeOffset receivedAt, TelemetryDTO telemetry)
         {

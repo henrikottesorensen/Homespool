@@ -42,6 +42,75 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
 
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-auth-{Guid.NewGuid():N}.db");
 
+    private static async Task<Printer> AddPrinterAsync(PSDbContext context)
+    {
+        Team team = new()
+        {
+            CreatedBy = 1,
+            CreatedAt = DateTimeOffset.UtcNow,
+        };
+
+        context.Teams.Add(team);
+        await context.SaveChangesAsync();
+
+        Printer printer = new()
+        {
+            Uuid = Guid.NewGuid(),
+            Type = PrinterType.PrusaConnect,
+            TeamId = team.Id,
+            Name = "Bench printer",
+            Status = PrinterStatus.Unknown,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync();
+
+        return printer;
+    }
+
+    /// <summary>Seeds an already-enrolled printer and returns its plaintext token.</summary>
+    private static async Task<(Printer printer, string token)> AddEnrolledPrinterAsync(PSDbContext context, string fingerprint)
+    {
+        Printer printer = await AddPrinterAsync(context);
+
+        TokenService tokenService = new();
+        string token = tokenService.GenerateToken();
+
+        context.PrusaConnectAuthentication.Add(new PrusaConnectAuthenticationData
+        {
+            PrinterId = printer.Id,
+            FingerPrintKey = fingerprint,
+            HashedToken = tokenService.HashToken(token),
+            EnrolledAt = DateTimeOffset.UtcNow,
+        });
+
+        await context.SaveChangesAsync();
+
+        return (printer, token);
+    }
+
+    /// <summary>Seeds a printer with an outstanding, unbound provisioning token.</summary>
+    private static async Task<(Printer printer, string token)> AddProvisionedPrinterAsync(PSDbContext context)
+    {
+        Printer printer = await AddPrinterAsync(context);
+
+        TokenService tokenService = new();
+        string token = tokenService.GenerateToken();
+
+        context.PrusaConnectProvisionings.Add(new PrusaConnectProvisioning
+        {
+            PrinterId = printer.Id,
+            HashedToken = tokenService.HashToken(token),
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+
+        await context.SaveChangesAsync();
+
+        return (printer, token);
+    }
+
     private PSDbContext NewContext()
     {
         DbContextOptions<PSDbContext> options = new DbContextOptionsBuilder<PSDbContext>()
@@ -113,75 +182,6 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
             httpContext);
 
         return await handler.AuthenticateAsync();
-    }
-
-    private static async Task<Printer> AddPrinterAsync(PSDbContext context)
-    {
-        Team team = new()
-        {
-            CreatedBy = 1,
-            CreatedAt = DateTimeOffset.UtcNow,
-        };
-
-        context.Teams.Add(team);
-        await context.SaveChangesAsync();
-
-        Printer printer = new()
-        {
-            Uuid = Guid.NewGuid(),
-            Type = PrinterType.PrusaConnect,
-            TeamId = team.Id,
-            Name = "Bench printer",
-            Status = PrinterStatus.Unknown,
-            CreatedAt = DateTimeOffset.UtcNow,
-            UpdatedAt = DateTimeOffset.UtcNow,
-        };
-
-        context.Printers.Add(printer);
-        await context.SaveChangesAsync();
-
-        return printer;
-    }
-
-    /// <summary>Seeds an already-enrolled printer and returns its plaintext token.</summary>
-    private static async Task<(Printer Printer, string Token)> AddEnrolledPrinterAsync(PSDbContext context, string fingerprint)
-    {
-        Printer printer = await AddPrinterAsync(context);
-
-        TokenService tokenService = new();
-        string token = tokenService.GenerateToken();
-
-        context.PrusaConnectAuthentication.Add(new PrusaConnectAuthenticationData
-        {
-            PrinterId = printer.Id,
-            FingerPrintKey = fingerprint,
-            HashedToken = tokenService.HashToken(token),
-            EnrolledAt = DateTimeOffset.UtcNow,
-        });
-
-        await context.SaveChangesAsync();
-
-        return (printer, token);
-    }
-
-    /// <summary>Seeds a printer with an outstanding, unbound provisioning token.</summary>
-    private static async Task<(Printer Printer, string Token)> AddProvisionedPrinterAsync(PSDbContext context)
-    {
-        Printer printer = await AddPrinterAsync(context);
-
-        TokenService tokenService = new();
-        string token = tokenService.GenerateToken();
-
-        context.PrusaConnectProvisionings.Add(new PrusaConnectProvisioning
-        {
-            PrinterId = printer.Id,
-            HashedToken = tokenService.HashToken(token),
-            CreatedAt = DateTimeOffset.UtcNow,
-        });
-
-        await context.SaveChangesAsync();
-
-        return (printer, token);
     }
 
     // ---------- headers ----------

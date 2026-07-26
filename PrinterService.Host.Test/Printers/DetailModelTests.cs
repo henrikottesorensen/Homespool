@@ -60,7 +60,7 @@ public sealed class DetailModelTests : IDisposable
         }
     }
 
-    private static async Task<(DetailModel Model, PSUser User, Team Team, PrinterConnectionRegistry ConnectionRegistry)> NewModelAsync(PSDbContext context)
+    private static async Task<(DetailModel model, PSUser user, Team team, PrinterConnectionRegistry connectionRegistry)> NewModelAsync(PSDbContext context)
     {
         (UserManager<PSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 

@@ -122,17 +122,17 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
     private static readonly TimeSpan FinalFlushRetryDelay = TimeSpan.FromMilliseconds(250);
 
+    private readonly Channel<TelemetryWriteItem> _channel;
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly StorageOptions _options;
+    private readonly ILogger<TelemetryWriter> _logger;
+
     // Written only by the drain loop, read by whatever calls Current (a health check, on a request
     // thread). Published as one immutable snapshot rather than read field by field - see PublishHealth.
     private volatile TelemetryHealthSnapshot _health = TelemetryHealthSnapshot.Initial;
     private DateTimeOffset? _lastFlushAt;
     private int _consecutiveFlushFailures;
     private long _discardedEvents;
-
-    private readonly Channel<TelemetryWriteItem> _channel;
-    private readonly IServiceScopeFactory _scopeFactory;
-    private readonly StorageOptions _options;
-    private readonly ILogger<TelemetryWriter> _logger;
 
     public TelemetryWriter(IServiceScopeFactory scopeFactory, IOptions<StorageOptions> options, ILogger<TelemetryWriter> logger)
     {
@@ -613,7 +613,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         // - ExistingSlotNumbers: the same failure, per slot.
         // - PendingLoadedMaterial: clearing it here and having the save then fail would mean the
         //   material is never retried, yet nothing else remembers the printer still needs it.
-        List<(LiveStateCacheEntry Entry, List<int> NewSlotNumbers, bool ClearsPendingMaterial)> newlyPersisted = [];
+        List<(LiveStateCacheEntry entry, List<int> newSlotNumbers, bool clearsPendingMaterial)> newlyPersisted = [];
 
         foreach (int printerId in dirtyPrinterIds)
         {

@@ -39,8 +39,7 @@ public class PrusaConnectPrinterController : ControllerBase
         _lifetime = lifetime;
         _logger = logger;
     }
-    
-    
+
     [Route("/p/ws")]
     public async Task<ActionResult> ConnectWebSocket()
     {
@@ -141,7 +140,7 @@ public class PrusaConnectPrinterController : ControllerBase
             return BadRequest();
         }
     }
-    
+
     [AllowAnonymous]
     [HttpGet]
     [Route("/p/register")]
@@ -168,7 +167,7 @@ public class PrusaConnectPrinterController : ControllerBase
                     Code = "REGISTRATION_ACCEPTED",
                 });
             }
-            
+
             Response.Headers.TryAdd(Headers.Token, token);
             return Ok();
         }

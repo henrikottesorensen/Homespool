@@ -92,7 +92,6 @@ public sealed class EndToEndEnrollmentTests : IAsyncLifetime, IDisposable
         using HttpClient anonymous = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         // ---------- printer: POST /p/register ----------
-
         HttpResponseMessage registerResponse = await EnrollmentFlowHelper.SendPrinterRegisterAsync(anonymous, new
         {
             sn = "E2E-SERIAL-0001",
@@ -106,12 +105,10 @@ public sealed class EndToEndEnrollmentTests : IAsyncLifetime, IDisposable
         code.Should().NotBeNullOrWhiteSpace();
 
         // ---------- printer: GET /p/register before anyone has claimed it ----------
-
         HttpResponseMessage prePollResponse = await EnrollmentFlowHelper.SendPollAsync(anonymous, code);
         prePollResponse.StatusCode.Should().Be(HttpStatusCode.Accepted, "nobody has claimed the printer yet");
 
         // ---------- app: a signed-in user claims it ----------
-
         (PSUser claimer, HttpClient appClient) = await EnrollmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "claimer@example.com");
         using (appClient)
         {
@@ -130,19 +127,16 @@ public sealed class EndToEndEnrollmentTests : IAsyncLifetime, IDisposable
             claimed.RootElement.GetProperty("state").GetString().Should().Be("UNKNOWN");
 
             // ---------- printer: GET /p/register now that it has been claimed ----------
-
             HttpResponseMessage postPollResponse = await EnrollmentFlowHelper.SendPollAsync(anonymous, code);
             postPollResponse.StatusCode.Should().Be(HttpStatusCode.OK);
             postPollResponse.Headers.GetValues("Token").Single().Should().NotBeNullOrWhiteSpace();
 
             // ---------- app: GET /api/v1/user ----------
-
             JsonDocument user = JsonDocument.Parse(await (await appClient.GetAsync("/api/v1/user")).Content.ReadAsStringAsync());
             user.RootElement.GetProperty("id").GetInt64().Should().Be(claimer.Id);
             user.RootElement.GetProperty("teams").GetArrayLength().Should().Be(1, "every account has exactly one default team");
 
             // ---------- app: GET /api/v1/printers ----------
-
             HttpResponseMessage listResponse = await appClient.GetAsync("/api/v1/printers");
             listResponse.StatusCode.Should().Be(HttpStatusCode.OK);
             JsonDocument list = JsonDocument.Parse(await listResponse.Content.ReadAsStringAsync());
@@ -150,14 +144,12 @@ public sealed class EndToEndEnrollmentTests : IAsyncLifetime, IDisposable
             list.RootElement[0].GetProperty("uuid").GetGuid().Should().Be(uuid);
 
             // ---------- app: GET /api/v1/printers/{uuid} ----------
-
             HttpResponseMessage getResponse = await appClient.GetAsync($"/api/v1/printers/{uuid}");
             getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
             // ---------- app: PATCH /api/v1/printers/{uuid} ----------
-
-            HttpResponseMessage patchResponse = await appClient.PatchAsync($"/api/v1/printers/{uuid}",
-                JsonContent.Create(new { name = "Renamed MK4", location = "Garage" }));
+            using JsonContent patchBody = JsonContent.Create(new { name = "Renamed MK4", location = "Garage" });
+            HttpResponseMessage patchResponse = await appClient.PatchAsync($"/api/v1/printers/{uuid}", patchBody);
 
             patchResponse.StatusCode.Should().Be(HttpStatusCode.OK);
             JsonDocument patched = JsonDocument.Parse(await patchResponse.Content.ReadAsStringAsync());
@@ -228,5 +220,4 @@ public sealed class EndToEndEnrollmentTests : IAsyncLifetime, IDisposable
             }
         }
     }
-
 }

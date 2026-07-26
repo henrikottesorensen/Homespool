@@ -15,7 +15,7 @@ namespace PrinterService.Host.Test;
 /// </summary>
 public class SetupGateMiddlewareTests
 {
-    private static async Task<(bool NextCalled, HttpContext Context)> RunAsync(bool setupComplete, string path)
+    private static async Task<(bool nextCalled, HttpContext context)> RunAsync(bool setupComplete, string path)
     {
         // Arrange
         SetupState state = new();
@@ -26,16 +26,19 @@ public class SetupGateMiddlewareTests
         DefaultHttpContext context = new();
         context.Request.Path = path;
 
+        // A lambda rather than a local function purely so the unused HttpContext can stay a discard:
+        // SA1313 exempts `_` for lambda parameters and nowhere else, which is a fair line - a
+        // class-bound method has no business naming a parameter `_`.
         bool nextCalled = false;
-        Task Next(HttpContext _)
+        RequestDelegate next = _ =>
         {
             nextCalled = true;
 
             return Task.CompletedTask;
-        }
+        };
 
         // Act
-        await middleware.InvokeAsync(context, Next);
+        await middleware.InvokeAsync(context, next);
 
         return (nextCalled, context);
     }

@@ -3,25 +3,25 @@ namespace PrinterService.Host.PrusaConnect;
 public static class Headers
 {
     public const string Code = nameof(Code);
-    
+
     public const string Expires = nameof(Expires);
-    
+
     public const string Fingerprint = nameof(Fingerprint);
-    
-    public const string Host = nameof(Host); 
-        
+
+    public const string Host = nameof(Host);
+
     public const string Origin = nameof(Origin);
 
     public const string TemporaryCode = "Temporary-Code";
-    
+
     public const string Token = nameof(Token);
 
     public const string UserAgentPrinter = "User-Agent-Printer";
-    
+
     public const string UserAgentVersion = "User-Agent-Version";
-    
+
     public const string Upgrade = nameof(Upgrade);
-    
+
     public static class WebSocket
     {
         public const string Accept = "Sec-WebSocket-Accept";

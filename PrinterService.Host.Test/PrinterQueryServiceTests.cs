@@ -439,6 +439,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
         {
             context.TelemetrySamples.Add(new TelemetrySample { PrinterId = printer.Id, Timestamp = now.AddSeconds(-i), Status = PrinterStatus.Printing, Progress = i });
         }
+
         await context.SaveChangesAsync();
 
         // Act

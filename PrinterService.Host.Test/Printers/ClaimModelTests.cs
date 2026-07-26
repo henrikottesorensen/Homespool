@@ -74,7 +74,7 @@ public sealed class ClaimModelTests : IDisposable
         Firmware = "6.4.0+11974",
     };
 
-    private static async Task<(ClaimModel Model, PSUser User)> NewModelAsync(PSDbContext context, string email = "owner@example.com")
+    private static async Task<(ClaimModel model, PSUser user)> NewModelAsync(PSDbContext context, string email = "owner@example.com")
     {
         (UserManager<PSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 

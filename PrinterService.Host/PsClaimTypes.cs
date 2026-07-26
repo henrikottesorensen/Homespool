@@ -9,5 +9,5 @@ public static class PsClaimTypes
     /// </summary>
     public const string PrinterId = "printer-id";
 
-    public const string Owner =  "owner";
+    public const string Owner = "owner";
 }

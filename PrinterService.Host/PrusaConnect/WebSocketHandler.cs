@@ -18,7 +18,7 @@ public class WebSocketHandler
         _logger = logger;
         _dispatcher = dispatcher;
     }
-    
+
     private static readonly JsonReaderOptions ReaderOptions = new()
     {
         AllowTrailingCommas = true,

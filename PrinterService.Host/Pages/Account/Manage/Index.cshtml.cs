@@ -4,9 +4,11 @@
 
 using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
+
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+
 using PrinterService.Model.Entities;
 
 namespace PrinterService.Host.Pages.Account.Manage
@@ -68,7 +70,7 @@ namespace PrinterService.Host.Pages.Account.Manage
 
             Input = new InputModel
             {
-                PhoneNumber = phoneNumber
+                PhoneNumber = phoneNumber,
             };
         }
 

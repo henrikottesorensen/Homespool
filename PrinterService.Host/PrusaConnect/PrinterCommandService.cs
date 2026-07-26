@@ -30,11 +30,25 @@ public class PrinterCommandService
         _registry = registry;
     }
 
-    /// <exception cref="PrinterNotFoundException" />
+    /// <summary>
+    /// Sends <paramref name="commandData"/> to a printer <paramref name="userId"/> is allowed to use,
+    /// and waits for the printer's own reply. Every way this can fail throws - the return value is
+    /// only ever a real answer from the hardware.
+    /// </summary>
+    /// <exception cref="PrinterNotFoundException">No printer has id <paramref name="printerId"/>.</exception>
     /// <exception cref="TeamAccessDeniedException">Caller lacks <c>CanUse</c> on the printer's team.</exception>
-    /// <exception cref="PrinterNotConnectedException" />
-    /// <exception cref="CommandAlreadyInFlightException" />
-    /// <exception cref="CommandTimedOutException" />
+    /// <exception cref="PrinterNotConnectedException">
+    /// The printer has no live WebSocket - either absent from the registry when the send was
+    /// attempted, or its connection torn down while the command was in the actor's mailbox.
+    /// </exception>
+    /// <exception cref="CommandAlreadyInFlightException">
+    /// Another command is still awaiting its reply. One in flight per printer is deliberate: replies
+    /// are correlated by <c>command_id</c>, and the firmware answers them one at a time.
+    /// </exception>
+    /// <exception cref="CommandTimedOutException">
+    /// The printer never answered within <c>PrusaConnectOptions.CommandResponseTimeout</c>. It says
+    /// nothing about whether the command was acted on - the frame was written to the socket.
+    /// </exception>
     /// <returns>The printer's actual answer - e.g. <c>Rejected</c>/"No print to pause" - not just
     /// whether the send succeeded.</returns>
     public async Task<CommandOutcome> SendCommandAsync(int printerId, ISendableCommand commandData, long userId, CancellationToken cancellationToken)

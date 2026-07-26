@@ -66,6 +66,7 @@ public class PrinterConnectionRegistryTests
         IPrinterConnectionActor actorB = OpenActor();
 
         registry.Register(1, actorA);
+
         // Simulates a fast reconnect: a new connection registers its actor for the same printer
         // before the stale request's finally block runs its unregister.
         registry.Register(1, actorB);

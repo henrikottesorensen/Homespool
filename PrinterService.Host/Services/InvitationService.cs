@@ -28,7 +28,7 @@ namespace PrinterService.Host.Services;
 public class InvitationService
 {
     public const int InviteTokenLength = 32;
-    
+
     private readonly PSDbContext _dbContext;
     private readonly TokenService _tokenService;
     private readonly InvitationOptions _options;
@@ -56,7 +56,7 @@ public class InvitationService
     /// Explicit expiry, or <c>null</c> to use the configured default lifetime from now.
     /// </param>
     /// <param name="cancellationToken">Cancels the insert; nothing is persisted if it fires first.</param>
-    public async Task<(Invitation Invitation, string PlaintextToken)> CreateAsync(
+    public async Task<(Invitation invitation, string plaintextToken)> CreateAsync(
         string email,
         int? teamId,
         long invitedBy,

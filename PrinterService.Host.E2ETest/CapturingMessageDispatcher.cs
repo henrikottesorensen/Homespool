@@ -27,7 +27,7 @@ internal sealed class CapturingMessageDispatcher : MessageDispatcher
     {
     }
 
-    public List<(int PrinterId, JsonElement Root)> Calls { get; } = [];
+    public List<(int printerId, JsonElement root)> Calls { get; } = [];
 
     public override ConnectionMessage? Classify(int printerId, JsonElement root)
     {

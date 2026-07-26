@@ -4,18 +4,18 @@ using System.Text.Json;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-using PrinterService.Host.Authentication;
 using PrinterService.Data;
+using PrinterService.Host.Authentication;
 
 using Scalar.AspNetCore;
 
@@ -33,33 +33,33 @@ public static class Program
             .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
             .Enrich.FromLogContext()
             .WriteTo.Console(new RenderedCompactJsonFormatter())
-            .CreateBootstrapLogger(); 
+            .CreateBootstrapLogger();
 
         try
         {
             WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
-            
+
             // Add services to the container.
             builder.Services.AddSerilog((services, lc) => lc
                    .ReadFrom.Configuration(builder.Configuration)
                    .ReadFrom.Services(services)
                    .Enrich.FromLogContext()
                    .WriteTo.Console(new RenderedCompactJsonFormatter()));
-            
+
             builder.Services.AddPrinterServiceData(builder.Configuration);
 
             builder.Services.AddDatabaseDeveloperPageExceptionFilter();
-            
+
             builder.Services.AddDataProtection()
                             .PersistKeysToDbContext<PSDbContext>();
-            
+
             builder.Services.AddAuthentication()
                             .AddPrusaConnectPrinterAuthentication();
 
             builder.Services.AddIdentity<Model.Entities.PSUser, IdentityRole<long>>(options => options.SignIn.RequireConfirmedAccount = true)
                             .AddEntityFrameworkStores<PSDbContext>()
                             .AddDefaultTokenProviders();
-            
+
             builder.Services.ConfigureApplicationCookie(options =>
             {
                 // Cookie settings
@@ -70,12 +70,12 @@ public static class Program
                 options.AccessDeniedPath = "/Account/AccessDenied";
                 options.SlidingExpiration = true;
             });
-            
+
             // Add services to the container.
             builder.Services.AddAuthorization(Authorization.Builder.Build);
 
             builder.Services.AddRazorPages();
-            
+
             builder.Services.AddControllers(options =>
                 options.Conventions.Add(new ApiExplorerVisibilityConvention()));
 
@@ -180,7 +180,7 @@ public static class Program
             builder.Services.AddScoped<Services.UnitOfWork>();
             builder.Services.AddScoped<Services.InvitationService>();
             builder.Services.AddScoped<Services.PrinterQueryService>();
-            
+
             WebApplication app = builder.Build();
 
             // Ctrl-C/SIGTERM is otherwise silent: the framework's own "Application is shutting
@@ -204,6 +204,7 @@ public static class Program
                 app.MapOpenApi();
                 app.MapScalarApiReference();
             }
+
             app.UseSerilogRequestLogging();
 
             // Everything except /health. A probe runs inside the container over plain HTTP, and a
@@ -250,11 +251,11 @@ public static class Program
             });
 
             app.MapControllers();
-            
+
             app.MapStaticAssets();
             app.MapRazorPages()
                .WithStaticAssets();
-            
+
             app.UseWebSockets(new WebSocketOptions()
             {
                 KeepAliveInterval = TimeSpan.FromSeconds(120),

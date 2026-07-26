@@ -52,7 +52,8 @@ public class EventDTO
 /// </summary>
 public sealed class EventsJsonConverter : JsonStringEnumConverter<Events>
 {
-    public EventsJsonConverter() : base(JsonNamingPolicy.SnakeCaseUpper)
+    public EventsJsonConverter()
+        : base(JsonNamingPolicy.SnakeCaseUpper)
     {
     }
 }

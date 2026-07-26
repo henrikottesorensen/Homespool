@@ -42,7 +42,7 @@ public sealed class SmtpConnectivityProbeTests
         TimeoutSeconds = 5,
     };
 
-    private static (TestableSmtpConnectivityProbe Probe, FakeSmtpTransport Transport) NewProbe(SmtpOptions options)
+    private static (TestableSmtpConnectivityProbe probe, FakeSmtpTransport transport) NewProbe(SmtpOptions options)
     {
         FakeSmtpTransport transport = new();
         TestableSmtpConnectivityProbe probe = new(Options.Create(options), new FakeSmtpTransportFactory(transport));
@@ -93,7 +93,7 @@ public sealed class SmtpConnectivityProbeTests
 
         // Assert
         transport.ConnectCall.Should().NotBeNull();
-        transport.ConnectCall!.Value.Options.Should().Be(SecureSocketOptions.StartTls);
+        transport.ConnectCall!.Value.options.Should().Be(SecureSocketOptions.StartTls);
     }
 
     /// <summary>DisableTls connects unencrypted, same explicit opt-in as SmtpEmailSender.</summary>
@@ -109,7 +109,7 @@ public sealed class SmtpConnectivityProbeTests
         await probe.RunOnceAsync(CancellationToken.None);
 
         // Assert
-        transport.ConnectCall!.Value.Options.Should().Be(SecureSocketOptions.None);
+        transport.ConnectCall!.Value.options.Should().Be(SecureSocketOptions.None);
     }
 
     /// <summary>A configured username authenticates, the point of the probe (§ SmtpConnectivityProbe remarks).</summary>
@@ -127,7 +127,7 @@ public sealed class SmtpConnectivityProbeTests
 
         // Assert
         transport.AuthenticateCall.Should().NotBeNull();
-        transport.AuthenticateCall!.Value.UserName.Should().Be("relay-account");
+        transport.AuthenticateCall!.Value.userName.Should().Be("relay-account");
     }
 
     /// <summary>No username configured: connects without attempting to authenticate.</summary>

@@ -36,7 +36,7 @@ namespace PrinterService.Data;
 /// different high bits. It then packs the offset into the low 11 bits, perturbing the ordering again.
 /// The result is that rows at a positive offset sort to the wrong place and drop out of range
 /// filters — with no error, which is the dangerous part. See
-/// https://nitratine.net/blog/post/a-warning-for-ef-cores-datetimeoffsettobinaryconverter/
+/// https://nitratine.net/blog/post/a-warning-for-ef-cores-datetimeoffsettobinaryconverter/.
 /// </para>
 /// <para>
 /// <see cref="DateTimeOffset.ToUnixTimeMilliseconds"/> normalises to UTC <i>before</i> producing the
@@ -56,6 +56,7 @@ namespace PrinterService.Data;
 /// </remarks>
 public class DateTimeOffsetToUnixMillisecondsConverter : ValueConverter<DateTimeOffset, long>
 {
+    /// <summary>Creates the converter with no mapping hints, which is how EF constructs it.</summary>
     /// <remarks>
     /// A real parameterless constructor is required, not merely an optional parameter: applying the
     /// converter by type — <c>HaveConversion&lt;T&gt;()</c> in <c>ConfigureConventions</c> — makes EF

@@ -31,6 +31,14 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-prov-{Guid.NewGuid():N}.db");
 
+    private static PrusaConnectService NewService(PSDbContext context) =>
+        new(context,
+            new CodeGenerator(),
+            new TokenService(),
+            new TeamService(context),
+            NullLogger<PrusaConnectService>.Instance,
+            Options.Create(new PrusaConnectOptions()));
+
     private PSDbContext NewContext()
     {
         DbContextOptions<PSDbContext> options = new DbContextOptionsBuilder<PSDbContext>()
@@ -47,14 +55,6 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
 
         return context;
     }
-
-    private static PrusaConnectService NewService(PSDbContext context) =>
-        new(context,
-            new CodeGenerator(),
-            new TokenService(),
-            new TeamService(context),
-            NullLogger<PrusaConnectService>.Instance,
-            Options.Create(new PrusaConnectOptions()));
 
     public void Dispose()
     {

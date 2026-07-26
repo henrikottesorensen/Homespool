@@ -35,7 +35,6 @@ public class PrinterLiveState
     public DateTimeOffset LastSeenAt { get; set; }
 
     // -- Core, present on both message shapes ------------------------------------------------
-
     public PrinterStatus Status { get; set; }
 
     public int? JobId { get; set; }
@@ -50,7 +49,6 @@ public class PrinterLiveState
     public int? TimeRemaining { get; set; }
 
     // -- Present only on full messages -------------------------------------------------------
-
     public float? NozzleTemperature { get; set; }
 
     public float? BedTemperature { get; set; }
@@ -82,7 +80,6 @@ public class PrinterLiveState
     public int? TimeToFilamentChange { get; set; }
 
     // -- Chamber (flattened; fixed shape) ----------------------------------------------------
-
     public float? ChamberTemperature { get; set; }
 
     public int? ChamberTargetTemperature { get; set; }
@@ -100,7 +97,6 @@ public class PrinterLiveState
     // XL only. Note the telemetry "enclosure" object is NOT the same shape as the one in the INFO
     // event, which instead carries enabled / printing_filtration / post_print / filter_lifetime /
     // filtration_filaments. All three fields below are integers in the firmware.
-
     public int? EnclosureTemperature { get; set; }
 
     public int? EnclosureFanRpm { get; set; }
@@ -108,7 +104,6 @@ public class PrinterLiveState
     public int? EnclosureTimeInUse { get; set; }
 
     // -- Prusa iX (flattened; fixed shape) ---------------------------------------------------
-
     public float? HeatbreakTemperature { get; set; }
 
     public float? PsuTemperature { get; set; }

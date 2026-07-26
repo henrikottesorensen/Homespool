@@ -107,7 +107,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
     /// a real connection and loop - these tests are about the permission gate and the
     /// outcome-to-exception mapping, not the wire.
     /// </summary>
-    private static (PrinterConnectionRegistry Registry, IPrinterConnectionActor Actor) RegistryWithActor(int printerId, CommandSendResult result)
+    private static (PrinterConnectionRegistry registry, IPrinterConnectionActor actor) RegistryWithActor(int printerId, CommandSendResult result)
     {
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
@@ -119,7 +119,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         return (registry, actor);
     }
 
-    private static (PrinterConnectionRegistry Registry, IPrinterConnectionActor Actor) RegistryWithActor(int printerId, CommandSendOutcome outcome) =>
+    private static (PrinterConnectionRegistry registry, IPrinterConnectionActor actor) RegistryWithActor(int printerId, CommandSendOutcome outcome) =>
         RegistryWithActor(printerId, new CommandSendResult(outcome, null));
 
     [Fact]
@@ -153,7 +153,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: false, canManage: true);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
-        PrinterCommandService service = new(context, new TeamService(context), RegistryWithActor(printer.Id, CommandSendOutcome.Completed).Registry);
+        PrinterCommandService service = new(context, new TeamService(context), RegistryWithActor(printer.Id, CommandSendOutcome.Completed).registry);
 
         // Act
         Func<Task> act = () => service.SendCommandAsync(printer.Id, new PausePrint(), 1, CancellationToken.None);
@@ -171,7 +171,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         TeamMember someoneElses = await AddTeamAsync(context, userId: 2, canRead: true, canUse: true, canManage: true);
         Printer printer = await AddPrinterAsync(context, someoneElses.TeamId);
 
-        PrinterCommandService service = new(context, new TeamService(context), RegistryWithActor(printer.Id, CommandSendOutcome.Completed).Registry);
+        PrinterCommandService service = new(context, new TeamService(context), RegistryWithActor(printer.Id, CommandSendOutcome.Completed).registry);
 
         // Act
         Func<Task> act = () => service.SendCommandAsync(printer.Id, new PausePrint(), 1, CancellationToken.None);
@@ -225,7 +225,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
 
         // The other path to the same exception: an actor exists but its connection is gone (or went
         // mid-send) - the actor reports it as an outcome rather than throwing.
-        PrinterCommandService service = new(context, new TeamService(context), RegistryWithActor(printer.Id, CommandSendOutcome.NotConnected).Registry);
+        PrinterCommandService service = new(context, new TeamService(context), RegistryWithActor(printer.Id, CommandSendOutcome.NotConnected).registry);
 
         // Act
         Func<Task> act = () => service.SendCommandAsync(printer.Id, new PausePrint(), 1, CancellationToken.None);
@@ -243,7 +243,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: true);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
-        PrinterCommandService service = new(context, new TeamService(context), RegistryWithActor(printer.Id, CommandSendOutcome.AlreadyInFlight).Registry);
+        PrinterCommandService service = new(context, new TeamService(context), RegistryWithActor(printer.Id, CommandSendOutcome.AlreadyInFlight).registry);
 
         // Act
         Func<Task> act = () => service.SendCommandAsync(printer.Id, new PausePrint(), 1, CancellationToken.None);
@@ -261,7 +261,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: true);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
-        PrinterCommandService service = new(context, new TeamService(context), RegistryWithActor(printer.Id, CommandSendOutcome.TimedOut).Registry);
+        PrinterCommandService service = new(context, new TeamService(context), RegistryWithActor(printer.Id, CommandSendOutcome.TimedOut).registry);
 
         // Act
         Func<Task> act = () => service.SendCommandAsync(printer.Id, new PausePrint(), 1, CancellationToken.None);

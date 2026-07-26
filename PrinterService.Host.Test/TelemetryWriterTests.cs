@@ -36,8 +36,7 @@ namespace PrinterService.Host.Test;
 public sealed class TelemetryWriterTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-telemetry-{Guid.NewGuid():N}.db");
-    private ServiceProvider? _provider;
-    private TelemetryWriter? _writer;
+
     // A capturing rather than null logger: a flush failure is caught and logged rather than crashing
     // the writer (see TelemetryWriter.SafeFlushAsync), and a real logger here is what makes that
     // visible while debugging a test failure instead of silently swallowed. FakeLogger keeps each
@@ -45,78 +44,11 @@ public sealed class TelemetryWriterTests : IDisposable
     // writer's own log properties, rather than substring-matching one flattened string.
     private readonly FakeLogger<TelemetryWriter> _fakeLogger = new();
 
+    private ServiceProvider? _provider;
+    private TelemetryWriter? _writer;
+
     /// <summary>Every entry logged so far, newest last.</summary>
     private IReadOnlyList<FakeLogRecord> LogRecords => _fakeLogger.Collector.GetSnapshot();
-
-    /// <summary>
-    /// True once an entry matching <paramref name="predicate"/> has been logged. Polled, because the
-    /// writer logs from its own drain loop - there is no moment a test can await directly.
-    /// </summary>
-    private Task<bool> LoggedAsync(Func<FakeLogRecord, bool> predicate) =>
-        WaitUntilAsync(() => Task.FromResult(LogRecords.Any(predicate)), TimeSpan.FromSeconds(5));
-
-    /// <summary>Renders the captured log for a failure message.</summary>
-    private string LogDump() =>
-        string.Join('\n', LogRecords.Select(r => $"{r.Level}: {r.Message}"));
-
-    /// <summary>
-    /// A failed flush, which <see cref="TelemetryWriter"/> catches and logs rather than letting it
-    /// kill the service. Requires the exception to be attached, not just matching text - a flush
-    /// failure with no exception would mean the writer swallowed the cause.
-    /// </summary>
-    private static bool FlushFailed(FakeLogRecord record) =>
-        record.Level == LogLevel.Error
-        && record.Exception is not null
-        && record.Message.Contains("flush failed");
-
-    public void Dispose()
-    {
-        if (_writer is not null)
-        {
-            // BackgroundService.StopAsync is idempotent and safe even if the service was never
-            // started or already stopped, which some tests below do explicitly themselves.
-            _writer.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
-            _writer.Dispose();
-        }
-
-        _provider?.Dispose();
-
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Builds and starts a writer against a fresh <see cref="IServiceScopeFactory"/> pointed at this
-    /// test's database file - the same relationship <c>Program.cs</c> wires in production, minus
-    /// everything else the host registers.
-    /// </summary>
-    private async Task<TelemetryWriter> StartWriterAsync(StorageOptions options)
-    {
-        ServiceCollection services = new();
-        services.AddDbContext<PSDbContext>(o => o.UseSqlite($"Data Source={_databasePath}"));
-        _provider = services.BuildServiceProvider();
-
-        await using (AsyncServiceScope migrationScope = _provider.CreateAsyncScope())
-        {
-            await migrationScope.ServiceProvider.GetRequiredService<PSDbContext>().Database.MigrateAsync();
-        }
-
-        _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
-                                       Options.Create(options),
-                                       _fakeLogger);
-
-        await _writer.StartAsync(CancellationToken.None);
-
-        return _writer;
-    }
-
-    private PSDbContext NewVerificationContext() =>
-        new(new DbContextOptionsBuilder<PSDbContext>().UseSqlite($"Data Source={_databasePath}").Options);
 
     /// <summary>
     /// Polls rather than sleeping a fixed duration - the writer's drain loop runs on its own task, so
@@ -174,6 +106,16 @@ public sealed class TelemetryWriterTests : IDisposable
         return observed();
     }
 
+    /// <summary>
+    /// A failed flush, which <see cref="TelemetryWriter"/> catches and logs rather than letting it
+    /// kill the service. Requires the exception to be attached, not just matching text - a flush
+    /// failure with no exception would mean the writer swallowed the cause.
+    /// </summary>
+    private static bool FlushFailed(FakeLogRecord record) =>
+        record.Level == LogLevel.Error
+        && record.Exception is not null
+        && record.Message.Contains("flush failed");
+
     private static StorageOptions DefaultOptions(int batchSize = 500, double flushIntervalSeconds = 30, double throttleSeconds = 0) =>
         new()
         {
@@ -181,6 +123,66 @@ public sealed class TelemetryWriterTests : IDisposable
             WriteFlushIntervalSeconds = flushIntervalSeconds,
             MinimumSampleIntervalSeconds = throttleSeconds,
         };
+
+    /// <summary>
+    /// True once an entry matching <paramref name="predicate"/> has been logged. Polled, because the
+    /// writer logs from its own drain loop - there is no moment a test can await directly.
+    /// </summary>
+    private Task<bool> LoggedAsync(Func<FakeLogRecord, bool> predicate) =>
+        WaitUntilAsync(() => Task.FromResult(LogRecords.Any(predicate)), TimeSpan.FromSeconds(5));
+
+    /// <summary>Renders the captured log for a failure message.</summary>
+    private string LogDump() =>
+        string.Join('\n', LogRecords.Select(r => $"{r.Level}: {r.Message}"));
+
+    public void Dispose()
+    {
+        if (_writer is not null)
+        {
+            // BackgroundService.StopAsync is idempotent and safe even if the service was never
+            // started or already stopped, which some tests below do explicitly themselves.
+            _writer.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+            _writer.Dispose();
+        }
+
+        _provider?.Dispose();
+
+        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Builds and starts a writer against a fresh <see cref="IServiceScopeFactory"/> pointed at this
+    /// test's database file - the same relationship <c>Program.cs</c> wires in production, minus
+    /// everything else the host registers.
+    /// </summary>
+    private async Task<TelemetryWriter> StartWriterAsync(StorageOptions options)
+    {
+        ServiceCollection services = new();
+        services.AddDbContext<PSDbContext>(o => o.UseSqlite($"Data Source={_databasePath}"));
+        _provider = services.BuildServiceProvider();
+
+        await using (AsyncServiceScope migrationScope = _provider.CreateAsyncScope())
+        {
+            await migrationScope.ServiceProvider.GetRequiredService<PSDbContext>().Database.MigrateAsync();
+        }
+
+        _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
+                                       Options.Create(options),
+                                       _fakeLogger);
+
+        await _writer.StartAsync(CancellationToken.None);
+
+        return _writer;
+    }
+
+    private PSDbContext NewVerificationContext() =>
+        new(new DbContextOptionsBuilder<PSDbContext>().UseSqlite($"Data Source={_databasePath}").Options);
 
     /// <summary>
     /// <see cref="PrinterLiveState"/> and <see cref="TelemetrySample"/> both carry a required FK to
@@ -359,6 +361,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         // Assert
         await using PSDbContext verify = NewVerificationContext();
+
         // See TelemetryIsFlushedOnGracefulShutdownEvenBelowBothThresholds for why this is checked:
         // a loop cancelled before it ever ran looks exactly like a clean stop from the call site.
         writer.ExecuteTask!.Status.Should().Be(TaskStatus.RanToCompletion,

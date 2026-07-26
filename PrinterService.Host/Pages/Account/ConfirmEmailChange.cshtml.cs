@@ -49,6 +49,21 @@ namespace PrinterService.Host.Pages.Account
         [TempData]
         public string StatusMessage { get; set; }
 
+        /// <summary>
+        /// Tells an administrator that health alerts keep going to the old address until a restart.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="Services.TelemetryAlertService"/> reads the administrator list once and caches
+        /// it, deliberately, because the alert most worth sending is the one about the database being
+        /// unreachable - looking recipients up at send time would fail exactly then. The cost of that
+        /// choice is this staleness, and this is the one moment someone can do something about it, so
+        /// it is said here rather than left to be discovered when an alert goes missing.
+        /// </remarks>
+        private static string AlertRecipientNotice(bool isAlertRecipient) =>
+            isAlertRecipient
+                ? " Service health alerts will continue to go to your previous address until the service is restarted."
+                : string.Empty;
+
         public async Task<IActionResult> OnGetAsync(string userId, string email, string code)
         {
             if (userId == null || email == null || code == null)
@@ -99,20 +114,5 @@ namespace PrinterService.Host.Pages.Account
         private async Task<bool> IsAlertRecipientAsync(PSUser user) =>
             _smtp.Value.IsConfigured
             && await _userManager.IsInRoleAsync(user, Services.AdminBootstrap.AdminRole);
-
-        /// <summary>
-        /// Tells an administrator that health alerts keep going to the old address until a restart.
-        /// </summary>
-        /// <remarks>
-        /// <see cref="Services.TelemetryAlertService"/> reads the administrator list once and caches
-        /// it, deliberately, because the alert most worth sending is the one about the database being
-        /// unreachable - looking recipients up at send time would fail exactly then. The cost of that
-        /// choice is this staleness, and this is the one moment someone can do something about it, so
-        /// it is said here rather than left to be discovered when an alert goes missing.
-        /// </remarks>
-        private static string AlertRecipientNotice(bool isAlertRecipient) =>
-            isAlertRecipient
-                ? " Service health alerts will continue to go to your previous address until the service is restarted."
-                : string.Empty;
     }
 }

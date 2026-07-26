@@ -39,7 +39,7 @@ internal sealed class FakeWebSocket : WebSocket
     private volatile bool _holdSends;
     private WebSocketState _state = WebSocketState.Open;
 
-    public List<(byte[] Frame, WebSocketMessageType MessageType, bool EndOfMessage)> Sent { get; } = [];
+    public List<(byte[] frame, WebSocketMessageType messageType, bool endOfMessage)> Sent { get; } = [];
 
     /// <summary>Chronological record of send and close activity on this socket.</summary>
     public IReadOnlyList<string> Operations

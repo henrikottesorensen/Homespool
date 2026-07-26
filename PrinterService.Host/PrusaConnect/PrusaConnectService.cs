@@ -345,7 +345,7 @@ public class PrusaConnectService
     /// the snippet. The printer never touches <c>/p/register</c>; it presents this token on its first
     /// request and the auth handler binds and promotes it there.
     /// </summary>
-    public async Task<(Printer Printer, string Token)> ProvisionPrinterAsync(string? name, string? location, int? teamId, long userId)
+    public async Task<(Printer printer, string token)> ProvisionPrinterAsync(string? name, string? location, int? teamId, long userId)
     {
         DateTimeOffset now = TimeProvider.System.GetUtcNow();
 

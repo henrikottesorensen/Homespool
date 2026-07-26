@@ -24,7 +24,7 @@ namespace PrinterService.Host.Test;
 /// it stores local <c>Ticks</c> with the offset packed into the low 11 bits, so the same instant in
 /// two different offsets produces two different, wrongly-ordered numbers. Sorting and range filters
 /// then return wrong rows <i>with no error at all</i>, which is what makes it dangerous.
-/// See https://nitratine.net/blog/post/a-warning-for-ef-cores-datetimeoffsettobinaryconverter/
+/// See https://nitratine.net/blog/post/a-warning-for-ef-cores-datetimeoffsettobinaryconverter/.
 /// </para>
 /// <para>
 /// The tests exercise the converter directly <i>and</i> through real SQLite, because a converter that
@@ -34,8 +34,6 @@ namespace PrinterService.Host.Test;
 /// </remarks>
 public sealed class DateTimeOffsetConverterTests : IDisposable
 {
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-conv-{Guid.NewGuid():N}.db");
-
     /// <summary>The same seven instants, expressed in a deliberate mix of offsets.</summary>
     /// <remarks>
     /// +13:00 is the offset from the linked article, chosen because it is large enough to push a
@@ -51,6 +49,8 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
         new DateTimeOffset(2026, 3, 30, 11, 14, 4, TimeSpan.Zero).ToOffset(TimeSpan.FromHours(13)),
         new DateTimeOffset(2026, 3, 30, 11, 14, 5, TimeSpan.Zero),
     ];
+
+    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-conv-{Guid.NewGuid():N}.db");
 
     private PSDbContext NewContext()
     {

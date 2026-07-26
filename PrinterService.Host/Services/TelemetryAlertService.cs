@@ -49,12 +49,24 @@ public sealed class TelemetryAlertService : BackgroundService
     private bool _alerted;
 
     public TelemetryAlertService(HealthCheckService healthChecks,
-                                 IServiceScopeFactory scopeFactory,
-                                 ILogger<TelemetryAlertService> logger)
+        IServiceScopeFactory scopeFactory,
+        ILogger<TelemetryAlertService> logger)
     {
         _healthChecks = healthChecks;
         _scopeFactory = scopeFactory;
         _logger = logger;
+    }
+
+    /// <summary>Reuses each check's own description, so the email, the banner and <c>/health</c> all
+    /// say the same thing about the same condition.</summary>
+    private static string Describe(HealthReport report)
+    {
+        IEnumerable<string> problems = report.Entries
+            .Where(entry => entry.Value.Status != HealthStatus.Healthy)
+            .Select(entry => $"<li>{entry.Value.Description ?? entry.Key}</li>");
+
+        return $"<p>PrinterService reported a problem:</p><ul>{string.Concat(problems)}</ul>"
+               + "<p>Printing is unaffected, but recorded history may be incomplete until this is resolved.</p>";
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -186,20 +198,8 @@ public sealed class TelemetryAlertService : BackgroundService
         IList<PSUser> admins = await users.GetUsersInRoleAsync(AdminBootstrap.AdminRole);
 
         _recipients = admins.Select(a => a.Email)
-                            .Where(email => !string.IsNullOrWhiteSpace(email))
-                            .Select(email => email!)
-                            .ToList();
-    }
-
-    /// <summary>Reuses each check's own description, so the email, the banner and <c>/health</c> all
-    /// say the same thing about the same condition.</summary>
-    private static string Describe(HealthReport report)
-    {
-        IEnumerable<string> problems = report.Entries
-            .Where(entry => entry.Value.Status != HealthStatus.Healthy)
-            .Select(entry => $"<li>{entry.Value.Description ?? entry.Key}</li>");
-
-        return $"<p>PrinterService reported a problem:</p><ul>{string.Concat(problems)}</ul>"
-             + "<p>Printing is unaffected, but recorded history may be incomplete until this is resolved.</p>";
+            .Where(email => !string.IsNullOrWhiteSpace(email))
+            .Select(email => email!)
+            .ToList();
     }
 }

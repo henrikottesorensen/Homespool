@@ -6,6 +6,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Threading.Tasks;
+
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -77,6 +78,7 @@ namespace PrinterService.Host.Pages.Account
                 pageHandler: null,
                 values: new { userId = userId, code = code },
                 protocol: Request.Scheme);
+
             // Result deliberately discarded, for the same reason as ForgotPassword: this is only reached when the
             // account exists, so reporting a send failure would confirm its existence.
             _ = await _emailSender.SendEmailAsync(

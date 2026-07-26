@@ -4,4 +4,3 @@ public class Broken : ICommand
 {
     public required string Reason { get; set; }
 }
-

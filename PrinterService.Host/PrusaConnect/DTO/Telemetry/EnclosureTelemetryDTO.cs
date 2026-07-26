@@ -14,7 +14,7 @@ public class EnclosureTelemetryDTO
 
     [JsonPropertyName("fan_rpm")]
     public int FanSpeed { get; set; }
-    
+
     [JsonPropertyName("time_in_use")]
     public int TimeIsUse { get; set; }
 }

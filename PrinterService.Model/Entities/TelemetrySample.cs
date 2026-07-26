@@ -37,7 +37,6 @@ public class TelemetrySample
     public DateTimeOffset Timestamp { get; set; }
 
     // -- Core --------------------------------------------------------------------------------
-
     public PrinterStatus Status { get; set; }
 
     public int? JobId { get; set; }
@@ -49,7 +48,6 @@ public class TelemetrySample
     public int? TimeRemaining { get; set; }
 
     // -- Temperatures and motion -------------------------------------------------------------
-
     public float? NozzleTemperature { get; set; }
 
     public float? BedTemperature { get; set; }
@@ -79,7 +77,6 @@ public class TelemetrySample
     public int? TimeToFilamentChange { get; set; }
 
     // -- Chamber -----------------------------------------------------------------------------
-
     public float? ChamberTemperature { get; set; }
 
     public int? ChamberTargetTemperature { get; set; }
@@ -96,7 +93,6 @@ public class TelemetrySample
     //
     // XL only, and integers in the firmware. The telemetry "enclosure" object is a different shape
     // from the INFO event's object of the same name.
-
     public int? EnclosureTemperature { get; set; }
 
     public int? EnclosureFanRpm { get; set; }
@@ -104,7 +100,6 @@ public class TelemetrySample
     public int? EnclosureTimeInUse { get; set; }
 
     // -- Prusa iX ----------------------------------------------------------------------------
-
     public float? HeatbreakTemperature { get; set; }
 
     public float? PsuTemperature { get; set; }

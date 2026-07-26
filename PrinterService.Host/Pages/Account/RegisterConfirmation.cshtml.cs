@@ -4,6 +4,7 @@
 
 using System.Text;
 using System.Threading.Tasks;
+
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -50,6 +51,7 @@ namespace PrinterService.Host.Pages.Account
             {
                 return RedirectToPage("/Index");
             }
+
             returnUrl = returnUrl ?? Url.Content("~/");
 
             PSUser user = await _userManager.FindByEmailAsync(email);
@@ -67,7 +69,6 @@ namespace PrinterService.Host.Pages.Account
             // with SMTP configured it would let anyone confirm an address they do not control, bypassing
             // confirmation entirely; without SMTP the account is already created confirmed, so the link
             // confirms something that needs no confirming.
-
             return Page();
         }
     }

@@ -3,10 +3,12 @@
 #nullable disable
 
 using System.Threading.Tasks;
+
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
+
 using PrinterService.Model.Entities;
 
 namespace PrinterService.Host.Pages.Account.Manage

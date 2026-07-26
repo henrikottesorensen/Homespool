@@ -14,7 +14,13 @@ public class PrinterNotFoundException : Exception
     {
     }
 
-    private PrinterNotFoundException(string message, bool _)
+    /// <param name="message">The complete exception message, used verbatim.</param>
+    /// <param name="literalMessage">
+    /// Ignored. It exists only to give this overload a signature distinct from
+    /// <see cref="PrinterNotFoundException(string)"/>, which treats its argument as a fingerprint and
+    /// builds a message around it. Callers pass <c>true</c> because that is what it asserts.
+    /// </param>
+    private PrinterNotFoundException(string message, bool literalMessage)
         : base(message)
     {
     }
@@ -29,12 +35,12 @@ public class PrinterNotFoundException : Exception
     /// the printer sends only a <c>Code</c> header.
     /// </remarks>
     public static PrinterNotFoundException ForUnknownRegistrationCode() =>
-        new("No printer registration matches the supplied registration code.", false);
+        new("No printer registration matches the supplied registration code.", literalMessage: true);
 
     /// <summary>No printer exists with the given id. Distinct from the fingerprint overloads above,
     /// which are for callers on the registration path that never have an id.</summary>
     public static PrinterNotFoundException ForId(int printerId) =>
-        new($"Printer {printerId} was not found.", false);
+        new($"Printer {printerId} was not found.", literalMessage: true);
 
     protected PrinterNotFoundException()
     {

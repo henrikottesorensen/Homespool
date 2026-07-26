@@ -47,6 +47,27 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
         }.ToString();
     }
 
+    /// <summary>
+    /// Polls rather than sleeping a fixed duration - the sweep runs on its own task, so there is no
+    /// single moment a test can await to know it has run.
+    /// </summary>
+    private static async Task<bool> WaitUntilAsync(Func<Task<bool>> predicate, TimeSpan timeout)
+    {
+        DateTime deadline = DateTime.UtcNow + timeout;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            if (await predicate())
+            {
+                return true;
+            }
+
+            await Task.Delay(20);
+        }
+
+        return false;
+    }
+
     public void Dispose()
     {
         if (_service is not null)
@@ -88,27 +109,6 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
 
     private PSDbContext NewVerificationContext() =>
         new(new DbContextOptionsBuilder<PSDbContext>().UseSqlite(_connectionString).Options);
-
-    /// <summary>
-    /// Polls rather than sleeping a fixed duration - the sweep runs on its own task, so there is no
-    /// single moment a test can await to know it has run.
-    /// </summary>
-    private static async Task<bool> WaitUntilAsync(Func<Task<bool>> predicate, TimeSpan timeout)
-    {
-        DateTime deadline = DateTime.UtcNow + timeout;
-
-        while (DateTime.UtcNow < deadline)
-        {
-            if (await predicate())
-            {
-                return true;
-            }
-
-            await Task.Delay(20);
-        }
-
-        return false;
-    }
 
     private async Task SeedPrinterAsync(int printerId = 1)
     {

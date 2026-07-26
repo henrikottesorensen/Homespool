@@ -60,7 +60,7 @@ public sealed class AddModelTests : IDisposable
     /// Builds an AddModel wired to real services, a signed-in user with a default team they can
     /// manage, and the fake PageContext plumbing unit-tested PageModels need.
     /// </summary>
-    private static async Task<(AddModel Model, PSUser User)> NewModelAsync(PSDbContext context, string publicHost = "printers.example.com")
+    private static async Task<(AddModel model, PSUser user)> NewModelAsync(PSDbContext context, string publicHost = "printers.example.com")
     {
         (UserManager<PSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 

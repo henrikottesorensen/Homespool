@@ -6,7 +6,7 @@ namespace PrinterService.Host.PrusaConnect;
 public class CodeGenerator
 {
     /// <summary>
-    /// Maximum code Length supported by Prusa Firmware
+    /// Maximum code Length supported by Prusa Firmware.
     /// </summary>
     private const int CodeLength = 24;
 

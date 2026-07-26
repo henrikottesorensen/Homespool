@@ -6,7 +6,7 @@ public class ChamberTelemetryDTO
 {
     [JsonPropertyName("temp")]
     public float Temperature { get; set; }
-    
+
     [JsonPropertyName("target_temp")]
     public int TargetTemperature { get; set; }
 

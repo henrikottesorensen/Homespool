@@ -33,6 +33,10 @@ public class MessageDispatcher
         _logger = logger;
     }
 
+    /// <summary>
+    /// Sorts one parsed message off the wire into its typed form: an <c>event</c> property means the
+    /// event path, anything else is telemetry. This is the only place that decision is made.
+    /// </summary>
     /// <returns>The typed message to post to the printer's actor. Null means "post nothing" - no
     /// production shape maps to it, but test spies use it to observe the stream without an actor.</returns>
     public virtual ConnectionMessage? Classify(int printerId, JsonElement root)

@@ -24,9 +24,9 @@ namespace PrinterService.Host.Test;
 /// </remarks>
 public sealed class FakeSmtpTransport : ISmtpTransport
 {
-    public (string Host, int Port, SecureSocketOptions Options)? ConnectCall { get; private set; }
+    public (string host, int port, SecureSocketOptions options)? ConnectCall { get; private set; }
 
-    public (string UserName, string Password)? AuthenticateCall { get; private set; }
+    public (string userName, string password)? AuthenticateCall { get; private set; }
 
     public MimeMessage? SentMessage { get; private set; }
 

@@ -82,7 +82,7 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
     /// hand-hashing a token straight into the database. The point of this suite is to prove the real
     /// handler chain accepts what it should, so the credentials it uses have to come from that chain.
     /// </summary>
-    private async Task<(string Fingerprint, string Token, int PrinterId)> EnrollAndClaimPrinterAsync(string fingerprint)
+    private async Task<(string fingerprint, string token, int printerId)> EnrollAndClaimPrinterAsync(string fingerprint)
     {
         using HttpClient anonymous = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
@@ -163,10 +163,10 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
 
         // Assert
         _dispatcher.Calls.Should().ContainSingle()
-            .Which.PrinterId.Should().Be(printerId,
+            .Which.printerId.Should().Be(printerId,
                 "the id resolved from the Fingerprint header at upgrade must be the one threaded to the handler");
 
-        _dispatcher.Calls[0].Root.GetProperty("state").GetString().Should().Be("IDLE",
+        _dispatcher.Calls[0].root.GetProperty("state").GetString().Should().Be("IDLE",
                 "the dispatcher must receive the message the printer actually sent, not just any message");
     }
 

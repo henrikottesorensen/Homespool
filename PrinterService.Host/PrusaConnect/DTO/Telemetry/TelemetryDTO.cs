@@ -11,7 +11,6 @@ namespace PrinterService.Host.PrusaConnect.DTO.Telemetry;
 public class TelemetryDTO
 {
     // --- Transfer block: flat at root, only present mid-transfer ---
-
     [JsonPropertyName("transfer_id")]
     public int? TransferId { get; set; }
 
@@ -25,7 +24,6 @@ public class TelemetryDTO
     public double? TransferProgress { get; set; }
 
     // --- Job block: flat at root, only present while a job exists ---
-
     [JsonPropertyName("job_id")]
     public int? JobId { get; set; }
 
@@ -51,7 +49,6 @@ public class TelemetryDTO
     public float? FilamentUsed { get; set; }
 
     // --- Full-mode fields ---
-
     [JsonPropertyName("temp_nozzle")]
     public float? NozzleTemperature { get; set; }
 
@@ -94,7 +91,6 @@ public class TelemetryDTO
     public SlotsTelemetryDTO? Slot { get; set; }
 
     // --- Prusa iX only, flat at root ---
-
     [JsonPropertyName("temp_heatbreak")]
     public float? HeatbreakTemperature { get; set; }
 
@@ -111,7 +107,6 @@ public class TelemetryDTO
     public string? RemoteFilamentSensorStatus { get; set; }
 
     // --- Always-present-ish tail fields ---
-
     [JsonPropertyName("command_id")]
     public uint? CommandId { get; set; }
 

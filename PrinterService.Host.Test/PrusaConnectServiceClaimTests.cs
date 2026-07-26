@@ -31,23 +31,6 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-claim-{Guid.NewGuid():N}.db");
 
-    private PSDbContext NewContext()
-    {
-        DbContextOptions<PSDbContext> options = new DbContextOptionsBuilder<PSDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
-
-        return new PSDbContext(options);
-    }
-
-    private async Task<PSDbContext> MigratedContextAsync()
-    {
-        PSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
-
-        return context;
-    }
-
     private static PrusaConnectService NewService(PSDbContext context, int lifetimeMinutes = 60) =>
         new(context,
             new CodeGenerator(),
@@ -64,6 +47,23 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         PrinterType = "1.3.5",
         Firmware = "6.4.0+11974",
     };
+
+    private PSDbContext NewContext()
+    {
+        DbContextOptions<PSDbContext> options = new DbContextOptionsBuilder<PSDbContext>()
+            .UseSqlite($"Data Source={_databasePath}")
+            .Options;
+
+        return new PSDbContext(options);
+    }
+
+    private async Task<PSDbContext> MigratedContextAsync()
+    {
+        PSDbContext context = NewContext();
+        await context.Database.MigrateAsync();
+
+        return context;
+    }
 
     public void Dispose()
     {

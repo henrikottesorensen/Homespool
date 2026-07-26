@@ -16,10 +16,10 @@ namespace PrinterService.Host.Test;
 /// </summary>
 public class HealthBannerTests
 {
-    private static HealthReport Report(params (string Name, HealthStatus Status, string? Description)[] entries) =>
+    private static HealthReport Report(params (string name, HealthStatus status, string? description)[] entries) =>
         new(entries.ToDictionary(
-                e => e.Name,
-                e => new HealthReportEntry(e.Status, e.Description, TimeSpan.Zero, exception: null, data: null)),
+                e => e.name,
+                e => new HealthReportEntry(e.status, e.description, TimeSpan.Zero, exception: null, data: null)),
             TimeSpan.Zero);
 
     [Fact]

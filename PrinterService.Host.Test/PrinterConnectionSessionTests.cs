@@ -54,6 +54,15 @@ public class PrinterConnectionSessionTests
 
     private IReadOnlyList<FakeLogRecord> LogRecords => _logger.Collector.GetSnapshot();
 
+    /// <summary>An actor whose mailbox drains the moment it is completed - the ordinary case.</summary>
+    private static IPrinterConnectionActor DrainedActor()
+    {
+        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+        actor.Completion.Returns(Task.CompletedTask);
+
+        return actor;
+    }
+
     private PrinterConnectionSession NewSession(WebSocketHandler handler, IPrinterConnectionActor actor) =>
         new(handler, _registry, new StubActorFactory(actor), _logger)
         {
@@ -64,7 +73,7 @@ public class PrinterConnectionSessionTests
     /// Runs a session whose read loop ends the way <paramref name="handlerEnd"/> says, over a pipe
     /// nothing ever writes to.
     /// </summary>
-    private (FakeConnection Connection, Func<Task> Run) Arrange(Func<Task> handlerEnd,
+    private (FakeConnection connection, Func<Task> run) Arrange(Func<Task> handlerEnd,
                                                                 IPrinterConnectionActor? actor = null)
     {
         FakeConnection connection = new(_registry);
@@ -72,15 +81,6 @@ public class PrinterConnectionSessionTests
         PrinterConnectionSession session = NewSession(new StubWebSocketHandler(handlerEnd), actor ?? DrainedActor());
 
         return (connection, () => session.RunAsync(PrinterId, connection, wire.Reader, CancellationToken.None));
-    }
-
-    /// <summary>An actor whose mailbox drains the moment it is completed - the ordinary case.</summary>
-    private static IPrinterConnectionActor DrainedActor()
-    {
-        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
-        actor.Completion.Returns(Task.CompletedTask);
-
-        return actor;
     }
 
     /// <summary>
@@ -177,6 +177,7 @@ public class PrinterConnectionSessionTests
     {
         // Arrange
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+
         // Never completes: the wedged-send case, which the timeout is the only thing bounding.
         actor.Completion.Returns(new TaskCompletionSource().Task);
 

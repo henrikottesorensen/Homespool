@@ -29,6 +29,9 @@ public sealed class InvitationServiceTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-invite-{Guid.NewGuid():N}.db");
 
+    private static InvitationService NewService(PSDbContext context, int lifetimeHours = 48) =>
+        new(context, new TokenService(), Options.Create(new InvitationOptions { LifetimeHours = lifetimeHours }));
+
     private PSDbContext NewContext()
     {
         DbContextOptions<PSDbContext> options = new DbContextOptionsBuilder<PSDbContext>()
@@ -45,9 +48,6 @@ public sealed class InvitationServiceTests : IDisposable
 
         return context;
     }
-
-    private static InvitationService NewService(PSDbContext context, int lifetimeHours = 48) =>
-        new(context, new TokenService(), Options.Create(new InvitationOptions { LifetimeHours = lifetimeHours }));
 
     public void Dispose()
     {

@@ -59,6 +59,14 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
 
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-fpid-{Guid.NewGuid():N}.db");
 
+    private static PrusaConnectService NewService(PSDbContext context) =>
+        new(context,
+            new CodeGenerator(),
+            new TokenService(),
+            new TeamService(context),
+            NullLogger<PrusaConnectService>.Instance,
+            Options.Create(new PrusaConnectOptions()));
+
     private PSDbContext NewContext()
     {
         DbContextOptions<PSDbContext> options = new DbContextOptionsBuilder<PSDbContext>()
@@ -75,14 +83,6 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
 
         return context;
     }
-
-    private static PrusaConnectService NewService(PSDbContext context) =>
-        new(context,
-            new CodeGenerator(),
-            new TokenService(),
-            new TeamService(context),
-            NullLogger<PrusaConnectService>.Instance,
-            Options.Create(new PrusaConnectOptions()));
 
     public void Dispose()
     {
@@ -163,7 +163,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     /// The code-exchange channel end to end: the printer registers, a user claims the code, the
     /// printer polls and receives its token.
     /// </summary>
-    private async Task<(Printer Printer, string Token)> EnrollByCodeExchangeAsync(PSDbContext context,
+    private async Task<(Printer printer, string token)> EnrollByCodeExchangeAsync(PSDbContext context,
                                                                                    int? teamId,
                                                                                    long userId)
     {
@@ -186,7 +186,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     /// The USB-key channel end to end: a user provisions, then the printer makes first contact and is
     /// promoted into the enrolled table.
     /// </summary>
-    private async Task<(Printer Printer, string Token)> EnrollByUsbKeyAsync(PSDbContext context,
+    private async Task<(Printer printer, string token)> EnrollByUsbKeyAsync(PSDbContext context,
                                                                             int? teamId,
                                                                             long userId)
     {

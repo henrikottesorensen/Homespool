@@ -62,10 +62,10 @@ public sealed class IndexModelTests : IDisposable
         }
     }
 
-    private static Task<(IndexModel Model, PSUser User, Team Team)> NewModelAsync(PSDbContext context) =>
+    private static Task<(IndexModel model, PSUser user, Team team)> NewModelAsync(PSDbContext context) =>
         NewModelAsync(context, connectionRegistry: null);
 
-    private static async Task<(IndexModel Model, PSUser User, Team Team)> NewModelAsync(PSDbContext context, PrinterConnectionRegistry? connectionRegistry)
+    private static async Task<(IndexModel model, PSUser user, Team team)> NewModelAsync(PSDbContext context, PrinterConnectionRegistry? connectionRegistry)
     {
         (UserManager<PSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 

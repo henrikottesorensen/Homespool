@@ -11,7 +11,7 @@ namespace PrinterService.Host.Test;
 
 public class TokenServiceTests
 {
-    private readonly TokenService  _tokenService = new();
+    private readonly TokenService _tokenService = new();
 
     /// <summary>
     /// A generated token is non-empty, exactly the printer length, and uses the URL-safe base64

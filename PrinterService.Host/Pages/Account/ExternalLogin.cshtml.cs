@@ -95,7 +95,7 @@ namespace PrinterService.Host.Pages.Account
             [EmailAddress]
             public string Email { get; set; }
         }
-        
+
         public IActionResult OnGet() => RedirectToPage("./Login");
 
         public IActionResult OnPost(string provider, string returnUrl = null)
@@ -114,6 +114,7 @@ namespace PrinterService.Host.Pages.Account
                 ErrorMessage = $"Error from external provider: {remoteError}";
                 return RedirectToPage("./Login", new { ReturnUrl = returnUrl });
             }
+
             ExternalLoginInfo info = await _signInManager.GetExternalLoginInfoAsync();
             if (info == null)
             {
@@ -128,6 +129,7 @@ namespace PrinterService.Host.Pages.Account
                 _logger.LogInformation("{Name} logged in with {LoginProvider} provider.", info.Principal.Identity.Name, info.LoginProvider);
                 return LocalRedirect(returnUrl);
             }
+
             if (result.IsLockedOut)
             {
                 return RedirectToPage("./Lockout");
@@ -141,9 +143,10 @@ namespace PrinterService.Host.Pages.Account
                 {
                     Input = new InputModel
                     {
-                        Email = info.Principal.FindFirstValue(JwtClaimTypes.Email)
+                        Email = info.Principal.FindFirstValue(JwtClaimTypes.Email),
                     };
                 }
+
                 return Page();
             }
         }
@@ -151,6 +154,7 @@ namespace PrinterService.Host.Pages.Account
         public async Task<IActionResult> OnPostConfirmationAsync(string returnUrl = null)
         {
             returnUrl = returnUrl ?? Url.Content("~/");
+
             // Get the information about the user from the external login provider
             ExternalLoginInfo info = await _signInManager.GetExternalLoginInfoAsync();
             if (info == null)
@@ -202,6 +206,7 @@ namespace PrinterService.Host.Pages.Account
                         return LocalRedirect(returnUrl);
                     }
                 }
+
                 foreach (IdentityError error in result.Errors)
                 {
                     ModelState.AddModelError(string.Empty, error.Description);
@@ -233,6 +238,7 @@ namespace PrinterService.Host.Pages.Account
             {
                 throw new NotSupportedException("The default UI requires a user store with email support.");
             }
+
             return (IUserEmailStore<PSUser>)_userStore;
         }
     }

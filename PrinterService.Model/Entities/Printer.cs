@@ -81,7 +81,7 @@ public class Printer
     /// poorer, staler copy. See AGENT-NOTES §13.
     /// </remarks>
     public string? Model { get; set; }
-    
+
     /// <summary>Set by the user in the UI. No wire source, so null until they set it.</summary>
     public string? Location { get; set; }
 
@@ -90,12 +90,12 @@ public class Printer
     /// first one arrives, and refreshed automatically when the printer is upgraded.
     /// </summary>
     public string? Firmware { get; set; }
-    
+
     public PrinterStatus Status { get; set; }
-    
+
     public string? LoadedMaterial { get; set; }
-    
+
     public DateTimeOffset CreatedAt { get; set; }
-    
+
     public DateTimeOffset UpdatedAt { get; set; }
 }

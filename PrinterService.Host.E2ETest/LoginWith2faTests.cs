@@ -48,6 +48,13 @@ public sealed class LoginWith2faTests : IAsyncLifetime, IDisposable
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-2fa-{Guid.NewGuid():N}.db");
     private PrinterServiceFactory _factory = null!;
 
+    private static FormUrlEncodedContent TwoFactorBody(string antiforgeryToken, string code) => new(new Dictionary<string, string>
+    {
+        ["__RequestVerificationToken"] = antiforgeryToken,
+        ["RememberMe"] = "false",
+        ["Input.TwoFactorCode"] = code,
+    });
+
     public Task InitializeAsync()
     {
         _factory = new PrinterServiceFactory($"Data Source={_databasePath}");
@@ -145,7 +152,7 @@ public sealed class LoginWith2faTests : IAsyncLifetime, IDisposable
     /// <c>/Account/LoginWith2fa</c>, returning the client (cookies intact - the pending-2FA identity
     /// is carried by a cookie, not anything in the URL) and the antiforgery token off that page.
     /// </summary>
-    private async Task<(HttpClient Client, string AntiforgeryToken)> SignInWithPasswordAsync()
+    private async Task<(HttpClient client, string antiforgeryToken)> SignInWithPasswordAsync()
     {
         HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
@@ -172,13 +179,6 @@ public sealed class LoginWith2faTests : IAsyncLifetime, IDisposable
 
         return (client, twoFactorAntiforgeryToken);
     }
-
-    private static FormUrlEncodedContent TwoFactorBody(string antiforgeryToken, string code) => new(new Dictionary<string, string>
-    {
-        ["__RequestVerificationToken"] = antiforgeryToken,
-        ["RememberMe"] = "false",
-        ["Input.TwoFactorCode"] = code,
-    });
 
     /// <summary>
     /// The full happy path: correct password redirects to the 2FA page rather than signing in, and a

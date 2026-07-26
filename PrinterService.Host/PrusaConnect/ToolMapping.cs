@@ -4,6 +4,7 @@ namespace PrinterService.Host.PrusaConnect;
 
 public class ToolMapping
 {
+    /// <summary>Which slot each tool is mapped to, as the printer reports it.</summary>
     /// <remarks>
     /// A rectangular array because that is the shape the wire uses - a tool-to-slot grid, not a
     /// ragged one - so CA1814's jagged-array advice does not apply.

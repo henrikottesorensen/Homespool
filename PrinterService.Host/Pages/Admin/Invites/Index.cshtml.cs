@@ -35,6 +35,17 @@ public class IndexModel : PageModel
     [TempData]
     public string? StatusMessage { get; set; }
 
+    /// <summary>Outstanding / Used / Expired, derived from the invite's timestamps.</summary>
+    public static string StatusOf(Invitation invitation)
+    {
+        if (invitation.UsedAt is not null)
+        {
+            return "Used";
+        }
+
+        return invitation.ExpiresAt <= DateTimeOffset.UtcNow ? "Expired" : "Outstanding";
+    }
+
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
         Invitations = await _invitationService.ListAsync(cancellationToken);
@@ -54,17 +65,6 @@ public class IndexModel : PageModel
         StatusMessage = "Invitation revoked.";
 
         return RedirectToPage();
-    }
-
-    /// <summary>Outstanding / Used / Expired, derived from the invite's timestamps.</summary>
-    public static string StatusOf(Invitation invitation)
-    {
-        if (invitation.UsedAt is not null)
-        {
-            return "Used";
-        }
-
-        return invitation.ExpiresAt <= DateTimeOffset.UtcNow ? "Expired" : "Outstanding";
     }
 
     /// <summary>Human label for the invite's target: an existing team, or a brand-new account.</summary>

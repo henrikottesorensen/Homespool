@@ -67,7 +67,6 @@ public sealed class MailpitClient : IDisposable
     //
     // CA1812 flags all four as "never instantiated": true at compile time, since
     // System.Text.Json only ever constructs them through reflection during deserialization.
-
     [SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes",
                      Justification = "Only ever constructed by System.Text.Json via reflection when deserializing Mailpit's API response.")]
     public sealed class MailpitMessageList

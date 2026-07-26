@@ -14,7 +14,7 @@ namespace PrinterService.Host.Test;
 /// </summary>
 public class PrinterClientHeadersTests
 {
-    private static HttpRequest RequestWith(params (string Name, string Value)[] headers)
+    private static HttpRequest RequestWith(params (string name, string value)[] headers)
     {
         DefaultHttpContext context = new();
 

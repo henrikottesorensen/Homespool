@@ -11,8 +11,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 using PrinterService.Data;
-using PrinterService.Host.PrusaConnect;
 using PrinterService.Host.Pages.Admin.Invites;
+using PrinterService.Host.PrusaConnect;
 using PrinterService.Host.Services;
 using PrinterService.Model.Entities;
 
@@ -25,6 +25,12 @@ namespace PrinterService.Host.Test;
 public sealed class IndexModelTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-invite-index-{Guid.NewGuid():N}.db");
+
+    private static InvitationService NewInvitationService(PSDbContext context) =>
+        new(context, new TokenService(), Options.Create(new InvitationOptions()));
+
+    private static IndexModel NewModel(PSDbContext context) =>
+        new(NewInvitationService(context), new TeamService(context));
 
     private PSDbContext NewContext()
     {
@@ -42,12 +48,6 @@ public sealed class IndexModelTests : IDisposable
 
         return context;
     }
-
-    private static InvitationService NewInvitationService(PSDbContext context) =>
-        new(context, new TokenService(), Options.Create(new InvitationOptions()));
-
-    private static IndexModel NewModel(PSDbContext context) =>
-        new(NewInvitationService(context), new TeamService(context));
 
     public void Dispose()
     {

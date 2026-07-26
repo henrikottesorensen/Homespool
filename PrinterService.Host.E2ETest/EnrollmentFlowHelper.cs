@@ -50,7 +50,7 @@ public static class EnrollmentFlowHelper
     /// server validates it through the genuine cookie-auth pipeline. Bypasses the Login page's
     /// antiforgery-protected form, which isn't what these suites are testing.
     /// </summary>
-    public static async Task<(PSUser User, HttpClient Client)> CreateAuthenticatedUserAsync(PrinterServiceFactory factory, string email)
+    public static async Task<(PSUser user, HttpClient client)> CreateAuthenticatedUserAsync(PrinterServiceFactory factory, string email)
     {
         using IServiceScope scope = factory.Services.CreateScope();
 

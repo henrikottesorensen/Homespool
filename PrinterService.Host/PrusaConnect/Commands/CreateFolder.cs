@@ -2,5 +2,5 @@ namespace PrinterService.Host.PrusaConnect.Commands;
 
 public class CreateFolder : ICommand
 {
-    public required string Path { set; get; }
+    public required string Path { get; set; }
 }

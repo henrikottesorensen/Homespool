@@ -235,6 +235,7 @@ namespace PrinterService.Host.Pages.Account
             {
                 throw new NotSupportedException("The default UI requires a user store with email support.");
             }
+
             return (IUserEmailStore<PSUser>)_userStore;
         }
     }

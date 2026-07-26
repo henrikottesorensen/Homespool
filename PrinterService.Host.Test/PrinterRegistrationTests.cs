@@ -11,17 +11,17 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
-using Serilog;
-using Serilog.Core;
-using Serilog.Events;
-using Serilog.Extensions.Logging;
-
+using PrinterService.Data;
 using PrinterService.Host.Exceptions;
 using PrinterService.Host.PrusaConnect;
 using PrinterService.Host.PrusaConnect.DTO;
 using PrinterService.Host.Services;
-using PrinterService.Data;
 using PrinterService.Model.Entities;
+
+using Serilog;
+using Serilog.Core;
+using Serilog.Events;
+using Serilog.Extensions.Logging;
 
 namespace PrinterService.Host.Test;
 
@@ -39,15 +39,6 @@ namespace PrinterService.Host.Test;
 public sealed class PrinterRegistrationTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-reg-{Guid.NewGuid():N}.db");
-
-    private PSDbContext NewContext()
-    {
-        DbContextOptions<PSDbContext> options = new DbContextOptionsBuilder<PSDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
-
-        return new PSDbContext(options);
-    }
 
     private static PrusaConnectService NewService(PSDbContext context,
                                                   int lifetimeMinutes = 60,
@@ -67,6 +58,15 @@ public sealed class PrinterRegistrationTests : IDisposable
         PrinterType = "1.3.5",
         Firmware = "6.4.0+11974",
     };
+
+    private PSDbContext NewContext()
+    {
+        DbContextOptions<PSDbContext> options = new DbContextOptionsBuilder<PSDbContext>()
+            .UseSqlite($"Data Source={_databasePath}")
+            .Options;
+
+        return new PSDbContext(options);
+    }
 
     public void Dispose()
     {

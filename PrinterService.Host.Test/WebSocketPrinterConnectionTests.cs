@@ -31,9 +31,9 @@ public class WebSocketPrinterConnectionTests
 
         // Assert
         socket.Sent.Should().ContainSingle();
-        socket.Sent[0].Frame.Should().Equal(frame);
-        socket.Sent[0].MessageType.Should().Be(WebSocketMessageType.Binary);
-        socket.Sent[0].EndOfMessage.Should().BeTrue();
+        socket.Sent[0].frame.Should().Equal(frame);
+        socket.Sent[0].messageType.Should().Be(WebSocketMessageType.Binary);
+        socket.Sent[0].endOfMessage.Should().BeTrue();
     }
 
     /// <summary>

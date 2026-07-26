@@ -15,75 +15,74 @@ using Microsoft.AspNetCore.WebUtilities;
 using PrinterService.Host.Services;
 using PrinterService.Model.Entities;
 
-namespace PrinterService.Host.Pages.Account
+namespace PrinterService.Host.Pages.Account;
+
+public class ForgotPasswordModel : PageModel
 {
-    public class ForgotPasswordModel : PageModel
+    private readonly UserManager<PSUser> _userManager;
+    private readonly IEmailSender _emailSender;
+
+    public ForgotPasswordModel(UserManager<PSUser> userManager, IEmailSender emailSender)
     {
-        private readonly UserManager<PSUser> _userManager;
-        private readonly IEmailSender _emailSender;
+        _userManager = userManager;
+        _emailSender = emailSender;
+    }
 
-        public ForgotPasswordModel(UserManager<PSUser> userManager, IEmailSender emailSender)
-        {
-            _userManager = userManager;
-            _emailSender = emailSender;
-        }
+    /// <summary>
+    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
+    ///     directly from your code. This API may change or be removed in future releases.
+    /// </summary>
+    [BindProperty]
+    public InputModel Input { get; set; }
 
+    /// <summary>
+    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
+    ///     directly from your code. This API may change or be removed in future releases.
+    /// </summary>
+    public class InputModel
+    {
         /// <summary>
         ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
         ///     directly from your code. This API may change or be removed in future releases.
         /// </summary>
-        [BindProperty]
-        public InputModel Input { get; set; }
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; }
+    }
 
-        /// <summary>
-        ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public class InputModel
+    public async Task<IActionResult> OnPostAsync()
+    {
+        if (ModelState.IsValid)
         {
-            /// <summary>
-            ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-            ///     directly from your code. This API may change or be removed in future releases.
-            /// </summary>
-            [Required]
-            [EmailAddress]
-            public string Email { get; set; }
-        }
-
-        public async Task<IActionResult> OnPostAsync()
-        {
-            if (ModelState.IsValid)
+            PSUser user = await _userManager.FindByEmailAsync(Input.Email);
+            if (user == null || !(await _userManager.IsEmailConfirmedAsync(user)))
             {
-                PSUser user = await _userManager.FindByEmailAsync(Input.Email);
-                if (user == null || !(await _userManager.IsEmailConfirmedAsync(user)))
-                {
-                    // Don't reveal that the user does not exist or is not confirmed
-                    return RedirectToPage("./ForgotPasswordConfirmation");
-                }
-
-                // For more information on how to enable account confirmation and password reset please
-                // visit https://go.microsoft.com/fwlink/?LinkID=532713
-                string code = await _userManager.GeneratePasswordResetTokenAsync(user);
-                code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
-                string callbackUrl = Url.Page(
-                    "/Account/ResetPassword",
-                    pageHandler: null,
-                    values: new { code },
-                    protocol: Request.Scheme);
-
-                // Result deliberately discarded. The send is only attempted when the account exists and is
-                // confirmed - see the early return above - so surfacing a failure here would distinguish
-                // "account exists, mail broke" from "no such account", which is exactly what that early return
-                // is written to hide. The failure is in the log and in the startup SMTP probe instead.
-                _ = await _emailSender.SendEmailAsync(
-                    Input.Email,
-                    "Reset Password",
-                    $"Please reset your password by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
-
+                // Don't reveal that the user does not exist or is not confirmed
                 return RedirectToPage("./ForgotPasswordConfirmation");
             }
 
-            return Page();
+            // For more information on how to enable account confirmation and password reset please
+            // visit https://go.microsoft.com/fwlink/?LinkID=532713
+            string code = await _userManager.GeneratePasswordResetTokenAsync(user);
+            code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+            string callbackUrl = Url.Page(
+                "/Account/ResetPassword",
+                pageHandler: null,
+                values: new { code },
+                protocol: Request.Scheme);
+
+            // Result deliberately discarded. The send is only attempted when the account exists and is
+            // confirmed - see the early return above - so surfacing a failure here would distinguish
+            // "account exists, mail broke" from "no such account", which is exactly what that early return
+            // is written to hide. The failure is in the log and in the startup SMTP probe instead.
+            _ = await _emailSender.SendEmailAsync(
+                Input.Email,
+                "Reset Password",
+                $"Please reset your password by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+
+            return RedirectToPage("./ForgotPasswordConfirmation");
         }
+
+        return Page();
     }
 }

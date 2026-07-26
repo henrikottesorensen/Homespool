@@ -1,21 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net10.0</TargetFramework>
-        <Nullable>enable</Nullable>
-        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-        <!-- Load-bearing: without it the compiler does not bind cref attributes at all, so
-             every XML doc diagnostic is silently absent - including the ones .editorconfig
-             asks for by name. Severity there filters diagnostics; only this produces them. -->
-        <GenerateDocumentationFile>true</GenerateDocumentationFile>
         <IsPackable>false</IsPackable>
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="StyleCop.Analyzers.Unstable" Version="1.2.0.556">
-          <PrivateAssets>all</PrivateAssets>
-          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-        </PackageReference>
         <PackageReference Include="AwesomeAssertions" Version="9.5.0" />
         <PackageReference Include="AwesomeAssertions.Analyzers" Version="9.0.8">
           <PrivateAssets>all</PrivateAssets>

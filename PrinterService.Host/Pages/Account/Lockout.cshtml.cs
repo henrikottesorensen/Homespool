@@ -4,12 +4,11 @@
 
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
-namespace PrinterService.Host.Pages.Account
+namespace PrinterService.Host.Pages.Account;
+
+public class LockoutModel : PageModel
 {
-    public class LockoutModel : PageModel
+    public void OnGet()
     {
-        public void OnGet()
-        {
-        }
     }
 }

@@ -16,78 +16,77 @@ using Microsoft.AspNetCore.WebUtilities;
 using PrinterService.Host.Services;
 using PrinterService.Model.Entities;
 
-namespace PrinterService.Host.Pages.Account
+namespace PrinterService.Host.Pages.Account;
+
+[AllowAnonymous]
+public class ResendEmailConfirmationModel : PageModel
 {
-    [AllowAnonymous]
-    public class ResendEmailConfirmationModel : PageModel
+    private readonly UserManager<PSUser> _userManager;
+    private readonly IEmailSender _emailSender;
+
+    public ResendEmailConfirmationModel(UserManager<PSUser> userManager, IEmailSender emailSender)
     {
-        private readonly UserManager<PSUser> _userManager;
-        private readonly IEmailSender _emailSender;
+        _userManager = userManager;
+        _emailSender = emailSender;
+    }
 
-        public ResendEmailConfirmationModel(UserManager<PSUser> userManager, IEmailSender emailSender)
-        {
-            _userManager = userManager;
-            _emailSender = emailSender;
-        }
+    /// <summary>
+    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
+    ///     directly from your code. This API may change or be removed in future releases.
+    /// </summary>
+    [BindProperty]
+    public InputModel Input { get; set; }
 
+    /// <summary>
+    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
+    ///     directly from your code. This API may change or be removed in future releases.
+    /// </summary>
+    public class InputModel
+    {
         /// <summary>
         ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
         ///     directly from your code. This API may change or be removed in future releases.
         /// </summary>
-        [BindProperty]
-        public InputModel Input { get; set; }
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; }
+    }
 
-        /// <summary>
-        ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public class InputModel
+    public void OnGet()
+    {
+    }
+
+    public async Task<IActionResult> OnPostAsync()
+    {
+        if (!ModelState.IsValid)
         {
-            /// <summary>
-            ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-            ///     directly from your code. This API may change or be removed in future releases.
-            /// </summary>
-            [Required]
-            [EmailAddress]
-            public string Email { get; set; }
+            return Page();
         }
 
-        public void OnGet()
+        PSUser user = await _userManager.FindByEmailAsync(Input.Email);
+        if (user == null)
         {
-        }
-
-        public async Task<IActionResult> OnPostAsync()
-        {
-            if (!ModelState.IsValid)
-            {
-                return Page();
-            }
-
-            PSUser user = await _userManager.FindByEmailAsync(Input.Email);
-            if (user == null)
-            {
-                ModelState.AddModelError(string.Empty, "Verification email sent. Please check your email.");
-                return Page();
-            }
-
-            string userId = await _userManager.GetUserIdAsync(user);
-            string code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-            code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
-            string callbackUrl = Url.Page(
-                "/Account/ConfirmEmail",
-                pageHandler: null,
-                values: new { userId = userId, code = code },
-                protocol: Request.Scheme);
-
-            // Result deliberately discarded, for the same reason as ForgotPassword: this is only reached when the
-            // account exists, so reporting a send failure would confirm its existence.
-            _ = await _emailSender.SendEmailAsync(
-                Input.Email,
-                "Confirm your email",
-                $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
-
             ModelState.AddModelError(string.Empty, "Verification email sent. Please check your email.");
             return Page();
         }
+
+        string userId = await _userManager.GetUserIdAsync(user);
+        string code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+        code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+        string callbackUrl = Url.Page(
+            "/Account/ConfirmEmail",
+            pageHandler: null,
+            values: new { userId = userId, code = code },
+            protocol: Request.Scheme);
+
+        // Result deliberately discarded, for the same reason as ForgotPassword: this is only reached when the
+        // account exists, so reporting a send failure would confirm its existence.
+        _ = await _emailSender.SendEmailAsync(
+            Input.Email,
+            "Confirm your email",
+            $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+
+        ModelState.AddModelError(string.Empty, "Verification email sent. Please check your email.");
+        return Page();
     }
 }

@@ -1,0 +1,41 @@
+<Project>
+
+    <!--
+        Settings every project in this repository shares. MSBuild imports this before each .csproj,
+        so a project can still override anything here.
+    -->
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+
+        <!-- Nothing here is allowed to accumulate warnings, so they are failures. -->
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+        <!--
+            Load-bearing: without it the compiler does not bind cref attributes at all, so every XML
+            doc diagnostic is silently absent - including the ones .editorconfig asks for by name.
+            Severity there filters diagnostics; only this produces them.
+        -->
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+        <!--
+            The same story one level up. .editorconfig configures ~50 IDE#### rules, several at error
+            severity - the var bans, using placement, file-scoped namespaces - and not one of them ran
+            until this was set, because severity is a filter and this is the switch.
+        -->
+        <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!--
+            Everywhere, so style is enforced uniformly rather than per-project. The "Unstable" package
+            is the one that understands modern C#: stable 1.1.118 predates file-scoped namespaces,
+            records and collection expressions.
+        -->
+        <PackageReference Include="StyleCop.Analyzers.Unstable" Version="1.2.0.556">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+    </ItemGroup>
+
+</Project>

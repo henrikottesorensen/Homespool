@@ -33,6 +33,11 @@ namespace Homespool.Host.IntegrationTest;
 /// Needs Mailpit on localhost:1025, same as its neighbours here.
 /// </para>
 /// </remarks>
+// Serialised, not parallel: all three classes share the one Mailpit container, and each clears the
+// mailbox in InitializeAsync. DELETE /api/v1/messages has no filter, so a class starting up wipes
+// whatever another class is mid-way through asserting on. Same pattern, and same reason, as
+// [Collection("WebApplicationFactory")] in the E2E project.
+[Collection("Mailpit")]
 public sealed class TelemetryAlertMailpitTests : IAsyncLifetime, IDisposable
 {
     private const string AdminAddress = "operator@printerservice.test";

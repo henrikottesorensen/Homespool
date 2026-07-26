@@ -27,6 +27,11 @@ namespace Homespool.Host.IntegrationTest;
 /// touching the OS trust store.
 /// </para>
 /// </remarks>
+// Serialised, not parallel: all three classes share the one Mailpit container, and each clears the
+// mailbox in InitializeAsync. DELETE /api/v1/messages has no filter, so a class starting up wipes
+// whatever another class is mid-way through asserting on. Same pattern, and same reason, as
+// [Collection("WebApplicationFactory")] in the E2E project.
+[Collection("Mailpit")]
 public sealed class SmtpEmailSenderStartTlsMailpitTests : IAsyncLifetime, IDisposable
 {
     private readonly MailpitClient _mailpit = new();

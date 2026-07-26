@@ -37,8 +37,14 @@ namespace Homespool.Host.PrusaConnect;
 /// briefly without losing anything, and one to tens of printers never come close to filling it.
 /// <see cref="BoundedChannelFullMode.DropOldest"/> per the accepted trade (AGENT-NOTES §5): the
 /// socket read loop must never block on a slow writer. Dropping is silent to the printer - it never
-/// discovers this happened - but not to an operator: every drop logs a warning via the channel's
-/// <c>itemDropped</c> callback, since losing data unnoticed would be worse than the drop itself.
+/// discovers this happened - but not to an operator: the first drop of an overload episode logs a
+/// warning immediately, and further drops are aggregated into at most one summary per
+/// <see cref="DropWarningInterval"/>, with the lifetime total always visible in
+/// <see cref="TelemetryHealthSnapshot.DroppedMessages"/>. Per-drop logging was the original design
+/// and it failed its first load test: 20 seconds of blast telemetry produced 722,973 warnings and a
+/// 1.0 GB log - a self-feeding cycle, since the log I/O steals exactly the capacity the writer is
+/// already short of, and it fires on the producer's thread, taxing the message path itself
+/// (notes/fake-printer-harness.md, the blast run).
 /// </para>
 /// <para>
 /// <b>One bad message must not stop persistence for every other printer.</b>
@@ -126,6 +132,13 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     private readonly StorageOptions _options;
     private readonly ILogger<TelemetryWriter> _logger;
 
+    // Both wire-rate log sites in this class go through a LogThrottle: drops are recorded on
+    // whatever producer thread hit the full channel, processing failures on the drain loop, and
+    // either can arrive at wire rate (the second is attacker-driveable - a stream of deliberately
+    // unprocessable messages). See LogThrottle's remarks for the blast-test numbers behind this.
+    private readonly Services.LogThrottle _dropWarnings = new(TimeSpan.FromSeconds(10));
+    private readonly Services.LogThrottle _processingFailureWarnings = new(TimeSpan.FromSeconds(10));
+
     // Written only by the drain loop, read by whatever calls Current (a health check, on a request
     // thread). Published as one immutable snapshot rather than read field by field - see PublishHealth.
     private volatile TelemetryHealthSnapshot _health = TelemetryHealthSnapshot.Initial;
@@ -151,13 +164,50 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         }, OnItemDropped);
     }
 
+    /// <summary>
+    /// Minimum spacing between drop warnings. An <c>init</c> test seam rather than configuration,
+    /// on the <c>ActorDrainTimeout</c> precedent: raising it loses nothing (counts aggregate into
+    /// the next summary), lowering it re-creates the log flood, so no operator value is
+    /// meaningfully right.
+    /// </summary>
+    public TimeSpan DropWarningInterval
+    {
+        get => _dropWarnings.Interval;
+        init => _dropWarnings.Interval = value;
+    }
+
+    /// <summary>Same seam for the per-item processing-failure Error. See <see cref="DropWarningInterval"/>.</summary>
+    public TimeSpan ProcessingFailureWarningInterval
+    {
+        get => _processingFailureWarnings.Interval;
+        init => _processingFailureWarnings.Interval = value;
+    }
+
     private void OnItemDropped(TelemetryWriteItem dropped)
     {
+        // Always counted (the health snapshot reports the exact total); logged at most once per
+        // DropWarningInterval, whatever the drop rate.
+        if (_dropWarnings.Record() is not { } window)
+        {
+            return;
+        }
+
         string kind = dropped is TelemetryWriteItem.EventItem ? "event" : "telemetry";
 
+        if (window.IsFirstOccurrence)
+        {
+            // The first drop of the process warns immediately and in full detail - an operator
+            // should hear about the writer falling behind the moment it starts, not a window later.
+            _logger.LogWarning(
+                "Dropped a {Kind} message for printer {PrinterId} (received {ReceivedAt:o}) - the write channel is full, meaning the writer cannot keep up with the incoming rate.",
+                kind, dropped.PrinterId, dropped.ReceivedAt);
+
+            return;
+        }
+
         _logger.LogWarning(
-            "Dropped a {Kind} message for printer {PrinterId} (received {ReceivedAt:o}) - the write channel is full, meaning the writer cannot keep up with the incoming rate.",
-            kind, dropped.PrinterId, dropped.ReceivedAt);
+            "Dropped {Count} message(s) in the last {ElapsedSeconds:F0}s - the write channel is still full. Latest was a {Kind} message for printer {PrinterId}; {TotalDropped} dropped since startup.",
+            window.Count, window.Elapsed.TotalSeconds, kind, dropped.PrinterId, window.Total);
     }
 
     public void Enqueue(int printerId, DateTimeOffset receivedAt, TelemetryDTO telemetry)
@@ -345,7 +395,23 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            _logger.LogError(e, "[{PrinterId}] dropping one message that failed to process.", item.PrinterId);
+            // Throttled like the drop warning, and for a sharper reason: a normal printer never
+            // sends unprocessable messages, but an attacker can stream them at wire rate - and this
+            // site logs a full stack trace per item, which is the heaviest log entry in the class.
+            // The skip semantics are untouched; only the logging is capped.
+            if (_processingFailureWarnings.Record() is { } window)
+            {
+                if (window.IsFirstOccurrence)
+                {
+                    _logger.LogError(e, "[{PrinterId}] dropping one message that failed to process.", item.PrinterId);
+                }
+                else
+                {
+                    _logger.LogError(e,
+                        "[{PrinterId}] dropping one message that failed to process - {Count} such failure(s) in the last {ElapsedSeconds:F0}s, {Total} since startup. The latest failure's exception is attached.",
+                        item.PrinterId, window.Count, window.Elapsed.TotalSeconds, window.Total);
+                }
+            }
         }
     }
 
@@ -550,7 +616,8 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// flush and half of the next.
     /// </remarks>
     private void PublishHealth(int pendingSamples, int pendingEvents) =>
-        _health = new TelemetryHealthSnapshot(_lastFlushAt, _consecutiveFlushFailures, pendingSamples, pendingEvents, _discardedEvents);
+        _health = new TelemetryHealthSnapshot(_lastFlushAt, _consecutiveFlushFailures, pendingSamples, pendingEvents,
+                                              _dropWarnings.Total, _discardedEvents);
 
     /// <summary>
     /// Writes everything buffered since the last flush in one transaction, then clears the buffers.

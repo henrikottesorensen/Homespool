@@ -716,6 +716,150 @@ public sealed class TelemetryWriterTests : IDisposable
     }
 
     /// <summary>
+    /// A sustained drop burst logs one warning, not one per drop. Per-drop logging failed its first
+    /// load test: 20 seconds of blast telemetry produced 722,973 warnings and a 1.0 GB log - and
+    /// because the callback runs on the producer's thread, the logging itself taxed the message path
+    /// that was already overloaded (notes/fake-printer-harness.md, the blast run).
+    /// </summary>
+    [Fact]
+    public void ADropBurstInsideTheWarningIntervalLogsExactlyOneWarning()
+    {
+        // Arrange - an unstarted writer never drains, so with batch size 1 (channel capacity 4)
+        // every enqueue past the fourth is deterministically a drop, on this thread, synchronously.
+        TelemetryWriter writer = CreateUnstartedWriter(DefaultOptions(batchSize: 1), TimeSpan.FromMinutes(10));
+
+        // Act - 4 fill the channel, then 100 drops inside one warning window.
+        for (int i = 0; i < 104; i++)
+        {
+            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
+        }
+
+        // Assert
+        LogRecords.Count(record => record.Level == LogLevel.Warning && record.Message.Contains("Dropped"))
+            .Should().Be(1, $"drops beyond the first must aggregate, not flood the log. Log:\n{LogDump()}");
+    }
+
+    /// <summary>
+    /// The first drop past the interval logs a summary carrying everything dropped since the last
+    /// warning - the aggregate is deferred, never lost.
+    /// </summary>
+    [Fact]
+    public async Task TheNextDropAfterTheIntervalLogsASummaryWithTheAccumulatedCount()
+    {
+        // Arrange
+        TelemetryWriter writer = CreateUnstartedWriter(DefaultOptions(batchSize: 1), TimeSpan.FromMilliseconds(100));
+
+        // Act - 10 drops: the first logs immediately, 9 accumulate silently.
+        for (int i = 0; i < 14; i++)
+        {
+            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
+        }
+
+        await Task.Delay(150);
+
+        // The 11th drop arrives past the interval and must carry the 9 silent ones with it.
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
+
+        // Assert
+        FakeLogRecord summary = LogRecords.Last(record => record.Level == LogLevel.Warning && record.Message.Contains("Dropped"));
+
+        summary.StructuredState.Should().Contain(kv => kv.Key == "Count" && kv.Value == "10",
+            $"the summary must carry the 9 accumulated drops plus its own. Log:\n{LogDump()}");
+        summary.StructuredState.Should().Contain(kv => kv.Key == "TotalDropped" && kv.Value == "11",
+            "the lifetime total rides along so a single log line orients an operator");
+        LogRecords.Count(record => record.Level == LogLevel.Warning && record.Message.Contains("Dropped"))
+            .Should().Be(2, "one immediate first warning, one summary - nothing per-drop in between");
+    }
+
+    /// <summary>
+    /// Every drop is counted in the health snapshot whatever the log throttling does - the log says
+    /// "it is happening", the snapshot says exactly how much, and the alerting machinery watches the
+    /// snapshot, not the log.
+    /// </summary>
+    [Fact]
+    public async Task EveryDropIsCountedInTheHealthSnapshotRegardlessOfLogging()
+    {
+        // Arrange - seed first so the drain loop can flush once started; drops happen before start.
+        await SeedPrinterAsync();
+        TelemetryWriter writer = CreateUnstartedWriter(DefaultOptions(batchSize: 1, flushIntervalSeconds: 0.05), TimeSpan.FromMinutes(10));
+
+        for (int i = 0; i < 29; i++)
+        {
+            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
+        }
+
+        // Act - start the drain loop so a health snapshot gets published.
+        await writer.StartAsync(CancellationToken.None);
+
+        bool counted = await WaitUntilAsync(
+            () => Task.FromResult(writer.Current.DroppedMessages == 25),
+            TimeSpan.FromSeconds(5));
+
+        // Assert - capacity 4, so exactly 25 of the 29 were dropped, and only 1 was ever logged.
+        counted.Should().BeTrue(
+            $"expected the snapshot to report exactly 25 drops, saw {writer.Current.DroppedMessages}. Log:\n{LogDump()}");
+        LogRecords.Count(record => record.Level == LogLevel.Warning && record.Message.Contains("Dropped"))
+            .Should().Be(1);
+    }
+
+    /// <summary>
+    /// A stream of unprocessable messages logs one throttled Error, not one per message. A normal
+    /// printer never sends these; an attacker can, at wire rate - and this is the heaviest log site
+    /// in the class, a full stack trace per entry. <c>"UNKNOWN"</c> is the probe because it is both
+    /// the attacker shape and a real possibility: the firmware's <c>to_str</c> default arm can
+    /// genuinely emit it, while <c>ParseWireState</c> rejects it.
+    /// </summary>
+    [Fact]
+    public async Task ABurstOfUnprocessableMessagesLogsOneErrorNotOnePerMessage()
+    {
+        // Arrange
+        await SeedPrinterAsync();
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 500, flushIntervalSeconds: 0.05));
+
+        // Act - five failures, then a good message behind them: once its sample lands, FIFO
+        // guarantees all five failures were consumed (and logged or throttled) before we count.
+        for (int i = 0; i < 5; i++)
+        {
+            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "UNKNOWN" });
+        }
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
+
+        bool flushed = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+
+            return await context.TelemetrySamples.CountAsync() == 1;
+        }, TimeSpan.FromSeconds(5));
+
+        // Assert
+        flushed.Should().BeTrue($"the good message must land, proving the bad ones were consumed. Log:\n{LogDump()}");
+        LogRecords.Count(record => record.Level == LogLevel.Error && record.Message.Contains("failed to process"))
+            .Should().Be(1, $"five failures inside one window must produce one Error, not five. Log:\n{LogDump()}");
+    }
+
+    /// <summary>
+    /// Builds a writer without starting its drain loop, so the channel never empties and drop
+    /// behaviour is deterministic: with batch size 1 the capacity is exactly 4, and every enqueue
+    /// past that is a synchronous drop on the calling thread.
+    /// </summary>
+    private TelemetryWriter CreateUnstartedWriter(StorageOptions options, TimeSpan dropWarningInterval)
+    {
+        ServiceCollection services = new();
+        services.AddDbContext<HSDbContext>(o => o.UseSqlite($"Data Source={_databasePath}"));
+        _provider = services.BuildServiceProvider();
+
+        _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
+                                       Options.Create(options),
+                                       _fakeLogger)
+        {
+            DropWarningInterval = dropWarningInterval,
+        };
+
+        return _writer;
+    }
+
+    /// <summary>
     /// A printer's live state must still persist correctly once whatever was blocking it resolves -
     /// not be stuck retrying a doomed <c>UPDATE</c> forever because an earlier, failed attempt is
     /// wrongly remembered as having already inserted the row.

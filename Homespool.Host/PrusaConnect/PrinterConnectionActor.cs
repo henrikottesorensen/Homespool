@@ -5,6 +5,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 
 using Homespool.Host.PrusaConnect.Commands;
+using Homespool.Host.Services;
 using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.PrusaConnect;
@@ -23,6 +24,12 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     private readonly ILogger<PrinterConnectionActor> _logger;
     private readonly TimeSpan _responseTimeout;
     private readonly Channel<ConnectionMessage> _mailbox;
+
+    // Per-message faults are logged through a throttle: no known message type throws today, but the
+    // catch-all guards against exactly the unforeseen, and if a crafted message ever finds a way to
+    // throw, an attacker could drive this Error-with-stack at wire rate. Per-connection, so the
+    // printer id in the summary stays meaningful. See LogThrottle's remarks for the numbers.
+    private readonly LogThrottle _faultWarnings = new(TimeSpan.FromSeconds(10));
 
     // Loop-only state. No locks, no Interlocked, no ConcurrentDictionary: only the loop touches
     // these, which is the entire point of the actor.
@@ -219,9 +226,18 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                     {
                         Fail(send.Completion, e);
                     }
-                    else
+                    else if (_faultWarnings.Record() is { } window)
                     {
-                        _logger.LogError(e, "[{PrinterId}] unhandled error processing {MessageType}", _printerId, message.GetType().Name);
+                        if (window.IsFirstOccurrence)
+                        {
+                            _logger.LogError(e, "[{PrinterId}] unhandled error processing {MessageType}", _printerId, message.GetType().Name);
+                        }
+                        else
+                        {
+                            _logger.LogError(e,
+                                "[{PrinterId}] unhandled error processing {MessageType} - {Count} such fault(s) in the last {ElapsedSeconds:F0}s, {Total} since this connection opened. The latest fault's exception is attached.",
+                                _printerId, message.GetType().Name, window.Count, window.Elapsed.TotalSeconds, window.Total);
+                        }
                     }
                 }
             }

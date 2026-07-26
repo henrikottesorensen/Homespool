@@ -17,6 +17,9 @@ namespace Homespool.Host.PrusaConnect;
 /// <param name="ConsecutiveFailures">Failed flushes since the last success. Reset by any success.</param>
 /// <param name="PendingSamples">Samples buffered and not yet written.</param>
 /// <param name="PendingEvents">Events buffered and not yet written.</param>
+/// <param name="DroppedMessages">Messages the bounded intake channel discarded (DropOldest) since
+/// this process started - the writer falling behind the wire rate. Data that never reached the
+/// buffers; the log reports it throttled, this total is the exact figure.</param>
 /// <param name="DiscardedEvents">Events dropped to cap memory since this process started. Any value
 /// above zero is data that no longer exists anywhere.</param>
 public sealed record TelemetryHealthSnapshot(
@@ -24,8 +27,9 @@ public sealed record TelemetryHealthSnapshot(
     int ConsecutiveFailures,
     int PendingSamples,
     int PendingEvents,
+    long DroppedMessages,
     long DiscardedEvents)
 {
     /// <summary>A writer that has done nothing yet - the state before the first flush attempt.</summary>
-    public static readonly TelemetryHealthSnapshot Initial = new(null, 0, 0, 0, 0);
+    public static readonly TelemetryHealthSnapshot Initial = new(null, 0, 0, 0, 0, 0);
 }

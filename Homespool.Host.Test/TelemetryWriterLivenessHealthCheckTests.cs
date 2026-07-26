@@ -65,6 +65,7 @@ public class TelemetryWriterLivenessHealthCheckTests
                 ConsecutiveFailures: 500,
                 PendingSamples: 10_000,
                 PendingEvents: 5_000,
+                DroppedMessages: 0,
                 DiscardedEvents: 900),
         };
 

@@ -53,6 +53,7 @@ public sealed class TelemetryPersistenceHealthCheck : IHealthCheck
             ["consecutiveFailures"] = snapshot.ConsecutiveFailures,
             ["pendingSamples"] = snapshot.PendingSamples,
             ["pendingEvents"] = snapshot.PendingEvents,
+            ["droppedMessages"] = snapshot.DroppedMessages,
             ["discardedEvents"] = snapshot.DiscardedEvents,
         };
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -11,7 +12,9 @@ using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.PrusaConnect.DTO.Telemetry;
 using Homespool.Model;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 using NSubstitute.Core;
 
@@ -65,9 +68,10 @@ public class PrinterConnectionActorTests
     }
 
     private static PrinterConnectionActor NewActor(IPrinterConnection connection, ITelemetrySink? sink = null,
-        TimeSpan? responseTimeout = null, int printerId = 1, TimeSpan? sendTimeout = null) =>
+        TimeSpan? responseTimeout = null, int printerId = 1, TimeSpan? sendTimeout = null,
+        ILogger<PrinterConnectionActor>? logger = null) =>
         new(printerId, connection, sink ?? Substitute.For<ITelemetrySink>(),
-            NullLogger<PrinterConnectionActor>.Instance, responseTimeout ?? TimeSpan.FromSeconds(10))
+            logger ?? NullLogger<PrinterConnectionActor>.Instance, responseTimeout ?? TimeSpan.FromSeconds(10))
         {
             SendTimeout = sendTimeout ?? TimeSpan.FromSeconds(30),
         };
@@ -598,6 +602,39 @@ public class PrinterConnectionActorTests
         // bearing half: completing the mailbox is what ends the read loop, which reaches the
         // teardown that disposes the socket - the only thing that can end the abandoned write.
         await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A stream of messages whose handling throws logs one throttled Error, not one per message.
+    /// The catch-all guards the unforeseen - no known message type throws today - but if a crafted
+    /// message ever finds a throwing path, an attacker could otherwise drive an Error-with-stack at
+    /// wire rate (the blast test's 1.0 GB log, in Error form).
+    /// </summary>
+    [Fact]
+    public async Task ABurstOfPoisonMessagesLogsOneThrottledError()
+    {
+        // Arrange - a sink that rejects everything stands in for whatever unforeseen throw the
+        // catch-all exists to survive.
+        ITelemetrySink sink = Substitute.For<ITelemetrySink>();
+        sink.WhenForAnyArgs(s => s.Enqueue(default, default, (TelemetryDTO)null!))
+            .Do(_ => throw new InvalidOperationException("poison"));
+
+        FakeLogger<PrinterConnectionActor> logger = new();
+        PrinterConnectionActor actor = NewActor(OpenConnection(), sink, logger: logger);
+
+        // Act
+        for (int i = 0; i < 5; i++)
+        {
+            await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }), CancellationToken.None);
+        }
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+
+        // Assert - the loop survived all five (Completion ran to the drain, not to a fault), and
+        // exactly one Error was written for the burst.
+        logger.Collector.GetSnapshot().Count(record => record.Level == LogLevel.Error)
+            .Should().Be(1, "five poison messages inside one throttle window must produce one Error, not five");
     }
 
     /// <summary>

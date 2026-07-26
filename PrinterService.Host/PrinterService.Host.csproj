@@ -4,11 +4,10 @@
         <TargetFramework>net10.0</TargetFramework>
         <Nullable>enable</Nullable>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-        <!-- Docs are load-bearing here, so they get checked: unresolvable crefs and
-             half-documented parameter lists are build failures, not silent rot. 1591
-             stays off deliberately - a missing comment is a choice, a wrong one isn't. -->
+        <!-- Load-bearing: without it the compiler does not bind cref attributes at all, so
+             every XML doc diagnostic is silently absent - including the ones .editorconfig
+             asks for by name. Severity there filters diagnostics; only this produces them. -->
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
-        <NoWarn>$(NoWarn);1591</NoWarn>
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     </PropertyGroup>
 

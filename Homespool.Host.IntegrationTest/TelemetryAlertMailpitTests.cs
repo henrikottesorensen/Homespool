@@ -171,13 +171,13 @@ public sealed class TelemetryAlertMailpitTests : IAsyncLifetime, IDisposable
 
         try
         {
-            // No "await the absence of a message" primitive exists, so this waits out a window that
-            // the unhealthy test above shows is ample for delivery.
-            await Task.Delay(TimeSpan.FromSeconds(2));
+            // Waits out a window the unhealthy test above shows is ample for delivery. Asserting on
+            // the answer rather than on an exception matters: expecting AwaitMessageAsync to throw
+            // looks equivalent, but any exception satisfies it - a Mailpit container that is simply
+            // down would make this pass while proving nothing.
+            bool nobodyWasEmailed = await _mailpit.NoMessageArrivesAsync(AdminAddress, TimeSpan.FromSeconds(2));
 
-            Func<Task> act = () => _mailpit.AwaitMessageAsync(AdminAddress);
-
-            await act.Should().ThrowAsync<Exception>("a healthy service has nothing to report");
+            nobodyWasEmailed.Should().BeTrue("a healthy service has nothing to report");
         }
         finally
         {

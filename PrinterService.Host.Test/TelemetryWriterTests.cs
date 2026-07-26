@@ -715,16 +715,6 @@ public sealed class TelemetryWriterTests : IDisposable
     }
 
     /// <summary>
-    /// The buffer safety net that guards against a different failure mode than the channel does:
-    /// not a brief lag, but a database that keeps refusing every flush.
-    /// </summary>
-    /// <remarks>
-    /// Deliberately does <b>not</b> seed a <see cref="Printer"/> row - every flush attempt then
-    /// fails on the same foreign-key violation <c>TelemetryIsPersistedOnceTheBatchSizeIsReached</c>
-    /// hit by accident while this suite was first being written, which makes "the database is stuck"
-    /// trivial to force deterministically rather than needing to fake I/O failure.
-    /// </remarks>
-    /// <summary>
     /// A printer's live state must still persist correctly once whatever was blocking it resolves -
     /// not be stuck retrying a doomed <c>UPDATE</c> forever because an earlier, failed attempt is
     /// wrongly remembered as having already inserted the row.
@@ -742,7 +732,8 @@ public sealed class TelemetryWriterTests : IDisposable
     public async Task APrinterStillPersistsAfterAnEarlierFlushFailedForIt()
     {
         // Arrange - no printer yet, so the first attempt(s) fail on the same foreign-key violation
-        // as the test above.
+        // PendingSamplesAreDiscardedRatherThanGrowingUnboundedWhileFlushesKeepFailing uses to force
+        // a stuck database.
         TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1, flushIntervalSeconds: 0.05));
 
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
@@ -799,6 +790,16 @@ public sealed class TelemetryWriterTests : IDisposable
         printer1.LoadedMaterial.Should().BeNull("a failed flush must not leave a partial write behind");
     }
 
+    /// <summary>
+    /// The buffer safety net that guards against a different failure mode than the channel does:
+    /// not a brief lag, but a database that keeps refusing every flush.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately does <b>not</b> seed a <see cref="Printer"/> row - every flush attempt then
+    /// fails on the same foreign-key violation <c>TelemetryIsPersistedOnceTheBatchSizeIsReached</c>
+    /// hit by accident while this suite was first being written, which makes "the database is stuck"
+    /// trivial to force deterministically rather than needing to fake I/O failure.
+    /// </remarks>
     [Fact]
     public async Task PendingSamplesAreDiscardedRatherThanGrowingUnboundedWhileFlushesKeepFailing()
     {

@@ -1,8 +1,8 @@
-# PrinterService
+# Homespool
 
 A self-hosted alternative to Prusa Connect. Your models stay on your own server.
 
-PrinterService speaks the Prusa Connect protocol, so a Prusa printer can be pointed at your
+Homespool speaks the Prusa Connect protocol, so a Prusa printer can be pointed at your
 own machine instead of `connect.prusa3d.com` — no cloud account, and nothing about what you
 print leaves your network.
 
@@ -78,13 +78,13 @@ Requires the **.NET 10 SDK** (developed against 10.0.302).
 
 ```bash
 dotnet tool restore
-cd PrinterService.Host && dotnet libman restore && cd ..
-dotnet run --project PrinterService.Host
+cd Homespool.Host && dotnet libman restore && cd ..
+dotnet run --project Homespool.Host
 ```
 
 `dotnet libman restore` fetches the client-side assets (Bootstrap, jQuery) into
 `wwwroot/lib/`, which are gitignored rather than committed. It **must be run from
-`PrinterService.Host/`** — LibMan resolves `libman.json` from the current directory. Rider,
+`Homespool.Host/`** — LibMan resolves `libman.json` from the current directory. Rider,
 Visual Studio and the Docker build do this automatically; only the CLI-from-repo-root case
 needs the `cd`.
 
@@ -219,7 +219,7 @@ unavailable.
 | `UseImplicitTls` | `false` | `true` for implicit TLS on 465. |
 | `DisableTls` | `false` | Explicit opt-in to no encryption. Never a silent fallback. |
 | `UserName` / `Password` | *(empty)* | SMTP AUTH. Empty username connects without authenticating. |
-| `FromAddress` / `FromName` | *(empty)* / `PrinterService` | Envelope sender; falls back to `UserName`. |
+| `FromAddress` / `FromName` | *(empty)* / `Homespool` | Envelope sender; falls back to `UserName`. |
 | `TimeoutSeconds` | `30` | |
 | `ProbeOnStartup` | `true` | Connects and authenticates once at boot purely to report a broken configuration early. Diagnostic only — it never changes behaviour. |
 
@@ -244,8 +244,8 @@ inert until telemetry persistence lands.
 ## Development
 
 ```bash
-dotnet build PrinterService.slnx
-dotnet test PrinterService.slnx
+dotnet build Homespool.slnx
+dotnet test Homespool.slnx
 ```
 
 In Development the OpenAPI document is served at `/openapi/v1.json` with a
@@ -257,9 +257,9 @@ Three, split by what they need to run:
 
 | Project | What it covers | Needs |
 |---|---|---|
-| `PrinterService.Host.Test` | Fast, self-contained unit and service tests. | nothing |
-| `PrinterService.Host.E2ETest` | Drives the real ASP.NET Core pipeline via `WebApplicationFactory` — routing, authentication, middleware. | nothing |
-| `PrinterService.Host.IntegrationTest` | Real SMTP delivery against a live mail server. | a running Mailpit container |
+| `Homespool.Host.Test` | Fast, self-contained unit and service tests. | nothing |
+| `Homespool.Host.E2ETest` | Drives the real ASP.NET Core pipeline via `WebApplicationFactory` — routing, authentication, middleware. | nothing |
+| `Homespool.Host.IntegrationTest` | Real SMTP delivery against a live mail server. | a running Mailpit container |
 
 The first two need nothing beyond `dotnet test`. The third assumes Mailpit is already
 running and **will fail if it is not** — that is what makes it an integration test rather
@@ -268,14 +268,14 @@ than a unit test with a fake:
 ```bash
 docker run -d -p 1025:1025 -p 8025:8025 axllent/mailpit
 # or, for the STARTTLS tests, which need a certificate:
-PrinterService.Host.IntegrationTest/start-mailpit-tls.sh
+Homespool.Host.IntegrationTest/start-mailpit-tls.sh
 ```
 
 ### Database
 
 SQLite via EF Core, one migration. The schema is regenerated in place rather than stacked
 while the project is pre-release, so **a local development database may not match after a
-pull** — delete `PrinterService.Host/PrinterService.Sqlite` and let it be recreated. Do not
+pull** — delete `Homespool.Host/Homespool.Sqlite` and let it be recreated. Do not
 do this to a database with data you care about.
 
 ---

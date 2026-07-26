@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".dockerignore" />
+    <File Path=".editorconfig" />
+    <File Path=".gitattributes" />
+    <File Path=".gitignore" />
+    <File Path="Directory.Build.props" />
+    <File Path="README.md" />
+    <File Path="compose.yaml" />
+  </Folder>
+  <Project Path="Homespool.Data/Homespool.Data.csproj" />
+  <Project Path="Homespool.Host.E2ETest/Homespool.Host.E2ETest.csproj" />
+  <Project Path="Homespool.Host.IntegrationTest/Homespool.Host.IntegrationTest.csproj" />
+  <Project Path="Homespool.Host.Test/Homespool.Host.Test.csproj" />
+  <Project Path="Homespool.Host/Homespool.Host.csproj" />
+  <Project Path="Homespool.Model/Homespool.Model.csproj" />
+</Solution>

@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="AwesomeAssertions" Version="9.5.0" />
+        <PackageReference Include="AwesomeAssertions.Analyzers" Version="9.0.8">
+          <PrivateAssets>all</PrivateAssets>
+          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <PackageReference Include="coverlet.collector" Version="10.0.1">
+          <PrivateAssets>all</PrivateAssets>
+          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <!-- Drives the real ASP.NET Core pipeline (routing, the setup gate, [Authorize], cookie auth)
+             through an in-memory TestServer rather than calling services directly - the one thing that
+             distinguishes every test in this project from Homespool.Host.Test. -->
+        <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.10" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+        <!-- Only used by LoginWith2faTests, to generate a valid RFC 6238 TOTP code for a seeded
+             account's authenticator secret. UserManager.GenerateTwoFactorTokenAsync does not work
+             for AuthenticatorTokenProvider - it's designed for validation only, since a real
+             authenticator app (not this server) generates the code in production. A standard library
+             is used deliberately rather than hand-rolling RFC 6238 in test code. -->
+        <PackageReference Include="Otp.NET" Version="1.4.1" />
+        <PackageReference Include="xunit" Version="2.9.3" />
+        <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+          <PrivateAssets>all</PrivateAssets>
+          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="Xunit" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Homespool.Host\Homespool.Host.csproj" />
+    </ItemGroup>
+
+</Project>

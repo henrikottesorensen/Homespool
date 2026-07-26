@@ -1,0 +1,856 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+
+using AwesomeAssertions;
+using Homespool.Data;
+using Homespool.Host.PrusaConnect;
+using Homespool.Host.PrusaConnect.DTO.EventMessages;
+using Homespool.Host.PrusaConnect.DTO.Telemetry;
+using Homespool.Model;
+using Homespool.Model.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
+using Microsoft.Extensions.Options;
+
+namespace Homespool.Host.Test;
+
+/// <summary>
+/// <see cref="TelemetryWriter"/> - the channel-fed background service that turns what
+/// <see cref="MessageDispatcher"/> parses into rows in <see cref="PrinterLiveState"/>,
+/// <see cref="TelemetrySample"/> and <see cref="PrinterEvent"/>.
+/// </summary>
+/// <remarks>
+/// Run against real SQLite, matching every other persistence-touching suite in this project - the
+/// upsert-vs-duplicate and new-slot-vs-existing-slot tests below specifically exercise EF's
+/// generated SQL, which an in-memory provider would not catch drifting from.
+/// </remarks>
+public sealed class TelemetryWriterTests : IDisposable
+{
+    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-telemetry-{Guid.NewGuid():N}.db");
+
+    // A capturing rather than null logger: a flush failure is caught and logged rather than crashing
+    // the writer (see TelemetryWriter.SafeFlushAsync), and a real logger here is what makes that
+    // visible while debugging a test failure instead of silently swallowed. FakeLogger keeps each
+    // entry structured, so the assertions below can check the level as a LogLevel and read the
+    // writer's own log properties, rather than substring-matching one flattened string.
+    private readonly FakeLogger<TelemetryWriter> _fakeLogger = new();
+
+    private ServiceProvider? _provider;
+    private TelemetryWriter? _writer;
+
+    /// <summary>Every entry logged so far, newest last.</summary>
+    private IReadOnlyList<FakeLogRecord> LogRecords => _fakeLogger.Collector.GetSnapshot();
+
+    /// <summary>
+    /// Polls rather than sleeping a fixed duration - the writer's drain loop runs on its own task, so
+    /// there is no single moment a test can await to know a flush has happened.
+    /// </summary>
+    private static async Task<bool> WaitUntilAsync(Func<Task<bool>> predicate, TimeSpan timeout)
+    {
+        DateTime deadline = DateTime.UtcNow + timeout;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            if (await predicate())
+            {
+                return true;
+            }
+
+            await Task.Delay(20);
+        }
+
+        return false;
+    }
+
+    private static async Task<int> SampleCountAsync(HSDbContext context) =>
+        await context.TelemetrySamples.CountAsync();
+
+    /// <summary>
+    /// Feeds one item at a time until <paramref name="observed"/> holds or the deadline passes.
+    /// </summary>
+    /// <remarks>
+    /// The buffer-cap tests run at <c>WriteBatchSize: 1</c>, where every drained item triggers its
+    /// own flush - and in those tests every flush fails, which costs an EF exception each time. How
+    /// many items reach the buffer during a fixed-size burst therefore depends on how fast the
+    /// machine throws exceptions, and the burst is over long before a cold drain loop has caught up.
+    /// Feeding until the effect appears removes that dependence; a fixed burst made these tests pass
+    /// only when the rest of the suite had already warmed EF and SQLite.
+    /// </remarks>
+    private static async Task<bool> FeedUntilAsync(Action enqueueOne, Func<bool> observed, TimeSpan timeout)
+    {
+        DateTime deadline = DateTime.UtcNow + timeout;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            if (observed())
+            {
+                return true;
+            }
+
+            enqueueOne();
+
+            // Paced, not blasted: the channel's own capacity is 4 here, so an unbroken burst would
+            // mostly self-inflict DropOldest before the reader ever sees it.
+            await Task.Delay(2);
+        }
+
+        return observed();
+    }
+
+    /// <summary>
+    /// A failed flush, which <see cref="TelemetryWriter"/> catches and logs rather than letting it
+    /// kill the service. Requires the exception to be attached, not just matching text - a flush
+    /// failure with no exception would mean the writer swallowed the cause.
+    /// </summary>
+    private static bool FlushFailed(FakeLogRecord record) =>
+        record.Level == LogLevel.Error
+        && record.Exception is not null
+        && record.Message.Contains("flush failed");
+
+    private static StorageOptions DefaultOptions(int batchSize = 500, double flushIntervalSeconds = 30, double throttleSeconds = 0) =>
+        new()
+        {
+            WriteBatchSize = batchSize,
+            WriteFlushIntervalSeconds = flushIntervalSeconds,
+            MinimumSampleIntervalSeconds = throttleSeconds,
+        };
+
+    /// <summary>
+    /// True once an entry matching <paramref name="predicate"/> has been logged. Polled, because the
+    /// writer logs from its own drain loop - there is no moment a test can await directly.
+    /// </summary>
+    private Task<bool> LoggedAsync(Func<FakeLogRecord, bool> predicate) =>
+        WaitUntilAsync(() => Task.FromResult(LogRecords.Any(predicate)), TimeSpan.FromSeconds(5));
+
+    /// <summary>Renders the captured log for a failure message.</summary>
+    private string LogDump() =>
+        string.Join('\n', LogRecords.Select(r => $"{r.Level}: {r.Message}"));
+
+    public void Dispose()
+    {
+        if (_writer is not null)
+        {
+            // BackgroundService.StopAsync is idempotent and safe even if the service was never
+            // started or already stopped, which some tests below do explicitly themselves.
+            _writer.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+            _writer.Dispose();
+        }
+
+        _provider?.Dispose();
+
+        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Builds and starts a writer against a fresh <see cref="IServiceScopeFactory"/> pointed at this
+    /// test's database file - the same relationship <c>Program.cs</c> wires in production, minus
+    /// everything else the host registers.
+    /// </summary>
+    private async Task<TelemetryWriter> StartWriterAsync(StorageOptions options)
+    {
+        ServiceCollection services = new();
+        services.AddDbContext<HSDbContext>(o => o.UseSqlite($"Data Source={_databasePath}"));
+        _provider = services.BuildServiceProvider();
+
+        await using (AsyncServiceScope migrationScope = _provider.CreateAsyncScope())
+        {
+            await migrationScope.ServiceProvider.GetRequiredService<HSDbContext>().Database.MigrateAsync();
+        }
+
+        _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
+                                       Options.Create(options),
+                                       _fakeLogger);
+
+        await _writer.StartAsync(CancellationToken.None);
+
+        return _writer;
+    }
+
+    private HSDbContext NewVerificationContext() =>
+        new(new DbContextOptionsBuilder<HSDbContext>().UseSqlite($"Data Source={_databasePath}").Options);
+
+    /// <summary>
+    /// <see cref="PrinterLiveState"/> and <see cref="TelemetrySample"/> both carry a required FK to
+    /// <see cref="Printer"/>, enforced by SQLite - the writer only ever sees a <c>printerId</c> the
+    /// auth handler already resolved against a real enrolled printer, so every test needs one to
+    /// exist before enqueuing anything.
+    /// </summary>
+    private async Task SeedPrinterAsync(int printerId = 1)
+    {
+        await using HSDbContext context = NewVerificationContext();
+        await context.Database.MigrateAsync();
+
+        Team team = new() { CreatedBy = 1, CreatedAt = DateTimeOffset.UtcNow };
+        context.Teams.Add(team);
+        await context.SaveChangesAsync();
+
+        context.Printers.Add(new Printer
+        {
+            Id = printerId,
+            Uuid = Guid.NewGuid(),
+            Type = PrinterType.PrusaConnect,
+            TeamId = team.Id,
+            Status = PrinterStatus.Unknown,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        });
+        await context.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Removes the printer row so any flush referencing it violates a foreign key, and returns an
+    /// action that puts it back - a failure that can be switched off, rather than a permanent one.
+    /// </summary>
+    private async Task<Func<Task>> BreakThePrinterRowAsync(int printerId = 1)
+    {
+        await using HSDbContext context = NewVerificationContext();
+
+        Printer printer = await context.Printers.SingleAsync(p => p.Id == printerId);
+        int teamId = printer.TeamId;
+        Guid uuid = printer.Uuid;
+
+        context.Printers.Remove(printer);
+        await context.SaveChangesAsync();
+
+        return async () =>
+        {
+            await using HSDbContext restore = NewVerificationContext();
+
+            restore.Printers.Add(new Printer
+            {
+                Id = printerId,
+                Uuid = uuid,
+                Type = PrinterType.PrusaConnect,
+                TeamId = teamId,
+                Status = PrinterStatus.Unknown,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+            });
+
+            await restore.SaveChangesAsync();
+        };
+    }
+
+    /// <summary>
+    /// A shutdown flush that fails once still saves the buffers on a later attempt.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The shutdown flush is the only one with nothing behind it. While running, a failure costs
+    /// nothing - the buffers are kept and the timer comes round again seconds later - but once the
+    /// drain loop has exited there is no next attempt, so a single transient failure took everything
+    /// buffered with it. Suspected cause of an intermittent failure of
+    /// <see cref="EveryQueuedItemSurvivesShutdownNotJustTheFirst"/>, which asserts 25 samples and
+    /// occasionally saw 0: exactly the shape of one lost flush.
+    /// </para>
+    /// <para>
+    /// The failure here is switched off part-way through rather than simulated with timing: the
+    /// printer row is removed so the flush violates a foreign key, then restored once the writer has
+    /// logged its first failed attempt. Two retries remain after that, so a slow restore costs
+    /// nothing.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AShutdownFlushThatFailsOnceStillSavesTheBuffer()
+    {
+        // Arrange - nothing flushes until shutdown: the batch size is unreachable and the timer long.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1000, flushIntervalSeconds: 30));
+        await SeedPrinterAsync();
+
+        for (int i = 0; i < 25; i++)
+        {
+            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow.AddSeconds(i), new TelemetryDTO { Status = "PRINTING", Progress = i });
+        }
+
+        Func<Task> restorePrinter = await BreakThePrinterRowAsync();
+
+        // Act - stop while the database will reject the write, then repair it mid-retry.
+        Task stopping = writer.StopAsync(CancellationToken.None);
+
+        bool firstAttemptFailed = await LoggedAsync(record =>
+            record.Level == LogLevel.Warning && record.Message.Contains("during shutdown"));
+
+        firstAttemptFailed.Should().BeTrue($"the arrangement depends on the first shutdown flush failing.\n{LogDump()}");
+
+        await restorePrinter();
+        await stopping.WaitAsync(TimeSpan.FromSeconds(30));
+
+        // Assert
+        await using HSDbContext verify = NewVerificationContext();
+
+        (await SampleCountAsync(verify)).Should().Be(25,
+            $"a transient failure at shutdown must not lose the buffer - there is no later flush to save it.\n{LogDump()}");
+    }
+
+    [Fact]
+    public async Task TelemetryIsPersistedOnceTheBatchSizeIsReached()
+    {
+        // Arrange - a large flush interval, so only the batch-size trigger could plausibly fire.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1, flushIntervalSeconds: 30));
+        await SeedPrinterAsync();
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
+
+        // Assert
+        bool flushed = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await SampleCountAsync(context) == 1;
+        }, TimeSpan.FromSeconds(5));
+
+        flushed.Should().BeTrue("a single item should flush immediately once it reaches the batch size");
+
+        await using HSDbContext verify = NewVerificationContext();
+        PrinterLiveState state = await verify.PrinterLiveStates.SingleAsync();
+        state.PrinterId.Should().Be(1);
+        state.Status.Should().Be(PrinterStatus.Printing);
+    }
+
+    [Fact]
+    public async Task TelemetryIsPersistedOnATimerEvenBelowTheBatchSize()
+    {
+        // Arrange - a batch size no single message could ever reach, and a short timer.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1000, flushIntervalSeconds: 0.1));
+        await SeedPrinterAsync();
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE" });
+
+        // Assert
+        bool flushed = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await SampleCountAsync(context) == 1;
+        }, TimeSpan.FromSeconds(5));
+
+        flushed.Should().BeTrue("the periodic timer must flush a low-traffic printer even though its batch never fills");
+    }
+
+    /// <summary>
+    /// Confirmed missing in practice before this was fixed: a real MK3.5 session's telemetry from an
+    /// active print vanished across a dev-server restart, because the only flush triggers were the
+    /// batch-size and timer thresholds - shutdown didn't necessarily hit either.
+    /// </summary>
+    [Fact]
+    public async Task TelemetryIsFlushedOnGracefulShutdownEvenBelowBothThresholds()
+    {
+        // Arrange - neither the batch-size nor the timer could plausibly fire before shutdown.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1000, flushIntervalSeconds: 30));
+        await SeedPrinterAsync();
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
+
+        // Act
+        await writer.StopAsync(CancellationToken.None);
+
+        // Assert
+        await using HSDbContext verify = NewVerificationContext();
+
+        // See TelemetryIsFlushedOnGracefulShutdownEvenBelowBothThresholds for why this is checked:
+        // a loop cancelled before it ever ran looks exactly like a clean stop from the call site.
+        writer.ExecuteTask!.Status.Should().Be(TaskStatus.RanToCompletion,
+            $"the drain loop must finish, not fault or cancel.\nLOG:\n{LogDump()}");
+
+        (await SampleCountAsync(verify)).Should().Be(1,
+            $"shutdown must flush whatever is buffered rather than discarding it.\nLOG:\n{LogDump()}");
+    }
+
+    /// <summary>
+    /// The stronger form of the test above: a backlog of both item kinds queued at the moment
+    /// shutdown begins, none of it near either flush threshold. Nothing may be dropped - not the
+    /// items already moved into the in-memory buffers, and not the ones still sitting unread in the
+    /// channel. Shutdown-by-completion makes that one property rather than two separate rescues.
+    /// </summary>
+    [Fact]
+    public async Task EveryQueuedItemSurvivesShutdownNotJustTheFirst()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1000, flushIntervalSeconds: 30));
+        await SeedPrinterAsync();
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+
+        for (int i = 0; i < 25; i++)
+        {
+            writer.Enqueue(printerId: 1, now.AddSeconds(i), new TelemetryDTO { Status = "PRINTING", Progress = i });
+        }
+
+        writer.Enqueue(printerId: 1, now.AddSeconds(25), new EventDTO
+        {
+            EventType = Events.Finished,
+            Status = "PRINTING",
+            CommandId = 42,
+        });
+
+        // Act
+        await writer.StopAsync(CancellationToken.None);
+
+        // Assert
+        await using HSDbContext verify = NewVerificationContext();
+
+        // BackgroundService.StopAsync waits via Task.WhenAny, which does not rethrow - so a drain
+        // loop that died of an exception is indistinguishable from a clean stop at the call site,
+        // and shows up only as missing rows. Checked explicitly, because that is exactly the shape
+        // this test failed in: zero rows and an empty log.
+        // See TelemetryIsFlushedOnGracefulShutdownEvenBelowBothThresholds for why this is checked:
+        // a loop cancelled before it ever ran looks exactly like a clean stop from the call site.
+        writer.ExecuteTask!.Status.Should().Be(TaskStatus.RanToCompletion,
+            $"the drain loop must finish, not fault or cancel.\nLOG:\n{LogDump()}");
+
+        LogRecords.Where(FlushFailed).Should().BeEmpty($"no flush should have failed.\n{LogDump()}");
+
+        (await SampleCountAsync(verify)).Should().Be(25, $"everything queued must survive the drain.\n{LogDump()}");
+        (await verify.PrinterEvents.CountAsync()).Should().Be(1, $"an event queued at shutdown is a discrete fact that never repeats.\n{LogDump()}");
+
+        // And the live state reflects the last message merged, not an arbitrary earlier one.
+        PrinterLiveState state = await verify.PrinterLiveStates.SingleAsync();
+        state.Progress.Should().Be(24);
+    }
+
+    [Fact]
+    public async Task TheThrottleSkipsTheSampleButTheLiveStateStillMerges()
+    {
+        // Arrange - a throttle window comfortably longer than the two messages are apart. The flush
+        // interval is short (unlike the batch-size test above): a throttled message never adds to
+        // pendingSamples, so its dirty live-state can only reach the database via the timer, not the
+        // batch-size trigger.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1, flushIntervalSeconds: 0.1, throttleSeconds: 3600));
+        await SeedPrinterAsync();
+
+        DateTimeOffset first = DateTimeOffset.UtcNow;
+
+        // Act
+        writer.Enqueue(printerId: 1, first, new TelemetryDTO { Status = "PRINTING", NozzleTemperature = 200 });
+
+        bool firstFlushed = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await SampleCountAsync(context) == 1;
+        }, TimeSpan.FromSeconds(5));
+
+        firstFlushed.Should().BeTrue();
+
+        writer.Enqueue(printerId: 1, first.AddSeconds(1), new TelemetryDTO { Status = "PRINTING", NozzleTemperature = 210 });
+
+        bool liveStateUpdated = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            PrinterLiveState? state = await context.PrinterLiveStates.SingleOrDefaultAsync();
+            return state?.NozzleTemperature == 210;
+        }, TimeSpan.FromSeconds(5));
+
+        // Assert
+        liveStateUpdated.Should().BeTrue("the live view must reflect the newest message regardless of the throttle");
+
+        await using HSDbContext verify = NewVerificationContext();
+        (await SampleCountAsync(verify)).Should().Be(1,
+            "the second message arrived inside the throttle window, so history density - not the live view - is what it skips");
+    }
+
+    [Fact]
+    public async Task AnEventIsPersistedWithItsRawPayload()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        using JsonDocument payload = JsonDocument.Parse("""{"firmware":"6.4.0"}""");
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = Events.Info,
+            Status = "IDLE",
+            JobId = 42,
+            Data = payload.RootElement.Clone(),
+        });
+
+        // Assert
+        bool flushed = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await context.PrinterEvents.AnyAsync();
+        }, TimeSpan.FromSeconds(5));
+
+        flushed.Should().BeTrue();
+
+        await using HSDbContext verify = NewVerificationContext();
+        PrinterEvent stored = await verify.PrinterEvents.SingleAsync();
+
+        stored.PrinterId.Should().Be(1);
+        stored.EventType.Should().Be(Events.Info);
+        stored.Status.Should().Be(PrinterStatus.Idle);
+        stored.JobId.Should().Be(42);
+        stored.Payload.Should().Be("""{"firmware":"6.4.0"}""");
+    }
+
+    [Fact]
+    public async Task LiveStateUpsertsInPlaceAcrossFlushesRatherThanDuplicating()
+    {
+        // Arrange - a small batch size so each Enqueue flushes on its own, giving two distinct
+        // flush cycles rather than one that happens to cover both messages.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE" });
+
+        await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await context.PrinterLiveStates.AnyAsync();
+        }, TimeSpan.FromSeconds(5));
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
+
+        bool secondFlushLanded = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            PrinterLiveState? state = await context.PrinterLiveStates.SingleOrDefaultAsync();
+            return state?.Status == PrinterStatus.Printing;
+        }, TimeSpan.FromSeconds(5));
+
+        // Assert
+        secondFlushLanded.Should().BeTrue();
+
+        await using HSDbContext verify = NewVerificationContext();
+        (await verify.PrinterLiveStates.CountAsync()).Should().Be(1,
+            "a second flush for a printer already in the database must update its row, not insert another");
+    }
+
+    /// <summary>
+    /// Regression guard for the exact failure the flush's explicit <c>EntityState</c> assignment
+    /// exists to prevent: a slot reported for the first time in a <em>later</em> flush, on a printer
+    /// whose live-state row already exists from an earlier one.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="PrinterLiveSlotState"/> keys on real (<see cref="Printer"/> id, slot number) values,
+    /// never a CLR-default surrogate key, so asking EF to infer Added-vs-Modified from the key alone
+    /// (what <c>DbSet.Update</c> does) cannot tell a brand-new slot from an existing one - guessing
+    /// Modified for a slot that has never been saved issues an <c>UPDATE</c> matching zero rows,
+    /// silently, rather than the <c>INSERT</c> the data needs.
+    /// </remarks>
+    [Fact]
+    public async Task ASlotReportedForTheFirstTimeInALaterFlushIsPersisted()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        using JsonDocument firstMessage = JsonDocument.Parse(
+            """{"state":"PRINTING","slot":{"active":1,"1":{"material":"PLA","temp":210,"fan_hotend":8000,"fan_print":6000}}}""");
+
+        TelemetryDTO first = firstMessage.RootElement.Deserialize<TelemetryDTO>()!;
+
+        // Act - first flush: printer and its one slot are both brand new.
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, first);
+
+        await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await context.PrinterLiveSlotStates.AnyAsync();
+        }, TimeSpan.FromSeconds(5));
+
+        using JsonDocument secondMessage = JsonDocument.Parse(
+            """{"state":"PRINTING","slot":{"active":2,"2":{"material":"PETG","temp":230,"fan_hotend":8000,"fan_print":6000}}}""");
+
+        TelemetryDTO second = secondMessage.RootElement.Deserialize<TelemetryDTO>()!;
+
+        // Act - second flush, against a printer that already has a live-state row: slot 2 has never
+        // been seen before now.
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, second);
+
+        bool secondSlotPersisted = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await context.PrinterLiveSlotStates.CountAsync() == 2;
+        }, TimeSpan.FromSeconds(5));
+
+        // Assert
+        secondSlotPersisted.Should().BeTrue("a slot seen for the first time in a later flush must be inserted, not silently dropped");
+
+        await using HSDbContext verify = NewVerificationContext();
+        (await verify.PrinterLiveSlotStates.Select(s => s.SlotNumber).OrderBy(n => n).ToListAsync())
+            .Should().Equal([1, 2], "the first flush's slot must survive, not be replaced by the second's");
+    }
+
+    [Fact]
+    public async Task LoadedMaterialIsPopulatedOnThePrinterRow()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING", Material = "PLA" });
+
+        // Assert
+        bool populated = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            Printer printer = await context.Printers.SingleAsync();
+            return printer.LoadedMaterial == "PLA";
+        }, TimeSpan.FromSeconds(5));
+
+        populated.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// A printer reporting a material keeps persisting across flushes, not just on the first one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The shape the single-flush test above cannot see. A printing printer sends a material on
+    /// <i>every</i> telemetry message, so <c>PendingLoadedMaterial</c> is set again on every drain and
+    /// the <c>Printer</c>-stub branch in <c>FlushAsync</c> runs on every flush. Attaching that stub
+    /// alongside the cached <see cref="PrinterLiveState"/> made EF fix up the relationship and write
+    /// the stub onto <c>entry.State.Printer</c> - a cached object that outlives the per-flush
+    /// context. The next flush then dragged that stale instance in with the live state and collided
+    /// with the fresh stub: "another instance with the same key value is already being tracked".
+    /// </para>
+    /// <para>
+    /// Permanent once it starts, and silent: <c>SafeFlushAsync</c> logs and keeps the buffers, so the
+    /// writer goes on accepting telemetry it can never persist. Observed against a real MK3.5 on
+    /// 2026-07-25 as 176 consecutive failures and 285 lost samples across one print.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task MaterialKeepsPersistingAcrossFlushesNotJustTheFirst()
+    {
+        // Arrange - batch size 1, so each message is its own flush.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        // Act - what a printing printer actually sends: every message carries the material.
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING", Material = "PLA" });
+
+        bool firstFlushed = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await SampleCountAsync(context) == 1;
+        }, TimeSpan.FromSeconds(5));
+
+        firstFlushed.Should().BeTrue("the first flush has never been the broken one");
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING", Material = "PETG" });
+
+        // Assert
+        bool secondFlushed = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await SampleCountAsync(context) == 2;
+        }, TimeSpan.FromSeconds(5));
+
+        secondFlushed.Should().BeTrue($"every later flush must persist too, not just the first.\n{LogDump()}");
+
+        LogRecords.Where(FlushFailed).Should().BeEmpty("no flush should have failed at all");
+
+        await using HSDbContext verify = NewVerificationContext();
+        Printer printer = await verify.Printers.SingleAsync();
+        printer.LoadedMaterial.Should().Be("PETG", "the later material must reach the printer row as well");
+    }
+
+    [Fact]
+    public async Task EnqueueNeverBlocksOrThrowsUnderHeavyLoad()
+    {
+        // Arrange - a tiny channel (batch size 1 -> capacity 4) and a slow-ish flush interval, so the
+        // channel is under real pressure rather than draining as fast as it fills.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1, flushIntervalSeconds: 1));
+        await SeedPrinterAsync();
+
+        // Act
+        Action enqueueMany = () =>
+        {
+            for (int i = 0; i < 5000; i++)
+            {
+                writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
+            }
+        };
+
+        // Assert - DropOldest must mean Enqueue is always a non-blocking TryWrite; this would hang
+        // (rather than throw) if that regressed to a blocking write against a full bounded channel.
+        Task enqueueTask = Task.Run(enqueueMany);
+        Task completed = await Task.WhenAny(enqueueTask, Task.Delay(TimeSpan.FromSeconds(5)));
+
+        completed.Should().Be(enqueueTask, "Enqueue must never block, even against a full channel");
+        enqueueTask.IsFaulted.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// A dropped item must not vanish unremarked - it is real telemetry a printer sent that the
+    /// server is choosing to discard, which is worth an operator's attention.
+    /// </summary>
+    [Fact]
+    public async Task DroppingAnItemLogsAWarning()
+    {
+        // Arrange - batch size 1 -> channel capacity 4, so a fast burst overflows it well before
+        // the single reader (which does real async work per item) can keep pace.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1, flushIntervalSeconds: 30));
+
+        // Act
+        for (int i = 0; i < 200; i++)
+        {
+            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
+        }
+
+        // Assert
+        bool warned = await LoggedAsync(record => record.Level == LogLevel.Warning
+                                              && record.Message.Contains("Dropped")
+                                              && record.StructuredState!.Any(kv => kv.Key == "PrinterId" && kv.Value == "1"));
+
+        warned.Should().BeTrue($"a full channel under DropOldest must be logged, not silently discarded. Log:\n{LogDump()}");
+    }
+
+    /// <summary>
+    /// A printer's live state must still persist correctly once whatever was blocking it resolves -
+    /// not be stuck retrying a doomed <c>UPDATE</c> forever because an earlier, failed attempt is
+    /// wrongly remembered as having already inserted the row.
+    /// </summary>
+    /// <remarks>
+    /// This is the bug <see cref="TelemetryWriter"/>'s private <c>FlushAsync</c> defers its
+    /// <c>ExistsInDatabase</c>/<c>ExistingSlotNumbers</c> update to prevent: marking either
+    /// before <c>SaveChangesAsync</c> is confirmed to have succeeded would leave the cache believing
+    /// a row exists the moment a save fails, so every later attempt chooses <c>Modified</c> over
+    /// <c>Added</c> and issues an <c>UPDATE</c> against a row that was never created - permanently,
+    /// for the rest of the process's life, even once the printer this test seeds partway through
+    /// makes the underlying cause go away.
+    /// </remarks>
+    [Fact]
+    public async Task APrinterStillPersistsAfterAnEarlierFlushFailedForIt()
+    {
+        // Arrange - no printer yet, so the first attempt(s) fail on the same foreign-key violation
+        // PendingSamplesAreDiscardedRatherThanGrowingUnboundedWhileFlushesKeepFailing uses to force
+        // a stuck database.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1, flushIntervalSeconds: 0.05));
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
+
+        bool firstAttemptFailed = await LoggedAsync(FlushFailed);
+
+        firstAttemptFailed.Should().BeTrue("the arrangement depends on at least one flush having failed already");
+
+        // Act - the underlying cause resolves; the row this printer needs now exists.
+        await SeedPrinterAsync();
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE" });
+
+        // Assert
+        bool persisted = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            PrinterLiveState? state = await context.PrinterLiveStates.SingleOrDefaultAsync();
+            return state?.Status == PrinterStatus.Idle;
+        }, TimeSpan.FromSeconds(5));
+
+        persisted.Should().BeTrue("a printer must not be stuck forever just because its very first flush attempt failed");
+    }
+
+    /// <summary>
+    /// A <c>Printer.LoadedMaterial</c> update must not survive a flush that otherwise failed - it
+    /// has to be genuinely part of the same transaction as everything else, not a separate
+    /// statement that already committed before the rest went wrong.
+    /// </summary>
+    /// <remarks>
+    /// Forces a real partial failure rather than trusting the code change alone: printer 1 exists
+    /// and is a perfectly valid target for the material update; printer 2 does not exist at all, so
+    /// its <see cref="PrinterLiveState"/> insert violates the foreign key. Batch size 2 guarantees
+    /// both land in the one <c>SaveChangesAsync</c> call this test needs to fail as a whole.
+    /// </remarks>
+    [Fact]
+    public async Task LoadedMaterialRollsBackWithTheRestOfTheFlushOnFailure()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 2, flushIntervalSeconds: 30));
+        await SeedPrinterAsync(printerId: 1);
+
+        // Act - both land in the same flush; printer 2's missing row makes the whole batch fail.
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING", Material = "PLA" });
+        writer.Enqueue(printerId: 2, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
+
+        bool failed = await LoggedAsync(FlushFailed);
+
+        failed.Should().BeTrue("the arrangement depends on printer 2's missing row making the batch fail");
+
+        // Assert
+        await using HSDbContext verify = NewVerificationContext();
+        Printer printer1 = await verify.Printers.SingleAsync(p => p.Id == 1);
+        printer1.LoadedMaterial.Should().BeNull("a failed flush must not leave a partial write behind");
+    }
+
+    /// <summary>
+    /// The buffer safety net that guards against a different failure mode than the channel does:
+    /// not a brief lag, but a database that keeps refusing every flush.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately does <b>not</b> seed a <see cref="Printer"/> row - every flush attempt then
+    /// fails on the same foreign-key violation <c>TelemetryIsPersistedOnceTheBatchSizeIsReached</c>
+    /// hit by accident while this suite was first being written, which makes "the database is stuck"
+    /// trivial to force deterministically rather than needing to fake I/O failure.
+    /// </remarks>
+    [Fact]
+    public async Task PendingSamplesAreDiscardedRatherThanGrowingUnboundedWhileFlushesKeepFailing()
+    {
+        // Arrange - batch size 1 and a short interval so many flush attempts happen quickly; no
+        // printer exists, so every single one fails and SafeFlushAsync leaves the buffer as is.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1, flushIntervalSeconds: 0.05));
+
+        // Act + Assert - feed until the cap (WriteBatchSize(1) * 20 = 20 here) is exceeded and the
+        // trim fires.
+        bool trimmed = await FeedUntilAsync(
+            () => writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }),
+            () => LogRecords.Any(record => record.Level == LogLevel.Warning
+                                        && record.Message.Contains("Discarded")
+                                        && record.StructuredState!.Any(kv => kv.Key == "Count")),
+            TimeSpan.FromSeconds(30));
+
+        trimmed.Should().BeTrue($"the pending sample buffer must not grow without bound while every flush keeps failing. Log:\n{LogDump()}");
+    }
+
+    /// <summary>
+    /// Events are capped too - far later than samples, but they are capped.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Events are deliberately the last thing to give way: a sample is one frame of a dense stream
+    /// and another arrives a second later, where an event happens once and is gone if dropped. But
+    /// "last" was previously "never", and an unbounded buffer in a service that runs for months ends
+    /// in the process dying - which loses every event it was protecting, plus the samples. A policy
+    /// that sheds the oldest events loses strictly less than one that eventually loses all of them.
+    /// </para>
+    /// <para>
+    /// Logged at Error rather than the sample trim's Warning: thinning history is degradation,
+    /// discarding an event is data loss.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task PendingEventsAreDiscardedRatherThanGrowingUnboundedWhileFlushesKeepFailing()
+    {
+        // Arrange - as above: no printer exists, so every flush fails and the buffer is left as is.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1, flushIntervalSeconds: 0.05));
+
+        // Act + Assert - feed until the event cap (WriteBatchSize(1) * 10 = 10 here) is exceeded.
+        bool trimmed = await FeedUntilAsync(
+            () => writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO { Status = "IDLE", EventType = Events.Info }),
+            () => LogRecords.Any(record => record.Level == LogLevel.Error
+                                        && record.Message.Contains("Discarded")
+                                        && record.Message.Contains("event")
+                                        && record.StructuredState!.Any(kv => kv.Key == "Count")),
+            TimeSpan.FromSeconds(30));
+
+        trimmed.Should().BeTrue($"the pending event buffer must have a ceiling too, even a distant one. Log:\n{LogDump()}");
+    }
+}

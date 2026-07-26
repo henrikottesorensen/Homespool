@@ -19,7 +19,7 @@
 # bytes we do not own, so they are left exactly as shipped rather than
 # normalised. (Note: .gitignore lists this directory, but some files under it
 # were committed before that entry existed and are still tracked.)
-PrinterService.Host/wwwroot/lib/** -text
+Homespool.Host/wwwroot/lib/** -text
 
 # Binary.
 *.ico binary

@@ -1,0 +1,10 @@
+@model IReadOnlyList<Homespool.Host.Services.HealthBannerItem>
+
+@* Renders nothing at all when healthy - no empty container, no reserved space, so a healthy service
+   looks exactly as it did before this existed. *@
+@foreach (Homespool.Host.Services.HealthBannerItem item in Model)
+{
+    <div class="alert @item.CssClass" role="alert">
+        <strong>Service problem:</strong> @item.Message
+    </div>
+}

@@ -3,7 +3,7 @@ services:
     image: printerservice
     build:
       context: .
-      dockerfile: PrinterService.Host/Dockerfile
+      dockerfile: Homespool.Host/Dockerfile
 
     ports:
       # The container listens on 8080 (ASPNETCORE_HTTP_PORTS, baked into the base image - see
@@ -14,7 +14,7 @@ services:
     environment:
       # Point SQLite at the mounted volume. appsettings.json keeps a relative path so that
       # running outside a container still works.
-      ConnectionStrings__PrinterServiceDb: "Data Source=/app/data/PrinterService.Sqlite"
+      ConnectionStrings__HomespoolDb: "Data Source=/app/data/Homespool.Sqlite"
 
       # What a printer is told to dial for enrollment - not necessarily this container's own
       # listen port or protocol. If a reverse proxy (Caddy, nginx, Traefik) terminates TLS in
@@ -38,7 +38,7 @@ services:
       # local .env file (gitignored) or export it in the shell before running compose.
       Smtp__Password: "${SMTP_PASSWORD:-}"
       Smtp__FromAddress: "${SMTP_FROM_ADDRESS:-}"
-      Smtp__FromName: "${SMTP_FROM_NAME:-PrinterService}"
+      Smtp__FromName: "${SMTP_FROM_NAME:-Homespool}"
       # Connects and authenticates once at startup purely to report a broken configuration.
       # Set false if the mail server lives in this stack and starts after this container.
       Smtp__ProbeOnStartup: "${SMTP_PROBE_ON_STARTUP:-true}"

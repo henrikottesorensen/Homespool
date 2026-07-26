@@ -574,5 +574,5 @@ dotnet_diagnostic.VSTHRD200.severity = suggestion
 # what it is - this directory answers to the framework - and so a plain helper class added here
 # is covered by the same reasoning. The rule stays on everywhere else; 7 real sites remain, none
 # of them under Pages.
-[PrinterService.Host/Pages/**.cs]
+[Homespool.Host/Pages/**.cs]
 dotnet_diagnostic.SA1649.severity = none

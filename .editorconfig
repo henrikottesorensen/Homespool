@@ -530,7 +530,12 @@ dotnet_diagnostic.SA1309.severity = none
 dotnet_diagnostic.SA1310.severity = warning
 dotnet_diagnostic.SA1401.severity = warning
 dotnet_diagnostic.SA1402.severity = suggestion
-dotnet_diagnostic.SA1412.severity = warning
+# Inverted for this project, and enforced by SourceFileEncodingTests instead: UTF-8 has no
+# byte order, so the mark encodes nothing and breaks tools that read a file's first bytes.
+# The .NET 6-era Docker failure this rule was added for does not reproduce - retested
+# 2026-07-26 on 6.0/8.0/10.0 in Linux containers, default locale and LANG=C: BOM-less valid
+# UTF-8 decodes correctly on all of them. StyleCop ships no inverse rule, hence the test.
+dotnet_diagnostic.SA1412.severity = none
 dotnet_diagnostic.SA1413.severity = warning
 dotnet_diagnostic.SA1600.severity = none
 dotnet_diagnostic.SA1601.severity = none

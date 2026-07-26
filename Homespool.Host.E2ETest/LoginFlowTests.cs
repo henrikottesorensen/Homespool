@@ -206,4 +206,60 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
         postResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, postResponse).Should().BeFalse();
     }
+
+    /// <summary>
+    /// Repeated wrong passwords eventually lock the account, rather than letting an attacker guess
+    /// forever. Identity's lockout has always existed but was unreachable: the scaffolded
+    /// <c>PasswordSignInAsync</c> call passed <c>lockoutOnFailure: false</c>, so
+    /// <c>LoginModel</c>'s <c>IsLockedOut</c> branch and the whole <c>Lockout</c> page were dead code.
+    /// </summary>
+    /// <remarks>
+    /// This is the internet-exposure case: people expose self-hosted printer servers whatever the
+    /// documentation advises (OctoPrint's mass exposure is the precedent), and there is no rate
+    /// limiting on the login form - so without lockout a known email plus Identity's 6-character
+    /// minimum password was an unbounded guessing target. Loops past Identity's default
+    /// MaxFailedAccessAttempts with headroom rather than hardcoding 5, so a changed default does not
+    /// silently make this test meaningless.
+    /// </remarks>
+    [Fact]
+    public async Task RepeatedWrongPasswordsLockTheAccountOut()
+    {
+        // Arrange
+        await CreateUserAsync("locked@example.com", confirmed: true);
+
+        using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        HttpResponseMessage? lastResponse = null;
+
+        // Act - wrong passwords until the lockout redirect appears.
+        for (int attempt = 0; attempt < 10; attempt++)
+        {
+            HttpResponseMessage getResponse = await client.GetAsync("/Account/Login");
+            string antiforgeryToken = AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync());
+
+            using FormUrlEncodedContent body = LoginBody(antiforgeryToken, "locked@example.com", "wrong-password");
+            lastResponse = await client.PostAsync("/Account/Login", body);
+
+            if (lastResponse.StatusCode == HttpStatusCode.Redirect
+                && lastResponse.Headers.Location?.OriginalString.Contains("Lockout", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                break;
+            }
+        }
+
+        // Assert
+        lastResponse!.StatusCode.Should().Be(HttpStatusCode.Redirect,
+            "enough wrong passwords must stop being merely rejected and lock the account");
+        lastResponse.Headers.Location!.OriginalString.Should().Contain("Lockout");
+
+        // And the lockout is real, not just a redirect: the *correct* password is refused too.
+        HttpResponseMessage correctGet = await client.GetAsync("/Account/Login");
+        string correctToken = AntiforgeryTestHelper.ExtractToken(await correctGet.Content.ReadAsStringAsync());
+        using FormUrlEncodedContent correctBody = LoginBody(correctToken, "locked@example.com", Password);
+
+        HttpResponseMessage correctResponse = await client.PostAsync("/Account/Login", correctBody);
+
+        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, correctResponse)
+            .Should().BeFalse("a locked-out account must not sign in even with the right password");
+    }
 }

@@ -77,12 +77,22 @@ public class LoginModel : PageModel
 
         if (ModelState.IsValid)
         {
-            // This does not count login failures towards account lockout.
-            // To enable password failures to trigger account lockout, set lockoutOnFailure: true
+            // lockoutOnFailure: true, changed from the scaffold's default of false (whose comment
+            // said "To enable password failures to trigger account lockout, set lockoutOnFailure:
+            // true"). Without it a wrong password costs an attacker nothing, and this application has
+            // no rate limiting on the login form - so an internet-reachable deployment offered
+            // unlimited password guessing against a known account, forever. People do expose
+            // self-hosted printer servers to the internet whatever the advice says (OctoPrint's mass
+            // exposure is the precedent), so that is the threat model to design for.
+            //
+            // Identity's defaults apply: 5 failures, then a 5-minute lockout. The tradeoff accepted
+            // deliberately is that someone who knows an account's email can keep it locked out; a
+            // self-healing five-minute lockout is much the lesser evil, and it is the same tradeoff
+            // already live on the 2FA path, which has always counted toward lockout.
             Microsoft.AspNetCore.Identity.SignInResult result = await _signInManager.PasswordSignInAsync(Input.Email,
                                                                            Input.Password,
                                                                            Input.RememberMe,
-                                                                           lockoutOnFailure: false);
+                                                                           lockoutOnFailure: true);
             if (result.Succeeded)
             {
                 _logger.LogInformation("User logged in.");

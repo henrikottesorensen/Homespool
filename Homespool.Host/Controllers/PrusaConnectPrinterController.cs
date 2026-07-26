@@ -14,6 +14,7 @@ using Homespool.Host.PrusaConnect.DTO;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -40,6 +41,7 @@ public class PrusaConnectPrinterController : ControllerBase
     }
 
     [Route("/p/ws")]
+    [EnableRateLimiting(Program.PrinterSocketRateLimitPolicy)]
     public async Task<ActionResult> ConnectWebSocket()
     {
         try
@@ -111,6 +113,7 @@ public class PrusaConnectPrinterController : ControllerBase
     }
 
     [AllowAnonymous]
+    [EnableRateLimiting(Program.PrinterRegistrationRateLimitPolicy)]
     [HttpPost]
     [Route("/p/register")]
     public async Task<ActionResult<string>> RegisterPrinter([FromBody] RegisterPrinterRequestDTO printer)
@@ -141,6 +144,7 @@ public class PrusaConnectPrinterController : ControllerBase
     }
 
     [AllowAnonymous]
+    [EnableRateLimiting(Program.PrinterRegistrationRateLimitPolicy)]
     [HttpGet]
     [Route("/p/register")]
     public async Task<ActionResult<string>> GetPrinterRegistrationStatus()

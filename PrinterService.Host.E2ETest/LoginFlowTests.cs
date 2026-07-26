@@ -72,7 +72,7 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
     /// Seeds an account directly via <see cref="UserManager{TUser}"/>, bypassing Register's own
     /// (separately untested-at-HTTP-level, out of scope here) form - this suite exists to verify
     /// Login, not account creation. <paramref name="confirmed"/> controls
-    /// <see cref="PSUser.EmailConfirmed"/> directly, rather than going through
+    /// <see cref="IdentityUser{TKey}.EmailConfirmed"/> directly, rather than going through
     /// <c>AccountConfirmationPolicy</c>, so the unconfirmed-account test doesn't depend on the test
     /// factory's SMTP configuration to produce an unconfirmed account.
     /// </summary>

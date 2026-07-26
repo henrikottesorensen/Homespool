@@ -35,7 +35,8 @@ public sealed class AccountConfirmationPolicy
     }
 
     /// <summary>
-    /// Sets <see cref="PSUser.EmailConfirmed"/> on a not-yet-created account. Confirmed at creation
+    /// Sets <see cref="Microsoft.AspNetCore.Identity.IdentityUser{TKey}.EmailConfirmed"/> on a
+    /// not-yet-created account. Confirmed at creation
     /// exactly when SMTP is absent - no confirmation mail can arrive then, and the account would
     /// otherwise be permanently unable to sign in with <c>RequireConfirmedAccount</c> on. The policy
     /// itself stays on either way; the decision is per account, never a policy flip, so configuring

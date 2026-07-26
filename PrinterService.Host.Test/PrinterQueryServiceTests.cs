@@ -244,7 +244,8 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
     /// <summary>
     /// A caller with no membership on the printer's team at all gets null, not the access-denied
-    /// exception - the same "doesn't leak existence" rule <see cref="GetPrinterForUserAsync"/> follows.
+    /// exception - the same "doesn't leak existence" rule
+    /// <see cref="PrinterQueryService.GetPrinterForUserAsync"/> follows.
     /// </summary>
     [Fact]
     public async Task UpdatePrinterAsyncReturnsNullWhenTheCallerIsNotOnItsTeam()

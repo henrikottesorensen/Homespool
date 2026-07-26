@@ -28,6 +28,13 @@ public abstract record ConnectionMessage
 /// <see cref="CommandSendOutcome.AlreadyInFlight"/>/<see cref="CommandSendOutcome.NotConnected"/>/
 /// <see cref="CommandSendOutcome.TimedOut"/> without one.
 /// </summary>
+/// <param name="Command">The command to write to the printer, and the wire name the reply is
+/// correlated against.</param>
+/// <param name="Completion">
+/// How the loop answers the waiting caller - the printer's correlated reply, or a
+/// <see cref="CommandSendOutcome"/> that never reached the wire. Completed exactly once, by the
+/// loop, including while draining.
+/// </param>
 /// <param name="CallerToken">
 /// The requesting caller's own token, carried so the loop can tell whether anyone is still waiting
 /// by the time it reaches this message. Posting and executing are separate steps here, so cancelling

@@ -13,7 +13,7 @@ namespace PrinterService.Host.Services;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is the counterpart to <see cref="SetupModel"/> 404ing once setup is complete: that stops
+/// This is the counterpart to <see cref="Pages.SetupModel"/> 404ing once setup is complete: that stops
 /// <c>/setup</c> being reused to mint a second admin; this stops the <i>rest</i> of the app being
 /// used before the first one exists. Redirect rather than 404 so the operator is guided to the one
 /// page that works.

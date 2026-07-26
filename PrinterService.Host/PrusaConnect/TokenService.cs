@@ -33,7 +33,7 @@ public class TokenService
     /// <remarks>
     /// Deliberately low by password-hashing standards (OWASP suggests six figures). That is sound
     /// <i>only</i> because the input is a <see cref="TokenSize"/>-byte CSPRNG value from
-    /// <see cref="GenerateToken"/>: 120 bits of entropy is not brute-forceable at any work factor, so
+    /// <see cref="GenerateToken()"/>: 120 bits of entropy is not brute-forceable at any work factor, so
     /// iterations buy nothing here and cost latency on every authenticated request. PBKDF2 is used for
     /// the salting and the constant-time envelope, not for key stretching.
     /// <para>

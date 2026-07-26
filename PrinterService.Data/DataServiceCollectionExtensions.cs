@@ -106,7 +106,8 @@ public static class DataServiceCollectionExtensions
     /// It stayed hidden because the statement is a no-op read once the database is already WAL, so a
     /// database created by this service worked forever while a restored backup - <c>.backup</c>,
     /// a <c>.dump</c> reimport, most GUI exports - failed immediately. Run before
-    /// <see cref="DatabaseFacade.Migrate"/> and regardless of <see cref="StorageOptions.AutoMigrate"/>,
+    /// <see cref="RelationalDatabaseFacadeExtensions.Migrate(DatabaseFacade)"/> and regardless of
+    /// <see cref="StorageOptions.AutoMigrate"/>,
     /// since WAL is required whether or not this process owns schema changes.
     /// </para>
     /// </remarks>

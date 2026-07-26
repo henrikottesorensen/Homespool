@@ -309,7 +309,8 @@ public class TokenServiceTests
     /// <remarks>
     /// Exact length is no longer re-validated on the trusted hash, and it does not need to be: it can
     /// never cause a false accept. <see cref="Rfc2898DeriveBytes"/> always emits
-    /// <see cref="TokenService.HashLength"/> bytes and <see cref="CryptographicOperations.FixedTimeEquals{T}"/>
+    /// <see cref="TokenService.HashLength"/> bytes and
+    /// <see cref="CryptographicOperations.FixedTimeEquals(System.ReadOnlySpan{byte},System.ReadOnlySpan{byte})"/>
     /// requires equal length, so a mis-sized digest simply compares unequal.
     /// </remarks>
     [Theory]

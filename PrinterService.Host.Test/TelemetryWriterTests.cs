@@ -730,8 +730,8 @@ public sealed class TelemetryWriterTests : IDisposable
     /// wrongly remembered as having already inserted the row.
     /// </summary>
     /// <remarks>
-    /// This is the bug <see cref="TelemetryWriter.FlushAsync"/>'s deferred
-    /// <c>ExistsInDatabase</c>/<c>ExistingSlotNumbers</c> update exists to prevent: marking either
+    /// This is the bug <see cref="TelemetryWriter"/>'s private <c>FlushAsync</c> defers its
+    /// <c>ExistsInDatabase</c>/<c>ExistingSlotNumbers</c> update to prevent: marking either
     /// before <c>SaveChangesAsync</c> is confirmed to have succeeded would leave the cache believing
     /// a row exists the moment a save fails, so every later attempt chooses <c>Modified</c> over
     /// <c>Added</c> and issues an <c>UPDATE</c> against a row that was never created - permanently,

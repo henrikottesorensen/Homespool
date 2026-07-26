@@ -47,12 +47,15 @@ public class InvitationService
     /// invite alongside its <b>plaintext</b> token. The plaintext exists only in this return value —
     /// it is never stored — so the caller must mail or display it immediately; it cannot be recovered.
     /// </summary>
+    /// <param name="email">The address the invite is bound to; the invite is only redeemable for it.</param>
     /// <param name="teamId">
     /// The team to join, or <c>null</c> to mint a brand-new account with its own default team.
     /// </param>
+    /// <param name="invitedBy">The <see cref="PSUser"/> id of the inviter, recorded for audit.</param>
     /// <param name="expiresAt">
     /// Explicit expiry, or <c>null</c> to use the configured default lifetime from now.
     /// </param>
+    /// <param name="cancellationToken">Cancels the insert; nothing is persisted if it fires first.</param>
     public async Task<(Invitation Invitation, string PlaintextToken)> CreateAsync(
         string email,
         int? teamId,

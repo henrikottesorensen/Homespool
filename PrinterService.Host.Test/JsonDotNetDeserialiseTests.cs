@@ -86,7 +86,7 @@ public class JsonDotNetDeserialiseTests
 
     /// <summary>
     /// Reads every JSON object from <paramref name="stream"/>, relying on
-    /// <see cref="JsonTextReader.SupportMultipleContent"/> to continue past the end of each one.
+    /// <see cref="JsonReader.SupportMultipleContent"/> to continue past the end of each one.
     /// </summary>
     private static List<JObject> ReadAll(Stream stream)
     {

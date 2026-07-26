@@ -546,7 +546,7 @@ public class PrinterConnectionActorTests
     }
 
     /// <summary>
-    /// Blocks the actor's loop on demand. <see cref="ITelemetrySink.Enqueue"/> is synchronous and
+    /// Blocks the actor's loop on demand. <see cref="ITelemetrySink.Enqueue(int,DateTimeOffset,TelemetryDTO)"/> is synchronous and
     /// called from the loop, which makes it the one place a test can hold the loop still without
     /// guessing at timing.
     /// </summary>

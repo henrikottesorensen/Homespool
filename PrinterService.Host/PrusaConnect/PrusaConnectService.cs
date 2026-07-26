@@ -53,7 +53,7 @@ public class PrusaConnectService
     /// <para>
     /// <see cref="PrusaConnectRegistration.Id"/> is logged in its place, which correlates an issue
     /// with the later poll and claim without reproducing the secret. The logging happens after
-    /// <see cref="PSDbContext.SaveChangesAsync(System.Threading.CancellationToken)"/> because the
+    /// <see cref="Microsoft.EntityFrameworkCore.DbContext.SaveChangesAsync(System.Threading.CancellationToken)"/> because the
     /// key is not assigned until the insert completes.
     /// </para>
     /// </remarks>
@@ -134,7 +134,7 @@ public class PrusaConnectService
     /// </para>
     /// <para>
     /// <c>TemporaryCode</c> is deliberately non-uniquely indexed, so a collision yields more than one
-    /// row rather than being impossible. <see cref="SingleOrDefaultAsync"/> throws in that case, which
+    /// row rather than being impossible. <see cref="EntityFrameworkQueryableExtensions.SingleOrDefaultAsync{TSource}(System.Linq.IQueryable{TSource},System.Threading.CancellationToken)"/> throws in that case, which
     /// the controller surfaces as a 400 - honest, and vanishingly rare at 24 base36 characters.
     /// </para>
     /// <para>
@@ -183,7 +183,7 @@ public class PrusaConnectService
     /// Looked up by code, filtering out expired rows in the same predicate <see cref="GetToken"/> and
     /// <see cref="ClaimPrinterAsync"/> both rely on, so the two callers cannot drift into disagreeing
     /// about what "still valid" means. <c>TemporaryCode</c> is deliberately non-uniquely indexed (see
-    /// <see cref="GetToken"/>'s remarks), so a collision surfaces as <see cref="SingleOrDefaultAsync"/>
+    /// <see cref="GetToken"/>'s remarks), so a collision surfaces as <see cref="EntityFrameworkQueryableExtensions.SingleOrDefaultAsync{TSource}(System.Linq.IQueryable{TSource},System.Threading.CancellationToken)"/>
     /// throwing rather than silently picking a row.
     /// </summary>
     private Task<PrusaConnectRegistration?> FindActiveRegistrationAsync(string temporaryCode, DateTimeOffset now)

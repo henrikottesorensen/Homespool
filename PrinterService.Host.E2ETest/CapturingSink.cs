@@ -39,8 +39,8 @@ public sealed class CapturingSink : ILogEventSink
 
     /// <summary>
     /// The first scalar value logged under <paramref name="propertyName"/>, or <c>null</c> if nothing
-    /// matches. Strips the surrounding quotes Serilog's default <see cref="ScalarValue.ToString()"/>
-    /// adds for strings.
+    /// matches. Strips the surrounding quotes <see cref="ScalarValue"/>'s default rendering adds for
+    /// strings.
     /// </summary>
     public string? FindPropertyValue(string propertyName) =>
         _events

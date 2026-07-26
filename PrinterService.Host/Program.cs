@@ -141,6 +141,9 @@ public static class Program
             builder.Services.AddSingleton<PrusaConnect.PrinterConnectionRegistry>();
             builder.Services.AddSingleton<PrusaConnect.PrinterConnectionActorFactory>();
 
+            // Scoped, following the WebSocketHandler it runs: one session per accepted upgrade.
+            builder.Services.AddScoped<PrusaConnect.PrinterConnectionSession>();
+
             // Singleton, not scoped like its neighbors above: one drain loop and one in-memory
             // live-state cache for the whole process, fed by every request's scoped
             // MessageDispatcher through the ITelemetrySink interface - so a request never hands

@@ -8,7 +8,12 @@ namespace PrinterService.Host.PrusaConnect;
 /// <see cref="Controllers.PrusaConnectPrinterController"/> doesn't have to carry the actor's
 /// singleton dependencies (sink, options, logging) itself.
 /// </summary>
-public sealed class PrinterConnectionActorFactory
+/// <remarks>
+/// Unsealed, with a <c>virtual</c> <see cref="Create"/>, so a test can hand
+/// <see cref="PrinterConnectionSession"/> an actor it controls - one whose completion never
+/// finishes, or faults - without a socket to build a real one over.
+/// </remarks>
+public class PrinterConnectionActorFactory
 {
     private readonly ITelemetrySink _sink;
     private readonly ILogger<PrinterConnectionActor> _logger;
@@ -23,6 +28,6 @@ public sealed class PrinterConnectionActorFactory
 
     /// <summary>Creates the actor and starts its loop; the caller owns completion via
     /// <see cref="IPrinterConnectionActor.Complete"/>.</summary>
-    public IPrinterConnectionActor Create(int printerId, IPrinterConnection connection) =>
+    public virtual IPrinterConnectionActor Create(int printerId, IPrinterConnection connection) =>
         new PrinterConnectionActor(printerId, connection, _sink, _logger, _options.Value.CommandResponseTimeout);
 }

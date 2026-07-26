@@ -20,6 +20,18 @@ public interface IPrinterConnection
     ValueTask SendAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// A connection whose close handshake its owner can drive - i.e. the accepting request, and nothing
+/// else. Kept separate from <see cref="IPrinterConnection"/> rather than folded into it so the
+/// narrowing that interface documents survives: command-sending code is handed the base interface
+/// and still cannot reach the close, while <see cref="PrinterConnectionSession"/> gets the seam its
+/// teardown needs.
+/// </summary>
+public interface IClosablePrinterConnection : IPrinterConnection
+{
+    Task CloseOutputAsync(WebSocketCloseStatus closeStatus);
+}
+
 /// <remarks>
 /// Deliberately not <see cref="IDisposable"/>, despite holding a <see cref="SemaphoreSlim"/>.
 /// Disposing one only matters if its <c>AvailableWaitHandle</c> was used, which allocates an event -
@@ -31,7 +43,7 @@ public interface IPrinterConnection
 /// </remarks>
 [SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable",
                  Justification = "The semaphore allocates no wait handle, and disposing it would race in-flight sends. See the remarks.")]
-public sealed class WebSocketPrinterConnection : IPrinterConnection
+public sealed class WebSocketPrinterConnection : IClosablePrinterConnection
 {
     private readonly WebSocket _webSocket;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
@@ -111,9 +123,8 @@ public sealed class WebSocketPrinterConnection : IPrinterConnection
 /// <summary>
 /// Maps a connected printer's id to its live <see cref="IPrinterConnectionActor"/>, so a command can
 /// be sent from outside the request that accepted the WebSocket upgrade. A directory of actors,
-/// nothing more: registered/unregistered by
-/// <see cref="Controllers.PrusaConnectPrinterController.ConnectWebSocket"/> for the lifetime of that
-/// request.
+/// nothing more: registered/unregistered by <see cref="PrinterConnectionSession"/> for the lifetime
+/// of the request that accepted the upgrade.
 /// </summary>
 public sealed class PrinterConnectionRegistry
 {

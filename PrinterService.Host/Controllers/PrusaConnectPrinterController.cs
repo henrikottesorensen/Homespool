@@ -5,7 +5,6 @@ using System.IO.Pipelines;
 using System.Net.Mime;
 using System.Net.WebSockets;
 using System.Security.Claims;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -21,35 +20,22 @@ using PrinterService.Host.PrusaConnect.DTO;
 
 namespace PrinterService.Host.Controllers;
 
-[Authorize(Authorization.Policies.PrusaConnectPrinter)]
 [ApiController]
+[Authorize(Authorization.Policies.PrusaConnectPrinter)]
 public class PrusaConnectPrinterController : ControllerBase
 {
     private readonly PrusaConnectService _prusaConnectService;
-    private readonly WebSocketHandler _webSocketHandler;
-    private readonly PrinterConnectionRegistry _connectionRegistry;
-    private readonly PrinterConnectionActorFactory _actorFactory;
+    private readonly PrinterConnectionSession _session;
     private readonly IHostApplicationLifetime _lifetime;
     private readonly ILogger<PrusaConnectPrinterController> _logger;
 
-    /// <summary>
-    /// How long teardown waits for the connection's actor to drain before abandoning it. Generous
-    /// for a mailbox that only ever holds seconds of traffic, and finite because the loop's socket
-    /// write is the one step no token cancels.
-    /// </summary>
-    private static readonly TimeSpan ActorDrainTimeout = TimeSpan.FromSeconds(5);
-
     public PrusaConnectPrinterController(PrusaConnectService prusaConnectService,
-                                         WebSocketHandler webSocketHandler,
-                                         PrinterConnectionRegistry connectionRegistry,
-                                         PrinterConnectionActorFactory actorFactory,
+                                         PrinterConnectionSession session,
                                          IHostApplicationLifetime lifetime,
                                          ILogger<PrusaConnectPrinterController> logger)
     {
         _prusaConnectService = prusaConnectService;
-        _webSocketHandler = webSocketHandler;
-        _connectionRegistry = connectionRegistry;
-        _actorFactory = actorFactory;
+        _session = session;
         _lifetime = lifetime;
         _logger = logger;
     }
@@ -88,14 +74,12 @@ public class PrusaConnectPrinterController : ControllerBase
                 // the PipeReader it parses from. Reads pull straight from the socket, so there is
                 // no pump task to run alongside the handler. Writes don't go through the stream at
                 // all (WebSocketPrinterConnection sends on the socket directly), so the message
-                // type here is inert; ownsWebSocket stays false because the close handshake is
-                // handled explicitly below.
+                // type here is inert; ownsWebSocket stays false because the close handshake is the
+                // session's, below.
                 using Stream socketStream = WebSocketStream.Create(webSocket, WebSocketMessageType.Binary);
                 PipeReader input = PipeReader.Create(socketStream, new StreamPipeReaderOptions(leaveOpen: true));
 
                 WebSocketPrinterConnection connection = new(webSocket);
-                IPrinterConnectionActor actor = _actorFactory.Create(printerId, connection);
-                _connectionRegistry.Register(printerId, actor);
 
                 // Two reasons this read loop should stop, neither of them the printer's doing:
                 // RequestAborted (the client vanished, or Kestrel aborted us) and ApplicationStopping.
@@ -107,82 +91,11 @@ public class PrusaConnectPrinterController : ControllerBase
                 using CancellationTokenSource connectionLifetime =
                     CancellationTokenSource.CreateLinkedTokenSource(HttpContext.RequestAborted, _lifetime.ApplicationStopping);
 
-                // Which status the close frame carries. Recorded rather than sent inline, so every
-                // exit closes in one place - after the connection has left the registry.
-                //
-                // NormalClosure covers both ways the handler returns without throwing: the printer
-                // closed its end (EOF on the reader), and cancellation landing between reads rather
-                // than inside one, where the loop condition ends it. The latter reaches here with the
-                // socket still open, so shutdown sends a real close frame when it wins that race and
-                // aborts the socket when it doesn't - both acceptable ends, and the printer
-                // reconnects from either.
-                WebSocketCloseStatus closeStatus = WebSocketCloseStatus.NormalClosure;
-
-                try
-                {
-                    await _webSocketHandler.HandlePrusaWebsocket(input, printerId, actor, connectionLifetime.Token);
-                }
-                catch (JsonException)
-                {
-                    // The handler's contract: malformed JSON is a protocol violation. Close on it,
-                    // then let it surface - same as when the handler owned the close itself.
-                    closeStatus = WebSocketCloseStatus.PolicyViolation;
-                    throw;
-                }
-                catch (WebSocketException e)
-                {
-                    // Routine, not exceptional: printers drop off the network without a close
-                    // handshake all the time. The socket is already gone - nothing to close.
-                    _logger.LogDebug(e, "[{PrinterId}] connection closed abruptly", printerId);
-                }
-                catch (OperationCanceledException e)
-                {
-                    // Shutdown or teardown, per connectionLifetime above - including Kestrel aborting
-                    // the connection outright, since ConnectionAbortedException derives from this.
-                    // Ordinary ends to a WebSocket request, not faults: left unhandled they surfaced
-                    // as a logged 500.
-                    _logger.LogDebug(e, "[{PrinterId}] connection ended: shutting down or aborted", printerId);
-                }
-                finally
-                {
-                    await input.CompleteAsync();
-
-                    // Unregister before closing, not after: while the connection is still in the
-                    // registry a command can pass its IsOpen check and start writing to this socket,
-                    // and the close frame is a write too. Removing it first bounds that race to
-                    // callers already holding a reference, which WebSocketPrinterConnection's write
-                    // lock then serializes against the close itself.
-                    _connectionRegistry.Unregister(printerId, actor);
-
-                    // Shutdown-by-completion, same as TelemetryWriter: complete the mailbox, let the
-                    // loop drain and exit. A command still awaiting its reply fails as NotConnected
-                    // in that drain - the actor's loop owns that, where this used to cancel the
-                    // correlator by hand.
-                    actor.Complete();
-
-                    // Bounded, unlike the drain itself. The loop's socket write is the one step
-                    // nothing cancels, so a send wedged against a stalled peer would hold this
-                    // request open with no ceiling at all - reintroducing the shutdown stall that
-                    // ApplicationStopping above exists to prevent, and without its 30s limit.
-                    // Abandoning the actor leaves that send to die with the request; the connection's
-                    // write lock is what keeps the close below from interleaving with it.
-                    try
-                    {
-                        await actor.Completion.WaitAsync(ActorDrainTimeout);
-                    }
-                    catch (TimeoutException)
-                    {
-                        _logger.LogWarning("[{PrinterId}] connection actor did not finish draining in time; abandoning it.", printerId);
-                    }
-                    catch (Exception e)
-                    {
-                        // Never rethrow from here: this is a finally, and would replace whatever
-                        // exception sent us into it.
-                        _logger.LogError(e, "[{PrinterId}] connection actor loop faulted.", printerId);
-                    }
-
-                    await connection.CloseOutputAsync(closeStatus);
-                }
+                // Everything from here - register, read loop, ordered teardown, close - belongs to
+                // the session, which owns `input` from this point and completes it. It is a separate
+                // type purely so that sequence is reachable without an HttpContext, and so a test
+                // can pin the order each of its steps was bought with.
+                await _session.RunAsync(printerId, connection, input, connectionLifetime.Token);
 
                 // Not Ok(): the response started at the 101, and a status-code result sets
                 // Response.StatusCode during result execution - after this action returns, outside

@@ -17,8 +17,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 using PrinterService.Data;
-using PrinterService.Host.PrusaConnect;
 using PrinterService.Host.Pages.Admin.Invites;
+using PrinterService.Host.PrusaConnect;
 using PrinterService.Host.Services;
 using PrinterService.Model.Entities;
 
@@ -65,7 +65,7 @@ public sealed class CreateModelTests : IDisposable
     /// signed in unless <paramref name="signInAdmin"/> is false, and the fake Url/HttpContext plumbing
     /// unit-tested PageModels need.
     /// </summary>
-    private static async Task<(CreateModel Model, PSUser Admin, CapturingEmailSender EmailSender)> NewModelAsync(
+    private static async Task<(CreateModel model, PSUser admin, CapturingEmailSender emailSender)> NewModelAsync(
         PSDbContext context, bool signInAdmin = true)
     {
         (UserManager<PSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
@@ -162,7 +162,7 @@ public sealed class CreateModelTests : IDisposable
         ExtractQueryValue(model.AcceptLink!, "inviteId").Should().Be(stored.Id.ToString());
 
         model.EmailSent.Should().BeTrue();
-        emailSender.SentEmails.Should().ContainSingle(e => e.Email == "invitee@example.com");
+        emailSender.SentEmails.Should().ContainSingle(e => e.email == "invitee@example.com");
 
         model.Input.Email.Should().BeEmpty("the form resets for the next invite");
     }

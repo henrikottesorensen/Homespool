@@ -39,6 +39,24 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
         _unitOfWork = unitOfWork;
     }
 
+    private static AuthenticationTicket BuildTicket(int printerId, Printer printer)
+    {
+        // The claims-only ClaimsIdentity constructor leaves AuthenticationType null, so
+        // Identity.IsAuthenticated stays false even though this scheme "succeeded" -
+        // DenyAnonymousAuthorizationRequirement then rejects it as anonymous (403). The
+        // authenticationType argument is what makes the identity actually count as authenticated.
+        ClaimsPrincipal principal = new
+        (
+            new ClaimsIdentity(
+            [
+                new Claim(PsClaimTypes.PrinterId, $"{printerId}"),
+                new Claim(PsClaimTypes.Owner, $"{printer.TeamId}"),
+                new Claim(JwtClaimTypes.Name, $"{printer.Name}"),
+            ], Authentication.Schemes.PrusaConnectPrinter));
+
+        return new AuthenticationTicket(principal, Authentication.Schemes.PrusaConnectPrinter);
+    }
+
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         // Headers missing? Do nothing.
@@ -221,10 +239,12 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
             await _dbContext.PrusaConnectAuthentication.AddAsync(new PrusaConnectAuthenticationData
             {
                 PrinterId = provisioning.PrinterId,
+
                 // Already the key form - the header is all a provisioned printer ever sends us. The
                 // full 50-character fingerprint stays unknown until /p/register or an INFO event
                 // carries it.
                 FingerPrintKey = fingerprint,
+
                 // The hash is copied across as-is: the plaintext was shown once at provisioning and is
                 // gone; the printer just proved it holds it by verifying above.
                 HashedToken = provisioning.HashedToken,
@@ -259,24 +279,5 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
                 provisioning.PrinterId);
             return AuthenticateResult.Fail("Printer unknown");
         }
-    }
-
-    private static AuthenticationTicket BuildTicket(int printerId, Printer printer)
-    {
-        // The claims-only ClaimsIdentity constructor leaves AuthenticationType null, so
-        // Identity.IsAuthenticated stays false even though this scheme "succeeded" -
-        // DenyAnonymousAuthorizationRequirement then rejects it as anonymous (403). The
-        // authenticationType argument is what makes the identity actually count as authenticated.
-        ClaimsPrincipal principal = new
-        (
-            new ClaimsIdentity(
-            [
-                new Claim(PsClaimTypes.PrinterId, $"{printerId}"),
-                new Claim(PsClaimTypes.Owner, $"{printer.TeamId}"),
-                new Claim(JwtClaimTypes.Name, $"{printer.Name}"),
-            ], Authentication.Schemes.PrusaConnectPrinter)
-        );
-
-        return new AuthenticationTicket(principal, Authentication.Schemes.PrusaConnectPrinter);
     }
 }

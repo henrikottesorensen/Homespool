@@ -6,9 +6,6 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace PrinterService.Host.Services;
 
-/// <summary>One problem worth showing an administrator, already styled.</summary>
-public sealed record HealthBannerItem(string Message, string CssClass);
-
 /// <summary>
 /// Turns a <see cref="HealthReport"/> into banner items.
 /// </summary>
@@ -33,11 +30,11 @@ public static class HealthBanner
     {
         ArgumentNullException.ThrowIfNull(report);
 
+        // Each item's text is the check's own description, not a rewording of it. Those are already
+        // written as sentences for whoever gets paged, and a second phrasing here would drift.
         return report.Entries
             .Where(entry => entry.Value.Status != HealthStatus.Healthy)
             .Select(entry => new HealthBannerItem(
-                // The check's own description, not a rewording of it. These are already written as
-                // sentences for whoever gets paged, and a second phrasing here would drift.
                 entry.Value.Description ?? $"{entry.Key} is {entry.Value.Status}.",
                 entry.Value.Status == HealthStatus.Unhealthy ? "alert-danger" : "alert-warning"))
             .ToList();

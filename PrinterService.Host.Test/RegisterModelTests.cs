@@ -73,7 +73,7 @@ public sealed class RegisterModelTests : IDisposable
     /// AccountConfirmationPolicy exactly as Program.cs does - confirmed at creation only when SMTP is
     /// absent.
     /// </summary>
-    private static (RegisterModel Model, DefaultHttpContext HttpContext, CapturingEmailSender EmailSender) NewModel(
+    private static (RegisterModel model, DefaultHttpContext httpContext, CapturingEmailSender emailSender) NewModel(
         PSDbContext context, InvitationService invitationService, bool smtpConfigured)
     {
         (UserManager<PSUser> users, SignInManager<PSUser> signIn, DefaultHttpContext httpContext, IServiceProvider provider) =
@@ -241,7 +241,7 @@ public sealed class RegisterModelTests : IDisposable
         PSUser stored = await context.Users.SingleAsync(u => u.Email == "invitee@example.com");
         stored.EmailConfirmed.Should().BeFalse("SMTP is configured, so a confirmation mail is expected to arrive");
 
-        emailSender.SentEmails.Should().ContainSingle(e => e.Email == "invitee@example.com" && e.Subject == "Confirm your email");
+        emailSender.SentEmails.Should().ContainSingle(e => e.email == "invitee@example.com" && e.subject == "Confirm your email");
 
         (await invitationService.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should().BeNull("the invite is spent regardless of the confirmation path");
     }

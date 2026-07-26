@@ -20,25 +20,6 @@ using PrinterService.Model.Entities;
 namespace PrinterService.Host.Test;
 
 /// <summary>
-/// An <see cref="IEmailSender"/> that records what it was asked to send instead of sending it, so a
-/// test can assert on the recipient/subject/body without any real SMTP.
-/// </summary>
-internal sealed class CapturingEmailSender : IEmailSender
-{
-    public List<(string Email, string Subject, string HtmlMessage)> SentEmails { get; } = [];
-
-    /// <summary>What <see cref="SendEmailAsync"/> reports back to the caller. <see cref="EmailSendResult.Sent"/> by default.</summary>
-    public EmailSendResult Result { get; set; } = EmailSendResult.Sent;
-
-    public Task<EmailSendResult> SendEmailAsync(string email, string subject, string htmlMessage)
-    {
-        SentEmails.Add((email, subject, htmlMessage));
-
-        return Task.FromResult(Result);
-    }
-}
-
-/// <summary>
 /// Builds a real <see cref="UserManager{TUser}"/>/<see cref="SignInManager{TUser}"/> against a migrated
 /// <see cref="PSDbContext"/>, plus a minimal <see cref="IUrlHelper"/>, so <c>RegisterModel</c> and
 /// <c>Admin/Invites/CreateModel</c> can be unit tested by calling their <c>OnGetAsync</c>/<c>OnPostAsync</c>
@@ -52,7 +33,7 @@ internal static class IdentityTestHarness
     /// against) and returns the pieces a PageModel constructor needs, plus the <see cref="DefaultHttpContext"/>
     /// backing them so the test can set <c>HttpContext.User</c> before calling into the model.
     /// </summary>
-    public static (UserManager<PSUser> Users, SignInManager<PSUser> SignIn, DefaultHttpContext HttpContext, IServiceProvider Provider) BuildIdentityServices(PSDbContext context)
+    public static (UserManager<PSUser> users, SignInManager<PSUser> signIn, DefaultHttpContext httpContext, IServiceProvider provider) BuildIdentityServices(PSDbContext context)
     {
         DefaultHttpContext httpContext = new();
 
@@ -121,8 +102,11 @@ internal static class IdentityTestHarness
         }
 
         public string? Action(UrlActionContext actionContext) => throw new NotSupportedException("Not used by the pages under test.");
+
         public string? Content(string? contentPath) => contentPath;
+
         public bool IsLocalUrl(string? url) => url?.StartsWith('/') == true;
+
         public string? Link(string? routeName, object? values) => throw new NotSupportedException("Not used by the pages under test.");
     }
 }

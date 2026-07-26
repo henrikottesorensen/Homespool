@@ -10,40 +10,6 @@ using PrinterService.Host.PrusaConnect.Commands;
 
 namespace PrinterService.Host.PrusaConnect;
 
-/// <summary>
-/// The single-threaded owner of one printer's live connection - the socket write side, command-id
-/// allocation, the in-flight command and its ack correlation, and (once built) the transfer state
-/// machine. Everything arrives as a <see cref="ConnectionMessage"/> and is processed strictly in
-/// order, so none of that state needs a lock: same shape as <see cref="TelemetryWriter"/>, per
-/// notes/concurrency-model.md.
-/// </summary>
-public interface IPrinterConnectionActor
-{
-    /// <summary>Whether the underlying socket is open. Liveness for the UI, not a send guarantee.</summary>
-    bool IsOpen { get; }
-
-    /// <summary>Completes once the mailbox has been completed <b>and</b> drained - the actor's
-    /// equivalent of <see cref="TelemetryWriter"/>'s shutdown-by-completion.</summary>
-    Task Completion { get; }
-
-    /// <summary>Posts an inbound message from the read loop. Waits when the mailbox is full, which
-    /// deliberately stops the socket read and lets TCP push back on the printer.</summary>
-    ValueTask PostAsync(ConnectionMessage message, CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Sends a command and awaits the printer's correlated reply. <paramref name="cancellationToken"/>
-    /// is the caller's own (e.g. the HTTP request being aborted) and propagates as an ordinary
-    /// <see cref="OperationCanceledException"/>; disconnect and timeout are the actor's business and
-    /// come back as <see cref="CommandSendOutcome"/> values instead.
-    /// </summary>
-    Task<CommandSendResult> SendCommandAsync(ISendableCommand command, CancellationToken cancellationToken);
-
-    /// <summary>Completes the mailbox. The loop drains what is already queued, fails any in-flight
-    /// command as <see cref="CommandSendOutcome.NotConnected"/>, and exits - no cancellation token
-    /// is threaded into the work at all.</summary>
-    void Complete();
-}
-
 public sealed class PrinterConnectionActor : IPrinterConnectionActor
 {
     /// <summary>
@@ -70,6 +36,29 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     private volatile bool _draining;
 
     private sealed record Pending(uint CommandId, string WireName, TaskCompletionSource<CommandSendResult> Completion, long SentAt);
+
+    /// <summary>
+    /// Faults a caller's completion, and marks the fault observed.
+    /// </summary>
+    /// <remarks>
+    /// The second half matters because the caller may already be gone: once its
+    /// <c>WaitAsync(token)</c> has lost to cancellation, nothing ever awaits this task, and .NET
+    /// raises <see cref="TaskScheduler.UnobservedTaskException"/> when it is finalised - confirmed
+    /// on .NET 10 rather than assumed. Teardown makes that the common case rather than a curiosity:
+    /// abandoning a wedged actor disposes the socket, which faults the outstanding send exactly when
+    /// no caller remains. Default runtime behaviour is only noise, but any host configured to
+    /// escalate unobserved exceptions would fail on it.
+    ///
+    /// Reading <c>Exception</c> is what marks it observed; a caller still waiting receives it
+    /// unchanged.
+    /// </remarks>
+    private static void Fail(TaskCompletionSource<CommandSendResult> completion, Exception error)
+    {
+        if (completion.TrySetException(error))
+        {
+            _ = completion.Task.Exception;
+        }
+    }
 
     public PrinterConnectionActor(int printerId, IPrinterConnection connection, ITelemetrySink sink,
         ILogger<PrinterConnectionActor> logger, TimeSpan responseTimeout)
@@ -326,29 +315,6 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         // Answering a command doesn't consume the event - it is still an ordinary event
         // (Finished/Rejected/StateChanged) and is persisted like any other.
         _sink.Enqueue(_printerId, message.ReceivedAt, eventDto);
-    }
-
-    /// <summary>
-    /// Faults a caller's completion, and marks the fault observed.
-    /// </summary>
-    /// <remarks>
-    /// The second half matters because the caller may already be gone: once its
-    /// <c>WaitAsync(token)</c> has lost to cancellation, nothing ever awaits this task, and .NET
-    /// raises <see cref="TaskScheduler.UnobservedTaskException"/> when it is finalised - confirmed
-    /// on .NET 10 rather than assumed. Teardown makes that the common case rather than a curiosity:
-    /// abandoning a wedged actor disposes the socket, which faults the outstanding send exactly when
-    /// no caller remains. Default runtime behaviour is only noise, but any host configured to
-    /// escalate unobserved exceptions would fail on it.
-    ///
-    /// Reading <c>Exception</c> is what marks it observed; a caller still waiting receives it
-    /// unchanged.
-    /// </remarks>
-    private static void Fail(TaskCompletionSource<CommandSendResult> completion, Exception error)
-    {
-        if (completion.TrySetException(error))
-        {
-            _ = completion.Task.Exception;
-        }
     }
 
     private void TimeOutPending()

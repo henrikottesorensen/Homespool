@@ -10,9 +10,8 @@ public static class AuthenticationBuilderExtensions
             Schemes.PrusaConnectPrinter,
             options =>
             {
-                
             });
-        
+
         return builder;
     }
 }

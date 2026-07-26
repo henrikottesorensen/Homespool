@@ -84,9 +84,14 @@ public sealed class TelemetryAlertService : BackgroundService
         {
             HealthReport report = await _healthChecks.CheckHealthAsync(cancellationToken);
 
-            if (report.Status == HealthStatus.Healthy && ShouldRefreshRecipients())
+            if (ShouldRefreshRecipients())
             {
-                // Only while healthy, which is when the database is answering and there is no hurry.
+                // Attempted whatever the health status. This used to run only while Healthy, on the
+                // reasoning that health implies a reachable database - but it does not: DiscardedEvents
+                // is cumulative, so a service stays Unhealthy long after the database recovers. Gating
+                // on it meant a writer that had ever dropped events could never learn who to tell.
+                // Having nobody to alert is exactly when the attempt is worth making; if the database
+                // really is down this throws, is caught below, and is retried on the next poll.
                 await RefreshRecipientsAsync(cancellationToken);
             }
 

@@ -59,6 +59,35 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         }
     }
 
+    /// <summary>
+    /// How long to wait for a frame to finish being written to the socket before giving up on the
+    /// connection entirely.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This bounds the <i>wait</i>, not the send: the send keeps <see cref="CancellationToken.None"/>
+    /// because cancelling <c>WebSocket.SendAsync</c> mid-frame leaves a partial message on the wire
+    /// and aborts the socket, which is strictly worse than waiting. Abandoning the wait leaves the
+    /// write to be resolved by the teardown that follows - disposing the socket faults it in
+    /// milliseconds (measured).
+    /// </para>
+    /// <para>
+    /// Generous, because it must never fire for a merely slow-but-progressing write. A ~40-byte
+    /// command frame fits the send buffer and completes instantly, which is why nothing has ever hit
+    /// this; a 256 KiB transfer chunk will legitimately await real network progress. It exists for
+    /// the case that has no other bound at all: a peer that is alive but has stopped draining its
+    /// socket, where the write never completes and, because this loop is also the telemetry path,
+    /// the printer goes silent with nothing logged.
+    /// </para>
+    /// <para>
+    /// Not configuration, for the same reason as
+    /// <see cref="PrinterConnectionSession.ActorDrainTimeout"/>: the symptom that would prompt tuning
+    /// is a wedged peer, which no value fixes. Revisit if transfers show real chunk writes coming
+    /// anywhere near it.
+    /// </para>
+    /// </remarks>
+    public TimeSpan SendTimeout { get; init; } = TimeSpan.FromSeconds(30);
+
     public PrinterConnectionActor(int printerId, IPrinterConnection connection, ITelemetrySink sink,
         ILogger<PrinterConnectionActor> logger, TimeSpan responseTimeout)
     {
@@ -284,7 +313,32 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
 
         try
         {
-            await _connection.SendAsync(frame, CancellationToken.None);
+            // WaitAsync bounds the wait, never the write. The token stays None deliberately (see the
+            // comment above); giving up on the wait leaves the send running, which is safe precisely
+            // because the teardown this triggers disposes the socket and faults it.
+            await _connection.SendAsync(frame, CancellationToken.None).AsTask().WaitAsync(SendTimeout);
+        }
+        catch (TimeoutException)
+        {
+            // The one stall nothing else bounds. The response timeout cannot help - it does not start
+            // until this write returns - and the read loop is by now parked in PostAsync against a
+            // full mailbox, so it will not notice the peer either. Left alone this leaks the request,
+            // the socket and this actor, permanently and silently, while the printer's own 60s socket
+            // timeout lets *it* reconnect and look healthy.
+            //
+            // So: give up on the connection rather than on the command. Completing the mailbox makes
+            // the read loop's next PostAsync its ordinary exit, which unwinds to the session's
+            // teardown, which disposes the socket, which faults the abandoned write.
+            _logger.LogError(
+                "[{PrinterId}] writing {Command} did not complete within {SendTimeout}; abandoning the connection.",
+                _printerId, send.Command.WireName, SendTimeout);
+
+            Fail(send.Completion, new Exceptions.CommandSendTimedOutException(_printerId));
+
+            _draining = true;
+            _mailbox.Writer.TryComplete();
+
+            return;
         }
         catch (Exception e)
         {
@@ -323,6 +377,6 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         _pending = null;
         _logger.LogWarning("[{PrinterId}] command {CommandId} ({Command}) timed out waiting for a reply",
             _printerId, expired.CommandId, expired.WireName);
-        expired.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.TimedOut, null));
+        expired.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null));
     }
 }

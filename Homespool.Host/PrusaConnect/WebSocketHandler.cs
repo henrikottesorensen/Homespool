@@ -2,6 +2,7 @@ using System.Buffers;
 using System.IO.Pipelines;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 
 using Microsoft.Extensions.Logging;
@@ -89,10 +90,24 @@ public class WebSocketHandler
 
                         if (message is not null)
                         {
-                            // PostAsync waits when the mailbox is full, which stops this read loop -
-                            // deliberate: a stalled actor becomes TCP backpressure on the printer
-                            // instead of unbounded buffering here.
-                            await actor.PostAsync(message, cancellationToken);
+                            try
+                            {
+                                // PostAsync waits when the mailbox is full, which stops this read loop -
+                                // deliberate: a stalled actor becomes TCP backpressure on the printer
+                                // instead of unbounded buffering here.
+                                await actor.PostAsync(message, cancellationToken);
+                            }
+                            catch (ChannelClosedException)
+                            {
+                                // The actor gave up on this connection - today only when a socket write
+                                // exceeded its send deadline. That is an ordinary end to the read loop,
+                                // not a fault: returning lets the caller close and tear down exactly as
+                                // it would for a printer that hung up. Throwing here would instead
+                                // surface as an unhandled 500 on a request whose socket is already gone.
+                                _logger.LogDebug("[{PrinterId}] actor stopped accepting messages; ending the read loop.", printerId);
+
+                                return;
+                            }
                         }
                     }
 

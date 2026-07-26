@@ -44,7 +44,7 @@ public class PrinterCommandService
     /// Another command is still awaiting its reply. One in flight per printer is deliberate: replies
     /// are correlated by <c>command_id</c>, and the firmware answers them one at a time.
     /// </exception>
-    /// <exception cref="CommandTimedOutException">
+    /// <exception cref="CommandResponseTimedOutException">
     /// The printer never answered within <c>PrusaConnectOptions.CommandResponseTimeout</c>. It says
     /// nothing about whether the command was acted on - the frame was written to the socket.
     /// </exception>
@@ -77,7 +77,8 @@ public class PrinterCommandService
         {
             CommandSendOutcome.NotConnected => throw new PrinterNotConnectedException(printerId),
             CommandSendOutcome.AlreadyInFlight => throw new CommandAlreadyInFlightException(printerId),
-            CommandSendOutcome.TimedOut => throw new CommandTimedOutException(printerId),
+            CommandSendOutcome.ResponseTimedOut => throw new CommandResponseTimedOutException(printerId),
+            CommandSendOutcome.SendTimedOut => throw new CommandSendTimedOutException(printerId),
             _ => result.Response!,
         };
     }

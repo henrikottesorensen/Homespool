@@ -258,12 +258,12 @@ public sealed class PrinterCommandServiceTests : IDisposable
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: true);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
-        PrinterCommandService service = new(context, new TeamService(context), RegistryWithActor(printer.Id, CommandSendOutcome.TimedOut).registry);
+        PrinterCommandService service = new(context, new TeamService(context), RegistryWithActor(printer.Id, CommandSendOutcome.ResponseTimedOut).registry);
 
         // Act
         Func<Task> act = () => service.SendCommandAsync(printer.Id, new PausePrint(), 1, CancellationToken.None);
 
         // Assert
-        await act.Should().ThrowAsync<CommandTimedOutException>();
+        await act.Should().ThrowAsync<CommandResponseTimedOutException>();
     }
 }

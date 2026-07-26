@@ -158,7 +158,7 @@ public class IndexModel : PageModel
         {
             (StatusMessage, StatusSuccess) = ("That printer is still processing a previous command.", false);
         }
-        catch (CommandTimedOutException)
+        catch (CommandResponseTimedOutException)
         {
             (StatusMessage, StatusSuccess) = ("That printer didn't respond in time.", false);
         }

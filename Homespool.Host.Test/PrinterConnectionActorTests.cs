@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
@@ -64,9 +65,32 @@ public class PrinterConnectionActorTests
     }
 
     private static PrinterConnectionActor NewActor(IPrinterConnection connection, ITelemetrySink? sink = null,
-        TimeSpan? responseTimeout = null, int printerId = 1) =>
+        TimeSpan? responseTimeout = null, int printerId = 1, TimeSpan? sendTimeout = null) =>
         new(printerId, connection, sink ?? Substitute.For<ITelemetrySink>(),
-            NullLogger<PrinterConnectionActor>.Instance, responseTimeout ?? TimeSpan.FromSeconds(10));
+            NullLogger<PrinterConnectionActor>.Instance, responseTimeout ?? TimeSpan.FromSeconds(10))
+        {
+            SendTimeout = sendTimeout ?? TimeSpan.FromSeconds(30),
+        };
+
+    /// <summary>
+    /// A connection whose <c>SendAsync</c> never completes - a peer that is alive but has stopped
+    /// draining its socket, which is the one stall nothing else in the system bounds.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately never completed, rather than delayed: the point is that no amount of waiting
+    /// helps. Verified against a real socket that this is what happens - a WebSocket writing 256 KiB
+    /// to a peer that accepts but never reads stays pending indefinitely, and only disposal ends it.
+    /// </remarks>
+    [SuppressMessage("Reliability", "CA2012:Use ValueTasks correctly",
+                     Justification = "NSubstitute call specification, not an invocation - same case as OnSend above.")]
+    private static IPrinterConnection WedgedConnection()
+    {
+        IPrinterConnection connection = Substitute.For<IPrinterConnection>();
+        connection.IsOpen.Returns(true);
+        connection.SendAsync(default, default).ReturnsForAnyArgs(_ => new ValueTask(new TaskCompletionSource().Task));
+
+        return connection;
+    }
 
     /// <summary>
     /// Polls until the actor's loop has observably processed a message, instead of a fixed sleep -
@@ -319,7 +343,7 @@ public class PrinterConnectionActorTests
         CommandSendResult result = await Eventually(actor.SendCommandAsync(new PausePrint(), CancellationToken.None));
 
         // Assert
-        result.Outcome.Should().Be(CommandSendOutcome.TimedOut);
+        result.Outcome.Should().Be(CommandSendOutcome.ResponseTimedOut);
 
         // Not wedged: a new send for the same printer reaches the wire immediately.
         Task<CommandSendResult> retry = actor.SendCommandAsync(new ResumePrint(), CancellationToken.None);
@@ -540,6 +564,39 @@ public class PrinterConnectionActorTests
             "the reply arrived within the timeout; only the loop was late to it");
 
         actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A write that never completes gives up on the <i>connection</i>, not just the command: the
+    /// caller is told the outcome is unknown, and the actor stops accepting work so the read loop
+    /// unwinds into teardown.
+    /// </summary>
+    /// <remarks>
+    /// The one stall nothing else bounds. The response timeout cannot cover it - that clock starts
+    /// only once the write returns - and the read loop is by then parked in <c>PostAsync</c> against
+    /// a full mailbox, so it never notices the peer either. Without this the request, socket and
+    /// actor leak permanently and silently, while the printer's own 60s socket timeout lets it
+    /// reconnect and look healthy.
+    /// </remarks>
+    [Fact]
+    public async Task AWriteThatNeverCompletesAbandonsTheConnection()
+    {
+        // Arrange
+        PrinterConnectionActor actor = NewActor(WedgedConnection(), sendTimeout: TimeSpan.FromMilliseconds(150));
+
+        // Act - wrapped in Eventually, not awaited bare: if the send deadline ever stops firing this
+        // call never returns at all, and a hanging test is worse than a failing one.
+        Func<Task> send = () => Eventually(actor.SendCommandAsync(new PausePrint(), CancellationToken.None));
+
+        // Assert - told, and told honestly. Not PrinterNotConnectedException, which would claim the
+        // command never left; not CommandResponseTimedOutException, which would claim it arrived and went
+        // unanswered. Neither is known here.
+        await send.Should().ThrowAsync<CommandSendTimedOutException>();
+
+        // And the actor gave up on the connection, not merely on the command. That is the load-
+        // bearing half: completing the mailbox is what ends the read loop, which reaches the
+        // teardown that disposes the socket - the only thing that can end the abandoned write.
         await Eventually(actor.Completion);
     }
 

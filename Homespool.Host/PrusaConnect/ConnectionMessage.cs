@@ -26,7 +26,7 @@ public abstract record ConnectionMessage
 /// <see cref="IPrinterConnectionActor.SendCommandAsync"/>. The actor answers through
 /// <paramref name="Completion"/> - with the printer's correlated reply, or with
 /// <see cref="CommandSendOutcome.AlreadyInFlight"/>/<see cref="CommandSendOutcome.NotConnected"/>/
-/// <see cref="CommandSendOutcome.TimedOut"/> without one.
+/// <see cref="CommandSendOutcome.ResponseTimedOut"/> without one.
 /// </summary>
 /// <param name="Command">The command to write to the printer, and the wire name the reply is
 /// correlated against.</param>

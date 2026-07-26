@@ -517,7 +517,9 @@ dotnet_diagnostic.SA0000.severity = warning
 dotnet_diagnostic.SA1101.severity = none
 dotnet_diagnostic.SA1116.severity = none
 dotnet_diagnostic.SA1117.severity = none
-dotnet_diagnostic.SA1118.severity = warning
+# Suggestion, not warning: a parameter spanning multiple lines is often the readable choice here -
+# a long argument list, a multi-line lambda, a collection expression passed inline.
+dotnet_diagnostic.SA1118.severity = suggestion
 dotnet_diagnostic.SA1119.severity = none
 dotnet_diagnostic.SA1121.severity = none
 dotnet_diagnostic.SA1124.severity = none
@@ -564,3 +566,13 @@ dotnet_diagnostic.SX1309.severity = warning
 dotnet_diagnostic.VSTHRD002.severity = suggestion
 dotnet_diagnostic.VSTHRD100.severity = error
 dotnet_diagnostic.VSTHRD200.severity = suggestion
+
+# The Pages folder is named by ASP.NET's conventions, not StyleCop's: a page model lives in
+# X.cshtml.cs beside its X.cshtml, which is how the framework pairs them and how the IDE nests
+# them. SA1649 wants those 27 files renamed to XModel.cs, which would break the convention to
+# satisfy an analyzer. Scoped to the folder rather than to *.cshtml.cs so the exemption reads as
+# what it is - this directory answers to the framework - and so a plain helper class added here
+# is covered by the same reasoning. The rule stays on everywhere else; 7 real sites remain, none
+# of them under Pages.
+[PrinterService.Host/Pages/**.cs]
+dotnet_diagnostic.SA1649.severity = none

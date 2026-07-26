@@ -1,0 +1,31 @@
+# Line endings.
+#
+# Developed on macOS, built in Linux containers, so LF everywhere: a Windows
+# checkout cannot then feed CRLF into the Docker build. 28 scaffolded Identity
+# pages were CRLF when this file was added - the ASP.NET Identity scaffolder
+# writes CRLF - which is exactly the drift this prevents recurring.
+* text=auto eol=lf
+
+# Shell scripts are LF or they do not run in a container at all.
+*.sh text eol=lf
+
+# Recorded wire data. Left byte-exact: these are evidence of what a printer
+# actually sent, and tests replay them. Normalising a record would defeat the
+# point of keeping one.
+*.capture -text
+*.cap -text
+
+# Vendored client assets, restored by LibMan from libman.json. Third-party
+# bytes we do not own, so they are left exactly as shipped rather than
+# normalised. (Note: .gitignore lists this directory, but some files under it
+# were committed before that entry existed and are still tracked.)
+PrinterService.Host/wwwroot/lib/** -text
+
+# Binary.
+*.ico binary
+
+# Not a guard against source-file encoding. `working-tree-encoding=UTF-8` was
+# tried and is a no-op: when the declared encoding is already UTF-8 git skips
+# the conversion, so it never validates - a Latin-1 .cs file is staged without
+# complaint. Silent U+FFFD corruption on every SDK tested (6.0/8.0/10.0) is the
+# real hazard; catching it needs a check that reads the files, not an attribute.

@@ -8,15 +8,17 @@ namespace Homespool.Host.PrusaConnect.Transfers;
 public interface ITransferOffers
 {
     /// <summary>
-    /// Offers <paramref name="path"/> under a freshly generated hash, and returns that hash to put in
-    /// the <c>START_CONNECT_DOWNLOAD</c> command.
+    /// Offers <paramref name="path"/> under <paramref name="hash"/>, which is what the printer will
+    /// quote back on the first range request of the transfer.
     /// </summary>
     /// <remarks>
-    /// The hash is generated here rather than supplied, because its two constraints both belong to
-    /// this layer: it must be unguessable (it is the only thing authorizing a download of this file)
-    /// and it must fit firmware's 28-character buffer.
+    /// The hash is supplied rather than generated here because it is already the uploaded file's
+    /// identifier - one value serves as both the file handle and the transfer token, which is how
+    /// Connect's own app API works (its <c>start/cloud</c> takes a <c>hash</c>, and that same hash
+    /// comes back from the printer). Re-offering an already-offered hash is fine and is what a
+    /// retried transfer does.
     /// </remarks>
-    string Offer(string path);
+    void Offer(string hash, string path);
 
     /// <summary>
     /// Withdraws an offer. Idempotent - an already-withdrawn or never-known hash is not an error,

@@ -40,3 +40,10 @@ Homespool.Host.IntegrationTest/.mailpit-tls/
 # Firmware archives left here by separate work that happens to share this directory. Large
 # binaries, and not build inputs of this project.
 firmware/
+
+# The rig container's /usb mount - whatever a test transfer downloaded. Scratch, and potentially
+# large gcode. See notes/buddy-rig.md.
+rig/usb/
+
+# The rig's enrolled identity: fingerprint plus the issued token. A credential.
+rig/identity.json

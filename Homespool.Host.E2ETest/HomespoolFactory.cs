@@ -1,9 +1,12 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 
 using Homespool.Data;
 using Homespool.Host.Controllers;
 using Homespool.Host.PrusaConnect;
+using Homespool.Host.PrusaConnect.Transfers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -48,6 +51,29 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
     private readonly IReadOnlyList<ILogEventSink> _extraSinks;
     private readonly MessageDispatcher? _messageDispatcher;
 
+    /// <summary>
+    /// Where uploads go for this factory's lifetime, deleted with it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The database is not the only persistent state a test run touches.</b>
+    /// <see cref="FileStorageOptions.Directory"/> defaults to the relative <c>data/files</c>, and
+    /// <c>UploadedFileStore</c> resolves a relative path against the content root - which under
+    /// <see cref="WebApplicationFactory{TEntryPoint}"/> is the <i>real project directory</i>, not the
+    /// test output folder. So every upload test wrote into the same <c>Homespool.Host/data/files</c>
+    /// a running dev server serves from, and nothing removed them: 21 stale directories had
+    /// accumulated by 2026-07-28 before anyone noticed.
+    /// </para>
+    /// <para>
+    /// That is the same fault this class's remarks already describe for the SQLite file, which took
+    /// two attempts to fix. The file store arrived later and did not inherit the lesson. Isolating it
+    /// here rather than in the one suite that uploads today means the next suite to touch the store
+    /// gets it for free - which is the whole reason the database override lives here too.
+    /// </para>
+    /// </remarks>
+    private readonly string _fileStorageRoot =
+        Path.Combine(Path.GetTempPath(), $"hs-files-{Guid.NewGuid():N}");
+
     public HomespoolFactory(string connectionString,
                                  MessageDispatcher? messageDispatcher = null,
                                  params IReadOnlyList<ILogEventSink> extraSinks)
@@ -70,6 +96,12 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
             }
 
             services.AddDbContext<HSDbContext>(options => options.UseSqlite(_connectionString));
+
+            // PostConfigure rather than Configure: Program.cs binds this section from configuration,
+            // and only a post-configure step is guaranteed to run after that binding. An absolute
+            // path also bypasses the content-root resolution entirely, so it cannot be re-rooted
+            // back onto the project directory.
+            services.PostConfigure<FileStorageOptions>(options => options.Directory = _fileStorageRoot);
 
             // Program.cs's .ReadFrom.Services(services) call wires up any ILogEventSink registered
             // here alongside its own console sink - a bare Microsoft.Extensions.Logging.ILoggerProvider
@@ -101,5 +133,33 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
                 services.AddSingleton(_messageDispatcher);
             }
         });
+    }
+
+    /// <summary>
+    /// Removes the upload directory along with the host. Best effort: a leaked temp directory is a
+    /// nuisance, a failed test run because cleanup threw is worse.
+    /// </summary>
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+
+        if (!disposing)
+        {
+            return;
+        }
+
+        try
+        {
+            if (Directory.Exists(_fileStorageRoot))
+            {
+                Directory.Delete(_fileStorageRoot, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 }

@@ -35,7 +35,20 @@ public class InfoEventDataDTO
     [JsonPropertyName("transfer_paused")]
     public bool? TransferPaused { get; set; }
 
-    /// <summary>Only present when a Connect password is configured.</summary>
+    /// <summary>
+    /// <b>The printer's PrusaLink password</b> - not a Connect one, despite the field name. Firmware
+    /// sends <c>creds.pl_password</c> here (render.cpp:349-351), and that same value is what
+    /// PrusaLink's HTTP server accepts as <c>X-Api-Key</c> (<c>req_parser.cpp:227</c>,
+    /// <c>api_key = server->get_password()</c>). Auto-generated on first boot if unset
+    /// (<c>wui.cpp:83-85</c>), so in practice it is present rather than optional.
+    /// </summary>
+    /// <remarks>
+    /// <b>Treat as a credential.</b> Combined with <c>network_info</c>'s address it grants full
+    /// authenticated access to the printer's HTTP API - including <c>GET /usb/&lt;path&gt;</c>, which
+    /// serves any file on the drive. That is the only route by which a file can be fetched
+    /// <i>from</i> a printer; the Connect protocol has no such command. See
+    /// <c>notes/transfer-protocol.md</c>, "The other direction".
+    /// </remarks>
     [JsonPropertyName("api_key")]
     public string? ApiKey { get; set; }
 

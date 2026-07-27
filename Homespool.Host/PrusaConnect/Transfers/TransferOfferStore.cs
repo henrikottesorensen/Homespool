@@ -1,11 +1,8 @@
 using System;
-using System.Buffers.Text;
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
-using System.Security.Cryptography;
 
-using Homespool.Host.PrusaConnect.Commands;
 using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.PrusaConnect.Transfers;
@@ -31,14 +28,6 @@ namespace Homespool.Host.PrusaConnect.Transfers;
 /// </remarks>
 public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
 {
-    /// <summary>
-    /// 20 bytes, base64url'd to 27 characters - inside firmware's 28-character ceiling
-    /// (<see cref="StartConnectDownload.MaxHashLength"/>), with 160 bits of entropy. Generous,
-    /// deliberately: the hash is the only thing standing between an unauthenticated guess and a file
-    /// being served, so this is sized as a capability rather than as an identifier.
-    /// </summary>
-    private const int HashBytes = 20;
-
     private readonly ConcurrentDictionary<string, string> _offers = new(StringComparer.Ordinal);
     private readonly ILogger<TransferOfferStore> _logger;
 
@@ -47,14 +36,10 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
         _logger = logger;
     }
 
-    public string Offer(string path)
+    public void Offer(string hash, string path)
     {
-        string hash = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(HashBytes));
-
         _offers[hash] = path;
         _logger.LogDebug("Offered {Path} for transfer", path);
-
-        return hash;
     }
 
     public void Revoke(string hash) => _offers.TryRemove(hash, out _);

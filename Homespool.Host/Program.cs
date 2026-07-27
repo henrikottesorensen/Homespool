@@ -8,6 +8,7 @@ using Homespool.Host.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
@@ -147,6 +148,14 @@ public static class Program
                 sp => sp.GetRequiredService<PrusaConnect.Transfers.TransferOfferStore>());
             builder.Services.AddSingleton<PrusaConnect.Transfers.ITransferOffers>(
                 sp => sp.GetRequiredService<PrusaConnect.Transfers.TransferOfferStore>());
+
+            // Uploaded gcode: options, the store, and the content-root accessor it needs. Singleton
+            // because the store holds no per-request state - it is a path and a couple of rules.
+            builder.Services.Configure<PrusaConnect.Transfers.FileStorageOptions>(
+                builder.Configuration.GetSection(PrusaConnect.Transfers.FileStorageOptions.SectionName));
+            builder.Services.AddSingleton<PrusaConnect.Transfers.IHostEnvironmentAccessor>(
+                sp => new PrusaConnect.Transfers.HostEnvironmentAccessor(sp.GetRequiredService<IWebHostEnvironment>().ContentRootPath));
+            builder.Services.AddSingleton<PrusaConnect.Transfers.UploadedFileStore>();
 
             AddPrinterEndpointRateLimiting(builder);
 

@@ -499,25 +499,30 @@ public sealed class TelemetryWriterTests : IDisposable
     }
 
     /// <summary>
-    /// A <c>FILE_INFO</c>'s thumbnail and object outlines are not persisted - both are copies of the
-    /// uploaded gcode's own content, and the event log is not the place to keep a second copy of a
-    /// file we already store. Everything firmware actually produced survives untouched.
+    /// A <c>FILE_INFO</c> keeps only what firmware itself renders. Everything else in that object is
+    /// the uploaded gcode's own header - measured at 396 of 400 keys appearing verbatim in the file
+    /// we already store, the other 4 being base64 thumbnail fragments mangled by firmware's
+    /// <c>key = value</c> split.
     /// </summary>
     /// <remarks>
-    /// The printer sends these unasked: a Connect transfer and a PrusaLink LAN upload both write to
-    /// the same <c>ChangedPath</c> slot the Connect planner drains, so one arrives per file appearing
-    /// on the drive - twice for the same file in one captured session, at 90 KB each. These rows are
-    /// never pruned.
+    /// An allowlist because the two sets have different shapes: firmware's is closed and enumerable
+    /// from render.cpp, the gcode's is unbounded and attacker-influenced. The printer sends these
+    /// unasked - three per transferred file, ~18 KB each, in a table retention never sweeps.
     /// </remarks>
     [Fact]
-    public async Task AFileInfoThumbnailAndObjectOutlinesAreNotPersisted()
+    public async Task AFileInfoKeepsOnlyWhatFirmwareRenders()
     {
         // Arrange
         TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
         await SeedPrinterAsync();
 
         using JsonDocument payload = JsonDocument.Parse(
-            """{"preview":"iVBORw0KGgoAAAA","size":614400,"objects_info":"{\"objects\":[{\"name\":\"A\"}]}","path":"/usb/MODEL~1.BGC"}""");
+            """
+            {"preview":"iVBORw0KGgoAAAA","objects_info":"{\"objects\":[{\"name\":\"A\"}]}",
+             "layer_height":0.2,"filament used [g]":"51.35","estimated printing time (normal mode)":"2h 51m",
+             "iP5nSy8PNRc1GwE6w/9UVFSAPBk4":"","size":614400,"m_timestamp":1785189559,
+             "read_only":false,"display_name":"model.gcode","type":"PRINT_FILE","path":"/usb/MODEL~1.GCO"}
+            """);
 
         // Act
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
@@ -539,36 +544,40 @@ public sealed class TelemetryWriterTests : IDisposable
         await using HSDbContext verify = NewVerificationContext();
         PrinterEvent stored = await verify.PrinterEvents.SingleAsync();
 
-        stored.Payload.Should().NotContain("iVBORw0KGgoAAAA", "the thumbnail is the bulk of the row");
-        stored.Payload.Should().NotContain("polygon", "object outlines are gcode content, not event content");
-        stored.Payload.Should().NotContain("\\\"name\\\"", "nor are the object names");
+        using JsonDocument kept = JsonDocument.Parse(stored.Payload!);
+        kept.RootElement.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(
+            ["size", "m_timestamp", "read_only", "display_name", "type", "path"],
+            "only the fields render.cpp emits itself survive - preview included, since that one is "
+          + "firmware-rendered but is pure gcode content");
 
-        // Nulled rather than removed: firmware omits either key entirely when a file genuinely has no
-        // thumbnail or no labelled objects, so a missing key must not read as "we dropped it".
-        stored.Payload.Should().Contain("\"preview\":null");
-        stored.Payload.Should().Contain("\"objects_info\":null");
-
-        stored.Payload.Should().Contain("\"size\":614400", "what firmware itself produced is kept");
-        stored.Payload.Should().Contain("/usb/MODEL~1.BGC");
+        stored.Payload.Should().NotContain("iVBORw0KGgoAAAA").And.NotContain("layer_height");
+        stored.Payload.Should().NotContain("iP5nSy8", "a blacklist could never have named this key");
+        stored.Payload.Should().Contain("/usb/MODEL~1.GCO");
     }
 
     /// <summary>
-    /// The stripping never touches an event that carries no thumbnail - which is every event but one
-    /// kind, at telemetry rate.
+    /// The allowlist applies to <c>FILE_INFO</c> and nothing else. Every other event type has its own
+    /// field set, and reducing one of those to a FILE_INFO shape would empty it.
     /// </summary>
+    /// <remarks>
+    /// The payload here deliberately carries a <c>path</c> - a name on the allowlist - so the test
+    /// fails if the filter is applied by field name instead of by event type, rather than passing by
+    /// coincidence.
+    /// </remarks>
     [Fact]
-    public async Task AnEventWithoutAThumbnailIsUntouched()
+    public async Task AnEventThatIsNotAFileInfoIsUntouched()
     {
         // Arrange
         TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
         await SeedPrinterAsync();
 
-        using JsonDocument payload = JsonDocument.Parse("""{"start_cmd_id":42,"type":"FROM_CONNECT"}""");
+        using JsonDocument payload = JsonDocument.Parse(
+            """{"start_cmd_id":42,"type":"FROM_CONNECT","path":"/usb/model.gcode","progress":12.5}""");
 
         // Act
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
         {
-            EventType = Events.TransferFinished,
+            EventType = Events.TransferInfo,
             Status = "IDLE",
             Data = payload.RootElement.Clone(),
         });
@@ -585,7 +594,9 @@ public sealed class TelemetryWriterTests : IDisposable
         await using HSDbContext verify = NewVerificationContext();
         PrinterEvent stored = await verify.PrinterEvents.SingleAsync();
 
-        stored.Payload.Should().Be("""{"start_cmd_id":42,"type":"FROM_CONNECT"}""");
+        stored.Payload.Should().Be(
+            """{"start_cmd_id":42,"type":"FROM_CONNECT","path":"/usb/model.gcode","progress":12.5}""",
+            "a non-FILE_INFO payload is stored exactly as it arrived");
     }
 
     [Fact]

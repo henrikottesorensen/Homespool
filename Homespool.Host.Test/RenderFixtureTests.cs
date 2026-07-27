@@ -238,10 +238,11 @@ public class RenderFixtureTests
     }
 
     /// <summary>
-    /// <c>TRANSFER_INFO</c> has no typed payload DTO yet, so this pins its wire shape from the
-    /// renderer directly - the contract the transfer phase will be built against. Asserted on the
-    /// raw <see cref="EventDTO.Data"/> element deliberately: a typed DTO written now would be
-    /// asserting against itself.
+    /// Pins <c>TRANSFER_INFO</c>'s wire shape from the renderer directly - the contract the transfer
+    /// phase is built against. Deliberately asserted on the raw <see cref="EventDTO.Data"/> element
+    /// even though <see cref="TransferEventDataDTO"/> now exists: this test is the wire contract, and
+    /// a typed assertion would only prove the DTO agrees with itself. <see cref="TheTransferInfoPayloadDeserializes"/>
+    /// is the one that checks the mapping.
     /// </summary>
     [Fact]
     public void TheTransferInfoEventCarriesTheTransferShape()
@@ -281,6 +282,82 @@ public class RenderFixtureTests
 
         // It also rides on events that are not about transfers at all, whenever one is running.
         events["Event - rejected with transfer"].TransferId.Should().NotBeNull();
+    }
+
+    /// <summary>
+    /// <see cref="TransferEventDataDTO"/> maps the payload the renderer actually produced, in both
+    /// its shapes - the full progress block, and the bare <c>type</c> of a <c>TRANSFER_INFO</c>
+    /// answered with nothing running.
+    /// </summary>
+    [Fact]
+    public void TheTransferInfoPayloadDeserializes()
+    {
+        // Arrange
+        Dictionary<string, EventDTO> events = EventsByScenario(LoadFixtures());
+
+        // Act
+        TransferEventDataDTO? active = events["Event - transfer info"].Data!.Value
+            .Deserialize<TransferEventDataDTO>();
+        TransferEventDataDTO? none = events["Event - transfer info, no transfer"].Data!.Value
+            .Deserialize<TransferEventDataDTO>();
+        TransferEventDataDTO? noPath = events["Event - transfer info no upload path"].Data!.Value
+            .Deserialize<TransferEventDataDTO>();
+
+        // Assert
+        active.Should().NotBeNull();
+        active!.Size.Should().Be(1024);
+        active.Transferred.Should().Be(0);
+        active.Progress.Should().Be(0.0);
+        active.TimeRemaining.Should().Be(0);
+        active.TimeTransferring.Should().Be(0);
+        active.Path.Should().Be("/usb/whatever.gcode");
+        active.Type.Should().Be("FROM_CONNECT");
+
+        // Nothing running: type alone, everything else absent rather than zeroed.
+        none.Should().NotBeNull();
+        none!.Type.Should().Be("NO_TRANSFER");
+        none.Size.Should().BeNull();
+        none.Transferred.Should().BeNull();
+
+        noPath!.Path.Should().BeNull("firmware guards the field on a non-null destination rather "
+                                      + "than sending an empty one");
+
+        // None of these scenarios sets start_cmd_id - their test never exercises it - so the field
+        // being null here is the renderer's behaviour, not a mapping failure. The shape that does
+        // carry it is covered by TheTerminalTransferEventCarriesTheStartingCommandId.
+        active.StartCommandId.Should().BeNull();
+    }
+
+    /// <summary>
+    /// The terminal transfer events' payload, which is <b>only</b> <c>start_cmd_id</c> - and which
+    /// nests it inside <c>data</c> while <c>command_id</c> and <c>transfer_id</c> on the same events
+    /// sit at the root.
+    /// </summary>
+    /// <remarks>
+    /// Hand-built rather than generated, because no <c>render.cpp</c> section produces a terminal
+    /// transfer event - reaching one needs a transfer that actually completes, which their renderer
+    /// tests never run. The shape is read directly from the emitting branch (render.cpp:538-543 at
+    /// the pinned ref): a <c>data</c> object containing that one field, omitted entirely when the
+    /// id is absent. Weaker provenance than the rest of this file, and deliberately marked as such.
+    /// </remarks>
+    [Fact]
+    public void TheTerminalTransferEventCarriesTheStartingCommandId()
+    {
+        // Arrange
+        const string finished = """
+            {"data":{"start_cmd_id":11},"transfer_id":1037732555,"state":"IDLE","event":"TRANSFER_FINISHED"}
+            """;
+
+        // Act
+        EventDTO? eventDto = JsonSerializer.Deserialize<EventDTO>(finished);
+        TransferEventDataDTO? data = eventDto!.Data!.Value.Deserialize<TransferEventDataDTO>();
+
+        // Assert
+        eventDto.EventType.Should().Be(Events.TransferFinished);
+        eventDto.TransferId.Should().Be(1037732555);
+        eventDto.CommandId.Should().BeNull("the terminal events are unsolicited - they answer no "
+                                            + "command, which is why start_cmd_id has to exist");
+        data!.StartCommandId.Should().Be(11u);
     }
 
     /// <summary>

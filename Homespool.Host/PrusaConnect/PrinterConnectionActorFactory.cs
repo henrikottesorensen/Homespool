@@ -1,3 +1,4 @@
+using Homespool.Host.PrusaConnect.Transfers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -16,12 +17,15 @@ namespace Homespool.Host.PrusaConnect;
 public class PrinterConnectionActorFactory
 {
     private readonly ITelemetrySink _sink;
+    private readonly ITransferContentStore _contentStore;
     private readonly ILogger<PrinterConnectionActor> _logger;
     private readonly IOptions<PrusaConnectOptions> _options;
 
-    public PrinterConnectionActorFactory(ITelemetrySink sink, ILogger<PrinterConnectionActor> logger, IOptions<PrusaConnectOptions> options)
+    public PrinterConnectionActorFactory(ITelemetrySink sink, ILogger<PrinterConnectionActor> logger, IOptions<PrusaConnectOptions> options,
+        ITransferContentStore contentStore)
     {
         _sink = sink;
+        _contentStore = contentStore;
         _logger = logger;
         _options = options;
     }
@@ -29,5 +33,5 @@ public class PrinterConnectionActorFactory
     /// <summary>Creates the actor and starts its loop; the caller owns completion via
     /// <see cref="IPrinterConnectionActor.Complete"/>.</summary>
     public virtual IPrinterConnectionActor Create(int printerId, IPrinterConnection connection) =>
-        new PrinterConnectionActor(printerId, connection, _sink, _logger, _options.Value.CommandResponseTimeout);
+        new PrinterConnectionActor(printerId, connection, _sink, _logger, _options.Value.CommandResponseTimeout, _contentStore);
 }

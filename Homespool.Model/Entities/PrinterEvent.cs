@@ -53,5 +53,13 @@ public class PrinterEvent
     /// <summary>
     /// The event's <c>data</c> object, verbatim from the wire. Null for events that carry none.
     /// </summary>
+    /// <remarks>
+    /// One exception to "verbatim": a <c>FILE_INFO</c>'s <c>preview</c> - a base64 PNG thumbnail
+    /// dominating the message at 47-89 KB - is stored as <c>null</c> rather than kept, because these
+    /// rows are never pruned and the printer sends them unasked. The key is nulled rather than
+    /// removed so that "we dropped a thumbnail" stays distinguishable from "this file had none",
+    /// which is what firmware itself expresses by omitting the key. See
+    /// <c>TelemetryWriter.FormatPayload</c>.
+    /// </remarks>
     public string? Payload { get; set; }
 }

@@ -1,5 +1,8 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -125,6 +128,13 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// </remarks>
     private const int FinalFlushAttempts = 3;
 
+    /// <summary>
+    /// The <c>FILE_INFO</c> data keys that are stored as <c>null</c> rather than kept - both of them
+    /// copies of the uploaded gcode's own content, relayed by firmware rather than produced by it.
+    /// See <see cref="FormatPayload"/> for the reasoning and for how to get them back.
+    /// </summary>
+    private static readonly string[] StrippedProperties = ["preview", "objects_info"];
+
     private static readonly TimeSpan FinalFlushRetryDelay = TimeSpan.FromMilliseconds(250);
 
     private readonly Channel<TelemetryWriteItem> _channel;
@@ -183,6 +193,99 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         init => _processingFailureWarnings.Interval = value;
     }
 
+    /// <summary>
+    /// The event's <c>data</c> as it goes into the row - verbatim, except that the
+    /// <see cref="StrippedProperties"/> of a <c>FILE_INFO</c> are replaced with <c>null</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Both stripped keys are copies of the uploaded gcode's own content</b>, relayed by firmware
+    /// rather than produced by it - <c>objects_info</c> is verified byte-identical between the file we
+    /// hold and the wire, and <c>preview</c> is the thumbnail the slicer embedded. An event log should
+    /// not carry a second copy of a file we already store, and a plate view that needs this wants it
+    /// from a place built to serve it, not from a row in the event history (Henrik, 2026-07-27).
+    /// </para>
+    /// <para>
+    /// <b>The size case, for <c>preview</c> specifically:</b> a base64 PNG measured at 47-89 KB
+    /// against the 1-3 KB of everything else in the object. <see cref="PrinterEvent"/> rows are kept
+    /// indefinitely (retention sweeps only <see cref="TelemetrySample"/>), and these events are
+    /// <b>not</b> something we ask for: both a Connect-initiated transfer and a LAN upload through
+    /// PrusaLink write to the same <c>ChangedPath</c> slot the Connect planner drains, so the printer
+    /// volunteers one per file that appears on the drive - twice for the same file in one captured
+    /// session. <c>objects_info</c> is far smaller (455-2 464 bytes measured) and goes for the
+    /// duplication reason alone.
+    /// </para>
+    /// <para>
+    /// <b>Why null rather than removed:</b> firmware omits both keys entirely when a file has no
+    /// thumbnail or no labelled objects (render.cpp:791-795 for the preview; <c>objects_info</c> is
+    /// simply absent from the gcode unless the slicer's "label objects" option is on). Deleting the
+    /// key would make "we dropped it" indistinguishable from "there wasn't one". A null records that
+    /// it existed, for 17 bytes, so a reader knows to go and fetch it properly.
+    /// </para>
+    /// <para>
+    /// <b>Where to get them back:</b> a <c>SEND_FILE_INFO</c> for the path re-requests both from the
+    /// printer, and works whatever the format. Reading our own stored upload also works, cheaply for
+    /// plain gcode - the header sits near the end of the file - but needs a decompressor for
+    /// <c>.bgcode</c>, which nothing here has.
+    /// </para>
+    /// </remarks>
+    private static string? FormatPayload(JsonElement? data)
+    {
+        if (data is not { } element)
+        {
+            return null;
+        }
+
+        // The overwhelmingly common case: telemetry-rate events carry neither key, pay two lookups,
+        // and keep their original text with nothing re-serialized.
+        if (element.ValueKind != JsonValueKind.Object || !CarriesStrippedContent(element))
+        {
+            return element.GetRawText();
+        }
+
+        ArrayBufferWriter<byte> buffer = new();
+
+        using (Utf8JsonWriter writer = new(buffer))
+        {
+            writer.WriteStartObject();
+
+            foreach (JsonProperty property in element.EnumerateObject())
+            {
+                if (Array.IndexOf(StrippedProperties, property.Name) >= 0)
+                {
+                    writer.WriteNull(property.Name);
+
+                    continue;
+                }
+
+                property.WriteTo(writer);
+            }
+
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(buffer.WrittenSpan);
+    }
+
+    private static bool CarriesStrippedContent(JsonElement element)
+    {
+        foreach (string name in StrippedProperties)
+        {
+            if (element.TryGetProperty(name, out _))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// First sighting of a printer since this process started: reads its current
+    /// <see cref="PrinterLiveState"/> (if any) so the merge has a real starting point instead of
+    /// treating "never seen this process lifetime" as "never enrolled". A short-lived scope for the
+    /// read alone - the long-lived cache entry it produces holds no <see cref="HSDbContext"/>.
+    /// </summary>
     private void OnItemDropped(TelemetryWriteItem dropped)
     {
         // Always counted (the health snapshot reports the exact total); logged at most once per
@@ -532,18 +635,12 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             JobId = dto.JobId,
             CommandId = dto.CommandId,
             Reason = dto.Reason,
-            Payload = dto.Data?.GetRawText(),
+            Payload = FormatPayload(dto.Data),
         });
 
         TrimExcessPendingEvents(pendingEvents);
     }
 
-    /// <summary>
-    /// First sighting of a printer since this process started: reads its current
-    /// <see cref="PrinterLiveState"/> (if any) so the merge has a real starting point instead of
-    /// treating "never seen this process lifetime" as "never enrolled". A short-lived scope for the
-    /// read alone - the long-lived cache entry it produces holds no <see cref="HSDbContext"/>.
-    /// </summary>
     private async Task<LiveStateCacheEntry> HydrateAsync(int printerId, CancellationToken cancellationToken)
     {
         using IServiceScope scope = _scopeFactory.CreateScope();

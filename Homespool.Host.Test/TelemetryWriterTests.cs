@@ -498,6 +498,96 @@ public sealed class TelemetryWriterTests : IDisposable
         stored.Payload.Should().Be("""{"firmware":"6.4.0"}""");
     }
 
+    /// <summary>
+    /// A <c>FILE_INFO</c>'s thumbnail and object outlines are not persisted - both are copies of the
+    /// uploaded gcode's own content, and the event log is not the place to keep a second copy of a
+    /// file we already store. Everything firmware actually produced survives untouched.
+    /// </summary>
+    /// <remarks>
+    /// The printer sends these unasked: a Connect transfer and a PrusaLink LAN upload both write to
+    /// the same <c>ChangedPath</c> slot the Connect planner drains, so one arrives per file appearing
+    /// on the drive - twice for the same file in one captured session, at 90 KB each. These rows are
+    /// never pruned.
+    /// </remarks>
+    [Fact]
+    public async Task AFileInfoThumbnailAndObjectOutlinesAreNotPersisted()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        using JsonDocument payload = JsonDocument.Parse(
+            """{"preview":"iVBORw0KGgoAAAA","size":614400,"objects_info":"{\"objects\":[{\"name\":\"A\"}]}","path":"/usb/MODEL~1.BGC"}""");
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = Events.FileInfo,
+            Status = "IDLE",
+            Data = payload.RootElement.Clone(),
+        });
+
+        // Assert
+        bool flushed = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await context.PrinterEvents.AnyAsync();
+        }, TimeSpan.FromSeconds(5));
+
+        flushed.Should().BeTrue();
+
+        await using HSDbContext verify = NewVerificationContext();
+        PrinterEvent stored = await verify.PrinterEvents.SingleAsync();
+
+        stored.Payload.Should().NotContain("iVBORw0KGgoAAAA", "the thumbnail is the bulk of the row");
+        stored.Payload.Should().NotContain("polygon", "object outlines are gcode content, not event content");
+        stored.Payload.Should().NotContain("\\\"name\\\"", "nor are the object names");
+
+        // Nulled rather than removed: firmware omits either key entirely when a file genuinely has no
+        // thumbnail or no labelled objects, so a missing key must not read as "we dropped it".
+        stored.Payload.Should().Contain("\"preview\":null");
+        stored.Payload.Should().Contain("\"objects_info\":null");
+
+        stored.Payload.Should().Contain("\"size\":614400", "what firmware itself produced is kept");
+        stored.Payload.Should().Contain("/usb/MODEL~1.BGC");
+    }
+
+    /// <summary>
+    /// The stripping never touches an event that carries no thumbnail - which is every event but one
+    /// kind, at telemetry rate.
+    /// </summary>
+    [Fact]
+    public async Task AnEventWithoutAThumbnailIsUntouched()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        using JsonDocument payload = JsonDocument.Parse("""{"start_cmd_id":42,"type":"FROM_CONNECT"}""");
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = Events.TransferFinished,
+            Status = "IDLE",
+            Data = payload.RootElement.Clone(),
+        });
+
+        // Assert
+        bool flushed = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await context.PrinterEvents.AnyAsync();
+        }, TimeSpan.FromSeconds(5));
+
+        flushed.Should().BeTrue();
+
+        await using HSDbContext verify = NewVerificationContext();
+        PrinterEvent stored = await verify.PrinterEvents.SingleAsync();
+
+        stored.Payload.Should().Be("""{"start_cmd_id":42,"type":"FROM_CONNECT"}""");
+    }
+
     [Fact]
     public async Task LiveStateUpsertsInPlaceAcrossFlushesRatherThanDuplicating()
     {

@@ -129,11 +129,18 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     private const int FinalFlushAttempts = 3;
 
     /// <summary>
-    /// The <c>FILE_INFO</c> data keys that are stored as <c>null</c> rather than kept - both of them
-    /// copies of the uploaded gcode's own content, relayed by firmware rather than produced by it.
-    /// See <see cref="FormatPayload"/> for the reasoning and for how to get them back.
+    /// Every field a <c>FILE_INFO</c>'s <c>data</c> carries that <b>firmware itself renders</b>. Read
+    /// straight off render.cpp:466-498 at the pinned ref, where the branch is six fixed fields plus
+    /// one variant chunk - and the variant's only non-gcode alternative is the directory listing,
+    /// hence <c>children</c> and <c>file_count</c>.
     /// </summary>
-    private static readonly string[] StrippedProperties = ["preview", "objects_info"];
+    /// <remarks>
+    /// An allowlist, not a blacklist, and the asymmetry is the whole argument - see
+    /// <see cref="FormatPayload"/>. Note <c>preview</c> is firmware-rendered and still absent: it is
+    /// the one field firmware produces that is pure gcode content.
+    /// </remarks>
+    private static readonly string[] FirmwareRenderedFileInfoFields =
+        ["size", "m_timestamp", "read_only", "display_name", "type", "path", "children", "file_count"];
 
     private static readonly TimeSpan FinalFlushRetryDelay = TimeSpan.FromMilliseconds(250);
 
@@ -194,51 +201,54 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     }
 
     /// <summary>
-    /// The event's <c>data</c> as it goes into the row - verbatim, except that the
-    /// <see cref="StrippedProperties"/> of a <c>FILE_INFO</c> are replaced with <c>null</c>.
+    /// The event's <c>data</c> as it goes into the row - verbatim, except that a <c>FILE_INFO</c> is
+    /// reduced to <see cref="FirmwareRenderedFileInfoFields"/>.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Both stripped keys are copies of the uploaded gcode's own content</b>, relayed by firmware
-    /// rather than produced by it - <c>objects_info</c> is verified byte-identical between the file we
-    /// hold and the wire, and <c>preview</c> is the thumbnail the slicer embedded. An event log should
-    /// not carry a second copy of a file we already store, and a plate view that needs this wants it
-    /// from a place built to serve it, not from a row in the event history (Henrik, 2026-07-27).
+    /// <b>Everything else in a <c>FILE_INFO</c> is the uploaded gcode's own header</b>, relayed by
+    /// firmware rather than produced by it. Measured on a real transfer: of 407 keys, 7 were
+    /// firmware-rendered, <b>396 appeared verbatim in the gcode we already store</b>, and the
+    /// remaining 4 were base64 thumbnail fragments the firmware's <c>key = value</c> split mangled
+    /// out of that same file - because base64 padding is <c>=</c>. Nothing was unaccounted for. An
+    /// event log should not carry a second copy of a file we hold, and a view that needs this wants
+    /// it from somewhere built to serve it (Henrik, 2026-07-27).
     /// </para>
     /// <para>
-    /// <b>The size case, for <c>preview</c> specifically:</b> a base64 PNG measured at 47-89 KB
-    /// against the 1-3 KB of everything else in the object. <see cref="PrinterEvent"/> rows are kept
-    /// indefinitely (retention sweeps only <see cref="TelemetrySample"/>), and these events are
-    /// <b>not</b> something we ask for: both a Connect-initiated transfer and a LAN upload through
-    /// PrusaLink write to the same <c>ChangedPath</c> slot the Connect planner drains, so the printer
-    /// volunteers one per file that appears on the drive - twice for the same file in one captured
-    /// session. <c>objects_info</c> is far smaller (455-2 464 bytes measured) and goes for the
-    /// duplication reason alone.
+    /// <b>Why an allowlist rather than a blacklist</b>, which was weighed and rejected: the two sets
+    /// have different shapes. Firmware's is <i>closed</i> - render.cpp's FileInfo branch is six fixed
+    /// fields plus one variant chunk, with no other producer, so it can be enumerated exactly from
+    /// source. The gcode's is <i>unbounded and attacker-influenced</i>: 400 keys from one ordinary
+    /// six-cube print, four of them unpredictable base64 strings that no blacklist could have named in
+    /// advance. A crafted file chooses its own key names and count.
     /// </para>
     /// <para>
-    /// <b>Why null rather than removed:</b> firmware omits both keys entirely when a file has no
-    /// thumbnail or no labelled objects (render.cpp:791-795 for the preview; <c>objects_info</c> is
-    /// simply absent from the gcode unless the slicer's "label objects" option is on). Deleting the
-    /// key would make "we dropped it" indistinguishable from "there wasn't one". A null records that
-    /// it existed, for 17 bytes, so a reader knows to go and fetch it properly.
+    /// The residual risk is real and deliberately accepted: <b>a future firmware field would be
+    /// dropped silently</b>, because a new firmware field and a new gcode header arrive
+    /// indistinguishably. It is bounded - the wire contract is verified stable across 6.5.7 to 6.6.3 -
+    /// and recoverable, since a <c>SEND_FILE_INFO</c> re-requests the full object and the fix is one
+    /// string in the list above. The blacklist's failure mode is not recoverable: unbounded content
+    /// already written to a table that retention never sweeps. <b>When the pinned firmware ref moves,
+    /// re-read render.cpp's FileInfo branch</b> - that check is the safeguard here, not anything in
+    /// this code.
     /// </para>
     /// <para>
-    /// <b>Where to get them back:</b> a <c>SEND_FILE_INFO</c> for the path re-requests both from the
-    /// printer, and works whatever the format. Reading our own stored upload also works, cheaply for
-    /// plain gcode - the header sits near the end of the file - but needs a decompressor for
-    /// <c>.bgcode</c>, which nothing here has.
+    /// Size, for scale: 3 x <c>FILE_INFO</c> per transferred file at ~18 KB each, none of them pruned,
+    /// against ~493 bytes for all three under this rule. And the two large ones differed in exactly one
+    /// field - <c>read_only</c> - so 17 538 bytes were being stored twice to record a boolean flipping.
     /// </para>
     /// </remarks>
-    private static string? FormatPayload(JsonElement? data)
+    private static string? FormatPayload(EventDTO dto)
     {
-        if (data is not { } element)
+        if (dto.Data is not { } element)
         {
             return null;
         }
 
-        // The overwhelmingly common case: telemetry-rate events carry neither key, pay two lookups,
-        // and keep their original text with nothing re-serialized.
-        if (element.ValueKind != JsonValueKind.Object || !CarriesStrippedContent(element))
+        // Scoped to FILE_INFO deliberately. Every other event type has its own field set, and the
+        // allowlist above describes this one only - applying it anywhere else would silently empty
+        // payloads that are entirely firmware's own work.
+        if (dto.EventType != Model.Events.FileInfo || element.ValueKind != JsonValueKind.Object)
         {
             return element.GetRawText();
         }
@@ -251,33 +261,16 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
             foreach (JsonProperty property in element.EnumerateObject())
             {
-                if (Array.IndexOf(StrippedProperties, property.Name) >= 0)
+                if (Array.IndexOf(FirmwareRenderedFileInfoFields, property.Name) >= 0)
                 {
-                    writer.WriteNull(property.Name);
-
-                    continue;
+                    property.WriteTo(writer);
                 }
-
-                property.WriteTo(writer);
             }
 
             writer.WriteEndObject();
         }
 
         return Encoding.UTF8.GetString(buffer.WrittenSpan);
-    }
-
-    private static bool CarriesStrippedContent(JsonElement element)
-    {
-        foreach (string name in StrippedProperties)
-        {
-            if (element.TryGetProperty(name, out _))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /// <summary>
@@ -635,7 +628,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             JobId = dto.JobId,
             CommandId = dto.CommandId,
             Reason = dto.Reason,
-            Payload = FormatPayload(dto.Data),
+            Payload = FormatPayload(dto),
         });
 
         TrimExcessPendingEvents(pendingEvents);

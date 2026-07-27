@@ -139,6 +139,15 @@ public static class Program
             builder.Services.AddSingleton<PrusaConnect.PrinterConnectionRegistry>();
             builder.Services.AddSingleton<PrusaConnect.PrinterConnectionActorFactory>();
 
+            // One store, two faces: actors resolve hashes through ITransferContentStore, request
+            // handlers register files through ITransferOffers. Singleton because an offer has to
+            // outlive the request that made it - the printer collects it on its own schedule.
+            builder.Services.AddSingleton<PrusaConnect.Transfers.TransferOfferStore>();
+            builder.Services.AddSingleton<PrusaConnect.Transfers.ITransferContentStore>(
+                sp => sp.GetRequiredService<PrusaConnect.Transfers.TransferOfferStore>());
+            builder.Services.AddSingleton<PrusaConnect.Transfers.ITransferOffers>(
+                sp => sp.GetRequiredService<PrusaConnect.Transfers.TransferOfferStore>());
+
             AddPrinterEndpointRateLimiting(builder);
 
             // Scoped, following the WebSocketHandler it runs: one session per accepted upgrade.

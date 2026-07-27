@@ -1,8 +1,12 @@
 using System;
+using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
+
+using Homespool.Host.PrusaConnect.Transfers;
 
 namespace Homespool.Host.PrusaConnect;
 
@@ -23,6 +27,14 @@ namespace Homespool.Host.PrusaConnect;
                  Justification = "The semaphore allocates no wait handle, and disposing it would race in-flight sends. See the remarks.")]
 public sealed class WebSocketPrinterConnection : IClosablePrinterConnection
 {
+    /// <summary>
+    /// The largest payload a single frame may carry. One below the 16-bit ceiling's successor: at
+    /// 65 535 .NET writes the 16-bit length marker (126), and at 65 536 it switches to the 64-bit
+    /// marker (127) - which the firmware's client rejects outright, dropping the connection
+    /// (websocket.cpp:127-129). Measured, not inferred from the RFC.
+    /// </summary>
+    private const int MaxFramePayload = 65535;
+
     private readonly WebSocket _webSocket;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
@@ -49,6 +61,86 @@ public sealed class WebSocketPrinterConnection : IClosablePrinterConnection
         }
         finally
         {
+            _writeLock.Release();
+        }
+    }
+
+    public async ValueTask SendChunkAsync(ReadOnlyMemory<byte> header, ITransferContent content,
+        long offset, long count, CancellationToken cancellationToken)
+    {
+        // Held across every fragment. Two fragments of one message with somebody else's message in
+        // between is not a message either party can parse - and the close frame is a send too.
+        await _writeLock.WaitAsync(cancellationToken);
+
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(MaxFramePayload);
+
+        // Returned only on the normal path. If a read is abandoned - a cancelled await whose
+        // underlying syscall keeps going, which is the usual shape of file I/O on Unix - it may still
+        // write into this buffer afterwards, and handing that to the next renter would corrupt an
+        // unrelated caller's data. Dropping 64 KiB on an exceptional path is the cheaper mistake.
+        bool completed = false;
+
+        try
+        {
+            long remaining = count;
+
+            // The header shares the first frame with as much payload as still fits, so a chunk that
+            // fits in one frame stays one frame.
+            int headerLength = header.Length;
+            header.CopyTo(buffer);
+
+            while (true)
+            {
+                int room = MaxFramePayload - headerLength;
+                int want = (int)Math.Min(room, remaining);
+                int filled = 0;
+
+                while (filled < want)
+                {
+                    int read = await content
+                        .ReadAsync(buffer.AsMemory(headerLength + filled, want - filled), offset + filled, cancellationToken);
+
+                    if (read == 0)
+                    {
+                        // Short file. Nothing good can follow: under-delivering leaves the printer
+                        // waiting forever, since the inline engine has no stall timeout at all.
+                        // Better to fail loudly here than to hang a print silently.
+                        throw new EndOfStreamException(
+                            $"Transfer content ended at {offset + filled} with {remaining - filled} bytes still owed.");
+                    }
+
+                    filled += read;
+                }
+
+                offset += filled;
+                remaining -= filled;
+
+                bool last = remaining == 0;
+
+                // The write keeps CancellationToken.None for the same reason SendAsync does:
+                // cancelling mid-frame leaves a partial frame on the wire and aborts the socket.
+                await _webSocket.SendAsync(buffer.AsMemory(0, headerLength + filled),
+                    WebSocketMessageType.Binary, last, CancellationToken.None);
+
+                if (last)
+                {
+                    completed = true;
+
+                    return;
+                }
+
+                // Only the first frame carries the header; firmware parses it once per message and
+                // reads the rest as payload (connect.cpp:445-532).
+                headerLength = 0;
+            }
+        }
+        finally
+        {
+            if (completed)
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+
             _writeLock.Release();
         }
     }

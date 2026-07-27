@@ -3,6 +3,7 @@ using System.Text.Json;
 
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.PrusaConnect.DTO.Telemetry;
+using Homespool.Host.PrusaConnect.DTO.Transfers;
 using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.PrusaConnect;
@@ -56,7 +57,12 @@ public class MessageDispatcher
             // transfers::Download::InlineRequest (render.cpp:100-119) - the printer requesting the
             // next chunk of a Connect-initiated file upload. Has neither "event" nor "state", so it
             // would otherwise fall into the telemetry branch and fail TelemetryDTO's required Status.
-            return new InboundTransferRequestMessage();
+            InlineRequestDTO request = root.Deserialize<InlineRequestDTO>()!;
+
+            _logger.LogDebug("[{PrinterId}] transfer chunk request file_id={FileId} {Start}..{End}",
+                printerId, request.FileId, request.Start, request.End);
+
+            return new InboundTransferRequestMessage(receivedAt, request);
         }
 
         TelemetryDTO telemetryDto = root.Deserialize<TelemetryDTO>()!;

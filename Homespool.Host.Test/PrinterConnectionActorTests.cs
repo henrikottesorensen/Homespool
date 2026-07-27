@@ -11,6 +11,8 @@ using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.PrusaConnect.DTO.Telemetry;
+using Homespool.Host.PrusaConnect.DTO.Transfers;
+using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Model;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -69,9 +71,10 @@ public class PrinterConnectionActorTests
 
     private static PrinterConnectionActor NewActor(IPrinterConnection connection, ITelemetrySink? sink = null,
         TimeSpan? responseTimeout = null, int printerId = 1, TimeSpan? sendTimeout = null,
-        ILogger<PrinterConnectionActor>? logger = null) =>
+        ILogger<PrinterConnectionActor>? logger = null, ITransferContentStore? contentStore = null) =>
         new(printerId, connection, sink ?? Substitute.For<ITelemetrySink>(),
-            logger ?? NullLogger<PrinterConnectionActor>.Instance, responseTimeout ?? TimeSpan.FromSeconds(10))
+            logger ?? NullLogger<PrinterConnectionActor>.Instance, responseTimeout ?? TimeSpan.FromSeconds(10),
+            contentStore ?? Substitute.For<ITransferContentStore>())
         {
             SendTimeout = sendTimeout ?? TimeSpan.FromSeconds(30),
         };
@@ -421,7 +424,7 @@ public class PrinterConnectionActorTests
         // Nothing to persist for this shape - the transfer feature isn't built. Posting telemetry
         // afterwards and waiting for it proves the transfer message was processed (FIFO), not
         // merely ignored in the mailbox.
-        await actor.PostAsync(new InboundTransferRequestMessage(), CancellationToken.None);
+        await actor.PostAsync(new InboundTransferRequestMessage(DateTimeOffset.UtcNow, new InlineRequestDTO()), CancellationToken.None);
         await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }), CancellationToken.None);
         await WaitUntilAsync(() => sink.TelemetryCalls.Count == 1);
 

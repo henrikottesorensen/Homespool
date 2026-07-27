@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 using Homespool.Host.PrusaConnect;
+using Homespool.Host.PrusaConnect.Transfers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
@@ -238,7 +239,8 @@ public class PrinterConnectionSessionTests
     private sealed class StubActorFactory(IPrinterConnectionActor actor)
         : PrinterConnectionActorFactory(Substitute.For<ITelemetrySink>(),
                                         NullLogger<PrinterConnectionActor>.Instance,
-                                        Options.Create(new PrusaConnectOptions()))
+                                        Options.Create(new PrusaConnectOptions()),
+                                        Substitute.For<ITransferContentStore>())
     {
         public override IPrinterConnectionActor Create(int printerId, IPrinterConnection connection) => actor;
     }
@@ -265,6 +267,10 @@ public class PrinterConnectionSessionTests
         public bool IsOpen => true;
 
         public ValueTask SendAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+        // These tests are about the session's teardown ordering; nothing here sends a transfer chunk.
+        public ValueTask SendChunkAsync(ReadOnlyMemory<byte> header, ITransferContent content, long offset,
+            long count, CancellationToken cancellationToken) => ValueTask.CompletedTask;
 
         public Task CloseOutputAsync(WebSocketCloseStatus closeStatus)
         {

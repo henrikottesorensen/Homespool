@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.PrusaConnect.DTO.Telemetry;
+using Homespool.Host.PrusaConnect.DTO.Transfers;
 
 namespace Homespool.Host.PrusaConnect;
 
@@ -56,10 +57,10 @@ public sealed record InboundEventMessage(DateTimeOffset ReceivedAt, EventDTO Eve
 public sealed record InboundTelemetryMessage(DateTimeOffset ReceivedAt, TelemetryDTO Telemetry) : ConnectionMessage;
 
 /// <summary>
-/// The printer asking for the next chunk of an inline file transfer
+/// The printer asking for the next byte range of an inline file transfer
 /// (<c>{"transfer":"inline", ...}</c>, firmware render.cpp:100-119 at the pinned ref). Routed to the
 /// actor because transfer state and command-id allocation are the same state and want the same owner
-/// (<c>file_id</c> <i>is</i> a command id - notes/transfer-protocol.md); carries no payload yet
-/// because serving chunks isn't built, so today the actor only logs it.
+/// (<c>file_id</c> <i>is</i> a command id - notes/transfer-protocol.md).
 /// </summary>
-public sealed record InboundTransferRequestMessage : ConnectionMessage;
+public sealed record InboundTransferRequestMessage(DateTimeOffset ReceivedAt, InlineRequestDTO Request)
+    : ConnectionMessage;

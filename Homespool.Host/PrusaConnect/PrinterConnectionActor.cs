@@ -1,10 +1,14 @@
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 
 using Homespool.Host.PrusaConnect.Commands;
+using Homespool.Host.PrusaConnect.DTO.Transfers;
+using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Services;
 using Microsoft.Extensions.Logging;
 
@@ -21,6 +25,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     private readonly int _printerId;
     private readonly IPrinterConnection _connection;
     private readonly ITelemetrySink _sink;
+    private readonly ITransferContentStore _contentStore;
     private readonly ILogger<PrinterConnectionActor> _logger;
     private readonly TimeSpan _responseTimeout;
     private readonly Channel<ConnectionMessage> _mailbox;
@@ -36,12 +41,37 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     private Pending? _pending;
     private uint _lastCommandId;
 
+    /// <summary>
+    /// The one transfer this printer may have in progress. One, because firmware allocates a single
+    /// system-wide transfer slot (<c>Monitor</c>, monitor.hpp:85-98) and requests are strictly
+    /// sequential - so this is a field rather than a collection, and "no interleaving" is a property
+    /// of the type rather than something to enforce.
+    /// </summary>
+    private ActiveTransfer? _transfer;
+
     // The exception to that: written by whoever tears the connection down, read by the loop while
     // it drains. Volatile because those are different threads; monotonic, so there is nothing to
     // race - it only ever goes false to true.
     private volatile bool _draining;
 
     private sealed record Pending(uint CommandId, string WireName, TaskCompletionSource<CommandSendResult> Completion, long SentAt);
+
+    /// <summary>
+    /// A transfer the printer is currently pulling from us.
+    /// </summary>
+    /// <param name="Hash">Our token from <c>START_CONNECT_DOWNLOAD</c> - what the first request
+    /// quotes back, and the only link between an offer and the requests it provokes.</param>
+    /// <param name="Content">The bytes, owned by this record and disposed when the transfer ends.</param>
+    /// <param name="FileId">The printer's own nonce, learned from that first request and echoed in
+    /// every chunk header thereafter. Changes on a <c>RangeJump</c>, which renegotiates.</param>
+    /// <param name="TransferId">
+    /// The printer's transfer id, which the first request carries and which its terminal
+    /// <c>TRANSFER_*</c> events carry at the root - so it, not <see cref="FileId"/>, is what matches
+    /// an ending to the transfer that ended. Stable across a <c>RangeJump</c>: the renegotiation
+    /// resends the stored id rather than allocating one (<c>restart_download</c>,
+    /// transfer.cpp:161-223). Null only if a printer omitted it, which firmware never does.
+    /// </param>
+    private sealed record ActiveTransfer(string Hash, ITransferContent Content, uint FileId, int? TransferId);
 
     /// <summary>
     /// Faults a caller's completion, and marks the fault observed.
@@ -96,13 +126,14 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     public TimeSpan SendTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
     public PrinterConnectionActor(int printerId, IPrinterConnection connection, ITelemetrySink sink,
-        ILogger<PrinterConnectionActor> logger, TimeSpan responseTimeout)
+        ILogger<PrinterConnectionActor> logger, TimeSpan responseTimeout, ITransferContentStore contentStore)
     {
         _printerId = printerId;
         _connection = connection;
         _sink = sink;
         _logger = logger;
         _responseTimeout = responseTimeout;
+        _contentStore = contentStore;
 
         _mailbox = Channel.CreateBounded<ConnectionMessage>(new BoundedChannelOptions(MailboxCapacity)
         {
@@ -250,6 +281,13 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             // filter dance (notes/concurrency-model.md: "a line in a switch").
             _pending?.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.NotConnected, null));
             _pending = null;
+
+            // A transfer in progress dies with the connection - there is no way to serve the rest,
+            // and the printer will start over on reconnect with a fresh file_id. Disposing here is
+            // what keeps a dropped connection mid-transfer from leaking the open file, and this is
+            // the one place every connection's life ends.
+            _transfer?.Content.Dispose();
+            _transfer = null;
         }
     }
 
@@ -269,10 +307,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                 _sink.Enqueue(_printerId, telemetry.ReceivedAt, telemetry.Telemetry);
                 break;
 
-            case InboundTransferRequestMessage:
-                // Serving chunks back is the transfer feature (notes/transfer-protocol.md), not yet
-                // built. Recognized-but-unserved, same as before the actor existed.
-                _logger.LogDebug("[{PrinterId}] inline transfer chunk request (not yet served)", _printerId);
+            case InboundTransferRequestMessage transferRequest:
+                await HandleTransferRequestAsync(transferRequest.Request);
                 break;
         }
     }
@@ -381,9 +417,202 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                 new CommandOutcome(eventDto.EventType, eventDto.Reason)));
         }
 
+        EndTransferIfTerminal(eventDto);
+
         // Answering a command doesn't consume the event - it is still an ordinary event
         // (Finished/Rejected/StateChanged) and is persisted like any other.
         _sink.Enqueue(_printerId, message.ReceivedAt, eventDto);
+    }
+
+    /// <summary>
+    /// Answers one range request with the bytes it asked for - or, when it cannot be answered, ends
+    /// the transfer deliberately rather than leaving it hanging.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Serve the whole range or fail it.</b> Firmware's inline engine carries no timestamp
+    /// (<c>Download::Inline</c>, download.hpp:138-151) and therefore no stall timeout: a short answer
+    /// leaves the printer waiting forever, mid-print, with nothing to break the deadlock. A
+    /// zero-length chunk is its defined "error indicated by server" signal (download.cpp:556-577),
+    /// which is the one way to end a transfer promptly - so this sends the header alone when it must
+    /// give up, and never as a side effect of anything else.
+    /// </para>
+    /// <para>
+    /// Requests are strictly sequential (download.cpp:526-554), so there is never more than one of
+    /// these in flight for a printer, and no queue to manage.
+    /// </para>
+    /// </remarks>
+    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+                     Justification = "Ownership moves to _transfer; disposed by the loop's finally or by FailTransferAsync.")]
+    private async Task HandleTransferRequestAsync(InlineRequestDTO request)
+    {
+        // A hash means "this is the first request of a negotiation" - firmware sends the details
+        // block once per negotiation and omits it thereafter (render.cpp:104-108). Note *per
+        // negotiation*, not per transfer: a RangeJump restarts the download with a fresh random
+        // file_id and re-sends the hash (transfer.cpp:161-223), and plain gcode over 512 KiB always
+        // does one, because it fetches the last 50 000 bytes first so GcodeInfo can scan the preview
+        // and only then jumps to the body (transfer.cpp:34-49, :225-236). So a hash-bearing request
+        // must always (re)bind the file_id - treating a familiar hash with an unfamiliar file_id as
+        // a foreign transfer would ignore the jump, and the printer would wait forever for a chunk
+        // that never comes.
+        if (request.Hash is not null)
+        {
+            if (_transfer is not null && _transfer.Hash == request.Hash)
+            {
+                // Same content, renegotiated. Keep the open handle and adopt the new id.
+                _transfer = _transfer with { FileId = request.FileId };
+            }
+            else if (_contentStore.TryOpen(request.Hash, out ITransferContent? content))
+            {
+                _transfer?.Content.Dispose();
+
+                // Ownership moves to _transfer, which the loop's finally disposes when the
+                // connection ends, and FailTransferAsync disposes when the transfer ends early.
+                // CA2000 cannot see across those, hence the suppression rather than a using.
+                _transfer = new ActiveTransfer(request.Hash, content, request.FileId, request.TransferId);
+            }
+            else
+            {
+                // Ordinary rather than alarming: a printer resuming a transfer we have forgotten
+                // across a restart looks exactly like this.
+                _logger.LogInformation("[{PrinterId}] transfer request for unknown hash, failing it", _printerId);
+                await FailTransferAsync(request.FileId);
+
+                return;
+            }
+        }
+
+        if (_transfer is null)
+        {
+            // No hash and no active transfer: a stray request, most likely for a transfer that ended
+            // while this was in flight. Firmware blackholes our stray chunks the same way
+            // (planner.cpp:1191-1200), so failing it is the symmetric, harmless answer.
+            _logger.LogDebug("[{PrinterId}] transfer request with no active transfer", _printerId);
+            await FailTransferAsync(request.FileId);
+
+            return;
+        }
+
+        if (request.FileId != _transfer.FileId)
+        {
+            // A different transfer's request. Answering it with this transfer's bytes is precisely
+            // what firmware's file_id check exists to catch, and would kill a live print.
+            _logger.LogWarning("[{PrinterId}] transfer request for file_id {Requested}, active is {Active}",
+                _printerId, request.FileId, _transfer.FileId);
+
+            return;
+        }
+
+        long count = request.End - request.Start + 1; // End is inclusive (download.cpp:489).
+
+        if (count <= 0 || request.Start < 0 || request.End >= _transfer.Content.Length)
+        {
+            _logger.LogWarning("[{PrinterId}] transfer request {Start}..{End} outside the {Length}-byte file",
+                _printerId, request.Start, request.End, _transfer.Content.Length);
+            await FailTransferAsync(request.FileId);
+
+            return;
+        }
+
+        byte[] header = ChunkWireEncoder.EncodeHeader(request.FileId);
+
+        try
+        {
+            // Same discipline as HandleSendAsync: bound the wait, never the write. A chunk send is
+            // reads and writes interleaved, and neither has any other bound - the reads because a
+            // data directory can be a network mount, the writes because a peer can stop draining.
+            await _connection.SendChunkAsync(header, _transfer.Content, request.Start, count, CancellationToken.None)
+                .AsTask()
+                .WaitAsync(SendTimeout);
+        }
+        catch (TimeoutException)
+        {
+            // Give up on the connection, not the chunk - the same conclusion HandleSendAsync reaches,
+            // and for the same reason: nothing else can break a stalled write, and the printer's own
+            // 60s socket timeout lets it reconnect while our side would leak silently.
+            _logger.LogError("[{PrinterId}] transfer chunk write did not finish within {Timeout}, abandoning the connection",
+                _printerId, SendTimeout);
+            Complete();
+        }
+        catch (Exception e) when (e is IOException or ObjectDisposedException or InvalidOperationException)
+        {
+            // The read failed or the socket went away mid-chunk. Tell the printer, so a print that
+            // will never complete stops waiting for us.
+            _logger.LogWarning(e, "[{PrinterId}] transfer chunk failed", _printerId);
+            await FailTransferAsync(request.FileId);
+        }
+    }
+
+    /// <summary>
+    /// Releases the transfer's content when the printer says the transfer has ended - successfully or
+    /// otherwise. Without this, a completed transfer's file handle would stay open until the
+    /// connection itself ended, which for a printer that stays connected for weeks means indefinitely.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Matched on <c>transfer_id</c>, which the terminal events carry at the root and which the first
+    /// range request gave us. Not on <c>file_id</c>, which a <c>RangeJump</c> changes, and not on
+    /// "any terminal event": the printer's transfer slot is shared with PrusaLink uploads
+    /// (<c>Monitor::Type</c>, monitor.hpp:85-98), and an event ending one of those must not release a
+    /// download of ours. Only one transfer of any kind runs at a time, so in practice these coincide -
+    /// matching on the id costs one comparison and removes the need to rely on that.
+    /// </para>
+    /// <para>
+    /// Nothing is sent here. These events are unsolicited reports that it is already over; a chunk or
+    /// a failure signal now would be answering a question nobody asked.
+    /// </para>
+    /// </remarks>
+    private void EndTransferIfTerminal(DTO.EventMessages.EventDTO eventDto)
+    {
+        if (_transfer is null)
+        {
+            return;
+        }
+
+        if (eventDto.EventType is not (Model.Events.TransferFinished or Model.Events.TransferAborted
+            or Model.Events.TransferStopped))
+        {
+            return;
+        }
+
+        if (_transfer.TransferId is not null && eventDto.TransferId != _transfer.TransferId)
+        {
+            _logger.LogDebug("[{PrinterId}] {EventType} for transfer {Reported}, ours is {Ours} - leaving it open",
+                _printerId, eventDto.EventType, eventDto.TransferId, _transfer.TransferId);
+
+            return;
+        }
+
+        _logger.LogDebug("[{PrinterId}] transfer ended with {EventType}", _printerId, eventDto.EventType);
+        _transfer.Content.Dispose();
+        _transfer = null;
+    }
+
+    /// <summary>
+    /// Ends a transfer the deliberate way: a chunk with a header and no payload, which firmware reads
+    /// as "error indicated by server" (download.cpp:556-577).
+    /// </summary>
+    /// <remarks>
+    /// The only place allowed to send an empty chunk. Everywhere else it would be a silent
+    /// print-killer, which is why the zero-length case is not reachable from the normal send path.
+    /// </remarks>
+    private async Task FailTransferAsync(uint fileId)
+    {
+        _transfer?.Content.Dispose();
+        _transfer = null;
+
+        try
+        {
+            await _connection.SendAsync(ChunkWireEncoder.EncodeHeader(fileId), CancellationToken.None)
+                .AsTask()
+                .WaitAsync(SendTimeout);
+        }
+        catch (Exception e) when (e is TimeoutException or IOException or ObjectDisposedException or InvalidOperationException)
+        {
+            // Best effort - the connection is already in trouble if this fails, and the printer will
+            // notice that separately.
+            _logger.LogDebug(e, "[{PrinterId}] could not signal transfer failure", _printerId);
+        }
     }
 
     private void TimeOutPending()

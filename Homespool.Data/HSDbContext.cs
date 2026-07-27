@@ -89,6 +89,14 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
     {
         base.OnModelCreating(builder);
 
+        builder.Entity<HSUser>(entity =>
+        {
+            // Bounded because it is rendered into every page header. Not unique and not indexed:
+            // it identifies nobody - UserName still does that - so two people may share one.
+            entity.Property(e => e.DisplayName)
+                  .HasMaxLength(HSUser.DisplayNameMaxLength);
+        });
+
         builder.Entity<Printer>(entity =>
         {
             // The public identifier used in URLs, so it is looked up on every such request and

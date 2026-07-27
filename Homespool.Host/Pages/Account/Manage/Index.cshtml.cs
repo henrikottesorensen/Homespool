@@ -58,6 +58,13 @@ public class IndexModel : PageModel
         [Phone]
         [Display(Name = "Phone number")]
         public string PhoneNumber { get; set; }
+
+        /// <summary>
+        /// What the interface calls you. Not how you sign in - that stays your email address.
+        /// </summary>
+        [StringLength(HSUser.DisplayNameMaxLength)]
+        [Display(Name = "Display name")]
+        public string DisplayName { get; set; }
     }
 
     private async Task LoadAsync(HSUser user)
@@ -70,6 +77,7 @@ public class IndexModel : PageModel
         Input = new InputModel
         {
             PhoneNumber = phoneNumber,
+            DisplayName = user.DisplayName,
         };
     }
 
@@ -110,6 +118,28 @@ public class IndexModel : PageModel
             }
         }
 
+        // Blank means "go back to being called by your sign-in name" rather than an empty greeting,
+        // so it is stored as null and the fallback chain takes over.
+        // string, not string?: this file is a scaffolded Identity page and runs with nullable
+        // annotations disabled, so the annotation is a compile error here rather than a hint.
+        string displayName = string.IsNullOrWhiteSpace(Input.DisplayName) ? null : Input.DisplayName.Trim();
+
+        if (displayName != user.DisplayName)
+        {
+            user.DisplayName = displayName;
+
+            IdentityResult setDisplayName = await _userManager.UpdateAsync(user);
+
+            if (!setDisplayName.Succeeded)
+            {
+                StatusMessage = "Unexpected error when trying to set display name.";
+                return RedirectToPage();
+            }
+        }
+
+        // Re-issues the cookie, which is where the display name lives for rendering
+        // (HSUserClaimsPrincipalFactory). Without this the header keeps the old name until the next
+        // sign-in. Already here for the phone-number path; the display name depends on it.
         await _signInManager.RefreshSignInAsync(user);
         StatusMessage = "Your profile has been updated";
         return RedirectToPage();

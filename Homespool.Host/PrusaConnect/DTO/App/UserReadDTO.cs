@@ -6,10 +6,11 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.PrusaConnect.DTO.App;
 
 /// <summary>
-/// The app-facing user read shape (Connect's <c>User</c>). <see cref="Name"/> is the account's
-/// <c>UserName</c> - which is always the email address, since every account is created that way
-/// (invite acceptance and <c>/setup</c> both call <c>SetUserNameAsync(user, email, ...)</c>) -
-/// there being no separate display-name concept on <see cref="HSUser"/> yet.
+/// The app-facing user read shape (Connect's <c>User</c>). <see cref="Name"/> is
+/// <see cref="HSUser.DisplayName"/>, falling back to <c>UserName</c> and then the email.
+/// <c>UserName</c> is still always the email address - it remains the sign-in identifier - which is
+/// exactly why this prefers the display name: an API called <c>Name</c> should not hand out an
+/// address just because that is what people sign in with.
 /// </summary>
 public class UserReadDTO
 {
@@ -24,7 +25,7 @@ public class UserReadDTO
     public static UserReadDTO FromEntity(HSUser user, IReadOnlyList<TeamMember> memberships) => new()
     {
         Id = user.Id,
-        Name = user.UserName ?? user.Email ?? string.Empty,
+        Name = user.DisplayName ?? user.UserName ?? user.Email ?? string.Empty,
         Email = user.Email,
         Teams = memberships.Select(TeamMembershipDTO.FromEntity).ToList(),
     };

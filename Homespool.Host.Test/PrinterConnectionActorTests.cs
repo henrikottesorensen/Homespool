@@ -206,6 +206,41 @@ public class PrinterConnectionActorTests
         await Eventually(actor.Completion);
     }
 
+    /// <summary>
+    /// A command the printer cannot answer completes as soon as its frame is written, and does not
+    /// take the in-flight slot - because nothing would ever free it.
+    /// </summary>
+    /// <remarks>
+    /// <c>RESET_PRINTER</c> is the real case: firmware's handler reboots the machine and the
+    /// rejection built after it is annotated "We reach this place only if the reset_printer fails to
+    /// execute" (planner.cpp:960-966). A capture shows Prusa's Connect sending it nine times over
+    /// 57 s to a printer that had already gone down. Without this the caller would wait out the full
+    /// response timeout and be told a working command had failed.
+    /// </remarks>
+    [Fact]
+    public async Task AnUnanswerableCommandCompletesAsDispatchedAndFreesTheSlot()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames));
+
+        // Act
+        CommandSendResult result = await Eventually(actor.SendCommandAsync(new ResetPrinter(), CancellationToken.None));
+
+        // Assert
+        result.Outcome.Should().Be(CommandSendOutcome.Dispatched);
+        result.Response.Should().BeNull("there is no answer to report, and inventing one would lie about the wire");
+        sentFrames.Should().ContainSingle("the frame still goes out - only the waiting is skipped");
+
+        // The slot is free: a following command is sent rather than refused as AlreadyInFlight.
+        Task<CommandSendResult> next = actor.SendCommandAsync(new PausePrint(), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 2);
+
+        actor.Complete();
+        (await Eventually(next)).Outcome.Should().Be(CommandSendOutcome.NotConnected);
+        await Eventually(actor.Completion);
+    }
+
     [Fact]
     public async Task SecondSendWhileOneIsPendingReturnsAlreadyInFlight()
     {

@@ -109,8 +109,16 @@ public class PrinterTransferController : ControllerBase
         }
 
         // "hash" rather than "id": it is the same value Connect's app API calls a hash, and the same
-        // one command/start/cloud takes below.
-        return Ok(new { hash = stored.Id, fileName = stored.FileName, length = stored.Length });
+        // one command/start/cloud takes below. "printerPath" is what command/start/files will need
+        // once the transfer has run - reported here because the server owns that convention and had
+        // no way of telling anyone what it was.
+        return Ok(new
+        {
+            hash = stored.Id,
+            fileName = stored.FileName,
+            length = stored.Length,
+            printerPath = stored.PrinterPath,
+        });
     }
 
     /// <summary>
@@ -176,7 +184,7 @@ public class PrinterTransferController : ControllerBase
 
         StartConnectDownload command = new()
         {
-            Path = $"/usb/{file.FileName}",
+            Path = file.PrinterPath,
             Hash = file.Id,
             TeamId = (ulong)printer.TeamId,
             OriginalSize = file.Length,
@@ -246,9 +254,12 @@ public class PrinterTransferController : ControllerBase
 
         try
         {
-            CommandOutcome outcome = await _commands.SendCommandAsync(printer.Id, command, user.Id, cancellationToken);
+            CommandOutcome? outcome = await _commands.SendCommandAsync(printer.Id, command, user.Id, cancellationToken);
 
-            if (outcome.EventType is Events.Rejected or Events.Failed)
+            // A null outcome is a command the printer cannot answer, written successfully - nothing
+            // to inspect, and 204 is the honest result. None of this controller's commands are of
+            // that kind today.
+            if (outcome?.EventType is Events.Rejected or Events.Failed)
             {
                 onFailure?.Invoke();
 

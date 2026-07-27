@@ -90,6 +90,34 @@ public sealed class FileUploadEndpointTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
+    /// The upload reports where the file will land on the printer, which is what
+    /// <c>command/start/files</c> needs to print it afterwards. Before this the server owned that
+    /// convention and never stated it, leaving every caller to reconstruct <c>/usb/</c> + the name and
+    /// to break silently if it ever changed.
+    /// </summary>
+    /// <remarks>
+    /// Asserted as the long name on purpose. It is tempting to expect an 8.3 short name here, because
+    /// the printer <i>reports</i> paths that way (<c>is_sfn: true</c>) - but
+    /// <c>MarlinPrinter::start_print</c> passes ours to <c>print_begin</c> unconverted
+    /// (marlin_printer.cpp:540), and a derived <c>~N</c> index would be a guess that prints a different
+    /// file. See <c>notes/protocol-reference.md</c>, "<c>FILE_INFO</c> vs <c>FILE_CHANGED</c>".
+    /// </remarks>
+    [Fact]
+    public async Task AnUploadReportsThePathThePrinterWillKnowItBy()
+    {
+        (HSUser _, HttpClient client) = await EnrollmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "pathreader@example.com");
+
+        using StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes("G28\n")));
+        using HttpResponseMessage response = await client.PutAsync("/api/v1/files/a long name.gcode", body);
+
+        using JsonDocument payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        payload.RootElement.GetProperty("printerPath").GetString().Should().Be("/usb/a long name.gcode");
+
+        client.Dispose();
+    }
+
+    /// <summary>
     /// The extension check has to run before anything is written - a rejected upload should leave
     /// nothing behind at all.
     /// </summary>

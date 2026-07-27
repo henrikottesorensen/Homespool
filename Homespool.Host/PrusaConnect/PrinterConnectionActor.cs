@@ -401,6 +401,17 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             return;
         }
 
+        if (!send.Command.ExpectsReply)
+        {
+            // Never takes the in-flight slot, because nothing would ever free it: the printer cannot
+            // answer this command (RESET_PRINTER reboots instead of replying). Holding the slot would
+            // block every later command until the response timeout expired, and then report failure
+            // for a command that succeeded.
+            send.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.Dispatched, null));
+
+            return;
+        }
+
         _pending = new Pending(commandId, send.Command.WireName, send.Completion, Stopwatch.GetTimestamp());
     }
 

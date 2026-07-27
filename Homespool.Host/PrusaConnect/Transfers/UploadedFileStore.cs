@@ -143,7 +143,35 @@ public class UploadedFileStore
 /// <param name="FileName">The name as uploaded, which is also the name it takes on the printer.</param>
 /// <param name="Path">Absolute path on this machine.</param>
 /// <param name="Length">Size in bytes, which becomes the command's <c>orig_size</c>.</param>
-public sealed record StoredFile(string Id, string FileName, string Path, long Length);
+public sealed record StoredFile(string Id, string FileName, string Path, long Length)
+{
+    /// <summary>
+    /// Where this file lands on the printer, and therefore what <c>command/start/files</c> needs to
+    /// print it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The convention lives here rather than at the two call sites so there is one answer: the
+    /// <c>path</c> we put in <c>START_CONNECT_DOWNLOAD</c>, and the value reported to whoever
+    /// uploaded the file. It is the same string for every printer, which is why it belongs on the
+    /// stored file rather than on a transfer.
+    /// </para>
+    /// <para>
+    /// <b>Not converted to an 8.3 short name, deliberately.</b>
+    /// <c>MarlinPrinter::start_print</c> hands our path to <c>print_begin</c> unchanged
+    /// (marlin_printer.cpp:540 at the pinned ref), so the long name is what a printer accepts;
+    /// <c>is_sfn</c> describes how it <i>reports</i> paths, not what it takes - the conversion is on
+    /// the reporting side only (<c>get_SFN_path</c>, render.cpp:1134). Confirmed on hardware rather
+    /// than inferred: the captures show <c>/usb</c> running FAT32 with long-name support live, a
+    /// 57-character name written and then reported back as <c>LAMPEN~2.BGC</c>. Deriving a short name
+    /// ourselves would mean inventing the <c>~N</c> collision index against directory contents we
+    /// cannot see, and a wrong guess prints a different file. See
+    /// <c>notes/protocol-reference.md</c>, "<c>FILE_INFO</c> vs <c>FILE_CHANGED</c>" and "The
+    /// captures, fully decoded".
+    /// </para>
+    /// </remarks>
+    public string PrinterPath => $"/usb/{FileName}";
+}
 
 /// <summary>
 /// The content root, behind an interface so the store can be constructed in a test without an

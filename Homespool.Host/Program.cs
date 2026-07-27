@@ -57,6 +57,7 @@ public static class Program
 
             builder.Services.AddIdentity<Model.Entities.HSUser, IdentityRole<long>>(options => options.SignIn.RequireConfirmedAccount = true)
                             .AddEntityFrameworkStores<HSDbContext>()
+                            .AddClaimsPrincipalFactory<Services.HSUserClaimsPrincipalFactory>()
                             .AddDefaultTokenProviders();
 
             builder.Services.ConfigureApplicationCookie(options =>

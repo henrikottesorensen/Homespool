@@ -141,6 +141,9 @@ public class RegisterModel : PageModel
             // The account is bound to the invite's email, never anything the invitee typed (§15 dec. 3).
             await _userStore.SetUserNameAsync(user, invitation.Email, cancellationToken);
             await _emailStore.SetEmailAsync(user, invitation.Email, cancellationToken);
+
+            // The sign-in name stays the invite's email; this is only what the interface calls them.
+            user.DisplayName = HSUser.DefaultDisplayNameFor(invitation.Email);
             _accountConfirmationPolicy.Apply(user);
 
             IdentityResult createResult = await _userManager.CreateAsync(user, Input.Password);

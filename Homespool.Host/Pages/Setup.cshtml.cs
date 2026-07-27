@@ -126,6 +126,10 @@ public class SetupModel : PageModel
             await _userStore.SetUserNameAsync(user, Input.Email, CancellationToken.None);
             await _emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None);
 
+            // The sign-in name stays the email; this is only what the interface calls them, and it
+            // is editable afterwards on Account/Manage.
+            user.DisplayName = HSUser.DefaultDisplayNameFor(Input.Email);
+
             _accountConfirmationPolicy.Apply(user);
 
             IdentityResult createResult = await _userManager.CreateAsync(user, Input.Password);

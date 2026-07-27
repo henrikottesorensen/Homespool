@@ -24,6 +24,59 @@ public sealed class FakeDevice
     /// <summary>The running (or paused) job's id; null when no job exists.</summary>
     public int? JobId { get; private set; }
 
+    /// <summary>
+    /// The one transfer this device may have in progress, or null.
+    /// </summary>
+    /// <remarks>
+    /// One, not a collection, because firmware's transfer slot is a single system-wide resource
+    /// shared with PrusaLink uploads (<c>Monitor</c>, monitor.hpp:85-98) - a second
+    /// <c>START_CONNECT_DOWNLOAD</c> is rejected with "Another transfer in progress" rather than
+    /// queued. The server's <c>PrinterConnectionActor</c> models its side the same way, for the same
+    /// reason.
+    /// </remarks>
+    public FakeTransfer? Transfer { get; private set; }
+
+    /// <summary>The next transfer id to hand out. Firmware's come from the transfer slot; any
+    /// increasing sequence is as good, and a predictable one makes tests readable.</summary>
+    private int _nextTransferId = 1;
+
+    /// <summary>
+    /// Takes the transfer slot, or returns null when it is already taken.
+    /// </summary>
+    /// <param name="hash">The server's transfer token.</param>
+    /// <param name="teamId">From the command.</param>
+    /// <param name="path">Destination on this device.</param>
+    /// <param name="totalSize">The command's <c>orig_size</c>.</param>
+    /// <param name="startCommandId">The command id that began it.</param>
+    /// <param name="order">Forces a download order; null picks it the way firmware does.</param>
+    /// <param name="fileIdSource">Supplies each negotiation's <c>file_id</c>.</param>
+    public FakeTransfer? TryBeginTransfer(string hash, ulong teamId, string path, long totalSize,
+        uint startCommandId, FakeDownloadOrder? order = null, Func<uint>? fileIdSource = null)
+    {
+        if (Transfer is not null)
+        {
+            return null;
+        }
+
+        Transfer = new FakeTransfer(hash, teamId, path, totalSize, _nextTransferId++, startCommandId,
+            order, fileIdSource);
+
+        return Transfer;
+    }
+
+    /// <summary>
+    /// The transfer that ended most recently, successful or not - kept so a test can assert on the
+    /// bytes it received after the slot itself has been released.
+    /// </summary>
+    public FakeTransfer? LastTransfer { get; private set; }
+
+    /// <summary>Releases the transfer slot once the transfer has ended, either way.</summary>
+    public void EndTransfer()
+    {
+        LastTransfer = Transfer;
+        Transfer = null;
+    }
+
     /// <summary>The wire spelling of <see cref="State"/> - <c>IDLE</c>, <c>PRINTING</c>, etc.</summary>
     public string WireState => State switch
     {

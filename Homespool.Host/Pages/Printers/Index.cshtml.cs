@@ -134,11 +134,14 @@ public class IndexModel : PageModel
 
         try
         {
-            CommandOutcome outcome = await _printerCommandService.SendCommandAsync(printerId, command, user.Id, cancellationToken);
+            CommandOutcome? outcome = await _printerCommandService.SendCommandAsync(printerId, command, user.Id, cancellationToken);
 
-            (StatusMessage, StatusSuccess) = outcome.EventType switch
+            // Null means the command was written and no answer is expected of it - success. Only the
+            // three buttons on this page reach here, and all of them are answered, so this is a
+            // guard rather than a live case.
+            (StatusMessage, StatusSuccess) = outcome?.EventType switch
             {
-                Events.Rejected or Events.Failed => ($"{command.WireName} rejected: {outcome.Reason}", false),
+                Events.Rejected or Events.Failed => ($"{command.WireName} rejected: {outcome!.Reason}", false),
                 _ => ($"{command.WireName} sent.", true),
             };
         }

@@ -43,6 +43,28 @@ public enum CommandSendOutcome
     Completed,
 
     /// <summary>
+    /// The frame was written, and no answer is expected - the command is one the printer
+    /// structurally cannot acknowledge. <see cref="CommandSendResult.Response"/> is null, and that is
+    /// success rather than a shortfall.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Only reachable for commands declaring <see cref="Commands.ISendableCommand.ExpectsReply"/>
+    /// false. <c>RESET_PRINTER</c> is the case that proved this necessary: firmware's handler calls
+    /// <c>printer.reset_printer()</c> and the rejection line after it is annotated "We reach this place
+    /// only if the reset_printer fails to execute" (planner.cpp:960-966), so a <i>successful</i> reset
+    /// never answers - the printer reboots instead.
+    /// </para>
+    /// <para>
+    /// Observed rather than deduced: in a capture, Prusa's own Connect sent <c>RESET_PRINTER</c> nine
+    /// times over 57 seconds and got nothing back, because the first one had already taken the printer
+    /// down. Without this outcome the same command would sit in the in-flight slot until
+    /// <see cref="ResponseTimedOut"/> fired, reporting failure for a command that worked perfectly.
+    /// </para>
+    /// </remarks>
+    Dispatched,
+
+    /// <summary>
     /// No live socket to write to, so the command definitively never left.
     /// </summary>
     /// <remarks>

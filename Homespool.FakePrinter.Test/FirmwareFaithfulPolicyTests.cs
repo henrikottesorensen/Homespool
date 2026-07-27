@@ -19,6 +19,13 @@ public class FirmwareFaithfulPolicyTests
     private readonly FakeDevice _device = new();
 
     /// <summary>PAUSE_PRINT while printing answers FINISHED under the command id, with the job id.</summary>
+    /// <remarks>
+    /// The <c>state</c> assertion is the interesting one, and it was <b>backwards until 2026-07-27</b>:
+    /// it read <c>PAUSED</c>, justified as "the ack renders the post-transition state". A live capture
+    /// says otherwise - a real MK3.5 answers <c>PAUSE_PRINT</c> with <c>state=PRINTING</c>, because
+    /// job control is asynchronous and the event is rendered before Marlin has moved. See
+    /// <see cref="FirmwareFaithfulPolicy"/>'s <c>JobControl</c> remarks.
+    /// </remarks>
     [Fact]
     public void PauseWhilePrintingAnswersFinished()
     {
@@ -32,7 +39,45 @@ public class FirmwareFaithfulPolicyTests
         reply.RootElement.GetProperty("event").GetString().Should().Be("FINISHED");
         reply.RootElement.GetProperty("command_id").GetUInt32().Should().Be(5);
         reply.RootElement.GetProperty("job_id").GetInt32().Should().Be(301);
-        reply.RootElement.GetProperty("state").GetString().Should().Be("PAUSED", "the ack renders the post-transition state");
+        reply.RootElement.GetProperty("state").GetString().Should().Be("PRINTING",
+            "the ack reports the state at render time, and the pause has not taken effect yet");
+        _device.State.Should().Be(DeviceState.Paused, "the device itself has still transitioned");
+    }
+
+    /// <summary>
+    /// RESUME_PRINT answers FINISHED reporting <c>PAUSED</c> - the mirror of the pause case, and the
+    /// second half of the same live observation.
+    /// </summary>
+    [Fact]
+    public void ResumeWhilePausedReportsTheStateItIsLeaving()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity);
+        _device.StartPrint(jobId: 302);
+        _device.TryPause();
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(JsonCommand(7, "RESUME_PRINT"), _device);
+
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("event").GetString().Should().Be("FINISHED");
+        reply.RootElement.GetProperty("state").GetString().Should().Be("PAUSED");
+        _device.State.Should().Be(DeviceState.Printing);
+    }
+
+    /// <summary>
+    /// SET_PRINTER_READY reports the <b>new</b> state, unlike job control - readiness is a local flag
+    /// rather than a Marlin round trip, and the same capture shows <c>state=READY</c> on its ack. This
+    /// pins the asymmetry so a later "consistency" cleanup cannot quietly erase it.
+    /// </summary>
+    [Fact]
+    public void SetReadyReportsTheStateItIsEntering()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity);
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(JsonCommand(8, "SET_PRINTER_READY"), _device);
+
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("state").GetString().Should().Be("READY",
+            "confirmed on the wire - this one is not deferred the way job control is");
     }
 
     /// <summary>PAUSE_PRINT with nothing printing rejects with the JC macro's fixed reason.</summary>

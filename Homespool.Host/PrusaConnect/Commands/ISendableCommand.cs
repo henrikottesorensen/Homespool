@@ -25,4 +25,25 @@ public interface ISendableCommand : ICommand
     /// <c>BrokenCommand</c> on a mismatch, rather than coercing.
     /// </remarks>
     IReadOnlyDictionary<string, object?>? Arguments => null;
+
+    /// <summary>
+    /// Whether the printer answers this command with an event carrying its <c>command_id</c>. True
+    /// for all but a handful, hence the default.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A command declaring <c>false</c> is completed as
+    /// <see cref="CommandSendOutcome.Dispatched"/> the moment its frame is written, and never takes
+    /// the one in-flight slot - because nothing will ever free it. The alternative is worse than it
+    /// sounds: the caller would wait out the full response timeout and be told the command failed,
+    /// for a command that did exactly what was asked.
+    /// </para>
+    /// <para>
+    /// <b>Not a guess about slow printers.</b> This is only for commands the firmware
+    /// <i>structurally</i> cannot acknowledge - where answering would require code to run after the
+    /// point of no return. A merely slow answer is <see cref="CommandSendOutcome.ResponseTimedOut"/>
+    /// and stays that way; do not reach for this to paper over one.
+    /// </para>
+    /// </remarks>
+    bool ExpectsReply => true;
 }

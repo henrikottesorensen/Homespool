@@ -135,10 +135,11 @@ public sealed class PrinterCommandServiceTests : IDisposable
         PausePrint command = new();
 
         // Act
-        CommandOutcome outcome = await service.SendCommandAsync(printer.Id, command, 1, CancellationToken.None);
+        CommandOutcome? outcome = await service.SendCommandAsync(printer.Id, command, 1, CancellationToken.None);
 
         // Assert
-        outcome.EventType.Should().Be(Events.Finished);
+        outcome.Should().NotBeNull("PAUSE_PRINT is answered - only unanswerable commands report null");
+        outcome!.EventType.Should().Be(Events.Finished);
         await actor.Received(1).SendCommandAsync(command, Arg.Any<CancellationToken>());
     }
 

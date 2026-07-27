@@ -48,9 +48,14 @@ public class PrinterCommandService
     /// The printer never answered within <c>PrusaConnectOptions.CommandResponseTimeout</c>. It says
     /// nothing about whether the command was acted on - the frame was written to the socket.
     /// </exception>
-    /// <returns>The printer's actual answer - e.g. <c>Rejected</c>/"No print to pause" - not just
-    /// whether the send succeeded.</returns>
-    public async Task<CommandOutcome> SendCommandAsync(int printerId, ISendableCommand commandData, long userId, CancellationToken cancellationToken)
+    /// <returns>
+    /// The printer's actual answer - e.g. <c>Rejected</c>/"No print to pause" - not just whether the
+    /// send succeeded. <b>Null</b> for a command declaring
+    /// <see cref="ISendableCommand.ExpectsReply"/> false, where the frame was written and no answer
+    /// will ever come: that is success, not a shortfall, and callers must not read it as failure. See
+    /// <see cref="CommandSendOutcome.Dispatched"/>.
+    /// </returns>
+    public async Task<CommandOutcome?> SendCommandAsync(int printerId, ISendableCommand commandData, long userId, CancellationToken cancellationToken)
     {
         Printer? printer = await _dbContext.Printers.AsNoTracking().SingleOrDefaultAsync(p => p.Id == printerId, cancellationToken);
 
@@ -79,6 +84,10 @@ public class PrinterCommandService
             CommandSendOutcome.AlreadyInFlight => throw new CommandAlreadyInFlightException(printerId),
             CommandSendOutcome.ResponseTimedOut => throw new CommandResponseTimedOutException(printerId),
             CommandSendOutcome.SendTimedOut => throw new CommandSendTimedOutException(printerId),
+
+            // Written, and nothing will answer it. Null rather than an invented event: there is no
+            // outcome to report, and fabricating one would misrepresent the wire.
+            CommandSendOutcome.Dispatched => null,
             _ => result.Response!,
         };
     }

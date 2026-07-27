@@ -26,7 +26,13 @@ public static class EventMessageBuilder
     /// Only passed for event types that carry extras and only while a job exists - never on
     /// <c>ACCEPTED</c>/<c>REJECTED</c> (render.cpp:271, <c>has_extra</c>).
     /// </param>
-    public static byte[] Build(string eventType, string state, uint? commandId = null, string? reason = null, int? jobId = null)
+    /// <param name="machineReason">
+    /// The machine-readable companion to <paramref name="reason"/> (<c>to_str(MachineReason)</c>,
+    /// planner.cpp:302-317) - e.g. <c>TRANSFER_IN_PROGRESS</c>. Firmware attaches one only to the
+    /// rejections that have a code; the job-control refusals carry a reason string alone.
+    /// </param>
+    public static byte[] Build(string eventType, string state, uint? commandId = null, string? reason = null,
+        int? jobId = null, string? machineReason = null)
     {
         ArrayBufferWriter<byte> buffer = new();
 
@@ -44,6 +50,11 @@ public static class EventMessageBuilder
                 writer.WriteString("reason", reason);
             }
 
+            if (machineReason is not null)
+            {
+                writer.WriteString("machine_reason", machineReason);
+            }
+
             writer.WriteString("state", state);
 
             if (commandId.HasValue)
@@ -56,6 +67,175 @@ public static class EventMessageBuilder
         }
 
         return buffer.WrittenSpan.ToArray();
+    }
+
+    /// <summary>
+    /// <c>TRANSFER_INFO</c> - what a <c>START_CONNECT_DOWNLOAD</c> is answered with
+    /// (planner.cpp:801-824), <b>not</b> <c>FINISHED</c>.
+    /// </summary>
+    /// <param name="state">The wire device state.</param>
+    /// <param name="transfer">The transfer being reported.</param>
+    /// <param name="commandId">The command this answers, when it answers one.</param>
+    /// <param name="timeRemaining">Firmware's own estimate; the fake has no basis for one.</param>
+    /// <param name="timeTransferring">Seconds elapsed.</param>
+    /// <remarks>
+    /// Data-block order is render.cpp:518-533: <c>size</c>, <c>transferred</c>, <c>progress</c>,
+    /// <c>time_remaining</c>, <c>time_transferring</c>, <c>path</c>, <c>start_cmd_id</c>, <c>type</c>.
+    /// <c>progress</c> is a <b>percentage to one decimal</b>, not a fraction. <c>start_cmd_id</c> sits
+    /// inside <c>data</c> while <c>transfer_id</c> sits at the root - easy to get backwards, and the
+    /// server's DTO carries a warning about exactly that.
+    /// </remarks>
+    public static byte[] BuildTransferInfo(string state, FakeTransfer transfer, uint? commandId = null,
+        int timeRemaining = 0, int timeTransferring = 0)
+    {
+        ArrayBufferWriter<byte> buffer = new();
+
+        using (Utf8JsonWriter writer = new(buffer))
+        {
+            writer.WriteStartObject();
+
+            writer.WriteStartObject("data");
+            writer.WriteNumber("size", transfer.TotalSize);
+            writer.WriteNumber("transferred", transfer.ValidSize);
+            writer.WriteNumber("progress", Math.Round(transfer.ValidSize * 100.0 / transfer.TotalSize, 1));
+            writer.WriteNumber("time_remaining", timeRemaining);
+            writer.WriteNumber("time_transferring", timeTransferring);
+            writer.WriteString("path", transfer.Path);
+            writer.WriteNumber("start_cmd_id", transfer.StartCommandId);
+            writer.WriteString("type", "FROM_CONNECT");
+            writer.WriteEndObject();
+
+            writer.WriteString("state", state);
+
+            if (commandId.HasValue)
+            {
+                writer.WriteNumber("command_id", commandId.Value);
+            }
+
+            writer.WriteNumber("transfer_id", transfer.TransferId);
+            writer.WriteString("event", "TRANSFER_INFO");
+            writer.WriteEndObject();
+        }
+
+        return buffer.WrittenSpan.ToArray();
+    }
+
+    /// <summary>
+    /// A transfer's terminal event - <c>TRANSFER_FINISHED</c>, <c>TRANSFER_ABORTED</c> or
+    /// <c>TRANSFER_STOPPED</c>.
+    /// </summary>
+    /// <param name="eventType">Which ending. A chunk the printer rejects produces
+    /// <c>TRANSFER_ABORTED</c>: <c>FailedRemote</c> becomes <c>State::Failed</c> with
+    /// <c>Outcome::ErrorOther</c> (transfer.cpp:390), which renders as Aborted
+    /// (planner.cpp:474-475).</param>
+    /// <param name="state">The wire device state.</param>
+    /// <param name="transferId">Rendered at the <b>root</b>, which is what lets a server match the
+    /// ending to the transfer even after a <c>RangeJump</c> changed the <c>file_id</c>.</param>
+    /// <param name="startCommandId">
+    /// The command that started it, or null for a transfer the server did not start - in which case
+    /// <b>no <c>data</c> object is emitted at all</b> (render.cpp:538-543), a shape confirmed on a
+    /// real wire in <c>notes/protocol-reference.md</c>.
+    /// </param>
+    /// <remarks>These are unsolicited reports, so they carry no <c>command_id</c>.</remarks>
+    public static byte[] BuildTransferTerminal(string eventType, string state, int transferId, uint? startCommandId)
+    {
+        ArrayBufferWriter<byte> buffer = new();
+
+        using (Utf8JsonWriter writer = new(buffer))
+        {
+            writer.WriteStartObject();
+
+            if (startCommandId.HasValue)
+            {
+                writer.WriteStartObject("data");
+                writer.WriteNumber("start_cmd_id", startCommandId.Value);
+                writer.WriteEndObject();
+            }
+
+            writer.WriteString("state", state);
+            writer.WriteNumber("transfer_id", transferId);
+            writer.WriteString("event", eventType);
+            writer.WriteEndObject();
+        }
+
+        return buffer.WrittenSpan.ToArray();
+    }
+
+    /// <summary>
+    /// <c>FILE_INFO</c> for a single file - what a printer reports when a file appears, and what a
+    /// completed transfer produces.
+    /// </summary>
+    /// <param name="state">The wire device state.</param>
+    /// <param name="path">The file's path, which for a transfer is the one the server asked for.</param>
+    /// <param name="size">Bytes on disk.</param>
+    /// <param name="modified">The file's mtime as a Unix timestamp.</param>
+    /// <param name="commandId">Set when this answers a <c>SEND_FILE_INFO</c>.</param>
+    /// <remarks>
+    /// <para>
+    /// <b>Not <c>FILE_CHANGED</c>.</b> One ternary picks between them (planner.cpp:503) and a created
+    /// <i>file</i> takes this arm; <c>FILE_CHANGED</c> is for deletions, folder creations and the
+    /// combined case. Two notes in this repository had that backwards - see
+    /// <c>notes/protocol-reference.md</c>, "<c>FILE_INFO</c> vs <c>FILE_CHANGED</c>".
+    /// </para>
+    /// <para>
+    /// Field order is render.cpp:466-498. Two <b>documented deviations</b> from what real hardware
+    /// puts on the wire, both because closing them means inventing data rather than reporting it:
+    /// </para>
+    /// <para>
+    /// <b>1. No <c>preview</c> or gcode-metadata block.</b> Producing one means parsing a gcode for a
+    /// thumbnail. Firmware genuinely omits the preview when a file has none (render.cpp:791-795), so
+    /// an absent one is a real shape - but note that on hardware this is the field that makes
+    /// <c>FILE_INFO</c> the largest message a printer sends: 92 831 bytes across 184 continuation
+    /// frames, measured in the captures. Nothing here exercises that.
+    /// </para>
+    /// <para>
+    /// <b>2. No 8.3 aliasing.</b> On real hardware <c>path</c> is the <b>short</b> name and
+    /// <c>display_name</c> the long one - the renderer converts in place before emitting
+    /// (<c>get_SFN_path</c>/<c>get_LFN</c>, render.cpp:1134-1135), whatever path the event was built
+    /// from. Captured listings show 205 of 206 entries aliased. This fake has no FAT filesystem
+    /// underneath and does not model the <c>~N</c> collision index, so it puts the long name in both
+    /// fields - the same simplification the Buddy rig makes with its <c>strlcpy</c> stub. The two
+    /// fields are still filled from their proper sources (full path, then basename), so a consumer
+    /// reads the right field even though the values coincide here. <b>Do not take a green test against
+    /// this fake as evidence that short names are handled.</b>
+    /// </para>
+    /// </remarks>
+    public static byte[] BuildFileInfo(string state, string path, long size, long modified, uint? commandId = null)
+    {
+        ArrayBufferWriter<byte> buffer = new();
+
+        using (Utf8JsonWriter writer = new(buffer))
+        {
+            writer.WriteStartObject();
+
+            writer.WriteStartObject("data");
+            writer.WriteNumber("size", size);
+            writer.WriteNumber("m_timestamp", modified);
+            writer.WriteBoolean("read_only", false);
+            writer.WriteString("display_name", NameOf(path));
+            writer.WriteString("type", "PRINT_FILE");
+            writer.WriteString("path", path);
+            writer.WriteEndObject();
+
+            writer.WriteString("state", state);
+
+            if (commandId.HasValue)
+            {
+                writer.WriteNumber("command_id", commandId.Value);
+            }
+
+            writer.WriteString("event", "FILE_INFO");
+            writer.WriteEndObject();
+        }
+
+        return buffer.WrittenSpan.ToArray();
+    }
+
+    private static string NameOf(string path)
+    {
+        int separator = path.LastIndexOf('/');
+
+        return separator < 0 ? path : path[(separator + 1)..];
     }
 
     /// <summary>

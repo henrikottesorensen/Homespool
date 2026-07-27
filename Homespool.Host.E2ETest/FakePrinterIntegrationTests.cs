@@ -13,6 +13,7 @@ using Homespool.Host.Controllers;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
+using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -40,6 +41,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-e2e-fake-{Guid.NewGuid():N}.db");
     private readonly CapturingSink _logs = new();
+    private readonly List<string> _offerDirectories = [];
     private HomespoolFactory _root = null!;
     private WebApplicationFactory<PrinterAppController> _factory = null!;
 
@@ -74,6 +76,14 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             if (File.Exists(path))
             {
                 File.Delete(path);
+            }
+        }
+
+        foreach (string directory in _offerDirectories)
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
             }
         }
     }
@@ -299,12 +309,232 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         await EndRunAsync(last, lastRun);
     }
 
+    /// <summary>
+    /// A whole file crosses the wire and arrives byte-for-byte, driven by two independent readings of
+    /// the protocol: the server's chunk server and the fake's download engine, neither built from the
+    /// other's code. 400 KiB of bgcode takes the generic order, so this is the plain sequential case.
+    /// </summary>
+    [Fact]
+    public async Task AFileTransfersEndToEndWithItsBytesIntact()
+    {
+        (FakePrinterClient fake, Task run, int printerId, long userId) = await StartConnectedFakeAsync();
+        byte[] content = Content(400 * 1024);
+        string hash = Offer(content, "model.bgcode");
+
+        CommandOutcome outcome = await SendCommandAsync(printerId, userId, new StartConnectDownload
+        {
+            Path = "/usb/model.bgcode",
+            Hash = hash,
+            TeamId = 1,
+            OriginalSize = content.Length,
+        });
+
+        outcome.EventType.Should().Be(Events.TransferInfo, "a download is acknowledged with TRANSFER_INFO");
+
+        FakeTransfer transfer = await WaitForTransferAsync(fake);
+
+        transfer.IsComplete.Should().BeTrue();
+        transfer.Content.ToArray().Should().Equal(content);
+        transfer.NegotiationCount.Should().Be(1);
+        _logs.Failures.Should().BeEmpty();
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// The case that was broken in production once: plain gcode over 512 KiB fetches its tail first
+    /// and renegotiates with a fresh <c>file_id</c> mid-transfer. The server bound the id only on the
+    /// first request and ignored the jump, so the most ordinary file there is would have hung forever -
+    /// the inline engine has no stall timeout. Here the fake performs the jump of its own accord,
+    /// because it models the download order rather than being told to.
+    /// </summary>
+    [Fact]
+    public async Task ALargePlainGcodeRangeJumpsAndStillArrivesIntact()
+    {
+        (FakePrinterClient fake, Task run, int printerId, long userId) = await StartConnectedFakeAsync();
+        byte[] content = Content(600 * 1024);
+        string hash = Offer(content, "model.gcode");
+
+        await SendCommandAsync(printerId, userId, new StartConnectDownload
+        {
+            Path = "/usb/model.gcode",
+            Hash = hash,
+            TeamId = 1,
+            OriginalSize = content.Length,
+        });
+
+        FakeTransfer transfer = await WaitForTransferAsync(fake);
+
+        transfer.NegotiationCount.Should().Be(2, "a RangeJump renegotiates from scratch");
+        transfer.IsComplete.Should().BeTrue();
+        transfer.Content.ToArray().Should().Equal(content, "the two negotiations must tile the file exactly");
+        _logs.Failures.Should().BeEmpty();
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// A hash the server has forgotten - the shape of a printer resuming across a restart - is failed
+    /// deliberately with the zero-length chunk, and the printer ends the transfer rather than waiting
+    /// forever. The absence of a stall timeout in the inline engine is what makes "always answer"
+    /// load-bearing rather than merely tidy.
+    /// </summary>
+    [Fact]
+    public async Task AnUnknownHashEndsTheTransferInsteadOfHangingIt()
+    {
+        (FakePrinterClient fake, Task run, int printerId, long userId) = await StartConnectedFakeAsync();
+
+        await SendCommandAsync(printerId, userId, new StartConnectDownload
+        {
+            Path = "/usb/missing.bgcode",
+            Hash = "AAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            TeamId = 1,
+            OriginalSize = 4096,
+        });
+
+        FakeTransfer transfer = await WaitForTransferAsync(fake);
+
+        transfer.HasFailed.Should().BeTrue("an empty chunk is the server's 'I failed' signal");
+        transfer.IsComplete.Should().BeFalse();
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// A command sent while a transfer is running is answered normally. Chunks bypass the one-in-flight
+    /// command guard on the printer (connect.cpp:468), so the two streams share the socket without
+    /// blocking each other - and on the server side both are messages to the same single-threaded
+    /// actor, which is what keeps them from interleaving mid-message.
+    /// </summary>
+    [Fact]
+    public async Task ATransferAndACommandShareTheConnection()
+    {
+        (FakePrinterClient fake, Task run, int printerId, long userId) = await StartConnectedFakeAsync(
+            configure: client => client.Device.StartPrint(jobId: 77));
+        byte[] content = Content(600 * 1024);
+        string hash = Offer(content, "while-printing.gcode");
+
+        await SendCommandAsync(printerId, userId, new StartConnectDownload
+        {
+            Path = "/usb/while-printing.gcode",
+            Hash = hash,
+            TeamId = 1,
+            OriginalSize = content.Length,
+        });
+
+        CommandOutcome outcome = await SendCommandAsync(printerId, userId, new PausePrint());
+        outcome.EventType.Should().Be(Events.Finished, "a command must not be starved by a running transfer");
+
+        FakeTransfer transfer = await WaitForTransferAsync(fake);
+        transfer.Content.ToArray().Should().Equal(content, "and the transfer must not be disturbed by the command");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// A printer that drops mid-transfer and reconnects starts over with a fresh <c>file_id</c>, and
+    /// the server serves the new transfer rather than the abandoned one. The dropped transfer's file
+    /// handle dies with the connection.
+    /// </summary>
+    [Fact]
+    public async Task ATransferSurvivesTheConnectionDroppingUnderIt()
+    {
+        (PrinterIdentity identity, string token, int printerId, long userId) = await EnrollNewPrinterAsync();
+        byte[] content = Content(600 * 1024);
+        string hash = Offer(content, "resumed.gcode");
+
+        StartConnectDownload command = new()
+        {
+            Path = "/usb/resumed.gcode",
+            Hash = hash,
+            TeamId = 1,
+            OriginalSize = content.Length,
+        };
+
+        await using (FakePrinterClient dropped = new(identity))
+        {
+            dropped.Token = token;
+            await dropped.ConnectAsync(ConnectViaTestServerAsync);
+            Task droppedRun = dropped.RunAsync(CancellationToken.None);
+            await WaitUntilConnectedAsync(printerId);
+
+            await SendCommandAsync(printerId, userId, command);
+            await dropped.CloseAsync();
+            await droppedRun.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
+        await using FakePrinterClient reconnected = new(identity);
+        reconnected.Token = token;
+        await reconnected.ConnectAsync(ConnectViaTestServerAsync);
+        Task run = reconnected.RunAsync(CancellationToken.None);
+        await WaitUntilConnectedAsync(printerId);
+
+        await SendCommandAsync(printerId, userId, command);
+
+        FakeTransfer transfer = await WaitForTransferAsync(reconnected);
+
+        transfer.IsComplete.Should().BeTrue("the offer outlives the connection, so a restarted transfer completes");
+        transfer.Content.ToArray().Should().Equal(content);
+
+        await EndRunAsync(reconnected, run);
+    }
+
+    private static byte[] Content(int length)
+    {
+        // Position-dependent, so a chunk delivered at the wrong offset fails on content rather than
+        // passing because every byte looked the same.
+        byte[] content = new byte[length];
+
+        for (int i = 0; i < length; i++)
+        {
+            content[i] = (byte)((i * 31) % 251);
+        }
+
+        return content;
+    }
+
     private static async Task EndRunAsync(FakePrinterClient fake, Task run)
     {
         await fake.CloseAsync();
         await run.WaitAsync(TimeSpan.FromSeconds(10));
 
         fake.ReplyFault.Should().BeNull("a faulted fake would invalidate what this test claims about the server");
+    }
+
+    /// <summary>
+    /// Writes the bytes to a temp file and offers them under a fresh hash, the way
+    /// <c>PrinterTransferController</c> does after an upload.
+    /// </summary>
+    private string Offer(byte[] content, string fileName)
+    {
+        string directory = Path.Combine(Path.GetTempPath(), $"ps-e2e-offer-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        _offerDirectories.Add(directory);
+
+        string path = Path.Combine(directory, fileName);
+        File.WriteAllBytes(path, content);
+
+        string hash = Guid.NewGuid().ToString("N")[..27];
+        _factory.Services.GetRequiredService<ITransferOffers>().Offer(hash, path);
+
+        return hash;
+    }
+
+    /// <summary>
+    /// Waits for the fake's transfer to reach a terminal state. The transfer is driven entirely by the
+    /// two ends talking to each other, so there is no single await a test could hold instead.
+    /// </summary>
+    private async Task<FakeTransfer> WaitForTransferAsync(FakePrinterClient fake)
+    {
+        bool ended = await WaitUntilAsync(
+            () => Task.FromResult(fake.Device.LastTransfer is not null),
+            TimeSpan.FromSeconds(30));
+
+        ended.Should().BeTrue("the transfer never reached a terminal state - the inline engine has no "
+                            + "stall timeout, so a hang here is the production symptom");
+        fake.ReplyFault.Should().BeNull();
+
+        return fake.Device.LastTransfer!;
     }
 
     /// <summary>
@@ -437,7 +667,10 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         using IServiceScope scope = _factory.Services.CreateScope();
         PrinterCommandService service = scope.ServiceProvider.GetRequiredService<PrinterCommandService>();
 
-        return await service.SendCommandAsync(printerId, command, userId, CancellationToken.None);
+        // Every command these tests send is one the printer answers, so a null here would itself be
+        // a failure worth surfacing loudly rather than a case to handle.
+        return await service.SendCommandAsync(printerId, command, userId, CancellationToken.None)
+            ?? throw new InvalidOperationException($"{command.WireName} reported no answer expected.");
     }
 
     private async Task<WebSocket> ConnectViaTestServerAsync(FakePrinterConnectRequest request, CancellationToken cancellationToken)

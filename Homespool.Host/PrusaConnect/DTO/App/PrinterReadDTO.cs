@@ -40,14 +40,23 @@ public class PrinterReadDTO
     /// the way the web UI does.
     /// </para>
     /// <para>
-    /// <b>Named <c>printerModel</c> rather than <c>model</c> to match Connect's own <c>Printer</c>
-    /// schema</b> (2026-07-28). It shipped as <c>model</c> earlier the same day and was the only one
-    /// of this DTO's fields whose name diverged from the spec - the other ten already matched. The
-    /// entity property stays <see cref="Printer.Model"/>; the alignment is a wire-shape concern, and
-    /// <c>PrinterModel</c> on an entity called <c>Printer</c> would stutter.
+    /// <b>Named <c>printerType</c>, which took two goes to get right</b> (2026-07-28). It shipped as
+    /// <c>model</c>, was renamed <c>printerModel</c> to match Connect's schema, and that was the wrong
+    /// field of three: their examples are <c>printerType: "1.4.0"</c>, <c>printerTypeName: "MK4"</c>
+    /// and <c>printerModel: "MK4SISMMU3"</c>. Ours is <c>1.3.5</c> - a code, straight from
+    /// <c>INFO</c>'s <c>printer_type</c> - so it is their <c>printerType</c>. The other two are
+    /// omitted rather than faked: <c>printerTypeName</c> needs a code-to-name lookup we do not have,
+    /// and <c>printerModel</c> needs a SKU the printer never sends.
+    /// </para>
+    /// <para>
+    /// <b>Do not confuse this with <see cref="Homespool.Model.PrinterType"/></b>, the entity's own
+    /// enum. That one is the <em>protocol the printer speaks</em> - the seam for supporting something
+    /// other than Prusa Connect - and it is deliberately not on the wire, because publishing it as
+    /// <c>printerType</c> would put a transport name where every client expects a hardware code. Two
+    /// unrelated meanings, one name, and only one of them belongs in this DTO.
     /// </para>
     /// </remarks>
-    public string? PrinterModel { get; set; }
+    public string? PrinterType { get; set; }
 
     /// <summary>The printer's serial number, from <c>INFO</c>'s <c>sn</c>. Null until it connects.</summary>
     public string? SerialNumber { get; set; }
@@ -118,7 +127,7 @@ public class PrinterReadDTO
         Uuid = printer.Uuid,
         Name = printer.Name,
         Location = printer.Location,
-        PrinterModel = printer.Model,
+        PrinterType = printer.Model,
         SerialNumber = printer.SerialNumber,
         NozzleDiameter = printer.NozzleDiameter,
         Firmware = printer.Firmware,

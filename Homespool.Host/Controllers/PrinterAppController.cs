@@ -136,7 +136,7 @@ public class PrinterAppController : ControllerBase
             return Forbid();
         }
 
-        IReadOnlyList<Printer> printers = await _printerQueryService.ListPrintersForUserAsync(user.Id, cancellationToken);
+        IReadOnlyList<PrinterWithState> printers = await _printerQueryService.ListPrintersWithStateForUserAsync(user.Id, cancellationToken);
 
         return Ok(printers.Select(PrinterReadDTO.FromEntity).ToList());
     }
@@ -152,7 +152,7 @@ public class PrinterAppController : ControllerBase
             return Forbid();
         }
 
-        Printer? printer = await _printerQueryService.GetPrinterForUserAsync(uuid, user.Id, cancellationToken);
+        PrinterWithState? printer = await _printerQueryService.GetPrinterWithStateForUserAsync(uuid, user.Id, cancellationToken);
 
         if (printer is null)
         {
@@ -177,7 +177,7 @@ public class PrinterAppController : ControllerBase
 
         try
         {
-            Printer? printer = await _printerQueryService.UpdatePrinterAsync(uuid, user.Id, body.Name, body.Location, cancellationToken);
+            PrinterWithState? printer = await _printerQueryService.UpdatePrinterAsync(uuid, user.Id, body.Name, body.Location, cancellationToken);
 
             if (printer is null)
             {

@@ -206,13 +206,13 @@ public sealed class PrinterQueryServiceTests : IDisposable
         Printer printer = await AddPrinterAsync(context, membership.TeamId, name: "Old name", location: "Old location");
 
         // Act
-        Printer? updated = await new PrinterQueryService(context)
+        PrinterWithState? updated = await new PrinterQueryService(context)
             .UpdatePrinterAsync(printer.Uuid, 1, "New name", "New location", CancellationToken.None);
 
         // Assert
         updated.Should().NotBeNull();
-        updated!.Name.Should().Be("New name");
-        updated.Location.Should().Be("New location");
+        updated!.Printer.Name.Should().Be("New name");
+        updated.Printer.Location.Should().Be("New location");
 
         Printer stored = await context.Printers.SingleAsync(p => p.Id == printer.Id);
         stored.Name.Should().Be("New name");
@@ -255,7 +255,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
         Printer printer = await AddPrinterAsync(context, someoneElses.TeamId);
 
         // Act
-        Printer? updated = await new PrinterQueryService(context)
+        PrinterWithState? updated = await new PrinterQueryService(context)
             .UpdatePrinterAsync(printer.Uuid, 1, "New name", null, CancellationToken.None);
 
         // Assert
@@ -270,7 +270,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
         await using HSDbContext context = await MigratedContextAsync();
 
         // Act
-        Printer? updated = await new PrinterQueryService(context)
+        PrinterWithState? updated = await new PrinterQueryService(context)
             .UpdatePrinterAsync(Guid.NewGuid(), 1, "New name", null, CancellationToken.None);
 
         // Assert
@@ -292,11 +292,11 @@ public sealed class PrinterQueryServiceTests : IDisposable
         DateTimeOffset before = DateTimeOffset.UtcNow;
 
         // Act
-        Printer? updated = await new PrinterQueryService(context)
+        PrinterWithState? updated = await new PrinterQueryService(context)
             .UpdatePrinterAsync(printer.Uuid, 1, null, null, CancellationToken.None);
 
         // Assert
-        updated!.UpdatedAt.Should().BeOnOrAfter(before.AddSeconds(-1));
+        updated!.Printer.UpdatedAt.Should().BeOnOrAfter(before.AddSeconds(-1));
     }
 
     // ---------- GetPrinterStatisticsForUserAsync ----------

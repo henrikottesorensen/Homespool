@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 
 using Homespool.Data;
 using Homespool.Host.Exceptions;
+using Homespool.Model;
 using Homespool.Model.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -45,10 +46,55 @@ public class PrinterQueryService
     }
 
     /// <summary>
+    /// As <see cref="ListPrintersForUserAsync"/>, but pairs each printer with its
+    /// <see cref="PrinterLiveState"/> - which is where a printer's <em>actual</em> status lives.
+    /// </summary>
+    /// <remarks>
+    /// <b><see cref="Printer.Status"/> is not a live value and never has been.</b> It is written once,
+    /// as <see cref="PrinterStatus.Unknown"/>, when the printer row is created, and nothing updates it
+    /// afterwards; telemetry writes <see cref="PrinterLiveState.Status"/> instead, on a different
+    /// entity. Anything reporting a printer's state to a caller has to join to that, which is what
+    /// this exists for. Null live state means the printer has never connected.
+    /// </remarks>
+    public async Task<IReadOnlyList<PrinterWithState>> ListPrintersWithStateForUserAsync(long userId, CancellationToken cancellationToken)
+    {
+        return await _dbContext.Printers
+                               .AsNoTracking()
+                               .Where(p => _dbContext.TeamMembers.Any(m => m.TeamId == p.TeamId && m.UserId == userId && m.CanRead))
+                               .OrderBy(p => p.Id)
+                               .Select(p => new PrinterWithState(
+                                   p,
+                                   _dbContext.PrinterLiveStates.SingleOrDefault(s => s.PrinterId == p.Id)))
+                               .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// As <see cref="GetPrinterForUserAsync"/>, paired with its <see cref="PrinterLiveState"/>. See
+    /// <see cref="ListPrintersWithStateForUserAsync"/> for why the join is necessary rather than
+    /// convenient.
+    /// </summary>
+    public Task<PrinterWithState?> GetPrinterWithStateForUserAsync(Guid uuid, long userId, CancellationToken cancellationToken)
+    {
+        return _dbContext.Printers
+                         .AsNoTracking()
+                         .Where(p => p.Uuid == uuid &&
+                                     _dbContext.TeamMembers.Any(m => m.TeamId == p.TeamId && m.UserId == userId && m.CanRead))
+                         .Select(p => new PrinterWithState(
+                             p,
+                             _dbContext.PrinterLiveStates.SingleOrDefault(s => s.PrinterId == p.Id)))
+                         .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    /// <summary>
     /// A single printer by its public <see cref="Printer.Uuid"/>, or <c>null</c> if it doesn't
     /// exist <b>or</b> the caller lacks <c>CanRead</c> on its team - the two cases are
     /// indistinguishable on purpose, so a 404 never confirms a UUID belongs to someone else's team.
     /// </summary>
+    /// <remarks>
+    /// Returns the printer alone, which is all a caller resolving one for a permission check needs -
+    /// <c>PrinterTransferController</c> is the example. A caller that reports state to a user wants
+    /// <see cref="GetPrinterWithStateForUserAsync"/> instead.
+    /// </remarks>
     public Task<Printer?> GetPrinterForUserAsync(Guid uuid, long userId, CancellationToken cancellationToken)
     {
         return _dbContext.Printers
@@ -65,7 +111,12 @@ public class PrinterQueryService
     /// A caller who can read but not manage the printer's team gets <see cref="TeamAccessDeniedException"/>
     /// instead - safe to distinguish, since reaching that branch already proves they can see the printer.
     /// </summary>
-    public async Task<Printer?> UpdatePrinterAsync(Guid uuid, long userId, string? name, string? location, CancellationToken cancellationToken)
+    /// <remarks>
+    /// Returns the live state alongside, so the response to an edit describes the same resource the
+    /// next <c>GET</c> will - a PATCH answering <c>UNKNOWN</c> while a GET one second later says
+    /// <c>PRINTING</c> would look like the edit had reset something.
+    /// </remarks>
+    public async Task<PrinterWithState?> UpdatePrinterAsync(Guid uuid, long userId, string? name, string? location, CancellationToken cancellationToken)
     {
         Printer? printer = await _dbContext.Printers.SingleOrDefaultAsync(p => p.Uuid == uuid, cancellationToken);
 
@@ -93,7 +144,11 @@ public class PrinterQueryService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return printer;
+        PrinterLiveState? liveState = await _dbContext.PrinterLiveStates
+            .AsNoTracking()
+            .SingleOrDefaultAsync(s => s.PrinterId == printer.Id, cancellationToken);
+
+        return new PrinterWithState(printer, liveState);
     }
 
     /// <summary>
@@ -136,6 +191,10 @@ public class PrinterQueryService
         return new PrinterStatistics(printer, liveState, samples, events);
     }
 }
+
+/// <summary>A printer paired with its last-known state, which may be absent if it has never
+/// connected. See <see cref="PrinterQueryService.ListPrintersWithStateForUserAsync"/>.</summary>
+public sealed record PrinterWithState(Printer Printer, PrinterLiveState? LiveState);
 
 /// <summary>Result of <see cref="PrinterQueryService.GetPrinterStatisticsForUserAsync"/> - a
 /// printer's live state plus recent history, newest first.</summary>

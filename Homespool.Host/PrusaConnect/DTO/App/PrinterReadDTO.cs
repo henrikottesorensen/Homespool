@@ -34,11 +34,20 @@ public class PrinterReadDTO
     /// once.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Worth exposing beyond curiosity: it is the second link in the display chain a client has to
     /// reproduce, <c>Name ?? Model ?? Uuid</c>. Without it an API consumer cannot render a printer
     /// the way the web UI does.
+    /// </para>
+    /// <para>
+    /// <b>Named <c>printerModel</c> rather than <c>model</c> to match Connect's own <c>Printer</c>
+    /// schema</b> (2026-07-28). It shipped as <c>model</c> earlier the same day and was the only one
+    /// of this DTO's fields whose name diverged from the spec - the other ten already matched. The
+    /// entity property stays <see cref="Printer.Model"/>; the alignment is a wire-shape concern, and
+    /// <c>PrinterModel</c> on an entity called <c>Printer</c> would stutter.
+    /// </para>
     /// </remarks>
-    public string? Model { get; set; }
+    public string? PrinterModel { get; set; }
 
     /// <summary>The printer's serial number, from <c>INFO</c>'s <c>sn</c>. Null until it connects.</summary>
     public string? SerialNumber { get; set; }
@@ -67,7 +76,7 @@ public class PrinterReadDTO
         Uuid = printer.Uuid,
         Name = printer.Name,
         Location = printer.Location,
-        Model = printer.Model,
+        PrinterModel = printer.Model,
         SerialNumber = printer.SerialNumber,
         Firmware = printer.Firmware,
 

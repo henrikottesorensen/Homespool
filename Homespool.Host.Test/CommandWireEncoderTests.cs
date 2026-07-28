@@ -69,6 +69,34 @@ public class CommandWireEncoderTests
     }
 
     /// <summary>
+    /// <c>SET_TOKEN</c> carries its token as a <b>string in kwargs</b>, pinned against firmware's own
+    /// parser test (<c>tests/unit/connect/command.cpp:156</c>), which accepts exactly
+    /// <c>{"command": "SET_TOKEN","kwargs": {"token":"toktoktok"}}</c>.
+    /// </summary>
+    /// <remarks>
+    /// Its sibling tests at <c>:161</c> and <c>:165</c> prove firmware answers <c>BrokenCommand</c>
+    /// for a missing token and for one longer than <see cref="SetToken.MaxTokenLength"/>, so the key
+    /// name and the type are both load-bearing. The class carried <c>byte[]</c> while it was an unsent
+    /// marker; that would have serialised as base64 and been refused on arrival, which no test could
+    /// have caught while nothing sent it.
+    /// </remarks>
+    [Fact]
+    public void EncodeWritesSetTokensTokenAsAStringInKwargs()
+    {
+        // Act
+        byte[] frame = CommandWireEncoder.Encode(9, new SetToken { Token = "toktoktok" });
+        using JsonDocument payload = JsonDocument.Parse(frame.AsSpan(9).ToArray());
+
+        // Assert
+        payload.RootElement.GetProperty("command").GetString().Should().Be("SET_TOKEN");
+
+        JsonElement token = payload.RootElement.GetProperty("kwargs").GetProperty("token");
+
+        token.ValueKind.Should().Be(JsonValueKind.String, "firmware matches is_arg(\"token\", Type::String)");
+        token.GetString().Should().Be("toktoktok");
+    }
+
+    /// <summary>
     /// The argument-bearing shape, pinned against firmware's own parser test
     /// (tests/unit/connect/command.cpp:141), which accepts
     /// <c>{"command": "START_INLINE_DOWNLOAD", "args": [], "kwargs": {...}}</c>. The four kwargs are

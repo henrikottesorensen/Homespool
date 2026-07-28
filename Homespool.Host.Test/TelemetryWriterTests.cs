@@ -499,6 +499,135 @@ public sealed class TelemetryWriterTests : IDisposable
     }
 
     /// <summary>
+    /// <c>INFO</c> is the only message saying what a printer <i>is</i>, and until this landed nothing
+    /// consumed it: <c>Printer.Firmware</c> had no assignment anywhere in the codebase, so the API
+    /// reported <c>null</c> for every printer forever.
+    /// </summary>
+    [Fact]
+    public async Task AnInfoEventFillsInTheFirmwareAndModel()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        using JsonDocument payload = JsonDocument.Parse("""{"firmware":"6.5.7","printer_type":"1.3.5"}""");
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = Events.Info,
+            Status = "IDLE",
+            Data = payload.RootElement.Clone(),
+        });
+
+        // Assert
+        bool applied = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await context.Printers.AnyAsync(p => p.Firmware != null);
+        }, TimeSpan.FromSeconds(5));
+
+        applied.Should().BeTrue();
+
+        await using HSDbContext verify = NewVerificationContext();
+        Printer printer = await verify.Printers.SingleAsync();
+
+        printer.Firmware.Should().Be("6.5.7");
+        printer.Model.Should().Be("1.3.5");
+    }
+
+    /// <summary>
+    /// A firmware upgrade overwrites what was stored, and so does a model change - Prusa sell upgrade
+    /// kits, so an MK3 genuinely becomes an MK3.5 under the same identity (Henrik, 2026-07-28).
+    /// </summary>
+    [Fact]
+    public async Task LaterInfoOverwritesTheStoredFirmwareAndModel()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        using JsonDocument before = JsonDocument.Parse("""{"firmware":"6.5.7","printer_type":"1.3.0"}""");
+        using JsonDocument after = JsonDocument.Parse("""{"firmware":"6.6.3","printer_type":"1.3.5"}""");
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = Events.Info, Status = "IDLE", Data = before.RootElement.Clone(),
+        });
+
+        await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await context.Printers.AnyAsync(p => p.Firmware == "6.5.7");
+        }, TimeSpan.FromSeconds(5));
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = Events.Info, Status = "IDLE", Data = after.RootElement.Clone(),
+        });
+
+        // Assert
+        bool upgraded = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await context.Printers.AnyAsync(p => p.Firmware == "6.6.3");
+        }, TimeSpan.FromSeconds(5));
+
+        upgraded.Should().BeTrue();
+
+        await using HSDbContext verify = NewVerificationContext();
+        Printer printer = await verify.Printers.SingleAsync();
+
+        printer.Model.Should().Be("1.3.5", "an upgrade kit changes the model under the same identity");
+    }
+
+    /// <summary>
+    /// A field the firmware omits means "unknown", not "empty" - so an INFO without firmware must not
+    /// erase what an earlier one established.
+    /// </summary>
+    [Fact]
+    public async Task AnInfoEventWithoutFirmwareLeavesTheStoredValueAlone()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        using JsonDocument full = JsonDocument.Parse("""{"firmware":"6.5.7","printer_type":"1.3.5"}""");
+        using JsonDocument sparse = JsonDocument.Parse("""{"nozzle_diameter":0.4}""");
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = Events.Info, Status = "IDLE", Data = full.RootElement.Clone(),
+        });
+
+        await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await context.Printers.AnyAsync(p => p.Firmware == "6.5.7");
+        }, TimeSpan.FromSeconds(5));
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = Events.Info, Status = "IDLE", Data = sparse.RootElement.Clone(),
+        });
+
+        await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await context.PrinterEvents.CountAsync() == 2;
+        }, TimeSpan.FromSeconds(5));
+
+        // Assert
+        await using HSDbContext verify = NewVerificationContext();
+        Printer printer = await verify.Printers.SingleAsync();
+
+        printer.Firmware.Should().Be("6.5.7");
+        printer.Model.Should().Be("1.3.5");
+    }
+
+    /// <summary>
     /// A <c>FILE_INFO</c> keeps only what firmware itself renders. Everything else in that object is
     /// the uploaded gcode's own header - measured at 396 of 400 keys appearing verbatim in the file
     /// we already store, the other 4 being base64 thumbnail fragments mangled by firmware's

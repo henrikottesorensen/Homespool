@@ -843,6 +843,47 @@ public class PrinterConnectionActorTests
         await Eventually(actor.Completion);
     }
 
+    /// <summary>
+    /// The same rule against the command where breaking it would be worst. <c>SET_TOKEN</c> carries a
+    /// printer's replacement credential, and its own remarks describe it as remote credential
+    /// management - so logging its arguments would write the new secret to disk at the exact moment
+    /// it is issued, in the log an operator is most likely to be reading and sharing when a printer
+    /// is misbehaving.
+    /// </summary>
+    /// <remarks>
+    /// This case only became possible when <c>SetToken</c> became <see cref="ISendableCommand"/>.
+    /// While it was a hollow marker the assertion could not fail whatever the code did, which is why
+    /// <see cref="ACommandsArgumentsAreNeverLogged"/> was written against
+    /// <see cref="StartConnectDownload"/> instead.
+    /// </remarks>
+    [Fact]
+    public async Task ARotatedTokenIsNeverLogged()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        FakeLogger<PrinterConnectionActor> logger = new();
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), logger: logger);
+
+        // Act
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(
+            new SetToken { Token = "replacement-token99" }, CancellationToken.None);
+
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+
+        // Assert - it really is in the frame, and really is not in the log
+        System.Text.Encoding.ASCII.GetString(sentFrames[0])
+              .Should().Contain("replacement-token99", "the printer has to receive it, or the test proves nothing");
+
+        string log = string.Join('\n', logger.Collector.GetSnapshot().Select(record => record.Message));
+
+        log.Should().Contain("SET_TOKEN");
+        log.Should().NotContain("replacement-token99");
+
+        actor.Complete();
+        await Eventually(sendTask);
+        await Eventually(actor.Completion);
+    }
+
     /// <summary>Records every call instead of acting on it - captured-value assertions
     /// (<c>sink.TelemetryCalls[0].Telemetry.Status</c>) fail far more legibly than an
     /// <c>Arg.Is&lt;&gt;</c> lambda, which is why this stays a class rather than a substitute.</summary>

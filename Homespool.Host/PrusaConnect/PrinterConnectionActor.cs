@@ -401,12 +401,20 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             return;
         }
 
+        // The wire name and the id, never the frame or the command's arguments. SetToken exists as a
+        // command class already, and duplicate-connection-identity.md makes SET_TOKEN the answer to a
+        // compromised printer credential - so a payload-logging habit here would turn that fix into a
+        // credential written to disk. Same rule as UnknownFieldTracker's.
+        _logger.LogDebug("sent {Command} as command {CommandId}", send.Command.WireName, commandId);
+
         if (!send.Command.ExpectsReply)
         {
             // Never takes the in-flight slot, because nothing would ever free it: the printer cannot
             // answer this command (RESET_PRINTER reboots instead of replying). Holding the slot would
             // block every later command until the response timeout expired, and then report failure
             // for a command that succeeded.
+            //
+            // So this one logs "sent" and never logs an answer. That is the protocol, not a lost ack.
             send.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.Dispatched, null));
 
             return;
@@ -424,6 +432,18 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             Pending answered = _pending;
 
             _pending = null;
+
+            // The other half of the pair above, and the reason SentAt is on Pending at all: elapsed
+            // is what separates a sluggish printer from a wedged one, and neither is visible from
+            // the outcome alone. Reason is firmware's own rejection text (JC's macro strings), not
+            // anything we compose - safe to log, and usually the only explanation of a Rejected.
+            _logger.LogDebug("command {CommandId} ({Command}) answered with {EventType} after {ElapsedMs:F0}ms{Reason}",
+                answered.CommandId,
+                answered.WireName,
+                eventDto.EventType,
+                Stopwatch.GetElapsedTime(answered.SentAt).TotalMilliseconds,
+                eventDto.Reason is null ? string.Empty : $": {eventDto.Reason}");
+
             answered.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.Completed,
                 new CommandOutcome(eventDto.EventType, eventDto.Reason)));
         }

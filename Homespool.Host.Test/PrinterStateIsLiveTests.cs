@@ -174,6 +174,39 @@ public sealed class PrinterStateIsLiveTests : IDisposable
     }
 
     /// <summary>
+    /// Everything the printer tells us about itself reaches the API shape.
+    /// </summary>
+    /// <remarks>
+    /// A near-tautological mapping test, and worth it for exactly the reason this file exists: the
+    /// failure being guarded against is not a wrong value but an <em>absent</em> one. <c>Model</c> was
+    /// written to the database and missing from this DTO for months without anything noticing, because
+    /// nothing asserted it was there.
+    /// </remarks>
+    [Fact]
+    public async Task TheDtoCarriesWhatTheInfoEventTaught()
+    {
+        // Arrange
+        await using HSDbContext context = await MigratedContextAsync();
+        Printer printer = await AddPrinterAsync(context, userId: 1, liveStatus: PrinterStatus.Idle);
+
+        printer.Model = "1.3.5";
+        printer.SerialNumber = "SN-12345";
+        printer.Firmware = "6.5.7";
+        await context.SaveChangesAsync();
+
+        // Act
+        PrinterWithState? found = await new PrinterQueryService(context)
+            .GetPrinterWithStateForUserAsync(printer.Uuid, 1, CancellationToken.None);
+
+        // Assert
+        PrinterReadDTO dto = PrinterReadDTO.FromEntity(found!);
+
+        dto.Model.Should().Be("1.3.5");
+        dto.SerialNumber.Should().Be("SN-12345");
+        dto.Firmware.Should().Be("6.5.7");
+    }
+
+    /// <summary>
     /// An edit reports the same state the next read will. A PATCH answering <c>UNKNOWN</c> while a GET
     /// a second later says <c>PRINTING</c> would read as the edit having reset something.
     /// </summary>

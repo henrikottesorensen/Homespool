@@ -29,6 +29,20 @@ public class PrinterReadDTO
 
     public string? Location { get; set; }
 
+    /// <summary>
+    /// Printer model, from <c>INFO</c>'s <c>printer_type</c>. Null until the printer has connected
+    /// once.
+    /// </summary>
+    /// <remarks>
+    /// Worth exposing beyond curiosity: it is the second link in the display chain a client has to
+    /// reproduce, <c>Name ?? Model ?? Uuid</c>. Without it an API consumer cannot render a printer
+    /// the way the web UI does.
+    /// </remarks>
+    public string? Model { get; set; }
+
+    /// <summary>The printer's serial number, from <c>INFO</c>'s <c>sn</c>. Null until it connects.</summary>
+    public string? SerialNumber { get; set; }
+
     public string? Firmware { get; set; }
 
     public required string State { get; set; }
@@ -53,6 +67,8 @@ public class PrinterReadDTO
         Uuid = printer.Uuid,
         Name = printer.Name,
         Location = printer.Location,
+        Model = printer.Model,
+        SerialNumber = printer.SerialNumber,
         Firmware = printer.Firmware,
 
         // Not printer.Status - see the remarks on this class.

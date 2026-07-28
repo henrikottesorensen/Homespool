@@ -25,10 +25,25 @@ public class Team
     /// <c>Name ?? "&lt;CreatedBy display name&gt;'s team"</c>.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Deliberately not defaulted to a generated string at creation, on the same reasoning as
     /// <see cref="Printer.Name"/> (§13): storing "Henrik's team" makes "the user chose this"
     /// indistinguishable from "we generated it", so the generated form could never be safely
     /// refreshed once the creator renamed themselves. That is what <see cref="CreatedBy"/> is for.
+    /// </para>
+    /// <para>
+    /// <b>Prusa Connect does the opposite</b> (Henrik, 2026-07-28): it seeds a member's own team with
+    /// <c>{name}_{createdAt:yyyy-MM-dd}</c>, so their <c>teamName</c> is never null - which is why
+    /// their <c>Printer</c> schema treats it as a plain string while ours is nullable. Kept here
+    /// because it will look like an oversight to whoever next compares the two APIs. It is not: their
+    /// form has exactly the staleness problem described above, and the date suffix is there to make
+    /// the value unique rather than to read well.
+    /// </para>
+    /// <para>
+    /// The practical consequence is a compatibility wrinkle, not a defect: a client written against
+    /// Connect may assume <c>teamName</c> is always present, and against Homespool it usually is not,
+    /// since nothing in the UI offers a way to name a team yet.
+    /// </para>
     /// </remarks>
     public string? Name { get; set; }
 

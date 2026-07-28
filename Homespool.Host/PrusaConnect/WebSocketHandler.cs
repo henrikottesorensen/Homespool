@@ -104,7 +104,7 @@ public class WebSocketHandler
                                 // not a fault: returning lets the caller close and tear down exactly as
                                 // it would for a printer that hung up. Throwing here would instead
                                 // surface as an unhandled 500 on a request whose socket is already gone.
-                                _logger.LogDebug("[{PrinterId}] actor stopped accepting messages; ending the read loop.", printerId);
+                                _logger.LogDebug("actor stopped accepting messages; ending the read loop.");
 
                                 return;
                             }

@@ -138,7 +138,7 @@ public sealed class PrinterConnectionSession
         {
             // Routine, not exceptional: printers drop off the network without a close
             // handshake all the time. The socket is already gone - nothing to close.
-            _logger.LogDebug(e, "[{PrinterId}] connection closed abruptly", printerId);
+            _logger.LogDebug(e, "connection closed abruptly");
         }
         catch (OperationCanceledException e)
         {
@@ -146,7 +146,7 @@ public sealed class PrinterConnectionSession
             // the connection outright, since ConnectionAbortedException derives from this.
             // Ordinary ends to a WebSocket request, not faults: left unhandled they surfaced
             // as a logged 500.
-            _logger.LogDebug(e, "[{PrinterId}] connection ended: shutting down or aborted", printerId);
+            _logger.LogDebug(e, "connection ended: shutting down or aborted");
         }
         finally
         {
@@ -177,13 +177,13 @@ public sealed class PrinterConnectionSession
             }
             catch (TimeoutException)
             {
-                _logger.LogWarning("[{PrinterId}] connection actor did not finish draining in time; abandoning it.", printerId);
+                _logger.LogWarning("connection actor did not finish draining in time; abandoning it.");
             }
             catch (Exception e)
             {
                 // Never rethrow from here: this is a finally, and would replace whatever
                 // exception sent us into it.
-                _logger.LogError(e, "[{PrinterId}] connection actor loop faulted.", printerId);
+                _logger.LogError(e, "connection actor loop faulted.");
             }
 
             await connection.CloseOutputAsync(closeStatus);

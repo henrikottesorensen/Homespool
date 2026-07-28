@@ -261,13 +261,13 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                     {
                         if (window.IsFirstOccurrence)
                         {
-                            _logger.LogError(e, "[{PrinterId}] unhandled error processing {MessageType}", _printerId, message.GetType().Name);
+                            _logger.LogError(e, "unhandled error processing {MessageType}", message.GetType().Name);
                         }
                         else
                         {
                             _logger.LogError(e,
-                                "[{PrinterId}] unhandled error processing {MessageType} - {Count} such fault(s) in the last {ElapsedSeconds:F0}s, {Total} since this connection opened. The latest fault's exception is attached.",
-                                _printerId, message.GetType().Name, window.Count, window.Elapsed.TotalSeconds, window.Total);
+                                "unhandled error processing {MessageType} - {Count} such fault(s) in the last {ElapsedSeconds:F0}s, {Total} since this connection opened. The latest fault's exception is attached.",
+                                message.GetType().Name, window.Count, window.Elapsed.TotalSeconds, window.Total);
                         }
                     }
                 }
@@ -382,8 +382,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             // the read loop's next PostAsync its ordinary exit, which unwinds to the session's
             // teardown, which disposes the socket, which faults the abandoned write.
             _logger.LogError(
-                "[{PrinterId}] writing {Command} did not complete within {SendTimeout}; abandoning the connection.",
-                _printerId, send.Command.WireName, SendTimeout);
+                "writing {Command} did not complete within {SendTimeout}; abandoning the connection.",
+                send.Command.WireName, SendTimeout);
 
             Fail(send.Completion, new Exceptions.CommandSendTimedOutException(_printerId));
 
@@ -486,7 +486,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             {
                 // Ordinary rather than alarming: a printer resuming a transfer we have forgotten
                 // across a restart looks exactly like this.
-                _logger.LogInformation("[{PrinterId}] transfer request for unknown hash, failing it", _printerId);
+                _logger.LogInformation("transfer request for unknown hash, failing it");
                 await FailTransferAsync(request.FileId);
 
                 return;
@@ -498,7 +498,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             // No hash and no active transfer: a stray request, most likely for a transfer that ended
             // while this was in flight. Firmware blackholes our stray chunks the same way
             // (planner.cpp:1191-1200), so failing it is the symmetric, harmless answer.
-            _logger.LogDebug("[{PrinterId}] transfer request with no active transfer", _printerId);
+            _logger.LogDebug("transfer request with no active transfer");
             await FailTransferAsync(request.FileId);
 
             return;
@@ -508,8 +508,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         {
             // A different transfer's request. Answering it with this transfer's bytes is precisely
             // what firmware's file_id check exists to catch, and would kill a live print.
-            _logger.LogWarning("[{PrinterId}] transfer request for file_id {Requested}, active is {Active}",
-                _printerId, request.FileId, _transfer.FileId);
+            _logger.LogWarning("transfer request for file_id {Requested}, active is {Active}",
+                request.FileId, _transfer.FileId);
 
             return;
         }
@@ -518,8 +518,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
 
         if (count <= 0 || request.Start < 0 || request.End >= _transfer.Content.Length)
         {
-            _logger.LogWarning("[{PrinterId}] transfer request {Start}..{End} outside the {Length}-byte file",
-                _printerId, request.Start, request.End, _transfer.Content.Length);
+            _logger.LogWarning("transfer request {Start}..{End} outside the {Length}-byte file",
+                request.Start, request.End, _transfer.Content.Length);
             await FailTransferAsync(request.FileId);
 
             return;
@@ -541,15 +541,15 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             // Give up on the connection, not the chunk - the same conclusion HandleSendAsync reaches,
             // and for the same reason: nothing else can break a stalled write, and the printer's own
             // 60s socket timeout lets it reconnect while our side would leak silently.
-            _logger.LogError("[{PrinterId}] transfer chunk write did not finish within {Timeout}, abandoning the connection",
-                _printerId, SendTimeout);
+            _logger.LogError("transfer chunk write did not finish within {Timeout}, abandoning the connection",
+                SendTimeout);
             Complete();
         }
         catch (Exception e) when (e is IOException or ObjectDisposedException or InvalidOperationException)
         {
             // The read failed or the socket went away mid-chunk. Tell the printer, so a print that
             // will never complete stops waiting for us.
-            _logger.LogWarning(e, "[{PrinterId}] transfer chunk failed", _printerId);
+            _logger.LogWarning(e, "transfer chunk failed");
             await FailTransferAsync(request.FileId);
         }
     }
@@ -588,13 +588,13 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
 
         if (_transfer.TransferId is not null && eventDto.TransferId != _transfer.TransferId)
         {
-            _logger.LogDebug("[{PrinterId}] {EventType} for transfer {Reported}, ours is {Ours} - leaving it open",
-                _printerId, eventDto.EventType, eventDto.TransferId, _transfer.TransferId);
+            _logger.LogDebug("{EventType} for transfer {Reported}, ours is {Ours} - leaving it open",
+                eventDto.EventType, eventDto.TransferId, _transfer.TransferId);
 
             return;
         }
 
-        _logger.LogDebug("[{PrinterId}] transfer ended with {EventType}", _printerId, eventDto.EventType);
+        _logger.LogDebug("transfer ended with {EventType}", eventDto.EventType);
         _transfer.Content.Dispose();
         _transfer = null;
     }
@@ -622,7 +622,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         {
             // Best effort - the connection is already in trouble if this fails, and the printer will
             // notice that separately.
-            _logger.LogDebug(e, "[{PrinterId}] could not signal transfer failure", _printerId);
+            _logger.LogDebug(e, "could not signal transfer failure");
         }
     }
 
@@ -631,8 +631,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         Pending expired = _pending!;
 
         _pending = null;
-        _logger.LogWarning("[{PrinterId}] command {CommandId} ({Command}) timed out waiting for a reply",
-            _printerId, expired.CommandId, expired.WireName);
+        _logger.LogWarning("command {CommandId} ({Command}) timed out waiting for a reply",
+            expired.CommandId, expired.WireName);
         expired.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null));
     }
 }

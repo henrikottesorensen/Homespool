@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -382,6 +383,10 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         List<PrinterEvent> pendingEvents = [];
         HashSet<int> dirtyPrinterIds = [];
 
+        // Identity learned from INFO events, applied to the Printer row at flush time. Keyed by
+        // printer, so a reconnecting printer that sends INFO twice before a flush costs one update.
+        Dictionary<int, InfoEventDataDTO> pendingPrinterInfo = [];
+
         using PeriodicTimer flushTimer = new(TimeSpan.FromSeconds(Math.Max(_options.WriteFlushIntervalSeconds, 0.05)));
 
         // Kept alive across loop iterations and only replaced once it actually fires - recreating it
@@ -412,17 +417,17 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
                 while (_channel.Reader.TryRead(out TelemetryWriteItem? item))
                 {
-                    await ProcessItemAsync(item, cache, pendingSamples, pendingEvents, dirtyPrinterIds, CancellationToken.None);
+                    await ProcessItemAsync(item, cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, CancellationToken.None);
 
                     if (pendingSamples.Count + pendingEvents.Count >= _options.WriteBatchSize)
                     {
-                        await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, CancellationToken.None);
+                        await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, CancellationToken.None);
                     }
                 }
             }
             else
             {
-                await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, CancellationToken.None);
+                await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, CancellationToken.None);
 
                 timerTick = flushTimer.WaitForNextTickAsync().AsTask();
             }
@@ -436,7 +441,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         // the success signal.
         for (int attempt = 1; attempt <= FinalFlushAttempts; attempt++)
         {
-            await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, CancellationToken.None);
+            await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, CancellationToken.None);
 
             if (pendingSamples.Count == 0 && pendingEvents.Count == 0)
             {
@@ -474,6 +479,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                                         List<TelemetrySample> pendingSamples,
                                         List<PrinterEvent> pendingEvents,
                                         HashSet<int> dirtyPrinterIds,
+                                        Dictionary<int, InfoEventDataDTO> pendingPrinterInfo,
                                         CancellationToken cancellationToken)
     {
         try
@@ -485,7 +491,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                     break;
 
                 case TelemetryWriteItem.EventItem eventItem:
-                    ProcessEvent(eventItem, pendingEvents);
+                    ProcessEvent(eventItem, pendingEvents, pendingPrinterInfo);
                     break;
             }
         }
@@ -615,9 +621,97 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             excess);
     }
 
-    private void ProcessEvent(TelemetryWriteItem.EventItem item, List<PrinterEvent> pendingEvents)
+    /// <summary>
+    /// Writes what the latest <c>INFO</c> events said each printer is, onto the <see cref="Printer"/>
+    /// rows, as part of the caller's batch.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Loaded and tracked rather than stubbed</b>, unlike the <c>LoadedMaterial</c> writeback below:
+    /// the serial number is only filled in when it is missing, which needs the current value. EF still
+    /// writes only what changed, and it joins the same <see cref="DbContext.SaveChangesAsync(CancellationToken)"/>
+    /// as everything else, so it cannot commit on its own.
+    /// </para>
+    /// <para>
+    /// <b>Firmware and model are overwritten; the serial number is not.</b> Firmware changes on every
+    /// upgrade, and the model genuinely can change - Prusa sell upgrade kits, so an MK3 becomes an
+    /// MK3.5 under the same identity. A serial number changing means a different printer, which would
+    /// arrive with a different fingerprint and therefore be a different row, so a differing value here
+    /// is not something to act on (Henrik, 2026-07-28). Absent fields are left alone rather than
+    /// nulled - a field the firmware omits is unknown, not empty.
+    /// </para>
+    /// <para>
+    /// <c>UpdatedAt</c> is deliberately not touched. It means "a person edited this printer", and a
+    /// firmware upgrade reported by the hardware is not that.
+    /// </para>
+    /// </remarks>
+    private void ApplyPrinterInfo(HSDbContext context, Dictionary<int, InfoEventDataDTO> pendingPrinterInfo)
+    {
+        foreach ((int printerId, InfoEventDataDTO info) in pendingPrinterInfo)
+        {
+            bool hasFirmware = !string.IsNullOrWhiteSpace(info.Firmware);
+            bool hasModel = !string.IsNullOrWhiteSpace(info.PrinterType);
+
+            if (!hasFirmware && !hasModel)
+            {
+                continue;
+            }
+
+            // Reuse the stub the material writeback may already have attached for this printer.
+            // Attaching a second instance with the same key throws, and this class's failure mode for
+            // that is permanent: the flush raises, the buffers are deliberately kept for a retry, and
+            // every retry hits the same collision - so the writer accepts telemetry it can never
+            // persist for the rest of the process's life.
+            Printer printer = context.Printers.Local.FirstOrDefault(p => p.Id == printerId)
+                              ?? Attach(context, printerId);
+
+            if (hasFirmware)
+            {
+                printer.Firmware = info.Firmware;
+                context.Entry(printer).Property(p => p.Firmware).IsModified = true;
+            }
+
+            if (hasModel)
+            {
+                printer.Model = info.PrinterType;
+                context.Entry(printer).Property(p => p.Model).IsModified = true;
+            }
+        }
+
+        static Printer Attach(HSDbContext context, int printerId)
+        {
+            Printer stub = new() { Id = printerId };
+            context.Attach(stub);
+
+            return stub;
+        }
+    }
+
+    private void ProcessEvent(TelemetryWriteItem.EventItem item,
+                              List<PrinterEvent> pendingEvents,
+                              Dictionary<int, InfoEventDataDTO> pendingPrinterInfo)
     {
         EventDTO dto = item.Data;
+
+        if (dto.EventType == Model.Events.Info && dto.Data is { } data)
+        {
+            // INFO is the only message carrying what the printer *is* rather than what it is doing,
+            // and it arrives on connection. Recorded here and applied at flush time, so it commits
+            // with everything else in the batch - see FlushAsync.
+            try
+            {
+                if (data.Deserialize<InfoEventDataDTO>() is { } info)
+                {
+                    pendingPrinterInfo[item.PrinterId] = info;
+                }
+            }
+            catch (JsonException e)
+            {
+                // Off the wire and attacker-shaped, so a malformed INFO must not take the drain loop
+                // down. The event row itself is still written below, payload and all.
+                _logger.LogWarning(e, "Printer {PrinterId} sent an INFO event whose data could not be read.", item.PrinterId);
+            }
+        }
 
         pendingEvents.Add(new PrinterEvent
         {
@@ -674,11 +768,12 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                                       List<TelemetrySample> pendingSamples,
                                       List<PrinterEvent> pendingEvents,
                                       HashSet<int> dirtyPrinterIds,
+                                      Dictionary<int, InfoEventDataDTO> pendingPrinterInfo,
                                       CancellationToken cancellationToken)
     {
         try
         {
-            await FlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, cancellationToken);
+            await FlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, cancellationToken);
 
             _consecutiveFlushFailures = 0;
             _lastFlushAt = TimeProvider.System.GetUtcNow();
@@ -738,6 +833,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                                   List<TelemetrySample> pendingSamples,
                                   List<PrinterEvent> pendingEvents,
                                   HashSet<int> dirtyPrinterIds,
+                                  Dictionary<int, InfoEventDataDTO> pendingPrinterInfo,
                                   CancellationToken cancellationToken)
     {
         if (pendingSamples.Count == 0 && pendingEvents.Count == 0 && dirtyPrinterIds.Count == 0)
@@ -824,6 +920,10 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             newlyPersisted.Add((entry, newSlotNumbers, clearsPendingMaterial));
         }
 
+        // After the loop above, so the material writeback's stub already exists and can be reused
+        // rather than collided with.
+        ApplyPrinterInfo(context, pendingPrinterInfo);
+
         await context.SaveChangesAsync(cancellationToken);
 
         // Only reached once the save above has actually succeeded.
@@ -845,6 +945,12 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         pendingSamples.Clear();
         pendingEvents.Clear();
         dirtyPrinterIds.Clear();
+
+        // Cleared only here, past the save, for the same reason as everything above it: a failed
+        // flush leaves the pending identity in place so the next attempt still applies it. INFO
+        // arrives once per connection, so dropping it on a failure would mean the printer's firmware
+        // stayed wrong until it next reconnected.
+        pendingPrinterInfo.Clear();
     }
 
     private sealed class LiveStateCacheEntry

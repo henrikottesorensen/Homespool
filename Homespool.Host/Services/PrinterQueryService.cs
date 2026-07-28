@@ -64,7 +64,8 @@ public class PrinterQueryService
                                .OrderBy(p => p.Id)
                                .Select(p => new PrinterWithState(
                                    p,
-                                   _dbContext.PrinterLiveStates.SingleOrDefault(s => s.PrinterId == p.Id)))
+                                   _dbContext.PrinterLiveStates.SingleOrDefault(s => s.PrinterId == p.Id),
+                                   _dbContext.TeamMembers.SingleOrDefault(m => m.TeamId == p.TeamId && m.UserId == userId)))
                                .ToListAsync(cancellationToken);
     }
 
@@ -81,7 +82,8 @@ public class PrinterQueryService
                                      _dbContext.TeamMembers.Any(m => m.TeamId == p.TeamId && m.UserId == userId && m.CanRead))
                          .Select(p => new PrinterWithState(
                              p,
-                             _dbContext.PrinterLiveStates.SingleOrDefault(s => s.PrinterId == p.Id)))
+                             _dbContext.PrinterLiveStates.SingleOrDefault(s => s.PrinterId == p.Id),
+                             _dbContext.TeamMembers.SingleOrDefault(m => m.TeamId == p.TeamId && m.UserId == userId)))
                          .SingleOrDefaultAsync(cancellationToken);
     }
 
@@ -148,7 +150,7 @@ public class PrinterQueryService
             .AsNoTracking()
             .SingleOrDefaultAsync(s => s.PrinterId == printer.Id, cancellationToken);
 
-        return new PrinterWithState(printer, liveState);
+        return new PrinterWithState(printer, liveState, membership);
     }
 
     /// <summary>
@@ -194,7 +196,13 @@ public class PrinterQueryService
 
 /// <summary>A printer paired with its last-known state, which may be absent if it has never
 /// connected. See <see cref="PrinterQueryService.ListPrintersWithStateForUserAsync"/>.</summary>
-public sealed record PrinterWithState(Printer Printer, PrinterLiveState? LiveState);
+/// <remarks>
+/// <see cref="Membership"/> is the <em>calling user's</em> row, not the printer's - it is what makes
+/// the <c>canRead</c>/<c>canUse</c>/<c>canManage</c> flags answerable, and it is why this record is
+/// per-request rather than per-printer. Null only where a caller mapped a printer without asking on
+/// whose behalf, which the queries here never do.
+/// </remarks>
+public sealed record PrinterWithState(Printer Printer, PrinterLiveState? LiveState, TeamMember? Membership = null);
 
 /// <summary>Result of <see cref="PrinterQueryService.GetPrinterStatisticsForUserAsync"/> - a
 /// printer's live state plus recent history, newest first.</summary>

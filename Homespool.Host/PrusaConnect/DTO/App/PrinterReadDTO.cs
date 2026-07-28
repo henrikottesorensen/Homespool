@@ -64,6 +64,22 @@ public class PrinterReadDTO
 
     public DateTimeOffset UpdatedAt { get; set; }
 
+    /// <summary>Whether the caller may see this printer. True wherever the printer was returned at
+    /// all, since a caller without it gets a 404.</summary>
+    public bool CanRead { get; set; }
+
+    /// <summary>
+    /// Whether the caller may send it commands - the permission <c>PrinterCommandService</c> enforces.
+    /// </summary>
+    /// <remarks>
+    /// The useful one. Without it a client has no way to tell a printer it may only watch from one it
+    /// may drive, and has to discover the difference from a 403 after trying.
+    /// </remarks>
+    public bool CanUse { get; set; }
+
+    /// <summary>Whether the caller may edit or reprovision it.</summary>
+    public bool CanManage { get; set; }
+
     /// <summary>Maps a printer, taking its reported state from the live-state row when there is one.</summary>
     /// <param name="printer">The printer row.</param>
     /// <param name="liveState">
@@ -88,11 +104,26 @@ public class PrinterReadDTO
         UpdatedAt = printer.UpdatedAt,
     };
 
-    /// <summary>Maps a printer already paired with its live state.</summary>
+    /// <summary>
+    /// Maps a printer already paired with its live state and the calling user's membership.
+    /// </summary>
+    /// <remarks>
+    /// The permission flags are answerable only here, not on the two-argument overload: they describe
+    /// the <em>caller</em>, and a mapper handed a bare <see cref="Printer"/> has not been told who is
+    /// asking. Absent membership reports all three false, which is the safe reading - though the
+    /// queries in <see cref="PrinterQueryService"/> always supply it, and a printer visible without a
+    /// membership row is not a state this application can produce.
+    /// </remarks>
     public static PrinterReadDTO FromEntity(PrinterWithState printer)
     {
         ArgumentNullException.ThrowIfNull(printer);
 
-        return FromEntity(printer.Printer, printer.LiveState);
+        PrinterReadDTO dto = FromEntity(printer.Printer, printer.LiveState);
+
+        dto.CanRead = printer.Membership?.CanRead ?? false;
+        dto.CanUse = printer.Membership?.CanUse ?? false;
+        dto.CanManage = printer.Membership?.CanManage ?? false;
+
+        return dto;
     }
 }

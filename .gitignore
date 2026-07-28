@@ -48,6 +48,10 @@ rig/usb/
 # The rig's enrolled identity: fingerprint plus the issued token. A credential.
 rig/identity.json
 
+# The rig account's personal access token, written by enrol.sh. A credential, and one that acts as a
+# whole user rather than a printer. See notes/api-tokens.md.
+rig/api-token
+
 # Uploaded gcode. Runtime data, and the E2E tests leave some here when they exercise the upload
 # endpoint against the real content root. See FileStorageOptions.
 Homespool.Host/data/

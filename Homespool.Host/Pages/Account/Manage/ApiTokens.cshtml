@@ -1,0 +1,75 @@
+@page
+@model ApiTokensModel
+@{
+    ViewData["Title"] = "API tokens";
+    ViewData["ActivePage"] = ManageNavPages.ApiTokens;
+}
+
+<h3>@ViewData["Title"]</h3>
+<partial name="_StatusMessage" for="StatusMessage" />
+
+<p class="text-muted">
+    A token lets a script call the API as you, with exactly your permissions, without your password.
+    Send it as <code>Authorization: Bearer &lt;token&gt;</code>. Revoking one takes effect immediately.
+</p>
+
+@if (Model.CreatedToken is not null)
+{
+    <div class="alert alert-success" role="alert">
+        <h4 class="alert-heading">Copy this now</h4>
+        <p>It is stored only as a hash, so this is the only time it can be shown. If you lose it, revoke it and make another.</p>
+        <pre class="mb-0"><code id="created-token">@Model.CreatedToken</code></pre>
+    </div>
+}
+
+<div class="row">
+    <div class="col-md-6">
+        <form id="create-token-form" method="post">
+            <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
+            <div class="form-floating mb-3">
+                <input asp-for="Input.Name" class="form-control" autocomplete="off" aria-required="true" placeholder="Which machine or script is this for?" />
+                <label asp-for="Input.Name" class="form-label"></label>
+                <span asp-validation-for="Input.Name" class="text-danger"></span>
+            </div>
+            <button type="submit" class="w-100 btn btn-lg btn-primary">Create token</button>
+        </form>
+    </div>
+</div>
+
+<h4 class="mt-4">Your tokens</h4>
+
+@if (Model.Tokens.Count == 0)
+{
+    <p class="text-muted">You have no tokens.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Created</th>
+                <th scope="col"></th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var token in Model.Tokens)
+        {
+            <tr>
+                <td>@token.Name</td>
+                <td>@token.CreatedAt.ToLocalTime().ToString("g")</td>
+                <td class="text-end">
+                    <form method="post" asp-page-handler="Revoke">
+                        <input type="hidden" name="id" value="@token.Id" />
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Revoke</button>
+                    </form>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

@@ -3,12 +3,15 @@
 #nullable disable
 
 using System.ComponentModel.DataAnnotations;
+using System.Threading;
 using System.Threading.Tasks;
 
+using Homespool.Host.Services;
 using Homespool.Model.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.Pages.Account.Manage;
@@ -17,15 +20,21 @@ public class ChangePasswordModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly SignInManager<HSUser> _signInManager;
+    private readonly ApiTokenService _apiTokens;
+    private readonly UnitOfWork _unitOfWork;
     private readonly ILogger<ChangePasswordModel> _logger;
 
     public ChangePasswordModel(
         UserManager<HSUser> userManager,
         SignInManager<HSUser> signInManager,
+        ApiTokenService apiTokens,
+        UnitOfWork unitOfWork,
         ILogger<ChangePasswordModel> logger)
     {
         _userManager = userManager;
         _signInManager = signInManager;
+        _apiTokens = apiTokens;
+        _unitOfWork = unitOfWork;
         _logger = logger;
     }
 
@@ -95,7 +104,7 @@ public class ChangePasswordModel : PageModel
         return Page();
     }
 
-    public async Task<IActionResult> OnPostAsync()
+    public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
     {
         if (!ModelState.IsValid)
         {
@@ -108,20 +117,46 @@ public class ChangePasswordModel : PageModel
             return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
         }
 
-        IdentityResult changePasswordResult = await _userManager.ChangePasswordAsync(user, Input.OldPassword, Input.NewPassword);
-        if (!changePasswordResult.Succeeded)
+        int revoked;
+
+        // The password change and the revocation are one step, deliberately. The state to make
+        // unreachable is "new password, old tokens still live" - which is exactly what someone
+        // changing their password because their account is compromised would believe they had
+        // escaped. Any return before CommitAsync disposes the transaction uncommitted, rolling both
+        // back together.
+        await using (IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken))
         {
-            foreach (IdentityError error in changePasswordResult.Errors)
+            IdentityResult changePasswordResult = await _userManager.ChangePasswordAsync(user, Input.OldPassword, Input.NewPassword);
+
+            if (!changePasswordResult.Succeeded)
             {
-                ModelState.AddModelError(string.Empty, error.Description);
+                foreach (IdentityError error in changePasswordResult.Errors)
+                {
+                    ModelState.AddModelError(string.Empty, error.Description);
+                }
+
+                return Page();
             }
 
-            return Page();
+            revoked = await _apiTokens.RevokeAllForUserAsync(user.Id, cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
         }
 
+        // Outside the transaction: re-issuing the cookie is not part of the atomic write, and it is
+        // the one step that must not happen if the commit failed.
         await _signInManager.RefreshSignInAsync(user);
-        _logger.LogInformation("User changed their password successfully.");
-        StatusMessage = "Your password has been changed.";
+
+        _logger.LogInformation("User changed their password successfully. {RevokedTokenCount} API tokens revoked.", revoked);
+
+        // Silent breakage is the real cost of revoking here, so it is reported - but only when there
+        // was something to report. Most accounts hold no tokens and do not need telling so.
+        StatusMessage = revoked switch
+        {
+            0 => "Your password has been changed.",
+            1 => "Your password has been changed. 1 API token was revoked.",
+            _ => $"Your password has been changed. {revoked} API tokens were revoked.",
+        };
 
         return RedirectToPage();
     }

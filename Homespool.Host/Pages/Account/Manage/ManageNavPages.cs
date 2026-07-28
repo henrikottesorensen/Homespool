@@ -62,6 +62,9 @@ public static class ManageNavPages
     /// </summary>
     public static string TwoFactorAuthentication => "TwoFactorAuthentication";
 
+    /// <summary>Personal access tokens for the app API. Homespool's own page, not scaffolded Identity.</summary>
+    public static string ApiTokens => "ApiTokens";
+
     /// <summary>
     ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
     ///     directly from your code. This API may change or be removed in future releases.
@@ -109,6 +112,9 @@ public static class ManageNavPages
     ///     directly from your code. This API may change or be removed in future releases.
     /// </summary>
     public static string TwoFactorAuthenticationNavClass(ViewContext viewContext) => PageNavClass(viewContext, TwoFactorAuthentication);
+
+    /// <summary>Nav highlight for <see cref="ApiTokens"/>.</summary>
+    public static string ApiTokensNavClass(ViewContext viewContext) => PageNavClass(viewContext, ApiTokens);
 
     /// <summary>
     ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used

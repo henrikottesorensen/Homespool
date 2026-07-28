@@ -65,7 +65,8 @@ public class PrinterQueryService
                                .Select(p => new PrinterWithState(
                                    p,
                                    _dbContext.PrinterLiveStates.SingleOrDefault(s => s.PrinterId == p.Id),
-                                   _dbContext.TeamMembers.SingleOrDefault(m => m.TeamId == p.TeamId && m.UserId == userId)))
+                                   _dbContext.TeamMembers.SingleOrDefault(m => m.TeamId == p.TeamId && m.UserId == userId),
+                                   _dbContext.Teams.SingleOrDefault(t => t.Id == p.TeamId)))
                                .ToListAsync(cancellationToken);
     }
 
@@ -83,7 +84,8 @@ public class PrinterQueryService
                          .Select(p => new PrinterWithState(
                              p,
                              _dbContext.PrinterLiveStates.SingleOrDefault(s => s.PrinterId == p.Id),
-                             _dbContext.TeamMembers.SingleOrDefault(m => m.TeamId == p.TeamId && m.UserId == userId)))
+                             _dbContext.TeamMembers.SingleOrDefault(m => m.TeamId == p.TeamId && m.UserId == userId),
+                             _dbContext.Teams.SingleOrDefault(t => t.Id == p.TeamId)))
                          .SingleOrDefaultAsync(cancellationToken);
     }
 
@@ -150,7 +152,11 @@ public class PrinterQueryService
             .AsNoTracking()
             .SingleOrDefaultAsync(s => s.PrinterId == printer.Id, cancellationToken);
 
-        return new PrinterWithState(printer, liveState, membership);
+        Team? team = await _dbContext.Teams
+            .AsNoTracking()
+            .SingleOrDefaultAsync(t => t.Id == printer.TeamId, cancellationToken);
+
+        return new PrinterWithState(printer, liveState, membership, team);
     }
 
     /// <summary>
@@ -202,7 +208,7 @@ public class PrinterQueryService
 /// per-request rather than per-printer. Null only where a caller mapped a printer without asking on
 /// whose behalf, which the queries here never do.
 /// </remarks>
-public sealed record PrinterWithState(Printer Printer, PrinterLiveState? LiveState, TeamMember? Membership = null);
+public sealed record PrinterWithState(Printer Printer, PrinterLiveState? LiveState, TeamMember? Membership = null, Team? Team = null);
 
 /// <summary>Result of <see cref="PrinterQueryService.GetPrinterStatisticsForUserAsync"/> - a
 /// printer's live state plus recent history, newest first.</summary>

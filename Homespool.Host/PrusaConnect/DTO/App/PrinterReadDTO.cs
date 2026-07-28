@@ -60,6 +60,19 @@ public class PrinterReadDTO
 
     public required int TeamId { get; set; }
 
+    /// <summary>
+    /// The owning team's name, or null when nobody has named it - which is every team created by
+    /// default, since <see cref="Team.Name"/> is deliberately not seeded at creation.
+    /// </summary>
+    /// <remarks>
+    /// <b>Passed through rather than resolved.</b> Two fallbacks already exist and disagree:
+    /// <see cref="Team.Name"/>'s own remarks describe <c>Name ?? "&lt;creator&gt;'s team"</c>, while
+    /// <c>Pages/Printers/Index</c> renders <c>Name ?? "Team #{id}"</c>. Inventing a third here would
+    /// make the API a third opinion on a display question. A client holds <see cref="TeamId"/> and can
+    /// render whichever it prefers; what it cannot do is recover a real name we declined to send.
+    /// </remarks>
+    public string? TeamName { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset UpdatedAt { get; set; }
@@ -120,6 +133,7 @@ public class PrinterReadDTO
 
         PrinterReadDTO dto = FromEntity(printer.Printer, printer.LiveState);
 
+        dto.TeamName = printer.Team?.Name;
         dto.CanRead = printer.Membership?.CanRead ?? false;
         dto.CanUse = printer.Membership?.CanUse ?? false;
         dto.CanManage = printer.Membership?.CanManage ?? false;

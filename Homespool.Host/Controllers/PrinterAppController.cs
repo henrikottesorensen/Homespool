@@ -87,7 +87,14 @@ public class PrinterAppController : ControllerBase
 
             await transaction.CommitAsync(cancellationToken);
 
-            return StatusCode(StatusCodes.Status201Created, PrinterReadDTO.FromEntity(printer));
+            // Re-read rather than mapping the claimed entity directly, so the response carries the
+            // permission flags and describes the same resource the next GET will. Mapping it bare
+            // would report canRead/canUse/canManage as false to the person who just claimed it.
+            PrinterWithState? claimed = await _printerQueryService.GetPrinterWithStateForUserAsync(
+                printer.Uuid, user.Id, cancellationToken);
+
+            return StatusCode(StatusCodes.Status201Created,
+                claimed is null ? PrinterReadDTO.FromEntity(printer) : PrinterReadDTO.FromEntity(claimed));
         }
         catch (PrinterNotFoundException)
         {

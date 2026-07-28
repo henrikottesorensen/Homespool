@@ -64,7 +64,8 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         }
     }
 
-    private static async Task<Printer> AddPrinterAsync(HSDbContext context, long userId, PrinterStatus? liveStatus)
+    private static async Task<Printer> AddPrinterAsync(HSDbContext context, long userId, PrinterStatus? liveStatus,
+                                                        bool canUse = true, bool canManage = true)
     {
         Team team = new() { CreatedBy = userId, CreatedAt = DateTimeOffset.UtcNow };
         context.Teams.Add(team);
@@ -75,8 +76,8 @@ public sealed class PrinterStateIsLiveTests : IDisposable
             TeamId = team.Id,
             UserId = userId,
             CanRead = true,
-            CanUse = true,
-            CanManage = true,
+            CanUse = canUse,
+            CanManage = canManage,
             IsDefault = true,
         });
 
@@ -204,6 +205,29 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         dto.PrinterModel.Should().Be("1.3.5");
         dto.SerialNumber.Should().Be("SN-12345");
         dto.Firmware.Should().Be("6.5.7");
+    }
+
+    /// <summary>
+    /// The permission flags describe the <em>caller</em>, so a reader who may not drive a printer is
+    /// told so up front rather than discovering it from a 403 after trying to pause a print.
+    /// </summary>
+    [Fact]
+    public async Task ThePermissionFlagsDescribeTheCallerNotThePrinter()
+    {
+        // Arrange
+        await using HSDbContext context = await MigratedContextAsync();
+        await AddPrinterAsync(context, userId: 1, liveStatus: PrinterStatus.Idle, canUse: false, canManage: false);
+
+        // Act
+        IReadOnlyList<PrinterWithState> listed = await new PrinterQueryService(context)
+            .ListPrintersWithStateForUserAsync(1, CancellationToken.None);
+
+        // Assert
+        PrinterReadDTO dto = PrinterReadDTO.FromEntity(listed.Should().ContainSingle().Subject);
+
+        dto.CanRead.Should().BeTrue("the printer was returned at all, which requires it");
+        dto.CanUse.Should().BeFalse();
+        dto.CanManage.Should().BeFalse();
     }
 
     /// <summary>

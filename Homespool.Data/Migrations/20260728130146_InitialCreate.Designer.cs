@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HSDbContext))]
-    [Migration("20260728070325_InitialCreate")]
+    [Migration("20260728130146_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -181,6 +181,9 @@ namespace Homespool.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SerialNumber")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("Status")

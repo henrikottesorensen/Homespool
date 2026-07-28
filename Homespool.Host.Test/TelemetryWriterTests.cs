@@ -583,6 +583,87 @@ public sealed class TelemetryWriterTests : IDisposable
     }
 
     /// <summary>
+    /// The serial number is filled in when missing. Before <see cref="Printer.SerialNumber"/> existed
+    /// it was captured at registration and then discarded with the registration row, and a
+    /// USB-provisioned printer never reported one at all.
+    /// </summary>
+    [Fact]
+    public async Task AnInfoEventFillsInAMissingSerialNumber()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        using JsonDocument payload = JsonDocument.Parse("""{"firmware":"6.5.7","sn":"SN-12345"}""");
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = Events.Info, Status = "IDLE", Data = payload.RootElement.Clone(),
+        });
+
+        // Assert
+        bool applied = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await context.Printers.AnyAsync(p => p.SerialNumber != null);
+        }, TimeSpan.FromSeconds(5));
+
+        applied.Should().BeTrue();
+
+        await using HSDbContext verify = NewVerificationContext();
+        (await verify.Printers.SingleAsync()).SerialNumber.Should().Be("SN-12345");
+    }
+
+    /// <summary>
+    /// <b>A serial number that disagrees with the stored one is not acted on.</b> A different serial
+    /// means a different machine, which arrives with a different fingerprint and is therefore a
+    /// different row - so overwriting would corrupt this printer's identity rather than correct it
+    /// (Henrik, 2026-07-28). Firmware and model, by contrast, are overwritten freely.
+    /// </summary>
+    [Fact]
+    public async Task AnInfoEventNeverOverwritesAnExistingSerialNumber()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        using JsonDocument first = JsonDocument.Parse("""{"sn":"SN-ORIGINAL"}""");
+        using JsonDocument second = JsonDocument.Parse("""{"sn":"SN-DIFFERENT","firmware":"6.6.3"}""");
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = Events.Info, Status = "IDLE", Data = first.RootElement.Clone(),
+        });
+
+        await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await context.Printers.AnyAsync(p => p.SerialNumber == "SN-ORIGINAL");
+        }, TimeSpan.FromSeconds(5));
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = Events.Info, Status = "IDLE", Data = second.RootElement.Clone(),
+        });
+
+        // The firmware in the same event is the marker that this INFO was processed at all - without
+        // it the assertion below would pass simply by racing ahead of the flush.
+        bool processed = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await context.Printers.AnyAsync(p => p.Firmware == "6.6.3");
+        }, TimeSpan.FromSeconds(5));
+
+        // Assert
+        processed.Should().BeTrue();
+
+        await using HSDbContext verify = NewVerificationContext();
+        (await verify.Printers.SingleAsync()).SerialNumber.Should().Be("SN-ORIGINAL");
+    }
+
+    /// <summary>
     /// A field the firmware omits means "unknown", not "empty" - so an INFO without firmware must not
     /// erase what an earlier one established.
     /// </summary>

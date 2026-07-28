@@ -60,8 +60,16 @@ public class Printer
 
     /// <summary>
     /// User-chosen display name. Null means the user has not customised it — resolve for display
-    /// as <c>Name ?? Model ?? SerialNumber</c>.
+    /// as <c>Name ?? Model ?? Uuid</c>, which is what <c>Pages/Printers/Index</c> does.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This said <c>Name ?? Model ?? SerialNumber</c> until 2026-07-28, naming a property that did
+    /// not exist. It does now (<see cref="SerialNumber"/>), but it is still the wrong last resort:
+    /// it is null until the first <c>INFO</c> arrives, whereas <see cref="Uuid"/> exists from
+    /// creation and so is the only fallback that cannot itself be missing.
+    /// </para>
+    /// </remarks>
     /// <remarks>
     /// Deliberately not defaulted to <see cref="Model"/> at creation. Storing a copy makes
     /// "the user chose this" indistinguishable from "we defaulted it", which means the default
@@ -81,6 +89,27 @@ public class Printer
     /// poorer, staler copy. See AGENT-NOTES §13.
     /// </remarks>
     public string? Model { get; set; }
+
+    /// <summary>
+    /// The printer's serial number, from the <c>sn</c> field of the <c>INFO</c> event.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Written once and then left alone</b>, unlike <see cref="Firmware"/> and <see cref="Model"/>,
+    /// which are refreshed on every <c>INFO</c>. A firmware upgrade changes the version, and an
+    /// upgrade kit genuinely changes the model under one identity - but a different serial number
+    /// means a different machine, which arrives with a different fingerprint and is therefore a
+    /// different row. So a serial that disagrees with the stored one is not something to act on
+    /// (Henrik, 2026-07-28); only a missing one is filled in.
+    /// </para>
+    /// <para>
+    /// Null until the first <c>INFO</c> arrives. The code-exchange handshake also carries it, on
+    /// <see cref="PrusaConnectRegistration.SerialNumber"/>, but that row is deleted once enrollment
+    /// completes - so before this column existed the serial was captured at registration and then
+    /// discarded, and a USB-provisioned printer never reported one at all.
+    /// </para>
+    /// </remarks>
+    public string? SerialNumber { get; set; }
 
     /// <summary>Set by the user in the UI. No wire source, so null until they set it.</summary>
     public string? Location { get; set; }

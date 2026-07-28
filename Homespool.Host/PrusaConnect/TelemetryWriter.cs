@@ -645,14 +645,37 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// firmware upgrade reported by the hardware is not that.
     /// </para>
     /// </remarks>
-    private void ApplyPrinterInfo(HSDbContext context, Dictionary<int, InfoEventDataDTO> pendingPrinterInfo)
+    private async Task ApplyPrinterInfoAsync(HSDbContext context,
+                                             Dictionary<int, InfoEventDataDTO> pendingPrinterInfo,
+                                             CancellationToken cancellationToken)
     {
+        // Which printers already have a serial, read untracked and projected to two columns. It has
+        // to be a query rather than a look at the attached stub: a stub carries nulls for everything
+        // it was not told about, so it cannot distinguish "no serial stored" from "not loaded".
+        // Untracked and projected, deliberately - loading whole Printer entities tracked is what
+        // collided with the live-state attach and failed every flush thereafter.
+        Dictionary<int, string?> storedSerials = [];
+
+        if (pendingPrinterInfo.Any(p => !string.IsNullOrWhiteSpace(p.Value.SerialNumber)))
+        {
+            List<int> printerIds = [.. pendingPrinterInfo.Keys];
+
+            storedSerials = await context.Printers
+                .AsNoTracking()
+                .Where(p => printerIds.Contains(p.Id))
+                .Select(p => new { p.Id, p.SerialNumber })
+                .ToDictionaryAsync(p => p.Id, p => p.SerialNumber, cancellationToken);
+        }
+
         foreach ((int printerId, InfoEventDataDTO info) in pendingPrinterInfo)
         {
             bool hasFirmware = !string.IsNullOrWhiteSpace(info.Firmware);
             bool hasModel = !string.IsNullOrWhiteSpace(info.PrinterType);
 
-            if (!hasFirmware && !hasModel)
+            bool fillsSerial = !string.IsNullOrWhiteSpace(info.SerialNumber)
+                               && string.IsNullOrWhiteSpace(storedSerials.GetValueOrDefault(printerId));
+
+            if (!hasFirmware && !hasModel && !fillsSerial)
             {
                 continue;
             }
@@ -675,6 +698,12 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             {
                 printer.Model = info.PrinterType;
                 context.Entry(printer).Property(p => p.Model).IsModified = true;
+            }
+
+            if (fillsSerial)
+            {
+                printer.SerialNumber = info.SerialNumber;
+                context.Entry(printer).Property(p => p.SerialNumber).IsModified = true;
             }
         }
 
@@ -922,7 +951,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
         // After the loop above, so the material writeback's stub already exists and can be reused
         // rather than collided with.
-        ApplyPrinterInfo(context, pendingPrinterInfo);
+        await ApplyPrinterInfoAsync(context, pendingPrinterInfo, cancellationToken);
 
         await context.SaveChangesAsync(cancellationToken);
 

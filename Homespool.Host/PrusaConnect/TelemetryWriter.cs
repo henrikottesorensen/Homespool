@@ -149,6 +149,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly StorageOptions _options;
     private readonly ILogger<TelemetryWriter> _logger;
+    private readonly UnknownFieldTracker _unknownFields;
 
     // Both wire-rate log sites in this class go through a LogThrottle: drops are recorded on
     // whatever producer thread hit the full channel, processing failures on the drain loop, and
@@ -164,11 +165,15 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     private int _consecutiveFlushFailures;
     private long _discardedEvents;
 
-    public TelemetryWriter(IServiceScopeFactory scopeFactory, IOptions<StorageOptions> options, ILogger<TelemetryWriter> logger)
+    public TelemetryWriter(IServiceScopeFactory scopeFactory,
+                           IOptions<StorageOptions> options,
+                           ILogger<TelemetryWriter> logger,
+                           UnknownFieldTracker unknownFields)
     {
         _scopeFactory = scopeFactory;
         _options = options.Value;
         _logger = logger;
+        _unknownFields = unknownFields;
 
         // itemDropped fires synchronously, on the producer's thread, exactly when DropOldest
         // actually discards something - not an approximation from watching queue depth. Logged as
@@ -731,6 +736,12 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             {
                 if (data.Deserialize<InfoEventDataDTO>() is { } info)
                 {
+                    // The one unknown-field site outside MessageDispatcher, because this is the one
+                    // place an event's typed data is read at all. INFO's key set is firmware-rendered
+                    // and closed, unlike the FILE_INFO payload two methods down - which is why that
+                    // one gets an allowlist and this one gets noticed.
+                    _unknownFields.Record(item.PrinterId, "event:Info.data", info.Unknown);
+
                     pendingPrinterInfo[item.PrinterId] = info;
                 }
             }

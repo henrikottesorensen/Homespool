@@ -146,6 +146,11 @@ public static class Program
             builder.Services.AddSingleton<PrusaConnect.PrinterConnectionRegistry>();
             builder.Services.AddSingleton<PrusaConnect.PrinterConnectionActorFactory>();
 
+            // Singleton because its whole value is accumulating across connections and printers:
+            // "this firmware sends a field we do not model" is a fact about the deployment, and a
+            // per-request instance would forget it between messages.
+            builder.Services.AddSingleton<PrusaConnect.UnknownFieldTracker>();
+
             // One store, two faces: actors resolve hashes through ITransferContentStore, request
             // handlers register files through ITransferOffers. Singleton because an offer has to
             // outlive the request that made it - the printer collects it on its own schedule.

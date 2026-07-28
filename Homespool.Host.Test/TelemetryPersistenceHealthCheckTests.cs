@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using AwesomeAssertions;
 using Homespool.Host.PrusaConnect;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Homespool.Host.Test;
 
@@ -31,7 +32,7 @@ public class TelemetryPersistenceHealthCheckTests
     {
         StubHealthSource source = new() { Current = snapshot };
 
-        return await new TelemetryPersistenceHealthCheck(source)
+        return await new TelemetryPersistenceHealthCheck(source, new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance))
             .CheckHealthAsync(new HealthCheckContext(), CancellationToken.None);
     }
 

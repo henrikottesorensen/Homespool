@@ -53,7 +53,8 @@ public static class Program
                             .PersistKeysToDbContext<HSDbContext>();
 
             builder.Services.AddAuthentication()
-                            .AddPrusaConnectPrinterAuthentication();
+                            .AddPrusaConnectPrinterAuthentication()
+                            .AddApiTokenAuthentication();
 
             builder.Services.AddIdentity<Model.Entities.HSUser, IdentityRole<long>>(options => options.SignIn.RequireConfirmedAccount = true)
                             .AddEntityFrameworkStores<HSDbContext>()
@@ -69,6 +70,10 @@ public static class Program
                 options.LoginPath = "/Account/Login";
                 options.AccessDeniedPath = "/Account/AccessDenied";
                 options.SlidingExpiration = true;
+
+                // An unauthenticated /api call answered with a redirect to an HTML login page is
+                // useless to a script - and arrives as 200. See ApiStatusCodeCookieEvents.
+                ApiStatusCodeCookieEvents.Apply(options);
             });
 
             // Add services to the container.
@@ -199,6 +204,7 @@ public static class Program
             builder.Services.AddScoped<Services.UnitOfWork>();
             builder.Services.AddScoped<Services.InvitationService>();
             builder.Services.AddScoped<Services.PrinterQueryService>();
+            builder.Services.AddScoped<Services.ApiTokenService>();
 
             WebApplication app = builder.Build();
 
@@ -211,6 +217,7 @@ public static class Program
             app.Lifetime.ApplicationStopping.Register(() =>
                 app.Logger.LogInformation("Shutting down: draining buffered telemetry to the database. Please let this finish."));
 
+            // Apply migrations on service startup. (assuming StorageOptions have enabled it).
             app.Services.MigrateHomespoolData();
 
             // Ensure the admin role exists and, if no administrator has been created yet, mint and log
@@ -224,6 +231,8 @@ public static class Program
                 app.MapScalarApiReference();
             }
 
+            // Log HTTP requests with Serilog, order of this matters.
+            // Requests handled before in the pipeline are NOT logged.
             app.UseSerilogRequestLogging();
 
             // Everything except /health. A probe runs inside the container over plain HTTP, and a

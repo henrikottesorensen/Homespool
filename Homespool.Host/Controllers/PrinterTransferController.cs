@@ -31,15 +31,16 @@ namespace Homespool.Host.Controllers;
 /// later addition, and a pure one - nothing here needs rework for it.
 /// </para>
 /// <para>
-/// Cookie-authenticated like <see cref="PrinterAppController"/>, so it is exercisable with curl or a
-/// browser session. Permission is not checked here: <see cref="PrinterCommandService"/> is the one
+/// Cookie- or token-authenticated like <see cref="PrinterAppController"/>, so it is exercisable with
+/// curl or a browser session - a personal access token is what makes the curl half pleasant
+/// (notes/api-tokens.md). Permission is not checked here: <see cref="PrinterCommandService"/> is the one
 /// place that consults <c>TeamMember.CanUse</c>, and going around it would be a second answer to the
 /// same question.
 /// </para>
 /// </remarks>
-[Authorize]
 [ApiController]
 [Route("/api/v1")]
+[Authorize(Policy = Authorization.Policies.Api)]
 public class PrinterTransferController : ControllerBase
 {
     private readonly UploadedFileStore _files;

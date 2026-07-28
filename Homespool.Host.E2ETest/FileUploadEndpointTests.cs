@@ -2,8 +2,10 @@ using System;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -14,8 +16,9 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Homespool.Host.E2ETest;
 
 /// <summary>
-/// The upload endpoint through the real pipeline: routing, cookie authentication, model binding and
-/// the store's DI wiring, none of which a unit test of <c>UploadedFileStore</c> can reach.
+/// The upload endpoint through the real pipeline: routing, authentication by cookie <b>and</b> by
+/// personal access token, model binding and the store's DI wiring, none of which a unit test of
+/// <c>UploadedFileStore</c> can reach.
 /// </summary>
 /// <remarks>
 /// The store's own rules - traversal, the extension allowlist, the size cap - are tested directly in
@@ -197,8 +200,14 @@ public sealed class FileUploadEndpointTests : IAsyncLifetime, IDisposable
     /// caller must not be able to write to the server's disk - the reason
     /// <c>notes/internet-exposure.md</c> exists at all.
     /// </summary>
+    /// <remarks>
+    /// <b>401, exactly</b> - not the login redirect this asserted until personal access tokens landed.
+    /// A redirect to an HTML page is useless to a script and arrives as a <c>200</c>, so a caller
+    /// checking the status code reads a refusal as success. <c>ApiStatusCodeCookieEvents</c> is what
+    /// keeps that answer off <c>/api</c>, and this is the test that would notice it being undone.
+    /// </remarks>
     [Fact]
-    public async Task AnAnonymousUploadIsRefused()
+    public async Task AnAnonymousUploadIsRefusedWith401()
     {
         // Arrange
         using HttpClient client = _factory.CreateClient(
@@ -210,7 +219,71 @@ public sealed class FileUploadEndpointTests : IAsyncLifetime, IDisposable
         using HttpResponseMessage response = await client.PutAsync("/api/v1/files/model.gcode", body);
 
         // Assert
-        // Cookie auth redirects to the login page rather than answering 401.
-        response.StatusCode.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.Found, HttpStatusCode.Redirect);
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.Headers.Location.Should().BeNull("a script has nowhere to follow a redirect to");
+        response.Headers.WwwAuthenticate.ToString().Should().Contain("Bearer",
+            "the token scheme is in the policy, so its challenge says how to authenticate");
+    }
+
+    /// <summary>
+    /// The whole point of the feature: a bearer token gets a script through the same endpoint a
+    /// browser session reaches by cookie, with no login page, no cookie jar and no antiforgery dance
+    /// (<c>notes/api-tokens.md</c>).
+    /// </summary>
+    [Fact]
+    public async Task AnUploadAuthenticatedByBearerTokenSucceeds()
+    {
+        // Arrange
+        (HSUser user, HttpClient cookieClient) = await EnrollmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "tokenholder@example.com");
+        cookieClient.Dispose();
+
+        string plaintext;
+
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            ApiTokenService tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
+            (_, plaintext) = await tokens.CreateAsync(user.Id, "e2e", CancellationToken.None);
+        }
+
+        // A client with no cookie at all, so nothing but the header can be authenticating this.
+        using HttpClient client = _factory.CreateClient(
+            new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", plaintext);
+
+        byte[] content = Encoding.UTF8.GetBytes("G28 ; home\n");
+        using StreamContent body = new(new MemoryStream(content));
+
+        // Act
+        using HttpResponseMessage response = await client.PutAsync("/api/v1/files/bearer.bgcode", body);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using JsonDocument payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        payload.RootElement.GetProperty("fileName").GetString().Should().Be("bearer.bgcode");
+        payload.RootElement.GetProperty("length").GetInt64().Should().Be(content.Length);
+    }
+
+    /// <summary>
+    /// A credential of the right shape that was never issued is refused - the case that separates
+    /// "authentication happens" from "a header is present".
+    /// </summary>
+    [Fact]
+    public async Task AnUploadWithAnUnissuedBearerTokenIsRefused()
+    {
+        // Arrange
+        using HttpClient client = _factory.CreateClient(
+            new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", ApiTokenService.Prefix + new string('A', ApiTokenService.SecretLength));
+
+        using StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes("G28")));
+
+        // Act
+        using HttpResponseMessage response = await client.PutAsync("/api/v1/files/model.gcode", body);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 }

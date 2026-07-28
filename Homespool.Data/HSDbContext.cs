@@ -60,6 +60,10 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
     /// <summary>Outstanding and spent invitations. Single-use, email-bound, expiring.</summary>
     public DbSet<Invitation> Invitations { get; set; }
 
+    /// <summary>Personal access tokens for the app API. Read on the hot path of every bearer-
+    /// authenticated request; revoking one is deleting its row.</summary>
+    public DbSet<ApiToken> ApiTokens { get; set; }
+
     public HSDbContext(DbContextOptions<HSDbContext> options)
         : base(options)
     {
@@ -275,6 +279,30 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
                   .WithMany()
                   .HasForeignKey(e => e.TeamId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<ApiToken>(entity =>
+        {
+            // The whole scheme rests on this index: authentication hashes the presented secret and
+            // looks the row up by it, so finding a row IS verifying the credential. Unique because two
+            // rows sharing a hash would make "who is this" ambiguous — and, since the hash is
+            // unsalted SHA-384 of 32 random bytes, a collision means the same secret was issued twice,
+            // which the index turns into a failed insert rather than a silent ambiguity.
+            entity.HasIndex(e => e.TokenHash)
+                  .IsUnique();
+
+            // The management page lists a person's own tokens, and nothing ever lists them all.
+            entity.HasIndex(e => e.UserId);
+
+            entity.Property(e => e.Name)
+                  .HasMaxLength(ApiToken.NameMaxLength);
+
+            // Cascade: a deleted account takes its credentials with it. Leaving them would leave live
+            // bearer tokens pointing at a user id that no longer resolves.
+            entity.HasOne<HSUser>()
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

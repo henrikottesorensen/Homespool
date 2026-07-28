@@ -21,19 +21,20 @@ namespace Homespool.Host.Controllers;
 
 /// <summary>
 /// The app-facing surface phase-1.5 emulates from Connect's mobile API (AGENT-NOTES phase-1.5 §15).
-/// Cookie-authenticated, unlike <see cref="PrusaConnectPrinterController"/>'s printer-facing
-/// endpoints - exercisable with curl or a browser, not by the real Prusa app, which expects a
-/// bearer JWT. <c>[ApiController]</c> is used deliberately here, unlike on the printer-facing
-/// controller: this is a first-party surface we control, not a firmware-dictated contract.
+/// Authenticated by sign-in cookie <b>or</b> personal access token, unlike
+/// <see cref="PrusaConnectPrinterController"/>'s printer-facing endpoints - exercisable with curl or a
+/// browser, not by the real Prusa app, which expects a bearer JWT of its own shape.
+/// <c>[ApiController]</c> is used deliberately here, unlike on the printer-facing controller: this is
+/// a first-party surface we control, not a firmware-dictated contract.
 /// </summary>
 /// <remarks>
 /// <c>GET /api/v1/init</c> is deliberately not implemented - its spec schema
 /// (<c>createdAt/updatedAt/finishedAt/failedAt</c>) doesn't correspond to anything in our model,
 /// and what it's even for isn't clear from the spec alone (Henrik, phase-1.5 §15 step 7b).
 /// </remarks>
-[Authorize]
 [ApiController]
 [Route("/api/v1")]
+[Authorize(Policy = Authorization.Policies.Api)]
 public class PrinterAppController : ControllerBase
 {
     private readonly PrusaConnectService _prusaConnectService;

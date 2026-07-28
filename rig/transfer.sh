@@ -4,61 +4,52 @@
 # The third (start/files, i.e. print it) is deliberately separate and printed at the end, because a
 # transfer takes as long as it takes and a print starts instantly.
 #
-#   ./transfer.sh private-captures/G_0.4n_0.2mm_PLA_MK3.5_2h45m.gcode
+#   ./rig/transfer.sh private-captures/G_0.4n_0.2mm_PLA_MK3.5_2h45m.gcode
 #
 # Run it directly rather than as `sh transfer.sh` - it wants bash, not POSIX sh.
 #
-# The password is prompted for, not passed in. Two reasons, both bitten already: zsh performs
-# history expansion on '!' inside double quotes, and the rig's default password ends in one; and a
-# password given on the command line lands in ~/.zsh_history. Set PASSWORD in the environment
-# instead if you are scripting this, where neither applies.
+# Authenticates with a personal access token (notes/api-tokens.md), read from rig/api-token, which
+# `enrol.sh` writes. Override with TOKEN, or make one at /Account/Manage/ApiTokens.
+#
+# UUID below is a *default and it goes stale*: it names whichever printer was enrolled when this was
+# last used, and the pre-release migration is regenerated in place, so any schema change empties the
+# database and mints new ones. Pass UUID=... or take it from GET /api/v1/printers.
 set -euo pipefail
 
 BASE="${BASE:-http://localhost:5052}"
-UUID="${UUID:-3D3C8175-C6CB-4A02-8B78-E2CA9ED54FF6}"   # the MK3.5, printer id 2
+UUID="${UUID:-3D3C8175-C6CB-4A02-8B78-E2CA9ED54FF6}"   # the MK3.5 as of 2026-07-27, printer id 2
 TEAM="${TEAM:-1}"
-EMAIL="${EMAIL:-rig@example.com}"
+RIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TOKEN_FILE="${TOKEN_FILE:-$RIG_DIR/api-token}"
 FILE="${1:?usage: transfer.sh <gcode file>}"
 
-if [ -z "${PASSWORD:-}" ]; then
-    read -rsp "password for $EMAIL: " PASSWORD
-    echo
+if [ -z "${TOKEN:-}" ]; then
+    if [ ! -f "$TOKEN_FILE" ]; then
+        echo "no token: expected $TOKEN_FILE (written by enrol.sh), or set TOKEN." >&2
+        exit 1
+    fi
+
+    TOKEN="$(cat "$TOKEN_FILE")"
 fi
 
-JAR="$(mktemp)"
-trap 'rm -f "$JAR"' EXIT
+AUTH="Authorization: Bearer $TOKEN"
 
-# Razor forms are antiforgery-protected, so each POST needs the token from the page carrying it.
-# --data-urlencode rather than -d: the token is base64, and a '+' in a -d value arrives as a space.
-form_token() {
-    curl -sS -c "$JAR" -b "$JAR" "$BASE$1" \
-        | grep -o 'name="__RequestVerificationToken"[^>]*value="[^"]*"' \
-        | head -1 | sed 's/.*value="\([^"]*\)".*/\1/'
-}
+# What this replaced, and why it is worth the note: the whole sign-in half of this script is gone -
+# no cookie jar, no scraping __RequestVerificationToken off the login page, no password prompt (the
+# rig password ends in '!', which zsh history-expands inside double quotes), and no five-attempt
+# lockout to blunder into. One header does it.
 
-echo "==> signing in as $EMAIL"
-curl -sS -c "$JAR" -b "$JAR" -o /dev/null \
-    --data-urlencode "__RequestVerificationToken=$(form_token /Account/Login)" \
-    --data-urlencode "Input.Email=$EMAIL" \
-    --data-urlencode "Input.Password=$PASSWORD" \
-    --data-urlencode "Input.RememberMe=false" \
-    "$BASE/Account/Login"
-
-# Verify rather than assume. A failed Identity sign-in re-renders the page as 200 with a validation
-# error, so the POST itself looks fine - the first honest signal is that the cookie does not
-# authenticate. Checked here because carrying on produces a confusing JSON parse error two steps
-# later, and each silent retry burns one of five attempts before the account locks out.
-if [ "$(curl -sS -b "$JAR" -o /dev/null -w '%{http_code}' "$BASE/api/v1/user")" != "200" ]; then
-    echo "    sign-in failed - wrong password, or the account is locked out." >&2
-    echo "    Lockout is enabled: five failures locks it for a few minutes." >&2
+# Verify rather than assume. A wrong token is a clean 401 here, where carrying on would produce a
+# confusing JSON parse error two steps later.
+if [ "$(curl -sS -H "$AUTH" -o /dev/null -w '%{http_code}' "$BASE/api/v1/user")" != "200" ]; then
+    echo "    token rejected - it may have been revoked, or belong to another server." >&2
     exit 1
 fi
-echo "    authenticated"
+echo "==> authenticated"
 
-# The API is cookie-authenticated like the pages, so the same jar carries it.
 NAME="$(basename "$FILE")"
 echo "==> uploading $NAME ($(wc -c <"$FILE" | tr -d ' ') bytes)"
-UPLOAD="$(curl -sS -b "$JAR" -T "$FILE" "$BASE/api/v1/files/$NAME")"
+UPLOAD="$(curl -sS -H "$AUTH" -T "$FILE" "$BASE/api/v1/files/$NAME")"
 echo "    $UPLOAD"
 
 read -r HASH PRINTER_PATH <<<"$(python3 -c '
@@ -70,7 +61,7 @@ except ValueError:
 print(d["hash"], d["printerPath"])' "$UPLOAD")"
 
 echo "==> telling the printer to fetch it"
-curl -sS -b "$JAR" -X PUT "$BASE/api/v1/printers/$UUID/command/start/cloud" \
+curl -sS -H "$AUTH" -X PUT "$BASE/api/v1/printers/$UUID/command/start/cloud" \
     -H 'Content-Type: application/json' \
     -d "{\"hash\":\"$HASH\",\"teamId\":$TEAM,\"printNow\":false}" \
     -w '    HTTP %{http_code}\n'
@@ -84,7 +75,8 @@ The bytes now move at the printer's pace - watch for TransferFinished in the log
 
 Then print it:
 
-    curl -b <jar> -X PUT "$BASE/api/v1/printers/$UUID/command/start/files" \\
+    curl -H "Authorization: Bearer \$(cat $TOKEN_FILE)" \\
+        -X PUT "$BASE/api/v1/printers/$UUID/command/start/files" \\
         -H 'Content-Type: application/json' \\
         -d '{"path":"$PRINTER_PATH","printNow":true}'
 EOF

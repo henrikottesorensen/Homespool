@@ -4,23 +4,36 @@
 
 using System.ComponentModel.DataAnnotations;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
+using Homespool.Host.Services;
 using Homespool.Model.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.Pages.Account;
 
 public class ResetPasswordModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
+    private readonly ApiTokenService _apiTokens;
+    private readonly UnitOfWork _unitOfWork;
+    private readonly ILogger<ResetPasswordModel> _logger;
 
-    public ResetPasswordModel(UserManager<HSUser> userManager)
+    public ResetPasswordModel(UserManager<HSUser> userManager,
+                              ApiTokenService apiTokens,
+                              UnitOfWork unitOfWork,
+                              ILogger<ResetPasswordModel> logger)
     {
         _userManager = userManager;
+        _apiTokens = apiTokens;
+        _unitOfWork = unitOfWork;
+        _logger = logger;
     }
 
     /// <summary>
@@ -86,7 +99,7 @@ public class ResetPasswordModel : PageModel
         }
     }
 
-    public async Task<IActionResult> OnPostAsync()
+    public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
     {
         if (!ModelState.IsValid)
         {
@@ -100,17 +113,34 @@ public class ResetPasswordModel : PageModel
             return RedirectToPage("./ResetPasswordConfirmation");
         }
 
-        IdentityResult result = await _userManager.ResetPasswordAsync(user, Input.Code, Input.Password);
-        if (result.Succeeded)
+        // Revoked here as well as on the change-password page, and this is the more important of the
+        // two: recovering by email link is the path someone locked out of a compromised account
+        // actually takes. Atomic for the same reason - a reset that left the attacker's tokens live
+        // would hand back an account that only looks recovered.
+        await using (IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken))
         {
-            return RedirectToPage("./ResetPasswordConfirmation");
+            IdentityResult result = await _userManager.ResetPasswordAsync(user, Input.Code, Input.Password);
+
+            if (!result.Succeeded)
+            {
+                foreach (IdentityError error in result.Errors)
+                {
+                    ModelState.AddModelError(string.Empty, error.Description);
+                }
+
+                return Page();
+            }
+
+            int revoked = await _apiTokens.RevokeAllForUserAsync(user.Id, cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
+
+            // Logged rather than shown: the confirmation page is reached by anyone who submits the
+            // form, including for an address that does not exist, so it cannot say anything specific
+            // about an account without becoming an enumeration oracle.
+            _logger.LogInformation("Password reset completed. {RevokedTokenCount} API tokens revoked.", revoked);
         }
 
-        foreach (IdentityError error in result.Errors)
-        {
-            ModelState.AddModelError(string.Empty, error.Description);
-        }
-
-        return Page();
+        return RedirectToPage("./ResetPasswordConfirmation");
     }
 }

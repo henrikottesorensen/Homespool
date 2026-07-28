@@ -161,10 +161,20 @@ public sealed class EndToEndEnrollmentTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
-    /// The app API genuinely requires cookie authentication - an anonymous request is challenged
-    /// (redirected towards Login) rather than served, proving <c>[Authorize]</c> is wired through the
-    /// real pipeline rather than only asserted at the unit level.
+    /// The app API genuinely requires authentication - an anonymous request is challenged rather than
+    /// served, proving <c>[Authorize]</c> is wired through the real pipeline rather than only asserted
+    /// at the unit level.
     /// </summary>
+    /// <remarks>
+    /// <b>The <c>Location</c> header this used to assert is gone, deliberately (2026-07-28).</b> The
+    /// status was always 401 here - <c>[ApiController]</c> turns the cookie challenge's redirect into a
+    /// status code - but the redirect's <c>Location: /Account/Login</c> was still written alongside it,
+    /// which is a login page offered to a caller that cannot use one, on a response whose status says
+    /// "authenticate", not "go here". <c>ApiStatusCodeCookieEvents</c> now short-circuits the redirect
+    /// for <c>/api</c> before it is composed, so the answer is a bare 401 carrying the token scheme's
+    /// <c>WWW-Authenticate</c> instead. Razor Pages still redirect exactly as before, which is what the
+    /// old comment's Pages-versus-API comparison was really pointing at.
+    /// </remarks>
     [Fact]
     public async Task AppApiEndpointsChallengeAnAnonymousCaller()
     {
@@ -172,12 +182,10 @@ public sealed class EndToEndEnrollmentTests : IAsyncLifetime, IDisposable
 
         HttpResponseMessage response = await anonymous.GetAsync("/api/v1/printers");
 
-        // 401, not a 302: [ApiController] makes ASP.NET Core's cookie-auth challenge respond with a
-        // status code instead of an HTML redirect. Confirmed by comparison against a plain (non
-        // [ApiController]) [Authorize] Razor Page, which redirects (302) for the identical challenge -
-        // both compute the same Location, so this is App API vs Pages, not a missing redirect.
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        response.Headers.Location!.OriginalString.Should().Contain("/Account/Login");
+        response.Headers.Location.Should().BeNull("an API caller has nowhere to follow a login redirect to");
+        response.Headers.WwwAuthenticate.ToString().Should().Contain("Bearer",
+            "the challenge should say how to authenticate, which for a script means a token");
     }
 
     /// <summary>

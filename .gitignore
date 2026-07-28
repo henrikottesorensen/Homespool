@@ -55,6 +55,10 @@ rig/identity.json
 # (api-token~) - one of those was committed on 2026-07-28 by a `git add -A` and had to be amended out.
 rig/api-token*
 
+# Self-signed TLS material for printer-transport testing: CA key, server key, PFX, and the .der the
+# printer trusts. Private keys - never committed. See notes/printer-transport-tls.md.
+rig/tls/
+
 # Uploaded gcode. Runtime data, and the E2E tests leave some here when they exercise the upload
 # endpoint against the real content root. See FileStorageOptions.
 Homespool.Host/data/

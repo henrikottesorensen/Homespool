@@ -20,9 +20,18 @@ using Microsoft.Extensions.Options;
 namespace Homespool.Host.Controllers;
 
 /// <summary>
-/// Upload a file, send it to a printer, print it - as three separate calls.
+/// Everything done <em>to</em> a printer over the app API: upload a file, send it to a printer,
+/// print it - as three separate calls - plus the six job-control verbs that act on whatever is
+/// already running.
 /// </summary>
 /// <remarks>
+/// <para>
+/// <b>Was <c>PrinterTransferController</c></b> until the job-control verbs landed here on
+/// 2026-07-28. They need <c>ResolveAsync</c> and <c>SendAsync</c>, which already lived here, and the
+/// alternatives were refactoring working code or keeping a second copy of the outcome-to-status-code
+/// mapping. That briefly left the class doing two things under a name covering one; renaming it
+/// resolved that rather than leaving an apology in the summary.
+/// </para>
 /// <para>
 /// A testing surface, and shaped like one (Henrik, 2026-07-27). Transfer and print are deliberately
 /// <b>not</b> combined: a transfer takes as long as it takes and a print starts instantly, so a
@@ -41,7 +50,7 @@ namespace Homespool.Host.Controllers;
 [ApiController]
 [Route("/api/v1")]
 [Authorize(Policy = Authorization.Policies.Api)]
-public class PrinterTransferController : ControllerBase
+public class PrinterController : ControllerBase
 {
     private readonly UploadedFileStore _files;
     private readonly ITransferOffers _offers;
@@ -49,11 +58,11 @@ public class PrinterTransferController : ControllerBase
     private readonly PrinterQueryService _printers;
     private readonly UserManager<HSUser> _userManager;
     private readonly FileStorageOptions _options;
-    private readonly ILogger<PrinterTransferController> _logger;
+    private readonly ILogger<PrinterController> _logger;
 
-    public PrinterTransferController(UploadedFileStore files, ITransferOffers offers,
+    public PrinterController(UploadedFileStore files, ITransferOffers offers,
         PrinterCommandService commands, PrinterQueryService printers, UserManager<HSUser> userManager,
-        IOptions<FileStorageOptions> options, ILogger<PrinterTransferController> logger)
+        IOptions<FileStorageOptions> options, ILogger<PrinterController> logger)
     {
         _files = files;
         _offers = offers;
@@ -229,6 +238,76 @@ public class PrinterTransferController : ControllerBase
         }
 
         return await SendAsync(printer, new StartPrint { Path = body.Path }, cancellationToken);
+    }
+
+    /// <summary>Pauses a running print. <c>PUT /api/v1/printers/{uuid}/command/pause</c>.</summary>
+    /// <remarks>
+    /// The first of six job-control verbs, all named as Connect's own app API names them, all taking
+    /// no body, and all answering the printer's real reply rather than an acknowledgement of the
+    /// request - 204 when it accepted, 409 carrying its own rejection reason when it did not. The
+    /// spec answers 200 with a <c>Command</c> resource instead; ours is the more useful shape and
+    /// matches what <c>start/cloud</c> and <c>start/files</c> already do.
+    /// <para>
+    /// All six were verified against the real MK3.5 on 2026-07-24, before any of them had an endpoint
+    /// - each sent while a genuine job was running, each answered with a real correlated event
+    /// (AGENT-NOTES §3 item 3). What is new here is the route, not the command path.
+    /// </para>
+    /// </remarks>
+    [HttpPut]
+    [Route("printers/{uuid:guid}/command/pause")]
+    public Task<IActionResult> Pause(Guid uuid, CancellationToken cancellationToken) =>
+        SendJobControlAsync(uuid, new PausePrint(), cancellationToken);
+
+    /// <summary>Resumes a paused print. <c>PUT /api/v1/printers/{uuid}/command/resume</c>.</summary>
+    [HttpPut]
+    [Route("printers/{uuid:guid}/command/resume")]
+    public Task<IActionResult> Resume(Guid uuid, CancellationToken cancellationToken) =>
+        SendJobControlAsync(uuid, new ResumePrint(), cancellationToken);
+
+    /// <summary>Stops a running print. <c>PUT /api/v1/printers/{uuid}/command/stop</c>.</summary>
+    [HttpPut]
+    [Route("printers/{uuid:guid}/command/stop")]
+    public Task<IActionResult> Stop(Guid uuid, CancellationToken cancellationToken) =>
+        SendJobControlAsync(uuid, new StopPrint(), cancellationToken);
+
+    /// <summary>
+    /// Marks the printer ready for a queued job. <c>PUT /api/v1/printers/{uuid}/command/ready</c>.
+    /// </summary>
+    /// <remarks>Answered <c>StateChanged</c> rather than <c>Finished</c> on hardware - both are
+    /// success as far as this endpoint is concerned, since only Rejected and Failed are refusals.</remarks>
+    [HttpPut]
+    [Route("printers/{uuid:guid}/command/ready")]
+    public Task<IActionResult> Ready(Guid uuid, CancellationToken cancellationToken) =>
+        SendJobControlAsync(uuid, new SetPrinterReady(), cancellationToken);
+
+    /// <summary>Cancels the ready state. <c>PUT /api/v1/printers/{uuid}/command/unready</c>.</summary>
+    [HttpPut]
+    [Route("printers/{uuid:guid}/command/unready")]
+    public Task<IActionResult> Unready(Guid uuid, CancellationToken cancellationToken) =>
+        SendJobControlAsync(uuid, new CancelPrinterReady(), cancellationToken);
+
+    /// <summary>
+    /// Returns the printer to idle. <c>PUT /api/v1/printers/{uuid}/command/idle</c>.
+    /// </summary>
+    /// <remarks>
+    /// <b>The one route here that is ours rather than Connect's</b> - the spec has no equivalent, so
+    /// the name is invented and deliberately follows the shape of its neighbours. The firmware only
+    /// accepts it from the <c>Finished</c>/<c>Stopped</c> screen (<c>MarlinPrinter::set_idle</c>,
+    /// marlin_printer.cpp:579-586); asked at any other moment it answers
+    /// <c>Rejected {"Can't set idle now"}</c>, which arrives here as a 409 carrying that sentence.
+    /// Both halves were seen on hardware.
+    /// </remarks>
+    [HttpPut]
+    [Route("printers/{uuid:guid}/command/idle")]
+    public Task<IActionResult> Idle(Guid uuid, CancellationToken cancellationToken) =>
+        SendJobControlAsync(uuid, new SetPrinterIdle(), cancellationToken);
+
+    /// <summary>Resolves the printer, then sends - the whole body of every job-control verb above.</summary>
+    private async Task<IActionResult> SendJobControlAsync(Guid uuid, ISendableCommand command, CancellationToken cancellationToken)
+    {
+        (Printer? printer, IActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+
+        return printer is null ? failure! : await SendAsync(printer, command, cancellationToken);
     }
 
     private async Task<(Printer? printer, IActionResult? failure)> ResolveAsync(Guid uuid, CancellationToken cancellationToken)

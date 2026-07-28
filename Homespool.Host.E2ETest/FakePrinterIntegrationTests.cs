@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -503,7 +505,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
     /// <summary>
     /// Writes the bytes to a temp file and offers them under a fresh hash, the way
-    /// <c>PrinterTransferController</c> does after an upload.
+    /// <c>PrinterController</c> does after an upload.
     /// </summary>
     private string Offer(byte[] content, string fileName)
     {
@@ -660,6 +662,68 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         await WaitUntilConnectedAsync(printerId);
 
         return (fake, run, printerId, userId);
+    }
+
+    /// <summary>
+    /// Drives a job-control verb the way a script does: over HTTP, on a personal access token, against
+    /// a printer that is genuinely connected.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The six verbs were verified against the real MK3.5 in July, but only through
+    /// <c>PrinterCommandService</c> - nothing had ever exercised them as endpoints. This covers what
+    /// the route adds on top: binding the uuid, resolving the printer for <em>this</em> caller,
+    /// mapping the printer's answer to a status code, and doing it all on a bearer credential rather
+    /// than a cookie.
+    /// </para>
+    /// <para>
+    /// A token rather than a cookie deliberately - it is the credential a script would hold, and it
+    /// authenticates as the printer's actual owner, which <c>EnrollmentFlowHelper</c>'s separate user
+    /// could not.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AJobControlVerbReachesAConnectedPrinterOverHttp()
+    {
+        // Arrange
+        // Printing, because PAUSE against an idle printer is legitimately rejected - that path is
+        // covered by PauseWhileIdleSurfacesThePrintersOwnRejectionReason.
+        (FakePrinterClient fake, Task run, int printerId, long userId) = await StartConnectedFakeAsync(
+            configure: f => f.Device.StartPrint(jobId: 512));
+
+        Guid uuid;
+        string token;
+
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+            uuid = (await context.Printers.SingleAsync(p => p.Id == printerId)).Uuid;
+
+            ApiTokenService tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
+            (_, token) = await tokens.CreateAsync(userId, "e2e", CancellationToken.None);
+        }
+
+        using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        // Act
+        using HttpResponseMessage response = await client.PutAsync(
+            $"/api/v1/printers/{uuid}/command/pause", content: null);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent,
+            "204 means the printer answered and did not refuse");
+
+        fake.Device.State.Should().Be(DeviceState.Paused,
+            "the command must have reached the printer and executed, not merely been accepted by the API");
+
+        // A printer nobody may see is indistinguishable from one that does not exist.
+        using HttpResponseMessage unknown = await client.PutAsync(
+            $"/api/v1/printers/{Guid.NewGuid()}/command/pause", content: null);
+
+        unknown.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        await EndRunAsync(fake, run);
     }
 
     private async Task<CommandOutcome> SendCommandAsync(int printerId, long userId, ISendableCommand command)

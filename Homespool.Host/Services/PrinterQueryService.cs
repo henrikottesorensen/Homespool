@@ -92,7 +92,7 @@ public class PrinterQueryService
     /// </summary>
     /// <remarks>
     /// Returns the printer alone, which is all a caller resolving one for a permission check needs -
-    /// <c>PrinterTransferController</c> is the example. A caller that reports state to a user wants
+    /// <c>PrinterController</c> is the example. A caller that reports state to a user wants
     /// <see cref="GetPrinterWithStateForUserAsync"/> instead.
     /// </remarks>
     public Task<Printer?> GetPrinterForUserAsync(Guid uuid, long userId, CancellationToken cancellationToken)

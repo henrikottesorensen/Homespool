@@ -11,9 +11,11 @@ riderModule.iml
 # `dotnet libman restore` (or Rider/VS on build, or the Docker build stage) materialises them.
 Homespool.Host/wwwroot/lib/
 
-# Working memo / session handoff notes (local only)
+# Working memo / session handoff notes (local only). No trailing slash on either: both are
+# symlinks into a shared worktree location as of 2026-07-28, and "notes/" matches a directory
+# only - so the slash let the symlink show up as untracked, one `git add -A` from being committed.
 AGENT-NOTES.md
-notes/
+notes
 
 # Protocol captures / raw stream dumps (local reference only)
 private-captures/

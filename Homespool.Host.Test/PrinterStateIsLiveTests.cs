@@ -193,6 +193,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
 
         printer.Model = "1.3.5";
         printer.SerialNumber = "SN-12345";
+        printer.NozzleDiameter = 0.4f;
         printer.Firmware = "6.5.7";
         await context.SaveChangesAsync();
 
@@ -206,6 +207,12 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         dto.PrinterModel.Should().Be("1.3.5");
         dto.SerialNumber.Should().Be("SN-12345");
         dto.Firmware.Should().Be("6.5.7");
+        dto.NozzleDiameter.Should().Be(0.4f);
+
+        // The value a real MK3.5 wrote on 2026-07-28 is held as 0.400000005960464, because SQLite
+        // has no 4-byte float. It reaches the wire as "0.4" only because this field is a float at
+        // both ends - typed double? it would serialise the widening artefact. notes/floating-point.md.
+        System.Text.Json.JsonSerializer.Serialize(dto.NozzleDiameter).Should().Be("0.4");
     }
 
     /// <summary>

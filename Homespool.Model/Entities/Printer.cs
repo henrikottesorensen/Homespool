@@ -132,6 +132,21 @@ public class Printer
     /// </remarks>
     public float? NozzleDiameter { get; set; }
 
+    /// <summary>
+    /// Whether a multi-material unit is fitted and enabled, from <c>INFO</c>'s <c>mmu.enabled</c>.
+    /// </summary>
+    /// <remarks>
+    /// <b>A plain <c>bool</c>, deliberately</b> (Henrik, 2026-07-28). The wire distinguishes three
+    /// states - enabled, present-but-disabled, and firmware without MMU support at all, where the
+    /// block is absent entirely - but the last two mean the same thing operationally: treat it as a
+    /// regular single-material printer. Flattening them is a product decision, not an oversight.
+    /// <para>
+    /// Written only when the <c>mmu</c> object is actually present, so the column's <c>false</c>
+    /// default carries "regular printer" and a partial <c>INFO</c> can never clear a <c>true</c>.
+    /// </para>
+    /// </remarks>
+    public bool HasMmuEnabled { get; set; }
+
     /// <summary>Set by the user in the UI. No wire source, so null until they set it.</summary>
     public string? Location { get; set; }
 

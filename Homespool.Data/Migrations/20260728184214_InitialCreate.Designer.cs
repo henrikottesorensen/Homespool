@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HSDbContext))]
-    [Migration("20260728133712_InitialCreate")]
+    [Migration("20260728184214_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -170,6 +170,9 @@ namespace Homespool.Data.Migrations
 
                     b.Property<string>("Firmware")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("HasMmuEnabled")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("LoadedMaterial")
                         .HasColumnType("TEXT");

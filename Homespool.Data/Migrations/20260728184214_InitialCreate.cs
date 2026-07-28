@@ -248,6 +248,7 @@ namespace Homespool.Data.Migrations
                     Model = table.Column<string>(type: "TEXT", nullable: true),
                     SerialNumber = table.Column<string>(type: "TEXT", nullable: true),
                     NozzleDiameter = table.Column<float>(type: "REAL", nullable: true),
+                    HasMmuEnabled = table.Column<bool>(type: "INTEGER", nullable: false),
                     Location = table.Column<string>(type: "TEXT", nullable: true),
                     Firmware = table.Column<string>(type: "TEXT", nullable: true),
                     Status = table.Column<int>(type: "INTEGER", nullable: false),

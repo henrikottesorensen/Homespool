@@ -630,6 +630,66 @@ public sealed class TelemetryWriterTests : IDisposable
     }
 
     /// <summary>
+    /// A nozzle diameter survives the round trip through SQLite as the value the printer sent, and
+    /// serialises as <c>0.4</c> rather than <c>0.40000000596046448</c>.
+    /// </summary>
+    /// <remarks>
+    /// The concern is real and the guard is cheap: SQLite has no 4-byte float type, so the column is
+    /// <c>REAL</c> and the stored bits are the double widening of 0.4f, which is
+    /// 0.4000000059604645. What saves the output is that the property is <see cref="float"/> at both
+    /// ends - EF narrows on read, and <see cref="System.Text.Json"/> formats a float with the
+    /// shortest representation that round-trips, giving "0.4".
+    /// <para>
+    /// <b>Widen the property to <c>double</c> anywhere in the chain and this breaks</b>, because the
+    /// widening artefact then becomes the shortest round-trippable form of a double. That is the
+    /// mistake this test exists to catch, and it would be made in a DTO rather than here.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ANozzleDiameterSurvivesStorageWithoutFloatingPointLitter()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        using JsonDocument payload = JsonDocument.Parse("""{"nozzle_diameter":0.4}""");
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = Events.Info, Status = "IDLE", Data = payload.RootElement.Clone(),
+        });
+
+        await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await context.Printers.AnyAsync(p => p.NozzleDiameter != null);
+        }, TimeSpan.FromSeconds(5));
+
+        // Assert
+        await using HSDbContext verify = NewVerificationContext();
+        Printer printer = await verify.Printers.SingleAsync();
+
+        printer.NozzleDiameter.Should().Be(0.4f, "EF narrows the stored double back to the float that was written");
+        JsonSerializer.Serialize(printer.NozzleDiameter).Should().Be("0.4");
+
+        // What the column actually holds, and why the two lines above are not redundant.
+        ((double)printer.NozzleDiameter!.Value).Should().NotBe(0.4d);
+
+        // The three ways of asking "is this 0.4?" in SQL, and which of them work. EF has no
+        // approximate-equality helper, so the choice is between a range and Math.Abs - the latter
+        // translating to SQLite's abs(). Equality is the one that silently matches nothing.
+        (await verify.Printers.CountAsync(p => p.NozzleDiameter == 0.4f))
+            .Should().Be(0, "float equality against a REAL column matches nothing");
+
+        (await verify.Printers.CountAsync(p => p.NozzleDiameter > 0.39f && p.NozzleDiameter < 0.41f))
+            .Should().Be(1, "a range is the simplest thing that works");
+
+        (await verify.Printers.CountAsync(p => Math.Abs(p.NozzleDiameter!.Value - 0.4f) < 0.001f))
+            .Should().Be(1, "Math.Abs translates to abs() and is the closest thing to an epsilon compare");
+    }
+
+    /// <summary>
     /// The serial number is filled in when missing. Before <see cref="Printer.SerialNumber"/> existed
     /// it was captured at registration and then discarded with the registration row, and a
     /// USB-provisioned printer never reported one at all.

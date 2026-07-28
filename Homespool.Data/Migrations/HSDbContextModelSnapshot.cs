@@ -168,6 +168,9 @@ namespace Homespool.Data.Migrations
                     b.Property<string>("Firmware")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("HasMmuEnabled")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("LoadedMaterial")
                         .HasColumnType("TEXT");
 

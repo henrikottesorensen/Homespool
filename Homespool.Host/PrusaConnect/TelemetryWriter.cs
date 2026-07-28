@@ -677,11 +677,12 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             bool hasFirmware = !string.IsNullOrWhiteSpace(info.Firmware);
             bool hasModel = !string.IsNullOrWhiteSpace(info.PrinterType);
             bool hasNozzle = info.NozzleDiameter is > 0;
+            bool hasMmuBlock = info.Mmu is not null;
 
             bool fillsSerial = !string.IsNullOrWhiteSpace(info.SerialNumber)
                                && string.IsNullOrWhiteSpace(storedSerials.GetValueOrDefault(printerId));
 
-            if (!hasFirmware && !hasModel && !hasNozzle && !fillsSerial)
+            if (!hasFirmware && !hasModel && !hasNozzle && !hasMmuBlock && !fillsSerial)
             {
                 continue;
             }
@@ -713,6 +714,15 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             {
                 printer.NozzleDiameter = info.NozzleDiameter;
                 context.Entry(printer).Property(p => p.NozzleDiameter).IsModified = true;
+            }
+
+            // Only when the block is present: absent means firmware without MMU support, which the
+            // column's false default already says. Writing false here instead would let a partial
+            // INFO clear a genuine true.
+            if (hasMmuBlock)
+            {
+                printer.HasMmuEnabled = info.Mmu!.Enabled;
+                context.Entry(printer).Property(p => p.HasMmuEnabled).IsModified = true;
             }
 
             if (fillsSerial)

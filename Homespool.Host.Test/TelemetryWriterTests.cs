@@ -692,6 +692,82 @@ public sealed class TelemetryWriterTests : IDisposable
     }
 
     /// <summary>
+    /// An MMU announces itself through <c>INFO</c>'s <c>mmu.enabled</c>, which is
+    /// <c>enabled_tool_cnt() &gt; 1</c> in firmware.
+    /// </summary>
+    [Fact]
+    public async Task AnInfoEventRecordsThatAnMmuIsEnabled()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        using JsonDocument payload = JsonDocument.Parse("""{"mmu":{"enabled":true,"version":"3.0.3"}}""");
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = Events.Info, Status = "IDLE", Data = payload.RootElement.Clone(),
+        });
+
+        // Assert
+        bool applied = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await context.Printers.AnyAsync(p => p.HasMmuEnabled);
+        }, TimeSpan.FromSeconds(5));
+
+        applied.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// <b>An INFO without an mmu block must not clear a stored true.</b> The block is absent on
+    /// firmware built without MMU support, so absence means "cannot have one" - which the column's
+    /// false default already says. Writing false on absence instead would let any partial INFO undo a
+    /// genuine detection.
+    /// </summary>
+    [Fact]
+    public async Task AnInfoEventWithoutAnMmuBlockLeavesTheStoredValueAlone()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        using JsonDocument withMmu = JsonDocument.Parse("""{"mmu":{"enabled":true}}""");
+        using JsonDocument without = JsonDocument.Parse("""{"firmware":"6.5.7"}""");
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = Events.Info, Status = "IDLE", Data = withMmu.RootElement.Clone(),
+        });
+
+        await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await context.Printers.AnyAsync(p => p.HasMmuEnabled);
+        }, TimeSpan.FromSeconds(5));
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = Events.Info, Status = "IDLE", Data = without.RootElement.Clone(),
+        });
+
+        // The firmware in the second event is the marker that it was processed at all.
+        bool processed = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await context.Printers.AnyAsync(p => p.Firmware == "6.5.7");
+        }, TimeSpan.FromSeconds(5));
+
+        // Assert
+        processed.Should().BeTrue();
+
+        await using HSDbContext verify = NewVerificationContext();
+        (await verify.Printers.SingleAsync()).HasMmuEnabled.Should().BeTrue();
+    }
+
+    /// <summary>
     /// The serial number is filled in when missing. Before <see cref="Printer.SerialNumber"/> existed
     /// it was captured at registration and then discarded with the registration row, and a
     /// USB-provisioned printer never reported one at all.

@@ -75,6 +75,13 @@ public class PrinterReadDTO
     /// </remarks>
     public string? PrinterTypeName { get; set; }
 
+    /// <summary>
+    /// Whether a multi-material unit is fitted and enabled. False for a printer that has never
+    /// connected, and for one whose firmware has no MMU support - see <see cref="Printer.HasMmuEnabled"/>
+    /// for why those collapse into one value.
+    /// </summary>
+    public bool HasMmuEnabled { get; set; }
+
     /// <summary>The printer's serial number, from <c>INFO</c>'s <c>sn</c>. Null until it connects.</summary>
     public string? SerialNumber { get; set; }
 
@@ -147,6 +154,7 @@ public class PrinterReadDTO
         PrinterType = printer.Model,
         PrinterTypeName = PrinterModelNames.ForPrinterType(printer.Model),
         SerialNumber = printer.SerialNumber,
+        HasMmuEnabled = printer.HasMmuEnabled,
         NozzleDiameter = printer.NozzleDiameter,
         Firmware = printer.Firmware,
 

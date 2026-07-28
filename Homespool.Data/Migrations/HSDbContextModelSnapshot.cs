@@ -180,6 +180,9 @@ namespace Homespool.Data.Migrations
                     b.Property<string>("Name")
                         .HasColumnType("TEXT");
 
+                    b.Property<float?>("NozzleDiameter")
+                        .HasColumnType("REAL");
+
                     b.Property<string>("SerialNumber")
                         .HasColumnType("TEXT");
 

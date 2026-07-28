@@ -111,6 +111,27 @@ public class Printer
     /// </remarks>
     public string? SerialNumber { get; set; }
 
+    /// <summary>
+    /// Installed nozzle diameter in millimetres, from the top-level <c>nozzle_diameter</c> field of
+    /// the <c>INFO</c> event. Null until the printer has connected once.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Refreshed on every <c>INFO</c>, like <see cref="Firmware"/> and <see cref="Model"/>, because
+    /// people swap nozzles</b> (Henrik, 2026-07-28). It is a property of the hardware as it stands
+    /// today, not of the machine's identity - which is what separates it from
+    /// <see cref="SerialNumber"/>, written once and then left alone.
+    /// </para>
+    /// <para>
+    /// <b>Single-tool only.</b> A toolchanger reports a diameter per tool, in <c>INFO</c>'s
+    /// <c>tools</c> map alongside <c>high_flow</c>, <c>hardened</c> and <c>material</c>; this column
+    /// holds the top-level value, which is the whole story for an MK3.5, MK4 or MINI and only part of
+    /// it for an XL. Per-tool nozzle data has no home yet - the per-slot entity that exists,
+    /// <see cref="PrinterLiveSlotState"/>, carries telemetry rather than capability.
+    /// </para>
+    /// </remarks>
+    public float? NozzleDiameter { get; set; }
+
     /// <summary>Set by the user in the UI. No wire source, so null until they set it.</summary>
     public string? Location { get; set; }
 

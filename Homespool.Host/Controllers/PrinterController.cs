@@ -347,7 +347,9 @@ public class PrinterController : ControllerBase
                     new { command = command.WireName, outcome = outcome.EventType.ToString(), reason = outcome.Reason });
             }
 
-            // 204, as the spec's command endpoints answer. The printer's actual reply is logged and
+            // 204, which is ours rather than the spec's - Connect documents 200 with a Command
+            // resource for these. Answering the printer's real verdict is more useful to a caller
+            // than an acknowledgement that we asked. The printer's actual reply is logged and
             // persisted as an ordinary event either way; a caller wanting it watches the event stream.
             return NoContent();
         }

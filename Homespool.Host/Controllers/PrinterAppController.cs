@@ -71,11 +71,13 @@ public class PrinterAppController : ControllerBase
             return Forbid();
         }
 
-        // ClaimPrinterAsync already saves atomically on its own, but the transaction gives step 7b
-        // (and anything else added around the claim later) a safe container to share without needing
-        // to know about it - the same reasoning as Setup.cshtml.cs and Register.cshtml.cs. Any early
-        // return before CommitAsync disposes the transaction uncommitted, rolling back every write
-        // made through it.
+        // The transaction is required, not a convenience. ClaimPrinterAsync makes three separate
+        // SaveChangesAsync calls, so without one an interrupted claim can leave a printer half
+        // claimed - and this comment used to say the opposite ("already saves atomically on its
+        // own"), which would have told whoever wrote the next caller that they needed nothing.
+        // Pages/Printers/Claim.cshtml.cs is the other caller and wraps it for the same reason.
+        // Any early return before CommitAsync disposes the transaction uncommitted, rolling back
+        // every write made through it.
         await using IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
         try

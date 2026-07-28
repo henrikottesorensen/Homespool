@@ -58,6 +58,23 @@ public class PrinterReadDTO
     /// </remarks>
     public string? PrinterType { get; set; }
 
+    /// <summary>
+    /// The human name for <see cref="PrinterType"/> - <c>MK3.5</c> for <c>1.3.5</c>. Null for a
+    /// printer that has not connected, and for one newer than the generated table.
+    /// </summary>
+    /// <remarks>
+    /// Derived rather than stored: <see cref="PrinterModelNames"/> is generated from firmware's own
+    /// <c>printer_model_info</c>, so this needs no column and cannot disagree with
+    /// <see cref="PrinterType"/>.
+    /// <para>
+    /// Connect's third field, <c>printerModel</c> (<c>MK4SISMMU3</c>), is still omitted: it comes
+    /// from firmware's separate <c>printer_model_mmu_variant</c> table, which is keyed by model plus
+    /// MMU state rather than by the version triple - which is why the spec carries
+    /// <c>hasMmuEnabled</c> alongside it. Not derivable from what we receive.
+    /// </para>
+    /// </remarks>
+    public string? PrinterTypeName { get; set; }
+
     /// <summary>The printer's serial number, from <c>INFO</c>'s <c>sn</c>. Null until it connects.</summary>
     public string? SerialNumber { get; set; }
 
@@ -128,6 +145,7 @@ public class PrinterReadDTO
         Name = printer.Name,
         Location = printer.Location,
         PrinterType = printer.Model,
+        PrinterTypeName = PrinterModelNames.ForPrinterType(printer.Model),
         SerialNumber = printer.SerialNumber,
         NozzleDiameter = printer.NozzleDiameter,
         Firmware = printer.Firmware,

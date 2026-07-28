@@ -205,6 +205,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         PrinterReadDTO dto = PrinterReadDTO.FromEntity(found!);
 
         dto.PrinterType.Should().Be("1.3.5", "INFO's printer_type is a code, which is the spec's printerType");
+        dto.PrinterTypeName.Should().Be("MK3.5", "generated from firmware's own printer_model_info table");
         dto.SerialNumber.Should().Be("SN-12345");
         dto.Firmware.Should().Be("6.5.7");
         dto.NozzleDiameter.Should().Be(0.4f);

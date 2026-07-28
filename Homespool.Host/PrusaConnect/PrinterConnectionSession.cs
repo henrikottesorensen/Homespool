@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Net.WebSockets;
 using System.Text.Json;
@@ -22,6 +23,14 @@ namespace Homespool.Host.PrusaConnect;
 /// </remarks>
 public sealed class PrinterConnectionSession
 {
+    /// <summary>
+    /// Source of <c>ConnectionId</c>. Process-wide and monotonic: it exists to tell one printer's
+    /// five reconnects apart in a log, which a printer id alone cannot do. It restarts at 1 with the
+    /// process, so a multi-day log can hold two connection 3s - timestamps disambiguate, and that is
+    /// cheaper than putting a 36-character GUID on every line.
+    /// </summary>
+    private static long _lastConnectionId;
+
     private readonly WebSocketHandler _webSocketHandler;
     private readonly PrinterConnectionRegistry _connectionRegistry;
     private readonly PrinterConnectionActorFactory _actorFactory;
@@ -84,6 +93,22 @@ public sealed class PrinterConnectionSession
                                PipeReader input,
                                CancellationToken cancellationToken)
     {
+        // Opened before Create, and that ordering is the whole trick. PrinterConnectionActor starts
+        // its own loop in its constructor (Completion = RunAsync()), and a logging scope is
+        // AsyncLocal - captured when a task starts, not when it logs. Open this after Create and the
+        // actor's entire loop, drain included, silently logs without the correlation while the read
+        // loop's lines carry it. Nothing fails; the log just quietly stops answering the question.
+        //
+        // Everything downstream of this flow inherits it: the read loop, MessageDispatcher, and the
+        // actor. TelemetryWriter does not, and should not be made to - it drains a channel on its own
+        // background loop, so there is no flow to inherit from, and its log sites name the printer
+        // explicitly for that reason.
+        using IDisposable? correlation = _logger.BeginScope(new Dictionary<string, object>
+        {
+            ["PrinterId"] = printerId,
+            ["ConnectionId"] = Interlocked.Increment(ref _lastConnectionId),
+        });
+
         IPrinterConnectionActor actor = _actorFactory.Create(printerId, connection);
         _connectionRegistry.Register(printerId, actor);
 
@@ -113,7 +138,7 @@ public sealed class PrinterConnectionSession
         {
             // Routine, not exceptional: printers drop off the network without a close
             // handshake all the time. The socket is already gone - nothing to close.
-            _logger.LogDebug(e, "[{PrinterId}] connection closed abruptly", printerId);
+            _logger.LogDebug(e, "connection closed abruptly");
         }
         catch (OperationCanceledException e)
         {
@@ -121,7 +146,7 @@ public sealed class PrinterConnectionSession
             // the connection outright, since ConnectionAbortedException derives from this.
             // Ordinary ends to a WebSocket request, not faults: left unhandled they surfaced
             // as a logged 500.
-            _logger.LogDebug(e, "[{PrinterId}] connection ended: shutting down or aborted", printerId);
+            _logger.LogDebug(e, "connection ended: shutting down or aborted");
         }
         finally
         {
@@ -152,13 +177,13 @@ public sealed class PrinterConnectionSession
             }
             catch (TimeoutException)
             {
-                _logger.LogWarning("[{PrinterId}] connection actor did not finish draining in time; abandoning it.", printerId);
+                _logger.LogWarning("connection actor did not finish draining in time; abandoning it.");
             }
             catch (Exception e)
             {
                 // Never rethrow from here: this is a finally, and would replace whatever
                 // exception sent us into it.
-                _logger.LogError(e, "[{PrinterId}] connection actor loop faulted.", printerId);
+                _logger.LogError(e, "connection actor loop faulted.");
             }
 
             await connection.CloseOutputAsync(closeStatus);

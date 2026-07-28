@@ -27,10 +27,12 @@ namespace Homespool.Host.PrusaConnect;
 public class MessageDispatcher
 {
     private readonly ILogger<MessageDispatcher> _logger;
+    private readonly UnknownFieldTracker _unknownFields;
 
-    public MessageDispatcher(ILogger<MessageDispatcher> logger)
+    public MessageDispatcher(ILogger<MessageDispatcher> logger, UnknownFieldTracker unknownFields)
     {
         _logger = logger;
+        _unknownFields = unknownFields;
     }
 
     /// <summary>
@@ -47,7 +49,12 @@ public class MessageDispatcher
         {
             EventDTO eventDto = root.Deserialize<EventDTO>()!;
 
-            _logger.LogDebug("[{PrinterId}] event {EventType}", printerId, eventDto.EventType);
+            _logger.LogDebug("event {EventType}", eventDto.EventType);
+
+            // Qualified by event type: an unmodelled envelope key on a FILE_INFO and the same key on
+            // a STATE_CHANGED are two findings, not one. Only the envelope - eventDto.Data is raw and
+            // is never walked, for the reason UnknownFieldTracker's remarks give at length.
+            _unknownFields.Record(printerId, $"event:{eventDto.EventType}", eventDto.Unknown);
 
             return new InboundEventMessage(receivedAt, eventDto);
         }
@@ -59,8 +66,8 @@ public class MessageDispatcher
             // would otherwise fall into the telemetry branch and fail TelemetryDTO's required Status.
             InlineRequestDTO request = root.Deserialize<InlineRequestDTO>()!;
 
-            _logger.LogDebug("[{PrinterId}] transfer chunk request file_id={FileId} {Start}..{End}",
-                printerId, request.FileId, request.Start, request.End);
+            _logger.LogDebug("transfer chunk request file_id={FileId} {Start}..{End}",
+                request.FileId, request.Start, request.End);
 
             return new InboundTransferRequestMessage(receivedAt, request);
         }
@@ -69,7 +76,15 @@ public class MessageDispatcher
 
         // Trace, one level below the others: telemetry arrives roughly once a second per printer,
         // vs. events/transfer requests, which are merely frequent-per-printer rather than continuous.
-        _logger.LogTrace("[{PrinterId}] telemetry state={State}", printerId, telemetryDto.Status);
+        _logger.LogTrace("telemetry state={State}", telemetryDto.Status);
+
+        // Each nested shape named explicitly rather than walked by reflection. The explicitness is
+        // the safeguard: there is no traversal that could wander into somewhere unbounded, and
+        // adding a shape is a deliberate edit. "slot" is absent on purpose - SlotsTelemetryDTO
+        // already spends its one permitted extension-data property on the numbered slots themselves.
+        _unknownFields.Record(printerId, "telemetry", telemetryDto.Unknown);
+        _unknownFields.Record(printerId, "telemetry.chamber", telemetryDto.Chamber?.Unknown);
+        _unknownFields.Record(printerId, "telemetry.enclosure", telemetryDto.Enclosure?.Unknown);
 
         return new InboundTelemetryMessage(receivedAt, telemetryDto);
     }

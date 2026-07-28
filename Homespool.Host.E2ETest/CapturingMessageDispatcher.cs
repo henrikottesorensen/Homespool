@@ -22,7 +22,8 @@ namespace Homespool.Host.E2ETest;
 internal sealed class CapturingMessageDispatcher : MessageDispatcher
 {
     public CapturingMessageDispatcher()
-        : base(NullLogger<MessageDispatcher>.Instance)
+        : base(NullLogger<MessageDispatcher>.Instance,
+            new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance))
     {
     }
 

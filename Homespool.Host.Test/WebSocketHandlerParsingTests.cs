@@ -282,7 +282,9 @@ public class WebSocketHandlerParsingTests
     /// depending on deserialization behaviour (covered by <c>MessageDispatcherTests</c>). Returning
     /// null makes the handler post nothing, so the actor above can stay a bare substitute.
     /// </summary>
-    private sealed class RecordingMessageDispatcher() : MessageDispatcher(NullLogger<MessageDispatcher>.Instance)
+    private sealed class RecordingMessageDispatcher()
+        : MessageDispatcher(NullLogger<MessageDispatcher>.Instance,
+            new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance))
     {
         public List<string> Received { get; } = [];
 

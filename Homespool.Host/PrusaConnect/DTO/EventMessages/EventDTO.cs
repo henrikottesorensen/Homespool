@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -42,6 +43,14 @@ public class EventDTO
     [JsonPropertyName("event")]
     [JsonConverter(typeof(EventsJsonConverter))]
     public required Events EventType { get; set; }
+
+    /// <summary>
+    /// Envelope keys this build does not model - see <see cref="UnknownFieldTracker"/>. This is the
+    /// <em>envelope</em> only: <see cref="Data"/> stays a raw <see cref="JsonElement"/> and its keys
+    /// never land here, which is deliberate and load-bearing (that remark explains why).
+    /// </summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Unknown { get; set; }
 }
 
 /// <summary>

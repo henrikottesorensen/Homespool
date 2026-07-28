@@ -734,6 +734,115 @@ public class PrinterConnectionActorTests
         public void Dispose() => _gate.Dispose();
     }
 
+    // ---------- Outbound command logging ----------
+
+    /// <summary>
+    /// Both halves of the pair, in one test because the correlation between them is the point: a
+    /// "sent" line nobody can match to an answer is barely better than no line at all.
+    /// </summary>
+    [Fact]
+    public async Task SendingAndAnsweringACommandAreBothLogged()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        FakeLogger<PrinterConnectionActor> logger = new();
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), logger: logger);
+
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PausePrint(), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+
+        // Act
+        uint commandId = CommandIdOf(sentFrames[0]);
+        await actor.PostAsync(EventAnswering(commandId, Events.Finished, null), CancellationToken.None);
+        await Eventually(sendTask);
+
+        // Assert
+        string[] messages = logger.Collector.GetSnapshot()
+            .Where(record => record.Level == LogLevel.Debug)
+            .Select(record => record.Message)
+            .ToArray();
+
+        messages.Should().Contain(message => message.Contains("sent PAUSE_PRINT", StringComparison.Ordinal)
+                                             && message.Contains(commandId.ToString(), StringComparison.Ordinal));
+
+        messages.Should().Contain(message => message.Contains("answered with Finished", StringComparison.Ordinal)
+                                             && message.Contains(commandId.ToString(), StringComparison.Ordinal)
+                                             && message.Contains("ms", StringComparison.Ordinal));
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// Firmware's own rejection text is the usual explanation of a <c>Rejected</c>, and it is
+    /// composed by the printer (<c>JC</c>'s macro strings) rather than by us - so it belongs in the
+    /// line rather than only in the caller's return value.
+    /// </summary>
+    [Fact]
+    public async Task ARejectionsReasonReachesTheLog()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        FakeLogger<PrinterConnectionActor> logger = new();
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), logger: logger);
+
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new SetPrinterIdle(), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+
+        // Act
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), Events.Rejected, "Can't set idle now"),
+                              CancellationToken.None);
+        await Eventually(sendTask);
+
+        // Assert
+        logger.Collector.GetSnapshot()
+              .Should().Contain(record => record.Message.Contains("Can't set idle now", StringComparison.Ordinal));
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A command's arguments never reach the log - only its wire name and id.
+    /// <see cref="StartConnectDownload.Hash"/> is the live case rather than a hypothetical one: it is
+    /// today the capability token that lets whoever holds it fetch the file
+    /// (<c>notes/backlog.md</c>, "once ownership is enforced by path, the wire token no longer has to
+    /// be unguessable"), and <c>SET_TOKEN</c> will be a sharper one when token rotation is built.
+    /// </summary>
+    [Fact]
+    public async Task ACommandsArgumentsAreNeverLogged()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        FakeLogger<PrinterConnectionActor> logger = new();
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), logger: logger);
+
+        StartConnectDownload command = new()
+        {
+            Path = "/usb/secret-model.bgcode",
+            Hash = "CAPABILITY-TOKEN-abc123",
+            TeamId = 7,
+            OriginalSize = 4096,
+        };
+
+        // Act
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(command, CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+
+        // Assert - the frame carries them, the log does not
+        sentFrames[0].Should().NotBeEmpty();
+
+        string log = string.Join('\n', logger.Collector.GetSnapshot().Select(record => record.Message));
+
+        log.Should().Contain("START_CONNECT_DOWNLOAD", "the wire name is the whole point of the line");
+        log.Should().NotContain("CAPABILITY-TOKEN-abc123");
+        log.Should().NotContain("secret-model.bgcode");
+
+        actor.Complete();
+        await Eventually(sendTask);
+        await Eventually(actor.Completion);
+    }
+
     /// <summary>Records every call instead of acting on it - captured-value assertions
     /// (<c>sink.TelemetryCalls[0].Telemetry.Status</c>) fail far more legibly than an
     /// <c>Arg.Is&lt;&gt;</c> lambda, which is why this stays a class rather than a substitute.</summary>

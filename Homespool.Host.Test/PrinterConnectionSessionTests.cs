@@ -247,7 +247,9 @@ public class PrinterConnectionSessionTests
 
     /// <summary>Supplies the read loop's ending, which is all the session cares about.</summary>
     private sealed class StubWebSocketHandler(Func<Task> end)
-        : WebSocketHandler(NullLogger<WebSocketHandler>.Instance, new MessageDispatcher(NullLogger<MessageDispatcher>.Instance))
+        : WebSocketHandler(NullLogger<WebSocketHandler>.Instance,
+            new MessageDispatcher(NullLogger<MessageDispatcher>.Instance,
+                new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance)))
     {
         public override Task HandlePrusaWebsocket(PipeReader input, int printerId, IPrinterConnectionActor actor,
                                                   CancellationToken cancellationToken) => end();

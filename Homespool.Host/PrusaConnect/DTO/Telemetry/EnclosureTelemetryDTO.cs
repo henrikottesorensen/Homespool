@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Homespool.Host.PrusaConnect.DTO.Telemetry;
@@ -17,4 +19,8 @@ public class EnclosureTelemetryDTO
 
     [JsonPropertyName("time_in_use")]
     public int TimeIsUse { get; set; }
+
+    /// <summary>Enclosure keys this build does not model - see <see cref="UnknownFieldTracker"/>.</summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Unknown { get; set; }
 }

@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Homespool.Host.PrusaConnect.DTO.Telemetry;
@@ -21,4 +23,8 @@ public class ChamberTelemetryDTO
 
     [JsonPropertyName("led_intensity")]
     public int LedIntensity { get; set; }
+
+    /// <summary>Chamber keys this build does not model - see <see cref="UnknownFieldTracker"/>.</summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Unknown { get; set; }
 }

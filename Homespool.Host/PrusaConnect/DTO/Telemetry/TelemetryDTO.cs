@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Homespool.Host.PrusaConnect.DTO.Telemetry;
@@ -115,4 +117,12 @@ public class TelemetryDTO
 
     [JsonPropertyName("state")]
     public required string Status { get; set; }
+
+    /// <summary>
+    /// Telemetry keys this build does not model, collected rather than discarded so
+    /// <see cref="UnknownFieldTracker"/> can report them. Null when the message matched exactly,
+    /// which is the normal case.
+    /// </summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Unknown { get; set; }
 }

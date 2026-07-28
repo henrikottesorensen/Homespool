@@ -16,6 +16,7 @@ using Homespool.Model.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
 
@@ -172,7 +173,8 @@ public sealed class TelemetryWriterTests : IDisposable
 
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
                                        Options.Create(options),
-                                       _fakeLogger);
+                                       _fakeLogger,
+                                       new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance));
 
         await _writer.StartAsync(CancellationToken.None);
 
@@ -1269,7 +1271,8 @@ public sealed class TelemetryWriterTests : IDisposable
 
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
                                        Options.Create(options),
-                                       _fakeLogger)
+                                       _fakeLogger,
+                                       new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance))
         {
             DropWarningInterval = dropWarningInterval,
         };

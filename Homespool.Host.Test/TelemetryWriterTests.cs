@@ -583,6 +583,53 @@ public sealed class TelemetryWriterTests : IDisposable
     }
 
     /// <summary>
+    /// The nozzle diameter is refreshed like firmware, not written once like the serial: people swap
+    /// nozzles, so it describes the hardware as it stands rather than which machine this is.
+    /// </summary>
+    [Fact]
+    public async Task ANozzleSwapIsPickedUpFromTheNextInfo()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        using JsonDocument brass = JsonDocument.Parse("""{"nozzle_diameter":0.4}""");
+        using JsonDocument swapped = JsonDocument.Parse("""{"nozzle_diameter":0.6}""");
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = Events.Info, Status = "IDLE", Data = brass.RootElement.Clone(),
+        });
+
+        await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+
+            // A range, not equality: SQLite stores REAL as a double, so a widened float never
+            // compares equal to the clean double EF sends as the parameter.
+            return await context.Printers.AnyAsync(p => p.NozzleDiameter < 0.5f);
+        }, TimeSpan.FromSeconds(5));
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = Events.Info, Status = "IDLE", Data = swapped.RootElement.Clone(),
+        });
+
+        // Assert
+        bool swappedIn = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await context.Printers.AnyAsync(p => p.NozzleDiameter > 0.5f);
+        }, TimeSpan.FromSeconds(5));
+
+        swappedIn.Should().BeTrue();
+
+        await using HSDbContext verify = NewVerificationContext();
+        (await verify.Printers.SingleAsync()).NozzleDiameter.Should().BeApproximately(0.6f, 0.001f);
+    }
+
+    /// <summary>
     /// The serial number is filled in when missing. Before <see cref="Printer.SerialNumber"/> existed
     /// it was captured at registration and then discarded with the registration row, and a
     /// USB-provisioned printer never reported one at all.

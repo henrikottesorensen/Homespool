@@ -671,11 +671,12 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         {
             bool hasFirmware = !string.IsNullOrWhiteSpace(info.Firmware);
             bool hasModel = !string.IsNullOrWhiteSpace(info.PrinterType);
+            bool hasNozzle = info.NozzleDiameter is > 0;
 
             bool fillsSerial = !string.IsNullOrWhiteSpace(info.SerialNumber)
                                && string.IsNullOrWhiteSpace(storedSerials.GetValueOrDefault(printerId));
 
-            if (!hasFirmware && !hasModel && !fillsSerial)
+            if (!hasFirmware && !hasModel && !hasNozzle && !fillsSerial)
             {
                 continue;
             }
@@ -698,6 +699,15 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             {
                 printer.Model = info.PrinterType;
                 context.Entry(printer).Property(p => p.Model).IsModified = true;
+            }
+
+            // Refreshed rather than filled in once: a nozzle swap is a change to the hardware as it
+            // stands, not to which machine this is. Zero is treated as absent - a printer that has
+            // not reported one sends no value, and a literal 0.0 mm nozzle does not exist.
+            if (hasNozzle)
+            {
+                printer.NozzleDiameter = info.NozzleDiameter;
+                context.Entry(printer).Property(p => p.NozzleDiameter).IsModified = true;
             }
 
             if (fillsSerial)

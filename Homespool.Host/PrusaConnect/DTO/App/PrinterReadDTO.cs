@@ -52,6 +52,19 @@ public class PrinterReadDTO
     /// <summary>The printer's serial number, from <c>INFO</c>'s <c>sn</c>. Null until it connects.</summary>
     public string? SerialNumber { get; set; }
 
+    /// <summary>
+    /// Installed nozzle diameter in millimetres, from <c>INFO</c>. Null until the printer connects,
+    /// and refreshed whenever someone swaps a nozzle.
+    /// </summary>
+    /// <remarks>
+    /// <b><see cref="float"/>, and it has to stay one.</b> SQLite has no 4-byte float, so the stored
+    /// value is the double widening of what the printer sent - a real MK3.5 reporting 0.4 is held as
+    /// 0.400000005960464. Narrowing back to <see cref="float"/> here is what makes
+    /// <c>System.Text.Json</c> emit <c>0.4</c>; typed <c>double?</c> this field would put
+    /// <c>0.40000000596046448</c> on the wire. See <c>notes/floating-point.md</c>.
+    /// </remarks>
+    public float? NozzleDiameter { get; set; }
+
     public string? Firmware { get; set; }
 
     public required string State { get; set; }
@@ -107,6 +120,7 @@ public class PrinterReadDTO
         Location = printer.Location,
         PrinterModel = printer.Model,
         SerialNumber = printer.SerialNumber,
+        NozzleDiameter = printer.NozzleDiameter,
         Firmware = printer.Firmware,
 
         // Not printer.Status - see the remarks on this class.

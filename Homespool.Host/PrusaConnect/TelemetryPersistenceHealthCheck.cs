@@ -35,10 +35,12 @@ public sealed class TelemetryPersistenceHealthCheck : IHealthCheck
     private const int UnhealthyAfterConsecutiveFailures = 10;
 
     private readonly ITelemetryHealthSource _source;
+    private readonly UnknownFieldTracker _unknownFields;
 
-    public TelemetryPersistenceHealthCheck(ITelemetryHealthSource source)
+    public TelemetryPersistenceHealthCheck(ITelemetryHealthSource source, UnknownFieldTracker unknownFields)
     {
         _source = source;
+        _unknownFields = unknownFields;
     }
 
     public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
@@ -55,6 +57,19 @@ public sealed class TelemetryPersistenceHealthCheck : IHealthCheck
             ["pendingEvents"] = snapshot.PendingEvents,
             ["droppedMessages"] = snapshot.DroppedMessages,
             ["discardedEvents"] = snapshot.DiscardedEvents,
+
+            // Reported, never graded. An unmodelled wire field means this build is discarding
+            // something a printer said - worth an operator seeing, but not a persistence fault, and
+            // grading it would send the alert email for a firmware upgrade. The log carries the
+            // first sighting of each name; this is the unthrottled exact total.
+            //
+            // The count only, deliberately - never UnknownFieldTracker.DistinctFields. This endpoint
+            // is anonymous, on the stated grounds that it carries "only counters and timestamps about
+            // this service's own write path" (Program.cs). Field names are neither: they come off the
+            // wire, so publishing them would let anyone who can reach /p/ws inject chosen strings and
+            // read them back from an unauthenticated endpoint. A monotonic counter is what a
+            // monitoring system needs; the names belong in the log and, later, behind admin auth.
+            ["unknownFieldOccurrences"] = _unknownFields.Total,
         };
 
         if (snapshot.DiscardedEvents > 0)

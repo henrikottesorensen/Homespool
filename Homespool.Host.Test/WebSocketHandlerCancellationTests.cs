@@ -102,7 +102,9 @@ public class WebSocketHandlerCancellationTests
     }
 
     /// <inheritdoc cref="WebSocketHandlerParsingTests"/>
-    private sealed class RecordingMessageDispatcher() : MessageDispatcher(NullLogger<MessageDispatcher>.Instance)
+    private sealed class RecordingMessageDispatcher()
+        : MessageDispatcher(NullLogger<MessageDispatcher>.Instance,
+            new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance))
     {
         public List<string> Received { get; } = [];
 

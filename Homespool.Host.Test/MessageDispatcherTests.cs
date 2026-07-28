@@ -14,7 +14,10 @@ namespace Homespool.Host.Test;
 /// </summary>
 public class MessageDispatcherTests
 {
-    private static MessageDispatcher NewDispatcher() => new(NullLogger<MessageDispatcher>.Instance);
+    private static MessageDispatcher NewDispatcher() =>
+        new(NullLogger<MessageDispatcher>.Instance, NewTracker());
+
+    private static UnknownFieldTracker NewTracker() => new(NullLogger<UnknownFieldTracker>.Instance);
 
     /// <summary>
     /// The <c>InlineRequest</c> shape from firmware's <c>render.cpp:100-119</c>

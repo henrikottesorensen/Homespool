@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Homespool.Host.PrusaConnect.DTO.EventMessages;
@@ -84,6 +85,14 @@ public class InfoEventDataDTO
 
     [JsonPropertyName("slots")]
     public int? Slots { get; set; }
+
+    /// <summary>
+    /// <c>INFO</c> keys this build does not model - see <see cref="UnknownFieldTracker"/>. The most
+    /// valuable of these to watch: <c>INFO</c> is where a firmware release announces new hardware
+    /// capabilities, so a new key here is usually a feature rather than noise.
+    /// </summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Unknown { get; set; }
 }
 
 public class InfoStorageDTO

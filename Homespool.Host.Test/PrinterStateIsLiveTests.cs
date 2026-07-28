@@ -65,9 +65,10 @@ public sealed class PrinterStateIsLiveTests : IDisposable
     }
 
     private static async Task<Printer> AddPrinterAsync(HSDbContext context, long userId, PrinterStatus? liveStatus,
-                                                        bool canUse = true, bool canManage = true)
+                                                        bool canUse = true, bool canManage = true,
+                                                        string? teamName = "Workshop")
     {
-        Team team = new() { CreatedBy = userId, CreatedAt = DateTimeOffset.UtcNow };
+        Team team = new() { CreatedBy = userId, CreatedAt = DateTimeOffset.UtcNow, Name = teamName };
         context.Teams.Add(team);
         await context.SaveChangesAsync();
 
@@ -225,6 +226,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         // Assert
         PrinterReadDTO dto = PrinterReadDTO.FromEntity(listed.Should().ContainSingle().Subject);
 
+        dto.TeamName.Should().Be("Workshop", "a team id alone does not tell a client who owns the printer");
         dto.CanRead.Should().BeTrue("the printer was returned at all, which requires it");
         dto.CanUse.Should().BeFalse();
         dto.CanManage.Should().BeFalse();

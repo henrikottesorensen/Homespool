@@ -9,12 +9,15 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Text.Encodings.Web;
+using System.Threading;
 using System.Threading.Tasks;
 
+using Homespool.Host.Services;
 using Homespool.Model.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.Pages.Account.Manage;
@@ -24,15 +27,18 @@ public class EnableAuthenticatorModel : PageModel
     private const string AuthenticatorUriFormat = "otpauth://totp/{0}:{1}?secret={2}&issuer={0}&digits=6";
 
     private readonly UserManager<HSUser> _userManager;
+    private readonly UnitOfWork _unitOfWork;
     private readonly ILogger<EnableAuthenticatorModel> _logger;
     private readonly UrlEncoder _urlEncoder;
 
     public EnableAuthenticatorModel(
         UserManager<HSUser> userManager,
+        UnitOfWork unitOfWork,
         ILogger<EnableAuthenticatorModel> logger,
         UrlEncoder urlEncoder)
     {
         _userManager = userManager;
+        _unitOfWork = unitOfWork;
         _logger = logger;
         _urlEncoder = urlEncoder;
     }
@@ -100,7 +106,7 @@ public class EnableAuthenticatorModel : PageModel
         return Page();
     }
 
-    public async Task<IActionResult> OnPostAsync()
+    public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
     {
         HSUser user = await _userManager.GetUserAsync(User);
         if (user == null)
@@ -127,22 +133,37 @@ public class EnableAuthenticatorModel : PageModel
             return Page();
         }
 
-        await _userManager.SetTwoFactorEnabledAsync(user, true);
         string userId = await _userManager.GetUserIdAsync(user);
+        bool issuedRecoveryCodes;
+
+        // Enabling 2FA and minting the recovery codes are two round trips through UserManager, and
+        // the state between them is the one worth making unreachable: two-factor on, zero recovery
+        // codes. Losing the authenticator device from there means losing the account. Either both
+        // land or neither does.
+        await using (IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken))
+        {
+            await _userManager.SetTwoFactorEnabledAsync(user, true);
+
+            issuedRecoveryCodes = await _userManager.CountRecoveryCodesAsync(user) == 0;
+
+            if (issuedRecoveryCodes)
+            {
+                IEnumerable<string> recoveryCodes = await _userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 10);
+                RecoveryCodes = recoveryCodes.ToArray();
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+        }
+
         _logger.LogInformation("User with ID '{UserId}' has enabled 2FA with an authenticator app.", userId);
 
         StatusMessage = "Your authenticator app has been verified.";
 
-        if (await _userManager.CountRecoveryCodesAsync(user) == 0)
-        {
-            IEnumerable<string> recoveryCodes = await _userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 10);
-            RecoveryCodes = recoveryCodes.ToArray();
-            return RedirectToPage("./ShowRecoveryCodes");
-        }
-        else
-        {
-            return RedirectToPage("./TwoFactorAuthentication");
-        }
+        // The redirect happens only after the commit, so nobody is ever sent to a page showing
+        // recovery codes that were rolled back.
+        return issuedRecoveryCodes
+            ? RedirectToPage("./ShowRecoveryCodes")
+            : RedirectToPage("./TwoFactorAuthentication");
     }
 
     private async Task LoadSharedKeyAndQrCodeUriAsync(HSUser user)

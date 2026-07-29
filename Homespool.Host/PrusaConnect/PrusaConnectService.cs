@@ -22,6 +22,7 @@ public class PrusaConnectService
     private readonly CodeGenerator _codeGenerator;
     private readonly TokenService _tokenService;
     private readonly TeamService _teamService;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<PrusaConnectService> _logger;
     private readonly PrusaConnectOptions _options;
 
@@ -29,6 +30,7 @@ public class PrusaConnectService
                           CodeGenerator codeGenerator,
                           TokenService tokenService,
                           TeamService teamService,
+                          TimeProvider timeProvider,
                           ILogger<PrusaConnectService> logger,
                           IOptions<PrusaConnectOptions> options)
     {
@@ -36,6 +38,7 @@ public class PrusaConnectService
         _codeGenerator = codeGenerator;
         _tokenService = tokenService;
         _teamService = teamService;
+        _timeProvider = timeProvider;
         _logger = logger;
         _options = options.Value;
     }
@@ -58,7 +61,7 @@ public class PrusaConnectService
     /// </remarks>
     public async Task<DTO.CodeResponseDTO> GetPrinterCode(DTO.RegisterPrinterRequestDTO printer)
     {
-        DateTimeOffset now = TimeProvider.System.GetUtcNow();
+        DateTimeOffset now = _timeProvider.GetUtcNow();
         DateTimeOffset codeExpiry = now + _options.RegistrationCodeLifetime;
         PrusaConnectRegistration? registration = await _dbContext.PrusaConnectRegistrations
             .SingleOrDefaultAsync(a => a.FingerPrint == printer.FingerPrint);
@@ -146,7 +149,7 @@ public class PrusaConnectService
     /// </remarks>
     public async Task<string?> GetToken(string temporaryCode)
     {
-        DateTimeOffset now = TimeProvider.System.GetUtcNow();
+        DateTimeOffset now = _timeProvider.GetUtcNow();
 
         PrusaConnectRegistration? registration = await FindActiveRegistrationAsync(temporaryCode, now);
 
@@ -249,7 +252,7 @@ public class PrusaConnectService
     /// </remarks>
     public async Task<Printer> ClaimPrinterAsync(string temporaryCode, string? name, string? location, int? teamId, long userId)
     {
-        DateTimeOffset now = TimeProvider.System.GetUtcNow();
+        DateTimeOffset now = _timeProvider.GetUtcNow();
 
         PrusaConnectRegistration? registration = await FindActiveRegistrationAsync(temporaryCode, now);
 
@@ -346,7 +349,7 @@ public class PrusaConnectService
     /// </summary>
     public async Task<(Printer printer, string token)> ProvisionPrinterAsync(string? name, string? location, int? teamId, long userId)
     {
-        DateTimeOffset now = TimeProvider.System.GetUtcNow();
+        DateTimeOffset now = _timeProvider.GetUtcNow();
 
         int resolvedTeamId = await ResolveTeamForWriteAsync(teamId, userId);
 
@@ -434,7 +437,7 @@ public class PrusaConnectService
             {
                 PrinterId = printerId,
                 HashedToken = _tokenService.HashToken(token),
-                CreatedAt = TimeProvider.System.GetUtcNow(),
+                CreatedAt = _timeProvider.GetUtcNow(),
             });
         }
 

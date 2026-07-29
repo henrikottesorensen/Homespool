@@ -249,7 +249,8 @@ public class PrinterConnectionSessionTests
     private sealed class StubWebSocketHandler(Func<Task> end)
         : WebSocketHandler(NullLogger<WebSocketHandler>.Instance,
             new MessageDispatcher(NullLogger<MessageDispatcher>.Instance,
-                new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance)))
+                new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
+                TimeProvider.System))
     {
         public override Task HandlePrusaWebsocket(PipeReader input, int printerId, IPrinterConnectionActor actor,
                                                   CancellationToken cancellationToken) => end();

@@ -73,7 +73,7 @@ public sealed class DetailModelTests : IDisposable
 
         PrinterConnectionRegistry connectionRegistry = new(NullLogger<PrinterConnectionRegistry>.Instance);
 
-        DetailModel model = new(new PrinterQueryService(context), connectionRegistry, users)
+        DetailModel model = new(new PrinterQueryService(context, TimeProvider.System), connectionRegistry, users)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };

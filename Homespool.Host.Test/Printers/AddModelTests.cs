@@ -79,7 +79,7 @@ public sealed class AddModelTests : IDisposable
         };
 
         PrusaConnectService prusaConnectService = new(context, new CodeGenerator(), new TokenService(), new TeamService(context),
-            NullLogger<PrusaConnectService>.Instance, Options.Create(options));
+            TimeProvider.System, NullLogger<PrusaConnectService>.Instance, Options.Create(options));
 
         AddModel model = new(prusaConnectService, new TeamService(context), users, new UnitOfWork(context),
             Options.Create(options), NullLogger<AddModel>.Instance)

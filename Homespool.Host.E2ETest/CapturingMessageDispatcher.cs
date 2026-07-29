@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text.Json;
 
@@ -23,7 +24,8 @@ internal sealed class CapturingMessageDispatcher : MessageDispatcher
 {
     public CapturingMessageDispatcher()
         : base(NullLogger<MessageDispatcher>.Instance,
-            new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance))
+            new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
+            TimeProvider.System)
     {
     }
 

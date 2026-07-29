@@ -44,6 +44,7 @@ public sealed class PrinterRegistrationTests : IDisposable
             new CodeGenerator(),
             new TokenService(),
             new TeamService(context),
+            TimeProvider.System,
             logger ?? NullLogger<PrusaConnectService>.Instance,
             Options.Create(new PrusaConnectOptions { RegistrationCodeLifetimeMinutes = lifetimeMinutes }));
 

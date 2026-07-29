@@ -15,7 +15,7 @@ namespace Homespool.Host.Test;
 public class MessageDispatcherTests
 {
     private static MessageDispatcher NewDispatcher() =>
-        new(NullLogger<MessageDispatcher>.Instance, NewTracker());
+        new(NullLogger<MessageDispatcher>.Instance, NewTracker(), TimeProvider.System);
 
     private static UnknownFieldTracker NewTracker() => new(NullLogger<UnknownFieldTracker>.Instance);
 

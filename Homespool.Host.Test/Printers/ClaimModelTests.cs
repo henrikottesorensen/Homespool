@@ -61,7 +61,7 @@ public sealed class ClaimModelTests : IDisposable
             new CodeGenerator(),
             new TokenService(),
             new TeamService(context),
-            NullLogger<PrusaConnectService>.Instance,
+            TimeProvider.System, NullLogger<PrusaConnectService>.Instance,
             Options.Create(new PrusaConnectOptions()));
 
     private static RegisterPrinterRequestDTO PrinterRequest(string fingerprint) => new()

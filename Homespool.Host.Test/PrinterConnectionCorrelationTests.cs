@@ -138,7 +138,8 @@ public sealed class PrinterConnectionCorrelationTests : IDisposable
     private sealed class StubHandler(ILogger logger) : WebSocketHandler(
         NullLogger<WebSocketHandler>.Instance,
         new MessageDispatcher(NullLogger<MessageDispatcher>.Instance,
-            new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance)))
+            new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
+            TimeProvider.System))
     {
         public override Task HandlePrusaWebsocket(PipeReader input, int printerId, IPrinterConnectionActor actor,
                                                   CancellationToken cancellationToken)

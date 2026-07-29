@@ -158,12 +158,18 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     private readonly Services.LogThrottle _dropWarnings = new(TimeSpan.FromSeconds(10));
     private readonly Services.LogThrottle _processingFailureWarnings = new(TimeSpan.FromSeconds(10));
 
+    // The two buffer-ceiling trims are wire-rate sites too, for a reason easy to miss: they are
+    // called per item processed, so once a buffer is *at* its cap every further message trims
+    // exactly one row and logs it. Measured during one 180 s outage: 50,007 sample-trim Warnings
+    // and 5,193 event-trim Errors, every one of them reporting a count of 1.
+    private readonly Services.LogThrottle _sampleTrims = new(TimeSpan.FromSeconds(10));
+    private readonly Services.LogThrottle _eventTrims = new(TimeSpan.FromSeconds(10));
+
     // Written only by the drain loop, read by whatever calls Current (a health check, on a request
     // thread). Published as one immutable snapshot rather than read field by field - see PublishHealth.
     private volatile TelemetryHealthSnapshot _health = TelemetryHealthSnapshot.Initial;
     private DateTimeOffset? _lastFlushAt;
     private int _consecutiveFlushFailures;
-    private long _discardedEvents;
 
     public TelemetryWriter(IServiceScopeFactory scopeFactory,
                            IOptions<StorageOptions> options,
@@ -204,6 +210,20 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     {
         get => _processingFailureWarnings.Interval;
         init => _processingFailureWarnings.Interval = value;
+    }
+
+    /// <summary>Same seam for the sample-buffer trim Warning. See <see cref="DropWarningInterval"/>.</summary>
+    public TimeSpan SampleTrimWarningInterval
+    {
+        get => _sampleTrims.Interval;
+        init => _sampleTrims.Interval = value;
+    }
+
+    /// <summary>Same seam for the event-buffer trim Error. See <see cref="DropWarningInterval"/>.</summary>
+    public TimeSpan EventTrimWarningInterval
+    {
+        get => _eventTrims.Interval;
+        init => _eventTrims.Interval = value;
     }
 
     /// <summary>
@@ -424,7 +444,25 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                 {
                     await ProcessItemAsync(item, cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, CancellationToken.None);
 
-                    if (pendingSamples.Count + pendingEvents.Count >= _options.WriteBatchSize)
+                    // The failure guard is what stops a batch trigger becoming a per-message one.
+                    // While flushes are failing the buffers never fall back below WriteBatchSize, so
+                    // without it this condition holds for every item from then on: one full flush
+                    // attempt, one exception and one Error-with-stack per message ingested - plus
+                    // two more Errors from EF's own internals, ~8.9 KB of log per attempt, measured
+                    // at 22 attempts/s during a 14 s outage (tools/slow-db). That is the same
+                    // self-feeding shape the drop warning had, arriving by a different route: the
+                    // log I/O steals the capacity the writer is already short of, and the retry
+                    // itself is pure waste, since nothing has changed since the attempt one message
+                    // ago. Retries fall back to the flush timer, which is the one clock that
+                    // actually corresponds to "the database may have recovered by now".
+                    //
+                    // Bounded recovery: one success resets the counter and normal batch flushing
+                    // resumes, so this costs at most WriteFlushIntervalSeconds of extra latency
+                    // after an outage clears. It also fixes shutdown, where draining a full channel
+                    // at one failed flush per item overran HostOptions.ShutdownTimeout and lost the
+                    // buffers - the final flush after the loop is unaffected and still retries.
+                    if (pendingSamples.Count + pendingEvents.Count >= _options.WriteBatchSize
+                        && _consecutiveFlushFailures == 0)
                     {
                         await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, CancellationToken.None);
                     }
@@ -591,9 +629,28 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         int excess = pendingSamples.Count - cap;
         pendingSamples.RemoveRange(0, excess);
 
+        // Throttled, because this runs per sample processed: at the cap, excess is 1 every time and
+        // the old unthrottled line produced 50,007 entries in one 180 s outage, each announcing the
+        // discarding of a single row. The window summary is the aggregate the message was always
+        // phrased for. Same arrangement as the drop warning - occurrences counted exactly, only the
+        // logging bounded.
+        if (_sampleTrims.Record(excess) is not { } window)
+        {
+            return;
+        }
+
+        if (window.IsFirstOccurrence)
+        {
+            _logger.LogWarning(
+                "Discarded {Count} buffered telemetry sample(s) to cap memory - the database has been failing to accept flushes for a while. Events are held far longer than this.",
+                excess);
+
+            return;
+        }
+
         _logger.LogWarning(
-            "Discarded {Count} buffered telemetry samples to cap memory - the database has been failing to accept flushes for a while. Events are held far longer than this.",
-            excess);
+            "Discarded {Count} buffered telemetry sample(s) in the last {ElapsedSeconds:F0}s to cap memory - the database is still not accepting flushes; {TotalDiscarded} samples discarded since startup. Events are held far longer than this.",
+            window.Count, window.Elapsed.TotalSeconds, window.Total);
     }
 
     /// <summary>
@@ -619,11 +676,29 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
         int excess = pendingEvents.Count - cap;
         pendingEvents.RemoveRange(0, excess);
-        _discardedEvents += excess;
+
+        // Throttled like the sample trim, and for the same per-item reason - but the level stays
+        // Error and the first occurrence still logs in full: exhausting the event buffer is data
+        // loss with nothing to reconstruct it from, and an operator should hear about it the moment
+        // it starts. What is bounded is the repetition, which reached 5,193 identical Errors in one
+        // 180 s outage. The exact lifetime total stays unthrottled on the health snapshot.
+        if (_eventTrims.Record(excess) is not { } window)
+        {
+            return;
+        }
+
+        if (window.IsFirstOccurrence)
+        {
+            _logger.LogError(
+                "Discarded {Count} buffered printer event(s) to cap memory - the database has been rejecting flushes long enough to exhaust even the event buffer. These events are lost.",
+                excess);
+
+            return;
+        }
 
         _logger.LogError(
-            "Discarded {Count} buffered printer events to cap memory - the database has been rejecting flushes long enough to exhaust even the event buffer. These events are lost.",
-            excess);
+            "Discarded {Count} buffered printer event(s) in the last {ElapsedSeconds:F0}s - the database is still rejecting flushes and the event buffer remains exhausted; {TotalDiscarded} events lost since startup.",
+            window.Count, window.Elapsed.TotalSeconds, window.Total);
     }
 
     /// <summary>
@@ -862,7 +937,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// </remarks>
     private void PublishHealth(int pendingSamples, int pendingEvents) =>
         _health = new TelemetryHealthSnapshot(_lastFlushAt, _consecutiveFlushFailures, pendingSamples, pendingEvents,
-                                              _dropWarnings.Total, _discardedEvents);
+                                              _dropWarnings.Total, _eventTrims.Total);
 
     /// <summary>
     /// Writes everything buffered since the last flush in one transaction, then clears the buffers.

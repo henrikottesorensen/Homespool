@@ -52,13 +52,19 @@ public sealed class LogThrottle
     public long Total => Interlocked.Read(ref _total);
 
     /// <summary>
-    /// Records one occurrence. Non-null when this caller is elected to log - the window says what
-    /// to say - and null when the occurrence was counted but this is not the moment to log it.
+    /// Records <paramref name="occurrences"/> occurrences, one by default. Non-null when this caller
+    /// is elected to log - the window says what to say - and null when the occurrences were counted
+    /// but this is not the moment to log them.
     /// </summary>
-    public LogThrottleWindow? Record()
+    /// <param name="occurrences">
+    /// How many occurrences this single call stands for; must be positive. One call can represent
+    /// several when the caller acts on a batch - <c>TelemetryWriter</c>'s buffer trims discard a run
+    /// of rows at once, and it is the rows an operator counts, not the number of times the trim ran.
+    /// </param>
+    public LogThrottleWindow? Record(long occurrences = 1)
     {
-        Interlocked.Increment(ref _total);
-        Interlocked.Increment(ref _sinceLastElection);
+        Interlocked.Add(ref _total, occurrences);
+        Interlocked.Add(ref _sinceLastElection, occurrences);
 
         long now = Stopwatch.GetTimestamp();
         long last = Interlocked.Read(ref _lastElectionTimestamp);

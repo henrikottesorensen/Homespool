@@ -94,6 +94,13 @@ public static class Program
             builder.Services.Configure<Certificates.CertificateOptions>(
                 builder.Configuration.GetSection(Certificates.CertificateOptions.SectionName));
 
+            // Needed by anything that takes a clock from the container rather than reading
+            // TimeProvider.System statically. One is resolvable anyway - something in the
+            // Identity/EF/hosting graph provides it - but depending on an incidental registration by
+            // another component is a dependency nobody declared, and it would vanish silently if that
+            // component changed. This states it.
+            builder.Services.AddSingleton(TimeProvider.System);
+
             // Singleton: it owns files on disk and its whole contract is that the authority is minted
             // once and never again. Nothing about it is per-request.
             builder.Services.AddSingleton<Certificates.PrinterCertificateAuthority>();

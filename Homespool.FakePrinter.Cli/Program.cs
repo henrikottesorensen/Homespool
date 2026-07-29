@@ -69,8 +69,11 @@ public static class Program
     {
         Console.WriteLine("Usage:");
         Console.WriteLine("  fakeprinter enroll --server <url> [--identity <file>]");
-        Console.WriteLine("  fakeprinter run    --server <url> [--identity <file>] [--capture <path>] [--printing] [--interval-ms <n>]");
-        Console.WriteLine("  fakeprinter blast  --server <url> [--identity <file>]");
+        Console.WriteLine("  fakeprinter run    --server <url> [--identity <file>] [--capture <path>] [--printing] [--interval-ms <n>] [--events-every <n>]");
+        Console.WriteLine("  fakeprinter blast  --server <url> [--identity <file>] [--events-every <n>]");
+        Console.WriteLine();
+        Console.WriteLine("--events-every <n> makes every n-th message a STATE_CHANGED event rather than");
+        Console.WriteLine("telemetry, for exercising the event path under load. 10 matches the firmware ratio.");
         Console.WriteLine();
         Console.WriteLine("The identity file (default fakeprinter.json) holds the fingerprint and, after");
         Console.WriteLine("enroll, the token. It is a credential - keep it out of the repository.");
@@ -186,6 +189,26 @@ public static class Program
     }
 
     private static ITelemetrySource BuildSource(Dictionary<string, string> named, bool blast)
+    {
+        return MixEvents(named, BuildTelemetrySource(named, blast));
+    }
+
+    /// <summary>
+    /// Wraps the telemetry source so every N-th message is an event, when <c>--events-every</c> asks
+    /// for it. Off unless asked: a run that does not request events should send exactly what it did
+    /// before this option existed.
+    /// </summary>
+    private static ITelemetrySource MixEvents(Dictionary<string, string> named, ITelemetrySource source)
+    {
+        if (!named.TryGetValue("events-every", out string? value) || !int.TryParse(value, out int every) || every < 1)
+        {
+            return source;
+        }
+
+        return new EventMixingTelemetrySource(source) { EventEvery = every };
+    }
+
+    private static ITelemetrySource BuildTelemetrySource(Dictionary<string, string> named, bool blast)
     {
         if (named.TryGetValue("capture", out string? capturePath))
         {

@@ -77,10 +77,10 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
     public async Task ValidCredentialsUpgradeTheConnectionAndReachTheHandlerWithTheClaimedPrinterId()
     {
         // Arrange
-        // Enrollment via the shared helper; the upgrade presents the identity's 16-character
+        // Enrolment via the shared helper; the upgrade presents the identity's 16-character
         // header form, the same truncation a real printer sends (see PrinterFingerprint).
         (PrinterIdentity identity, string token, int printerId, long _) =
-            await EnrollmentFlowHelper.EnrollAndClaimFakePrinterAsync(_factory);
+            await EnrolmentFlowHelper.EnrollAndClaimFakePrinterAsync(_factory);
 
         WebSocketClient wsClient = _factory.Server.CreateWebSocketClient();
         wsClient.SubProtocols.Add(Headers.Values.WSProtocolPrusaConnect);
@@ -121,7 +121,7 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
     private async Task<WebSocket> ConnectAsPrinterAsync()
     {
         (PrinterIdentity identity, string token, int _, long _) =
-            await EnrollmentFlowHelper.EnrollAndClaimFakePrinterAsync(_factory);
+            await EnrolmentFlowHelper.EnrollAndClaimFakePrinterAsync(_factory);
 
         WebSocketClient wsClient = _factory.Server.CreateWebSocketClient();
         wsClient.SubProtocols.Add(Headers.Values.WSProtocolPrusaConnect);

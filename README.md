@@ -10,14 +10,14 @@ print leaves your network.
 
 ## Status: early, and not ready to rely on
 
-This is a work in progress. Enrollment and authentication are built and tested; **telemetry
+This is a work in progress. Enrolment and authentication are built and tested; **telemetry
 is received and parsed but not yet stored anywhere**, so there is no history, no dashboard,
 and no statistics. If you are looking for something to actually monitor your printers with
 today, this is not it yet.
 
 **What works**
 
-- Both printer enrollment channels (registration code, and USB-key provisioning) end to end.
+- Both printer enrolment channels (registration code, and USB-key provisioning) end to end.
 - Printer authentication — fingerprint + token, over plain HTTP and the WebSocket upgrade.
 - User accounts: invite-only signup, admin bootstrap, 2FA, teams, and per-team permissions.
 - A WebSocket endpoint that accepts printer connections and correctly parses the telemetry

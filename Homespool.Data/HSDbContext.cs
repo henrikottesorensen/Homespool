@@ -24,14 +24,14 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
     public DbSet<Printer> Printers { get; set; }
 
     /// <summary>Enrolled printers' standing credentials, one row per enrolled printer. Read on the
-    /// hot path of every authenticated request. Both enrollment channels converge here.</summary>
+    /// hot path of every authenticated request. Both enrolment channels converge here.</summary>
     public DbSet<PrusaConnectAuthenticationData> PrusaConnectAuthentication { get; set; }
 
-    /// <summary>Pending code-exchange enrollments, from POST /p/register until the token is redeemed.
+    /// <summary>Pending code-exchange enrolments, from POST /p/register until the token is redeemed.
     /// Transient — deleted once the enrolled credential is materialised.</summary>
     public DbSet<PrusaConnectRegistration> PrusaConnectRegistrations { get; set; }
 
-    /// <summary>Pending USB-key enrollments: a token pre-provisioned for a printer, bound to a
+    /// <summary>Pending USB-key enrolments: a token pre-provisioned for a printer, bound to a
     /// fingerprint on first contact and then promoted to an enrolled credential.</summary>
     public DbSet<PrusaConnectProvisioning> PrusaConnectProvisionings { get; set; }
 
@@ -129,7 +129,7 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
             // connection, and two rows sharing a fingerprint would make identity ambiguous.
             //
             // Keyed on the truncated 16-character form the headers carry, not the 50-character form
-            // /p/register's body carries, so both enrollment channels agree on what "the same printer"
+            // /p/register's body carries, so both enrolment channels agree on what "the same printer"
             // means - see PrinterFingerprint.
             entity.HasIndex(e => e.FingerPrintKey)
                   .IsUnique();

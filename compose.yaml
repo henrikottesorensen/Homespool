@@ -16,7 +16,7 @@ services:
       # running outside a container still works.
       ConnectionStrings__HomespoolDb: "Data Source=/app/data/Homespool.Sqlite"
 
-      # What a printer is told to dial for enrollment - not necessarily this container's own
+      # What a printer is told to dial for enrolment - not necessarily this container's own
       # listen port or protocol. If a reverse proxy (Caddy, nginx, Traefik) terminates TLS in
       # front of this container, these describe the proxy's public address, not port 8080.
       # PublicHost is required for USB-key provisioning (Printers -> Add printer): the page

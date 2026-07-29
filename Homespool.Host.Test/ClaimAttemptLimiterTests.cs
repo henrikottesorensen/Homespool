@@ -18,7 +18,7 @@ namespace Homespool.Host.Test;
 /// bounds guessing - the global rate limiter covers only the anonymous <c>/p/register</c> endpoints.
 /// </summary>
 /// <remarks>
-/// Real SQLite rather than the in-memory provider, matching the other enrollment suites: the counter
+/// Real SQLite rather than the in-memory provider, matching the other enrolment suites: the counter
 /// has to survive a save, and "persisted rather than in memory" is the whole point of the column.
 /// </remarks>
 public sealed class ClaimAttemptLimiterTests : IDisposable

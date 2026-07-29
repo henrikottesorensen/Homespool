@@ -20,7 +20,7 @@ using Microsoft.Extensions.Logging;
 namespace Homespool.Host.Pages.Printers;
 
 /// <summary>
-/// The registration-code enrollment channel's web UI: a signed-in user redeems the code a printer
+/// The registration-code enrolment channel's web UI: a signed-in user redeems the code a printer
 /// is displaying on its own screen, linking it to their account. Unlike
 /// <see cref="AddModel"/>'s USB-key path, nothing new is generated here for the user to copy - the
 /// printer already has its credential-in-waiting - so a successful claim redirects to the printer

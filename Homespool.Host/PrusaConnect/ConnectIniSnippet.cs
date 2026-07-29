@@ -2,7 +2,7 @@ namespace Homespool.Host.PrusaConnect;
 
 /// <summary>
 /// Builds the <c>[service::connect]</c> section of a <c>prusa_printer_settings.ini</c> for USB-key
-/// provisioning (protocol-reference.md, "The .ini path is a second enrollment channel"). Deliberately
+/// provisioning (protocol-reference.md, "The .ini path is a second enrolment channel"). Deliberately
 /// only this one section: the rest of the file - <c>[network]</c>, <c>[service::local]</c>, and any
 /// wifi credentials - is the operator's own and is never generated here, since this server never has
 /// and never should have wifi credentials.

@@ -34,7 +34,7 @@ namespace Homespool.Host.Controllers;
 /// </remarks>
 [ApiController]
 [Route("/api/v1")]
-[Authorize(Policy = Authorization.Policies.Api)]
+[Authorize(Policy = Authorisation.Policies.Api)]
 public class PrinterAppController : ControllerBase
 {
     private readonly PrusaConnectService _prusaConnectService;

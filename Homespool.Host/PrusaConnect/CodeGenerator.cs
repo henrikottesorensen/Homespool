@@ -20,7 +20,7 @@ public class CodeGenerator
     /// It was 24 base36 characters, which is ~2^124 - some 74 bits more than anything here needs,
     /// and unusable: the printer's QR is hardcoded to Prusa's servers and cannot be redirected, so
     /// <b>every Homespool user types this by hand off a low-resolution LCD</b>. On 2026-07-28 that
-    /// cost a real failed enrollment, reading the <c>O</c> in <c>BNK6BD5CXLMMNQQOD0UL5MIQ</c> as a
+    /// cost a real failed enrolment, reading the <c>O</c> in <c>BNK6BD5CXLMMNQQOD0UL5MIQ</c> as a
     /// <c>0</c>. Ten characters is also exactly what Prusa's own servers issue (<c>MUF4RZJF5R</c> in
     /// <c>enrol.cap</c>), and stays well inside the firmware's <c>CODE_SIZE = 25</c> buffer.
     /// </para>
@@ -44,7 +44,7 @@ public class CodeGenerator
         byte[] hash = CryptographicOperations.HashData(HashAlgorithm, [.. serial, .. nonce]);
 
         // Crockford base32 rather than base36, because base36 contains every confusable pair at
-        // once - O/0 (which bit a real enrollment), and I/1, S/5, B/8 waiting their turn. Crockford
+        // once - O/0 (which bit a real enrolment), and I/1, S/5, B/8 waiting their turn. Crockford
         // omits I, L, O and U entirely, so the misread that cost 2026-07-28 is unrepresentable
         // rather than merely less likely; ClaimCode.Normalise then maps the substitutions on input.
         // The encoder already emits uppercase - its alphabet is the literal

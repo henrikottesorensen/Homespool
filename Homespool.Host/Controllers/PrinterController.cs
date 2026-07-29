@@ -49,7 +49,7 @@ namespace Homespool.Host.Controllers;
 /// </remarks>
 [ApiController]
 [Route("/api/v1")]
-[Authorize(Policy = Authorization.Policies.Api)]
+[Authorize(Policy = Authorisation.Policies.Api)]
 public class PrinterController : ControllerBase
 {
     private readonly UploadedFileStore _files;

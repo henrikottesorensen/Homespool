@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace Homespool.Model.Entities;
 
 /// <summary>
-/// A pending code-exchange enrollment: the transient state between a printer POSTing to
+/// A pending code-exchange enrolment: the transient state between a printer POSTing to
 /// <c>/p/register</c> and it redeeming its code for a token. One row per in-flight registration;
 /// consumed and deleted the moment the token is issued, at which point the printer's standing
 /// credential lives in <see cref="PrusaConnectAuthenticationData"/> instead.

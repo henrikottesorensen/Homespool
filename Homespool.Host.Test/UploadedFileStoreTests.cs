@@ -129,10 +129,31 @@ public sealed class UploadedFileStoreTests : IDisposable
     }
 
     /// <summary>
-    /// The allowlist mirrors what the printer will accept - <c>filename_is_transferrable</c> gates the
-    /// transfer and <c>filename_is_printable</c> the print - so anything else would upload and
-    /// transfer only to be refused at the far end.
+    /// The allowlist is <b>narrower</b> than what the printer will accept, and that gap is a security
+    /// control rather than a convenience.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An earlier version of this comment said the list "mirrors what the printer will accept ... so
+    /// anything else would upload and transfer only to be refused at the far end". <b>That is false,
+    /// and false in the dangerous direction.</b> Firmware gates a Connect transfer on
+    /// <c>filename_is_transferrable</c>, which is
+    /// <c>filename_is_printable || filename_is_firmware</c> - and <c>filename_is_firmware</c> is
+    /// <c>.bbf</c>. So the printer accepts a <b>firmware image</b> as a transfer destination.
+    /// </para>
+    /// <para>
+    /// This allowlist is therefore the only thing preventing an authenticated user from uploading a
+    /// firmware image and pushing it to a printer through <c>command/start/cloud</c>. <b>Do not widen
+    /// it on the grounds that the printer is less strict than we assumed</b> - that is true, and it is
+    /// precisely the reason the narrowing exists.
+    /// </para>
+    /// <para>
+    /// Note the asymmetry, which runs the opposite way to intuition: the firmware's own HTTP upload
+    /// (<c>GcodeUpload::check_filename</c>) gates on <c>filename_is_printable</c> and refuses firmware
+    /// with <c>415</c>. The <i>remote</i> path is the permissive one, so on the path that matters
+    /// there is nothing behind this list.
+    /// </para>
+    /// </remarks>
     [Theory]
     [InlineData("model.gcode", true)]
     [InlineData("model.bgcode", true)]
@@ -142,6 +163,11 @@ public sealed class UploadedFileStoreTests : IDisposable
     [InlineData("model.txt", false)]
     [InlineData("model.gcode.exe", false)]
     [InlineData("model", false)]
+
+    // The one that matters: firmware images are transferrable as far as the printer is concerned, so
+    // this case is the security property stated as an assertion rather than left as an absence.
+    [InlineData("firmware.bbf", false)]
+    [InlineData("FIRMWARE.BBF", false)]
     public void OnlyPrinterAcceptableExtensionsAreAllowed(string name, bool allowed) =>
         UploadedFileStore.IsAllowedExtension(name).Should().Be(allowed);
 

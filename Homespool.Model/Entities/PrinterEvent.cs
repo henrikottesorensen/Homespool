@@ -1,6 +1,5 @@
 using System;
 using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Homespool.Model.Entities;
 
@@ -25,10 +24,10 @@ public class PrinterEvent
     [Key]
     public long Id { get; set; }
 
+    // Deliberately no Printer navigation, only the FK - same reasoning as TelemetrySample: these
+    // rows survive failed flushes in TelemetryWriter's retry buffer, and a navigation is where
+    // fix-up parks a dead context's Printer instance.
     public int PrinterId { get; set; }
-
-    [ForeignKey(nameof(PrinterId))]
-    public virtual Printer? Printer { get; set; }
 
     /// <summary>When the event was received by the server.</summary>
     public DateTimeOffset Timestamp { get; set; }

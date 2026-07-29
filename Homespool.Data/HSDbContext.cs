@@ -183,8 +183,11 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
 
         builder.Entity<PrinterLiveState>(entity =>
         {
-            // 1:1 with Printer, sharing the primary key.
-            entity.HasOne(e => e.Printer)
+            // 1:1 with Printer, sharing the primary key. Navigation-less on both sides - the FK and
+            // cascade are all the relationship needs, and TelemetryWriter's long-lived instances of
+            // this type must hold nothing a DbContext could have written into them (see the entity's
+            // own remarks).
+            entity.HasOne<Printer>()
                   .WithOne()
                   .HasForeignKey<PrinterLiveState>(e => e.PrinterId)
                   .OnDelete(DeleteBehavior.Cascade);
@@ -196,7 +199,8 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
             // sweep alike. Leading PrinterId so the range scan stays contiguous.
             entity.HasIndex(e => new { e.PrinterId, e.Timestamp });
 
-            entity.HasOne(e => e.Printer)
+            // Navigation-less: see the entity's PrinterId comment.
+            entity.HasOne<Printer>()
                   .WithMany()
                   .HasForeignKey(e => e.PrinterId)
                   .OnDelete(DeleteBehavior.Cascade);
@@ -236,7 +240,8 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
             // "What happened during job N" is the question the job view asks.
             entity.HasIndex(e => new { e.PrinterId, e.JobId });
 
-            entity.HasOne(e => e.Printer)
+            // Navigation-less: see the entity's PrinterId comment.
+            entity.HasOne<Printer>()
                   .WithMany()
                   .HasForeignKey(e => e.PrinterId)
                   .OnDelete(DeleteBehavior.Cascade);

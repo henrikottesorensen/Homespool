@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Homespool.Model.Entities;
 
@@ -28,10 +27,13 @@ public class TelemetrySample
     [Key]
     public long Id { get; set; }
 
+    // Deliberately no Printer navigation property, only the FK. TelemetryWriter keeps these rows
+    // buffered across failed flushes, and a navigation is a slot EF's relationship fix-up writes a
+    // tracked Printer instance into during the failed attempt - which then collides with the next
+    // context's own instance and wedges every flush thereafter (found by the slow-database rig,
+    // 2026-07-29). No navigation, nothing to poison. Queries wanting printer fields join explicitly,
+    // as PrinterWithState and PrinterStatistics already do.
     public int PrinterId { get; set; }
-
-    [ForeignKey(nameof(PrinterId))]
-    public virtual Printer? Printer { get; set; }
 
     /// <summary>When this sample was recorded by the server.</summary>
     public DateTimeOffset Timestamp { get; set; }

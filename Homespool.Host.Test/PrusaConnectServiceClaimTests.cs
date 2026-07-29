@@ -18,7 +18,7 @@ using Microsoft.Extensions.Options;
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// <see cref="PrusaConnectService.ClaimPrinterAsync"/> - the app-facing half of enrollment, where a
+/// <see cref="PrusaConnectService.ClaimPrinterAsync"/> - the app-facing half of enrolment, where a
 /// signed-in user redeems the code a printer is displaying (AGENT-NOTES phase-1.5 §15 step 7a).
 /// </summary>
 /// <remarks>

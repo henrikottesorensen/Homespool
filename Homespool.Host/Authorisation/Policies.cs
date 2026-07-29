@@ -1,4 +1,4 @@
-namespace Homespool.Host.Authorization;
+namespace Homespool.Host.Authorisation;
 
 public static class Policies
 {

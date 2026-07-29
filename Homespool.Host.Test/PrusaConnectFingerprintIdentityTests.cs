@@ -22,7 +22,7 @@ using Microsoft.Extensions.Options;
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// Printer identity across the two enrollment channels, exercised the way a real printer drives it:
+/// Printer identity across the two enrolment channels, exercised the way a real printer drives it:
 /// enroll through the service, then authenticate through the handler with the fingerprint the
 /// firmware actually puts on the wire.
 /// </summary>
@@ -215,7 +215,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         BodyFingerprint.Should().StartWith(HeaderFingerprint);
     }
 
-    // ---------- single channel, no re-enrollment ----------
+    // ---------- single channel, no re-enrolment ----------
 
     /// <summary>
     /// A printer enrolled purely by code exchange must be able to authenticate afterwards.
@@ -223,8 +223,8 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     /// <remarks>
     /// The claim stores <c>registration.FingerPrint</c> - the 50-character body value - as the enrolled
     /// credential's key, but every subsequent request presents the 16-character header value, so the
-    /// enrolled lookup misses and the printer is refused. Nothing about re-enrollment is involved: one
-    /// printer, one channel, one enrollment. This also rules out the HTTP transport, since
+    /// enrolled lookup misses and the printer is refused. Nothing about re-enrolment is involved: one
+    /// printer, one channel, one enrolment. This also rules out the HTTP transport, since
     /// <c>BasicRequest</c> truncates identically.
     /// </remarks>
     [Fact]
@@ -265,13 +265,13 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         result.Principal!.FindFirst(HSClaimTypes.PrinterId)!.Value.Should().Be($"{printer.Id}");
     }
 
-    // ---------- re-enrollment: same channel ----------
+    // ---------- re-enrolment: same channel ----------
 
     /// <summary>
     /// Reissuing an enrolled printer's USB-key token must leave it working on the new token.
     /// </summary>
     /// <remarks>
-    /// This is the outage with the truncation removed from the picture entirely - both the enrollment
+    /// This is the outage with the truncation removed from the picture entirely - both the enrolment
     /// and the reissue use the same 16-character key. The enrolled row holds the hash of the first
     /// token while the printer's flash has moved on to the second, so unless the handler will consider
     /// this printer's outstanding provisioning row there is no path back.
@@ -293,7 +293,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         // Assert
         result.Succeeded.Should().BeTrue("the printer now holds the reissued token and nothing else");
         result.Principal!.FindFirst(HSClaimTypes.PrinterId)!.Value.Should().Be($"{printer.Id}",
-            "a reissue rebinds the enrollment it was issued for, rather than starting a new one");
+            "a reissue rebinds the enrolment it was issued for, rather than starting a new one");
 
         AuthenticateResult withOld = await AuthenticateAsync(HeaderFingerprint, original);
         withOld.Succeeded.Should().BeFalse("the token on the discarded stick must stop working");
@@ -346,7 +346,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         PrusaConnectAuthenticationData credential = await verify.PrusaConnectAuthentication
             .SingleAsync(a => a.FingerPrintKey == HeaderFingerprint);
 
-        credential.PrinterId.Should().Be(enrolled.Id, "the enrollment must not have moved to the other printer");
+        credential.PrinterId.Should().Be(enrolled.Id, "the enrolment must not have moved to the other printer");
         new TokenService().VerifyToken(original, credential.HashedToken).Should()
             .BeTrue("the rightful owner's token must be untouched by the attempt");
 
@@ -354,7 +354,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
             "the unrelated provisioning token is left alone, not consumed by the failed attempt");
     }
 
-    // ---------- re-enrollment: across channels ----------
+    // ---------- re-enrolment: across channels ----------
 
     /// <summary>
     /// The live bug: a USB-enrolled printer taken through the code-exchange flow must not lose its
@@ -402,7 +402,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         (Printer second, string _) = await EnrollByCodeExchangeAsync(context, team.TeamId, userId: 1);
 
         // Assert
-        second.Id.Should().Be(first.Id, "both enrollments describe the same physical printer");
+        second.Id.Should().Be(first.Id, "both enrolments describe the same physical printer");
 
         await using HSDbContext verify = NewContext();
         (await verify.Printers.CountAsync()).Should().Be(1);
@@ -518,7 +518,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     /// A genuinely wrong token, with nothing pending for the printer, is still refused.
     /// </summary>
     /// <remarks>
-    /// The obvious way to fix re-enrollment - fall through to the provisioning scan whenever the
+    /// The obvious way to fix re-enrolment - fall through to the provisioning scan whenever the
     /// enrolled token does not verify - must not turn into "any token gets a second chance". With no
     /// outstanding provisioning row there is nothing to fall through to, and this must stay a failure.
     /// </remarks>

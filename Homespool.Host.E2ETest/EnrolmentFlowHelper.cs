@@ -25,10 +25,10 @@ namespace Homespool.Host.E2ETest;
 /// <summary>
 /// The printer registration / claim / poll steps shared by every test that needs to drive that flow
 /// through the real HTTP pipeline rather than seeding rows directly - extracted from
-/// <see cref="EndToEndEnrollmentTests"/> once <see cref="PrusaConnectWebSocketTests"/> needed the
+/// <see cref="EndToEndEnrolmentTests"/> once <see cref="PrusaConnectWebSocketTests"/> needed the
 /// identical steps to obtain a genuinely valid Fingerprint/Token pair.
 /// </summary>
-public static class EnrollmentFlowHelper
+public static class EnrolmentFlowHelper
 {
     public static async Task<HttpResponseMessage> SendPrinterRegisterAsync(HttpClient client, object body)
     {
@@ -55,8 +55,8 @@ public static class EnrollmentFlowHelper
     /// <remarks>
     /// Extracted when <c>FakePrinterIntegrationTests</c> became the second class to reimplement
     /// <c>PrusaConnectWebSocketTests</c>' private enroll-and-claim, so the two could not drift on
-    /// what "enrolled" means. Tests whose <em>subject</em> is the raw enrollment HTTP contract
-    /// (<see cref="EndToEndEnrollmentTests"/>) deliberately do not use this - they drive
+    /// what "enrolled" means. Tests whose <em>subject</em> is the raw enrolment HTTP contract
+    /// (<see cref="EndToEndEnrolmentTests"/>) deliberately do not use this - they drive
     /// <see cref="SendPrinterRegisterAsync"/>/<see cref="SendPollAsync"/> directly.
     /// </remarks>
     /// <returns>

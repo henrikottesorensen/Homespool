@@ -104,7 +104,7 @@ public class Printer
     /// </para>
     /// <para>
     /// Null until the first <c>INFO</c> arrives. The code-exchange handshake also carries it, on
-    /// <see cref="PrusaConnectRegistration.SerialNumber"/>, but that row is deleted once enrollment
+    /// <see cref="PrusaConnectRegistration.SerialNumber"/>, but that row is deleted once enrolment
     /// completes - so before this column existed the serial was captured at registration and then
     /// discarded, and a USB-provisioned printer never reported one at all.
     /// </para>

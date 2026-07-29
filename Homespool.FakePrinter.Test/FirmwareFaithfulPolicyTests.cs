@@ -149,7 +149,7 @@ public class FirmwareFaithfulPolicyTests
         _device.State.Should().Be(DeviceState.Paused, "the duplicate must not have executed");
     }
 
-    /// <summary>An unrecognized command name is "Unknown command"; garbage JSON is "Error parsing JSON".</summary>
+    /// <summary>An unrecognised command name is "Unknown command"; garbage JSON is "Error parsing JSON".</summary>
     [Fact]
     public void UnknownAndGarbageCommandsEarnTheirDistinctReasons()
     {

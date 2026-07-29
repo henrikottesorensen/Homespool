@@ -21,7 +21,7 @@ using Microsoft.Extensions.Logging;
 namespace Homespool.Host.Controllers;
 
 [ApiController]
-[Authorize(Authorization.Policies.PrusaConnectPrinter)]
+[Authorize(Authorisation.Policies.PrusaConnectPrinter)]
 public class PrusaConnectPrinterController : ControllerBase
 {
     private readonly PrusaConnectService _prusaConnectService;

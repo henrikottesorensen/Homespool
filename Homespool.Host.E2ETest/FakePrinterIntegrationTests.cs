@@ -633,7 +633,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
     private Task<(PrinterIdentity identity, string token, int printerId, long userId)> EnrollNewPrinterAsync()
     {
-        return EnrollmentFlowHelper.EnrollAndClaimFakePrinterAsync(_factory);
+        return EnrolmentFlowHelper.EnrollAndClaimFakePrinterAsync(_factory);
     }
 
     /// <summary>
@@ -678,7 +678,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     /// </para>
     /// <para>
     /// A token rather than a cookie deliberately - it is the credential a script would hold, and it
-    /// authenticates as the printer's actual owner, which <c>EnrollmentFlowHelper</c>'s separate user
+    /// authenticates as the printer's actual owner, which <c>EnrolmentFlowHelper</c>'s separate user
     /// could not.
     /// </para>
     /// </remarks>

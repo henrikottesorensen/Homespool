@@ -18,7 +18,7 @@ namespace Homespool.Host.E2ETest;
 /// <summary>
 /// A <see cref="WebApplicationFactory{TEntryPoint}"/> pointed at an isolated temp-file SQLite
 /// database, shared by every test that drives the real ASP.NET Core pipeline instead of calling
-/// services directly (<see cref="EndToEndEnrollmentTests"/> and friends).
+/// services directly (<see cref="EndToEndEnrolmentTests"/> and friends).
 /// </summary>
 /// <remarks>
 /// <para>

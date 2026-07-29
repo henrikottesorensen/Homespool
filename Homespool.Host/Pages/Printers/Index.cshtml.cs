@@ -202,7 +202,7 @@ public class IndexModel : PageModel
             .Where(m => m.Team is not null)
             .ToDictionary(m => m.TeamId, m => m.Team!.Name ?? $"Team #{m.TeamId}");
 
-        PrinterEnrollmentStatus status = await _prusaConnectService.GetEnrollmentStatusAsync(
+        PrinterEnrolmentStatus status = await _prusaConnectService.GetEnrolmentStatusAsync(
             printers.Select(p => p.Id).ToList(), cancellationToken);
 
         Printers = printers

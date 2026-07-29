@@ -16,7 +16,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Homespool.Host.E2ETest;
 
 /// <summary>
-/// The full enrollment loop through the real ASP.NET Core pipeline - routing, the setup gate,
+/// The full enrolment loop through the real ASP.NET Core pipeline - routing, the setup gate,
 /// cookie authentication, <c>[Authorize]</c>, and every controller and service in between - rather
 /// than calling services directly the way the rest of this project's tests do. This is what
 /// AGENT-NOTES phase-1.5 §15 had flagged, since step 4, as "not verified: no live walk-through",
@@ -34,7 +34,7 @@ namespace Homespool.Host.E2ETest;
 // under one name so xUnit runs them sequentially against each other rather than in parallel; other
 // collections are unaffected.
 [Collection("WebApplicationFactory")]
-public sealed class EndToEndEnrollmentTests : IAsyncLifetime, IDisposable
+public sealed class EndToEndEnrolmentTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-e2e-{Guid.NewGuid():N}.db");
     private HomespoolFactory _factory = null!;
@@ -50,7 +50,7 @@ public sealed class EndToEndEnrollmentTests : IAsyncLifetime, IDisposable
         // No /setup walk-through here: SetupState.MarkComplete is the exact call Setup.cshtml.cs makes
         // on success, and driving the real page would mean fighting Razor Pages' automatic antiforgery
         // validation to test something SetupStateTests and SetupGateMiddlewareTests already cover. What
-        // this suite exists to verify is the enrollment loop past that point.
+        // this suite exists to verify is the enrolment loop past that point.
         using IServiceScope scope = _factory.Services.CreateScope();
         scope.ServiceProvider.GetRequiredService<SetupState>().MarkComplete();
     }
@@ -90,7 +90,7 @@ public sealed class EndToEndEnrollmentTests : IAsyncLifetime, IDisposable
         using HttpClient anonymous = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         // ---------- printer: POST /p/register ----------
-        HttpResponseMessage registerResponse = await EnrollmentFlowHelper.SendPrinterRegisterAsync(anonymous, new
+        HttpResponseMessage registerResponse = await EnrolmentFlowHelper.SendPrinterRegisterAsync(anonymous, new
         {
             sn = "E2E-SERIAL-0001",
             fingerprint = "E2E-FINGERPRINT-0001",
@@ -103,11 +103,11 @@ public sealed class EndToEndEnrollmentTests : IAsyncLifetime, IDisposable
         code.Should().NotBeNullOrWhiteSpace();
 
         // ---------- printer: GET /p/register before anyone has claimed it ----------
-        HttpResponseMessage prePollResponse = await EnrollmentFlowHelper.SendPollAsync(anonymous, code);
+        HttpResponseMessage prePollResponse = await EnrolmentFlowHelper.SendPollAsync(anonymous, code);
         prePollResponse.StatusCode.Should().Be(HttpStatusCode.Accepted, "nobody has claimed the printer yet");
 
         // ---------- app: a signed-in user claims it ----------
-        (HSUser claimer, HttpClient appClient) = await EnrollmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "claimer@example.com");
+        (HSUser claimer, HttpClient appClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "claimer@example.com");
         using (appClient)
         {
             HttpResponseMessage claimResponse = await appClient.PostAsJsonAsync("/api/v1/printers/register", new
@@ -125,7 +125,7 @@ public sealed class EndToEndEnrollmentTests : IAsyncLifetime, IDisposable
             claimed.RootElement.GetProperty("state").GetString().Should().Be("UNKNOWN");
 
             // ---------- printer: GET /p/register now that it has been claimed ----------
-            HttpResponseMessage postPollResponse = await EnrollmentFlowHelper.SendPollAsync(anonymous, code);
+            HttpResponseMessage postPollResponse = await EnrolmentFlowHelper.SendPollAsync(anonymous, code);
             postPollResponse.StatusCode.Should().Be(HttpStatusCode.OK);
             postPollResponse.Headers.GetValues("Token").Single().Should().NotBeNullOrWhiteSpace();
 

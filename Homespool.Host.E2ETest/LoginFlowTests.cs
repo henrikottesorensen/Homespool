@@ -43,7 +43,7 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
         _ = _factory.Server;
 
         // This suite isn't testing the setup gate - open it so /Account/Login is reachable, matching
-        // EndToEndEnrollmentTests rather than SetupFlowTests' deliberately-incomplete setup.
+        // EndToEndEnrolmentTests rather than SetupFlowTests' deliberately-incomplete setup.
         using IServiceScope scope = _factory.Services.CreateScope();
         scope.ServiceProvider.GetRequiredService<SetupState>().MarkComplete();
 

@@ -17,7 +17,7 @@ namespace Homespool.Host.PrusaConnect;
 /// <para>
 /// <b>Identity is therefore the short form.</b> It is the only one present on every request, so it is
 /// what the enrolled credential is keyed on. Keying on the long form is what made a code-exchange
-/// enrollment unable to authenticate at all, and made the same physical printer look like two
+/// enrolment unable to authenticate at all, and made the same physical printer look like two
 /// printers across the two channels.
 /// </para>
 /// <para>

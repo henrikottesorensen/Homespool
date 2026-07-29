@@ -67,12 +67,10 @@ public class ApiTokenService
     /// for lookup.
     /// </summary>
     /// <remarks>
-    /// <b>SHA-384 is pinned, not chosen at runtime.</b> <see cref="PrusaConnect.TokenService"/> prefers
-    /// SHA3-384 where the host supports it, which is safe there because the algorithm name travels
-    /// inside the stored hash and verification reads it back. Here the hash is a <em>lookup key</em>:
-    /// if the algorithm varied by host, rows written on a SHA3-capable machine would simply not be
-    /// found on one without it, and every token would fail authentication after a move or a base-image
-    /// change — silently, and looking exactly like revocation.
+    /// <b>SHA-384 is pinned, not chosen at runtime.</b> The hash here is a <em>lookup key</em>, so an
+    /// algorithm that varied by host would be worse than merely inconsistent: rows written on one
+    /// machine would simply not be found on another, and every token would fail authentication after
+    /// a move or a base-image change — silently, and looking exactly like revocation.
     /// </remarks>
     public static string HashSecret(string secret)
     {

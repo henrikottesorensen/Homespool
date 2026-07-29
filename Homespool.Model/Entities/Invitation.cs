@@ -10,7 +10,7 @@ namespace Homespool.Model.Entities;
 /// </summary>
 /// <remarks>
 /// The token is minted by <c>TokenService.GenerateToken()</c> and only its hash is stored, via
-/// <c>TokenService.HashToken</c> (PBKDF2/SHA3-384) — the same scheme that protects the printer
+/// <c>TokenService.HashToken</c> (PBKDF2/SHA-384) — the same scheme that protects the printer
 /// registration token at rest. (An earlier draft named <c>CodeGenerator</c>; that produces a base36
 /// string which <c>TokenService.HashToken</c> rejects, so the invite reuses <c>GenerateToken</c>
 /// instead — one existing scheme, end to end.) The plaintext is shown or mailed once at creation and

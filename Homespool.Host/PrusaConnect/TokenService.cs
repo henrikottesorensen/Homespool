@@ -70,26 +70,19 @@ public class TokenService
     private const int MaximumTokenLength = 128;
 
     /// <summary>
-    /// SHA(3-)384 Hasher for data at rest security.
-    /// </summary>
-    public static readonly HashAlgorithmName HashAlgorithm = SHA3_384.IsSupported ?
-                                                             HashAlgorithmName.SHA3_384 :
-                                                             HashAlgorithmName.SHA384;
-
-    /// <summary>
-    /// Algorithm names accepted from a stored hash.
+    /// The PBKDF2 PRF, and the only algorithm name accepted from a stored hash.
     /// </summary>
     /// <remarks>
-    /// Both are listed rather than just <see cref="HashAlgorithm"/> so that hashes written on a
-    /// SHA3-capable host still verify after a move to one without it, and vice versa. Anything else
-    /// is refused: without this the algorithm name in the stored row selects the algorithm, and a
-    /// row reading <c>$MD5$...</c> would be honoured.
+    /// One pinned algorithm on both sides, deliberately. Accepting a second name would let the stored
+    /// row decide how verification runs, which is the <c>$MD5$...</c> hazard <see cref="VerifyToken"/>
+    /// guards against - so this is a security property, not a default worth relaxing.
+    /// <para>
+    /// The choice itself is not security relevant: per <see cref="Iterations"/>, the input is a
+    /// <see cref="TokenSize"/>-byte CSPRNG value, so PBKDF2 is here for the salting and the
+    /// constant-time envelope rather than for key stretching.
+    /// </para>
     /// </remarks>
-    private static readonly string[] SupportedHashAlgorithms =
-    [
-        HashAlgorithmName.SHA3_384.Name!,
-        HashAlgorithmName.SHA384.Name!,
-    ];
+    public static readonly HashAlgorithmName HashAlgorithm = HashAlgorithmName.SHA384;
 
     public string GenerateToken()
     {
@@ -152,7 +145,9 @@ public class TokenService
         string[] split = knownHash.Split('$');
         string hashAlgorithm = split[1];
 
-        if (!SupportedHashAlgorithms.Contains(hashAlgorithm, StringComparer.Ordinal))
+        // One accepted name, so the stored row cannot select the algorithm: without this check a row
+        // reading "$MD5$..." would be honoured by the Pbkdf2 call below.
+        if (!string.Equals(hashAlgorithm, HashAlgorithm.Name, StringComparison.Ordinal))
         {
             throw new ArgumentException("Invalid hash format: unsupported hash algorithm.", nameof(knownHash));
         }

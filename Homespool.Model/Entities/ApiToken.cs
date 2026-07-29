@@ -46,9 +46,8 @@ public class ApiToken
     /// verification.
     /// </summary>
     /// <remarks>
-    /// The algorithm is pinned rather than negotiated, unlike <c>TokenService</c>'s
-    /// SHA3-384-where-available choice — see <c>ApiTokenService</c> for why a lookup key cannot afford
-    /// to vary by host.
+    /// The algorithm is pinned — see <c>ApiTokenService</c> for why a lookup key in particular
+    /// cannot afford to vary by host.
     /// </remarks>
     public required string TokenHash { get; set; }
 

@@ -79,7 +79,9 @@ public class TokenServiceTests
         string[] split = hash.Split('$');
         split.Length.Should().Be(6);
 
-        split[1].Should().Be(TokenService.HashAlgorithm.Name);
+        // The literal, not TokenService.HashAlgorithm.Name: comparing the field against itself would
+        // pass whatever it said.
+        split[1].Should().Be("SHA384");
         split[2].All(char.IsAsciiDigit).Should().BeTrue();
         Base64Url.DecodeFromChars(split[3]).Length.Should().Be(TokenService.SaltSize);
         Base64Url.DecodeFromChars(split[4]).Length.Should().Be(TokenService.HashLength);
@@ -233,6 +235,10 @@ public class TokenServiceTests
     [InlineData("SHA1")]
     [InlineData("")]
     [InlineData("NOTAHASH")]
+
+    // A real, strong algorithm is rejected too: only the one pinned name is accepted, and widening
+    // that is the well-meaning change TokenService.HashAlgorithm warns against.
+    [InlineData("SHA3-384")]
     public void UnsupportedHashAlgorithmIsRejected(string algorithm)
     {
         // Arrange
@@ -363,9 +369,10 @@ public class TokenServiceTests
     /// continues to verify.
     /// </summary>
     /// <remarks>
-    /// The point of carrying the parameters alongside the hash. The whitelist and the range check
-    /// must not turn into a migration trap: tokens issued before a parameter change, or on a host
-    /// with different SHA3 support, still have to authenticate.
+    /// The point of carrying the parameters alongside the hash: the range check must not turn into a
+    /// migration trap, so tokens issued before an iteration-count change still authenticate. The
+    /// algorithm is pinned, so iterations are the only parameter that may legitimately differ between
+    /// a stored hash and what this service issues today.
     /// </remarks>
     [Fact]
     public void SupportedAlgorithmWithDifferentIterationsStillVerifies()

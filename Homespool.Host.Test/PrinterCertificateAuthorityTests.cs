@@ -231,6 +231,50 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
     }
 
     /// <summary>
+    /// Both certificates are valid from before the epoch, so a printer with no clock still connects.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Looks like a mistake and is not.</b> Buddy's <c>time()</c> returns <c>-1</c> when the RTC
+    /// was never set, and mbedTLS does not treat that as an error - <c>gmtime_r(-1)</c> succeeds - so
+    /// it believes the date is <b>1969-12-31</b> and every ordinary certificate is "not yet valid".
+    /// With <c>MBEDTLS_SSL_VERIFY_REQUIRED</c> and no verify callback, the handshake just fails.
+    /// </para>
+    /// <para>
+    /// Not an edge case: the MINI's Buddy board ties VBAT to +3.3V with no cell
+    /// (<c>Buddy-board-MINI-PCB rev.1.0.0/cpu.sch</c>), so its clock is lost at <i>every</i>
+    /// power-off. xBuddy boards carry a CR1220 and keep time - which is why the bench MK3.5 cannot
+    /// reproduce it, and why this test exists instead of a hardware check.
+    /// </para>
+    /// <para>
+    /// The authority is asserted as well as the leaf, because chain building checks its dates too:
+    /// backdating only the leaf would fix nothing.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void BothCertificatesPredateTheEpochSoAClocklessPrinterCanConnect()
+    {
+        // Arrange
+        PrinterCertificateAuthority authority = NewAuthority();
+
+        // Act
+        using X509Certificate2 ca = authority.EnsureAuthority();
+        using X509Certificate2 leaf = authority.IssueLeaf(["192.168.13.238"]);
+
+        // Assert
+        // 1969-12-31 23:59:59 UTC is what (time_t)-1 resolves to; both must already be valid then.
+        DateTime clocklessPrinterBelievesItIs = new(1969, 12, 31, 23, 59, 59, DateTimeKind.Utc);
+
+        ca.NotBefore.ToUniversalTime().Should().BeBefore(clocklessPrinterBelievesItIs,
+            "a printer whose RTC was never set reads 1969, and the CA's dates are checked too");
+        leaf.NotBefore.ToUniversalTime().Should().BeBefore(clocklessPrinterBelievesItIs,
+            "otherwise a MINI on a LAN without internet can never complete a handshake");
+
+        // And the far end still bounds it - this concedes the low end only.
+        leaf.NotAfter.ToUniversalTime().Should().BeAfter(DateTime.UtcNow);
+    }
+
+    /// <summary>
     /// A leaf with no usable name is refused rather than issued empty.
     /// </summary>
     [Fact]

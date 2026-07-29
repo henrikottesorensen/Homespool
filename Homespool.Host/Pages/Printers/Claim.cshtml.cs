@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Threading;
@@ -34,18 +35,21 @@ public class ClaimModel : PageModel
     private readonly TeamService _teamService;
     private readonly UserManager<HSUser> _userManager;
     private readonly UnitOfWork _unitOfWork;
+    private readonly ClaimAttemptLimiter _attemptLimiter;
     private readonly ILogger<ClaimModel> _logger;
 
     public ClaimModel(PrusaConnectService prusaConnectService,
                       TeamService teamService,
                       UserManager<HSUser> userManager,
                       UnitOfWork unitOfWork,
+                      ClaimAttemptLimiter attemptLimiter,
                       ILogger<ClaimModel> logger)
     {
         _prusaConnectService = prusaConnectService;
         _teamService = teamService;
         _userManager = userManager;
         _unitOfWork = unitOfWork;
+        _attemptLimiter = attemptLimiter;
         _logger = logger;
     }
 
@@ -68,8 +72,15 @@ public class ClaimModel : PageModel
 
     public class InputModel
     {
+        /// <summary>The registration code as typed, before normalisation.</summary>
+        /// <remarks>
+        /// The bound length is generous rather than exactly ten, because
+        /// <see cref="ClaimCode.Normalise"/> has not run yet at validation time - someone pasting
+        /// <c>ABCDE-FGHJK</c> or typing spaces is submitting a longer string than the code is. The
+        /// real length check is the lookup itself.
+        /// </remarks>
         [Required(ErrorMessage = "Enter the code shown on the printer's screen.")]
-        [StringLength(64, ErrorMessage = "That doesn't look like a registration code.")]
+        [StringLength(32, ErrorMessage = "That doesn't look like a registration code.")]
         [Display(Name = "Registration code")]
         public string Code { get; set; } = string.Empty;
 
@@ -108,10 +119,25 @@ public class ClaimModel : PageModel
             return Forbid();
         }
 
-        // Codes are generated in uppercase (CodeGenerator: SimpleBase.Base36.UpperCase) and the
-        // TemporaryCode lookup has no case-insensitive collation, so a code typed off a printer's
-        // screen with different casing or stray whitespace would otherwise silently read as unknown.
-        string code = Input.Code.Trim().ToUpperInvariant();
+        DateTimeOffset now = TimeProvider.System.GetUtcNow();
+
+        if (_attemptLimiter.RemainingLockout(user, now) is { } remaining)
+        {
+            // Deliberately says how long, rather than a bare refusal: the overwhelmingly likely
+            // person reading this is someone who mistyped, standing at their own printer.
+            ModelState.AddModelError(string.Empty,
+                $"Too many unrecognised codes. Try again in {FormatWait(remaining)}. "
+                + "The printer's own code is unaffected - it is still waiting.");
+
+            return Page();
+        }
+
+        // Codes are generated in Crockford base32 uppercase (CodeGenerator) and the TemporaryCode
+        // lookup has no case-insensitive collation, so a code typed off a printer's screen with
+        // different casing, stray whitespace or grouping hyphens would otherwise silently read as
+        // unknown. Normalise also applies Crockford's O/I/L substitutions, which is what makes a
+        // character misread off a low-resolution LCD still resolve.
+        string code = ClaimCode.Normalise(Input.Code);
 
         await using IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
@@ -119,6 +145,9 @@ public class ClaimModel : PageModel
         {
             Printer printer = await _prusaConnectService.ClaimPrinterAsync(
                 code, Input.Name, Input.Location, Input.TeamId, user.Id);
+
+            // Inside the transaction the claim was made in, so a rollback takes the reset with it.
+            await _attemptLimiter.ResetAsync(user, cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
 
@@ -135,8 +164,18 @@ public class ClaimModel : PageModel
         }
         catch (PrinterNotFoundException)
         {
+            // The one outcome that is a guess. An already-claimed code and a forbidden team both
+            // mean the code was *right*, so neither counts - otherwise a user claiming into the
+            // wrong team would lock themselves out for getting the code perfectly correct.
+            //
+            // Recorded after the transaction has rolled back, on the limiter's own save, so the
+            // rollback cannot undo the count.
+            await _attemptLimiter.RecordFailedAttemptAsync(user, now, cancellationToken);
+
             ModelState.AddModelError(string.Empty,
-                "No printer is waiting with that code. Check it against the printer's screen - codes expire, so it may have already been replaced.");
+                "No printer is waiting with that code. Check it against the printer's screen - codes expire, so it "
+                + "may have already been replaced. Letters O, I and L are read as 0, 1 and 1, so those are safe to "
+                + "get wrong.");
 
             return Page();
         }
@@ -161,6 +200,27 @@ public class ClaimModel : PageModel
 
             return Page();
         }
+    }
+
+    /// <summary>
+    /// Renders a backoff as something worth reading on a form - "45 seconds", "3 minutes" - rather
+    /// than a raw <see cref="TimeSpan"/>.
+    /// </summary>
+    /// <remarks>
+    /// Rounds up, so the message never tells someone to retry a moment before they may.
+    /// </remarks>
+    private static string FormatWait(TimeSpan remaining)
+    {
+        if (remaining < TimeSpan.FromMinutes(1))
+        {
+            int seconds = (int)Math.Ceiling(remaining.TotalSeconds);
+
+            return seconds == 1 ? "1 second" : $"{seconds} seconds";
+        }
+
+        int minutes = (int)Math.Ceiling(remaining.TotalMinutes);
+
+        return minutes == 1 ? "1 minute" : $"{minutes} minutes";
     }
 
     private async Task LoadTeamOptionsAsync(CancellationToken cancellationToken)

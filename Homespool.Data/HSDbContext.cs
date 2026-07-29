@@ -1,6 +1,7 @@
 using System;
 
 using Homespool.Model.Entities;
+
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -152,8 +153,10 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
                   .IsUnique();
 
             // The poll (GET /p/register) looks the row up by code. Deliberately NOT unique: a
-            // collision should surface as SingleOrDefaultAsync throwing rather than being impossible,
-            // though at 24 base36 characters it will not happen.
+            // collision should surface as SingleOrDefaultAsync throwing rather than being impossible.
+            // At 10 Crockford base32 characters that is 2^50, against at most a handful of codes
+            // pending at once, so it will not happen - but "will not" is the reason to let it throw
+            // rather than the reason to make it unrepresentable.
             entity.HasIndex(e => e.TemporaryCode);
 
             // Nullable FK: the printer does not exist until a user claims the code. Cascade so a

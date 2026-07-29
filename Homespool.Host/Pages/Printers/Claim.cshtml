@@ -31,9 +31,13 @@
         <form method="post">
             <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
             <div class="form-floating mb-3">
-                @* 24 characters, per CodeGenerator.CodeLength - not Prusa's 10-character format, which
-                   this placeholder used to show and which understated the length users must type. *@
-                <input asp-for="Input.Code" class="form-control" placeholder="1JLQKG8JVN4O3OO5Q28J6HIF" autocomplete="off" />
+                @* 10 characters, per CodeGenerator.CodeLength. The placeholder must be drawn from
+                   Crockford's own alphabet (no I, L, O or U) - the previous one was 24 base36
+                   characters containing "4O3OO5", i.e. it demonstrated the exact O-for-0 misread
+                   that cost a real enrollment on 2026-07-28. Autocapitalize/autocorrect are off
+                   because a phone keyboard will otherwise "helpfully" rewrite a code. *@
+                <input asp-for="Input.Code" class="form-control" placeholder="MUF4RZJF5R" autocomplete="off"
+                       autocapitalize="characters" autocorrect="off" spellcheck="false" />
                 <label asp-for="Input.Code" class="form-label"></label>
                 <span asp-validation-for="Input.Code" class="text-danger"></span>
             </div>

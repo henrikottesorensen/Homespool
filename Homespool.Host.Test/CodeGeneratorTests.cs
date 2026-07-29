@@ -44,21 +44,51 @@ public class CodeGeneratorTests
     }
 
     /// <summary>
-    /// The code contains only characters that survive an HTTP header and a human retyping them.
+    /// The code contains only Crockford base32 characters - in particular, never I, L, O or U.
     /// </summary>
     /// <remarks>
-    /// It travels in a <c>Code</c> response header and is then read off the printer's screen by a
-    /// person claiming it, so anything needing escaping or easily mistyped would be a poor choice.
-    /// Prusa's own codes in enrol.cap use the same alphabet.
+    /// <para>
+    /// This is the assertion that makes the 2026-07-28 failure unrepresentable rather than merely
+    /// less likely. Base36 contains every confusable pair at once - O/0 (which cost a real
+    /// enrollment), and I/1, S/5, B/8 waiting their turn. Crockford omits I, L, O and U from the
+    /// alphabet entirely, so a code can never contain the character that was misread.
+    /// </para>
+    /// <para>
+    /// The class range is written out rather than expressed as "not I, L, O, U", so that an encoder
+    /// that started emitting lowercase, padding, or a different flavour of base32 fails here too.
+    /// Verified against SimpleBase's own <c>Base32Alphabet.cs</c>:
+    /// <c>0123456789ABCDEFGHJKMNPQRSTVWXYZ</c>.
+    /// </para>
     /// </remarks>
     [Fact]
-    public void GeneratedCodeUsesOnlyUppercaseBase36()
+    public void GeneratedCodeUsesOnlyCrockfordBase32()
     {
         // Assert
-        // The capture shows Prusa's own codes in this alphabet, and it keeps the code safe to carry
-        // in an HTTP header and read aloud off a printer screen.
-        _generator.GenerateCode("15715-4842441651816441")
-                  .Should().MatchRegex("^[0-9A-Z]+$");
+        for (int i = 0; i < 50; i++)
+        {
+            _generator.GenerateCode($"15715-{i}")
+                      .Should().MatchRegex("^[0-9A-HJKMNP-TV-Z]+$",
+                                           "Crockford base32 omits I, L, O and U, which is what makes "
+                                           + "the O-for-0 misread that cost a real enrollment impossible");
+        }
+    }
+
+    /// <summary>
+    /// The alphabet genuinely excludes the four confusable letters, asserted directly.
+    /// </summary>
+    /// <remarks>
+    /// The range in <see cref="GeneratedCodeUsesOnlyCrockfordBase32"/> is easy to get subtly wrong
+    /// when editing - <c>P-T</c> and <c>V-Z</c> are exactly the spans that keep U out - so this
+    /// states the property in the form a reader actually cares about, over enough codes to be sure.
+    /// </remarks>
+    [Fact]
+    public void GeneratedCodeNeverContainsTheConfusableLetters()
+    {
+        // Act
+        string generated = string.Concat(Enumerable.Range(0, 200).Select(i => _generator.GenerateCode($"sn-{i}")));
+
+        // Assert
+        generated.Should().NotContainAny("I", "L", "O", "U");
     }
 
     /// <summary>
@@ -105,67 +135,39 @@ public class CodeGeneratorTests
     }
 
     /// <summary>
-    /// Generating a code works on this platform at all.
+    /// A code is exactly ten characters, not merely within the firmware's buffer.
     /// </summary>
     /// <remarks>
-    /// <c>SHA3_384.Create()</c> used to be called unguarded. .NET defers hashing to the OS, and SHA-3
-    /// exists only on Windows 11 build 25324+ and Linux with OpenSSL 1.1.1+ - never on macOS, where
-    /// .NET 10 also removed the last OpenSSL fallbacks. So this threw
-    /// <see cref="PlatformNotSupportedException"/> on macOS and took registration with it, while
-    /// passing in CI and in the Debian container image.
-    /// <para>
-    /// This test only proves the algorithm resolves <i>here</i>. On a SHA-3 capable box it exercises
-    /// SHA-3 and says nothing about the fallback, which is what
-    /// <see cref="EitherHashAlgorithmProducesEnoughBase36CharactersToTruncate"/> is for.
-    /// </para>
+    /// Ten is the usability figure, and it is what a person retypes off a low-resolution LCD - the
+    /// only way a Homespool user can ever enter one, since the printer's QR is hardcoded to Prusa's
+    /// servers. It is also exactly the length Prusa's own servers issue.
     /// </remarks>
     [Fact]
-    public void GeneratingACodeDoesNotThrowOnThisPlatform()
-    {
-        // Arrange
-        Action generate = () => _generator.GenerateCode("15715-4842441651816441");
-
-        // Assert
-        generate.Should().NotThrow<PlatformNotSupportedException>(
-            "SHA-3 is absent on macOS and on Linux without OpenSSL 1.1.1+, so the algorithm has to be "
-            + "chosen against SHA3_384.IsSupported rather than assumed");
-    }
-
-    /// <summary>
-    /// A code is exactly <c>CodeLength</c> characters, not merely within the firmware's buffer.
-    /// </summary>
-    [Fact]
-    public void GeneratedCodeIsExactlyTheExpectedLength()
+    public void GeneratedCodeIsExactlyTenCharacters()
     {
         // Assert
         for (int i = 0; i < 50; i++)
         {
-            _generator.GenerateCode($"15715-{i}").Length.Should().Be(24);
+            _generator.GenerateCode($"15715-{i}").Length.Should().Be(10);
         }
     }
 
     /// <summary>
-    /// Either permitted digest encodes to at least a full code's worth of base36 characters.
+    /// The digest encodes to at least a full code's worth of base32 characters.
     /// </summary>
     /// <remarks>
     /// The generator truncates the encoded digest to <c>CodeLength</c>, which is only safe if the
-    /// encoding is always at least that long. Both algorithms produce 48 bytes, so both encode to
-    /// about 75 base36 characters and there is plenty of headroom - but the fallback path cannot be
-    /// executed on a machine that has SHA-3, so the property is asserted directly against both
-    /// digests instead. Without this, a macOS-only truncation failure would be invisible to CI.
+    /// encoding is always at least that long. SHA-384 produces 48 bytes, so it encodes to 77
+    /// Crockford characters - ample headroom, and this is what keeps a future change to either the
+    /// digest or the code length from silently truncating past the end.
     /// </remarks>
     [Fact]
-    public void EitherHashAlgorithmProducesEnoughBase36CharactersToTruncate()
+    public void TheDigestEncodesToEnoughBase32CharactersToTruncate()
     {
         // Arrange
         byte[] input = Encoding.UTF8.GetBytes("15715-4842441651816441");
 
         // Assert
-        SimpleBase.Base36.UpperCase.Encode(SHA384.HashData(input)).Length.Should().BeGreaterThanOrEqualTo(24);
-
-        if (SHA3_384.IsSupported)
-        {
-            SimpleBase.Base36.UpperCase.Encode(SHA3_384.HashData(input)).Length.Should().BeGreaterThanOrEqualTo(24);
-        }
+        SimpleBase.Base32.Crockford.Encode(SHA384.HashData(input)).Length.Should().BeGreaterThanOrEqualTo(10);
     }
 }

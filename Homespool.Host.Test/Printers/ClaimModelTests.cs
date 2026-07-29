@@ -86,6 +86,8 @@ public sealed class ClaimModelTests : IDisposable
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
         ClaimModel model = new(NewService(context), new TeamService(context), users, new UnitOfWork(context),
+            new ClaimAttemptLimiter(context, Options.Create(new PrusaConnectOptions()),
+                NullLogger<ClaimAttemptLimiter>.Instance),
             NullLogger<ClaimModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),

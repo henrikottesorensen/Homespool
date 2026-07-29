@@ -10,7 +10,7 @@ public class PrusaConnectOptions
     public const string SectionName = "PrusaConnect";
 
     /// <summary>
-    /// How long a temporary registration code stays valid, in minutes. Default one hour.
+    /// How long a temporary registration code stays valid, in minutes. Default 30.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -22,12 +22,41 @@ public class PrusaConnectOptions
     /// </para>
     /// <para>
     /// <b>Prusa's own servers use 24 hours</b> - the captured <c>Expires</c> header is exactly one
-    /// day after the response. One hour is a deliberate divergence: a claim code is a credential
-    /// for adopting a printer, and on a self-hosted LAN a shorter window is the safer default.
-    /// Raise it if setup regularly spans longer than a sitting.
+    /// day after the response. 30 minutes is a deliberate divergence: a claim code is a credential
+    /// for adopting a printer, and on a self-hosted deployment a shorter window is the safer
+    /// default. It is also half the exposure the code's own entropy is sized against
+    /// (<see cref="CodeGenerator"/>), since the window is what bounds an online guessing attempt.
+    /// Claiming is something done while standing at the printer, so 30 minutes is generous for the
+    /// real workflow; raise it if setup regularly spans longer than a sitting.
     /// </para>
     /// </remarks>
-    public int RegistrationCodeLifetimeMinutes { get; set; } = 60;
+    public int RegistrationCodeLifetimeMinutes { get; set; } = 30;
+
+    /// <summary>
+    /// How many consecutive unrecognised registration codes an account may submit before it is
+    /// backed off. Default 5.
+    /// </summary>
+    /// <remarks>
+    /// The same figure Identity's own login lockout uses, for the same reason: it is comfortably
+    /// above what fat fingers produce and far below what guessing needs.
+    /// </remarks>
+    public int MaxFailedClaimAttempts { get; set; } = 5;
+
+    /// <summary>
+    /// The first backoff applied once <see cref="MaxFailedClaimAttempts"/> is passed, in seconds.
+    /// Doubles per further failure, up to <see cref="ClaimLockoutMaxSeconds"/>. Default 30.
+    /// </summary>
+    public int ClaimLockoutBaseSeconds { get; set; } = 30;
+
+    /// <summary>
+    /// The ceiling on the exponential backoff, in seconds. Default one hour.
+    /// </summary>
+    /// <remarks>
+    /// A ceiling rather than unbounded doubling, because the backoff must always self-heal: the
+    /// person locked out is overwhelmingly likely to be a legitimate user who mistyped, and a claim
+    /// code expires inside <see cref="RegistrationCodeLifetimeMinutes"/> anyway.
+    /// </remarks>
+    public int ClaimLockoutMaxSeconds { get; set; } = 3600;
 
     /// <summary><see cref="RegistrationCodeLifetimeMinutes"/> as a <see cref="TimeSpan"/>.</summary>
     public TimeSpan RegistrationCodeLifetime => TimeSpan.FromMinutes(RegistrationCodeLifetimeMinutes);

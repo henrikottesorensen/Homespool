@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Homespool.Model.Entities;
 
@@ -25,11 +24,16 @@ namespace Homespool.Model.Entities;
 public class PrinterLiveState
 {
     /// <summary>Primary key. Also the FK to <see cref="Printer"/> — this is a 1:1 extension.</summary>
+    /// <remarks>
+    /// Deliberately no <c>Printer</c> navigation, only the key. These instances live in
+    /// <c>TelemetryWriter</c>'s cache for the whole process lifetime, crossing one <c>DbContext</c>
+    /// per flush - and a navigation is a slot EF's relationship fix-up writes each context's
+    /// tracked <c>Printer</c> into, poisoning the cached instance for every context after it. The
+    /// writer used to defend against exactly that by nulling the navigation before each attach;
+    /// with no navigation, there is nothing to defend.
+    /// </remarks>
     [Key]
     public int PrinterId { get; set; }
-
-    [ForeignKey(nameof(PrinterId))]
-    public virtual Printer? Printer { get; set; }
 
     /// <summary>When the most recent telemetry message was received.</summary>
     public DateTimeOffset LastSeenAt { get; set; }

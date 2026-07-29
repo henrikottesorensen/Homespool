@@ -297,6 +297,75 @@ public sealed class TelemetryWriterTests : IDisposable
             $"a transient failure at shutdown must not lose the buffer - there is no later flush to save it.\n{LogDump()}");
     }
 
+    /// <summary>
+    /// A runtime flush failure, once its cause is repaired, must not leave the writer wedged:
+    /// everything still buffered lands on a later flush.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This pins the fix for a permanent wedge the slow-database rig found (2026-07-29,
+    /// notes/fake-printer-harness.md): the buffers survive a failed flush by design, but the failed
+    /// flush's relationship fix-up had written its tracked <see cref="Printer"/> stub onto every
+    /// buffered row's navigation property. The next flush re-tracked that dead context's stub via
+    /// the navigation, collided with its own fresh stub ("another instance with the same key value
+    /// is already being tracked"), and threw before reaching the database - every flush from then
+    /// on, including after the database recovered, including the shutdown drain. The fix removed
+    /// the <c>Printer</c> navigations from <see cref="TelemetrySample"/>, <see cref="PrinterEvent"/>
+    /// and <see cref="PrinterLiveState"/> entirely, so fix-up has nothing to write onto.
+    /// </para>
+    /// <para>
+    /// The <c>Material</c> value is the essential ingredient, not decoration: its writeback is what
+    /// attaches a <see cref="Printer"/> stub into the failing flush's context, arming the fix-up.
+    /// One failure with a material pending was enough to wedge permanently.
+    /// </para>
+    /// <para>
+    /// <b>Mutation check:</b> re-adding <c>virtual Printer? Printer</c> to
+    /// <see cref="TelemetrySample"/> (with the matching <c>HasOne(e => e.Printer)</c>
+    /// configuration) must make this test fail. Guarding that regression is this test's whole
+    /// purpose - the type system no longer prevents it.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AFlushFailureDoesNotWedgeTheWriterOnceTheDatabaseRecovers()
+    {
+        // Arrange - a fast timer, so recovery after the repair needs no further ingestion to trigger
+        // it; a batch size the burst below reaches, so the first failure happens promptly too.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 5, flushIntervalSeconds: 0.1));
+        await SeedPrinterAsync();
+
+        Func<Task> restorePrinter = await BreakThePrinterRowAsync();
+
+        for (int i = 0; i < 5; i++)
+        {
+            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow.AddSeconds(i),
+                new TelemetryDTO { Status = "PRINTING", Progress = i, Material = "PLA" });
+        }
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow,
+            new EventDTO { EventType = Events.StateChanged, Status = "PRINTING" });
+
+        bool firstAttemptFailed = await LoggedAsync(FlushFailed);
+        firstAttemptFailed.Should().BeTrue(
+            $"the arrangement depends on at least one flush failing while the printer row is missing.\n{LogDump()}");
+
+        // Act - repair the database and let the timer retry.
+        await restorePrinter();
+
+        // Assert - the samples and the event both land. With the navigation bug, no flush ever
+        // succeeds again: each retry throws while building the change-tracker graph, whether or not
+        // the database is healthy.
+        bool recovered = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext verify = NewVerificationContext();
+
+            return await SampleCountAsync(verify) == 5
+                && await verify.PrinterEvents.CountAsync() == 1;
+        }, TimeSpan.FromSeconds(10));
+
+        recovered.Should().BeTrue(
+            $"a flush failure must be survivable: once the database accepts writes again, the buffered rows must land.\n{LogDump()}");
+    }
+
     [Fact]
     public async Task TelemetryIsPersistedOnceTheBatchSizeIsReached()
     {

@@ -57,11 +57,11 @@ public class AddModel : PageModel
     public IReadOnlyList<SelectListItem> TeamOptions { get; private set; } = [];
 
     /// <summary>
-    /// Whether the server's own connect address (<c>PrusaConnect:PublicHost</c>) is set. Without it
+    /// Whether the server's own connect address (<c>PrusaConnect:PrinterHost</c>) is set. Without it
     /// the snippet would carry an empty <c>hostname</c>, so provisioning is blocked - server-side, not
     /// just by disabling the form - until an operator configures it.
     /// </summary>
-    public bool PublicAddressConfigured => _options.IsPublicAddressConfigured;
+    public bool PrinterAddressConfigured => _options.IsPrinterAddressConfigured;
 
     /// <summary>Set after a successful provision, so the view can show the one-time snippet.</summary>
     public string? Snippet { get; private set; }
@@ -89,13 +89,13 @@ public class AddModel : PageModel
     {
         await LoadTeamOptionsAsync(cancellationToken);
 
-        if (!PublicAddressConfigured)
+        if (!PrinterAddressConfigured)
         {
             // Belt and braces: the view disables the submit button for the same reason, but a raw
             // POST must be refused server-side too, or a bypassed form would hand out a snippet with
             // an empty hostname.
             ModelState.AddModelError(string.Empty,
-                "The server's public address is not configured yet (PrusaConnect:PublicHost). Ask your administrator to set it before provisioning printers this way.");
+                "The server's public address is not configured yet (PrusaConnect:PrinterHost). Ask your administrator to set it before provisioning printers this way.");
 
             return Page();
         }

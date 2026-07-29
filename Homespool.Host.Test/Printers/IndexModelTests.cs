@@ -75,7 +75,7 @@ public sealed class IndexModelTests : IDisposable
 
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
-        PrusaConnectOptions options = new() { PublicHost = "printers.example.com" };
+        PrusaConnectOptions options = new() { PrinterHost = "printers.example.com" };
 
         connectionRegistry ??= new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance);
 

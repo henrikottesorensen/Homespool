@@ -73,9 +73,9 @@ public sealed class AddModelTests : IDisposable
 
         PrusaConnectOptions options = new()
         {
-            PublicHost = publicHost,
-            PublicPort = 443,
-            PublicTls = true,
+            PrinterHost = publicHost,
+            PrinterPort = 443,
+            PrinterTls = true,
         };
 
         PrusaConnectService prusaConnectService = new(context, new CodeGenerator(), new TokenService(), new TeamService(context),
@@ -129,7 +129,7 @@ public sealed class AddModelTests : IDisposable
     /// disabled button - a snippet with an empty hostname would be useless.
     /// </summary>
     [Fact]
-    public async Task OnPostAsyncWithNoPublicAddressConfiguredBlocksSubmission()
+    public async Task OnPostAsyncWithNoPrinterAddressConfiguredBlocksSubmission()
     {
         // Arrange
         await using HSDbContext context = await MigratedContextAsync();

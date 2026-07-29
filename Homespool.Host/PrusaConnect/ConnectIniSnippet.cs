@@ -18,12 +18,12 @@ public static class ConnectIniSnippet
 {
     public static string Build(PrusaConnectOptions options, string token)
     {
-        string tls = options.PublicTls ? "True" : "False";
+        string tls = options.PrinterTls ? "True" : "False";
 
         return $"""
                 [service::connect]
-                hostname = {options.PublicHost}
-                port = {options.PublicPort}
+                hostname = {options.PrinterHost}
+                port = {options.PrinterPort}
                 tls = {tls}
                 token = {token}
                 """;

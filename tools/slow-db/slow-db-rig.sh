@@ -330,9 +330,9 @@ with open(sys.argv[1], errors="replace") as f:
         m = e.get("@m", "")
         if onset is None and "Telemetry flush failed" in m:
             onset = at(e["@t"])
-        if "buffered telemetry samples" in m:
+        if "buffered telemetry sample" in m:
             firsts.setdefault("sample trim", at(e["@t"]))
-        elif "buffered printer events" in m:
+        elif "buffered printer event" in m:
             firsts.setdefault("event trim", at(e["@t"]))
 
 if onset is None:

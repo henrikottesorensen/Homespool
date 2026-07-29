@@ -160,7 +160,8 @@ public sealed class TelemetryWriterTests : IDisposable
     /// test's database file - the same relationship <c>Program.cs</c> wires in production, minus
     /// everything else the host registers.
     /// </summary>
-    private async Task<TelemetryWriter> StartWriterAsync(StorageOptions options)
+    private async Task<TelemetryWriter> StartWriterAsync(StorageOptions options,
+                                                         TimeSpan? trimWarningInterval = null)
     {
         ServiceCollection services = new();
         services.AddDbContext<HSDbContext>(o => o.UseSqlite($"Data Source={_databasePath}"));
@@ -174,7 +175,11 @@ public sealed class TelemetryWriterTests : IDisposable
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
                                        Options.Create(options),
                                        _fakeLogger,
-                                       new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance));
+                                       new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance))
+        {
+            SampleTrimWarningInterval = trimWarningInterval ?? TimeSpan.FromSeconds(10),
+            EventTrimWarningInterval = trimWarningInterval ?? TimeSpan.FromSeconds(10),
+        };
 
         await _writer.StartAsync(CancellationToken.None);
 
@@ -364,6 +369,169 @@ public sealed class TelemetryWriterTests : IDisposable
 
         recovered.Should().BeTrue(
             $"a flush failure must be survivable: once the database accepts writes again, the buffered rows must land.\n{LogDump()}");
+    }
+
+    /// <summary>
+    /// While flushes are failing, the batch-size trigger must not fire for every further message.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A failing flush leaves the buffers above <c>WriteBatchSize</c> permanently, so the trigger
+    /// condition holds for every item from then on - one full attempt, one exception and one
+    /// Error-with-stack per message ingested, plus two more Errors from EF's internals. Measured
+    /// before the guard: ~8.9 KB of log per attempt at 22 attempts/s during a 14 s outage
+    /// (tools/slow-db), which is the same self-feeding shape that produced <c>LogThrottle</c>.
+    /// Retrying once per message is also pure waste: nothing has changed since the attempt one
+    /// message ago.
+    /// </para>
+    /// <para>
+    /// <b>Mutation check:</b> dropping <c>&amp;&amp; _consecutiveFlushFailures == 0</c> from the
+    /// trigger must fail this - the count goes from 1 to roughly the number of items fed.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AFailingFlushIsNotRetriedForEveryFurtherMessage()
+    {
+        // Arrange - the timer is long enough never to fire here, so every attempt this test sees
+        // came from the batch trigger and nothing else.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 5, flushIntervalSeconds: 30));
+        await SeedPrinterAsync();
+        await BreakThePrinterRowAsync();
+
+        // Act - the first batch fails, which also proves the drain loop is alive and processing.
+        for (int i = 0; i < 5; i++)
+        {
+            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow.AddSeconds(i), new TelemetryDTO { Status = "PRINTING", Progress = i });
+        }
+
+        bool firstFailure = await LoggedAsync(FlushFailed);
+        firstFailure.Should().BeTrue($"the arrangement depends on the first batch failing.\n{LogDump()}");
+
+        // Feed well past the batch size, paced so the channel's own capacity does not shed them.
+        for (int i = 0; i < 100; i++)
+        {
+            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow.AddSeconds(i), new TelemetryDTO { Status = "PRINTING", Progress = i });
+            await Task.Delay(2);
+        }
+
+        await Task.Delay(500);
+
+        // Assert
+        LogRecords.Count(FlushFailed).Should().Be(1,
+            $"a failing database must be retried on the flush timer, not once per message.\n{LogDump()}");
+    }
+
+    /// <summary>
+    /// Trimming the sample buffer at its ceiling logs once per window, not once per message.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>TrimExcessPendingSamples</c> runs per sample processed, so at the cap every further
+    /// message discards exactly one row and logged exactly one Warning saying so: 50,007 of them in
+    /// one 180 s outage, each reporting a count of 1. The window summary is the aggregate the
+    /// message was always phrased for.
+    /// </para>
+    /// <para>
+    /// <b>Mutation check:</b> logging unconditionally instead of on an elected window must fail
+    /// this, the count rising to one per trimmed row.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ASampleTrimBurstInsideTheIntervalLogsExactlyOneWarning()
+    {
+        // Arrange - batch size 5 puts the sample ceiling at 100, reachable in a paced burst. A short
+        // flush interval is what makes the buffer observable at all: PublishHealth only runs in
+        // SafeFlushAsync's finally, so with a long interval a test is blind to how full the buffer
+        // is and can only guess whether its burst arrived (it mostly does not - DropOldest sheds
+        // whatever outruns the drain loop).
+        TelemetryWriter writer = await StartWriterAsync(
+            DefaultOptions(batchSize: 5, flushIntervalSeconds: 0.1), trimWarningInterval: TimeSpan.FromMinutes(10));
+        await SeedPrinterAsync();
+        await BreakThePrinterRowAsync();
+
+        // Act - feed until the ceiling is actually reached, rather than assuming a fixed burst gets
+        // there, then keep feeding: every sample past the cap discards a row and logged its own
+        // Warning before the throttle.
+        bool atCeiling = await FeedUntilAsync(
+            () => writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING", Progress = 1 }),
+            () => writer.Current.PendingSamples >= 100,
+            TimeSpan.FromSeconds(20));
+
+        atCeiling.Should().BeTrue(
+            $"the arrangement depends on the sample ceiling being reached, saw {writer.Current.PendingSamples} pending.\n{LogDump()}");
+
+        for (int i = 0; i < 100; i++)
+        {
+            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING", Progress = i });
+            await Task.Delay(2);
+        }
+
+        bool trimmed = await LoggedAsync(record => record.Message.Contains("buffered telemetry sample"));
+        trimmed.Should().BeTrue($"samples past the ceiling must trim, or this test proves nothing.\n{LogDump()}");
+
+        // Assert
+        LogRecords.Count(record => record.Message.Contains("buffered telemetry sample")).Should().Be(1,
+            $"trims past the first must aggregate into a window summary, not flood the log.\n{LogDump()}");
+    }
+
+    /// <summary>
+    /// The event-buffer trim is throttled the same way - but stays at Error, and every lost event is
+    /// still counted exactly in the health snapshot.
+    /// </summary>
+    /// <remarks>
+    /// Discarding an event is data loss with nothing to reconstruct it from, so the level is
+    /// deliberately louder than the sample trim's and the first occurrence still logs in full. What
+    /// is bounded is the repetition (5,193 identical Errors in one 180 s outage). The exact total
+    /// rides on the snapshot, unthrottled, which is what alerting watches.
+    /// <para>
+    /// <b>Mutation check:</b> logging unconditionally fails the count assertion; publishing the
+    /// window count rather than <c>LogThrottle.Total</c> fails the snapshot assertion.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AnEventTrimBurstLogsOnceAndStillCountsEveryLostEventInHealth()
+    {
+        // Arrange - batch size 5 puts the event ceiling at 50. Short flush interval so the buffer is
+        // observable while flushes fail; see the sample-trim test for why that matters.
+        TelemetryWriter writer = await StartWriterAsync(
+            DefaultOptions(batchSize: 5, flushIntervalSeconds: 0.1), trimWarningInterval: TimeSpan.FromMinutes(10));
+        await SeedPrinterAsync();
+        await BreakThePrinterRowAsync();
+
+        // Act - feed until the ceiling is reached, then keep going: each event past it is one lost.
+        bool atCeiling = await FeedUntilAsync(
+            () => writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow,
+                new EventDTO { EventType = Events.StateChanged, Status = "PRINTING" }),
+            () => writer.Current.PendingEvents >= 50,
+            TimeSpan.FromSeconds(20));
+
+        atCeiling.Should().BeTrue(
+            $"the arrangement depends on the event ceiling being reached, saw {writer.Current.PendingEvents} pending.\n{LogDump()}");
+
+        for (int i = 0; i < 100; i++)
+        {
+            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow,
+                new EventDTO { EventType = Events.StateChanged, Status = "PRINTING" });
+            await Task.Delay(2);
+        }
+
+        bool trimmed = await LoggedAsync(record => record.Message.Contains("buffered printer event"));
+        trimmed.Should().BeTrue($"the arrangement depends on the event ceiling being reached.\n{LogDump()}");
+
+        // Assert
+        LogRecords.Count(record => record.Message.Contains("buffered printer event")).Should().Be(1,
+            $"event trims past the first must aggregate into a window summary.\n{LogDump()}");
+
+        LogRecords.Where(record => record.Message.Contains("buffered printer event"))
+            .Should().OnlyContain(record => record.Level == LogLevel.Error,
+                "discarding an event is data loss, not degradation - the level must not soften with throttling");
+
+        bool counted = await WaitUntilAsync(
+            () => Task.FromResult(writer.Current.DiscardedEvents > 20),
+            TimeSpan.FromSeconds(5));
+
+        counted.Should().BeTrue(
+            $"every discarded event must be counted in the snapshot however little is logged - one log line, hundreds of losses, saw {writer.Current.DiscardedEvents}.\n{LogDump()}");
     }
 
     [Fact]

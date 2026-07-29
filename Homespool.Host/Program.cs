@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Net;
 using System.Text.Json;
 using System.Threading.Tasks;
 
@@ -10,6 +11,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Configuration;
@@ -88,6 +90,8 @@ public static class Program
 
             builder.Services.Configure<PrusaConnect.PrusaConnectOptions>(
                 builder.Configuration.GetSection(PrusaConnect.PrusaConnectOptions.SectionName));
+
+            AddForwardedHeaders(builder);
 
             builder.Services.Configure<Services.SmtpOptions>(
                 builder.Configuration.GetSection(Services.SmtpOptions.SectionName));
@@ -237,6 +241,31 @@ public static class Program
                 app.MapScalarApiReference();
             }
 
+            // FIRST, and both halves of that matter.
+            //
+            // Before UseHttpsRedirection: that middleware reads Request.Scheme, so behind a
+            // TLS-terminating proxy it would see "http", answer 307 to https, and the proxy would
+            // forward the retry as http again - a redirect loop rather than a subtle bug.
+            //
+            // Before UseSerilogRequestLogging: otherwise every logged request carries the proxy's
+            // address instead of the client's, which is the thing this exists to fix.
+            //
+            // NOT applied to /p/*. Printers connect to Kestrel directly with no proxy in front, so a
+            // forwarded header there is attacker-supplied by definition - see XForwardedOptions.
+            // When the listener split lands this becomes belt-and-braces, because those routes will
+            // not exist on the proxied listener at all (notes/tls-by-default.md, decision 3a).
+            // Registered ONLY when something is actually trusted. Clearing the framework's known
+            // networks and adding nothing does not mean "trust nobody" - ASP.NET skips the peer check
+            // entirely when both lists are empty, which means "trust anybody". Proven by probe:
+            // unconfigured, a loopback client's X-Forwarded-Proto was honoured; trusting 10.0.0.0/8
+            // instead, the same request was ignored. Leaving the middleware out is unambiguous.
+            if (app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Services.XForwardedOptions>>().Value.TrustsAnything)
+            {
+                app.UseWhen(
+                    context => !context.Request.Path.StartsWithSegments("/p", StringComparison.OrdinalIgnoreCase),
+                    branch => branch.UseForwardedHeaders());
+            }
+
             // Log HTTP requests with Serilog, order of this matters.
             // Requests handled before in the pipeline are NOT logged.
             app.UseSerilogRequestLogging();
@@ -348,7 +377,7 @@ public static class Program
     /// </para>
     /// <para>
     /// <b>Deliberately global, not partitioned per client IP.</b> The documented way to expose this
-    /// service is behind a reverse proxy (<c>PUBLIC_HOST</c>/<c>PUBLIC_TLS</c>), and nothing here
+    /// service is behind a reverse proxy (<c>PRINTER_HOST</c>/<c>PRINTER_TLS</c>), and nothing here
     /// calls <c>UseForwardedHeaders</c> - so every request's <c>RemoteIpAddress</c> would be the
     /// proxy's. Partitioning on that puts every printer and every attacker in one bucket, meaning the
     /// first brute-force attempt locks out the household: strictly worse than no limiting at all.
@@ -373,6 +402,50 @@ public static class Program
     /// would instead let one attacker lock out every legitimate user at once.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Translates <see cref="Services.XForwardedOptions"/> onto the framework's forwarded-headers
+    /// middleware, and says at startup what it ended up trusting.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The framework middleware does the security-relevant part - checking the immediate peer against
+    /// the known proxies before believing anything - so this only supplies it with what to trust and
+    /// which header to read. Hand-rolling the header parsing was considered and rejected: the entry
+    /// selection is exactly where this class of bug lives.
+    /// </para>
+    /// <para>
+    /// <b>An unconfigured deployment is safe but inert</b>, because the framework then trusts loopback
+    /// alone and a container proxy is not on loopback. That failure is silent - mail keeps saying
+    /// <c>http://</c> - so it is logged rather than left to be discovered. <c>housekeeping.md</c>
+    /// records four occasions where this repository declared a rule and never ran it; this is the
+    /// same shape, caught at startup.
+    /// </para>
+    /// </remarks>
+    private static void AddForwardedHeaders(WebApplicationBuilder builder)
+    {
+        Services.XForwardedOptions forwarded = new();
+        builder.Configuration.GetSection(Services.XForwardedOptions.SectionName).Bind(forwarded);
+
+        builder.Services.Configure<Services.XForwardedOptions>(
+            builder.Configuration.GetSection(Services.XForwardedOptions.SectionName));
+
+        builder.Services.Configure<ForwardedHeadersOptions>(options =>
+            Services.ForwardedHeadersConfigurator.Apply(forwarded, options, Log.Warning));
+
+        if (forwarded.TrustsAnything)
+        {
+            Log.Information("Trusting {Header} from {ProxyCount} proxy address(es) and {NetworkCount} network(s).",
+                            forwarded.ClientAddressHeader, forwarded.KnownProxies.Length, forwarded.KnownNetworks.Length);
+        }
+        else
+        {
+            Log.Warning("No proxy is trusted (XForwarded:KnownProxies and :KnownNetworks are both empty), so "
+                        + "forwarded headers are ignored except from loopback. If this deployment sits behind a "
+                        + "reverse proxy, links in outgoing mail will say http:// and client addresses in the log "
+                        + "will be the proxy's. Set XForwarded:KnownNetworks to the proxy's network.");
+        }
+    }
+
     private static void AddPrinterEndpointRateLimiting(WebApplicationBuilder builder)
     {
         builder.Services.AddRateLimiter(options =>

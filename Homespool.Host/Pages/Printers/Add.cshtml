@@ -16,10 +16,10 @@
     <partial name="_ConnectSnippet" model="Model.Snippet" />
 }
 
-@if (!Model.PublicAddressConfigured)
+@if (!Model.PrinterAddressConfigured)
 {
     <div class="alert alert-warning" role="alert">
-        This server's public address is not configured (<code>PrusaConnect:PublicHost</code>), so a
+        This server's public address is not configured (<code>PrusaConnect:PrinterHost</code>), so a
         usable snippet cannot be produced yet. Ask your administrator to set it.
     </div>
 }
@@ -43,7 +43,7 @@
                 <select asp-for="Input.TeamId" asp-items="@Model.TeamOptions" class="form-select"></select>
                 <span asp-validation-for="Input.TeamId" class="text-danger"></span>
             </div>
-            <button type="submit" class="btn btn-primary" disabled="@(!Model.PublicAddressConfigured)">
+            <button type="submit" class="btn btn-primary" disabled="@(!Model.PrinterAddressConfigured)">
                 Provision printer
             </button>
             <a class="btn btn-link" asp-page="Index">Back to printers</a>

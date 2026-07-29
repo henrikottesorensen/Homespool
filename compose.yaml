@@ -19,11 +19,20 @@ services:
       # What a printer is told to dial for enrolment - not necessarily this container's own
       # listen port or protocol. If a reverse proxy (Caddy, nginx, Traefik) terminates TLS in
       # front of this container, these describe the proxy's public address, not port 8080.
-      # PublicHost is required for USB-key provisioning (Printers -> Add printer): the page
+      # PrinterHost is required for USB-key provisioning (Printers -> Add printer): the page
       # cannot produce a usable ini snippet - and refuses to - until it is set.
-      PrusaConnect__PublicHost: "${PUBLIC_HOST:-}"
-      PrusaConnect__PublicPort: "${PUBLIC_PORT:-443}"
-      PrusaConnect__PublicTls: "${PUBLIC_TLS:-true}"
+      # Which peer may speak for the client. The forwarded-headers middleware is NOT registered
+      # at all while this is empty, which is deliberate: ASP.NET runs its peer check only when at
+      # least one entry is present, so empty lists would mean "believe any client" rather than
+      # "believe nobody". See notes/tls-by-default.md.
+      #
+      # This is knowable only because the network below is ours and pinned. Without a proxy we
+      # shipped there would be nothing safe to put here.
+      XForwarded__KnownNetworks__0: "${PROXY_NETWORK:-}"
+
+      PrusaConnect__PrinterHost: "${PRINTER_HOST:-}"
+      PrusaConnect__PrinterPort: "${PRINTER_PORT:-443}"
+      PrusaConnect__PrinterTls: "${PRINTER_TLS:-true}"
 
       # Outgoing mail. Values come from .env - copy .env.example to .env and edit that, rather
       # than editing this file, so secrets stay out of the repository. Leaving SMTP_HOST empty
@@ -46,6 +55,9 @@ services:
     volumes:
       - printerservice-data:/app/data
 
+    networks:
+      - homespool
+
     # No healthcheck block is needed: the image declares one against /health/live, so
     # `docker compose ps` shows healthy/unhealthy out of the box, and `depends_on:
     # condition: service_healthy` works against this service.
@@ -58,6 +70,18 @@ services:
     # whether telemetry is actually reaching the database, as JSON, with counters. Both are
     # anonymous and exempt from the setup gate, so they answer before the first administrator
     # exists. Alert on /health; never restart on it.
+
+networks:
+  # Pinned rather than left to Docker's allocator, so XForwarded__KnownNetworks can name it. That
+  # is the whole reason shipping our own proxy simplifies this: the trusted range stops being
+  # something the operator has to discover and becomes something we chose.
+  #
+  # Change the subnet if it collides with something on your host, and change PROXY_NETWORK in .env
+  # to match - the two must agree or forwarded headers are silently ignored.
+  homespool:
+    ipam:
+      config:
+        - subnet: "${PROXY_SUBNET:-172.28.0.0/16}"
 
 volumes:
   # Keeps the SQLite database across container replacement. Use a local docker volume or a

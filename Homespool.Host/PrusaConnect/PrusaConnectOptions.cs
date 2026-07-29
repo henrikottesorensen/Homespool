@@ -62,25 +62,41 @@ public class PrusaConnectOptions
     public TimeSpan RegistrationCodeLifetime => TimeSpan.FromMinutes(RegistrationCodeLifetimeMinutes);
 
     /// <summary>
-    /// The hostname a printer should be pointed at to reach this server — the <c>hostname</c> value in
-    /// the <c>[service::connect]</c> section of a USB-key <c>prusa_printer_settings.ini</c>.
+    /// The hostname a <b>printer</b> should be pointed at to reach this server — the <c>hostname</c>
+    /// value in the <c>[service::connect]</c> section of a USB-key <c>prusa_printer_settings.ini</c>.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Empty by default: there is no way to infer a self-hosted server's externally-reachable name from
     /// inside the process (it sits behind whatever DNS, reverse proxy or LAN address the operator
     /// chose). The provisioning UI cannot produce a usable snippet until this is set, and says so.
     /// This is the server's own address, deliberately separate from any Prusa host.
+    /// </para>
+    /// <para>
+    /// <b>Printer-facing only, and named so since 2026-07-29.</b> It was <c>PublicHost</c>, which read
+    /// as "the address of this deployment" and is not what it is: every consumer is the printer's ini
+    /// (<see cref="ConnectIniSnippet"/> and the page that renders it). Nothing user-facing reads it —
+    /// absolute URLs in mail come from <c>Url.Page(..., protocol: Request.Scheme)</c>, i.e. from the
+    /// incoming request, so the user-facing address is never configured at all. The rename matters
+    /// because the printer address is about to stop being the same thing as the user address: they get
+    /// separate listeners and separate certificates (<c>notes/tls-by-default.md</c>).
+    /// </para>
     /// </remarks>
-    public string PublicHost { get; set; } = string.Empty;
+    public string PrinterHost { get; set; } = string.Empty;
 
     /// <summary>The port for the provisioning snippet. Prusa firmware defaults <c>connect_port</c> to 443.</summary>
-    public int PublicPort { get; set; } = 443;
+    public int PrinterPort { get; set; } = 443;
 
     /// <summary>Whether the printer should use TLS to reach this server. The firmware default is on.</summary>
-    public bool PublicTls { get; set; } = true;
+    /// <remarks>
+    /// Note this governs the <b>printer's</b> transport only, and is configured on the printer side by
+    /// the <c>tls</c> key in its own ini. It says nothing about whether the web UI is served over TLS —
+    /// a distinction `README.md` has never drawn and `internet-exposure.md` #3 exists to fix.
+    /// </remarks>
+    public bool PrinterTls { get; set; } = true;
 
-    /// <summary>True once <see cref="PublicHost"/> has been set, i.e. a provisioning snippet can be produced.</summary>
-    public bool IsPublicAddressConfigured => !string.IsNullOrWhiteSpace(PublicHost);
+    /// <summary>True once <see cref="PrinterHost"/> has been set, i.e. a provisioning snippet can be produced.</summary>
+    public bool IsPrinterAddressConfigured => !string.IsNullOrWhiteSpace(PrinterHost);
 
     /// <summary>
     /// How long <see cref="PrinterConnectionActor"/> waits for a printer's reply (a

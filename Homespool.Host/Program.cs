@@ -135,6 +135,7 @@ public static class Program
                             .AddScoped<PrusaConnect.WebSocketHandler>()
                             .AddScoped<PrusaConnect.TokenService>()
                             .AddScoped<PrusaConnect.CodeGenerator>()
+                            .AddScoped<PrusaConnect.ClaimAttemptLimiter>()
                             .AddScoped<PrusaConnect.MessageDispatcher>()
                             .AddScoped<PrusaConnect.PrinterCommandService>();
 

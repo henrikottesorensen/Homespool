@@ -33,6 +33,8 @@ namespace Homespool.Data.Migrations
                     Id = table.Column<long>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
                     DisplayName = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
+                    FailedClaimAttempts = table.Column<int>(type: "INTEGER", nullable: false),
+                    ClaimLockoutEnd = table.Column<long>(type: "INTEGER", nullable: true),
                     UserName = table.Column<string>(type: "TEXT", maxLength: 256, nullable: true),
                     NormalizedUserName = table.Column<string>(type: "TEXT", maxLength: 256, nullable: true),
                     Email = table.Column<string>(type: "TEXT", maxLength: 256, nullable: true),

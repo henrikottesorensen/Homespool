@@ -6,41 +6,33 @@ namespace Homespool.Host.PrusaConnect;
 public class CodeGenerator
 {
     /// <summary>
-    /// Maximum code Length supported by Prusa Firmware.
+    /// How many characters a registration code is.
     /// </summary>
-    private const int CodeLength = 24;
+    /// <remarks>
+    /// <para>
+    /// Ten Crockford base32 characters is 2^50. The bar is resisting online guessing of a pending
+    /// code inside its lifetime (<see cref="PrusaConnectOptions.RegistrationCodeLifetimeMinutes"/>,
+    /// 30 minutes): the anonymous <c>/p/register</c> endpoints sit behind a 300/min limiter, so an
+    /// attacker gets ~9 000 attempts against ~1.1x10^15 - about one in 10^11. The claim page has no
+    /// limiter of its own, which is what <see cref="ClaimAttemptLimiter"/> is for.
+    /// </para>
+    /// <para>
+    /// It was 24 base36 characters, which is ~2^124 - some 74 bits more than anything here needs,
+    /// and unusable: the printer's QR is hardcoded to Prusa's servers and cannot be redirected, so
+    /// <b>every Homespool user types this by hand off a low-resolution LCD</b>. On 2026-07-28 that
+    /// cost a real failed enrollment, reading the <c>O</c> in <c>BNK6BD5CXLMMNQQOD0UL5MIQ</c> as a
+    /// <c>0</c>. Ten characters is also exactly what Prusa's own servers issue (<c>MUF4RZJF5R</c> in
+    /// <c>enrol.cap</c>), and stays well inside the firmware's <c>CODE_SIZE = 25</c> buffer.
+    /// </para>
+    /// </remarks>
+    private const int CodeLength = 10;
 
     /// <summary>
     /// Length of one time random number.
     /// </summary>
     private const int NonceBytes = 128 / 8;
 
-    /// <summary>
-    /// SHA(3-)384, falling back where the platform has no SHA-3.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// .NET defers hashing to the OS libraries, so SHA-3 is only present where the OS provides it:
-    /// Windows 11 build 25324+, or Linux with OpenSSL 1.1.1+. Apple platforms have no SHA-3 at all,
-    /// and .NET 10 removed the last of the macOS OpenSSL fallbacks, so installing OpenSSL by hand
-    /// does not restore it. Calling <c>SHA3_384.Create()</c> unguarded therefore threw
-    /// <see cref="System.PlatformNotSupportedException"/> on every macOS machine, which took out
-    /// printer registration entirely - the container image (mcr.microsoft.com/dotnet/aspnet:10.0,
-    /// Debian, OpenSSL 3) hid it, because production is the one platform where it works.
-    /// See https://learn.microsoft.com/dotnet/standard/security/cross-platform-cryptography#sha-3.
-    /// </para>
-    /// <para>
-    /// The choice is not security relevant here: the code's unpredictability comes entirely from
-    /// <see cref="NonceBytes"/> bytes of CSPRNG output, and the hash only spreads that over the
-    /// output alphabet. Either algorithm is a fine way to do that, which is why falling back is
-    /// safe rather than a downgrade. It is duplicated from <see cref="TokenService.HashAlgorithm"/>
-    /// rather than shared precisely because the two are unrelated decisions - that one selects a
-    /// PBKDF2 PRF and must not silently change code generation if it is ever revisited.
-    /// </para>
-    /// </remarks>
-    private static readonly HashAlgorithmName HashAlgorithm = SHA3_384.IsSupported ?
-                                                              HashAlgorithmName.SHA3_384 :
-                                                              HashAlgorithmName.SHA384;
+    private static readonly HashAlgorithmName HashAlgorithm = HashAlgorithmName.SHA384;
 
     public string GenerateCode(string printerSerialNumber)
     {
@@ -51,6 +43,14 @@ public class CodeGenerator
         // followed by nonce.
         byte[] hash = CryptographicOperations.HashData(HashAlgorithm, [.. serial, .. nonce]);
 
-        return SimpleBase.Base36.UpperCase.Encode(hash).Substring(0, CodeLength);
+        // Crockford base32 rather than base36, because base36 contains every confusable pair at
+        // once - O/0 (which bit a real enrollment), and I/1, S/5, B/8 waiting their turn. Crockford
+        // omits I, L, O and U entirely, so the misread that cost 2026-07-28 is unrepresentable
+        // rather than merely less likely; ClaimCode.Normalise then maps the substitutions on input.
+        // The encoder already emits uppercase - its alphabet is the literal
+        // "0123456789ABCDEFGHJKMNPQRSTVWXYZ" (SimpleBase, Base32Alphabet.cs) - so the uppercasing is
+        // belt-and-braces. It is kept because the stored value must match what ClaimCode.Normalise
+        // produces, and that is worth holding locally rather than inheriting from a dependency.
+        return SimpleBase.Base32.Crockford.Encode(hash).ToUpperInvariant().Substring(0, CodeLength);
     }
 }

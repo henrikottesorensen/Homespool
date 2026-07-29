@@ -50,10 +50,36 @@ public class UploadedFileStore
     private const int HashLength = 27;
 
     /// <summary>
-    /// What the printer will accept. <c>filename_is_transferrable</c> gates the transfer and
-    /// <c>filename_is_printable</c> the print, so anything else is rejected by the printer after a
-    /// pointless upload and transfer.
+    /// Print files, and <b>deliberately less than the printer will accept</b>. This is a security
+    /// boundary, not a convenience.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A Connect transfer is gated by firmware's <c>filename_is_transferrable</c>, which is
+    /// <c>filename_is_printable || filename_is_firmware</c> — and <c>filename_is_firmware</c> is
+    /// <c>.bbf</c>. So the printer would accept a <b>firmware image</b> as a transfer destination, and
+    /// this list is what stops an authenticated user putting one there through
+    /// <c>command/start/cloud</c>.
+    /// </para>
+    /// <para>
+    /// <b>Why a firmware image matters:</b> <c>M997</c> reflashes the mainboard from a <c>.bbf</c>
+    /// under <c>/usb/</c>, and the application validates nothing before rebooting into the bootloader
+    /// to do it. So the chain is <i>upload a <c>.bbf</c></i> + <i>send <c>M997</c></i>. The second half
+    /// is currently impossible — <see cref="Commands.GCode"/> is a hollow marker and cannot be sent —
+    /// but the two guards are independent and neither knows about the other. <b>If gcode ever becomes
+    /// sendable, this list is the only remaining barrier.</b> That reasoning is written up at the other
+    /// end too, on <see cref="Commands.GCode"/>, because that is the end someone will actually touch.
+    /// </para>
+    /// <para>
+    /// <b>Do not widen this because the printer turns out to accept more.</b> It does, and that is the
+    /// reason the list is narrow. An earlier comment here claimed anything else "is rejected by the
+    /// printer after a pointless upload and transfer", which invited exactly that change.
+    /// </para>
+    /// <para>
+    /// Also narrower than <c>filename_is_printable</c>, which additionally allows <c>.g</c> and
+    /// <c>.gc</c>. That gap is harmless and unconsidered rather than deliberate.
+    /// </para>
+    /// </remarks>
     private static readonly string[] AllowedExtensions = [".gcode", ".bgcode", ".gco", ".bgc"];
 
     private readonly string _root;

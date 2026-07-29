@@ -26,10 +26,12 @@ public class PrinterQueryService
     private const int RecentEventCount = 20;
 
     private readonly HSDbContext _dbContext;
+    private readonly TimeProvider _timeProvider;
 
-    public PrinterQueryService(HSDbContext dbContext)
+    public PrinterQueryService(HSDbContext dbContext, TimeProvider timeProvider)
     {
         _dbContext = dbContext;
+        _timeProvider = timeProvider;
     }
 
     /// <summary>
@@ -144,7 +146,7 @@ public class PrinterQueryService
 
         printer.Name = name;
         printer.Location = location;
-        printer.UpdatedAt = TimeProvider.System.GetUtcNow();
+        printer.UpdatedAt = _timeProvider.GetUtcNow();
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 

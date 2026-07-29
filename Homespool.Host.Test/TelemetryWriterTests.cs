@@ -174,6 +174,7 @@ public sealed class TelemetryWriterTests : IDisposable
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
                                        Options.Create(options),
                                        _fakeLogger,
+                                       TimeProvider.System,
                                        new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance));
 
         await _writer.StartAsync(CancellationToken.None);
@@ -1348,6 +1349,7 @@ public sealed class TelemetryWriterTests : IDisposable
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
                                        Options.Create(options),
                                        _fakeLogger,
+                                       TimeProvider.System,
                                        new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance))
         {
             DropWarningInterval = dropWarningInterval,

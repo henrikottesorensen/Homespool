@@ -67,7 +67,7 @@ public static class EnrolmentFlowHelper
         WebApplicationFactory<PrinterAppController> factory)
     {
         PrinterIdentity identity = PrinterIdentity.CreateRandom();
-        await using FakePrinterClient enrolling = new(identity);
+        await using FakePrinterClient enrolling = new(identity, TimeProvider.System);
         using HttpClient anonymous = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         string code = await enrolling.RegisterAsync(anonymous);

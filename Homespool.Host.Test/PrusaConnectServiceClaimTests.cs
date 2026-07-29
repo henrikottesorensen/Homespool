@@ -34,7 +34,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
             new CodeGenerator(),
             new TokenService(),
             new TeamService(context),
-            NullLogger<PrusaConnectService>.Instance,
+            TimeProvider.System, NullLogger<PrusaConnectService>.Instance,
             Options.Create(new PrusaConnectOptions { RegistrationCodeLifetimeMinutes = lifetimeMinutes }));
 
     private static RegisterPrinterRequestDTO PrinterRequest(string serial = "15715-4842441651816441",

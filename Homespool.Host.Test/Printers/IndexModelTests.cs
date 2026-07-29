@@ -80,9 +80,9 @@ public sealed class IndexModelTests : IDisposable
         connectionRegistry ??= new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance);
 
         IndexModel model = new(
-            new PrinterQueryService(context),
+            new PrinterQueryService(context, TimeProvider.System),
             new PrusaConnectService(context, new CodeGenerator(), new TokenService(), new TeamService(context),
-                NullLogger<PrusaConnectService>.Instance, Options.Create(options)),
+                TimeProvider.System, NullLogger<PrusaConnectService>.Instance, Options.Create(options)),
             new TeamService(context),
             users,
             Options.Create(options),

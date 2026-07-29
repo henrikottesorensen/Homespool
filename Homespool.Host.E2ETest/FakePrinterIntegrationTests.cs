@@ -104,7 +104,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         // 1 ms pacing keeps the writer's drop-oldest channel (4 batches of headroom) far from
         // engaging, so an exact row count is a fair assertion rather than a race.
         CaptureReplaySource source = new("websocket.capture", TimeSpan.FromMilliseconds(1));
-        await using FakePrinterClient fake = new(identity, new FakePrinterOptions { TelemetrySource = source });
+        await using FakePrinterClient fake = new(identity, TimeProvider.System, new FakePrinterOptions { TelemetrySource = source });
         fake.Token = token;
 
         await fake.ConnectAsync(ConnectViaTestServerAsync);
@@ -212,7 +212,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     {
         (FakePrinterClient fake, Task run, int printerId, long userId) = await StartConnectedFakeAsync(
             configure: f => f.Device.StartPrint(jobId: 1),
-            policyFactory: identity => new WrongCommandIdPolicy(new FirmwareFaithfulPolicy(identity)));
+            policyFactory: identity => new WrongCommandIdPolicy(new FirmwareFaithfulPolicy(identity, TimeProvider.System)));
 
         await using (fake)
         {
@@ -232,7 +232,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     {
         (FakePrinterClient fake, Task run, int printerId, long userId) = await StartConnectedFakeAsync(
             configure: f => f.Device.StartPrint(jobId: 1),
-            policyFactory: identity => new DoubleReplyPolicy(new FirmwareFaithfulPolicy(identity)));
+            policyFactory: identity => new DoubleReplyPolicy(new FirmwareFaithfulPolicy(identity, TimeProvider.System)));
 
         await using (fake)
         {
@@ -282,7 +282,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
         for (int cycle = 0; cycle < 5; cycle++)
         {
-            await using FakePrinterClient fake = new(identity);
+            await using FakePrinterClient fake = new(identity, TimeProvider.System);
             fake.Token = token;
 
             await fake.ConnectAsync(ConnectViaTestServerAsync);
@@ -294,7 +294,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             await run.WaitAsync(TimeSpan.FromSeconds(10));
         }
 
-        await using FakePrinterClient last = new(identity);
+        await using FakePrinterClient last = new(identity, TimeProvider.System);
         last.Token = token;
         last.Device.StartPrint(jobId: 1);
 
@@ -453,7 +453,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             OriginalSize = content.Length,
         };
 
-        await using (FakePrinterClient dropped = new(identity))
+        await using (FakePrinterClient dropped = new(identity, TimeProvider.System))
         {
             dropped.Token = token;
             await dropped.ConnectAsync(ConnectViaTestServerAsync);
@@ -465,7 +465,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             await droppedRun.WaitAsync(TimeSpan.FromSeconds(10));
         }
 
-        await using FakePrinterClient reconnected = new(identity);
+        await using FakePrinterClient reconnected = new(identity, TimeProvider.System);
         reconnected.Token = token;
         await reconnected.ConnectAsync(ConnectViaTestServerAsync);
         Task run = reconnected.RunAsync(CancellationToken.None);
@@ -556,7 +556,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     {
         // Arrange
         PrinterIdentity identity = PrinterIdentity.CreateRandom();
-        await using FakePrinterClient fake = new(identity);
+        await using FakePrinterClient fake = new(identity, TimeProvider.System);
         using HttpClient anonymous = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         // Act - one register, then far more polls than a real printer manages in a minute.
@@ -599,7 +599,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             Readings = new TelemetryReadings(TimeToFilamentChange: 300),
         };
 
-        await using FakePrinterClient fake = new(identity, new FakePrinterOptions { TelemetrySource = source });
+        await using FakePrinterClient fake = new(identity, TimeProvider.System, new FakePrinterOptions { TelemetrySource = source });
         fake.Token = token;
         fake.Device.StartPrint(jobId: 77);
 
@@ -653,7 +653,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             ? options ?? new FakePrinterOptions()
             : new FakePrinterOptions { Policy = policyFactory(identity) };
 
-        FakePrinterClient fake = new(identity, effective);
+        FakePrinterClient fake = new(identity, TimeProvider.System, effective);
         fake.Token = token;
         configure?.Invoke(fake);
 

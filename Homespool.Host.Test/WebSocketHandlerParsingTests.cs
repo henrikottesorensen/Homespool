@@ -284,7 +284,8 @@ public class WebSocketHandlerParsingTests
     /// </summary>
     private sealed class RecordingMessageDispatcher()
         : MessageDispatcher(NullLogger<MessageDispatcher>.Instance,
-            new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance))
+            new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
+            TimeProvider.System)
     {
         public List<string> Received { get; } = [];
 

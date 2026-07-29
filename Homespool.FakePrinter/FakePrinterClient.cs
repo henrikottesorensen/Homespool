@@ -40,11 +40,13 @@ public sealed class FakePrinterClient : IAsyncDisposable
     private Exception? _replyFault;
 
     /// <summary>Creates a fake with the given identity; null options take every firmware default.</summary>
-    public FakePrinterClient(PrinterIdentity identity, FakePrinterOptions? options = null)
+    public FakePrinterClient(PrinterIdentity identity,
+                             TimeProvider timeProvider,
+                             FakePrinterOptions? options = null)
     {
         Identity = identity;
         _options = options ?? new FakePrinterOptions();
-        _policy = _options.Policy ?? new FirmwareFaithfulPolicy(identity);
+        _policy = _options.Policy ?? new FirmwareFaithfulPolicy(identity, timeProvider);
     }
 
     /// <summary>The identity this fake presents on the wire.</summary>

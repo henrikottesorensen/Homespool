@@ -149,6 +149,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly StorageOptions _options;
     private readonly ILogger<TelemetryWriter> _logger;
+    private readonly TimeProvider _timeProvider;
     private readonly UnknownFieldTracker _unknownFields;
 
     // Both wire-rate log sites in this class go through a LogThrottle: drops are recorded on
@@ -168,11 +169,13 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     public TelemetryWriter(IServiceScopeFactory scopeFactory,
                            IOptions<StorageOptions> options,
                            ILogger<TelemetryWriter> logger,
+                           TimeProvider timeProvider,
                            UnknownFieldTracker unknownFields)
     {
         _scopeFactory = scopeFactory;
         _options = options.Value;
         _logger = logger;
+        _timeProvider = timeProvider;
         _unknownFields = unknownFields;
 
         // itemDropped fires synchronously, on the producer's thread, exactly when DropOldest
@@ -836,7 +839,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             await FlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, cancellationToken);
 
             _consecutiveFlushFailures = 0;
-            _lastFlushAt = TimeProvider.System.GetUtcNow();
+            _lastFlushAt = _timeProvider.GetUtcNow();
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {

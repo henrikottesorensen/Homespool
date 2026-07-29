@@ -91,6 +91,13 @@ public static class Program
             builder.Services.Configure<PrusaConnect.PrusaConnectOptions>(
                 builder.Configuration.GetSection(PrusaConnect.PrusaConnectOptions.SectionName));
 
+            builder.Services.Configure<Certificates.CertificateOptions>(
+                builder.Configuration.GetSection(Certificates.CertificateOptions.SectionName));
+
+            // Singleton: it owns files on disk and its whole contract is that the authority is minted
+            // once and never again. Nothing about it is per-request.
+            builder.Services.AddSingleton<Certificates.PrinterCertificateAuthority>();
+
             AddForwardedHeaders(builder);
 
             builder.Services.Configure<Services.SmtpOptions>(

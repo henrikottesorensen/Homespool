@@ -374,12 +374,20 @@ public class PrinterConnectionActorTests
         await Eventually(actor.Completion);
     }
 
+    /// <summary>
+    /// A command nobody answers is reported as timed out rather than waited on forever.
+    /// </summary>
+    /// <remarks>
+    /// The deadline is deliberately tight, and can afford to be: nothing has to happen inside it
+    /// except the deadline firing. Anything that has to <i>fit</i> in it belongs in
+    /// <see cref="ASendAfterATimedOutCommandStillCompletes"/>, which is why that used to be the
+    /// second half of this test and no longer is.
+    /// </remarks>
     [Fact]
     public async Task SendCommandAsyncReturnsTimedOutWhenNoEventArrivesInTime()
     {
         // Arrange
-        List<byte[]> sentFrames = [];
-        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), responseTimeout: TimeSpan.FromMilliseconds(50));
+        PrinterConnectionActor actor = NewActor(OpenConnection(), responseTimeout: TimeSpan.FromMilliseconds(50));
 
         // Act
         CommandSendResult result = await Eventually(actor.SendCommandAsync(new PausePrint(), CancellationToken.None));
@@ -387,11 +395,42 @@ public class PrinterConnectionActorTests
         // Assert
         result.Outcome.Should().Be(CommandSendOutcome.ResponseTimedOut);
 
-        // Not wedged: a new send for the same printer reaches the wire immediately.
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A timeout does not wedge the actor: the next command reaches the wire and is answered
+    /// normally.
+    /// </summary>
+    /// <remarks>
+    /// Split out of <see cref="SendCommandAsyncReturnsTimedOutWhenNoEventArrivesInTime"/> on
+    /// 2026-07-29 because the two halves want opposite deadlines and an actor has only one. At the
+    /// 50 ms that makes the timeout itself quick, this round trip - write the frame, poll for it,
+    /// post the answer, let the loop reach it - had that <i>whole</i> budget to fit into, and on a loaded
+    /// machine it does not: the retry came back ResponseTimedOut in 2 of 5 runs under CPU
+    /// saturation, reported as a wedged actor when nothing was wrong. Measured under the same load
+    /// that reproduces that, the round trip takes 10-26 ms, so half a second is roughly twenty times
+    /// the worst of it - and the cost is paid by the deliberate timeout above rather than by the
+    /// half being asserted, which is the right way round.
+    /// </remarks>
+    [Fact]
+    public async Task ASendAfterATimedOutCommandStillCompletes()
+    {
+        // Arrange - the timeout here is the premise, not the assertion; it is asserted so that a
+        // regression turning it into something else fails as itself rather than as the retry.
+        List<byte[]> sentFrames = [];
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), responseTimeout: TimeSpan.FromMilliseconds(500));
+
+        CommandSendResult timedOut = await Eventually(actor.SendCommandAsync(new PausePrint(), CancellationToken.None));
+        timedOut.Outcome.Should().Be(CommandSendOutcome.ResponseTimedOut);
+
+        // Act
         Task<CommandSendResult> retry = actor.SendCommandAsync(new ResumePrint(), CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 2);
         await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[1])), CancellationToken.None);
 
+        // Assert
         (await Eventually(retry)).Outcome.Should().Be(CommandSendOutcome.Completed);
 
         actor.Complete();

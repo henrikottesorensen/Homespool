@@ -15,7 +15,7 @@ namespace Homespool.Host.Services;
 /// <summary>
 /// Issues, validates and revokes <see cref="Invitation"/>s. This is the single home for invite token
 /// handling, so the admin create page and the accept page never duplicate the generate/hash/verify
-/// dance — the token scheme is <see cref="TokenService"/> (PBKDF2/SHA3-384), the same one that
+/// dance — the token scheme is <see cref="TokenService"/> (PBKDF2/SHA-384), the same one that
 /// protects printer registration tokens (AGENT-NOTES phase-1.5 §15).
 /// </summary>
 /// <remarks>

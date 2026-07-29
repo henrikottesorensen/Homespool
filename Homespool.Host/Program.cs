@@ -77,7 +77,7 @@ public static class Program
             });
 
             // Add services to the container.
-            builder.Services.AddAuthorization(Authorization.Builder.Build);
+            builder.Services.AddAuthorization(Authorisation.Builder.Build);
 
             builder.Services.AddRazorPages();
 

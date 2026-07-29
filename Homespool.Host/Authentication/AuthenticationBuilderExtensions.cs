@@ -17,7 +17,7 @@ public static class AuthenticationBuilderExtensions
 
     /// <summary>
     /// Registers the personal access token scheme. It authenticates <c>/api/v1</c> alongside the
-    /// sign-in cookie rather than replacing it — see <c>Authorization.Policies.Api</c>.
+    /// sign-in cookie rather than replacing it — see <c>Authorisation.Policies.Api</c>.
     /// </summary>
     public static AuthenticationBuilder AddApiTokenAuthentication(this AuthenticationBuilder builder)
     {

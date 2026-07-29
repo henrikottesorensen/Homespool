@@ -175,10 +175,10 @@ public sealed class ClaimModelTests : IDisposable
     /// A code typed with different casing and stray whitespace - the shape a human copying off a
     /// printer's screen actually produces - still claims successfully. Regression test: the
     /// TemporaryCode lookup has no case-insensitive collation, so this silently failed before the
-    /// page normalized the input.
+    /// page normalised the input.
     /// </summary>
     [Fact]
-    public async Task OnPostAsyncNormalizesCodeCasingAndWhitespace()
+    public async Task OnPostAsyncNormalisesCodeCasingAndWhitespace()
     {
         // Arrange
         await using HSDbContext context = await MigratedContextAsync();

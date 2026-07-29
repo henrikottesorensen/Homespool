@@ -31,7 +31,7 @@ public class MessageDispatcherTests
         """{"transfer":"inline","hash":"abc123","team_id":7,"transfer_id":42,"chunk":4096,"file_id":123456789,"start":0,"end":262144}""";
 
     [Fact]
-    public void InlineTransferRequestIsRecognizedRatherThanMisroutedToTelemetry()
+    public void InlineTransferRequestIsRecognisedRatherThanMisroutedToTelemetry()
     {
         // Arrange
         using JsonDocument document = JsonDocument.Parse(InlineTransferChunkRequest);

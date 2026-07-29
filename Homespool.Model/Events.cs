@@ -99,7 +99,7 @@ public enum Events
     SlotEvent,
 
     /// <summary>
-    /// Whether the current action/dialog can be canceled has changed. The reverse case: sent by
+    /// Whether the current action/dialog can be cancelled has changed. The reverse case: sent by
     /// Buddy firmware's EventType enum (planner.hpp), but absent from the Connect SDK's own Event
     /// enum as of its latest checked-out release - the SDK genuinely hasn't caught up to this
     /// firmware-side addition, not a deliberate protocol omission.

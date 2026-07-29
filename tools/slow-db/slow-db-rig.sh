@@ -47,6 +47,11 @@ WARMUP_SECONDS="${WARMUP_SECONDS:-5}"
 RECOVERY_SECONDS="${RECOVERY_SECONDS:-20}"
 LOG_LIMIT_MB="${LOG_LIMIT_MB:-2048}"
 
+# 0 keeps the outage in place through SIGTERM, which is the only way to measure what a shutdown
+# costs while the database is still refusing writes. The default ends the outage first, so the
+# shutdown measured is the ordinary healthy one.
+FREE_BEFORE_SHUTDOWN="${FREE_BEFORE_SHUTDOWN:-1}"
+
 # The ceilings are WriteBatchSize * 20 (samples) and * 10 (events). Lowering the batch size scales
 # both together, so the 2:1 cap ratio and the 10:1 stream ratio - the two things the ordering claim
 # rests on - are untouched, while the caps come within reach of a short run instead of needing a
@@ -192,7 +197,14 @@ echo "### warmup: $WARMUP_ROWS samples in ${WARMUP_SECONDS}s (~$((WARMUP_ROWS / 
 STALL_START="$(date +%s)"
 
 if [ "$MECHANISM" = "lock" ]; then
-    python3 - "$DB" "$STALL_SECONDS" > "$RUN/lock.log" 2>&1 <<'PY' &
+    # Held past the shutdown when the outage has to survive it; cleanup kills the holder either way.
+    LOCK_HOLD_SECONDS="$STALL_SECONDS"
+
+    if [ "$FREE_BEFORE_SHUTDOWN" != "1" ]; then
+        LOCK_HOLD_SECONDS=$((STALL_SECONDS + RECOVERY_SECONDS + 180))
+    fi
+
+    python3 - "$DB" "$LOCK_HOLD_SECONDS" > "$RUN/lock.log" 2>&1 <<'PY' &
 import sqlite3, sys, time
 db, seconds = sys.argv[1], float(sys.argv[2])
 con = sqlite3.connect(db, isolation_level=None, timeout=5)
@@ -222,7 +234,10 @@ while true; do
 
     if [ "$ELAPSED" -ge "$STALL_SECONDS" ] && [ -z "$RELEASED" ]; then
         RELEASED="yes"
-        if [ "$MECHANISM" = "lock" ]; then
+
+        if [ "$FREE_BEFORE_SHUTDOWN" != "1" ]; then
+            echo "### outage HELD past the stall window - the shutdown below is measured against a database that is still refusing writes"
+        elif [ "$MECHANISM" = "lock" ]; then
             kill "$LOCK_PID" 2>/dev/null
         else
             rm -f "$VOLUME/filler"

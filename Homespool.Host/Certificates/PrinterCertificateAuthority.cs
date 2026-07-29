@@ -38,6 +38,41 @@ public class PrinterCertificateAuthority
     private const string AuthorityDerFileName = "connect.der";
     private const string LeafFileName = "printer.pfx";
 
+    /// <summary>
+    /// What both certificates claim as <c>notBefore</c>: 1960, deliberately before the epoch.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is what lets a printer with no clock connect at all.</b> Buddy firmware's
+    /// <c>time()</c> returns <b>-1</b> when the RTC has never been set (<c>sys_time.cpp</c>: "RTC was
+    /// not initialize"), and <c>mbedtls_time</c> is a plain <c>#define</c> to it.
+    /// <c>x509_get_current_time</c> does not treat -1 as an error — <c>gmtime_r(-1)</c> succeeds — so
+    /// mbedTLS believes the date is <b>1969-12-31</b>. Against that, any ordinary certificate is
+    /// <i>not yet valid</i>, and with <c>MBEDTLS_SSL_VERIFY_REQUIRED</c> and no verify callback the
+    /// handshake simply fails.
+    /// </para>
+    /// <para>
+    /// <b>Which printers this affects is a board question, and it is not the edge case it looks
+    /// like.</b> The MINI's Buddy board ties the STM32's VBAT straight to +3.3V with no cell fitted
+    /// (<c>prusa3d/Buddy-board-MINI-PCB</c>, <c>rev.1.0.0/cpu.sch</c>), so its RTC is lost at <i>every
+    /// power-off</i> — on an isolated LAN a MINI could never establish TLS, and on a connected one it
+    /// fails from power-on until SNTP lands. xBuddy boards (MK3.5, MK4, XL, Core One) carry a CR1220
+    /// and keep time once set, which is why the bench MK3.5 cannot reproduce any of this.
+    /// </para>
+    /// <para>
+    /// There is no other route to a date: the only writer of the RTC anywhere in firmware is the SNTP
+    /// callback (<c>wui_api.cpp</c>), the server is hardcoded to <c>prusa3d.pool.ntp.org</c>, and the
+    /// menu offers a timezone offset but no way to enter a time.
+    /// </para>
+    /// <para>
+    /// So the low end of validity is conceded for printers that have no clock — they never had one,
+    /// and the alternative is TLS that cannot work. <c>notAfter</c> still bounds the far end. 1960 is
+    /// chosen to sit inside X.509 <c>UTCTime</c>'s 1950-2049 range. <b>Do not "correct" this to the
+    /// issue date.</b>
+    /// </para>
+    /// </remarks>
+    private static readonly DateTimeOffset NotBefore = new(1960, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
     private readonly string _directory;
     private readonly CertificateOptions _options;
     private readonly TimeProvider _time;
@@ -97,7 +132,7 @@ public class PrinterCertificateAuthority
 
         DateTimeOffset now = _time.GetUtcNow();
         using X509Certificate2 authority = request.CreateSelfSigned(
-            now.AddMinutes(-5), now.AddDays(_options.AuthorityValidityDays));
+            NotBefore, now.AddDays(_options.AuthorityValidityDays));
 
         WriteFile(path, authority.Export(X509ContentType.Pkcs12));
         WriteFile(AuthorityDerPath, authority.Export(X509ContentType.Cert));
@@ -163,8 +198,10 @@ public class PrinterCertificateAuthority
         DateTimeOffset now = _time.GetUtcNow();
         byte[] serial = RandomNumberGenerator.GetBytes(16);
 
+        // The authority is backdated identically: chain building checks its dates too, so
+        // backdating only the leaf would fix nothing.
         using X509Certificate2 issued = request.Create(
-            authority, now.AddMinutes(-5), now.AddDays(_options.LeafValidityDays), serial);
+            authority, NotBefore, now.AddDays(_options.LeafValidityDays), serial);
 
         using X509Certificate2 withKey = issued.CopyWithPrivateKey(key);
 

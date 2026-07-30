@@ -256,11 +256,19 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
         authority.EnsureLeaf(["homespool.lan", "192.168.13.238", "printers.example.com"]);
 
         // Act
-        IReadOnlyList<string> names = await NewBuilder(authority).AvailableNamesAsync(CancellationToken.None);
+        IReadOnlyList<PrinterAddressSuggestion> names =
+            await NewBuilder(authority).AvailableNamesAsync(CancellationToken.None);
 
         // Assert
-        names[0].Should().Be("printers.example.com");
-        names.Should().Contain("homespool.lan").And.Contain("192.168.13.238");
+        names[0].Value.Should().Be("printers.example.com");
+        names.Select(suggestion => suggestion.Value).Should()
+            .Contain("homespool.lan").And.Contain("192.168.13.238");
+
+        // Each carries what it costs, which is the difference between surviving a moved lease and
+        // breaking silently one day - the only thing distinguishing these options to a reader.
+        names.Should().AllSatisfy(suggestion => suggestion.Note.Should().NotBeNullOrWhiteSpace());
+        names.Single(suggestion => suggestion.Value == "192.168.13.238").Durability
+            .Should().Be(AddressDurability.UntilTheLeaseMoves);
     }
 
     /// <summary>

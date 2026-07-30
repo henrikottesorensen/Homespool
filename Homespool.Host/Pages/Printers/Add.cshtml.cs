@@ -169,14 +169,14 @@ public class AddModel : PageModel
                                                     string token,
                                                     CancellationToken cancellationToken)
     {
-        IReadOnlyList<string> names = await _bundles.AvailableNamesAsync(cancellationToken);
+        IReadOnlyList<Certificates.PrinterAddressSuggestion> names = await _bundles.AvailableNamesAsync(cancellationToken);
 
         return new BundleOffer(
             printerId,
             printerName,
             token,
             names,
-            ConnectIni.BuildSnippet(_options, names.Count > 0 ? names[0] : _options.PrinterHost, token),
+            ConnectIni.BuildSnippet(_options, names.Count > 0 ? names[0].Value : _options.PrinterHost, token),
             _options.PrinterTls);
     }
 

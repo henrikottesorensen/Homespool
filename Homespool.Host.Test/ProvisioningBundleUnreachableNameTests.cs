@@ -132,10 +132,11 @@ public sealed class ProvisioningBundleUnreachableNameTests : IDisposable
         });
 
         // Act
-        IReadOnlyList<string> offered = await NewBuilder(authority, resolver).AvailableNamesAsync(CancellationToken.None);
+        IReadOnlyList<PrinterAddressSuggestion> offered =
+            await NewBuilder(authority, resolver).AvailableNamesAsync(CancellationToken.None);
 
         // Assert
-        offered.Should().BeEquivalentTo(["192.168.13.238"],
+        offered.Select(suggestion => suggestion.Value).Should().BeEquivalentTo(["192.168.13.238"],
             "a printer cannot route to a container's bridge network, so those are not choices - they are traps");
     }
 
@@ -151,11 +152,15 @@ public sealed class ProvisioningBundleUnreachableNameTests : IDisposable
         authority.EnsureLeaf(["homespool.lan"]).Dispose();
 
         // Act
-        IReadOnlyList<string> offered = await NewBuilder(authority, new FakeResolver([]))
+        IReadOnlyList<PrinterAddressSuggestion> offered = await NewBuilder(authority, new FakeResolver([]))
             .AvailableNamesAsync(CancellationToken.None);
 
         // Assert
-        offered.Should().BeEquivalentTo(["homespool.lan"]);
+        offered.Select(suggestion => suggestion.Value).Should().BeEquivalentTo(["homespool.lan"]);
+
+        // And it says what choosing a name costs: it outlives a lease, if something resolves it.
+        offered[0].Durability.Should().Be(AddressDurability.SurvivesALeaseChange);
+        offered[0].Note.Should().Contain("router publishes names");
     }
 
     /// <summary>

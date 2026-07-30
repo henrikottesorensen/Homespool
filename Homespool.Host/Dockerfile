@@ -18,7 +18,17 @@ EXPOSE 8081
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
+# Directory.Build.props first, and it is not optional: it carries TargetFramework for every project
+# in the repository, so without it restore fails with NETSDK1013 - "The TargetFramework value '' was
+# not recognized" - a message naming neither this file nor the reason. The referenced projects come
+# with it, because a restore that cannot see them skips them with a line that reads like a note
+# ("Skipping project ... because it was not found") and then fails somewhere else.
+#
+# Still only the manifests, so the layer caches on the project files rather than on the whole tree.
+COPY ["Directory.Build.props", "./"]
 COPY ["Homespool.Host/Homespool.Host.csproj", "Homespool.Host/"]
+COPY ["Homespool.Data/Homespool.Data.csproj", "Homespool.Data/"]
+COPY ["Homespool.Model/Homespool.Model.csproj", "Homespool.Model/"]
 RUN dotnet restore "Homespool.Host/Homespool.Host.csproj"
 # Restore the LibMan CLI pinned in .config/dotnet-tools.json (copied first so this layer caches on
 # the manifest, not the whole tree).

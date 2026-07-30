@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
 
 using Homespool.Host.PrusaConnect;
 
@@ -37,13 +39,29 @@ public static class PrinterCertificateNames
     /// inspects the certificate. Callers decide what an empty list means — at startup it is a warning
     /// and a fallback, on the reissue page it is a refusal.
     /// </remarks>
+    /// <remarks>
+    /// <para>
+    /// <b>A detected name that no printer could use does not go in.</b> Inside a container, detection
+    /// sees the container: its bridge address and its own hostname. Neither is a name a printer can
+    /// route to, so covering them hedges nothing - the hedge is for an operator who picked the wrong
+    /// <i>reachable</i> name, not for names that are wrong by construction. Leaving them out keeps the
+    /// certificate honest about what it vouches for, and stops the leaf presented on the printer port
+    /// telling every unauthenticated connection what this deployment's internal network looks like.
+    /// </para>
+    /// <para>
+    /// <b>The configured host is never filtered</b>, resolvable or not. It is the operator's declared
+    /// answer, and a name that this machine cannot resolve from where it stands is routinely the right
+    /// one from the printer's side of the network - which is exactly the situation inside a container.
+    /// </para>
+    /// </remarks>
     /// <param name="connect">Supplies the configured printer address, which leads the list.</param>
-    /// <param name="containerNetworks">
-    /// The deployment's own internal ranges, so an address only the container can reach is described
-    /// as such rather than offered as an equal.
-    /// </param>
-    public static IReadOnlyList<string> ForThisMachine(PrusaConnectOptions connect,
-                                                       IReadOnlyList<IPNetwork> containerNetworks)
+    /// <param name="containerNetworks">The deployment's own internal ranges.</param>
+    /// <param name="resolver">Answers what a detected hostname points at; an address answers for itself.</param>
+    /// <param name="cancellationToken">The usual.</param>
+    public static async Task<IReadOnlyList<string>> ForThisMachineAsync(PrusaConnectOptions connect,
+                                                                       IReadOnlyList<IPNetwork> containerNetworks,
+                                                                       IHostAddressResolver resolver,
+                                                                       CancellationToken cancellationToken)
     {
         List<string> names = [];
 
@@ -52,7 +70,15 @@ public static class PrinterCertificateNames
             names.Add(connect.PrinterHost.Trim());
         }
 
-        names.AddRange(PrinterAddressSuggestion.Gather(containerNetworks).Select(suggestion => suggestion.Value));
+        foreach (PrinterAddressSuggestion suggestion in PrinterAddressSuggestion.Gather(containerNetworks))
+        {
+            IReadOnlyList<IPAddress> resolved = await resolver.ResolveAsync(suggestion.Value, cancellationToken);
+
+            if (!ProvisioningBundleBuilder.IsUnreachableByPrinters(resolved, containerNetworks))
+            {
+                names.Add(suggestion.Value);
+            }
+        }
 
         return [.. names.Distinct(System.StringComparer.OrdinalIgnoreCase)];
     }

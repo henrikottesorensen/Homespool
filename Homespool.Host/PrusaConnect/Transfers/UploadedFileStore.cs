@@ -200,9 +200,26 @@ public sealed record StoredFile(string Id, string FileName, string Path, long Le
 }
 
 /// <summary>
-/// The content root, behind an interface so the store can be constructed in a test without an
-/// <c>IWebHostEnvironment</c>.
+/// The content root, behind an interface so a component that keeps files can be constructed in a test
+/// without an <c>IWebHostEnvironment</c>.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <b>Resolve every relative path through this, never through <c>IWebHostEnvironment</c> directly.</b>
+/// It is the single seam where "a directory in configuration" becomes "a directory on disk", which is
+/// what lets a test point the whole application somewhere harmless in one move
+/// (<c>HomespoolFactory</c>). Under <c>WebApplicationFactory</c> the real content root is the
+/// <i>project directory</i>, so a component that resolves its own path against
+/// <c>IWebHostEnvironment</c> writes into the working tree of whoever runs the suite - which the
+/// database, uploaded gcode and the printer certificate each did in turn, and each was found by its
+/// own separate symptom.
+/// </para>
+/// <para>
+/// Nothing enforces this: a new component can inject <c>IWebHostEnvironment</c> and nobody would
+/// notice until files appeared in <c>Homespool.Host/data</c>. <c>ContentRootIsolationTests</c> asserts
+/// the two current consumers still resolve here, which is the closest thing to a guard there is.
+/// </para>
+/// </remarks>
 public interface IHostEnvironmentAccessor
 {
     string ContentRootPath { get; }

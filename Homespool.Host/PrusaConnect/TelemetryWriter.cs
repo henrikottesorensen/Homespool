@@ -127,7 +127,11 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// Bounded and short: a database that is genuinely down will not recover inside a shutdown, and
     /// nothing here should be able to hold the process open for long.
     /// </remarks>
-    private const int FinalFlushAttempts = 3;
+    // Two, down from three (2026-07-30): each attempt is genuinely bounded now, so the budget
+    // arithmetic in MaxShutdownFlushDuration is real - and at three bounded attempts plus the
+    // in-flight flush the total no longer fitted the container's stop grace. Two patient attempts
+    // beat three that get the process SIGKILLed before the loss is even reported.
+    private const int FinalFlushAttempts = 2;
 
     /// <summary>
     /// Every field a <c>FILE_INFO</c>'s <c>data</c> carries that <b>firmware itself renders</b>. Read
@@ -166,7 +170,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// against an 11 s timeout - still killed, still no report. Deliberately as patient as the
     /// arithmetic allows, since the cost of giving up early is data a longer wait would have saved.
     /// </remarks>
-    private static readonly TimeSpan FinalFlushCommandBudget = TimeSpan.FromMilliseconds(2000);
+    private static readonly TimeSpan FinalFlushCommandBudget = TimeSpan.FromMilliseconds(3000);
 
     private readonly Channel<TelemetryWriteItem> _channel;
     private readonly IServiceScopeFactory _scopeFactory;
@@ -961,8 +965,24 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     private async Task ApplyWriterCommandTimeoutAsync(HSDbContext context, TimeSpan? budget, CancellationToken cancellationToken)
     {
         TimeSpan effective = budget ?? TimeSpan.FromMilliseconds(Math.Max(_options.BusyTimeoutMilliseconds, 1));
+        int seconds = Math.Max((int)Math.Ceiling(effective.TotalSeconds), 1);
 
-        context.Database.SetCommandTimeout(Math.Max((int)Math.Ceiling(effective.TotalSeconds), 1));
+        context.Database.SetCommandTimeout(seconds);
+
+        // SetCommandTimeout alone does not bind, and finding that out cost three rig runs: it covers
+        // the statements EF issues, but a flush's wait for the write lock happens at the transaction's
+        // own BEGIN/COMMIT, and Microsoft.Data.Sqlite runs those against the *connection's*
+        // DefaultTimeout - 30 s unless set. Measured: with only the command timeout wired, a flush
+        // against a held lock blocked for the full 30 s whatever value was configured, and lowering
+        // the connection string's "Default Timeout" was what finally moved it (the log always said
+        // "An error occurred using a transaction", which was the clue). Set here on the writer's own
+        // connection instance rather than in the connection string, so claims, Identity and the
+        // retention sweep keep the patient default - a user write colliding with a long sweep should
+        // wait it out, not turn into a 500 because the writer wanted a short leash.
+        if (context.Database.GetDbConnection() is Microsoft.Data.Sqlite.SqliteConnection sqliteConnection)
+        {
+            sqliteConnection.DefaultTimeout = seconds;
+        }
 
         if (budget is null)
         {
@@ -970,10 +990,9 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             return;
         }
 
-        // A tighter budget has to move *both* layers. SQLite blocks for busy_timeout before it
+        // A tighter budget has to move the pragma too. SQLite blocks for busy_timeout before it
         // reports SQLITE_BUSY at all, so a command can never return faster than the pragma however
-        // low CommandTimeout is set - which is exactly why wiring up the command timeout alone left
-        // shutdown at ~30 s. Half the budget, so two waits still fit inside it.
+        // low the timeouts above are set. Half the budget, so two waits still fit inside it.
         //
         // Opened explicitly first, and that is load-bearing: a pragma is per-connection, and EF
         // closes the connection after each command unless it was opened by the caller. Set on a

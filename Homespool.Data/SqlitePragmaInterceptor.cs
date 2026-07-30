@@ -1,3 +1,4 @@
+using System;
 using System.Data.Common;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
@@ -41,6 +42,11 @@ public class SqlitePragmaInterceptor : DbConnectionInterceptor
 {
     private readonly int _busyTimeoutMilliseconds;
 
+    /// <summary>Creates the interceptor with the writer's configured busy budget.</summary>
+    /// <param name="busyTimeoutMilliseconds">
+    /// The total a blocked writer should wait, from <see cref="StorageOptions.BusyTimeoutMilliseconds"/>.
+    /// Half of it is issued as the pragma - see <see cref="ApplyPragmas"/> for why.
+    /// </param>
     public SqlitePragmaInterceptor(int busyTimeoutMilliseconds)
     {
         _busyTimeoutMilliseconds = busyTimeoutMilliseconds;
@@ -71,10 +77,21 @@ public class SqlitePragmaInterceptor : DbConnectionInterceptor
     {
         using DbCommand command = connection.CreateCommand();
 
+        // Half the configured budget, deliberately, because this pragma is not the bound - it is the
+        // *granularity* of one. Microsoft.Data.Sqlite catches the SQLITE_BUSY this produces and
+        // retries the command itself until CommandTimeout, so the two layers compound: with both set
+        // to the same 5,000 ms, a blocked command took ~10 s, twice what the option documents.
+        // Measured 2026-07-30, and it was what kept a shutdown at ~30 s even after the command
+        // timeout was wired up (notes/fake-printer-harness.md). Halving it lets at most two waits
+        // fit inside the caller's budget, so the total lands on the configured value rather than
+        // double it, and callers that want a tighter bound (TelemetryWriter's shutdown flush) can
+        // still lower both together on their own connection.
+        int granularity = Math.Max(_busyTimeoutMilliseconds / 2, 1);
+
         command.CommandText = string.Create(CultureInfo.InvariantCulture,
             $"""
              PRAGMA synchronous = NORMAL;
-             PRAGMA busy_timeout = {_busyTimeoutMilliseconds};
+             PRAGMA busy_timeout = {granularity};
              """);
 
         command.ExecuteNonQuery();

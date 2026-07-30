@@ -149,7 +149,7 @@ ASPNETCORE_ENVIRONMENT=Development \
 ASPNETCORE_URLS="$BASE" \
 Serilog__MinimumLevel__Default=Information \
 Storage__WriteBatchSize="$WRITE_BATCH_SIZE" \
-ConnectionStrings__HomespoolDb="Data Source=$DB" \
+ConnectionStrings__HomespoolDb="Data Source=$DB;Default Timeout=${DEFAULT_TIMEOUT:-30}" \
     dotnet "$HOST_DLL" > "$RUN/server.log" 2>&1 &
 SERVER_PID=$!
 

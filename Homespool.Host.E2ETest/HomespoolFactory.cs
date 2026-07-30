@@ -56,43 +56,35 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
     private readonly MessageDispatcher? _messageDispatcher;
 
     /// <summary>
-    /// Where uploads go for this factory's lifetime, deleted with it.
+    /// The content root this factory's application resolves relative paths against, deleted with it.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>The database is not the only persistent state a test run touches.</b>
-    /// <see cref="FileStorageOptions.Directory"/> defaults to the relative <c>data/files</c>, and
-    /// <c>UploadedFileStore</c> resolves a relative path against the content root - which under
-    /// <see cref="WebApplicationFactory{TEntryPoint}"/> is the <i>real project directory</i>, not the
-    /// test output folder. So every upload test wrote into the same <c>Homespool.Host/data/files</c>
-    /// a running dev server serves from, and nothing removed them: 21 stale directories had
-    /// accumulated by 2026-07-28 before anyone noticed.
+    /// <b>One redirection, at the only seam that matters.</b> Components that keep files -
+    /// <c>UploadedFileStore</c>, <c>PrinterCertificateAuthority</c> - hold a relative directory in
+    /// options and resolve it through <see cref="IHostEnvironmentAccessor"/>. Under
+    /// <see cref="WebApplicationFactory{TEntryPoint}"/> that content root is the <i>real project
+    /// directory</i>, not the test output folder, so those relative paths land in the same
+    /// <c>Homespool.Host/data</c> a dev server uses. Pointing the accessor here moves all of them at
+    /// once, including the ones nobody has written yet.
     /// </para>
     /// <para>
-    /// That is the same fault this class's remarks already describe for the SQLite file, which took
-    /// two attempts to fix. The file store arrived later and did not inherit the lesson. Isolating it
-    /// here rather than in the one suite that uploads today means the next suite to touch the store
-    /// gets it for free - which is the whole reason the database override lives here too.
+    /// <b>It has caught three components, one at a time, and that is the point of fixing the
+    /// mechanism instead.</b> The SQLite file took two attempts. Uploads went unnoticed until 21 stale
+    /// directories had accumulated in the project tree. Certificates were worse than untidy: a test
+    /// issued one, read back the developer's own from a previous live run, and asserted against
+    /// <i>that</i> - a passing test measuring the wrong machine. Each was fixed on its own; each fix
+    /// left the next component to rediscover the trap.
+    /// </para>
+    /// <para>
+    /// The narrow hole this leaves: a component that injects <c>IWebHostEnvironment</c> and does its
+    /// own <c>Path.Combine</c> bypasses the accessor and this override with it. That is a convention
+    /// held by <see cref="HostEnvironmentAccessor"/>'s own documentation rather than by code, and
+    /// <c>ContentRootIsIsolatedTests</c> is what notices if this override is removed.
     /// </para>
     /// </remarks>
-    private readonly string _fileStorageRoot =
-        Path.Combine(Path.GetTempPath(), $"hs-files-{Guid.NewGuid():N}");
-
-    /// <summary>
-    /// Where this factory's certificate authority lives, deleted with it.
-    /// </summary>
-    /// <remarks>
-    /// <b>The third thing to escape into the project directory, for the third time for the same
-    /// reason.</b> <see cref="Certificates.CertificateOptions.Directory"/> defaults to the relative
-    /// <c>data/certificates</c>, resolved against the content root - which under
-    /// <see cref="WebApplicationFactory{TEntryPoint}"/> is the real project directory. So a test that
-    /// issued a certificate wrote into the same <c>Homespool.Host/data/certificates</c> a dev server
-    /// serves printers from, and then <i>read the developer's own certificate back</i> - which is how
-    /// this was found: a bundle test asserted on the name it had just issued and got the name from a
-    /// laptop's last live run instead.
-    /// </remarks>
-    private readonly string _certificateRoot =
-        Path.Combine(Path.GetTempPath(), $"hs-certs-{Guid.NewGuid():N}");
+    private readonly string _contentRoot =
+        Path.Combine(Path.GetTempPath(), $"hs-content-{Guid.NewGuid():N}");
 
     public HomespoolFactory(string connectionString,
                                  MessageDispatcher? messageDispatcher = null,
@@ -141,16 +133,21 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
 
             services.AddDbContext<HSDbContext>(options => options.UseSqlite(_connectionString));
 
-            // PostConfigure rather than Configure: Program.cs binds this section from configuration,
-            // and only a post-configure step is guaranteed to run after that binding. An absolute
-            // path also bypasses the content-root resolution entirely, so it cannot be re-rooted
-            // back onto the project directory.
-            services.PostConfigure<FileStorageOptions>(options => options.Directory = _fileStorageRoot);
+            // Everything that keeps a file resolves its configured, relative directory against this.
+            // Replacing it is what isolates uploads, certificates and whatever comes next, in one
+            // place, instead of overriding each component's options as it is discovered escaping -
+            // which is how the first three were dealt with, one incident at a time.
+            Directory.CreateDirectory(_contentRoot);
 
-            // Same reasoning, same mechanism: PostConfigure runs after Program.cs binds the section,
-            // and an absolute path cannot be re-rooted onto the project directory.
-            services.PostConfigure<Homespool.Host.Certificates.CertificateOptions>(
-                options => options.Directory = _certificateRoot);
+            ServiceDescriptor? environment = services.SingleOrDefault(
+                d => d.ServiceType == typeof(IHostEnvironmentAccessor));
+
+            if (environment is not null)
+            {
+                services.Remove(environment);
+            }
+
+            services.AddSingleton<IHostEnvironmentAccessor>(new HostEnvironmentAccessor(_contentRoot));
 
             // Program.cs's .ReadFrom.Services(services) call wires up any ILogEventSink registered
             // here alongside its own console sink - a bare Microsoft.Extensions.Logging.ILoggerProvider
@@ -219,8 +216,9 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
     }
 
     /// <summary>
-    /// Removes the upload directory along with the host. Best effort: a leaked temp directory is a
-    /// nuisance, a failed test run because cleanup threw is worse.
+    /// Removes the content root, and everything the application wrote into it, along with the host.
+    /// Best effort: a leaked temp directory is a nuisance, a failed test run because cleanup threw is
+    /// worse.
     /// </summary>
     protected override void Dispose(bool disposing)
     {
@@ -233,12 +231,9 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
 
         try
         {
-            foreach (string root in new[] { _fileStorageRoot, _certificateRoot })
+            if (Directory.Exists(_contentRoot))
             {
-                if (Directory.Exists(root))
-                {
-                    Directory.Delete(root, recursive: true);
-                }
+                Directory.Delete(_contentRoot, recursive: true);
             }
         }
         catch (IOException)

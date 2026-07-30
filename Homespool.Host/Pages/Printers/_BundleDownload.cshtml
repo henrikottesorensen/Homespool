@@ -67,10 +67,15 @@
     }
     else
     {
+        <p class="mb-1">
+            This printer is provisioned, but no bundle can be built: the certificate carries no address a
+            printer could actually reach.
+        </p>
         <p class="mb-0">
-            This printer is provisioned, but no bundle can be built: the server has no printer
-            certificate, so there is no address a printer could verify. The certificate is issued at
-            startup - check the server log for why it was not.
+            In a container that usually means the certificate was issued before
+            <code>PrusaConnect:PrinterHost</code> was set, so it covers only addresses inside the
+            container - which work from in there and nowhere else. Set the address printers should dial,
+            then reissue under <em>Admin &rarr; Printer certificate</em>.
         </p>
     }
 </div>

@@ -3,8 +3,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 using Homespool.Host.Certificates;
 using Microsoft.Extensions.Options;
@@ -37,14 +40,65 @@ public sealed class ProvisioningBundleBuilder
 
     private readonly PrusaConnectOptions _options;
     private readonly PrinterCertificateAuthority _authority;
+    private readonly IHostAddressResolver _resolver;
 
-    public ProvisioningBundleBuilder(IOptions<PrusaConnectOptions> options, PrinterCertificateAuthority authority)
+    public ProvisioningBundleBuilder(IOptions<PrusaConnectOptions> options,
+                                     PrinterCertificateAuthority authority,
+                                     IHostAddressResolver resolver)
     {
         ArgumentNullException.ThrowIfNull(options);
 
         _options = options.Value;
         _authority = authority;
+        _resolver = resolver;
     }
+
+    /// <summary>
+    /// Whether a name is one no printer could use, on the evidence of what it resolves to.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Resolved rather than guessed.</b> A container's own address is recognisable on sight
+    /// (<see cref="PrinterAddressSuggestion.IsProbablyTheContainersOwn"/>); a container's own
+    /// <i>hostname</i> is not - <c>71e04654da9b</c> is a name like any other, and a rule that dropped
+    /// names looking like hex would eventually drop somebody's real machine. Asking what it resolves
+    /// to answers the question that actually matters instead of the one that is easy to ask.
+    /// </para>
+    /// <para>
+    /// <b>Only a positive answer counts.</b> Nothing resolved means the resolver could not say, not
+    /// that the name is bad - a LAN name may well be unresolvable from inside a container while
+    /// working perfectly from the printer's side of the network. So an unresolvable name stays on the
+    /// list, and only a name that resolves to nothing a printer could use comes off it.
+    /// </para>
+    /// <para>
+    /// <b>Stated as "nothing usable", not "everything unusable"</b>, and the difference is not
+    /// academic: resolving a name returns whatever the platform feels like including - an IPv6 entry,
+    /// a loopback entry - and a rule asking whether <i>every</i> answer was container-private is
+    /// satisfied by none of them. Measured, on the deployment this was written for: the container's own
+    /// hostname sailed through the first version of this check.
+    /// </para>
+    /// </remarks>
+    /// <param name="resolved">What the name resolved to; empty means the resolver had no answer.</param>
+    public static bool IsUnreachableByPrinters(IReadOnlyList<IPAddress> resolved)
+    {
+        ArgumentNullException.ThrowIfNull(resolved);
+
+        return resolved.Count > 0 && !resolved.Any(CouldReachAPrinter);
+    }
+
+    /// <summary>
+    /// Whether an address is one a printer on the household LAN could actually dial.
+    /// </summary>
+    /// <remarks>
+    /// Everything a printer cannot use, for the same reason: IPv6 because the firmware's stack does
+    /// not, loopback and link-local because they name this machine or a failed DHCP lease, and the
+    /// container ranges because they exist only inside Docker.
+    /// </remarks>
+    private static bool CouldReachAPrinter(IPAddress address) =>
+        address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
+        && !IPAddress.IsLoopback(address)
+        && !address.GetAddressBytes().Take(2).SequenceEqual<byte>([169, 254])
+        && !PrinterAddressSuggestion.IsProbablyTheContainersOwn(address);
 
     /// <summary>
     /// The addresses a bundle may be written for, best first.
@@ -62,7 +116,7 @@ public sealed class ProvisioningBundleBuilder
     /// the only answer there is.
     /// </para>
     /// </remarks>
-    public IReadOnlyList<string> AvailableNames()
+    public async Task<IReadOnlyList<string>> AvailableNamesAsync(CancellationToken cancellationToken)
     {
         if (!_options.PrinterTls)
         {
@@ -76,11 +130,22 @@ public sealed class ProvisioningBundleBuilder
             return [];
         }
 
-        IReadOnlyList<string> names = PrinterCertificateAuthority.NamesOf(leaf);
+        List<string> usable = [];
+
+        foreach (string name in PrinterCertificateAuthority.NamesOf(leaf))
+        {
+            // Offering an address only the container can reach is not a warning worth writing, it is a
+            // choice worth removing: it looks as reasonable as the others, it is the one a Compose
+            // deployment volunteers, and picking it produces a bundle that cannot work.
+            if (!IsUnreachableByPrinters(await _resolver.ResolveAsync(name, cancellationToken)))
+            {
+                usable.Add(name);
+            }
+        }
 
         // The configured address first when the certificate carries it: it is the one an operator
         // chose deliberately, and the one every other page already talks about.
-        return [.. names.OrderByDescending(name => name.Equals(_options.PrinterHost?.Trim(), StringComparison.OrdinalIgnoreCase))];
+        return [.. usable.OrderByDescending(name => name.Equals(_options.PrinterHost?.Trim(), StringComparison.OrdinalIgnoreCase))];
     }
 
     /// <summary>
@@ -90,18 +155,20 @@ public sealed class ProvisioningBundleBuilder
     /// The name is not one the certificate vouches for. Refused rather than written, because the
     /// failure it would cause happens at a printer, days later, and says only "TLS error".
     /// </exception>
-    public byte[] Build(string hostname, string token)
+    public async Task<byte[]> BuildAsync(string hostname, string token, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostname);
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
 
         string name = hostname.Trim();
 
-        if (_options.PrinterTls && !AvailableNames().Contains(name, StringComparer.OrdinalIgnoreCase))
+        if (_options.PrinterTls
+            && !(await AvailableNamesAsync(cancellationToken)).Contains(name, StringComparer.OrdinalIgnoreCase))
         {
             throw new ArgumentException(
-                $"The printer certificate does not cover '{name}', so a printer given this bundle could not "
-                + "verify this server. Choose one of the names the certificate carries, or reissue it.",
+                $"'{name}' is not an address a printer could use to reach this server - either the certificate "
+                + "does not cover it, or it resolves only inside this container. Choose one of the names offered, "
+                + "or reissue the certificate.",
                 nameof(hostname));
         }
 
@@ -120,7 +187,8 @@ public sealed class ProvisioningBundleBuilder
             // beside it would be a file the printer never opens and the operator has to wonder about.
             if (_options.PrinterTls)
             {
-                WriteEntry(archive, AuthorityFileName, File.ReadAllBytes(_authority.AuthorityDerPath));
+                WriteEntry(archive, AuthorityFileName,
+                           await File.ReadAllBytesAsync(_authority.AuthorityDerPath, cancellationToken));
             }
         }
 

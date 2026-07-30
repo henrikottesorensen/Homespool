@@ -1,5 +1,7 @@
 using System;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 using Homespool.Host.PrusaConnect;
 using Microsoft.AspNetCore.Authorization;
@@ -42,7 +44,7 @@ public class BundleModel : PageModel
     /// </summary>
     public IActionResult OnGet() => NotFound();
 
-    public IActionResult OnPost(string token, string hostname, int printerId, string? printerName)
+    public async Task<IActionResult> OnPostAsync(string token, string hostname, int printerId, string? printerName, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(hostname))
         {
@@ -53,7 +55,7 @@ public class BundleModel : PageModel
 
         try
         {
-            bundle = _bundles.Build(hostname, token);
+            bundle = await _bundles.BuildAsync(hostname, token, cancellationToken);
         }
         catch (ArgumentException ex)
         {

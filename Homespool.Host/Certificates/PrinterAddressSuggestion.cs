@@ -79,7 +79,7 @@ public record PrinterAddressSuggestion(string Value, AddressDurability Durabilit
                 continue;   // link-local: the machine failed to get an address at all
             }
 
-            bool containerish = octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31;
+            bool containerish = IsProbablyTheContainersOwn(address);
 
             suggestions.Add(new PrinterAddressSuggestion(
                 address.ToString(),
@@ -93,6 +93,37 @@ public record PrinterAddressSuggestion(string Value, AddressDurability Durabilit
 
         // Least-likely-to-work last, so the page's first option is its best one.
         return [.. suggestions.OrderBy(s => s.Durability == AddressDurability.ProbablyTheContainersOwn ? 1 : 0)];
+    }
+
+    /// <summary>
+    /// Whether an address is one a container gave itself, and therefore useless to a printer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The 172.16/12 range Docker's default bridge networks allocate from, which is also where
+    /// <c>compose.yaml</c> pins ours. A printer is a physical device on the household LAN and cannot
+    /// route to it at all - the address works perfectly from inside the container and nowhere else,
+    /// which is what makes it such a convincing wrong answer.
+    /// </para>
+    /// <para>
+    /// Exact rather than heuristic, which is why it is worth having as its own rule: the name-based
+    /// version of this question - "is <c>71e04654da9b</c> a Docker hostname?" - cannot be answered by
+    /// looking at it, and is answered by resolving it instead (<c>ProvisioningBundleBuilder.IsUnreachableByPrinters</c>).
+    /// </para>
+    /// </remarks>
+    /// <param name="address">Any address.</param>
+    public static bool IsProbablyTheContainersOwn(IPAddress address)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+
+        if (address.AddressFamily != AddressFamily.InterNetwork)
+        {
+            return false;
+        }
+
+        byte[] octets = address.GetAddressBytes();
+
+        return octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31;
     }
 
     /// <summary>

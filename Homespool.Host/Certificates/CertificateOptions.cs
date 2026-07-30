@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using System.Linq;
+
 namespace Homespool.Host.Certificates;
 
 /// <summary>
@@ -87,4 +90,46 @@ public class CertificateOptions
     /// it is.
     /// </remarks>
     public string AuthorityName { get; set; } = "Homespool printer CA";
+
+    /// <summary>
+    /// CIDR ranges that exist only inside this deployment — a container network, typically. Addresses
+    /// in them are never offered as somewhere a printer could dial.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Configuration rather than a constant, because the range is a deployment's to choose.</b>
+    /// <c>compose.yaml</c> pins its own network and invites changing it if it collides with something
+    /// on the host - and a hardcoded rule would then stop recognising the container's address and go
+    /// back to offering it as somewhere to dial, which is precisely the trap this closes. The shipped
+    /// stack feeds this from the same <c>PROXY_NETWORK</c> that pins the network, so the two cannot
+    /// disagree.
+    /// </para>
+    /// <para>
+    /// <b>The default is Docker's, not RFC 1918's</b>, and deliberately narrower than "private": a
+    /// household LAN on 192.168/16 or 10/8 is exactly what a printer <i>can</i> reach, so those must
+    /// never be in here. A LAN that genuinely uses 172.16/12 should empty this list rather than have
+    /// its own addresses mistaken for a container's - which is the second reason it is configurable.
+    /// </para>
+    /// <para>
+    /// Deliberately not <c>XForwarded:KnownNetworks</c>, which looks like the same value and is not:
+    /// that names whichever proxy may speak for a client, and it is legitimate for that to be a
+    /// machine elsewhere on the LAN. Treating such a range as container-internal would filter the very
+    /// addresses printers use.
+    /// </para>
+    /// </remarks>
+    public string[] ContainerNetworks { get; set; } = ["172.16.0.0/12"];
+
+    /// <summary>
+    /// <see cref="ContainerNetworks"/> parsed, with anything unparseable dropped rather than fatal.
+    /// </summary>
+    /// <remarks>
+    /// A typo here must not stop the server: the consequence of ignoring one entry is an address
+    /// offered that should not have been, and the consequence of throwing is a deployment that will
+    /// not start. The first is visible on a page; the second happens at 2am.
+    /// </remarks>
+    public IReadOnlyList<System.Net.IPNetwork> ParsedContainerNetworks =>
+        [.. (ContainerNetworks ?? []).Select(TryParseNetwork).Where(n => n is not null).Select(n => n!.Value)];
+
+    private static System.Net.IPNetwork? TryParseNetwork(string cidr) =>
+        System.Net.IPNetwork.TryParse(cidr, out System.Net.IPNetwork parsed) ? parsed : null;
 }

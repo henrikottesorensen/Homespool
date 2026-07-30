@@ -60,6 +60,14 @@ services:
       # headers are silently ignored again.
       XForwarded__KnownNetworks__0: "${PROXY_NETWORK:-172.28.0.0/16}"
 
+      # The same range again, for a different question: which addresses exist only in here. Detection
+      # inside a container sees the container, so without this the provisioning page would offer an
+      # address no printer on your network can route to, looking exactly as reasonable as the real one.
+      #
+      # Fed from the same variable deliberately - one network, one value, no way for them to drift. If
+      # you change PROXY_SUBNET, this follows, and the page keeps recognising what it should not offer.
+      Certificates__ContainerNetworks__0: "${PROXY_NETWORK:-172.28.0.0/16}"
+
       PrusaConnect__PrinterHost: "${PRINTER_HOST:-}"
       PrusaConnect__PrinterPort: "${PRINTER_PORT:-15443}"
       PrusaConnect__PrinterTls: "${PRINTER_TLS:-true}"

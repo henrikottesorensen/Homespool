@@ -19,6 +19,12 @@ namespace Homespool.Host.Test;
 /// </remarks>
 public class PrinterAddressSuggestionTests
 {
+    /// <summary>
+    /// What ships in <c>appsettings.json</c>: Docker's own range. A deployment that pins a different
+    /// network passes that instead, which is the point of the setting.
+    /// </summary>
+    private static readonly IReadOnlyList<IPNetwork> DockerDefault = [IPNetwork.Parse("172.16.0.0/12")];
+
     private static PrinterAddressSuggestion? Find(IReadOnlyList<PrinterAddressSuggestion> all, string value) =>
         all.FirstOrDefault(s => s.Value == value);
 
@@ -44,7 +50,7 @@ public class PrinterAddressSuggestionTests
     public void ADockerRangeAddressIsFlaggedRatherThanTrusted(string address)
     {
         // Act
-        IReadOnlyList<PrinterAddressSuggestion> suggestions = PrinterAddressSuggestion.Classify([IPAddress.Parse(address)], hostName: null);
+        IReadOnlyList<PrinterAddressSuggestion> suggestions = PrinterAddressSuggestion.Classify([IPAddress.Parse(address)], hostName: null, DockerDefault);
 
         // Assert
         Find(suggestions, address)!.Durability.Should().Be(AddressDurability.ProbablyTheContainersOwn);
@@ -64,7 +70,7 @@ public class PrinterAddressSuggestionTests
     public void AnOrdinaryPrivateAddressIsOfferedWithTheLeaseCaveat(string address)
     {
         // Act
-        IReadOnlyList<PrinterAddressSuggestion> suggestions = PrinterAddressSuggestion.Classify([IPAddress.Parse(address)], hostName: null);
+        IReadOnlyList<PrinterAddressSuggestion> suggestions = PrinterAddressSuggestion.Classify([IPAddress.Parse(address)], hostName: null, DockerDefault);
 
         // Assert
         Find(suggestions, address)!.Durability.Should().Be(AddressDurability.UntilTheLeaseMoves);
@@ -83,7 +89,8 @@ public class PrinterAddressSuggestionTests
         // Act
         IReadOnlyList<PrinterAddressSuggestion> suggestions = PrinterAddressSuggestion.Classify(
             [IPAddress.Parse("127.0.0.1"), IPAddress.Parse("169.254.10.1"), IPAddress.Parse("192.168.1.5")],
-            hostName: null);
+            hostName: null,
+            DockerDefault);
 
         // Assert
         suggestions.Select(s => s.Value).Should().BeEquivalentTo(["192.168.1.5"]);
@@ -102,8 +109,8 @@ public class PrinterAddressSuggestionTests
     public void AHostNameLeadsUnlessItIsMdns()
     {
         // Act
-        IReadOnlyList<PrinterAddressSuggestion> named = PrinterAddressSuggestion.Classify([IPAddress.Parse("192.168.1.5")], "homespool.lan");
-        IReadOnlyList<PrinterAddressSuggestion> mdns = PrinterAddressSuggestion.Classify([IPAddress.Parse("192.168.1.5")], "homespool.local");
+        IReadOnlyList<PrinterAddressSuggestion> named = PrinterAddressSuggestion.Classify([IPAddress.Parse("192.168.1.5")], "homespool.lan", DockerDefault);
+        IReadOnlyList<PrinterAddressSuggestion> mdns = PrinterAddressSuggestion.Classify([IPAddress.Parse("192.168.1.5")], "homespool.local", DockerDefault);
 
         // Assert
         named[0].Value.Should().Be("homespool.lan");
@@ -123,7 +130,7 @@ public class PrinterAddressSuggestionTests
     {
         // Act
         IReadOnlyList<PrinterAddressSuggestion> suggestions = PrinterAddressSuggestion.Classify(
-            [IPAddress.Parse("172.17.0.2"), IPAddress.Parse("192.168.1.5")], hostName: null);
+            [IPAddress.Parse("172.17.0.2"), IPAddress.Parse("192.168.1.5")], hostName: null, DockerDefault);
 
         // Assert
         suggestions.Select(s => s.Value).Should().ContainInOrder("192.168.1.5", "172.17.0.2");
@@ -136,6 +143,6 @@ public class PrinterAddressSuggestionTests
     public void NothingUsableYieldsNoSuggestions()
     {
         // Assert
-        PrinterAddressSuggestion.Classify([IPAddress.Loopback], hostName: null).Should().BeEmpty();
+        PrinterAddressSuggestion.Classify([IPAddress.Loopback], hostName: null, DockerDefault).Should().BeEmpty();
     }
 }

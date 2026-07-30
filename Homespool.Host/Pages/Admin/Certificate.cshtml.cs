@@ -39,16 +39,20 @@ public class CertificateModel : PageModel
 {
     private readonly PrinterCertificateAuthority _authority;
     private readonly PrusaConnectOptions _connect;
+    private readonly CertificateOptions _certificates;
     private readonly ILogger<CertificateModel> _logger;
 
     public CertificateModel(PrinterCertificateAuthority authority,
                             IOptions<PrusaConnectOptions> connect,
+                            IOptions<CertificateOptions> certificates,
                             ILogger<CertificateModel> logger)
     {
         ArgumentNullException.ThrowIfNull(connect);
+        ArgumentNullException.ThrowIfNull(certificates);
 
         _authority = authority;
         _connect = connect.Value;
+        _certificates = certificates.Value;
         _logger = logger;
     }
 
@@ -97,7 +101,7 @@ public class CertificateModel : PageModel
             return RedirectToPage();
         }
 
-        IReadOnlyList<string> names = PrinterCertificateNames.ForThisMachine(_connect);
+        IReadOnlyList<string> names = PrinterCertificateNames.ForThisMachine(_connect, _certificates.ParsedContainerNetworks);
 
         if (names.Count == 0)
         {
@@ -128,7 +132,7 @@ public class CertificateModel : PageModel
 
     private void Load()
     {
-        Current = PrinterCertificateNames.ForThisMachine(_connect);
+        Current = PrinterCertificateNames.ForThisMachine(_connect, _certificates.ParsedContainerNetworks);
 
         if (!TlsEnabled)
         {

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 
 using Homespool.Host.PrusaConnect;
 
@@ -36,7 +37,13 @@ public static class PrinterCertificateNames
     /// inspects the certificate. Callers decide what an empty list means — at startup it is a warning
     /// and a fallback, on the reissue page it is a refusal.
     /// </remarks>
-    public static IReadOnlyList<string> ForThisMachine(PrusaConnectOptions connect)
+    /// <param name="connect">Supplies the configured printer address, which leads the list.</param>
+    /// <param name="containerNetworks">
+    /// The deployment's own internal ranges, so an address only the container can reach is described
+    /// as such rather than offered as an equal.
+    /// </param>
+    public static IReadOnlyList<string> ForThisMachine(PrusaConnectOptions connect,
+                                                       IReadOnlyList<IPNetwork> containerNetworks)
     {
         List<string> names = [];
 
@@ -45,7 +52,7 @@ public static class PrinterCertificateNames
             names.Add(connect.PrinterHost.Trim());
         }
 
-        names.AddRange(PrinterAddressSuggestion.Gather().Select(suggestion => suggestion.Value));
+        names.AddRange(PrinterAddressSuggestion.Gather(containerNetworks).Select(suggestion => suggestion.Value));
 
         return [.. names.Distinct(System.StringComparer.OrdinalIgnoreCase)];
     }

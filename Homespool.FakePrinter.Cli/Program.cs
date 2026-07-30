@@ -69,11 +69,19 @@ public static class Program
     {
         Console.WriteLine("Usage:");
         Console.WriteLine("  fakeprinter enrol  --server <url> [--identity <file>]");
-        Console.WriteLine("  fakeprinter run    --server <url> [--identity <file>] [--capture <path>] [--printing] [--interval-ms <n>] [--events-every <n>]");
-        Console.WriteLine("  fakeprinter blast  --server <url> [--identity <file>] [--events-every <n>]");
+        Console.WriteLine("  fakeprinter run    --server <url> [--identity <file>] [--capture <path>] [--printing] [--interval-ms <n>] [--events-every <n>] [--tools <n>] [--mmu] [--junk-fields <n>] [--junk-distinct]");
+        Console.WriteLine("  fakeprinter blast  --server <url> [--identity <file>] [--events-every <n>] [--tools <n>] [--mmu] [--junk-fields <n>] [--junk-distinct]");
         Console.WriteLine();
         Console.WriteLine("--events-every <n> makes every n-th message a STATE_CHANGED event rather than");
         Console.WriteLine("telemetry, for exercising the event path under load. 10 matches the firmware ratio.");
+        Console.WriteLine();
+        Console.WriteLine("--tools <n> reports n tools, which emits the per-slot \"slot\" object firmware only");
+        Console.WriteLine("sends above one tool - one extra persisted row per tool per sample. --mmu adds the");
+        Console.WriteLine("MMU-only state/command pair.");
+        Console.WriteLine();
+        Console.WriteLine("--junk-fields <n> adds n properties the server does not model, for exercising the");
+        Console.WriteLine("unknown-field tracker; --junk-distinct makes every name unique, which is what");
+        Console.WriteLine("drives its distinct-name cap. No printer sends either shape.");
         Console.WriteLine();
         Console.WriteLine("The identity file (default fakeprinter.json) holds the fingerprint and, after");
         Console.WriteLine("enrol, the token. It is a credential - keep it out of the repository.");
@@ -192,7 +200,25 @@ public static class Program
 
     private static ITelemetrySource BuildSource(Dictionary<string, string> named, bool blast)
     {
-        return MixEvents(named, BuildTelemetrySource(named, blast));
+        return AddUnknownFields(named, MixEvents(named, BuildTelemetrySource(named, blast)));
+    }
+
+    /// <summary>
+    /// Wraps the source so each message carries unmodelled properties, when <c>--junk-fields</c> asks
+    /// for it. Off unless asked; nothing a real printer sends looks like this.
+    /// </summary>
+    private static ITelemetrySource AddUnknownFields(Dictionary<string, string> named, ITelemetrySource source)
+    {
+        if (!named.TryGetValue("junk-fields", out string? value) || !int.TryParse(value, out int fields) || fields < 1)
+        {
+            return source;
+        }
+
+        return new UnknownFieldTelemetrySource(source)
+        {
+            FieldsPerMessage = fields,
+            Distinct = named.ContainsKey("junk-distinct"),
+        };
     }
 
     /// <summary>
@@ -225,10 +251,9 @@ public static class Program
             {
                 IdleInterval = TimeSpan.Zero,
                 PrintingInterval = TimeSpan.Zero,
+                Readings = ReadingsFrom(named),
             };
         }
-
-        SyntheticTelemetrySource source = new();
 
         if (named.ContainsKey("interval-ms"))
         {
@@ -238,10 +263,36 @@ public static class Program
             {
                 IdleInterval = interval,
                 PrintingInterval = interval,
+                Readings = ReadingsFrom(named),
             };
         }
 
-        return source;
+        return new SyntheticTelemetrySource { Readings = ReadingsFrom(named) };
+    }
+
+    /// <summary>
+    /// The analog readings, with <c>--tools</c> deciding whether a <c>slot</c> object is emitted at
+    /// all. Firmware sends one only above one tool, so the default reproduces the capture printer.
+    /// </summary>
+    /// <remarks>
+    /// <c>--mmu</c> adds the MMU-only <c>state</c>/<c>command</c> pair. Absent is meaningful and not
+    /// the same as zero, so it stays null unless asked for - see backlog.md on <c>mmu.enabled</c>.
+    /// </remarks>
+    private static TelemetryReadings ReadingsFrom(Dictionary<string, string> named)
+    {
+        int tools = named.TryGetValue("tools", out string? value) && int.TryParse(value, out int parsed)
+            ? Math.Max(parsed, 1)
+            : 1;
+
+        bool mmu = named.ContainsKey("mmu");
+
+        return new TelemetryReadings
+        {
+            Tools = tools,
+            ActiveTool = 1,
+            MmuState = mmu ? 3 : null,
+            MmuCommand = mmu ? "C" : null,
+        };
     }
 
     private static TimeSpan IntervalFrom(Dictionary<string, string> named, int defaultMilliseconds)

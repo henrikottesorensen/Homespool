@@ -28,4 +28,24 @@ public sealed record TelemetryReadings(
     //
     // A plain comment, not ///: an XML doc comment cannot sit on a positional record parameter
     // (CS1587), and documenting one parameter via <param> would oblige all fourteen (CS1573).
-    int? TimeToFilamentChange = null);
+    int? TimeToFilamentChange = null,
+
+    // How many tools this printer reports, which decides whether a "slot" object is emitted at all:
+    // firmware sends one only when enabled_tool_cnt() > 1, so a single-tool printer sends nothing and
+    // 1 - the default - reproduces the capture printer exactly.
+    //
+    // Above 1, every full message carries a numbered sub-object per tool, and that changes the write
+    // shape rather than just the payload: one TelemetrySlotSample row per tool per sample, so a
+    // message costs (1 + Tools) rows instead of 1. Every throughput and buffer-ceiling number
+    // measured before this option existed was taken on the single-tool shape.
+    int Tools = 1,
+
+    // The active tool, 1-based, clamped into range against Tools when a message is built.
+    int ActiveTool = 1,
+
+    // MMU progress code and command character - params.progress_code and a single char, emitted only
+    // on MMU builds. Null on a non-MMU printer, which is not the same as present-and-zero: see
+    // backlog.md on mmu.enabled, where "cannot have one" and "has one, disabled" are distinct states
+    // and absent is what distinguishes them.
+    int? MmuState = null,
+    string? MmuCommand = null);

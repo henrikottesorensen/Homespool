@@ -59,18 +59,36 @@ cp .env.example .env      # set at least PRINTER_HOST before printers need to re
 docker compose up --build
 ```
 
-The database lives in a named volume (`printerservice-data`) so it survives container
-replacement.
+That brings up two containers: the application, and an nginx that terminates TLS for people. The
+database lives in a named volume (`printerservice-data`) so it survives container replacement.
 
-**Two ports are published, and they are for different audiences.** `8080` (`PORT` in `.env`)
-serves the pages and the API over plain HTTP, for your own reverse proxy to terminate TLS in
-front of. `443` (`PRINTER_PORT`) serves printers and nothing else: it carries a certificate this
-deployment mints for itself on first run, and only `/p/*` exists there — a request for any other
-route is answered `404`, on either port.
+**Everything is served over TLS from the first start, and the two audiences are kept apart.**
+
+| | who | port | certificate |
+|---|---|---|---|
+| **people** | pages, `/api` | `443` (`HTTPS_PORT`), with `80` redirecting to it | self-signed on first start; replace it with your own |
+| **printers** | `/p/*`, nothing else | `15443` (`PRINTER_PORT`) | minted by this deployment, and the one on the USB stick |
+
+The application's own port is **not published**. nginx reaches it over the compose network and is
+the only thing that can, which is also what makes the client address it reports worth believing.
+Routes are segregated the same way inside the app: `/p/*` exists on the printer listener alone, and
+every other route exists everywhere else, so a request on the wrong one is answered `404`.
+
+> **The browser will warn on first use, and that is honest.** The certificate the proxy generates
+> is signed by nobody. Serving your credentials in clear while you go and obtain a real certificate
+> would be the worse default. To replace it, put `homespool.crt` and `homespool.key` into the
+> `homespool-proxy-certs` volume and restart the proxy — nginx does not ask where a certificate came
+> from, which is exactly why the stack ships nginx rather than something that insists on fetching
+> one. `nginx/homespool.conf` has a commented HSTS line to uncomment once you have one.
+
+> **Already run Traefik, Caddy or your own nginx?** Delete the `proxy` service, publish the app's
+> `8080` yourself, and point `XForwarded__KnownNetworks` at your proxy's network. The application is
+> built to sit behind one; it just no longer *requires* you to have built that yourself.
 
 > **Do not put a reverse proxy in front of the printer port.** The printer firmware trusts a
 > single anchor, requires exactly one certificate to be presented, and pushes 256 KiB transfer
 > chunks that a proxy will buffer. Each of those fails in a way that looks like a protocol bug.
+> The shipped proxy answers `404` to `/p/` for the same reason.
 
 > **Do not put that volume on NFS, CIFS or a NAS share.** SQLite's WAL locking is unreliable
 > over network filesystems and will eventually corrupt the database. Use a local Docker
@@ -149,7 +167,7 @@ Best when you are setting a printer up from scratch, or it has no way to reach t
 ```ini
 [service::connect]
 hostname = printers.example.com
-port = 443
+port = 15443
 tls = True
 token = <generated for you>
 ```
@@ -182,7 +200,7 @@ provisioning — write only the `[service::connect]` host/port/tls lines, no tok
 ```ini
 [service::connect]
 hostname = printers.example.com
-port = 443
+port = 15443
 tls = true
 ```
 
@@ -215,7 +233,7 @@ In Docker, use the `__` (double underscore) form, e.g. `PrusaConnect__PrinterHos
 | Setting | Default | Purpose |
 |---|---|---|
 | `PrinterHost` | *(empty)* | The hostname printers use to reach this server. **Required for USB-key provisioning** — there is no way to infer it from inside the process. |
-| `PrinterPort` | `443` | Port for the generated snippet — the host side of the printer port mapping, not the port inside the container. |
+| `PrinterPort` | `15443` | Port for the generated snippet — the host side of the printer port mapping, not the port inside the container. Not 443: that belongs to the people-facing proxy. |
 | `PrinterTls` | `true` | Whether printers reach this server over TLS — the `tls` line in the ini **and** whether the printer listener serves TLS at all, so the two cannot disagree. See below. |
 | `RegistrationCodeLifetimeMinutes` | `60` | How long a registration code stays claimable. Prusa uses 24 h; one hour is a deliberately tighter default, since the code is a credential for adopting a printer. |
 
@@ -242,7 +260,7 @@ belonging to another. Naming any of these makes Kestrel ignore `ASPNETCORE_URLS`
 | Setting | Default | Purpose |
 |---|---|---|
 | `PrinterPort` | `15443` | TLS, serving the printer certificate. `/p/*` exists here and nowhere else. Above 1024 because the container runs as a non-root user. |
-| `UserPort` | `8080` | Plain HTTP: pages, `/api`, `/health` — everything except `/p/*`. Terminate TLS in front of it. |
+| `UserPort` | `8080` | Plain HTTP: pages, `/api`, `/health` — everything except `/p/*`. Not published to the host; the shipped proxy reaches it over the compose network and terminates TLS in front of it. |
 | `UserHttpsPort` | *(none)* | An HTTPS listener for people, using the ASP.NET development certificate or `Kestrel:Certificates:Default`. Set it only if this process should serve user TLS itself; it never carries the printer's certificate. |
 
 ### `Certificates`

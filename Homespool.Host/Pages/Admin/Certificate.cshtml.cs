@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography.X509Certificates;
+using System.Threading;
+using System.Threading.Tasks;
 
 using Homespool.Host.Certificates;
 using Homespool.Host.PrusaConnect;
@@ -40,11 +42,13 @@ public class CertificateModel : PageModel
     private readonly PrinterCertificateAuthority _authority;
     private readonly PrusaConnectOptions _connect;
     private readonly CertificateOptions _certificates;
+    private readonly IHostAddressResolver _resolver;
     private readonly ILogger<CertificateModel> _logger;
 
     public CertificateModel(PrinterCertificateAuthority authority,
                             IOptions<PrusaConnectOptions> connect,
                             IOptions<CertificateOptions> certificates,
+                            IHostAddressResolver resolver,
                             ILogger<CertificateModel> logger)
     {
         ArgumentNullException.ThrowIfNull(connect);
@@ -53,6 +57,7 @@ public class CertificateModel : PageModel
         _authority = authority;
         _connect = connect.Value;
         _certificates = certificates.Value;
+        _resolver = resolver;
         _logger = logger;
     }
 
@@ -88,9 +93,9 @@ public class CertificateModel : PageModel
     public bool ConfiguredHostUncovered =>
         ConfiguredHost is not null && !Covered.Contains(ConfiguredHost, StringComparer.OrdinalIgnoreCase);
 
-    public void OnGet() => Load();
+    public Task OnGetAsync(CancellationToken cancellationToken) => LoadAsync(cancellationToken);
 
-    public IActionResult OnPostReissue()
+    public async Task<IActionResult> OnPostReissueAsync(CancellationToken cancellationToken)
     {
         if (!TlsEnabled)
         {
@@ -101,7 +106,8 @@ public class CertificateModel : PageModel
             return RedirectToPage();
         }
 
-        IReadOnlyList<string> names = PrinterCertificateNames.ForThisMachine(_connect, _certificates.ParsedContainerNetworks);
+        IReadOnlyList<string> names = await PrinterCertificateNames.ForThisMachineAsync(
+            _connect, _certificates.ParsedContainerNetworks, _resolver, cancellationToken);
 
         if (names.Count == 0)
         {
@@ -130,9 +136,10 @@ public class CertificateModel : PageModel
         return RedirectToPage();
     }
 
-    private void Load()
+    private async Task LoadAsync(CancellationToken cancellationToken)
     {
-        Current = PrinterCertificateNames.ForThisMachine(_connect, _certificates.ParsedContainerNetworks);
+        Current = await PrinterCertificateNames.ForThisMachineAsync(
+            _connect, _certificates.ParsedContainerNetworks, _resolver, cancellationToken);
 
         if (!TlsEnabled)
         {

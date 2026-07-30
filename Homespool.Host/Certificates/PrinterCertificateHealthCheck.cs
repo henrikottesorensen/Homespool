@@ -46,11 +46,13 @@ public sealed class PrinterCertificateHealthCheck : IHealthCheck
     private readonly PrinterCertificateAuthority _authority;
     private readonly PrusaConnectOptions _connect;
     private readonly CertificateOptions _certificates;
+    private readonly IHostAddressResolver _resolver;
     private readonly TimeProvider _time;
 
     public PrinterCertificateHealthCheck(PrinterCertificateAuthority authority,
                                          IOptions<PrusaConnectOptions> connect,
                                          IOptions<CertificateOptions> certificates,
+                                         IHostAddressResolver resolver,
                                          TimeProvider time)
     {
         ArgumentNullException.ThrowIfNull(connect);
@@ -59,10 +61,11 @@ public sealed class PrinterCertificateHealthCheck : IHealthCheck
         _authority = authority;
         _connect = connect.Value;
         _certificates = certificates.Value;
+        _resolver = resolver;
         _time = time;
     }
 
-    public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
         if (!_connect.PrinterTls)
         {
@@ -74,7 +77,8 @@ public sealed class PrinterCertificateHealthCheck : IHealthCheck
         using X509Certificate2? authority = leaf is null ? null : _authority.EnsureAuthority();
 
         IReadOnlyList<string> covered = leaf is null ? [] : PrinterCertificateAuthority.NamesOf(leaf);
-        IReadOnlyList<string> current = PrinterCertificateNames.ForThisMachine(_connect, _certificates.ParsedContainerNetworks);
+        IReadOnlyList<string> current = await PrinterCertificateNames.ForThisMachineAsync(
+            _connect, _certificates.ParsedContainerNetworks, _resolver, cancellationToken);
 
         PrinterCertificateVerdict verdict = PrinterCertificateDrift.Evaluate(
             tlsEnabled: true,
@@ -93,9 +97,9 @@ public sealed class PrinterCertificateHealthCheck : IHealthCheck
         });
     }
 
-    private static Task<HealthCheckResult> Result(PrinterCertificateVerdict verdict,
-                                                  IReadOnlyDictionary<string, object>? data = null) =>
-        Task.FromResult(verdict.IsProblem
+    private static HealthCheckResult Result(PrinterCertificateVerdict verdict,
+                                            IReadOnlyDictionary<string, object>? data = null) =>
+        verdict.IsProblem
             ? HealthCheckResult.Degraded(verdict.Description, data: data)
-            : HealthCheckResult.Healthy(verdict.Description, data));
+            : HealthCheckResult.Healthy(verdict.Description, data);
 }

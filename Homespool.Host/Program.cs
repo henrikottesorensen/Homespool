@@ -653,8 +653,14 @@ public static class Program
         Certificates.CertificateOptions certificates = services
             .GetRequiredService<Microsoft.Extensions.Options.IOptions<Certificates.CertificateOptions>>().Value;
 
-        List<string> names = [.. Certificates.PrinterCertificateNames.ForThisMachine(
-            connect, certificates.ParsedContainerNetworks)];
+        // Blocking here is deliberate and bounded: Kestrel cannot bind the printer listener without a
+        // certificate, so there is nothing to be asynchronous for yet. The resolver caps each lookup,
+        // and only detected names are asked - the configured host is taken as given.
+        List<string> names = [.. Certificates.PrinterCertificateNames.ForThisMachineAsync(
+            connect,
+            certificates.ParsedContainerNetworks,
+            services.GetRequiredService<Certificates.IHostAddressResolver>(),
+            System.Threading.CancellationToken.None).GetAwaiter().GetResult()];
 
         if (names.Count == 0)
         {

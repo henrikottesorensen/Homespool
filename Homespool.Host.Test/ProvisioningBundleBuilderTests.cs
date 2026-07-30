@@ -3,8 +3,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 using AwesomeAssertions;
 using Homespool.Host.Certificates;
@@ -56,9 +59,31 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
             TimeProvider.System,
             NullLogger<PrinterCertificateAuthority>.Instance);
 
-    private ProvisioningBundleBuilder NewBuilder(PrinterCertificateAuthority authority, bool tls = true, string host = "printers.example.com") =>
+    private ProvisioningBundleBuilder NewBuilder(PrinterCertificateAuthority authority,
+                                                bool tls = true,
+                                                string host = "printers.example.com",
+                                                IHostAddressResolver? resolver = null) =>
         new(Options.Create(new PrusaConnectOptions { PrinterHost = host, PrinterPort = 15443, PrinterTls = tls }),
-            authority);
+            authority,
+            resolver ?? new FakeResolver());
+
+    /// <summary>
+    /// Answers what a test says it answers, so "resolves inside the container", "resolves on the LAN"
+    /// and "does not resolve" are all producible - only one of which is safe to act on.
+    /// </summary>
+    private sealed class FakeResolver : IHostAddressResolver
+    {
+        private readonly Dictionary<string, IPAddress[]> _answers;
+
+        public FakeResolver(Dictionary<string, IPAddress[]>? answers = null)
+        {
+            _answers = answers ?? [];
+        }
+
+        public Task<IReadOnlyList<IPAddress>> ResolveAsync(string name, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<IPAddress>>(
+                _answers.TryGetValue(name, out IPAddress[]? found) ? found : []);
+    }
 
     /// <summary>
     /// Two files, both at the root.
@@ -69,14 +94,14 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
     /// says nothing about it.
     /// </remarks>
     [Fact]
-    public void TheBundleIsTwoFilesAtTheZipRoot()
+    public async Task TheBundleIsTwoFilesAtTheZipRootAsync()
     {
         // Arrange
         PrinterCertificateAuthority authority = NewAuthority();
         authority.EnsureLeaf(["printers.example.com"]);
 
         // Act
-        byte[] zip = NewBuilder(authority).Build("printers.example.com", Token);
+        byte[] zip = await NewBuilder(authority).BuildAsync("printers.example.com", Token, CancellationToken.None);
 
         // Assert
         Entries(zip).Keys.Should().BeEquivalentTo(["prusa_printer_settings.ini", "connect.der"]);
@@ -92,7 +117,7 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
     /// unreachable, since nobody chooses an encoding any more.
     /// </remarks>
     [Fact]
-    public void TheAnchorIsTheAuthorityInDerWithNoPrivateKey()
+    public async Task TheAnchorIsTheAuthorityInDerWithNoPrivateKeyAsync()
     {
         // Arrange
         PrinterCertificateAuthority authority = NewAuthority();
@@ -100,10 +125,10 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
         authority.EnsureLeaf(["printers.example.com"]);
 
         // Act
-        byte[] der = Entries(NewBuilder(authority).Build("printers.example.com", Token))["connect.der"];
+        byte[] der = Entries(await NewBuilder(authority).BuildAsync("printers.example.com", Token, CancellationToken.None))["connect.der"];
 
         // Assert
-        der.Should().BeEquivalentTo(File.ReadAllBytes(authority.AuthorityDerPath));
+        der.Should().BeEquivalentTo(await File.ReadAllBytesAsync(authority.AuthorityDerPath, CancellationToken.None));
         der.Should().StartWith([(byte)0x30], "DER-encoded certificates begin with a SEQUENCE tag");
 
         using X509Certificate2 shipped = X509CertificateLoader.LoadCertificate(der);
@@ -121,14 +146,14 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
     /// for <c>token</c> means de-enrolling the printer.
     /// </remarks>
     [Fact]
-    public void TheIniUsesHashCommentsAndCarriesEveryKey()
+    public async Task TheIniUsesHashCommentsAndCarriesEveryKeyAsync()
     {
         // Arrange
         PrinterCertificateAuthority authority = NewAuthority();
         authority.EnsureLeaf(["printers.example.com"]);
 
         // Act
-        string ini = IniOf(NewBuilder(authority).Build("printers.example.com", Token));
+        string ini = IniOf(await NewBuilder(authority).BuildAsync("printers.example.com", Token, CancellationToken.None));
 
         // Assert
         ini.Should().NotContain(";", "a ';' line is a parse error here, not a comment");
@@ -155,14 +180,14 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
     /// a direction nobody would think to look at.
     /// </remarks>
     [Fact]
-    public void TheIniHasNoByteOrderMark()
+    public async Task TheIniHasNoByteOrderMarkAsync()
     {
         // Arrange
         PrinterCertificateAuthority authority = NewAuthority();
         authority.EnsureLeaf(["printers.example.com"]);
 
         // Act
-        byte[] ini = Entries(NewBuilder(authority).Build("printers.example.com", Token))["prusa_printer_settings.ini"];
+        byte[] ini = Entries(await NewBuilder(authority).BuildAsync("printers.example.com", Token, CancellationToken.None))["prusa_printer_settings.ini"];
 
         // Assert
         ini.Should().StartWith([(byte)'#']);
@@ -178,14 +203,14 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
     /// later, by someone who never saw the web page it was downloaded from.
     /// </remarks>
     [Fact]
-    public void TheIniCarriesTheExclusiveTrustStoreWarning()
+    public async Task TheIniCarriesTheExclusiveTrustStoreWarningAsync()
     {
         // Arrange
         PrinterCertificateAuthority authority = NewAuthority();
         authority.EnsureLeaf(["printers.example.com"]);
 
         // Act
-        string ini = IniOf(NewBuilder(authority).Build("printers.example.com", Token));
+        string ini = IniOf(await NewBuilder(authority).BuildAsync("printers.example.com", Token, CancellationToken.None));
 
         // Assert
         ini.Should().Contain("ENTIRE trust store")
@@ -203,7 +228,7 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
     /// it needs no TLS connection to answer, only the SAN.
     /// </remarks>
     [Fact]
-    public void ANameTheCertificateDoesNotCoverIsRefused()
+    public async Task ANameTheCertificateDoesNotCoverIsRefusedAsync()
     {
         // Arrange
         PrinterCertificateAuthority authority = NewAuthority();
@@ -212,24 +237,24 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
         ProvisioningBundleBuilder builder = NewBuilder(authority);
 
         // Act
-        Action act = () => builder.Build("192.168.1.50", Token);
+        Func<Task> act = async () => await builder.BuildAsync("192.168.1.50", Token, CancellationToken.None);
 
         // Assert
-        act.Should().Throw<ArgumentException>().WithMessage("*does not cover*");
+        (await act.Should().ThrowAsync<ArgumentException>()).WithMessage("*not an address a printer could use*");
     }
 
     /// <summary>
     /// The configured address is offered first, so the default needs no thought.
     /// </summary>
     [Fact]
-    public void TheConfiguredAddressIsOfferedFirst()
+    public async Task TheConfiguredAddressIsOfferedFirstAsync()
     {
         // Arrange
         PrinterCertificateAuthority authority = NewAuthority();
         authority.EnsureLeaf(["homespool.lan", "192.168.13.238", "printers.example.com"]);
 
         // Act
-        IReadOnlyList<string> names = NewBuilder(authority).AvailableNames();
+        IReadOnlyList<string> names = await NewBuilder(authority).AvailableNamesAsync(CancellationToken.None);
 
         // Assert
         names[0].Should().Be("printers.example.com");
@@ -244,13 +269,13 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
     /// what it was for, and <c>custom_cert = 1</c> against a plaintext listener is simply wrong.
     /// </remarks>
     [Fact]
-    public void WithoutTlsThereIsNoAnchorAndTheIniSaysSo()
+    public async Task WithoutTlsThereIsNoAnchorAndTheIniSaysSoAsync()
     {
         // Arrange - no leaf at all, which is what a plaintext deployment has.
         PrinterCertificateAuthority authority = NewAuthority();
 
         // Act
-        byte[] zip = NewBuilder(authority, tls: false).Build("192.168.13.238", Token);
+        byte[] zip = await NewBuilder(authority, tls: false).BuildAsync("192.168.13.238", Token, CancellationToken.None);
 
         // Assert
         Entries(zip).Keys.Should().BeEquivalentTo(["prusa_printer_settings.ini"]);
@@ -266,9 +291,9 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
     /// would produce a printer unable to connect.
     /// </summary>
     [Fact]
-    public void WithNoCertificateThereAreNoNamesToOffer()
+    public async Task WithNoCertificateThereAreNoNamesToOfferAsync()
     {
-        NewBuilder(NewAuthority()).AvailableNames().Should().BeEmpty();
+        (await NewBuilder(NewAuthority()).AvailableNamesAsync(CancellationToken.None)).Should().BeEmpty();
     }
 
     public void Dispose()

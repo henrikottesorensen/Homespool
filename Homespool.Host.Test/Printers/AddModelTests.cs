@@ -78,7 +78,7 @@ public sealed class AddModelTests : IDisposable
             authority.EnsureLeaf([options.PrinterHost]);
         }
 
-        return new ProvisioningBundleBuilder(Options.Create(options), authority);
+        return new ProvisioningBundleBuilder(Options.Create(options), authority, new DnsHostAddressResolver());
     }
 
     /// <summary>

@@ -96,7 +96,7 @@ public class IndexModel : PageModel
 
             RegeneratedPrinterId = printerId;
 
-            IReadOnlyList<string> names = _bundles.AvailableNames();
+            IReadOnlyList<string> names = await _bundles.AvailableNamesAsync(cancellationToken);
 
             Offer = new BundleOffer(
                 printerId,

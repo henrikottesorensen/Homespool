@@ -111,6 +111,10 @@ public static class Program
             // reaches the filesystem only when a bundle is actually asked for.
             builder.Services.AddSingleton<PrusaConnect.ProvisioningBundleBuilder>();
 
+            // Answers "could a printer reach this name?" by resolving it, rather than by guessing from
+            // how the name looks - which is the only way to tell a container's hostname from a real one.
+            builder.Services.AddSingleton<Certificates.IHostAddressResolver, Certificates.DnsHostAddressResolver>();
+
             ConfigureListeners(builder);
 
             AddForwardedHeaders(builder);

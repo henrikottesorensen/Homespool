@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Net.Http;
 using System.Text.Json;
@@ -31,6 +32,20 @@ public static class Program
         }
 
         Dictionary<string, string> named = ParseNamedArguments(args);
+
+        // Refused rather than ignored. An unrecognised option is silently dropped by the parser above,
+        // so leaving this one to rot would mean a run that asked for events quietly sent none - the
+        // worst outcome for a load rig, whose whole output is numbers nobody can sanity-check by eye.
+        if (named.ContainsKey("events-every"))
+        {
+            Console.WriteLine("--events-every is gone: its unit read as time and was a count.");
+            Console.WriteLine("Use --events-every-nth <n> for one event per n messages (fixed ratio,");
+            Console.WriteLine("what the buffer-ceiling rigs want), or --events-every-seconds <n> for");
+            Console.WriteLine("one event per n seconds (wall clock, what a blast wants).");
+
+            return 1;
+        }
+
         using CancellationTokenSource cancellation = new();
         Console.CancelKeyPress += (_, eventArgs) =>
         {
@@ -69,11 +84,14 @@ public static class Program
     {
         Console.WriteLine("Usage:");
         Console.WriteLine("  fakeprinter enrol  --server <url> [--identity <file>]");
-        Console.WriteLine("  fakeprinter run    --server <url> [--identity <file>] [--capture <path>] [--printing] [--interval-ms <n>] [--events-every <n>] [--tools <n>] [--mmu] [--junk-fields <n>] [--junk-distinct]");
-        Console.WriteLine("  fakeprinter blast  --server <url> [--identity <file>] [--events-every <n>] [--tools <n>] [--mmu] [--junk-fields <n>] [--junk-distinct]");
+        Console.WriteLine("  fakeprinter run    --server <url> [--identity <file>] [--capture <path>] [--printing] [--interval-ms <n>] [--events-every-nth <n>] [--events-every-seconds <n>] [--tools <n>] [--mmu] [--junk-fields <n>] [--junk-distinct]");
+        Console.WriteLine("  fakeprinter blast  --server <url> [--identity <file>] [--events-every-nth <n>] [--events-every-seconds <n>] [--tools <n>] [--mmu] [--junk-fields <n>] [--junk-distinct]");
         Console.WriteLine();
-        Console.WriteLine("--events-every <n> makes every n-th message a STATE_CHANGED event rather than");
-        Console.WriteLine("telemetry, for exercising the event path under load. 10 matches the firmware ratio.");
+        Console.WriteLine("--events-every-nth <n> makes every n-th message a STATE_CHANGED event rather");
+        Console.WriteLine("than telemetry - a fixed ratio, 10 matching the firmware ratio, which is what");
+        Console.WriteLine("the buffer-ceiling rigs turn on. --events-every-seconds <n> pins events to the");
+        Console.WriteLine("clock instead, which is what a blast wants: a ratio at blast speed would mean");
+        Console.WriteLine("tens of thousands of events a second.");
         Console.WriteLine();
         Console.WriteLine("--tools <n> reports n tools, which emits the per-slot \"slot\" object firmware only");
         Console.WriteLine("sends above one tool - one extra persisted row per tool per sample. --mmu adds the");
@@ -222,18 +240,41 @@ public static class Program
     }
 
     /// <summary>
-    /// Wraps the telemetry source so every N-th message is an event, when <c>--events-every</c> asks
-    /// for it. Off unless asked: a run that does not request events should send exactly what it did
-    /// before this option existed.
+    /// Wraps the telemetry source so some messages are events instead, by count or by clock. Off
+    /// unless asked: a run that requests neither sends exactly what it did before these existed.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Two flags, because the unit is not a detail.</b> A count keeps a fixed ratio between the
+    /// two streams, which is what the writer's buffer ceilings turn on - the claim that events outlive
+    /// samples rests on the ratio, so a rig measuring that wants <c>--events-every-nth</c>. A ratio
+    /// scales with the send rate, though, so at blast speed one-in-ten becomes tens of thousands of
+    /// events a second, which no printer resembles; a burst wants <c>--events-every-seconds</c>.
+    /// </para>
+    /// <para>
+    /// They were briefly one flag named <c>--events-every</c>, whose unit read as time and was a
+    /// count. It misled the person who asked for it, on the day after it was added, so it is gone
+    /// rather than merely documented.
+    /// </para>
+    /// </remarks>
     private static ITelemetrySource MixEvents(Dictionary<string, string> named, ITelemetrySource source)
     {
-        if (!named.TryGetValue("events-every", out string? value) || !int.TryParse(value, out int every) || every < 1)
+        if (named.TryGetValue("events-every-nth", out string? nth) && int.TryParse(nth, out int every) && every >= 1)
         {
-            return source;
+            source = new EventMixingTelemetrySource(source) { EventEvery = every };
         }
 
-        return new EventMixingTelemetrySource(source) { EventEvery = every };
+        if (named.TryGetValue("events-every-seconds", out string? seconds)
+            && double.TryParse(seconds, NumberStyles.Float, CultureInfo.InvariantCulture, out double interval)
+            && interval > 0)
+        {
+            source = new TimedEventTelemetrySource(source, TimeProvider.System)
+            {
+                EventInterval = TimeSpan.FromSeconds(interval),
+            };
+        }
+
+        return source;
     }
 
     private static ITelemetrySource BuildTelemetrySource(Dictionary<string, string> named, bool blast)

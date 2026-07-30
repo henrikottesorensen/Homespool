@@ -40,7 +40,10 @@ CLI="$ROOT/Homespool.FakePrinter.Cli/bin/Debug/net10.0/Homespool.FakePrinter.Cli
 MECHANISM="${MECHANISM:-full}"
 VOLUME="${VOLUME:-/Volumes/HomespoolStallDisk}"
 RAMDISK_SECTORS="${RAMDISK_SECTORS:-262144}"   # 512-byte sectors: 262144 = 128 MB
-EVENTS_EVERY="${EVENTS_EVERY:-10}"
+# Deliberately the count-based flag, not the clock-based one: this rig's ordering measurement rests
+# on the 9:1 stream ratio between telemetry and events, so it needs a fixed ratio rather than a fixed
+# cadence. --events-every-seconds is for bursts, where a ratio would mean absurd event rates.
+EVENTS_EVERY_NTH="${EVENTS_EVERY_NTH:-10}"
 INTERVAL_MS="${INTERVAL_MS:-1}"
 STALL_SECONDS="${STALL_SECONDS:-90}"
 WARMUP_SECONDS="${WARMUP_SECONDS:-5}"
@@ -187,7 +190,7 @@ wait $ENROL_PID
 # Load is deliberately moderate, not a blast: the ceilings are reached by how long the outage lasts,
 # not by how hard the client pushes, and a bounded rate keeps a log-volume measurement legible.
 dotnet "$CLI" run --server "$BASE" --identity "$RUN/fakeprinter.json" --printing \
-    --interval-ms "$INTERVAL_MS" --events-every "$EVENTS_EVERY" > "$RUN/load.log" 2>&1 &
+    --interval-ms "$INTERVAL_MS" --events-every-nth "$EVENTS_EVERY_NTH" > "$RUN/load.log" 2>&1 &
 LOAD_PID=$!
 
 sleep "$WARMUP_SECONDS"

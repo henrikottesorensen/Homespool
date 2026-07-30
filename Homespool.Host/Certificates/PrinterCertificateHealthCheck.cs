@@ -45,16 +45,20 @@ public sealed class PrinterCertificateHealthCheck : IHealthCheck
 {
     private readonly PrinterCertificateAuthority _authority;
     private readonly PrusaConnectOptions _connect;
+    private readonly CertificateOptions _certificates;
     private readonly TimeProvider _time;
 
     public PrinterCertificateHealthCheck(PrinterCertificateAuthority authority,
                                          IOptions<PrusaConnectOptions> connect,
+                                         IOptions<CertificateOptions> certificates,
                                          TimeProvider time)
     {
         ArgumentNullException.ThrowIfNull(connect);
+        ArgumentNullException.ThrowIfNull(certificates);
 
         _authority = authority;
         _connect = connect.Value;
+        _certificates = certificates.Value;
         _time = time;
     }
 
@@ -70,7 +74,7 @@ public sealed class PrinterCertificateHealthCheck : IHealthCheck
         using X509Certificate2? authority = leaf is null ? null : _authority.EnsureAuthority();
 
         IReadOnlyList<string> covered = leaf is null ? [] : PrinterCertificateAuthority.NamesOf(leaf);
-        IReadOnlyList<string> current = PrinterCertificateNames.ForThisMachine(_connect);
+        IReadOnlyList<string> current = PrinterCertificateNames.ForThisMachine(_connect, _certificates.ParsedContainerNetworks);
 
         PrinterCertificateVerdict verdict = PrinterCertificateDrift.Evaluate(
             tlsEnabled: true,

@@ -650,7 +650,11 @@ public static class Program
         PrusaConnect.PrusaConnectOptions connect = services
             .GetRequiredService<Microsoft.Extensions.Options.IOptions<PrusaConnect.PrusaConnectOptions>>().Value;
 
-        List<string> names = [.. Certificates.PrinterCertificateNames.ForThisMachine(connect)];
+        Certificates.CertificateOptions certificates = services
+            .GetRequiredService<Microsoft.Extensions.Options.IOptions<Certificates.CertificateOptions>>().Value;
+
+        List<string> names = [.. Certificates.PrinterCertificateNames.ForThisMachine(
+            connect, certificates.ParsedContainerNetworks)];
 
         if (names.Count == 0)
         {

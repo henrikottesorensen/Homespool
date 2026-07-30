@@ -128,7 +128,10 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
         if (connect.PrinterTls)
         {
             host.Services.GetRequiredService<Homespool.Host.Certificates.PrinterCertificateAuthority>()
-                .EnsureLeaf(Homespool.Host.Certificates.PrinterCertificateNames.ForThisMachine(connect))
+                .EnsureLeaf(Homespool.Host.Certificates.PrinterCertificateNames.ForThisMachine(
+                    connect,
+                    host.Services.GetRequiredService<IOptions<Homespool.Host.Certificates.CertificateOptions>>()
+                        .Value.ParsedContainerNetworks))
                 .Dispose();
         }
 

@@ -36,6 +36,9 @@ public sealed class ProvisioningBundleUnreachableNameTests : IDisposable
 {
     private const string Token = "abcdefghijklmnopqrst";
 
+    /// <summary>The network a Compose deployment pins, and tells the application about.</summary>
+    private static readonly IReadOnlyList<IPNetwork> ComposeNetwork = [IPNetwork.Parse("172.16.0.0/12")];
+
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"hs-reach-{Guid.NewGuid():N}");
 
     private sealed class FakeResolver : IHostAddressResolver
@@ -69,7 +72,41 @@ public sealed class ProvisioningBundleUnreachableNameTests : IDisposable
     {
         IReadOnlyList<IPAddress> addresses = [.. resolved.Select(IPAddress.Parse)];
 
-        ProvisioningBundleBuilder.IsUnreachableByPrinters(addresses).Should().Be(expected);
+        ProvisioningBundleBuilder.IsUnreachableByPrinters(addresses, ComposeNetwork).Should().Be(expected);
+    }
+
+    /// <summary>
+    /// The ranges come from configuration, so a deployment that pinned a different network is
+    /// understood - and one whose real LAN uses 172.16/12 is not sabotaged.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is why it is a setting rather than a constant.</b> <c>compose.yaml</c> invites changing
+    /// its subnet if it collides with something on the host, and a hardcoded 172.16/12 would then stop
+    /// recognising the container's own address and go back to offering it - reopening the trap by way
+    /// of a documented configuration change. The shipped stack feeds this from the same variable that
+    /// pins the network, so the two cannot drift apart.
+    /// </remarks>
+    [Theory]
+    [InlineData("10.10.0.0/16", "10.10.0.7", true)]
+    [InlineData("10.10.0.0/16", "172.17.0.2", false)]
+    [InlineData("172.16.0.0/12", "172.17.0.2", true)]
+    public void TheRangesAreWhicheverTheDeploymentSaysTheyAre(string network, string address, bool unreachable)
+    {
+        IReadOnlyList<IPNetwork> configured = [IPNetwork.Parse(network)];
+
+        ProvisioningBundleBuilder.IsUnreachableByPrinters([IPAddress.Parse(address)], configured)
+            .Should().Be(unreachable);
+    }
+
+    /// <summary>
+    /// An empty list means nothing is container-internal, which is the right answer for a deployment
+    /// that is not in a container - including one whose LAN genuinely uses Docker's default range.
+    /// </summary>
+    [Fact]
+    public void NoConfiguredRangesMeansNothingIsFiltered()
+    {
+        ProvisioningBundleBuilder.IsUnreachableByPrinters([IPAddress.Parse("172.17.0.2")], [])
+            .Should().BeFalse();
     }
 
     /// <summary>
@@ -146,6 +183,7 @@ public sealed class ProvisioningBundleUnreachableNameTests : IDisposable
 
     private static ProvisioningBundleBuilder NewBuilder(PrinterCertificateAuthority authority, IHostAddressResolver resolver) =>
         new(Options.Create(new PrusaConnectOptions { PrinterHost = "192.168.13.238", PrinterPort = 15443, PrinterTls = true }),
+            Options.Create(new CertificateOptions { ContainerNetworks = ["172.16.0.0/12"] }),
             authority,
             resolver);
 

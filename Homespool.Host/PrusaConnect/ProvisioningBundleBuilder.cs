@@ -39,16 +39,20 @@ public sealed class ProvisioningBundleBuilder
     public const string AuthorityFileName = "connect.der";
 
     private readonly PrusaConnectOptions _options;
+    private readonly CertificateOptions _certificates;
     private readonly PrinterCertificateAuthority _authority;
     private readonly IHostAddressResolver _resolver;
 
     public ProvisioningBundleBuilder(IOptions<PrusaConnectOptions> options,
+                                     IOptions<CertificateOptions> certificates,
                                      PrinterCertificateAuthority authority,
                                      IHostAddressResolver resolver)
     {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(certificates);
 
         _options = options.Value;
+        _certificates = certificates.Value;
         _authority = authority;
         _resolver = resolver;
     }
@@ -79,11 +83,13 @@ public sealed class ProvisioningBundleBuilder
     /// </para>
     /// </remarks>
     /// <param name="resolved">What the name resolved to; empty means the resolver had no answer.</param>
-    public static bool IsUnreachableByPrinters(IReadOnlyList<IPAddress> resolved)
+    /// <param name="containerNetworks">Ranges the deployment says exist only inside itself.</param>
+    public static bool IsUnreachableByPrinters(IReadOnlyList<IPAddress> resolved,
+                                               IReadOnlyList<IPNetwork> containerNetworks)
     {
         ArgumentNullException.ThrowIfNull(resolved);
 
-        return resolved.Count > 0 && !resolved.Any(CouldReachAPrinter);
+        return resolved.Count > 0 && !resolved.Any(address => CouldReachAPrinter(address, containerNetworks));
     }
 
     /// <summary>
@@ -94,11 +100,11 @@ public sealed class ProvisioningBundleBuilder
     /// not, loopback and link-local because they name this machine or a failed DHCP lease, and the
     /// container ranges because they exist only inside Docker.
     /// </remarks>
-    private static bool CouldReachAPrinter(IPAddress address) =>
+    private static bool CouldReachAPrinter(IPAddress address, IReadOnlyList<IPNetwork> containerNetworks) =>
         address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
         && !IPAddress.IsLoopback(address)
         && !address.GetAddressBytes().Take(2).SequenceEqual<byte>([169, 254])
-        && !PrinterAddressSuggestion.IsProbablyTheContainersOwn(address);
+        && !PrinterAddressSuggestion.IsProbablyTheContainersOwn(address, containerNetworks);
 
     /// <summary>
     /// The addresses a bundle may be written for, best first.
@@ -137,7 +143,8 @@ public sealed class ProvisioningBundleBuilder
             // Offering an address only the container can reach is not a warning worth writing, it is a
             // choice worth removing: it looks as reasonable as the others, it is the one a Compose
             // deployment volunteers, and picking it produces a bundle that cannot work.
-            if (!IsUnreachableByPrinters(await _resolver.ResolveAsync(name, cancellationToken)))
+            if (!IsUnreachableByPrinters(await _resolver.ResolveAsync(name, cancellationToken),
+                                         _certificates.ParsedContainerNetworks))
             {
                 usable.Add(name);
             }

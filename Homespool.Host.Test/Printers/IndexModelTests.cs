@@ -114,7 +114,7 @@ public sealed class IndexModelTests : IDisposable
             new PrinterQueryService(context, TimeProvider.System),
             new PrusaConnectService(context, new CodeGenerator(), new TokenService(), new TeamService(context),
                 TimeProvider.System, NullLogger<PrusaConnectService>.Instance, Options.Create(options)),
-            new ProvisioningBundleBuilder(Options.Create(options), authority, new DnsHostAddressResolver()),
+            new ProvisioningBundleBuilder(Options.Create(options), Options.Create(new CertificateOptions()), authority, new DnsHostAddressResolver()),
             new TeamService(context),
             users,
             Options.Create(options),

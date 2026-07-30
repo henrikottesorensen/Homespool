@@ -38,6 +38,7 @@ public sealed class PrinterCertificateHealthCheckTests : IDisposable
     private static PrinterCertificateHealthCheck NewCheck(PrinterCertificateAuthority authority, string host, bool tls = true) =>
         new(authority,
             Options.Create(new PrusaConnectOptions { PrinterHost = host, PrinterTls = tls }),
+            Options.Create(new CertificateOptions()),
             TimeProvider.System);
 
     private PrinterCertificateAuthority NewAuthority(int authorityDays = 5475, int leafDays = 730) =>

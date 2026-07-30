@@ -50,9 +50,17 @@ public record PrinterAddressSuggestion(string Value, AddressDurability Durabilit
     /// </remarks>
     /// <param name="addresses">Candidate addresses, typically from <see cref="Gather"/>.</param>
     /// <param name="hostName">The machine's own name, or null if it has none worth offering.</param>
-    public static IReadOnlyList<PrinterAddressSuggestion> Classify(IEnumerable<IPAddress> addresses, string? hostName)
+    /// <param name="containerNetworks">
+    /// Ranges that exist only inside this deployment, from <see cref="CertificateOptions.ContainerNetworks"/>.
+    /// Empty means nothing is treated as container-internal, which is right for a deployment that is not
+    /// in one.
+    /// </param>
+    public static IReadOnlyList<PrinterAddressSuggestion> Classify(IEnumerable<IPAddress> addresses,
+                                                                   string? hostName,
+                                                                   IReadOnlyList<IPNetwork> containerNetworks)
     {
         ArgumentNullException.ThrowIfNull(addresses);
+        ArgumentNullException.ThrowIfNull(containerNetworks);
 
         List<PrinterAddressSuggestion> suggestions = [];
 
@@ -79,7 +87,7 @@ public record PrinterAddressSuggestion(string Value, AddressDurability Durabilit
                 continue;   // link-local: the machine failed to get an address at all
             }
 
-            bool containerish = IsProbablyTheContainersOwn(address);
+            bool containerish = IsProbablyTheContainersOwn(address, containerNetworks);
 
             suggestions.Add(new PrinterAddressSuggestion(
                 address.ToString(),
@@ -100,30 +108,27 @@ public record PrinterAddressSuggestion(string Value, AddressDurability Durabilit
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The 172.16/12 range Docker's default bridge networks allocate from, which is also where
-    /// <c>compose.yaml</c> pins ours. A printer is a physical device on the household LAN and cannot
-    /// route to it at all - the address works perfectly from inside the container and nowhere else,
-    /// which is what makes it such a convincing wrong answer.
+    /// The ranges the deployment says are its own - Docker's <c>172.16/12</c> by default, and whatever
+    /// <c>compose.yaml</c> pins in a stack that changed it. A printer is a physical device on the
+    /// household LAN and cannot route to those at all: the address works perfectly from inside the
+    /// container and nowhere else, which is what makes it such a convincing wrong answer.
     /// </para>
     /// <para>
-    /// Exact rather than heuristic, which is why it is worth having as its own rule: the name-based
-    /// version of this question - "is <c>71e04654da9b</c> a Docker hostname?" - cannot be answered by
-    /// looking at it, and is answered by resolving it instead (<c>ProvisioningBundleBuilder.IsUnreachableByPrinters</c>).
+    /// Exact rather than heuristic, and told rather than guessed - which is why it is worth having as
+    /// its own rule. The name-based version of this question - "is <c>71e04654da9b</c> a Docker
+    /// hostname?" - cannot be answered by looking at it, and is answered by resolving it instead
+    /// (<c>ProvisioningBundleBuilder.IsUnreachableByPrinters</c>).
     /// </para>
     /// </remarks>
     /// <param name="address">Any address.</param>
-    public static bool IsProbablyTheContainersOwn(IPAddress address)
+    /// <param name="containerNetworks">The deployment's own internal ranges; empty means it has none.</param>
+    public static bool IsProbablyTheContainersOwn(IPAddress address, IReadOnlyList<IPNetwork> containerNetworks)
     {
         ArgumentNullException.ThrowIfNull(address);
+        ArgumentNullException.ThrowIfNull(containerNetworks);
 
-        if (address.AddressFamily != AddressFamily.InterNetwork)
-        {
-            return false;
-        }
-
-        byte[] octets = address.GetAddressBytes();
-
-        return octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31;
+        return address.AddressFamily == AddressFamily.InterNetwork
+            && containerNetworks.Any(network => network.Contains(address));
     }
 
     /// <summary>
@@ -134,7 +139,8 @@ public record PrinterAddressSuggestion(string Value, AddressDurability Durabilit
     /// can be tested without a network. This half is a straight read of the platform and is not
     /// worth faking.
     /// </remarks>
-    public static IReadOnlyList<PrinterAddressSuggestion> Gather()
+    /// <param name="containerNetworks">Passed through to <see cref="Classify"/>.</param>
+    public static IReadOnlyList<PrinterAddressSuggestion> Gather(IReadOnlyList<IPNetwork> containerNetworks)
     {
         IEnumerable<IPAddress> addresses = NetworkInterface.GetAllNetworkInterfaces()
             .Where(n => n.OperationalStatus == OperationalStatus.Up)
@@ -153,6 +159,6 @@ public record PrinterAddressSuggestion(string Value, AddressDurability Durabilit
             // A machine that cannot name itself simply gets no name suggested.
         }
 
-        return Classify(addresses, hostName);
+        return Classify(addresses, hostName, containerNetworks);
     }
 }

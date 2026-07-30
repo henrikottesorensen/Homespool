@@ -106,8 +106,17 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// Lower than <see cref="MaxPendingSampleBatches"/> in raw count, yet events still survive
     /// several times longer in wall-clock terms, which is the ordering that actually matters: a
     /// printing printer emits telemetry roughly ten times as often as it emits events, so the sample
-    /// buffer fills far faster. Both buffers are shared across every connected printer, so more
-    /// printers make each ceiling arrive sooner rather than making it larger.
+    /// buffer fills far faster. Measured 2026-07-29: samples began giving way at +2.1 s and events at
+    /// +15.5 s, 7.6x longer. Both buffers are shared across every connected printer, so more printers
+    /// make each ceiling arrive sooner rather than making it larger.
+    ///
+    /// <b>This ordering governs the buffers only, and that is less than it sounds.</b> The intake
+    /// channel in front of them is <see cref="BoundedChannelFullMode.DropOldest"/> and sheds events
+    /// and telemetry alike, so an event has to survive the channel before any of this protects it.
+    /// Measured 2026-07-30 with events pinned to one per 2 s through a 20 s blast: roughly ten
+    /// emitted, three persisted, against a 96.7% drop rate. "Events are the last thing to give way"
+    /// was stated here as though it were end to end; it is not. Open question, not a defect to fix
+    /// in passing - see backlog.md, "Event loss under saturation".
     ///
     /// Sized as a bound on catastrophe, not as working headroom. Anything that outlives it is a
     /// database outage measured in hours, which is a bigger problem than the events being dropped.

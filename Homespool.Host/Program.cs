@@ -556,6 +556,22 @@ public static class Program
                 options.ListenAnyIP(userHttpsPort, listen => listen.UseHttps());
             }
 
+            if (!PrinterTransportIsSecure(options.ApplicationServices))
+            {
+                // Plaintext, so the wire can be read. Nothing else in this project can produce a
+                // legible capture of the printer protocol: TLS is the point of the listener, and a
+                // capture of it is ciphertext.
+                Log.Warning("The printer listener on {Port} is PLAINTEXT because PrusaConnect:PrinterTls is false. "
+                            + "Every printer token crosses the network in clear, in both directions - the one on the "
+                            + "USB stick and the one issued at claim. This is for a capture or a rig on a network you "
+                            + "control; it is not a deployment setting, and no certificate is issued while it is off.",
+                            listeners.PrinterPort);
+
+                options.ListenAnyIP(listeners.PrinterPort);
+
+                return;
+            }
+
             Certificates.PrinterCertificateAuthority authority =
                 options.ApplicationServices.GetRequiredService<Certificates.PrinterCertificateAuthority>();
 
@@ -564,6 +580,28 @@ public static class Program
                 listen => listen.UseHttps(authority.EnsureLeaf(PrinterCertificateNames(options.ApplicationServices))));
         });
     }
+
+    /// <summary>
+    /// Whether printers reach this server over TLS — which is one question, not two.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b><c>PrusaConnect:PrinterTls</c> decides the listener as well as the ini it writes</b>, and
+    /// that is deliberate rather than convenient. It used to describe only what a printer was told,
+    /// because a proxy in front could terminate TLS and the two could legitimately differ. The listener
+    /// split ended that: nothing may sit in front of the printer port (the firmware trusts one anchor,
+    /// requires exactly one certificate, and a proxy would buffer 256 KiB transfer chunks), so the
+    /// transport a printer is told to use and the transport this process serves are the same fact.
+    /// </para>
+    /// <para>
+    /// Two settings for one fact is the failure this project keeps finding: they disagree, every
+    /// printer fails to connect, and neither value is wrong on its own so nothing can report it. One
+    /// setting cannot disagree with itself.
+    /// </para>
+    /// </remarks>
+    private static bool PrinterTransportIsSecure(IServiceProvider services) =>
+        services.GetRequiredService<Microsoft.Extensions.Options.IOptions<PrusaConnect.PrusaConnectOptions>>()
+                .Value.PrinterTls;
 
     /// <summary>
     /// Binds <see cref="Listeners.ListenerOptions"/> straight from configuration, for the two places

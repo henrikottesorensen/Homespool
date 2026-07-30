@@ -34,6 +34,14 @@ TMP_BASE="${TMPDIR:-/tmp}"
 RUN="${RUN:-${TMP_BASE%/}/homespool-slow-db-rig}"
 PORT="${PORT:-5099}"
 BASE="http://127.0.0.1:$PORT"
+
+# The printer protocol lives on its own listener and exists nowhere else, so the fake printer gets a
+# different address from the API calls above it. Plaintext, via PrusaConnect__PrinterTls below: this
+# rig measures the write path under a stalled database, and making it also carry a certificate the
+# fake would have to be taught to trust adds a way for the rig to fail that has nothing to do with
+# what it measures.
+PRINTER_PORT="${PRINTER_PORT:-15443}"
+PRINTER_BASE="http://127.0.0.1:$PRINTER_PORT"
 HOST_DLL="$ROOT/Homespool.Host/bin/Debug/net10.0/Homespool.Host.dll"
 CLI="$ROOT/Homespool.FakePrinter.Cli/bin/Debug/net10.0/Homespool.FakePrinter.Cli.dll"
 
@@ -145,8 +153,12 @@ case "$MECHANISM" in
 esac
 
 cd "$ROOT/Homespool.Host"
+# Ports come from Listeners:*, not ASPNETCORE_URLS - Kestrel ignores that entirely once endpoints are
+# configured in code, which they are since the listener split.
 ASPNETCORE_ENVIRONMENT=Development \
-ASPNETCORE_URLS="$BASE" \
+Listeners__UserPort="$PORT" \
+Listeners__PrinterPort="$PRINTER_PORT" \
+PrusaConnect__PrinterTls=false \
 Serilog__MinimumLevel__Default=Information \
 Storage__WriteBatchSize="$WRITE_BATCH_SIZE" \
 ConnectionStrings__HomespoolDb="Data Source=$DB" \
@@ -170,7 +182,7 @@ curl -s -o /dev/null -b "$RUN/cookies" -c "$RUN/cookies" \
     --data-urlencode "Input.ConfirmPassword=Correct-Horse-Battery-Staple-1!" \
     --data-urlencode "Input.Token=$TOKEN" "$BASE/setup"
 
-dotnet "$CLI" enrol --server "$BASE" --identity "$RUN/fakeprinter.json" > "$RUN/enrol.log" 2>&1 &
+dotnet "$CLI" enrol --server "$PRINTER_BASE" --identity "$RUN/fakeprinter.json" > "$RUN/enrol.log" 2>&1 &
 ENROL_PID=$!
 CODE=""
 for _ in $(seq 1 30); do
@@ -186,7 +198,7 @@ wait $ENROL_PID
 
 # Load is deliberately moderate, not a blast: the ceilings are reached by how long the outage lasts,
 # not by how hard the client pushes, and a bounded rate keeps a log-volume measurement legible.
-dotnet "$CLI" run --server "$BASE" --identity "$RUN/fakeprinter.json" --printing \
+dotnet "$CLI" run --server "$PRINTER_BASE" --identity "$RUN/fakeprinter.json" --printing \
     --interval-ms "$INTERVAL_MS" --events-every "$EVENTS_EVERY" > "$RUN/load.log" 2>&1 &
 LOAD_PID=$!
 

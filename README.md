@@ -216,8 +216,23 @@ In Docker, use the `__` (double underscore) form, e.g. `PrusaConnect__PrinterHos
 |---|---|---|
 | `PrinterHost` | *(empty)* | The hostname printers use to reach this server. **Required for USB-key provisioning** — there is no way to infer it from inside the process. |
 | `PrinterPort` | `443` | Port for the generated snippet — the host side of the printer port mapping, not the port inside the container. |
-| `PrinterTls` | `true` | Whether printers should use TLS. Leave it on: the printer listener serves TLS only. |
+| `PrinterTls` | `true` | Whether printers reach this server over TLS — the `tls` line in the ini **and** whether the printer listener serves TLS at all, so the two cannot disagree. See below. |
 | `RegistrationCodeLifetimeMinutes` | `60` | How long a registration code stays claimable. Prusa uses 24 h; one hour is a deliberately tighter default, since the code is a credential for adopting a printer. |
+
+#### Turning `PrinterTls` off, and when that is legitimate
+
+`PrusaConnect__PrinterTls=false` binds the printer listener as plain HTTP and issues no certificate.
+It exists for two jobs, both of them testing:
+
+- **Reading the protocol on the wire.** A capture of the TLS listener is ciphertext, so packet
+  capture against a real printer or the firmware rig needs the plaintext path.
+- **Rigs.** `rig/enrol.sh` and `tools/slow-db/slow-db-rig.sh` drive the printer endpoints with curl
+  and the fake printer; the alternative is teaching each of them to trust a CA minted minutes ago.
+
+Every printer token then crosses the network in clear, in both directions — the one written to the
+USB stick and the one issued at claim. The server logs a warning saying so at every startup. **Do not
+run a deployment this way**, LAN-only included: a household LAN is exactly where a printer token is
+worth taking.
 
 ### `Listeners`
 

@@ -19,6 +19,13 @@ set -euo pipefail
 
 TOKEN="${1:?usage: enrol.sh <setup-token>}"
 BASE="${BASE:-http://localhost:5052}"
+
+# /p/* lives on the printer listener and on no other, so the two registration calls below go
+# somewhere different from the account and API calls. Plain HTTP, which means the server must be
+# running with PrusaConnect__PrinterTls=false - the right setting for a rig, since the alternative is
+# teaching curl and the connect_rig binary to trust an authority minted minutes ago. Point this at
+# https://localhost:15443 and add --insecure to those two calls if you want the TLS path instead.
+PRINTER_BASE="${PRINTER_BASE:-http://localhost:15443}"
 EMAIL="${EMAIL:-rig@example.com}"
 PASSWORD="${PASSWORD:-Correct-Horse-Battery-Staple-1!}"
 RIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -75,13 +82,13 @@ if [ -z "$API_TOKEN" ]; then
 fi
 
 echo "==> registering the printer"
-CODE="$(curl -sS -D - -o /dev/null -X POST "$BASE/p/register" \
+CODE="$(curl -sS -D - -o /dev/null -X POST "$PRINTER_BASE/p/register" \
     -H 'Content-Type: application/json' \
     -d "{\"sn\":\"$SERIAL\",\"fingerprint\":\"$FINGERPRINT\",\"printer_type\":\"1.3.5\",\"firmware\":\"6.6.0\"}" \
     | { grep -i '^Code:' || true; } | tr -d '\r' | awk '{print $2}')"
 
 if [ -z "$CODE" ]; then
-    echo "no claim code returned - is the server running at $BASE?" >&2
+    echo "no claim code returned - is the server running, with its printer listener at $PRINTER_BASE?" >&2
     exit 1
 fi
 
@@ -96,7 +103,7 @@ curl -sS -o /dev/null -X POST "$BASE/api/v1/printers/register" \
     -d "{\"name\":\"Rig printer\",\"location\":\"Container\",\"code\":\"$CODE\"}"
 
 echo "==> collecting the token"
-PRINTER_TOKEN="$(curl -sS -D - -o /dev/null "$BASE/p/register" \
+PRINTER_TOKEN="$(curl -sS -D - -o /dev/null "$PRINTER_BASE/p/register" \
     -H "Code: $CODE" -H "Fingerprint: $FINGERPRINT" \
     | { grep -i '^Token:' || true; } | tr -d '\r' | awk '{print $2}')"
 

@@ -5,6 +5,17 @@ services:
       context: .
       dockerfile: Homespool.Host/Dockerfile
 
+    # Pinned, because Docker otherwise derives it from the container id - a new name on every
+    # recreation. The printer certificate carries this machine's hostname and is issued once and then
+    # frozen, so an unpinned name goes stale the moment the container is replaced: the certificate
+    # keeps vouching for a name that no longer resolves, and the provisioning page cannot tell that
+    # dead name from a LAN name it simply cannot resolve from in here - so it offers it.
+    #
+    # Pinning makes it resolve to this container's own address, always, which is precisely what marks
+    # it unusable by a printer and keeps it off the list. It also stops the certificate's names
+    # churning between reissues, and makes the logs say "homespool" rather than a hex id.
+    hostname: homespool
+
     ports:
       # ONLY the printer listener is published. The user listener stays inside this network, where
       # the proxy below is the single way in - which is also what makes X-Real-IP worth trusting:

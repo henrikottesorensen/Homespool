@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Serilog.Core;
 
@@ -51,6 +52,9 @@ namespace Homespool.Host.E2ETest;
 /// </remarks>
 public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppController>
 {
+    /// <summary>The printer address every test host advertises, and the first name in its certificate.</summary>
+    public const string PrinterHost = "printers.example.com";
+
     private readonly string _connectionString;
     private readonly IReadOnlyList<ILogEventSink> _extraSinks;
     private readonly MessageDispatcher? _messageDispatcher;
@@ -105,6 +109,32 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
     /// </remarks>
     public IReadOnlyList<ServiceDescriptor> RegisteredServices { get; private set; } = [];
 
+    /// <summary>
+    /// Issues the printer certificate the way startup would, because nothing here binds a listener.
+    /// </summary>
+    /// <remarks>
+    /// <b>Production mints this while configuring Kestrel</b> - the printer listener cannot bind
+    /// without it - so a test host that skipped it was unlike production in a way that kept showing
+    /// up: the provisioning bundle had no address to offer, and the certificate health check called a
+    /// freshly started host degraded. Doing it here makes a test host resemble a started server, which
+    /// is what these tests are for.
+    /// </remarks>
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        IHost host = base.CreateHost(builder);
+
+        PrusaConnectOptions connect = host.Services.GetRequiredService<IOptions<PrusaConnectOptions>>().Value;
+
+        if (connect.PrinterTls)
+        {
+            host.Services.GetRequiredService<Homespool.Host.Certificates.PrinterCertificateAuthority>()
+                .EnsureLeaf(Homespool.Host.Certificates.PrinterCertificateNames.ForThisMachine(connect))
+                .Dispose();
+        }
+
+        return host;
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.ConfigureServices(services =>
@@ -148,6 +178,10 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
             }
 
             services.AddSingleton<IHostEnvironmentAccessor>(new HostEnvironmentAccessor(_contentRoot));
+
+            // A deterministic printer address, so no test depends on what a developer happens to have
+            // in appsettings.Development.json - which is a real machine's LAN address, and changes.
+            services.PostConfigure<PrusaConnectOptions>(options => options.PrinterHost = PrinterHost);
 
             // Program.cs's .ReadFrom.Services(services) call wires up any ILogEventSink registered
             // here alongside its own console sink - a bare Microsoft.Extensions.Logging.ILoggerProvider

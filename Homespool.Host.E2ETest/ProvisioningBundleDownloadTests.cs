@@ -38,7 +38,7 @@ namespace Homespool.Host.E2ETest;
 [Collection("WebApplicationFactory")]
 public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime, IDisposable
 {
-    private const string PrinterHost = "printers.example.com";
+    private const string PrinterHost = HomespoolFactory.PrinterHost;
 
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-bundle-e2e-{Guid.NewGuid():N}.db");
     private HomespoolFactory _factory = null!;
@@ -48,13 +48,6 @@ public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime, IDisposabl
         _factory = new HomespoolFactory($"Data Source={_databasePath}");
 
         _ = _factory.Server;
-
-        // Provisioning offers the names the printer certificate covers, and nothing issues one in a
-        // test host - no listener is ever bound. So the certificate this deployment would have minted
-        // at startup is minted here instead, for the address the test configuration advertises.
-        using IServiceScope scope = _factory.Services.CreateScope();
-        PrinterCertificateAuthority authority = scope.ServiceProvider.GetRequiredService<PrinterCertificateAuthority>();
-        authority.EnsureLeaf([PrinterHost]);
 
         _factory.Services.GetRequiredService<Services.SetupState>().MarkComplete();
 

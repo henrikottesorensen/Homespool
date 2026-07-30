@@ -245,7 +245,11 @@ public static class Program
             // tag - see TelemetryWriterLivenessHealthCheck.
             builder.Services.AddHealthChecks()
                    .AddCheck<PrusaConnect.TelemetryPersistenceHealthCheck>("telemetry-persistence")
-                   .AddCheck<PrusaConnect.TelemetryWriterLivenessHealthCheck>("telemetry-writer-alive", tags: [LivenessTag]);
+                   .AddCheck<PrusaConnect.TelemetryWriterLivenessHealthCheck>("telemetry-writer-alive", tags: [LivenessTag])
+
+                   // Deliberately untagged: a certificate that no longer matches this machine is not a
+                   // fault a restart fixes, and the banner picks it up from the report either way.
+                   .AddCheck<Certificates.PrinterCertificateHealthCheck>("printer-certificate");
 
             // Sweeps TelemetrySample rows past StorageOptions.TelemetryRetentionDays. No interface
             // registration needed, unlike TelemetryWriter above - nothing else ever needs to reach it.
@@ -642,14 +646,7 @@ public static class Program
         PrusaConnect.PrusaConnectOptions connect = services
             .GetRequiredService<Microsoft.Extensions.Options.IOptions<PrusaConnect.PrusaConnectOptions>>().Value;
 
-        List<string> names = [];
-
-        if (connect.IsPrinterAddressConfigured)
-        {
-            names.Add(connect.PrinterHost.Trim());
-        }
-
-        names.AddRange(Certificates.PrinterAddressSuggestion.Gather().Select(suggestion => suggestion.Value));
+        List<string> names = [.. Certificates.PrinterCertificateNames.ForThisMachine(connect)];
 
         if (names.Count == 0)
         {

@@ -102,7 +102,15 @@ public static class EnrolmentFlowHelper
     /// server validates it through the genuine cookie-auth pipeline. Bypasses the Login page's
     /// antiforgery-protected form, which isn't what these suites are testing.
     /// </summary>
-    public static async Task<(HSUser user, HttpClient client)> CreateAuthenticatedUserAsync(WebApplicationFactory<PrinterAppController> factory, string email)
+    /// <param name="factory">The application under test.</param>
+    /// <param name="email">The account to create; also its user name.</param>
+    /// <param name="role">
+    /// A role to grant <em>before</em> the cookie is minted. It has to be before: the principal is
+    /// built from the user as it stands, so a role added afterwards is absent from the ticket the
+    /// server validates, and the test sees an ordinary user with no explanation.
+    /// </param>
+    public static async Task<(HSUser user, HttpClient client)> CreateAuthenticatedUserAsync(
+        WebApplicationFactory<PrinterAppController> factory, string email, string? role = null)
     {
         using IServiceScope scope = factory.Services.CreateScope();
 
@@ -122,6 +130,12 @@ public static class EnrolmentFlowHelper
         createResult.Succeeded.Should().BeTrue("account creation is setup for this test, not what it verifies");
 
         await teamService.AddDefaultTeamAsync(user.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+
+        if (role is not null)
+        {
+            IdentityResult roleResult = await userManager.AddToRoleAsync(user, role);
+            roleResult.Succeeded.Should().BeTrue("the role is setup for this test, not what it verifies");
+        }
 
         ClaimsPrincipal principal = await signInManager.CreateUserPrincipalAsync(user);
         CookieAuthenticationOptions cookieOptions = scope.ServiceProvider

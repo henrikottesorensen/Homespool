@@ -96,14 +96,14 @@ public class IndexModel : PageModel
 
             RegeneratedPrinterId = printerId;
 
-            IReadOnlyList<string> names = await _bundles.AvailableNamesAsync(cancellationToken);
+            IReadOnlyList<Certificates.PrinterAddressSuggestion> names = await _bundles.AvailableNamesAsync(cancellationToken);
 
             Offer = new BundleOffer(
                 printerId,
                 PrinterName: null,
                 token,
                 names,
-                ConnectIni.BuildSnippet(_options, names.Count > 0 ? names[0] : _options.PrinterHost, token),
+                ConnectIni.BuildSnippet(_options, names.Count > 0 ? names[0].Value : _options.PrinterHost, token),
                 _options.PrinterTls);
         }
         catch (PrinterNotFoundException)

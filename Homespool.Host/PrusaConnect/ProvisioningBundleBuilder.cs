@@ -122,11 +122,15 @@ public sealed class ProvisioningBundleBuilder
     /// the only answer there is.
     /// </para>
     /// </remarks>
-    public async Task<IReadOnlyList<string>> AvailableNamesAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<PrinterAddressSuggestion>> AvailableNamesAsync(CancellationToken cancellationToken)
     {
+        IReadOnlyList<IPNetwork> containerNetworks = _certificates.ParsedContainerNetworks;
+
         if (!_options.PrinterTls)
         {
-            return _options.IsPrinterAddressConfigured ? [_options.PrinterHost.Trim()] : [];
+            return _options.IsPrinterAddressConfigured
+                ? [PrinterAddressSuggestion.Describe(_options.PrinterHost.Trim(), containerNetworks)]
+                : [];
         }
 
         using X509Certificate2? leaf = _authority.LoadLeafIfIssued();
@@ -136,23 +140,25 @@ public sealed class ProvisioningBundleBuilder
             return [];
         }
 
-        List<string> usable = [];
+        List<PrinterAddressSuggestion> usable = [];
 
         foreach (string name in PrinterCertificateAuthority.NamesOf(leaf))
         {
             // Offering an address only the container can reach is not a warning worth writing, it is a
             // choice worth removing: it looks as reasonable as the others, it is the one a Compose
             // deployment volunteers, and picking it produces a bundle that cannot work.
-            if (!IsUnreachableByPrinters(await _resolver.ResolveAsync(name, cancellationToken),
-                                         _certificates.ParsedContainerNetworks))
+            if (!IsUnreachableByPrinters(await _resolver.ResolveAsync(name, cancellationToken), containerNetworks))
             {
-                usable.Add(name);
+                // Described, not just listed. Whether this name survives a moved DHCP lease is the
+                // whole of the choice being made here, and it is knowledge this code already has.
+                usable.Add(PrinterAddressSuggestion.Describe(name, containerNetworks));
             }
         }
 
         // The configured address first when the certificate carries it: it is the one an operator
         // chose deliberately, and the one every other page already talks about.
-        return [.. usable.OrderByDescending(name => name.Equals(_options.PrinterHost?.Trim(), StringComparison.OrdinalIgnoreCase))];
+        return [.. usable.OrderByDescending(
+            suggestion => suggestion.Value.Equals(_options.PrinterHost?.Trim(), StringComparison.OrdinalIgnoreCase))];
     }
 
     /// <summary>
@@ -177,7 +183,8 @@ public sealed class ProvisioningBundleBuilder
         string name = hostname.Trim();
 
         if (_options.PrinterTls
-            && !(await AvailableNamesAsync(cancellationToken)).Contains(name, StringComparer.OrdinalIgnoreCase))
+            && !(await AvailableNamesAsync(cancellationToken))
+                .Any(suggestion => suggestion.Value.Equals(name, StringComparison.OrdinalIgnoreCase)))
         {
             throw new ArgumentException(
                 $"'{name}' is not an address a printer could use to reach this server - either the certificate "

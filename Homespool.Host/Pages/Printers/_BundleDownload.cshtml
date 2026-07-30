@@ -18,14 +18,27 @@
                     Address this printer should dial
                 </label>
                 <select id="bundle-hostname" name="Hostname" class="form-select">
-                    @foreach (string name in Model.Names)
+                    @foreach (Homespool.Host.Certificates.PrinterAddressSuggestion name in Model.Names)
                     {
-                        <option value="@name">@name</option>
+                        <option value="@name.Value">@name.Value</option>
                     }
                 </select>
+@*  The choice between a name and an address is the choice between surviving a moved DHCP lease and
+    breaking silently one day, and the classifier already knows which is which. Rendering the note
+    under the select rather than inside each option keeps the sentences whole - they are too long to
+    read squeezed into a dropdown, and this is the one moment they are worth reading. *@
                 <div class="form-text">
-                    These are the names this server's printer certificate covers. An address that is not
-                    on the list cannot be verified by a printer, however reachable it looks from here.
+                    <p class="mb-1">
+                        These are the names this server's printer certificate covers. An address that is
+                        not on the list cannot be verified by a printer, however reachable it looks from
+                        here.
+                    </p>
+                    <ul class="mb-0">
+                        @foreach (Homespool.Host.Certificates.PrinterAddressSuggestion name in Model.Names)
+                        {
+                            <li><code>@name.Value</code> &mdash; @name.Note</li>
+                        }
+                    </ul>
                 </div>
             </div>
 

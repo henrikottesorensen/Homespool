@@ -69,11 +69,7 @@ public record PrinterAddressSuggestion(string Value, AddressDurability Durabilit
             // A name outlives a lease, but only where something resolves it. .local is excluded
             // because that is mDNS, which this firmware does not do - it fails the resolution half
             // rather than the matching half.
-            suggestions.Add(new PrinterAddressSuggestion(
-                hostName,
-                AddressDurability.SurvivesALeaseChange,
-                "Survives a change of address, but only if your router publishes names to its own DNS. "
-                + "Test it before relying on it."));
+            suggestions.Add(Describe(hostName, containerNetworks));
         }
 
         foreach (IPAddress address in addresses.Where(a => a.AddressFamily == AddressFamily.InterNetwork)
@@ -87,20 +83,56 @@ public record PrinterAddressSuggestion(string Value, AddressDurability Durabilit
                 continue;   // link-local: the machine failed to get an address at all
             }
 
-            bool containerish = IsProbablyTheContainersOwn(address, containerNetworks);
-
-            suggestions.Add(new PrinterAddressSuggestion(
-                address.ToString(),
-                containerish ? AddressDurability.ProbablyTheContainersOwn : AddressDurability.UntilTheLeaseMoves,
-                containerish
-                    ? "This looks like a Docker address, which is this container's own - printers on your "
-                      + "network cannot reach it. Use the address of the machine running Docker instead."
-                    : "Works immediately and needs no DNS, but stops working if this machine's address "
-                      + "changes. A static lease or DHCP reservation avoids that."));
+            suggestions.Add(Describe(address.ToString(), containerNetworks));
         }
 
         // Least-likely-to-work last, so the page's first option is its best one.
         return [.. suggestions.OrderBy(s => s.Durability == AddressDurability.ProbablyTheContainersOwn ? 1 : 0)];
+    }
+
+    /// <summary>
+    /// What this one name costs whoever picks it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Separate from <see cref="Classify"/> because the two callers arrive from opposite directions:
+    /// classification starts from what the machine can see, while the provisioning page starts from
+    /// what the <i>certificate</i> already covers and needs the same sentence about a name it did not
+    /// discover. Both end up here, so the wording exists once.
+    /// </para>
+    /// <para>
+    /// <b>Judged by shape, not by resolution</b>, and only ever to describe: whether a name can be
+    /// reached is a different question, answered by asking the resolver
+    /// (<c>ProvisioningBundleBuilder.IsUnreachableByPrinters</c>). This says what it will cost you if
+    /// it can.
+    /// </para>
+    /// </remarks>
+    /// <param name="value">A hostname or an address, as it would be written into a printer's ini.</param>
+    /// <param name="containerNetworks">The deployment's own internal ranges.</param>
+    public static PrinterAddressSuggestion Describe(string value, IReadOnlyList<IPNetwork> containerNetworks)
+    {
+        ArgumentNullException.ThrowIfNull(containerNetworks);
+
+        if (!IPAddress.TryParse(value, out IPAddress? address))
+        {
+            return new PrinterAddressSuggestion(
+                value,
+                AddressDurability.SurvivesALeaseChange,
+                "Survives a change of address, but only if your router publishes names to its own DNS. "
+                + "Test it before relying on it.");
+        }
+
+        return IsProbablyTheContainersOwn(address, containerNetworks)
+            ? new PrinterAddressSuggestion(
+                value,
+                AddressDurability.ProbablyTheContainersOwn,
+                "This looks like a Docker address, which is this container's own - printers on your "
+                + "network cannot reach it. Use the address of the machine running Docker instead.")
+            : new PrinterAddressSuggestion(
+                value,
+                AddressDurability.UntilTheLeaseMoves,
+                "Works immediately and needs no DNS, but stops working if this machine's address "
+                + "changes. A static lease or DHCP reservation avoids that.");
     }
 
     /// <summary>

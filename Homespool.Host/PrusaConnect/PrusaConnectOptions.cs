@@ -75,7 +75,7 @@ public class PrusaConnectOptions
     /// <para>
     /// <b>Printer-facing only, and named so since 2026-07-29.</b> It was <c>PublicHost</c>, which read
     /// as "the address of this deployment" and is not what it is: every consumer is the printer's ini
-    /// (<see cref="ConnectIniSnippet"/> and the page that renders it). Nothing user-facing reads it —
+    /// (<see cref="ConnectIni"/> and the page that renders it). Nothing user-facing reads it —
     /// absolute URLs in mail come from <c>Url.Page(..., protocol: Request.Scheme)</c>, i.e. from the
     /// incoming request, so the user-facing address is never configured at all. The rename matters
     /// because the printer address is about to stop being the same thing as the user address: they get
@@ -93,7 +93,7 @@ public class PrusaConnectOptions
     /// <remarks>
     /// <para>
     /// <b>One setting, both ends.</b> It is the <c>tls</c> key written into a printer's ini
-    /// (<see cref="ConnectIniSnippet"/>) <i>and</i> whether the printer listener binds TLS at all
+    /// (<see cref="ConnectIni"/>) <i>and</i> whether the printer listener binds TLS at all
     /// (<c>Program.ConfigureListeners</c>). Those were separate questions while a reverse proxy could
     /// terminate TLS in front of this process; the listener split ended that — nothing may sit in front
     /// of the printer port — so they are one fact with one switch, and cannot disagree.

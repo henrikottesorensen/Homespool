@@ -107,6 +107,10 @@ public static class Program
             // once and never again. Nothing about it is per-request.
             builder.Services.AddSingleton<Certificates.PrinterCertificateAuthority>();
 
+            // Singleton alongside the authority it reads: it holds bound options and a path, and
+            // reaches the filesystem only when a bundle is actually asked for.
+            builder.Services.AddSingleton<PrusaConnect.ProvisioningBundleBuilder>();
+
             ConfigureListeners(builder);
 
             AddForwardedHeaders(builder);

@@ -30,6 +30,7 @@ namespace Homespool.Host.Pages.Printers;
 public class AddModel : PageModel
 {
     private readonly PrusaConnectService _prusaConnectService;
+    private readonly ProvisioningBundleBuilder _bundles;
     private readonly TeamService _teamService;
     private readonly UserManager<HSUser> _userManager;
     private readonly UnitOfWork _unitOfWork;
@@ -37,6 +38,7 @@ public class AddModel : PageModel
     private readonly ILogger<AddModel> _logger;
 
     public AddModel(PrusaConnectService prusaConnectService,
+                    ProvisioningBundleBuilder bundles,
                     TeamService teamService,
                     UserManager<HSUser> userManager,
                     UnitOfWork unitOfWork,
@@ -44,6 +46,7 @@ public class AddModel : PageModel
                     ILogger<AddModel> logger)
     {
         _prusaConnectService = prusaConnectService;
+        _bundles = bundles;
         _teamService = teamService;
         _userManager = userManager;
         _unitOfWork = unitOfWork;
@@ -63,8 +66,11 @@ public class AddModel : PageModel
     /// </summary>
     public bool PrinterAddressConfigured => _options.IsPrinterAddressConfigured;
 
-    /// <summary>Set after a successful provision, so the view can show the one-time snippet.</summary>
-    public string? Snippet { get; private set; }
+    /// <summary>
+    /// Set after a successful provision, so the view can offer the one-time bundle. Null before, and
+    /// gone the moment the page is left - the token it carries exists nowhere else.
+    /// </summary>
+    public BundleOffer? Offer { get; private set; }
 
     public class InputModel
     {
@@ -123,7 +129,7 @@ public class AddModel : PageModel
 
             await transaction.CommitAsync(cancellationToken);
 
-            Snippet = ConnectIniSnippet.Build(_options, token);
+            Offer = BuildOffer(printer.Id, Input.Name, token);
 
             _logger.LogInformation("Printer {PrinterUuid} provisioned via USB-key by user {UserId}.", printer.Uuid, user.Id);
 
@@ -148,6 +154,27 @@ public class AddModel : PageModel
 
             return Page();
         }
+    }
+
+    /// <summary>
+    /// Wraps a freshly issued token in everything the download partial needs.
+    /// </summary>
+    /// <remarks>
+    /// The names come from the certificate rather than from this machine's current addresses: the leaf
+    /// is issued once and frozen, so the two can differ, and a bundle written for an address the
+    /// certificate does not carry fails at the printer with nothing but "TLS error" to go on.
+    /// </remarks>
+    private BundleOffer BuildOffer(int printerId, string? printerName, string token)
+    {
+        IReadOnlyList<string> names = _bundles.AvailableNames();
+
+        return new BundleOffer(
+            printerId,
+            printerName,
+            token,
+            names,
+            ConnectIni.BuildSnippet(_options, names.Count > 0 ? names[0] : _options.PrinterHost, token),
+            _options.PrinterTls);
     }
 
     private async Task LoadTeamOptionsAsync(CancellationToken cancellationToken)

@@ -3,9 +3,11 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+using Homespool.Data;
 using Homespool.Host.PrusaConnect;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace Homespool.Host.Test;
 
@@ -28,11 +30,20 @@ public class TelemetryPersistenceHealthCheckTests
         public bool IsDraining { get; set; } = true;
     }
 
-    private static async Task<HealthCheckResult> CheckAsync(TelemetryHealthSnapshot snapshot)
+    /// <param name="snapshot">The writer state to grade.</param>
+    /// <param name="flushIntervalSeconds">
+    /// Drives the staleness threshold, which is ten intervals or fifteen seconds, whichever is
+    /// larger. Left at the production default unless a test is about staleness.
+    /// </param>
+    private static async Task<HealthCheckResult> CheckAsync(TelemetryHealthSnapshot snapshot,
+                                                            double flushIntervalSeconds = 2)
     {
         StubHealthSource source = new() { Current = snapshot };
 
-        return await new TelemetryPersistenceHealthCheck(source, new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance))
+        return await new TelemetryPersistenceHealthCheck(
+                source,
+                new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
+                Options.Create(new StorageOptions { WriteFlushIntervalSeconds = flushIntervalSeconds }))
             .CheckHealthAsync(new HealthCheckContext(), CancellationToken.None);
     }
 
@@ -47,6 +58,56 @@ public class TelemetryPersistenceHealthCheckTests
         HealthCheckResult result = await CheckAsync(TelemetryHealthSnapshot.Initial);
 
         result.Status.Should().Be(HealthStatus.Healthy);
+    }
+
+    /// <summary>
+    /// A writer that has stopped completing flushes without any of them failing is stuck, and must
+    /// be reported as such.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The gap this closes, measured 2026-07-29: an outside connection holding <c>BEGIN IMMEDIATE</c>
+    /// makes a flush <em>block</em> rather than fail, because Microsoft.Data.Sqlite retries
+    /// <c>SQLITE_BUSY</c> internally. <c>ConsecutiveFailures</c> stays 0, so every failure-graded
+    /// branch passes and this check reported Healthy for the entire outage, right up to a shutdown
+    /// that was killed mid-drain (tools/slow-db, <c>MECHANISM=lock</c>).
+    /// </para>
+    /// <para>
+    /// <b>Mutation check:</b> removing the staleness branch must fail this - without it the snapshot
+    /// below grades Healthy, which is precisely the bug.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AWriterThatHasStoppedFlushingWithoutFailingIsUnhealthy()
+    {
+        // A flush interval of 2 s puts the threshold at the 15 s floor, so 60 s is unambiguous - and
+        // nothing has failed, which is what makes this invisible to every other branch.
+        HealthCheckResult result = await CheckAsync(
+            new TelemetryHealthSnapshot(DateTimeOffset.UtcNow.AddSeconds(-60), ConsecutiveFailures: 0,
+                PendingSamples: 500, PendingEvents: 40, DroppedMessages: 0, DiscardedEvents: 0));
+
+        result.Status.Should().Be(HealthStatus.Unhealthy,
+            "a blocked writer persists nothing while reporting no failures at all");
+        result.Description.Should().Contain("blocked rather than broken",
+            "the description has to tell an operator which of the two shapes they are looking at");
+    }
+
+    /// <summary>
+    /// The threshold follows the configured flush interval, so a deployment that flushes rarely is
+    /// not called stuck for flushing rarely.
+    /// </summary>
+    [Fact]
+    public async Task AFlushOlderThanTheFloorIsHealthyWhenTheIntervalIsLongEnough()
+    {
+        // Ten intervals of 30 s is 300 s, so a 60 s gap is well inside tolerance here - the same
+        // snapshot that is Unhealthy above.
+        HealthCheckResult result = await CheckAsync(
+            new TelemetryHealthSnapshot(DateTimeOffset.UtcNow.AddSeconds(-60), ConsecutiveFailures: 0,
+                PendingSamples: 500, PendingEvents: 40, DroppedMessages: 0, DiscardedEvents: 0),
+            flushIntervalSeconds: 30);
+
+        result.Status.Should().Be(HealthStatus.Healthy,
+            "staleness is measured in missed flush intervals, not in absolute seconds");
     }
 
     [Fact]

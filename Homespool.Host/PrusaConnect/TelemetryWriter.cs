@@ -863,10 +863,51 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         TrimExcessPendingEvents(pendingEvents);
     }
 
+    /// <summary>
+    /// Caps how long one of this writer's database commands may wait, from
+    /// <see cref="StorageOptions.BusyTimeoutMilliseconds"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Without this, that option does not mean what it says.</b> It documents itself as how long a
+    /// blocked writer waits for the lock before failing, and
+    /// <see cref="Homespool.Data.SqlitePragmaInterceptor"/> duly issues <c>PRAGMA busy_timeout</c> -
+    /// but Microsoft.Data.Sqlite catches the resulting <c>SQLITE_BUSY</c> and retries it internally
+    /// until <c>CommandTimeout</c> elapses, which defaults to 30 seconds. Measured with an outside
+    /// connection holding <c>BEGIN IMMEDIATE</c>: a flush blocked for 30 s against a configured
+    /// 5,000 ms, six times the documented value (tools/slow-db, <c>MECHANISM=lock</c>).
+    /// </para>
+    /// <para>
+    /// <b>The point is not the wait, it is that blocking is invisible.</b> A blocked flush is not a
+    /// failed one: <c>_consecutiveFlushFailures</c> stays 0, so the retry guard never engages, the
+    /// health check - which grades on failures - goes on reporting Healthy, and a shutdown is killed
+    /// mid-drain with no summary. Failing at the configured timeout instead puts lock contention
+    /// back into the failure path that everything else in this class already handles properly.
+    /// </para>
+    /// <para>
+    /// <b>Scoped to this writer's own contexts</b>, matching the option's wording, rather than set on
+    /// the connection for the whole app: an API read that today waits out brief contention should not
+    /// start failing as a 500 because the *writer* wants a shorter leash.
+    /// </para>
+    /// <para>
+    /// <b>Never passed through as zero.</b> ADO.NET reads <c>CommandTimeout = 0</c> as "wait
+    /// forever", the exact inverse of <c>busy_timeout = 0</c>'s "fail immediately", so a
+    /// configuration meaning the most impatient possible writer would produce the most patient
+    /// possible one. Rounded up to a whole second, floored at one.
+    /// </para>
+    /// </remarks>
+    private void ApplyWriterCommandTimeout(HSDbContext context)
+    {
+        int seconds = (int)Math.Ceiling(Math.Max(_options.BusyTimeoutMilliseconds, 1) / 1000.0);
+
+        context.Database.SetCommandTimeout(Math.Max(seconds, 1));
+    }
+
     private async Task<LiveStateCacheEntry> HydrateAsync(int printerId, CancellationToken cancellationToken)
     {
         using IServiceScope scope = _scopeFactory.CreateScope();
         HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+        ApplyWriterCommandTimeout(context);
 
         PrinterLiveState? existing = await context.PrinterLiveStates
             .Include(s => s.Slots)
@@ -978,6 +1019,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
         using IServiceScope scope = _scopeFactory.CreateScope();
         HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+        ApplyWriterCommandTimeout(context);
 
         if (pendingSamples.Count > 0)
         {

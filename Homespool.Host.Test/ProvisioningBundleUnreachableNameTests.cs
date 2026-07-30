@@ -175,7 +175,7 @@ public sealed class ProvisioningBundleUnreachableNameTests : IDisposable
         }));
 
         // Act
-        Func<Task> act = async () => await builder.BuildAsync("172.28.0.2", Token, CancellationToken.None);
+        Func<Task> act = async () => await builder.BuildAsync("172.28.0.2", Token, "Bench printer", CancellationToken.None);
 
         // Assert
         (await act.Should().ThrowAsync<ArgumentException>()).WithMessage("*resolves only inside this container*");

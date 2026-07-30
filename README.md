@@ -168,7 +168,11 @@ Best when you are setting a printer up from scratch, or it has no way to reach t
 ```
 prusa_printer_settings.ini     the [service::connect] section, with your token
 connect.der                    the certificate authority the printer must trust
+README.Bundle.md               these instructions, for whoever opens the zip
 ```
+
+The README travels *in* the zip on purpose: the person unpacking it onto a stick is often not the
+person who downloaded it, and by then this page is nowhere in sight.
 
 **Nothing is transcribed, and that is the point.** Every failure of the afternoon this was first
 done by hand was an assembly failure rather than a protocol one: a `;` comment (this parser treats

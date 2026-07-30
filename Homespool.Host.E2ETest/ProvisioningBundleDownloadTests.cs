@@ -125,7 +125,11 @@ public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime, IDisposabl
 
             Dictionary<string, byte[]> entries = Entries(await download.Content.ReadAsByteArrayAsync());
 
-            entries.Keys.Should().BeEquivalentTo(["prusa_printer_settings.ini", "connect.der"]);
+            entries.Keys.Should().BeEquivalentTo(["prusa_printer_settings.ini", "connect.der", "README.Bundle.md"]);
+
+            // The instructions name this printer, because a downloads folder ends up holding several
+            // and they are otherwise identical.
+            Encoding.UTF8.GetString(entries["README.Bundle.md"]).Should().Contain("Bench printer");
 
             string ini = Encoding.UTF8.GetString(entries["prusa_printer_settings.ini"]);
             ini.Should().Contain($"hostname = {PrinterHost}").And.Contain("custom_cert = 1");

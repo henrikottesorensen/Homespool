@@ -191,6 +191,26 @@ public static class Program
             builder.Services.AddSingleton<PrusaConnect.ITelemetryHealthSource>(sp => sp.GetRequiredService<PrusaConnect.TelemetryWriter>());
             builder.Services.AddHostedService(sp => sp.GetRequiredService<PrusaConnect.TelemetryWriter>());
 
+            // The middle link in a three-part budget that no single file used to own: the writer's
+            // shutdown flush must finish inside this, and this must finish inside the container
+            // runtime's stop grace period (compose.yaml, stop_grace_period). Derived rather than
+            // written as a number, so raising FinalFlushAttempts cannot silently outgrow it - which
+            // is exactly what happened with the framework's 30 s default, where three attempts that
+            // could each block ~10 s landed on the timeout and every shutdown against a stuck
+            // database was killed mid-drain, losing the buffers and the log line naming the loss.
+            // Two terms, not one: the drain cannot start until the flush already in flight when
+            // SIGTERM arrived has finished, and that one runs to the ordinary busy budget. Omitting
+            // it put the timeout below the drain's real worst case, so the process was still killed
+            // mid-shutdown - just 19 s sooner than before.
+            StorageOptions shutdownStorageOptions = builder.Configuration
+                                                           .GetSection(StorageOptions.SectionName)
+                                                           .Get<StorageOptions>() ?? new StorageOptions();
+
+            builder.Services.Configure<HostOptions>(options =>
+                options.ShutdownTimeout = PrusaConnect.TelemetryWriter.MaxShutdownFlushDuration
+                                        + TimeSpan.FromMilliseconds(shutdownStorageOptions.BusyTimeoutMilliseconds)
+                                        + TimeSpan.FromSeconds(1.5));
+
             // The process answering requests says nothing about whether it is still recording
             // anything - a flush bug once made every write fail permanently while the service looked
             // entirely healthy from outside. This is the hook a monitoring system can watch.

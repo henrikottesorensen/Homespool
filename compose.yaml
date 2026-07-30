@@ -46,6 +46,21 @@ services:
     volumes:
       - printerservice-data:/app/data
 
+    # The outermost of three shutdown budgets, and the only one Docker enforces: SIGTERM, then
+    # SIGKILL after this. The other two are inside the app - TelemetryWriter's final flush (~8 s
+    # worst case, every attempt timing out) and HostOptions.ShutdownTimeout, derived from it with
+    # margin - and both are sized to finish inside this value.
+    #
+    # It is set explicitly because the default is 10 s and the app used to need 30: three shutdown
+    # flush attempts that could each block for ~10 s against a locked database. Every such shutdown
+    # was killed part-way through the drain, which lost the buffered telemetry *and* the log line
+    # saying how much was lost. Now the app gives up first and reports, which is the whole point of
+    # ordering these three.
+    #
+    # Raise it if a deployment ever needs a longer drain; do not lower it below the app's own
+    # timeout, or the SIGKILL lands mid-flush again and the report is lost with it.
+    stop_grace_period: 15s
+
     # No healthcheck block is needed: the image declares one against /health/live, so
     # `docker compose ps` shows healthy/unhealthy out of the box, and `depends_on:
     # condition: service_healthy` works against this service.

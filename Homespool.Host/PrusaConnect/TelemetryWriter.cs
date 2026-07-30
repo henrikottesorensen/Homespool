@@ -145,6 +145,29 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
     private static readonly TimeSpan FinalFlushRetryDelay = TimeSpan.FromMilliseconds(250);
 
+    /// <summary>
+    /// What one shutdown flush attempt may spend waiting on the database, ignoring
+    /// <see cref="StorageOptions.BusyTimeoutMilliseconds"/>, which is sized for a running service.
+    /// </summary>
+    /// <remarks>
+    /// A shutdown has a budget a running service does not, and it is set outside the process: the
+    /// container runtime SIGKILLs after its grace period, so an attempt that would have succeeded at
+    /// twelve seconds is not patient, it is simply killed - and killed mid-drain, which loses the
+    /// buffers *and* the log line saying what was lost. Giving up sooner and reporting is strictly
+    /// better than waiting longer and being terminated. See <see cref="MaxShutdownFlushDuration"/>
+    /// for the arithmetic this feeds.
+    /// </remarks>
+    /// <remarks>
+    /// Chosen from the outside in, not picked for feel. A 15 s stop grace has to cover three things,
+    /// and the first is easy to forget: the flush the drain loop is *already inside* when SIGTERM
+    /// arrives, which runs to the ordinary <see cref="StorageOptions.BusyTimeoutMilliseconds"/>
+    /// budget before the loop can even see that it is shutting down. Then these attempts, then
+    /// process teardown. Leaving that first term out is what left a measured shutdown at 11 s
+    /// against an 11 s timeout - still killed, still no report. Deliberately as patient as the
+    /// arithmetic allows, since the cost of giving up early is data a longer wait would have saved.
+    /// </remarks>
+    private static readonly TimeSpan FinalFlushCommandBudget = TimeSpan.FromMilliseconds(2000);
+
     private readonly Channel<TelemetryWriteItem> _channel;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly StorageOptions _options;
@@ -170,6 +193,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     private volatile TelemetryHealthSnapshot _health = TelemetryHealthSnapshot.Initial;
     private DateTimeOffset? _lastFlushAt;
     private int _consecutiveFlushFailures;
+    private volatile bool _shuttingDown;
 
     public TelemetryWriter(IServiceScopeFactory scopeFactory,
                            IOptions<StorageOptions> options,
@@ -342,6 +366,23 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         _channel.Writer.TryWrite(new TelemetryWriteItem.EventItem(printerId, receivedAt, eventDto));
     }
 
+    /// <summary>
+    /// Worst case wall-clock time the shutdown drain can spend on its final flush: every attempt
+    /// timing out, plus the delays between them.
+    /// </summary>
+    /// <remarks>
+    /// Public because it is one end of a chain that spans three files and used to be settled in none
+    /// of them: this budget must fit inside <c>HostOptions.ShutdownTimeout</c> (set from it in
+    /// <c>Program.cs</c>), which must in turn fit inside the container runtime's stop grace period
+    /// (<c>compose.yaml</c>). Before 2026-07-30 the middle value was the framework default of 30 s
+    /// and the outer one Docker's default of 10 s, so the inner budget - three attempts that could
+    /// each block ~10 s - overran both, and every shutdown against a stuck database was SIGKILLed
+    /// with nothing logged about what it lost. <c>TelemetryWriterShutdownBudgetTests</c> pins the
+    /// ordering so a future edit to the attempt count cannot quietly break it again.
+    /// </remarks>
+    public static TimeSpan MaxShutdownFlushDuration =>
+        (FinalFlushCommandBudget * FinalFlushAttempts) + (FinalFlushRetryDelay * (FinalFlushAttempts - 1));
+
     /// <inheritdoc />
     public TelemetryHealthSnapshot Current => _health;
 
@@ -394,6 +435,8 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
+        // Set before the writer end closes, so the drain loop sees it for every item it still has.
+        _shuttingDown = true;
         _channel.Writer.TryComplete();
 
         await base.StopAsync(cancellationToken);
@@ -461,8 +504,15 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                     // after an outage clears. It also fixes shutdown, where draining a full channel
                     // at one failed flush per item overran HostOptions.ShutdownTimeout and lost the
                     // buffers - the final flush after the loop is unaffected and still retries.
+                    // Not while shutting down, whatever the buffers look like. The guard above keys
+                    // off *failures*, and a blocked database produces none - so a lock left every
+                    // drained item triggering its own multi-second attempt, and the drain used the
+                    // whole shutdown budget before the final flush could start. Measured: 11 s and
+                    // killed, with the loss summary never reached. Draining to memory and writing
+                    // once at the end is both faster and the only version with a bounded cost.
                     if (pendingSamples.Count + pendingEvents.Count >= _options.WriteBatchSize
-                        && _consecutiveFlushFailures == 0)
+                        && _consecutiveFlushFailures == 0
+                        && !_shuttingDown)
                     {
                         await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, CancellationToken.None);
                     }
@@ -484,7 +534,8 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         // the success signal.
         for (int attempt = 1; attempt <= FinalFlushAttempts; attempt++)
         {
-            await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, CancellationToken.None);
+            await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo,
+                                 CancellationToken.None, FinalFlushCommandBudget);
 
             if (pendingSamples.Count == 0 && pendingEvents.Count == 0)
             {
@@ -896,18 +947,50 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// possible one. Rounded up to a whole second, floored at one.
     /// </para>
     /// </remarks>
-    private void ApplyWriterCommandTimeout(HSDbContext context)
+    /// <param name="context">The context whose commands are being bounded.</param>
+    /// <param name="budget">
+    /// The wait to allow, or null for <see cref="StorageOptions.BusyTimeoutMilliseconds"/>. The
+    /// shutdown flush passes <see cref="FinalFlushCommandBudget"/> instead, because its deadline
+    /// comes from the container runtime rather than from configuration.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the pragma statement, when one is issued.</param>
+    // CA2100/EF1002: SQLite does not accept bound parameters in PRAGMA, so the value is
+    // interpolated. It is an int computed from a TimeSpan this class owns - never user input.
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "EF1002:Risk of vulnerability to SQL injection",
+                                                     Justification = "PRAGMA cannot be parameterised; the interpolated value is an int this class computes.")]
+    private async Task ApplyWriterCommandTimeoutAsync(HSDbContext context, TimeSpan? budget, CancellationToken cancellationToken)
     {
-        int seconds = (int)Math.Ceiling(Math.Max(_options.BusyTimeoutMilliseconds, 1) / 1000.0);
+        TimeSpan effective = budget ?? TimeSpan.FromMilliseconds(Math.Max(_options.BusyTimeoutMilliseconds, 1));
 
-        context.Database.SetCommandTimeout(Math.Max(seconds, 1));
+        context.Database.SetCommandTimeout(Math.Max((int)Math.Ceiling(effective.TotalSeconds), 1));
+
+        if (budget is null)
+        {
+            // The connection already carries the pragma the interceptor set from the same option.
+            return;
+        }
+
+        // A tighter budget has to move *both* layers. SQLite blocks for busy_timeout before it
+        // reports SQLITE_BUSY at all, so a command can never return faster than the pragma however
+        // low CommandTimeout is set - which is exactly why wiring up the command timeout alone left
+        // shutdown at ~30 s. Half the budget, so two waits still fit inside it.
+        //
+        // Opened explicitly first, and that is load-bearing: a pragma is per-connection, and EF
+        // closes the connection after each command unless it was opened by the caller. Set on a
+        // borrowed connection it is handed straight back to the pool, and the SaveChanges that
+        // follows opens another one - where the interceptor re-applies the configured value and
+        // quietly undoes this. The scope's disposal returns the connection either way.
+        await context.Database.OpenConnectionAsync(cancellationToken);
+
+        await context.Database.ExecuteSqlRawAsync(
+            $"PRAGMA busy_timeout = {Math.Max((int)(effective.TotalMilliseconds / 2), 1)}", cancellationToken);
     }
 
     private async Task<LiveStateCacheEntry> HydrateAsync(int printerId, CancellationToken cancellationToken)
     {
         using IServiceScope scope = _scopeFactory.CreateScope();
         HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
-        ApplyWriterCommandTimeout(context);
+        await ApplyWriterCommandTimeoutAsync(context, budget: null, cancellationToken);
 
         PrinterLiveState? existing = await context.PrinterLiveStates
             .Include(s => s.Slots)
@@ -945,11 +1028,12 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                                       List<PrinterEvent> pendingEvents,
                                       HashSet<int> dirtyPrinterIds,
                                       Dictionary<int, InfoEventDataDTO> pendingPrinterInfo,
-                                      CancellationToken cancellationToken)
+                                      CancellationToken cancellationToken,
+                                      TimeSpan? commandBudget = null)
     {
         try
         {
-            await FlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, cancellationToken);
+            await FlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, cancellationToken, commandBudget);
 
             _consecutiveFlushFailures = 0;
             _lastFlushAt = TimeProvider.System.GetUtcNow();
@@ -1010,7 +1094,8 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                                   List<PrinterEvent> pendingEvents,
                                   HashSet<int> dirtyPrinterIds,
                                   Dictionary<int, InfoEventDataDTO> pendingPrinterInfo,
-                                  CancellationToken cancellationToken)
+                                  CancellationToken cancellationToken,
+                                  TimeSpan? commandBudget = null)
     {
         if (pendingSamples.Count == 0 && pendingEvents.Count == 0 && dirtyPrinterIds.Count == 0)
         {
@@ -1019,7 +1104,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
         using IServiceScope scope = _scopeFactory.CreateScope();
         HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
-        ApplyWriterCommandTimeout(context);
+        await ApplyWriterCommandTimeoutAsync(context, commandBudget, cancellationToken);
 
         if (pendingSamples.Count > 0)
         {

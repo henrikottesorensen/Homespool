@@ -1,0 +1,147 @@
+@page
+@model CertificateModel
+@{
+    ViewData["Title"] = "Printer certificate";
+}
+
+<h1>@ViewData["Title"]</h1>
+
+@if (!string.IsNullOrEmpty(Model.StatusMessage))
+{
+    <div class="alert alert-info" role="alert">@Model.StatusMessage</div>
+}
+
+@if (!Model.TlsEnabled)
+{
+    <div class="alert alert-warning" role="alert">
+        <p class="mb-1">
+            <strong>Printers connect over plain HTTP in this deployment</strong>
+            (<code>PrusaConnect:PrinterTls</code> is false), so no certificate is issued or served.
+        </p>
+        <p class="mb-0">
+            That is a setting for reading the protocol on the wire or running a test rig. Every printer
+            token crosses the network in clear while it is off.
+        </p>
+    </div>
+
+    return;
+}
+
+<p>
+    Printers verify this server against a certificate it mints for itself. The certificate is issued
+    <strong>once</strong> and then left alone - reissuing it automatically would drop every live printer
+    connection each time an interface appeared, and quietly change what this server claims to be. So
+    when this machine's addresses move, the fix is here rather than automatic.
+</p>
+
+@if (Model.Covered.Count == 0)
+{
+    <div class="alert alert-danger" role="alert">
+        No certificate has been issued, so no printer can verify this server. One is normally created at
+        startup - check the server log for why it was not.
+    </div>
+}
+
+<div class="row">
+    <div class="col-md-8">
+        <table class="table">
+            <tbody>
+                <tr>
+                    <th scope="row">The certificate covers</th>
+                    <td>
+                        @if (Model.Covered.Count == 0)
+                        {
+                            <em>nothing</em>
+                        }
+                        else
+                        {
+                            @foreach (string name in Model.Covered)
+                            {
+                                <div><code>@name</code></div>
+                            }
+                        }
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">This machine now answers on</th>
+                    <td>
+                        @if (Model.Current.Count == 0)
+                        {
+                            <em>no usable address was detected</em>
+                        }
+                        else
+                        {
+                            @foreach (string name in Model.Current)
+                            {
+                                <div>
+                                    <code>@name</code>
+                                    @if (Model.Uncovered.Contains(name))
+                                    {
+                                        <span class="badge text-bg-warning">not in the certificate</span>
+                                    }
+                                </div>
+                            }
+                        }
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Printers are told to dial</th>
+                    <td>
+                        @if (Model.ConfiguredHost is null)
+                        {
+                            <em>not configured (<code>PrusaConnect:PrinterHost</code>)</em>
+                        }
+                        else
+                        {
+                            <code>@Model.ConfiguredHost</code>
+                            @if (Model.ConfiguredHostUncovered)
+                            {
+                                <span class="badge text-bg-danger">not in the certificate</span>
+                            }
+                        }
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Certificate expires</th>
+                    <td>@(Model.LeafExpires?.ToString("yyyy-MM-dd") ?? "-")</td>
+                </tr>
+                <tr>
+                    <th scope="row">Authority expires</th>
+                    <td>
+                        @(Model.AuthorityExpires?.ToString("yyyy-MM-dd") ?? "-")
+                        <div class="form-text">
+                            Replacing this one means a USB visit to every printer - it is their entire trust
+                            store and cannot be sent over the network. Plan it well ahead.
+                        </div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@if (Model.ConfiguredHostUncovered)
+{
+    <div class="alert alert-danger" role="alert">
+        The address printers are told to dial is not in the certificate, so no provisioning bundle can be
+        produced for it and any printer dialling it cannot verify this server.
+    </div>
+}
+else if (Model.Uncovered.Count > 0)
+{
+    <div class="alert alert-warning" role="alert">
+        This machine has addresses the certificate does not cover. That is only a problem for printers
+        told to dial one of them - the ones using a covered address are unaffected.
+    </div>
+}
+
+<form method="post" asp-page-handler="Reissue">
+    <button type="submit" class="btn btn-primary">Reissue for this machine's current addresses</button>
+    <a class="btn btn-link" asp-page="/Index">Back</a>
+</form>
+
+<p class="form-text mt-2">
+    A reissue needs a <strong>server restart</strong> to take effect: the running process bound the
+    current certificate when it started. Nothing is needed at the printers - they trust the authority,
+    which this does not touch.
+</p>

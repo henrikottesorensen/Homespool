@@ -293,6 +293,16 @@ somewhere you would not put a private key.
 | `LeafValidityDays` | `730` | The leaf can be replaced with a restart, because printers trust the authority rather than the leaf. |
 | `AuthorityName` | `Homespool printer CA` | Cosmetic: it is never matched against anything, only read by a human inspecting `connect.der`. |
 
+The certificate is issued **once**, at first start, and then left alone — reissuing it automatically
+would drop every live printer connection each time an interface appeared, and quietly change what
+this server claims to be. When this machine's addresses move, `/health` and the administrator banner
+say so, and **Admin → Printer certificate** shows what the certificate covers against what the
+machine now has, with a button to reissue.
+
+A reissue needs a **server restart** to take effect, and needs nothing at any printer: they trust the
+authority, which a reissue does not touch. That is the whole reason this deployment mints an
+authority and a leaf rather than one self-signed certificate.
+
 ### `Smtp`
 
 Entirely optional. With `Host` empty the server runs without outgoing mail: new accounts are

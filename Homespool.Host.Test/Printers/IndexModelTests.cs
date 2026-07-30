@@ -6,9 +6,11 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 using Homespool.Data;
+using Homespool.Host.Certificates;
 using Homespool.Host.Pages.Printers;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
+using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -30,6 +32,9 @@ namespace Homespool.Host.Test.Printers;
 public sealed class IndexModelTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-printers-index-{Guid.NewGuid():N}.db");
+
+    // A reissue offers the names the certificate covers, so these tests need a real one.
+    private readonly string _certificateRoot = Path.Combine(Path.GetTempPath(), $"ps-printers-index-certs-{Guid.NewGuid():N}");
 
     private HSDbContext NewContext()
     {
@@ -57,12 +62,28 @@ public sealed class IndexModelTests : IDisposable
                 File.Delete(path);
             }
         }
+
+        if (Directory.Exists(_certificateRoot))
+        {
+            Directory.Delete(_certificateRoot, recursive: true);
+        }
     }
 
-    private static Task<(IndexModel model, HSUser user, Team team)> NewModelAsync(HSDbContext context) =>
+    private static Printer NewPrinter(int teamId, string? name = null) => new()
+    {
+        Uuid = Guid.NewGuid(),
+        Type = PrinterType.PrusaConnect,
+        TeamId = teamId,
+        Name = name,
+        Status = PrinterStatus.Unknown,
+        CreatedAt = DateTimeOffset.UtcNow,
+        UpdatedAt = DateTimeOffset.UtcNow,
+    };
+
+    private Task<(IndexModel model, HSUser user, Team team)> NewModelAsync(HSDbContext context) =>
         NewModelAsync(context, connectionRegistry: null);
 
-    private static async Task<(IndexModel model, HSUser user, Team team)> NewModelAsync(HSDbContext context, PrinterConnectionRegistry? connectionRegistry)
+    private async Task<(IndexModel model, HSUser user, Team team)> NewModelAsync(HSDbContext context, PrinterConnectionRegistry? connectionRegistry)
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 
@@ -79,10 +100,21 @@ public sealed class IndexModelTests : IDisposable
 
         connectionRegistry ??= new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance);
 
+        PrinterCertificateAuthority authority = new(
+            Options.Create(new CertificateOptions { Directory = "certs" }),
+            new HostEnvironmentAccessor(_certificateRoot),
+            TimeProvider.System,
+            NullLogger<PrinterCertificateAuthority>.Instance);
+
+        // A leaf covering the configured address, since that is what decides which names the reissue
+        // may offer - and whether it can offer a bundle at all.
+        authority.EnsureLeaf([options.PrinterHost]);
+
         IndexModel model = new(
             new PrinterQueryService(context, TimeProvider.System),
             new PrusaConnectService(context, new CodeGenerator(), new TokenService(), new TeamService(context),
                 TimeProvider.System, NullLogger<PrusaConnectService>.Instance, Options.Create(options)),
+            new ProvisioningBundleBuilder(Options.Create(options), authority),
             new TeamService(context),
             users,
             Options.Create(options),
@@ -94,17 +126,6 @@ public sealed class IndexModelTests : IDisposable
 
         return (model, user, team);
     }
-
-    private static Printer NewPrinter(int teamId, string? name = null) => new()
-    {
-        Uuid = Guid.NewGuid(),
-        Type = PrinterType.PrusaConnect,
-        TeamId = teamId,
-        Name = name,
-        Status = PrinterStatus.Unknown,
-        CreatedAt = DateTimeOffset.UtcNow,
-        UpdatedAt = DateTimeOffset.UtcNow,
-    };
 
     // ---------- OnGetAsync ----------
 
@@ -212,9 +233,9 @@ public sealed class IndexModelTests : IDisposable
 
         // Assert
         model.RegeneratedPrinterId.Should().Be(printer.Id);
-        model.Snippet.Should().NotBeNull();
+        model.Offer.Should().NotBeNull();
 
-        string reissuedToken = model.Snippet!.Split("token = ")[1].Trim();
+        string reissuedToken = model.Offer!.Snippet.Split("token = ")[1].Trim();
         reissuedToken.Should().NotBe(originalToken);
 
         PrusaConnectProvisioning stored = await context.PrusaConnectProvisionings.SingleAsync();
@@ -235,7 +256,7 @@ public sealed class IndexModelTests : IDisposable
 
         // Assert
         model.StatusMessage.Should().NotBeNullOrEmpty();
-        model.Snippet.Should().BeNull();
+        model.Offer.Should().BeNull();
     }
 
     /// <summary>A printer the caller cannot manage is refused, without leaking whether it exists.</summary>
@@ -267,7 +288,7 @@ public sealed class IndexModelTests : IDisposable
 
         // Assert
         model.StatusMessage.Should().NotBeNullOrEmpty();
-        model.Snippet.Should().BeNull();
+        model.Offer.Should().BeNull();
     }
 
     /// <summary>
@@ -305,7 +326,7 @@ public sealed class IndexModelTests : IDisposable
 
         // Assert
         model.StatusMessage.Should().BeNullOrEmpty();
-        model.Snippet.Should().NotBeNullOrEmpty();
+        model.Offer.Should().NotBeNull();
         model.RegeneratedPrinterId.Should().Be(printer.Id);
     }
 

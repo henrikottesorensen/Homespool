@@ -214,6 +214,20 @@ public class PrinterCertificateAuthority
     }
 
     /// <summary>
+    /// The leaf as it stands, or null if none has been issued yet.
+    /// </summary>
+    /// <remarks>
+    /// For callers that need to know what the certificate says without being the reason one exists:
+    /// the provisioning bundle asking which names it may write, and step 6's drift detection. Issuing
+    /// belongs to <see cref="EnsureLeaf"/> and to startup, where the listener needs it — a page that
+    /// minted a certificate as a side effect of being rendered would be a surprising thing.
+    /// </remarks>
+    public X509Certificate2? LoadLeafIfIssued() =>
+        File.Exists(LeafPath)
+            ? X509CertificateLoader.LoadPkcs12FromFile(LeafPath, null, X509KeyStorageFlags.Exportable)
+            : null;
+
+    /// <summary>
     /// Issues the printer-facing leaf for <paramref name="names"/>, replacing any previous one.
     /// </summary>
     /// <remarks>

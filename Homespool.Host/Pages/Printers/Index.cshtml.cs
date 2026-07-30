@@ -28,6 +28,7 @@ public class IndexModel : PageModel
 {
     private readonly PrinterQueryService _printerQueryService;
     private readonly PrusaConnectService _prusaConnectService;
+    private readonly ProvisioningBundleBuilder _bundles;
     private readonly TeamService _teamService;
     private readonly UserManager<HSUser> _userManager;
     private readonly PrusaConnectOptions _options;
@@ -36,6 +37,7 @@ public class IndexModel : PageModel
 
     public IndexModel(PrinterQueryService printerQueryService,
                       PrusaConnectService prusaConnectService,
+                      ProvisioningBundleBuilder bundles,
                       TeamService teamService,
                       UserManager<HSUser> userManager,
                       IOptions<PrusaConnectOptions> options,
@@ -44,6 +46,7 @@ public class IndexModel : PageModel
     {
         _printerQueryService = printerQueryService;
         _prusaConnectService = prusaConnectService;
+        _bundles = bundles;
         _teamService = teamService;
         _userManager = userManager;
         _options = options.Value;
@@ -67,7 +70,8 @@ public class IndexModel : PageModel
     /// <summary>The printer a regenerate just succeeded for, so the view can show its snippet once.</summary>
     public int? RegeneratedPrinterId { get; private set; }
 
-    public string? Snippet { get; private set; }
+    /// <summary>The bundle a reissue just made available, shown once and then gone.</summary>
+    public BundleOffer? Offer { get; private set; }
 
     public record PrinterRow(Printer Printer, string TeamName, bool Enrolled, bool AwaitingUsbProvisioning, bool Connected);
 
@@ -91,7 +95,16 @@ public class IndexModel : PageModel
             string token = await _prusaConnectService.RegenerateProvisioningTokenAsync(printerId, user.Id);
 
             RegeneratedPrinterId = printerId;
-            Snippet = ConnectIniSnippet.Build(_options, token);
+
+            IReadOnlyList<string> names = _bundles.AvailableNames();
+
+            Offer = new BundleOffer(
+                printerId,
+                PrinterName: null,
+                token,
+                names,
+                ConnectIni.BuildSnippet(_options, names.Count > 0 ? names[0] : _options.PrinterHost, token),
+                _options.PrinterTls);
         }
         catch (PrinterNotFoundException)
         {
@@ -109,6 +122,16 @@ public class IndexModel : PageModel
         // Not a redirect: the whole point of this handler is to show a secret exactly once, and a
         // redirect would need somewhere to carry it (TempData is the wrong place for a bearer token).
         await LoadPrintersAsync(cancellationToken);
+
+        // The name only reaches the offer once the list has been loaded, and it is worth the second
+        // step: it is what tells two downloads in the same folder apart.
+        if (Offer is not null)
+        {
+            Offer = Offer with
+            {
+                PrinterName = Printers.Where(row => row.Printer.Id == printerId).Select(row => row.Printer.Name).FirstOrDefault(),
+            };
+        }
 
         return Page();
     }

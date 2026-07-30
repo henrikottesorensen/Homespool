@@ -159,21 +159,33 @@ Two ways, depending on whether the printer can already reach the server.
 Best when you are setting a printer up from scratch, or it has no way to reach the server yet.
 
 1. **Printers → Add printer (USB key)**, give it a name and location.
-2. Copy the `[service::connect]` snippet it shows you — this is the only time the token is
-   displayed.
-3. Paste it into `prusa_printer_settings.ini` on the printer's USB stick, alongside your own
-   `[network]` and Wi-Fi settings, and insert the stick.
+2. Choose the address this printer should dial — the list is the names your printer certificate
+   covers, and it defaults to `PrinterHost`.
+3. **Download provisioning bundle.** This is the only time the token is available.
+4. Unzip it onto the **root** of a USB stick — not into a folder, or the printer will find
+   neither file — and load it from the printer's own menu: *Prusa Connect → Load Settings*.
 
-```ini
-[service::connect]
-hostname = printers.example.com
-port = 15443
-tls = True
-token = <generated for you>
+```
+prusa_printer_settings.ini     the [service::connect] section, with your token
+connect.der                    the certificate authority the printer must trust
 ```
 
-The snippet only ever covers `[service::connect]`. Wi-Fi credentials are yours and this
-server neither has them nor wants them, so the rest of the file stays your business.
+**Nothing is transcribed, and that is the point.** Every failure of the afternoon this was first
+done by hand was an assembly failure rather than a protocol one: a `;` comment (this parser treats
+it as an error, not a comment), an omitted key (silently reset to a default, and `token`'s default
+de-enrols the printer), a PEM renamed `.der`, a mistyped code. A generated file cannot make any of
+them.
+
+Only `[service::connect]` is written. Wi-Fi credentials are yours and this server neither has them
+nor wants them, so the rest of the file stays your business — add your `[network]` section to the
+same file or keep it in your own.
+
+> **`custom_cert = 1` replaces the printer's trust store rather than adding to it.** While it is
+> set, that printer cannot talk to Prusa Connect. The same warning is written into the ini itself,
+> where it is read at the printer rather than on this page.
+
+If you would rather read the file than trust it, *Read the ini instead* on the same page shows
+exactly what it will contain.
 
 The printer enrolls itself the moment it first connects, binding to that token. Until then
 it shows as *Awaiting USB connection*, and you can reissue the token if the stick was never

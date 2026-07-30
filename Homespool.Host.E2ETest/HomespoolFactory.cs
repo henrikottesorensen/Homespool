@@ -78,6 +78,22 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
     private readonly string _fileStorageRoot =
         Path.Combine(Path.GetTempPath(), $"hs-files-{Guid.NewGuid():N}");
 
+    /// <summary>
+    /// Where this factory's certificate authority lives, deleted with it.
+    /// </summary>
+    /// <remarks>
+    /// <b>The third thing to escape into the project directory, for the third time for the same
+    /// reason.</b> <see cref="Certificates.CertificateOptions.Directory"/> defaults to the relative
+    /// <c>data/certificates</c>, resolved against the content root - which under
+    /// <see cref="WebApplicationFactory{TEntryPoint}"/> is the real project directory. So a test that
+    /// issued a certificate wrote into the same <c>Homespool.Host/data/certificates</c> a dev server
+    /// serves printers from, and then <i>read the developer's own certificate back</i> - which is how
+    /// this was found: a bundle test asserted on the name it had just issued and got the name from a
+    /// laptop's last live run instead.
+    /// </remarks>
+    private readonly string _certificateRoot =
+        Path.Combine(Path.GetTempPath(), $"hs-certs-{Guid.NewGuid():N}");
+
     public HomespoolFactory(string connectionString,
                                  MessageDispatcher? messageDispatcher = null,
                                  params IReadOnlyList<ILogEventSink> extraSinks)
@@ -130,6 +146,11 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
             // path also bypasses the content-root resolution entirely, so it cannot be re-rooted
             // back onto the project directory.
             services.PostConfigure<FileStorageOptions>(options => options.Directory = _fileStorageRoot);
+
+            // Same reasoning, same mechanism: PostConfigure runs after Program.cs binds the section,
+            // and an absolute path cannot be re-rooted onto the project directory.
+            services.PostConfigure<Homespool.Host.Certificates.CertificateOptions>(
+                options => options.Directory = _certificateRoot);
 
             // Program.cs's .ReadFrom.Services(services) call wires up any ILogEventSink registered
             // here alongside its own console sink - a bare Microsoft.Extensions.Logging.ILoggerProvider
@@ -212,9 +233,12 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
 
         try
         {
-            if (Directory.Exists(_fileStorageRoot))
+            foreach (string root in new[] { _fileStorageRoot, _certificateRoot })
             {
-                Directory.Delete(_fileStorageRoot, recursive: true);
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, recursive: true);
+                }
             }
         }
         catch (IOException)

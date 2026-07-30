@@ -60,17 +60,30 @@ docker compose up --build
 ```
 
 The database lives in a named volume (`printerservice-data`) so it survives container
-replacement. The container publishes port `8080` by default (`PORT` in `.env` to change it).
+replacement.
+
+**Two ports are published, and they are for different audiences.** `8080` (`PORT` in `.env`)
+serves the pages and the API over plain HTTP, for your own reverse proxy to terminate TLS in
+front of. `443` (`PRINTER_PORT`) serves printers and nothing else: it carries a certificate this
+deployment mints for itself on first run, and only `/p/*` exists there — a request for any other
+route is answered `404`, on either port.
+
+> **Do not put a reverse proxy in front of the printer port.** The printer firmware trusts a
+> single anchor, requires exactly one certificate to be presented, and pushes 256 KiB transfer
+> chunks that a proxy will buffer. Each of those fails in a way that looks like a protocol bug.
 
 > **Do not put that volume on NFS, CIFS or a NAS share.** SQLite's WAL locking is unreliable
 > over network filesystems and will eventually corrupt the database. Use a local Docker
 > volume or a bind-mount to local disk.
 
-> **Set `PRINTER_HOST` in `.env` before adding printers.** There is no way to infer your
+> **Set `PRINTER_HOST` in `.env` before the first start.** There is no way to infer your
 > server's externally-reachable address from inside the container, so USB-key provisioning
-> (below) won't produce a usable snippet until it's set. If a reverse proxy terminates TLS in
-> front of this container, `PRINTER_HOST`/`PRINTER_PORT`/`PRINTER_TLS` describe the proxy's
-> address, not the container's. See [Configuration](#configuration).
+> (below) won't produce a usable snippet until it's set — and the printer certificate is issued
+> **once, on the first run**, covering every address the machine can see at that moment plus
+> whatever `PRINTER_HOST` says. Setting it first means it is covered by construction. Setting it
+> later is fine too, as long as it is one of the addresses that were detected; if it is not, delete
+> `data/certificates/printer.pfx` and restart to have a new certificate issued. See
+> [Configuration](#configuration).
 
 ### From source
 
@@ -202,9 +215,38 @@ In Docker, use the `__` (double underscore) form, e.g. `PrusaConnect__PrinterHos
 | Setting | Default | Purpose |
 |---|---|---|
 | `PrinterHost` | *(empty)* | The hostname printers use to reach this server. **Required for USB-key provisioning** — there is no way to infer it from inside the process. |
-| `PrinterPort` | `443` | Port for the generated snippet. |
-| `PrinterTls` | `true` | Whether printers should use TLS. |
+| `PrinterPort` | `443` | Port for the generated snippet — the host side of the printer port mapping, not the port inside the container. |
+| `PrinterTls` | `true` | Whether printers should use TLS. Leave it on: the printer listener serves TLS only. |
 | `RegistrationCodeLifetimeMinutes` | `60` | How long a registration code stays claimable. Prusa uses 24 h; one hour is a deliberately tighter default, since the code is a credential for adopting a printer. |
+
+### `Listeners`
+
+One listener per credential class, so a leaked credential of one kind reaches no surface
+belonging to another. Naming any of these makes Kestrel ignore `ASPNETCORE_URLS`.
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `PrinterPort` | `15443` | TLS, serving the printer certificate. `/p/*` exists here and nowhere else. Above 1024 because the container runs as a non-root user. |
+| `UserPort` | `8080` | Plain HTTP: pages, `/api`, `/health` — everything except `/p/*`. Terminate TLS in front of it. |
+| `UserHttpsPort` | *(none)* | An HTTPS listener for people, using the ASP.NET development certificate or `Kestrel:Certificates:Default`. Set it only if this process should serve user TLS itself; it never carries the printer's certificate. |
+
+### `Certificates`
+
+The authority printers trust, minted on first run into `data/certificates` (inside the volume,
+so it survives container replacement). `connect.der` is the file that goes on the USB stick;
+`printer.pfx` is what the printer listener serves.
+
+**Its private key is the most sensitive secret in the deployment.** `custom_cert` replaces the
+firmware's trust store wholesale rather than adding to it, so this CA is each provisioned
+printer's *entire* trust store — and there is no revocation. Back up `data/`, but not to
+somewhere you would not put a private key.
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `Directory` | `data/certificates` | Where the authority and leaf live. |
+| `AuthorityValidityDays` | `5475` (15 years) | Replacing the authority means a USB visit to every printer, so a short life schedules guaranteed pain and mitigates nothing. |
+| `LeafValidityDays` | `730` | The leaf can be replaced with a restart, because printers trust the authority rather than the leaf. |
+| `AuthorityName` | `Homespool printer CA` | Cosmetic: it is never matched against anything, only read by a human inspecting `connect.der`. |
 
 ### `Smtp`
 

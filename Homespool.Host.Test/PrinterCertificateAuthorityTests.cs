@@ -287,6 +287,51 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
         Assert.Throws<ArgumentException>(() => authority.IssueLeaf(["   ", string.Empty]));
     }
 
+    /// <summary>
+    /// The leaf Kestrel serves is issued on the first run and never reissued on its own.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The names change constantly on a real machine - a VPN comes up, <c>docker0</c> appears, wifi
+    /// gives way to ethernet - and reissuing on each would drop every printer connection as Kestrel
+    /// picked up the new certificate, make the certificate a function of what the machine happened to
+    /// look like at boot, and silently expand what this server claims to be. So the second start gets
+    /// the certificate the first one issued, whatever the addresses say now.
+    /// </para>
+    /// <para>
+    /// Which is what leaves step 6 a real job: notice the drift, and offer the reissue.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheLeafIsIssuedOnceAndNotReissuedWhenTheNamesChange()
+    {
+        // Act
+        using X509Certificate2 first = NewAuthority().EnsureLeaf(["192.168.13.238"]);
+        using X509Certificate2 second = NewAuthority().EnsureLeaf(["192.168.13.99", "homespool.lan"]);   // a "restart", elsewhere
+
+        // Assert
+        second.Thumbprint.Should().Be(first.Thumbprint,
+            "an automatic reissue would drop every live printer connection, and nobody asked for one");
+        DnsNames(second).Should().BeEquivalentTo(["192.168.13.238"]);
+        second.HasPrivateKey.Should().BeTrue("Kestrel serves this, so the key has to survive the round trip to disk");
+    }
+
+    /// <summary>
+    /// Every name offered on the first run is covered, so the operator picking the wrong one to write
+    /// into a printer's ini costs a re-downloaded bundle rather than a re-provisioned printer.
+    /// </summary>
+    [Fact]
+    public void TheFirstRunLeafCoversEveryNameItWasOffered()
+    {
+        // Act
+        using X509Certificate2 leaf = NewAuthority().EnsureLeaf(["homespool.lan", "192.168.13.238", "10.0.0.4"]);
+
+        // Assert
+        DnsNames(leaf).Should().BeEquivalentTo(["homespool.lan", "192.168.13.238", "10.0.0.4"]);
+        PrinterCertificateAuthority.NamesOf(leaf).Should().BeEquivalentTo(DnsNames(leaf),
+            "drift detection reads the names back through NamesOf, so it must see what was written");
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))

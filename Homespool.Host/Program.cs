@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Text.Json;
@@ -6,6 +7,7 @@ using System.Threading.Tasks;
 
 using Homespool.Data;
 using Homespool.Host.Authentication;
+using Homespool.Host.Listeners;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -104,6 +106,8 @@ public static class Program
             // Singleton: it owns files on disk and its whole contract is that the authority is minted
             // once and never again. Nothing about it is per-request.
             builder.Services.AddSingleton<Certificates.PrinterCertificateAuthority>();
+
+            ConfigureListeners(builder);
 
             AddForwardedHeaders(builder);
 
@@ -271,8 +275,8 @@ public static class Program
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
             {
-                app.MapOpenApi();
-                app.MapScalarApiReference();
+                app.MapOpenApi().SegregateByListener();
+                app.MapScalarApiReference().SegregateByListener();
             }
 
             // FIRST, and both halves of that matter.
@@ -304,15 +308,29 @@ public static class Program
             // Requests handled before in the pipeline are NOT logged.
             app.UseSerilogRequestLogging();
 
+            // Only when this process serves users over TLS itself. Otherwise there is no port to
+            // redirect to that is not the printer's, and sending a browser there is worse than not
+            // redirecting at all - see the pinned HttpsPort in ConfigureListeners.
+            //
             // Everything except /health. A probe runs inside the container over plain HTTP, and a
             // 307 to https is not a failure to curl - so with redirection applied, a monitoring
             // check would report success without ever reaching the health endpoint. Excluding the
             // path keeps the probe honest wherever TLS is terminated.
-            app.UseWhen(
-                context => !context.Request.Path.StartsWithSegments(HealthEndpointPath, StringComparison.OrdinalIgnoreCase),
-                branch => branch.UseHttpsRedirection());
+            if (ReadListenerOptions(builder.Configuration).UserHttpsPort is not null)
+            {
+                app.UseWhen(
+                    context => !context.Request.Path.StartsWithSegments(HealthEndpointPath, StringComparison.OrdinalIgnoreCase),
+                    branch => branch.UseHttpsRedirection());
+            }
 
             app.UseRouting();
+
+            // Immediately after routing, because it needs the matched endpoint and nothing else
+            // should happen first: an endpoint reached on the wrong listener is refused before it can
+            // cost a rate-limiter permit, an authentication round trip or any database work. Ahead of
+            // the setup gate too, so a probe on the wrong listener gets the same 404 before the first
+            // administrator exists as after.
+            app.UseMiddleware<Listeners.ListenerSegregationMiddleware>();
 
             // Before an administrator exists, funnel every navigable page to /setup. No-op once setup
             // completes. Placed after routing so static-asset and printer endpoints resolve normally.
@@ -333,7 +351,7 @@ public static class Program
             app.MapHealthChecks(HealthEndpointPath, new HealthCheckOptions
             {
                 ResponseWriter = WriteHealthResponseAsync,
-            });
+            }).SegregateByListener();
 
             // Liveness, and the safe target for anything that can kill the container: a Kubernetes
             // livenessProbe, a Swarm healthcheck, an autoheal sidecar. Reports only faults a restart
@@ -349,13 +367,18 @@ public static class Program
             {
                 Predicate = registration => registration.Tags.Contains(LivenessTag),
                 ResponseWriter = WriteHealthResponseAsync,
-            });
+            }).SegregateByListener();
 
-            app.MapControllers();
+            // Every Map... call is segregated, including the ones that look like they could not
+            // possibly need it. An endpoint that reaches the pipeline unclassified is refused on every
+            // listener rather than served on the wrong one, so forgetting this fails loudly here
+            // instead of quietly widening a boundary - see ListenerSegregation.
+            app.MapControllers().SegregateByListener();
 
-            app.MapStaticAssets();
+            app.MapStaticAssets().SegregateByListener();
             app.MapRazorPages()
-               .WithStaticAssets();
+               .WithStaticAssets()
+               .SegregateByListener();
 
             app.UseWebSockets(new WebSocketOptions()
             {
@@ -478,6 +501,127 @@ public static class Program
                         + "reverse proxy, links in outgoing mail will say http:// and client addresses in the log "
                         + "will be the proxy's. Set XForwarded:KnownNetworks to the proxy's network.");
         }
+    }
+
+    /// <summary>
+    /// Binds the listeners: plain HTTP for people, TLS with our own leaf for printers, and the
+    /// classification middleware that keeps each set of routes on its own.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Configuring any endpoint here means configuring all of them.</b> Kestrel ignores
+    /// <c>ASPNETCORE_URLS</c> / <c>applicationUrl</c> entirely once endpoints are set in code — it
+    /// logs "Overriding address(es)" and binds these instead — so the user listener is named here too
+    /// rather than left to the environment. <c>Listeners:UserPort</c> defaults to the 8080 the base
+    /// image already used, so a deployment that sets nothing keeps the port it had.
+    /// </para>
+    /// <para>
+    /// The printer leaf must exist before Kestrel can bind, which is why it is minted here rather than
+    /// by a hosted service: a certificate issued after startup would be issued after the listener
+    /// needed it.
+    /// </para>
+    /// </remarks>
+    private static void ConfigureListeners(WebApplicationBuilder builder)
+    {
+        builder.Services.Configure<Listeners.ListenerOptions>(
+            builder.Configuration.GetSection(Listeners.ListenerOptions.SectionName));
+
+        // Factory-activated (IMiddleware) like the setup gate, so it is resolved from the container.
+        // Singleton: it holds the bound options and nothing per-request.
+        builder.Services.AddSingleton<Listeners.ListenerSegregationMiddleware>();
+
+        // Pinned rather than left to be discovered, because what it discovers is the printer. With no
+        // HTTPS endpoint at all the redirection middleware could never determine a port and quietly
+        // did nothing; adding the printer listener hands it exactly one HTTPS address to find, and it
+        // then answers plain-HTTP user requests with a 307 to the *printer* port - where the route
+        // does not exist, behind a certificate no browser has any reason to trust. Measured, not
+        // reasoned: GET / on the user listener returned 307 to https://...:15443/ the first time both
+        // listeners came up. Null when no user-facing HTTPS port exists, which is also why the
+        // middleware itself is only registered in that case: when a proxy terminates TLS, redirecting
+        // to https is the proxy's job and it knows the public port - this process does not.
+        builder.Services.AddHttpsRedirection(options =>
+            options.HttpsPort = ReadListenerOptions(builder.Configuration).UserHttpsPort);
+
+        builder.WebHost.ConfigureKestrel(options =>
+        {
+            Listeners.ListenerOptions listeners = options.ApplicationServices
+                .GetRequiredService<Microsoft.Extensions.Options.IOptions<Listeners.ListenerOptions>>().Value;
+
+            listeners.Validate();
+
+            options.ListenAnyIP(listeners.UserPort);
+
+            if (listeners.UserHttpsPort is int userHttpsPort)
+            {
+                options.ListenAnyIP(userHttpsPort, listen => listen.UseHttps());
+            }
+
+            Certificates.PrinterCertificateAuthority authority =
+                options.ApplicationServices.GetRequiredService<Certificates.PrinterCertificateAuthority>();
+
+            options.ListenAnyIP(
+                listeners.PrinterPort,
+                listen => listen.UseHttps(authority.EnsureLeaf(PrinterCertificateNames(options.ApplicationServices))));
+        });
+    }
+
+    /// <summary>
+    /// Binds <see cref="Listeners.ListenerOptions"/> straight from configuration, for the two places
+    /// that need it before the container exists.
+    /// </summary>
+    private static Listeners.ListenerOptions ReadListenerOptions(IConfiguration configuration)
+    {
+        Listeners.ListenerOptions listeners = new();
+        configuration.GetSection(Listeners.ListenerOptions.SectionName).Bind(listeners);
+
+        return listeners;
+    }
+
+    /// <summary>
+    /// Every name a printer might be told to dial this server by, for the first run's leaf.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Everything plausible, rather than one address chosen correctly.</b> The leaf covers what
+    /// <c>PrusaConnect:PrinterHost</c> says <i>and</i> every address this machine can see, so the
+    /// operator picking the wrong one costs a re-downloaded provisioning bundle instead of a
+    /// re-provisioned printer. That is the same multi-name hedge that makes a moved DHCP lease
+    /// survivable, doing a second job - and it is why nothing asks the operator to name this machine
+    /// at first run (<c>notes/tls-by-default.md</c>, "nobody stores the answer").
+    /// </para>
+    /// <para>
+    /// The configured host goes first because <see cref="Certificates.PrinterCertificateAuthority"/>
+    /// takes the first name as the subject: the one an operator deliberately set is the one worth
+    /// seeing when a human inspects the certificate.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<string> PrinterCertificateNames(IServiceProvider services)
+    {
+        PrusaConnect.PrusaConnectOptions connect = services
+            .GetRequiredService<Microsoft.Extensions.Options.IOptions<PrusaConnect.PrusaConnectOptions>>().Value;
+
+        List<string> names = [];
+
+        if (connect.IsPrinterAddressConfigured)
+        {
+            names.Add(connect.PrinterHost.Trim());
+        }
+
+        names.AddRange(Certificates.PrinterAddressSuggestion.Gather().Select(suggestion => suggestion.Value));
+
+        if (names.Count == 0)
+        {
+            // A machine with no usable address and no configured host: the listener still has to come
+            // up, but nothing will be able to verify it, so say why now rather than leaving an
+            // unexplained TLS failure at the printer.
+            Log.Warning("No printer-facing address could be detected and PrusaConnect:PrinterHost is not set, so the "
+                        + "printer certificate covers only localhost. Set PrusaConnect:PrinterHost and delete the "
+                        + "generated printer.pfx to have one issued that printers can actually verify.");
+
+            names.Add("localhost");
+        }
+
+        return names;
     }
 
     private static void AddPrinterEndpointRateLimiting(WebApplicationBuilder builder)

@@ -99,7 +99,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     [Fact]
     public async Task CaptureReplayPersistsEveryMessageThroughTheFullPipeline()
     {
-        (PrinterIdentity identity, string token, int printerId, long _) = await EnrollNewPrinterAsync();
+        (PrinterIdentity identity, string token, int printerId, long _) = await EnrolNewPrinterAsync();
 
         // 1 ms pacing keeps the writer's drop-oldest channel (4 batches of headroom) far from
         // engaging, so an exact row count is a fair assertion rather than a race.
@@ -278,7 +278,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     [Fact]
     public async Task FiveReconnectCyclesLeaveTheRegistryServingTheLiveConnection()
     {
-        (PrinterIdentity identity, string token, int printerId, long userId) = await EnrollNewPrinterAsync();
+        (PrinterIdentity identity, string token, int printerId, long userId) = await EnrolNewPrinterAsync();
 
         for (int cycle = 0; cycle < 5; cycle++)
         {
@@ -441,7 +441,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     [Fact]
     public async Task ATransferSurvivesTheConnectionDroppingUnderIt()
     {
-        (PrinterIdentity identity, string token, int printerId, long userId) = await EnrollNewPrinterAsync();
+        (PrinterIdentity identity, string token, int printerId, long userId) = await EnrolNewPrinterAsync();
         byte[] content = Content(600 * 1024);
         string hash = Offer(content, "resumed.gcode");
 
@@ -590,7 +590,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     public async Task AScheduledFilamentChangeReachesLiveStateAndTheSample()
     {
         // Arrange
-        (PrinterIdentity identity, string token, int printerId, long _) = await EnrollNewPrinterAsync();
+        (PrinterIdentity identity, string token, int printerId, long _) = await EnrolNewPrinterAsync();
 
         SyntheticTelemetrySource source = new()
         {
@@ -631,13 +631,13 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         await EndRunAsync(fake, run);
     }
 
-    private Task<(PrinterIdentity identity, string token, int printerId, long userId)> EnrollNewPrinterAsync()
+    private Task<(PrinterIdentity identity, string token, int printerId, long userId)> EnrolNewPrinterAsync()
     {
-        return EnrolmentFlowHelper.EnrollAndClaimFakePrinterAsync(_factory);
+        return EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
     }
 
     /// <summary>
-    /// Enrolls a fresh printer and starts a connected, running fake for it.
+    /// Enrols a fresh printer and starts a connected, running fake for it.
     /// <paramref name="policyFactory"/> exists because policies wrapping
     /// <see cref="FirmwareFaithfulPolicy"/> need the identity, which doesn't exist until this
     /// method creates it; when supplied it wins over <paramref name="options"/>' policy.
@@ -647,7 +647,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         Action<FakePrinterClient>? configure = null,
         Func<PrinterIdentity, CommandAnswerPolicy>? policyFactory = null)
     {
-        (PrinterIdentity identity, string token, int printerId, long userId) = await EnrollNewPrinterAsync();
+        (PrinterIdentity identity, string token, int printerId, long userId) = await EnrolNewPrinterAsync();
 
         FakePrinterOptions effective = policyFactory is null
             ? options ?? new FakePrinterOptions()

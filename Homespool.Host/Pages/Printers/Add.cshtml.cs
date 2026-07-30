@@ -23,7 +23,7 @@ namespace Homespool.Host.Pages.Printers;
 /// <summary>
 /// USB-key provisioning: mints a printer and a pre-provisioned token up front, then shows the
 /// <c>[service::connect]</c> ini snippet once for the operator to copy onto the printer's USB stick.
-/// The printer never touches <c>/p/register</c> for this path - it enrolls itself on first contact
+/// The printer never touches <c>/p/register</c> for this path - it enrols itself on first contact
 /// with the token, in <see cref="Authentication.PrusaConnectPrinterAuthenticationHandler"/>.
 /// </summary>
 [Authorize]

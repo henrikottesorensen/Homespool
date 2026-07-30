@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 namespace Homespool.FakePrinter;
 
 /// <summary>
-/// One fake printer: enrolls through the real code-exchange flow (or accepts a pre-provisioned
+/// One fake printer: enrols through the real code-exchange flow (or accepts a pre-provisioned
 /// token), connects <c>/p/ws</c> the way Buddy does, streams telemetry from an
 /// <see cref="ITelemetrySource"/>, and answers server commands through a
 /// <see cref="CommandAnswerPolicy"/>. Drives a running server via the default
@@ -56,7 +56,7 @@ public sealed class FakePrinterClient : IAsyncDisposable
     public FakeDevice Device { get; } = new();
 
     /// <summary>
-    /// The bearer token presented on the upgrade. Set by <see cref="EnrollAsync"/>, or directly for
+    /// The bearer token presented on the upgrade. Set by <see cref="EnrolAsync"/>, or directly for
     /// the USB-provisioning-shaped flow where the token exists before first contact.
     /// </summary>
     public string? Token { get; set; }
@@ -134,7 +134,7 @@ public sealed class FakePrinterClient : IAsyncDisposable
     /// Polls until a user claims the code and a token is issued, then stores it in
     /// <see cref="Token"/>. The firmware polls every 5 s, forever; pass a shorter interval in tests.
     /// </summary>
-    public async Task<string> EnrollAsync(HttpClient httpClient, string code, TimeSpan pollInterval, CancellationToken cancellationToken = default)
+    public async Task<string> EnrolAsync(HttpClient httpClient, string code, TimeSpan pollInterval, CancellationToken cancellationToken = default)
     {
         while (true)
         {
@@ -169,7 +169,7 @@ public sealed class FakePrinterClient : IAsyncDisposable
     {
         if (Token is null)
         {
-            throw new InvalidOperationException("No token - enroll first or set Token directly.");
+            throw new InvalidOperationException("No token - enrol first or set Token directly.");
         }
 
         Dictionary<string, string> headers = new()

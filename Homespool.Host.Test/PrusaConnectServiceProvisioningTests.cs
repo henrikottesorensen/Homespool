@@ -243,7 +243,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     /// nothing is enrolled until the printer actually presents the token.
     /// </summary>
     [Fact]
-    public async Task ProvisioningEnrollsNothingUntilThePrinterMakesContact()
+    public async Task ProvisioningEnrolsNothingUntilThePrinterMakesContact()
     {
         // Arrange
         await using HSDbContext context = await MigratedContextAsync();

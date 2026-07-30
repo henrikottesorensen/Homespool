@@ -12,7 +12,7 @@ namespace Homespool.FakePrinter.Cli;
 /// Thin driver over <see cref="FakePrinterClient"/> against a genuinely running server - the mode
 /// that reaches Kestrel, real TCP and SIGTERM, which the in-process tests cannot
 /// (<c>notes/fake-printer-harness.md</c>, "Form factor"). Three verbs:
-/// <c>enroll</c> (register, print the claim code, poll for the token, save the identity file),
+/// <c>enrol</c> (register, print the claim code, poll for the token, save the identity file),
 /// <c>run</c> (connect and behave like a printer until Ctrl-C), and
 /// <c>blast</c> (flood telemetry with no delays, for load/backpressure work).
 /// </summary>
@@ -42,8 +42,8 @@ public static class Program
         {
             switch (args[0])
             {
-                case "enroll":
-                    return await EnrollAsync(named, cancellation.Token);
+                case "enrol":
+                    return await EnrolAsync(named, cancellation.Token);
 
                 case "run":
                     return await RunAsync(named, blast: false, cancellation.Token);
@@ -68,7 +68,7 @@ public static class Program
     private static void PrintUsage()
     {
         Console.WriteLine("Usage:");
-        Console.WriteLine("  fakeprinter enroll --server <url> [--identity <file>]");
+        Console.WriteLine("  fakeprinter enrol  --server <url> [--identity <file>]");
         Console.WriteLine("  fakeprinter run    --server <url> [--identity <file>] [--capture <path>] [--printing] [--interval-ms <n>] [--events-every <n>]");
         Console.WriteLine("  fakeprinter blast  --server <url> [--identity <file>] [--events-every <n>]");
         Console.WriteLine();
@@ -76,7 +76,7 @@ public static class Program
         Console.WriteLine("telemetry, for exercising the event path under load. 10 matches the firmware ratio.");
         Console.WriteLine();
         Console.WriteLine("The identity file (default fakeprinter.json) holds the fingerprint and, after");
-        Console.WriteLine("enroll, the token. It is a credential - keep it out of the repository.");
+        Console.WriteLine("enrol, the token. It is a credential - keep it out of the repository.");
     }
 
     private static Dictionary<string, string> ParseNamedArguments(string[] args)
@@ -113,7 +113,7 @@ public static class Program
         return named.TryGetValue("identity", out string? path) ? path : "fakeprinter.json";
     }
 
-    private static async Task<int> EnrollAsync(Dictionary<string, string> named, CancellationToken cancellationToken)
+    private static async Task<int> EnrolAsync(Dictionary<string, string> named, CancellationToken cancellationToken)
     {
         Uri server = RequireServer(named);
         string path = IdentityPath(named);
@@ -132,7 +132,7 @@ public static class Program
 
         // The firmware polls every 5 seconds, forever (registrator.cpp; the SDK gives up after
         // 30 minutes - Ctrl-C plays that role here).
-        string token = await client.EnrollAsync(http, code, TimeSpan.FromSeconds(5), cancellationToken);
+        string token = await client.EnrolAsync(http, code, TimeSpan.FromSeconds(5), cancellationToken);
 
         await File.WriteAllTextAsync(
             path,
@@ -151,7 +151,7 @@ public static class Program
 
         if (!File.Exists(path))
         {
-            Console.WriteLine($"No identity file at {path} - run enroll first.");
+            Console.WriteLine($"No identity file at {path} - run enrol first.");
 
             return 1;
         }
@@ -160,7 +160,7 @@ public static class Program
 
         if (stored?.Token is null)
         {
-            Console.WriteLine($"{path} holds no token - run enroll first.");
+            Console.WriteLine($"{path} holds no token - run enrol first.");
 
             return 1;
         }

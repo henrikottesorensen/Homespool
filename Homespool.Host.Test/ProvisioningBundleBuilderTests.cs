@@ -87,7 +87,7 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
     }
 
     /// <summary>
-    /// Two files, both at the root.
+    /// Three files, all at the root.
     /// </summary>
     /// <remarks>
     /// <b>The nesting is the point.</b> A wrapping folder - what every "zip this directory" helper
@@ -95,18 +95,19 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
     /// says nothing about it.
     /// </remarks>
     [Fact]
-    public async Task TheBundleIsTwoFilesAtTheZipRootAsync()
+    public async Task TheBundleIsThreeFilesAtTheZipRootAsync()
     {
         // Arrange
         PrinterCertificateAuthority authority = NewAuthority();
         authority.EnsureLeaf(["printers.example.com"]);
 
         // Act
-        byte[] zip = await NewBuilder(authority).BuildAsync("printers.example.com", Token, CancellationToken.None);
+        byte[] zip = await NewBuilder(authority).BuildAsync("printers.example.com", Token, "Bench printer", CancellationToken.None);
 
         // Assert
-        Entries(zip).Keys.Should().BeEquivalentTo(["prusa_printer_settings.ini", "connect.der"]);
-        Entries(zip).Keys.Should().AllSatisfy(name => name.Should().NotContain("/", "a wrapping folder hides both files from the printer"));
+        Entries(zip).Keys.Should().BeEquivalentTo(["prusa_printer_settings.ini", "connect.der", "README.Bundle.md"]);
+        Entries(zip).Keys.Should().AllSatisfy(name => name.Should().NotContain("/",
+            "a wrapping folder puts every file one level deep on the stick, where the printer finds none of them"));
     }
 
     /// <summary>
@@ -126,7 +127,7 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
         authority.EnsureLeaf(["printers.example.com"]);
 
         // Act
-        byte[] der = Entries(await NewBuilder(authority).BuildAsync("printers.example.com", Token, CancellationToken.None))["connect.der"];
+        byte[] der = Entries(await NewBuilder(authority).BuildAsync("printers.example.com", Token, "Bench printer", CancellationToken.None))["connect.der"];
 
         // Assert
         der.Should().BeEquivalentTo(await File.ReadAllBytesAsync(authority.AuthorityDerPath, CancellationToken.None));
@@ -154,7 +155,7 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
         authority.EnsureLeaf(["printers.example.com"]);
 
         // Act
-        string ini = IniOf(await NewBuilder(authority).BuildAsync("printers.example.com", Token, CancellationToken.None));
+        string ini = IniOf(await NewBuilder(authority).BuildAsync("printers.example.com", Token, "Bench printer", CancellationToken.None));
 
         // Assert
         ini.Should().NotContain(";", "a ';' line is a parse error here, not a comment");
@@ -188,7 +189,7 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
         authority.EnsureLeaf(["printers.example.com"]);
 
         // Act
-        byte[] ini = Entries(await NewBuilder(authority).BuildAsync("printers.example.com", Token, CancellationToken.None))["prusa_printer_settings.ini"];
+        byte[] ini = Entries(await NewBuilder(authority).BuildAsync("printers.example.com", Token, "Bench printer", CancellationToken.None))["prusa_printer_settings.ini"];
 
         // Assert
         ini.Should().StartWith([(byte)'#']);
@@ -211,7 +212,7 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
         authority.EnsureLeaf(["printers.example.com"]);
 
         // Act
-        string ini = IniOf(await NewBuilder(authority).BuildAsync("printers.example.com", Token, CancellationToken.None));
+        string ini = IniOf(await NewBuilder(authority).BuildAsync("printers.example.com", Token, "Bench printer", CancellationToken.None));
 
         // Assert
         ini.Should().Contain("ENTIRE trust store")
@@ -238,7 +239,7 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
         ProvisioningBundleBuilder builder = NewBuilder(authority);
 
         // Act
-        Func<Task> act = async () => await builder.BuildAsync("192.168.1.50", Token, CancellationToken.None);
+        Func<Task> act = async () => await builder.BuildAsync("192.168.1.50", Token, "Bench printer", CancellationToken.None);
 
         // Assert
         (await act.Should().ThrowAsync<ArgumentException>()).WithMessage("*not an address a printer could use*");
@@ -276,10 +277,11 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
         PrinterCertificateAuthority authority = NewAuthority();
 
         // Act
-        byte[] zip = await NewBuilder(authority, tls: false).BuildAsync("192.168.13.238", Token, CancellationToken.None);
+        byte[] zip = await NewBuilder(authority, tls: false).BuildAsync("192.168.13.238", Token, "Bench printer", CancellationToken.None);
 
         // Assert
-        Entries(zip).Keys.Should().BeEquivalentTo(["prusa_printer_settings.ini"]);
+        Entries(zip).Keys.Should().BeEquivalentTo(["prusa_printer_settings.ini", "README.Bundle.md"],
+            "the instructions still ship - and say why there is no certificate");
 
         string ini = IniOf(zip);
         ini.Should().Contain("tls = False")

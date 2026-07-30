@@ -162,7 +162,14 @@ public sealed class ProvisioningBundleBuilder
     /// The name is not one the certificate vouches for. Refused rather than written, because the
     /// failure it would cause happens at a printer, days later, and says only "TLS error".
     /// </exception>
-    public async Task<byte[]> BuildAsync(string hostname, string token, CancellationToken cancellationToken)
+    /// <param name="hostname">The address to write into the ini.</param>
+    /// <param name="token">The provisioning token.</param>
+    /// <param name="printerName">Named in the instructions, so a folder of these can be told apart.</param>
+    /// <param name="cancellationToken">The usual.</param>
+    public async Task<byte[]> BuildAsync(string hostname,
+                                         string token,
+                                         string? printerName,
+                                         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostname);
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
@@ -189,6 +196,14 @@ public sealed class ProvisioningBundleBuilder
             string ini = ConnectIni.BuildFile(_options, name, token).ReplaceLineEndings("\n");
 
             WriteEntry(archive, ConnectIni.FileName, new UTF8Encoding(false).GetBytes(ini));
+
+            // Read by a person, at the printer, long after the page that produced it is gone - which is
+            // where the two things most likely to go wrong are decided: the files belong at the root of
+            // the stick, and custom_cert takes this printer away from Prusa Connect until it is undone.
+            WriteEntry(archive,
+                       ProvisioningReadme.FileName,
+                       new UTF8Encoding(false).GetBytes(
+                           ProvisioningReadme.Build(_options, name, printerName).ReplaceLineEndings("\n")));
 
             // No anchor when nothing is verified: with tls off the ini says custom_cert = 0, and a der
             // beside it would be a file the printer never opens and the operator has to wonder about.

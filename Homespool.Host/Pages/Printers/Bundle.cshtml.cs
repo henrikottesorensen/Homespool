@@ -55,7 +55,7 @@ public class BundleModel : PageModel
 
         try
         {
-            bundle = await _bundles.BuildAsync(hostname, token, cancellationToken);
+            bundle = await _bundles.BuildAsync(hostname, token, printerName, cancellationToken);
         }
         catch (ArgumentException ex)
         {

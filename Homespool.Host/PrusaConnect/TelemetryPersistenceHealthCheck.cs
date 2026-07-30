@@ -1,8 +1,11 @@
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Homespool.Data;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
 
 namespace Homespool.Host.PrusaConnect;
 
@@ -34,13 +37,33 @@ public sealed class TelemetryPersistenceHealthCheck : IHealthCheck
     /// </summary>
     private const int UnhealthyAfterConsecutiveFailures = 10;
 
+    /// <summary>
+    /// How many flush intervals may pass with no completed flush before the writer is called stuck.
+    /// </summary>
+    /// <remarks>
+    /// Ten, matching <see cref="UnhealthyAfterConsecutiveFailures"/>, because the consequence is
+    /// identical - nothing is reaching the database - and an operator should not have to learn two
+    /// tolerances. The floor stops a small configured interval making this trigger-happy.
+    /// </remarks>
+    private const int StaleAfterMissedFlushIntervals = 10;
+
+    /// <summary>Shortest staleness that may ever be called stuck, whatever the flush interval.</summary>
+    private static readonly TimeSpan MinimumStaleThreshold = TimeSpan.FromSeconds(15);
+
     private readonly ITelemetryHealthSource _source;
     private readonly UnknownFieldTracker _unknownFields;
+    private readonly StorageOptions _storage;
+    private readonly TimeProvider _timeProvider;
 
-    public TelemetryPersistenceHealthCheck(ITelemetryHealthSource source, UnknownFieldTracker unknownFields)
+    public TelemetryPersistenceHealthCheck(ITelemetryHealthSource source,
+                                           UnknownFieldTracker unknownFields,
+                                           IOptions<StorageOptions> storage,
+                                           TimeProvider? timeProvider = null)
     {
         _source = source;
         _unknownFields = unknownFields;
+        _storage = storage.Value;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
@@ -93,8 +116,39 @@ public sealed class TelemetryPersistenceHealthCheck : IHealthCheck
                 data: data));
         }
 
+        // A writer can be stuck without ever failing, and until 2026-07-29 nothing here could see it.
+        // A held write lock makes a flush *block* rather than fail - Microsoft.Data.Sqlite retries
+        // SQLITE_BUSY internally - so ConsecutiveFailures stays 0 and every branch above passes.
+        // Measured with an outside connection holding BEGIN IMMEDIATE: 23 s of a completely stalled
+        // writer, reported Healthy throughout, then a shutdown killed mid-drain (tools/slow-db,
+        // MECHANISM=lock). The comment that used to sit here - "only failures distinguish idle from
+        // stuck" - was the assumption that made it invisible.
+        //
+        // LastFlushAt is the signal, and it works because a flush with nothing buffered still counts:
+        // FlushAsync returns before it opens a context, SafeFlushAsync records the time, so an idle
+        // deployment refreshes this every WriteFlushIntervalSeconds without touching the database.
+        // Staleness therefore means "the drain loop is not completing flushes", not "there was
+        // nothing to write" - which is exactly the distinction the old comment thought impossible.
+        //
+        // Note what this deliberately does not catch: an idle process whose database is unreachable
+        // stays Healthy, because no-op flushes keep succeeding. That is the right answer - nothing is
+        // failing to be persisted while there is nothing to persist - and the moment real work
+        // arrives, the first blocked flush starts the clock.
+        TimeSpan staleAfter = Max(
+            TimeSpan.FromSeconds(_storage.WriteFlushIntervalSeconds * StaleAfterMissedFlushIntervals),
+            MinimumStaleThreshold);
+
+        if (snapshot.LastFlushAt is { } lastFlush && _timeProvider.GetUtcNow() - lastFlush > staleAfter)
+        {
+            return Task.FromResult(HealthCheckResult.Unhealthy(
+                $"No telemetry flush has completed for {(_timeProvider.GetUtcNow() - lastFlush).TotalSeconds:F0}s, with none failing either - the writer is blocked rather than broken, and nothing is reaching the database.",
+                data: data));
+        }
+
         // Never having flushed is not a fault: a process with no printers connected has had nothing
-        // to write. Only failures distinguish idle from stuck.
+        // to write, and the first no-op flush is at most one flush interval away in any case.
         return Task.FromResult(HealthCheckResult.Healthy("Telemetry is being persisted.", data));
     }
+
+    private static TimeSpan Max(TimeSpan left, TimeSpan right) => left > right ? left : right;
 }

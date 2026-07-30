@@ -34,8 +34,10 @@ services:
       # the first start, it is covered by construction.
       #
       # PrinterPort is the host side of the printer mapping above, since printers reach this
-      # container directly. PrinterTls has no plaintext alternative left to select: the printer
-      # listener is TLS-only.
+      # container directly. PrinterTls is one switch for both ends - the tls line written into every
+      # ini, and whether the listener serves TLS at all - so the two cannot disagree. Setting it
+      # false is a testing tool for reading the wire, never a deployment choice; startup says so.
+
       # Which peer may speak for the client. The forwarded-headers middleware is NOT registered
       # at all while this is empty, which is deliberate: ASP.NET runs its peer check only when at
       # least one entry is present, so empty lists would mean "believe any client" rather than

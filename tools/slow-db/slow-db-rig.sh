@@ -170,7 +170,7 @@ curl -s -o /dev/null -b "$RUN/cookies" -c "$RUN/cookies" \
     --data-urlencode "Input.ConfirmPassword=Correct-Horse-Battery-Staple-1!" \
     --data-urlencode "Input.Token=$TOKEN" "$BASE/setup"
 
-dotnet "$CLI" enroll --server "$BASE" --identity "$RUN/fakeprinter.json" > "$RUN/enrol.log" 2>&1 &
+dotnet "$CLI" enrol --server "$BASE" --identity "$RUN/fakeprinter.json" > "$RUN/enrol.log" 2>&1 &
 ENROL_PID=$!
 CODE=""
 for _ in $(seq 1 30); do

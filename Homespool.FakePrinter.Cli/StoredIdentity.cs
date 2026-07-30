@@ -1,7 +1,7 @@
 namespace Homespool.FakePrinter.Cli;
 
 /// <summary>
-/// What <c>enroll</c> writes and <c>run</c>/<c>blast</c> read back: the identity plus the token,
+/// What <c>enrol</c> writes and <c>run</c>/<c>blast</c> read back: the identity plus the token,
 /// as one JSON file. The token is a credential - the file belongs next to the operator, not in
 /// the repository.
 /// </summary>
@@ -19,7 +19,7 @@ public sealed class StoredIdentity
     /// <summary>Firmware version string.</summary>
     public required string Firmware { get; init; }
 
-    /// <summary>The issued token; null until <c>enroll</c> completes.</summary>
+    /// <summary>The issued token; null until <c>enrol</c> completes.</summary>
     public string? Token { get; set; }
 
     /// <summary>Captures a wire identity for persisting.</summary>

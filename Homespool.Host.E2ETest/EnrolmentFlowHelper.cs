@@ -63,7 +63,7 @@ public static class EnrolmentFlowHelper
     /// The identity (its <see cref="PrinterIdentity.HeaderFingerprint"/> is what a real upgrade
     /// presents), the issued token, the claimed printer's id, and the claiming user's id.
     /// </returns>
-    public static async Task<(PrinterIdentity identity, string token, int printerId, long userId)> EnrollAndClaimFakePrinterAsync(
+    public static async Task<(PrinterIdentity identity, string token, int printerId, long userId)> EnrolAndClaimFakePrinterAsync(
         WebApplicationFactory<PrinterAppController> factory)
     {
         PrinterIdentity identity = PrinterIdentity.CreateRandom();

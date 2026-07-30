@@ -104,7 +104,7 @@ public class ClaimAttemptLimiter
     /// <remarks>
     /// <para>
     /// Saves through the same request-scoped <see cref="HSDbContext"/> the caller's transaction is
-    /// ambient over (see <c>UnitOfWork</c>), so calling this inside a claim transaction enrolls the
+    /// ambient over (see <c>UnitOfWork</c>), so calling this inside a claim transaction enrols the
     /// reset in it and a rollback takes the reset with it - which is what makes "the counter is
     /// cleared only if the claim actually landed" true rather than merely intended.
     /// </para>

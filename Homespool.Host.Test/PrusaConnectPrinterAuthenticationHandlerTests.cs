@@ -269,7 +269,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     /// at first contact is what ties the pre-provisioned credential to a specific physical printer.
     /// </remarks>
     [Fact]
-    public async Task FirstContactWithAProvisionedTokenEnrollsThePrinter()
+    public async Task FirstContactWithAProvisionedTokenEnrolsThePrinter()
     {
         // Arrange
         await using HSDbContext context = await MigratedContextAsync();

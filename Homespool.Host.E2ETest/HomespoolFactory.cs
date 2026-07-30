@@ -18,7 +18,7 @@ namespace Homespool.Host.E2ETest;
 /// <summary>
 /// A <see cref="WebApplicationFactory{TEntryPoint}"/> pointed at an isolated temp-file SQLite
 /// database, shared by every test that drives the real ASP.NET Core pipeline instead of calling
-/// services directly (<see cref="EndToEndEnrollmentTests"/> and friends).
+/// services directly (<see cref="EndToEndEnrolmentTests"/> and friends).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -83,10 +83,22 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
         _extraSinks = extraSinks;
     }
 
+    /// <summary>
+    /// Every service descriptor the real application registered.
+    /// </summary>
+    /// <remarks>
+    /// Captured so a test can try to construct each one. A registration is not exercised until
+    /// something resolves it, so an unsatisfiable one is invisible to a clean build, a green unit
+    /// suite and even a started host - see <c>ServiceResolutionTests</c>.
+    /// </remarks>
+    public IReadOnlyList<ServiceDescriptor> RegisteredServices { get; private set; } = [];
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.ConfigureServices(services =>
         {
+            RegisteredServices = [.. services];
+
             ServiceDescriptor? descriptor = services.SingleOrDefault(
                 d => d.ServiceType == typeof(DbContextOptions<HSDbContext>));
 

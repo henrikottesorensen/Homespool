@@ -28,7 +28,7 @@ public class CodeGeneratorTests
     /// Exceeding it does not fail loudly. The firmware truncates the code, then polls forever with a
     /// value the server never issued, so registration hangs rather than errors. Nothing in
     /// <see cref="CodeGenerator"/> references the firmware limit, so only this test stands between a
-    /// one-character edit and every enrollment breaking.
+    /// one-character edit and every enrolment breaking.
     /// </remarks>
     [Fact]
     public void GeneratedCodeFitsInsideTheFirmwareBuffer()
@@ -50,7 +50,7 @@ public class CodeGeneratorTests
     /// <para>
     /// This is the assertion that makes the 2026-07-28 failure unrepresentable rather than merely
     /// less likely. Base36 contains every confusable pair at once - O/0 (which cost a real
-    /// enrollment), and I/1, S/5, B/8 waiting their turn. Crockford omits I, L, O and U from the
+    /// enrolment), and I/1, S/5, B/8 waiting their turn. Crockford omits I, L, O and U from the
     /// alphabet entirely, so a code can never contain the character that was misread.
     /// </para>
     /// <para>
@@ -69,7 +69,7 @@ public class CodeGeneratorTests
             _generator.GenerateCode($"15715-{i}")
                       .Should().MatchRegex("^[0-9A-HJKMNP-TV-Z]+$",
                                            "Crockford base32 omits I, L, O and U, which is what makes "
-                                           + "the O-for-0 misread that cost a real enrollment impossible");
+                                           + "the O-for-0 misread that cost a real enrolment impossible");
         }
     }
 

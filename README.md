@@ -10,14 +10,14 @@ print leaves your network.
 
 ## Status: early, and not ready to rely on
 
-This is a work in progress. Enrollment and authentication are built and tested; **telemetry
+This is a work in progress. Enrolment and authentication are built and tested; **telemetry
 is received and parsed but not yet stored anywhere**, so there is no history, no dashboard,
 and no statistics. If you are looking for something to actually monitor your printers with
 today, this is not it yet.
 
 **What works**
 
-- Both printer enrollment channels (registration code, and USB-key provisioning) end to end.
+- Both printer enrolment channels (registration code, and USB-key provisioning) end to end.
 - Printer authentication — fingerprint + token, over plain HTTP and the WebSocket upgrade.
 - User accounts: invite-only signup, admin bootstrap, 2FA, teams, and per-team permissions.
 - A WebSocket endpoint that accepts printer connections and correctly parses the telemetry
@@ -55,7 +55,7 @@ multi-tenant service.
 ### Docker Compose
 
 ```bash
-cp .env.example .env      # set at least PUBLIC_HOST before printers need to reach this server
+cp .env.example .env      # set at least PRINTER_HOST before printers need to reach this server
 docker compose up --build
 ```
 
@@ -66,10 +66,10 @@ replacement. The container publishes port `8080` by default (`PORT` in `.env` to
 > over network filesystems and will eventually corrupt the database. Use a local Docker
 > volume or a bind-mount to local disk.
 
-> **Set `PUBLIC_HOST` in `.env` before adding printers.** There is no way to infer your
+> **Set `PRINTER_HOST` in `.env` before adding printers.** There is no way to infer your
 > server's externally-reachable address from inside the container, so USB-key provisioning
 > (below) won't produce a usable snippet until it's set. If a reverse proxy terminates TLS in
-> front of this container, `PUBLIC_HOST`/`PUBLIC_PORT`/`PUBLIC_TLS` describe the proxy's
+> front of this container, `PRINTER_HOST`/`PRINTER_PORT`/`PRINTER_TLS` describe the proxy's
 > address, not the container's. See [Configuration](#configuration).
 
 ### From source
@@ -148,7 +148,7 @@ The printer enrolls itself the moment it first connects, binding to that token. 
 it shows as *Awaiting USB connection*, and you can reissue the token if the stick was never
 written — the old one stops working immediately.
 
-Requires `PrusaConnect:PublicHost` to be set; the page tells you if it is not.
+Requires `PrusaConnect:PrinterHost` to be set; the page tells you if it is not.
 
 ### Registration code (printer contacts the server first)
 
@@ -195,15 +195,15 @@ default.
 ## Configuration
 
 Standard ASP.NET Core configuration: `appsettings.json`, environment variables, user secrets.
-In Docker, use the `__` (double underscore) form, e.g. `PrusaConnect__PublicHost`.
+In Docker, use the `__` (double underscore) form, e.g. `PrusaConnect__PrinterHost`.
 
 ### `PrusaConnect`
 
 | Setting | Default | Purpose |
 |---|---|---|
-| `PublicHost` | *(empty)* | The hostname printers use to reach this server. **Required for USB-key provisioning** — there is no way to infer it from inside the process. |
-| `PublicPort` | `443` | Port for the generated snippet. |
-| `PublicTls` | `true` | Whether printers should use TLS. |
+| `PrinterHost` | *(empty)* | The hostname printers use to reach this server. **Required for USB-key provisioning** — there is no way to infer it from inside the process. |
+| `PrinterPort` | `443` | Port for the generated snippet. |
+| `PrinterTls` | `true` | Whether printers should use TLS. |
 | `RegistrationCodeLifetimeMinutes` | `60` | How long a registration code stays claimable. Prusa uses 24 h; one hour is a deliberately tighter default, since the code is a credential for adopting a printer. |
 
 ### `Smtp`

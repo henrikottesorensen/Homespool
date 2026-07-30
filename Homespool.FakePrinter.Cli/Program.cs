@@ -120,7 +120,8 @@ public static class Program
 
         PrinterIdentity identity = PrinterIdentity.CreateRandom();
         FakePrinterOptions options = new() { BaseAddress = server };
-        await using FakePrinterClient client = new(identity, options);
+        TimeProvider timeProvider = TimeProvider.System;
+        await using FakePrinterClient client = new(identity, timeProvider, options);
 
         using HttpClient http = new() { BaseAddress = server };
 
@@ -171,7 +172,8 @@ public static class Program
             TelemetrySource = source,
         };
 
-        await using FakePrinterClient client = new(stored.ToIdentity(), options);
+        TimeProvider timeProvider = TimeProvider.System;
+        await using FakePrinterClient client = new(stored.ToIdentity(), timeProvider, options);
         client.Token = stored.Token;
 
         if (named.ContainsKey("printing"))

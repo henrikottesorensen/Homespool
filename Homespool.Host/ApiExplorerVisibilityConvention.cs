@@ -17,7 +17,7 @@ namespace Homespool.Host;
 /// documentation annotation - it also turns on automatic model-validation responses and changes
 /// binding-source inference. Those endpoints implement a contract dictated by printer firmware
 /// (see notes/protocol-reference.md), where the status code is the whole contract and a 400 aborts
-/// enrollment once the firmware exhausts its retries. This convention buys visibility and nothing
+/// enrolment once the firmware exhausts its retries. This convention buys visibility and nothing
 /// else. New first-party API controllers can use <c>[ApiController]</c> normally.
 /// </para>
 /// <para>

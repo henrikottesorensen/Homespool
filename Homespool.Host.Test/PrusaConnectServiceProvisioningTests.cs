@@ -17,7 +17,7 @@ using Microsoft.Extensions.Options;
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// The USB-key enrollment channel's server half: <see cref="PrusaConnectService.ProvisionPrinterAsync"/>
+/// The USB-key enrolment channel's server half: <see cref="PrusaConnectService.ProvisionPrinterAsync"/>
 /// mints a printer and a pre-provisioned token for a <c>prusa_printer_settings.ini</c> snippet, and
 /// <see cref="PrusaConnectService.RegenerateProvisioningTokenAsync"/> reissues one that was never used.
 /// </summary>
@@ -34,7 +34,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
             new CodeGenerator(),
             new TokenService(),
             new TeamService(context),
-            NullLogger<PrusaConnectService>.Instance,
+            TimeProvider.System, NullLogger<PrusaConnectService>.Instance,
             Options.Create(new PrusaConnectOptions()));
 
     private HSDbContext NewContext()
@@ -256,7 +256,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
 
         // Assert
         (await context.PrusaConnectRegistrations.AnyAsync()).Should().BeFalse("provisioning bypasses /p/register entirely");
-        (await context.PrusaConnectAuthentication.AnyAsync()).Should().BeFalse("enrollment completes at first contact, not here");
+        (await context.PrusaConnectAuthentication.AnyAsync()).Should().BeFalse("enrolment completes at first contact, not here");
     }
 
     // ---------- regenerate ----------
@@ -409,7 +409,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     /// Binding deletes the provisioning row, so an enrolled printer has none - the state is identical
     /// to "never provisioned" in this table, and the two are told apart by the enrolled table. The
     /// alternative to allowing it, provisioning the printer afresh, mints a second printer whose token
-    /// the auth handler will not bind to the existing enrollment (see
+    /// the auth handler will not bind to the existing enrolment (see
     /// <c>PrusaConnectFingerprintIdentityTests</c>).
     /// </para>
     /// <para>

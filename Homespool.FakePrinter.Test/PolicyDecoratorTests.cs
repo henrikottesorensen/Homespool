@@ -29,7 +29,7 @@ public class PolicyDecoratorTests
     [Fact]
     public void DelayedReplyPostponesTheFirstReply()
     {
-        DelayedReplyPolicy policy = new(new FirmwareFaithfulPolicy(_identity), TimeSpan.FromSeconds(12));
+        DelayedReplyPolicy policy = new(new FirmwareFaithfulPolicy(_identity, TimeProvider.System), TimeSpan.FromSeconds(12));
         _device.StartPrint(jobId: 1);
 
         IReadOnlyList<PlannedReply> replies = policy.Answer(PauseCommand(1), _device);
@@ -42,7 +42,7 @@ public class PolicyDecoratorTests
     [Fact]
     public void WrongCommandIdAnswersUnderAShiftedId()
     {
-        WrongCommandIdPolicy policy = new(new FirmwareFaithfulPolicy(_identity));
+        WrongCommandIdPolicy policy = new(new FirmwareFaithfulPolicy(_identity, TimeProvider.System));
         _device.StartPrint(jobId: 1);
 
         IReadOnlyList<PlannedReply> replies = policy.Answer(PauseCommand(41), _device);
@@ -55,7 +55,7 @@ public class PolicyDecoratorTests
     [Fact]
     public void DoubleReplySendsEveryReplyTwice()
     {
-        DoubleReplyPolicy policy = new(new FirmwareFaithfulPolicy(_identity));
+        DoubleReplyPolicy policy = new(new FirmwareFaithfulPolicy(_identity, TimeProvider.System));
         _device.StartPrint(jobId: 1);
 
         IReadOnlyList<PlannedReply> replies = policy.Answer(PauseCommand(1), _device);

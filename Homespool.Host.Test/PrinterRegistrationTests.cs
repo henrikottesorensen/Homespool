@@ -44,6 +44,7 @@ public sealed class PrinterRegistrationTests : IDisposable
             new CodeGenerator(),
             new TokenService(),
             new TeamService(context),
+            TimeProvider.System,
             logger ?? NullLogger<PrusaConnectService>.Instance,
             Options.Create(new PrusaConnectOptions { RegistrationCodeLifetimeMinutes = lifetimeMinutes }));
 
@@ -432,14 +433,14 @@ public sealed class PrinterRegistrationTests : IDisposable
     }
 
     /// <summary>
-    /// Issuing a token stamps when enrollment completed.
+    /// Issuing a token stamps when enrolment completed.
     /// </summary>
     /// <remarks>
     /// The enrolled credential's <c>EnrolledAt</c> is set at the one moment it can mean anything -
     /// redemption, when the token is issued and the row is materialised.
     /// </remarks>
     [Fact]
-    public async Task IssuingATokenRecordsWhenEnrollmentCompleted()
+    public async Task IssuingATokenRecordsWhenEnrolmentCompleted()
     {
         // Arrange
         await using HSDbContext context = await MigratedContextAsync();

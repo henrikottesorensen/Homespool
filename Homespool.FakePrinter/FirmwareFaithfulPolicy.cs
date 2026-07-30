@@ -20,10 +20,10 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
     private long _backgroundDoneAt;
 
     /// <summary>Creates the policy; the identity feeds <c>SEND_INFO</c>'s INFO event.</summary>
-    public FirmwareFaithfulPolicy(PrinterIdentity identity, TimeProvider? time = null)
+    public FirmwareFaithfulPolicy(PrinterIdentity identity, TimeProvider timeProvider)
     {
         _identity = identity;
-        _time = time ?? TimeProvider.System;
+        _time = timeProvider;
     }
 
     /// <summary>

@@ -58,12 +58,12 @@ public sealed class TelemetryPersistenceHealthCheck : IHealthCheck
     public TelemetryPersistenceHealthCheck(ITelemetryHealthSource source,
                                            UnknownFieldTracker unknownFields,
                                            IOptions<StorageOptions> storage,
-                                           TimeProvider? timeProvider = null)
+                                           TimeProvider timeProvider)
     {
         _source = source;
         _unknownFields = unknownFields;
         _storage = storage.Value;
-        _timeProvider = timeProvider ?? TimeProvider.System;
+        _timeProvider = timeProvider;
     }
 
     public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)

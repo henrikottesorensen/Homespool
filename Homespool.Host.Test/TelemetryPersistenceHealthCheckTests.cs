@@ -43,7 +43,8 @@ public class TelemetryPersistenceHealthCheckTests
         return await new TelemetryPersistenceHealthCheck(
                 source,
                 new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
-                Options.Create(new StorageOptions { WriteFlushIntervalSeconds = flushIntervalSeconds }))
+                Options.Create(new StorageOptions { WriteFlushIntervalSeconds = flushIntervalSeconds }),
+                TimeProvider.System)
             .CheckHealthAsync(new HealthCheckContext(), CancellationToken.None);
     }
 

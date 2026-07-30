@@ -17,7 +17,7 @@ namespace Homespool.Host.E2ETest;
 /// <summary>
 /// Drives the real <c>/setup</c> page over HTTP - antiforgery token and all - rather than calling
 /// <c>SetupModel.OnPostAsync</c> directly or bypassing it via <see cref="SetupState.MarkComplete"/>
-/// the way <see cref="EndToEndEnrollmentTests"/> does. This is the "heavier tier" AGENT-NOTES
+/// the way <see cref="EndToEndEnrolmentTests"/> does. This is the "heavier tier" AGENT-NOTES
 /// phase-1.5 §15 flagged since step 4 as needing an integration harness the project didn't have yet
 /// - "deferred, still curl-verified only" - now that <c>Microsoft.AspNetCore.Mvc.Testing</c> exists
 /// in this project, closing that gap.
@@ -30,7 +30,7 @@ namespace Homespool.Host.E2ETest;
 /// sink for exactly this, rather than adding a test-only getter to <see cref="SetupState"/> that would
 /// weaken the "exposed exactly once" property the class documents.
 /// </remarks>
-// See EndToEndEnrollmentTests' [Collection] remarks: every WebApplicationFactory-hosted test class
+// See EndToEndEnrolmentTests' [Collection] remarks: every WebApplicationFactory-hosted test class
 // needs the same collection name so xUnit never races their concurrent Program.Main startups against
 // Serilog's shared static Log.Logger.
 [Collection("WebApplicationFactory")]
@@ -46,7 +46,7 @@ public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
 
         // Forces the host to actually start - migrations and AdminBootstrap run at that point, which
         // is what mints and logs the bootstrap token this suite needs. Deliberately does *not* call
-        // SetupState.MarkComplete: unlike EndToEndEnrollmentTests, an incomplete setup is the
+        // SetupState.MarkComplete: unlike EndToEndEnrolmentTests, an incomplete setup is the
         // precondition these tests exercise.
         _ = _factory.Server;
 

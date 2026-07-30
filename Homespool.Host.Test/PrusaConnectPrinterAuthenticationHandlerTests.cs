@@ -20,7 +20,7 @@ using Microsoft.Extensions.Options;
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// The printer-facing authentication handler, across both enrollment channels: the hot path against
+/// The printer-facing authentication handler, across both enrolment channels: the hot path against
 /// the enrolled credential, and the USB-key first contact that binds a pre-provisioned token and
 /// promotes it into that same enrolled table.
 /// </summary>
@@ -349,7 +349,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     /// </summary>
     /// <remarks>
     /// The important half is that a failed attempt leaves the provisioning token outstanding: a wrong
-    /// guess must not consume the real printer's pending enrollment.
+    /// guess must not consume the real printer's pending enrolment.
     /// </remarks>
     [Fact]
     public async Task AWrongTokenAtFirstContactBindsNothing()
@@ -424,7 +424,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     }
 
     /// <summary>
-    /// Two simultaneous first contacts from the same printer settle on one enrollment.
+    /// Two simultaneous first contacts from the same printer settle on one enrolment.
     /// </summary>
     /// <remarks>
     /// Whichever ordering the two requests happen to take, the invariants must hold: the unique
@@ -433,7 +433,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     /// against the winner's row rather than surfacing a 500.
     /// </remarks>
     [Fact]
-    public async Task ConcurrentFirstContactsSettleOnASingleEnrollment()
+    public async Task ConcurrentFirstContactsSettleOnASingleEnrolment()
     {
         // Arrange
         await using HSDbContext seed = await MigratedContextAsync();
@@ -448,7 +448,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
             AuthenticateAsync(right, Fingerprint, token));
 
         // Assert
-        results.Should().Contain(r => r.Succeeded, "at least one request must complete the enrollment");
+        results.Should().Contain(r => r.Succeeded, "at least one request must complete the enrolment");
 
         await using HSDbContext verify = NewContext();
 

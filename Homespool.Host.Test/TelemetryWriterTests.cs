@@ -175,6 +175,7 @@ public sealed class TelemetryWriterTests : IDisposable
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
                                        Options.Create(options),
                                        _fakeLogger,
+                                       TimeProvider.System,
                                        new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance))
         {
             SampleTrimWarningInterval = trimWarningInterval ?? TimeSpan.FromSeconds(10),
@@ -1585,6 +1586,7 @@ public sealed class TelemetryWriterTests : IDisposable
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
                                        Options.Create(options),
                                        _fakeLogger,
+                                       TimeProvider.System,
                                        new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance))
         {
             DropWarningInterval = dropWarningInterval,

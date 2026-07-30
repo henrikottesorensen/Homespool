@@ -21,7 +21,7 @@ public class TransferPolicyTests
     [Fact]
     public void StartDownloadIsAnsweredWithTransferInfoThenARequest()
     {
-        FirmwareFaithfulPolicy policy = new(_identity);
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
 
         IReadOnlyList<PlannedReply> replies = policy.Answer(StartDownload(11, size: 4096), _device);
 
@@ -46,7 +46,7 @@ public class TransferPolicyTests
     [Fact]
     public void TransferInfoPutsStartCommandIdInDataAndTransferIdAtTheRoot()
     {
-        FirmwareFaithfulPolicy policy = new(_identity);
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
 
         IReadOnlyList<PlannedReply> replies = policy.Answer(StartDownload(11, size: 4096), _device);
 
@@ -62,7 +62,7 @@ public class TransferPolicyTests
     [Fact]
     public void ASecondDownloadIsRejectedWhileOneRuns()
     {
-        FirmwareFaithfulPolicy policy = new(_identity);
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
         policy.Answer(StartDownload(11, size: 4096), _device);
 
         IReadOnlyList<PlannedReply> replies = policy.Answer(StartDownload(12, size: 4096), _device);
@@ -80,7 +80,7 @@ public class TransferPolicyTests
     [InlineData("/usb/model.txt", "Unsupported file type")]
     public void ARefusedPathIsRejectedBeforeTheSlotIsTaken(string path, string reason)
     {
-        FirmwareFaithfulPolicy policy = new(_identity);
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
 
         IReadOnlyList<PlannedReply> replies = policy.Answer(StartDownload(11, size: 4096, path: path), _device);
 
@@ -93,7 +93,7 @@ public class TransferPolicyTests
     [Fact]
     public void AnIncompleteCommandIsRejected()
     {
-        FirmwareFaithfulPolicy policy = new(_identity);
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
         ServerCommandFrame frame = new(ServerCommandKind.Json, 11, Encoding.UTF8.GetBytes(
             """{"command": "START_CONNECT_DOWNLOAD", "args": [], "kwargs": {"path": "/usb/model.bgcode"}}"""));
 
@@ -107,7 +107,7 @@ public class TransferPolicyTests
     [Fact]
     public void APartlyDeliveredSegmentDrawsNoNewRequest()
     {
-        FirmwareFaithfulPolicy policy = new(_identity);
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
         IReadOnlyList<PlannedReply> start = policy.Answer(StartDownload(11, size: 8192), _device);
         uint fileId = FileIdOf(start[1]);
 
@@ -118,7 +118,7 @@ public class TransferPolicyTests
     [Fact]
     public void TheFinalChunkProducesTransferFinishedThenFileInfo()
     {
-        FirmwareFaithfulPolicy policy = new(_identity);
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
         IReadOnlyList<PlannedReply> start = policy.Answer(StartDownload(11, size: 4096), _device);
         uint fileId = FileIdOf(start[1]);
         int transferId = _device.Transfer!.TransferId;
@@ -147,7 +147,7 @@ public class TransferPolicyTests
     [Fact]
     public void ARefusedChunkProducesTransferAborted()
     {
-        FirmwareFaithfulPolicy policy = new(_identity);
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
         IReadOnlyList<PlannedReply> start = policy.Answer(StartDownload(11, size: 4096), _device);
         uint fileId = FileIdOf(start[1]);
 
@@ -163,7 +163,7 @@ public class TransferPolicyTests
     [Fact]
     public void AChunkWithNoTransferRunningIsIgnored()
     {
-        FirmwareFaithfulPolicy policy = new(_identity);
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
 
         policy.Answer(Chunk(1234, new byte[16]), _device).Should().BeEmpty();
     }
@@ -175,7 +175,7 @@ public class TransferPolicyTests
     [Fact]
     public void ChunksAreServedWhileABackgroundCommandIsBusy()
     {
-        FirmwareFaithfulPolicy policy = new(_identity) { GcodeExecutionTime = TimeSpan.FromMinutes(1) };
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System) { GcodeExecutionTime = TimeSpan.FromMinutes(1) };
         IReadOnlyList<PlannedReply> start = policy.Answer(StartDownload(11, size: 8192), _device);
         uint fileId = FileIdOf(start[1]);
 

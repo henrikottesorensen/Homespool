@@ -113,7 +113,7 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
             // Structurally unreachable now PrinterId is a required FK, but fail closed rather than
             // dereference null if a row is ever left inconsistent.
             Logger.LogWarning("PrusaConnect authentication failed: enrolled credential {AuthId} has no printer.", auth.Id);
-            return AuthenticateResult.Fail("Printer enrollment incomplete");
+            return AuthenticateResult.Fail("Printer enrolment incomplete");
         }
 
         if (_tokenService.VerifyToken(token, auth.HashedToken))
@@ -128,7 +128,7 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
     }
 
     /// <summary>
-    /// Binds a reissued provisioning token onto an existing enrollment, for a printer whose stored
+    /// Binds a reissued provisioning token onto an existing enrolment, for a printer whose stored
     /// token has been replaced from a freshly written USB stick.
     /// </summary>
     /// <remarks>

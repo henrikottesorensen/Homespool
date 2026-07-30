@@ -18,7 +18,7 @@ using Microsoft.Extensions.Options;
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// <see cref="PrusaConnectService.ClaimPrinterAsync"/> - the app-facing half of enrollment, where a
+/// <see cref="PrusaConnectService.ClaimPrinterAsync"/> - the app-facing half of enrolment, where a
 /// signed-in user redeems the code a printer is displaying (AGENT-NOTES phase-1.5 §15 step 7a).
 /// </summary>
 /// <remarks>
@@ -34,7 +34,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
             new CodeGenerator(),
             new TokenService(),
             new TeamService(context),
-            NullLogger<PrusaConnectService>.Instance,
+            TimeProvider.System, NullLogger<PrusaConnectService>.Instance,
             Options.Create(new PrusaConnectOptions { RegistrationCodeLifetimeMinutes = lifetimeMinutes }));
 
     private static RegisterPrinterRequestDTO PrinterRequest(string serial = "15715-4842441651816441",

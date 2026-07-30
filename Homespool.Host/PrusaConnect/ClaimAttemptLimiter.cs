@@ -21,7 +21,7 @@ namespace Homespool.Host.PrusaConnect;
 /// </para>
 /// <para>
 /// <b>Backoff, never invalidation.</b> Burning a pending registration after N wrong guesses would
-/// make the cap an enrollment denial-of-service. Backing the <i>caller</i> off instead leaves the
+/// make the cap an enrolment denial-of-service. Backing the <i>caller</i> off instead leaves the
 /// printer's code untouched, and the person is standing at the printer anyway, where a fresh code
 /// costs one menu press.
 /// </para>

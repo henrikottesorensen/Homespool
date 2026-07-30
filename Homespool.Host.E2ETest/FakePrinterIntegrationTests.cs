@@ -557,7 +557,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         // Arrange
         PrinterIdentity identity = PrinterIdentity.CreateRandom();
         await using FakePrinterClient fake = new(identity, TimeProvider.System);
-        using HttpClient anonymous = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        using HttpClient anonymous = PrinterListener.CreateClient(_factory);
 
         // Act - one register, then far more polls than a real printer manages in a minute.
         string code = await fake.RegisterAsync(anonymous);
@@ -749,7 +749,9 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             }
         };
 
-        return await wsClient.ConnectAsync(request.Uri, cancellationToken);
+        // The fake's own Uri, but on the printer listener: it is configured with no base address here
+        // (TestServer's connector ignores the host), and /p/ws exists on that listener only.
+        return await wsClient.ConnectAsync(PrinterListener.WebSocketUri(_factory), cancellationToken);
     }
 
     private async Task WaitUntilConnectedAsync(int printerId)

@@ -37,6 +37,7 @@ public class PrinterCertificateAuthority
     private const string AuthorityFileName = "ca.pfx";
     private const string AuthorityDerFileName = "connect.der";
     private const string LeafFileName = "printer.pfx";
+    private const string SubjectAlternativeNameOid = "2.5.29.17";
 
     /// <summary>
     /// What both certificates claim as <c>notBefore</c>: 1960, deliberately before the epoch.
@@ -101,6 +102,31 @@ public class PrinterCertificateAuthority
     public string LeafPath => Path.Combine(_directory, LeafFileName);
 
     /// <summary>
+    /// The names a certificate vouches for, as they were written — <c>dNSName</c> entries, including
+    /// the ones that are really IP addresses.
+    /// </summary>
+    /// <remarks>
+    /// Reads the SAN rather than the subject on purpose: the subject is decoration here (mbedTLS
+    /// consults a CN only when there is no SAN at all), so the SAN is the whole of what a printer will
+    /// match against. Step 6's drift detection is the other caller this is shaped for — "is this
+    /// machine's address still in the certificate?" is exactly this list.
+    /// </remarks>
+    /// <param name="certificate">Any certificate; one with no SAN extension yields an empty list.</param>
+    public static IReadOnlyList<string> NamesOf(X509Certificate2 certificate)
+    {
+        ArgumentNullException.ThrowIfNull(certificate);
+
+        X509Extension? extension = certificate.Extensions[SubjectAlternativeNameOid];
+
+        if (extension is null)
+        {
+            return [];
+        }
+
+        return [.. new X509SubjectAlternativeNameExtension(extension.RawData, extension.Critical).EnumerateDnsNames()];
+    }
+
+    /// <summary>
     /// Returns the authority, creating it on first call and loading it every time after.
     /// </summary>
     /// <remarks>
@@ -142,6 +168,49 @@ public class PrinterCertificateAuthority
                            + "re-provisioned from a USB stick.", _directory);
 
         return X509CertificateLoader.LoadPkcs12FromFile(path, null, X509KeyStorageFlags.Exportable);
+    }
+
+    /// <summary>
+    /// Returns the leaf Kestrel serves to printers, issuing it over <paramref name="names"/> on the
+    /// first run and loading the same one every run after.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Issued once and then frozen, deliberately.</b> The obvious alternative — reissue whenever
+    /// the detected address set changes — was rejected (Henrik, 2026-07-29: <i>"automagically
+    /// reissuing cert smells like trouble to me"</i>) for three reasons that all bite in practice.
+    /// Interfaces flap: a VPN coming up, <c>docker0</c> appearing, a switch from wifi to ethernet, and
+    /// every reissue drops each printer connection as Kestrel picks up the new certificate. It is
+    /// non-deterministic: the certificate becomes a function of what the machine happened to look like
+    /// at boot, so "what does your certificate say?" cannot be answered without looking. And it is the
+    /// server quietly asserting new identities — joining a VPN would silently add that address to the
+    /// SANs, which is not a thing that should happen while nobody is watching.
+    /// </para>
+    /// <para>
+    /// So a moved DHCP lease is an operator action, not a self-healing one. That is what leaves drift
+    /// detection a real job (<c>notes/tls-by-default.md</c> step 6): notice that this machine's
+    /// address is no longer in the certificate and offer the reissue, rather than performing it
+    /// unasked. Deleting <c>printer.pfx</c> is the manual form of the same thing, and costs nothing at
+    /// a printer — they trust the authority, not the leaf.
+    /// </para>
+    /// </remarks>
+    /// <param name="names">Names to cover if this is the first run. Ignored once a leaf exists.</param>
+    public X509Certificate2 EnsureLeaf(IEnumerable<string> names)
+    {
+        if (!File.Exists(LeafPath))
+        {
+            return IssueLeaf(names);
+        }
+
+        X509Certificate2 existing = X509CertificateLoader.LoadPkcs12FromFile(LeafPath, null, X509KeyStorageFlags.Exportable);
+
+        // At Information because it is the answer to "what must a printer dial?", and the operator
+        // needs it whenever provisioning does not work. It is also what step 6 will compare against.
+        _logger.LogInformation("Serving the existing printer certificate for {Names}, valid until {NotAfter:o}. "
+                               + "Delete {Path} to have a new one issued for this machine's current addresses.",
+                               string.Join(", ", NamesOf(existing)), existing.NotAfter, LeafPath);
+
+        return existing;
     }
 
     /// <summary>

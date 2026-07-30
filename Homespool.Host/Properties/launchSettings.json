@@ -5,20 +5,21 @@
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": true,
-      "launchUrl": "scalar/v1",
-      "applicationUrl": "http://*:5052",
+      "launchUrl": "http://localhost:5052/scalar/v1",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "Listeners__UserPort": "5052"
       }
     },
     "https": {
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": true,
-      "launchUrl": "scalar/v1",
-      "applicationUrl": "https://*:7023;http://*:5052",
+      "launchUrl": "https://localhost:7023/scalar/v1",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "Listeners__UserPort": "5052",
+        "Listeners__UserHttpsPort": "7023"
       }
     }
   }

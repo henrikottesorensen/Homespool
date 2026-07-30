@@ -5,12 +5,16 @@ using System.Linq;
 
 using Homespool.Data;
 using Homespool.Host.Controllers;
+using Homespool.Host.Listeners;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Transfers;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Serilog.Core;
 
 namespace Homespool.Host.E2ETest;
@@ -99,6 +103,18 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
         {
             RegisteredServices = [.. services];
 
+            // Gives TestServer the one thing it has no way to have: a listener. Real requests carry
+            // the port they arrived on in Connection.LocalPort, which is what the segregation
+            // middleware reads and what a client cannot forge; TestServer accepts no connections at
+            // all, so that port is 0 for every request and every printer route would be refused.
+            //
+            // So the test's choice of port - the one in its base address - stands in for the choice
+            // of listener, and a test dials the printer listener by dialling its port. That keeps the
+            // production path free of test seams: nothing in Homespool.Host consults the Host header,
+            // here or anywhere.
+            services.AddSingleton<IStartupFilter>(
+                provider => new SimulatedListener(provider.GetRequiredService<IOptions<ListenerOptions>>()));
+
             ServiceDescriptor? descriptor = services.SingleOrDefault(
                 d => d.ServiceType == typeof(DbContextOptions<HSDbContext>));
 
@@ -145,6 +161,40 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
                 services.AddSingleton(_messageDispatcher);
             }
         });
+    }
+
+    /// <summary>
+    /// Sets <see cref="ConnectionInfo.LocalPort"/> from the port the test addressed, so
+    /// <c>ListenerSegregationMiddleware</c> sees the listener the test meant.
+    /// </summary>
+    /// <remarks>
+    /// A request with no port in its address is the user listener, which is what
+    /// <see cref="WebApplicationFactory{TEntryPoint}.CreateClient()"/> produces by default - so every
+    /// existing test keeps meaning what it meant, and only the printer-facing ones say otherwise.
+    /// </remarks>
+    private sealed class SimulatedListener : IStartupFilter
+    {
+        private readonly int _userPort;
+
+        public SimulatedListener(IOptions<ListenerOptions> listeners)
+        {
+            _userPort = listeners.Value.UserPort;
+        }
+
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next)
+        {
+            return app =>
+            {
+                app.Use(async (context, nextMiddleware) =>
+                {
+                    context.Connection.LocalPort = context.Request.Host.Port ?? _userPort;
+
+                    await nextMiddleware();
+                });
+
+                next(app);
+            };
+        }
     }
 
     /// <summary>

@@ -93,7 +93,7 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
         };
 
         // Act
-        using WebSocket socket = await wsClient.ConnectAsync(new Uri("ws://localhost/p/ws"), CancellationToken.None);
+        using WebSocket socket = await wsClient.ConnectAsync(PrinterListener.WebSocketUri(_factory), CancellationToken.None);
 
         socket.State.Should().Be(WebSocketState.Open);
 
@@ -133,7 +133,7 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
             request.Headers[Headers.UserAgentVersion] = "6.4.0";
         };
 
-        return await wsClient.ConnectAsync(new Uri("ws://localhost/p/ws"), CancellationToken.None);
+        return await wsClient.ConnectAsync(PrinterListener.WebSocketUri(_factory), CancellationToken.None);
     }
 
     /// <summary>
@@ -223,7 +223,7 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
         };
 
         // Act
-        Func<Task> act = async () => await wsClient.ConnectAsync(new Uri("ws://localhost/p/ws"), CancellationToken.None);
+        Func<Task> act = async () => await wsClient.ConnectAsync(PrinterListener.WebSocketUri(_factory), CancellationToken.None);
 
         // Assert
         // TestServer's WebSocketClient throws rather than returning a closed/faulted socket when the
@@ -243,7 +243,7 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
         WebSocketClient wsClient = _factory.Server.CreateWebSocketClient();
 
         // Act
-        Func<Task> act = async () => await wsClient.ConnectAsync(new Uri("ws://localhost/p/ws"), CancellationToken.None);
+        Func<Task> act = async () => await wsClient.ConnectAsync(PrinterListener.WebSocketUri(_factory), CancellationToken.None);
 
         // Assert
         (await act.Should().ThrowAsync<InvalidOperationException>())

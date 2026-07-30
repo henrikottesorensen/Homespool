@@ -6,21 +6,36 @@ services:
       dockerfile: Homespool.Host/Dockerfile
 
     ports:
-      # The container listens on 8080 (ASPNETCORE_HTTP_PORTS, baked into the base image - see
-      # the Dockerfile's EXPOSE). Change the host side if 8080 is already taken. Remove this
-      # block entirely if a reverse proxy publishes the port instead of Compose doing it directly.
+      # People. Plain HTTP on 8080 (Listeners:UserPort), for a reverse proxy to terminate TLS in
+      # front of. Change the host side if 8080 is already taken. Remove this line entirely if a
+      # reverse proxy publishes the port instead of Compose doing it directly.
       - "${PORT:-8080}:8080"
+
+      # Printers, and nothing else: /p/* exists on this listener alone, and no other route does.
+      # It is TLS on both sides - the container serves the certificate this deployment mints for
+      # itself, which is the one on the provisioning USB stick - so do NOT put a proxy in front of
+      # it. The firmware requires exactly one certificate presented, verifies it strictly against
+      # that single anchor, and pushes 256 KiB transfer chunks that nginx would buffer.
+      #
+      # 15443 inside the container because the app runs as a non-root user and cannot bind 443;
+      # PRINTER_PORT is what a printer actually dials, so it must match PrusaConnect__PrinterPort
+      # below - that is the number written into every provisioning ini.
+      - "${PRINTER_PORT:-443}:15443"
 
     environment:
       # Point SQLite at the mounted volume. appsettings.json keeps a relative path so that
       # running outside a container still works.
       ConnectionStrings__HomespoolDb: "Data Source=/app/data/Homespool.Sqlite"
 
-      # What a printer is told to dial for enrolment - not necessarily this container's own
-      # listen port or protocol. If a reverse proxy (Caddy, nginx, Traefik) terminates TLS in
-      # front of this container, these describe the proxy's public address, not port 8080.
-      # PrinterHost is required for USB-key provisioning (Printers -> Add printer): the page
-      # cannot produce a usable ini snippet - and refuses to - until it is set.
+      # What a printer is told to dial for enrolment. PrinterHost is required for USB-key
+      # provisioning (Printers -> Add printer): the page cannot produce a usable ini snippet - and
+      # refuses to - until it is set. It should also be one of the names in the certificate, which
+      # is minted on first run over every address this machine could see then; if it is set before
+      # the first start, it is covered by construction.
+      #
+      # PrinterPort is the host side of the printer mapping above, since printers reach this
+      # container directly. PrinterTls has no plaintext alternative left to select: the printer
+      # listener is TLS-only.
       # Which peer may speak for the client. The forwarded-headers middleware is NOT registered
       # at all while this is empty, which is deliberate: ASP.NET runs its peer check only when at
       # least one entry is present, so empty lists would mean "believe any client" rather than

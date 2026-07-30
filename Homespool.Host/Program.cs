@@ -253,7 +253,11 @@ public static class Program
 
                    // Deliberately untagged: a certificate that no longer matches this machine is not a
                    // fault a restart fixes, and the banner picks it up from the report either way.
-                   .AddCheck<Certificates.PrinterCertificateHealthCheck>("printer-certificate");
+                   .AddCheck<Certificates.PrinterCertificateHealthCheck>("printer-certificate")
+
+                   // Also untagged: a deployment handing tokens to the internet is misconfigured, not
+                   // broken, and a restart would faithfully reproduce it.
+                   .AddCheck<Services.DeploymentExposureHealthCheck>("deployment-exposure");
 
             // Sweeps TelemetrySample rows past StorageOptions.TelemetryRetentionDays. No interface
             // registration needed, unlike TelemetryWriter above - nothing else ever needs to reach it.

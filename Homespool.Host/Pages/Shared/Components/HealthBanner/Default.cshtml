@@ -5,6 +5,6 @@
 @foreach (Homespool.Host.Services.HealthBannerItem item in Model)
 {
     <div class="alert @item.CssClass" role="alert">
-        <strong>Service problem:</strong> @item.Message
+        <strong>@item.Heading</strong> @item.Message
     </div>
 }

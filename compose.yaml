@@ -6,21 +6,22 @@ services:
       dockerfile: Homespool.Host/Dockerfile
 
     ports:
-      # People. Plain HTTP on 8080 (Listeners:UserPort), for a reverse proxy to terminate TLS in
-      # front of. Change the host side if 8080 is already taken. Remove this line entirely if a
-      # reverse proxy publishes the port instead of Compose doing it directly.
-      - "${PORT:-8080}:8080"
-
+      # ONLY the printer listener is published. The user listener stays inside this network, where
+      # the proxy below is the single way in - which is also what makes X-Real-IP worth trusting:
+      # a client that could reach Kestrel directly could simply write that header itself.
+      #
       # Printers, and nothing else: /p/* exists on this listener alone, and no other route does.
       # It is TLS on both sides - the container serves the certificate this deployment mints for
       # itself, which is the one on the provisioning USB stick - so do NOT put a proxy in front of
       # it. The firmware requires exactly one certificate presented, verifies it strictly against
       # that single anchor, and pushes 256 KiB transfer chunks that nginx would buffer.
       #
-      # 15443 inside the container because the app runs as a non-root user and cannot bind 443;
-      # PRINTER_PORT is what a printer actually dials, so it must match PrusaConnect__PrinterPort
-      # below - that is the number written into every provisioning ini.
-      - "${PRINTER_PORT:-443}:15443"
+      # 15443 on both sides: the app runs as a non-root user and cannot bind 443 inside the
+      # container, and 443 on the host belongs to the people-facing proxy - a browser URL carrying
+      # a port number is a daily papercut, while a printer's port is written into a generated ini
+      # and typed by nobody. Publish whatever you like here; PrusaConnect__PrinterPort must match,
+      # because that is the number every provisioning bundle tells a printer to dial.
+      - "${PRINTER_PORT:-15443}:15443"
 
     environment:
       # Point SQLite at the mounted volume. appsettings.json keeps a relative path so that
@@ -38,17 +39,18 @@ services:
       # ini, and whether the listener serves TLS at all - so the two cannot disagree. Setting it
       # false is a testing tool for reading the wire, never a deployment choice; startup says so.
 
-      # Which peer may speak for the client. The forwarded-headers middleware is NOT registered
-      # at all while this is empty, which is deliberate: ASP.NET runs its peer check only when at
-      # least one entry is present, so empty lists would mean "believe any client" rather than
-      # "believe nobody". See notes/tls-by-default.md.
+      # Which peer may speak for the client - the network below, which is the proxy's and nothing
+      # else's. Defaulted rather than left empty now that we ship the proxy: shipping it is what
+      # makes its address knowable, which was the whole difficulty with KnownProxies/KnownNetworks.
+      # Empty would mean the forwarded-headers middleware is not registered at all, and links in
+      # outgoing mail would say http:// while every logged client address was the proxy's.
       #
-      # This is knowable only because the network below is ours and pinned. Without a proxy we
-      # shipped there would be nothing safe to put here.
-      XForwarded__KnownNetworks__0: "${PROXY_NETWORK:-}"
+      # It must agree with PROXY_SUBNET below. Change one and you must change the other, or the
+      # headers are silently ignored again.
+      XForwarded__KnownNetworks__0: "${PROXY_NETWORK:-172.28.0.0/16}"
 
       PrusaConnect__PrinterHost: "${PRINTER_HOST:-}"
-      PrusaConnect__PrinterPort: "${PRINTER_PORT:-443}"
+      PrusaConnect__PrinterPort: "${PRINTER_PORT:-15443}"
       PrusaConnect__PrinterTls: "${PRINTER_TLS:-true}"
 
       # Outgoing mail. Values come from .env - copy .env.example to .env and edit that, rather
@@ -103,6 +105,48 @@ services:
     # anonymous and exempt from the setup gate, so they answer before the first administrator
     # exists. Alert on /health; never restart on it.
 
+  # The people-facing front door, and the reason "TLS by default" is true of a fresh
+  # `docker compose up` rather than of a deployment somebody finished configuring. It terminates TLS
+  # for pages and /api and passes plain HTTP to the app over this network.
+  #
+  # Printers never come through here; see the port comments above. Delete this service and publish
+  # the app's own 8080 if you already run Traefik, Caddy or an nginx of your own - the app is built
+  # to sit behind one, and only needs XForwarded__KnownNetworks to name yours.
+  proxy:
+    image: homespool-proxy
+    build:
+      context: ./nginx
+
+    ports:
+      - "${PORT:-80}:8080"
+      - "${HTTPS_PORT:-443}:8443"
+
+    environment:
+      # Only used to name the self-signed certificate generated on first start. Browsers will warn
+      # whatever this says - the certificate is signed by nobody - so it is cosmetic until you
+      # replace the certificate with one of your own.
+      USER_HOST: "${USER_HOST:-localhost}"
+
+    volumes:
+      # Read-only, and from the repository rather than baked into the image: this is the file an
+      # operator is most likely to want to change (HSTS, a hostname, an extra header), and a mount
+      # makes that an edit and a restart instead of a rebuild.
+      - ./nginx/homespool.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/homespool-proxy.conf:/etc/nginx/homespool-proxy.conf:ro
+
+      # Holds the certificate. Named rather than a bind mount so the directory keeps the ownership
+      # the image gave it - an unprivileged nginx has to be able to write the self-signed one it
+      # generates, and a host directory would arrive owned by whoever created it.
+      - homespool-proxy-certs:/etc/nginx/certs
+
+    networks:
+      - homespool
+
+    depends_on:
+      - printerservice
+
+    restart: unless-stopped
+
 networks:
   # Pinned rather than left to Docker's allocator, so XForwarded__KnownNetworks can name it. That
   # is the whole reason shipping our own proxy simplifies this: the trusted range stops being
@@ -120,3 +164,9 @@ volumes:
   # bind-mount to local disk - do NOT put this on NFS/CIFS/a NAS share, where SQLite WAL
   # locking is unreliable and will corrupt the database.
   printerservice-data:
+
+  # The user-facing certificate, self-signed on first start unless you put your own here. Kept
+  # across container replacement so that the exception someone clicked through in their browser
+  # keeps meaning something - a certificate regenerated on every start teaches people that the
+  # warning is noise.
+  homespool-proxy-certs:

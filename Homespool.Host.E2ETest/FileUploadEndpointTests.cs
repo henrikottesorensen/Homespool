@@ -71,7 +71,7 @@ public sealed class FileUploadEndpointTests : IAsyncLifetime, IDisposable
     public async Task AnUploadedFileComesBackWithAHashAndItsLength()
     {
         // Arrange
-        (HSUser _, HttpClient client) = await EnrollmentFlowHelper.CreateAuthenticatedUserAsync(
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "uploader@example.com");
         byte[] content = Encoding.UTF8.GetBytes("G28 ; home\nG1 X10 Y10\n");
 
@@ -108,7 +108,7 @@ public sealed class FileUploadEndpointTests : IAsyncLifetime, IDisposable
     [Fact]
     public async Task AnUploadReportsThePathThePrinterWillKnowItBy()
     {
-        (HSUser _, HttpClient client) = await EnrollmentFlowHelper.CreateAuthenticatedUserAsync(
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "pathreader@example.com");
 
         using StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes("G28\n")));
@@ -128,7 +128,7 @@ public sealed class FileUploadEndpointTests : IAsyncLifetime, IDisposable
     public async Task AnUnacceptableExtensionIsRejected()
     {
         // Arrange
-        (HSUser _, HttpClient client) = await EnrollmentFlowHelper.CreateAuthenticatedUserAsync(
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "uploader2@example.com");
 
         using StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes("not gcode")));
@@ -152,7 +152,7 @@ public sealed class FileUploadEndpointTests : IAsyncLifetime, IDisposable
     public async Task PrintNowIsRefusedRatherThanIgnored()
     {
         // Arrange
-        (HSUser _, HttpClient client) = await EnrollmentFlowHelper.CreateAuthenticatedUserAsync(
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "printnow@example.com");
 
         using StringContent body = new(
@@ -179,7 +179,7 @@ public sealed class FileUploadEndpointTests : IAsyncLifetime, IDisposable
     public async Task APathOutsideUsbIsRejected()
     {
         // Arrange
-        (HSUser _, HttpClient client) = await EnrollmentFlowHelper.CreateAuthenticatedUserAsync(
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "badpath@example.com");
 
         using StringContent body = new(
@@ -234,7 +234,7 @@ public sealed class FileUploadEndpointTests : IAsyncLifetime, IDisposable
     public async Task AnUploadAuthenticatedByBearerTokenSucceeds()
     {
         // Arrange
-        (HSUser user, HttpClient cookieClient) = await EnrollmentFlowHelper.CreateAuthenticatedUserAsync(
+        (HSUser user, HttpClient cookieClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "tokenholder@example.com");
         cookieClient.Dispose();
 

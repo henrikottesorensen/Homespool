@@ -22,6 +22,7 @@ public class PrusaConnectService
     private readonly CodeGenerator _codeGenerator;
     private readonly TokenService _tokenService;
     private readonly TeamService _teamService;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<PrusaConnectService> _logger;
     private readonly PrusaConnectOptions _options;
 
@@ -29,6 +30,7 @@ public class PrusaConnectService
                           CodeGenerator codeGenerator,
                           TokenService tokenService,
                           TeamService teamService,
+                          TimeProvider timeProvider,
                           ILogger<PrusaConnectService> logger,
                           IOptions<PrusaConnectOptions> options)
     {
@@ -36,6 +38,7 @@ public class PrusaConnectService
         _codeGenerator = codeGenerator;
         _tokenService = tokenService;
         _teamService = teamService;
+        _timeProvider = timeProvider;
         _logger = logger;
         _options = options.Value;
     }
@@ -58,7 +61,7 @@ public class PrusaConnectService
     /// </remarks>
     public async Task<DTO.CodeResponseDTO> GetPrinterCode(DTO.RegisterPrinterRequestDTO printer)
     {
-        DateTimeOffset now = TimeProvider.System.GetUtcNow();
+        DateTimeOffset now = _timeProvider.GetUtcNow();
         DateTimeOffset codeExpiry = now + _options.RegistrationCodeLifetime;
         PrusaConnectRegistration? registration = await _dbContext.PrusaConnectRegistrations
             .SingleOrDefaultAsync(a => a.FingerPrint == printer.FingerPrint);
@@ -146,7 +149,7 @@ public class PrusaConnectService
     /// </remarks>
     public async Task<string?> GetToken(string temporaryCode)
     {
-        DateTimeOffset now = TimeProvider.System.GetUtcNow();
+        DateTimeOffset now = _timeProvider.GetUtcNow();
 
         PrusaConnectRegistration? registration = await FindActiveRegistrationAsync(temporaryCode, now);
 
@@ -194,7 +197,7 @@ public class PrusaConnectService
     /// <summary>
     /// Upserts the enrolled credential, keyed on the truncated fingerprint the printer will actually
     /// present on its later requests. Insert is the normal case; the update branch covers a
-    /// re-enrollment of a printer that already has a row, where a plain insert would violate the
+    /// re-enrolment of a printer that already has a row, where a plain insert would violate the
     /// enrolled table's unique index. Does not save — the caller owns the transaction.
     /// </summary>
     /// <remarks>
@@ -249,7 +252,7 @@ public class PrusaConnectService
     /// </remarks>
     public async Task<Printer> ClaimPrinterAsync(string temporaryCode, string? name, string? location, int? teamId, long userId)
     {
-        DateTimeOffset now = TimeProvider.System.GetUtcNow();
+        DateTimeOffset now = _timeProvider.GetUtcNow();
 
         PrusaConnectRegistration? registration = await FindActiveRegistrationAsync(temporaryCode, now);
 
@@ -338,7 +341,7 @@ public class PrusaConnectService
     }
 
     /// <summary>
-    /// The USB-key enrollment channel: a signed-in user creates a <see cref="Printer"/> and a
+    /// The USB-key enrolment channel: a signed-in user creates a <see cref="Printer"/> and a
     /// pre-provisioned token up front, to be written into <c>prusa_printer_settings.ini</c> on a USB
     /// stick. Returns the plaintext token once - only its hash is stored - so the caller can render
     /// the snippet. The printer never touches <c>/p/register</c>; it presents this token on its first
@@ -346,7 +349,7 @@ public class PrusaConnectService
     /// </summary>
     public async Task<(Printer printer, string token)> ProvisionPrinterAsync(string? name, string? location, int? teamId, long userId)
     {
-        DateTimeOffset now = TimeProvider.System.GetUtcNow();
+        DateTimeOffset now = _timeProvider.GetUtcNow();
 
         int resolvedTeamId = await ResolveTeamForWriteAsync(teamId, userId);
 
@@ -383,7 +386,7 @@ public class PrusaConnectService
     /// and the printer would then present a token the enrolled row does not know - the auth handler
     /// deliberately refuses to bind that (it cannot tell an accident from a takeover attempt). Here the
     /// caller names the printer they mean and has proved <c>CanManage</c> on its team, so the new token
-    /// can be bound to the existing enrollment on first contact.
+    /// can be bound to the existing enrolment on first contact.
     /// </para>
     /// <para>
     /// An enrolled printer keeps authenticating with its current token until the reissued one is
@@ -394,7 +397,7 @@ public class PrusaConnectService
     /// <exception cref="PrinterNotFoundException">No printer with that id.</exception>
     /// <exception cref="TeamAccessDeniedException">Caller lacks <c>CanManage</c> on the printer's team.</exception>
     /// <exception cref="ProvisioningTokenNotFoundException">
-    /// The printer was never provisioned and is not enrolled — there is no enrollment for a reissued
+    /// The printer was never provisioned and is not enrolled — there is no enrolment for a reissued
     /// token to attach to.
     /// </exception>
     public async Task<string> RegenerateProvisioningTokenAsync(int printerId, long userId)
@@ -434,7 +437,7 @@ public class PrusaConnectService
             {
                 PrinterId = printerId,
                 HashedToken = _tokenService.HashToken(token),
-                CreatedAt = TimeProvider.System.GetUtcNow(),
+                CreatedAt = _timeProvider.GetUtcNow(),
             });
         }
 
@@ -451,7 +454,7 @@ public class PrusaConnectService
     /// through the code exchange but not yet polled by its own printer appears in neither set - there
     /// is nothing to show or act on for it here, only "waiting for the printer to connect".
     /// </summary>
-    public async Task<PrinterEnrollmentStatus> GetEnrollmentStatusAsync(IReadOnlyCollection<int> printerIds, CancellationToken cancellationToken)
+    public async Task<PrinterEnrolmentStatus> GetEnrolmentStatusAsync(IReadOnlyCollection<int> printerIds, CancellationToken cancellationToken)
     {
         HashSet<int> enrolled = (await _dbContext.PrusaConnectAuthentication
             .Where(a => printerIds.Contains(a.PrinterId))
@@ -463,7 +466,7 @@ public class PrusaConnectService
             .Select(p => p.PrinterId)
             .ToListAsync(cancellationToken)).ToHashSet();
 
-        return new PrinterEnrollmentStatus(enrolled, awaitingProvisioning);
+        return new PrinterEnrolmentStatus(enrolled, awaitingProvisioning);
     }
 
     private static Printer NewPrinter(string? name, string? location, int teamId, DateTimeOffset now) => new()
@@ -514,5 +517,5 @@ public class PrusaConnectService
     }
 }
 
-/// <summary>See <see cref="PrusaConnectService.GetEnrollmentStatusAsync"/>.</summary>
-public sealed record PrinterEnrollmentStatus(IReadOnlySet<int> Enrolled, IReadOnlySet<int> AwaitingUsbProvisioning);
+/// <summary>See <see cref="PrusaConnectService.GetEnrolmentStatusAsync"/>.</summary>
+public sealed record PrinterEnrolmentStatus(IReadOnlySet<int> Enrolled, IReadOnlySet<int> AwaitingUsbProvisioning);

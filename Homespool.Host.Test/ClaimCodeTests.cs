@@ -14,7 +14,7 @@ public class ClaimCodeTests
     /// The failure that actually happened: an <c>O</c> read off the printer's screen for a <c>0</c>.
     /// </summary>
     /// <remarks>
-    /// On 2026-07-28 a real MK3.5 enrollment failed exactly this way, and it cost a round of
+    /// On 2026-07-28 a real MK3.5 enrolment failed exactly this way, and it cost a round of
     /// log-reading and one wrong diagnosis before the character was identified - because a wrong
     /// code is indistinguishable from an unclaimed one. Crockford's substitutions are what make it
     /// stop being a failure at all. This is the single most important assertion in the file.

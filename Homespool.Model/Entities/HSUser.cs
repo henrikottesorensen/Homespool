@@ -53,7 +53,7 @@ public class HSUser : IdentityUser<long>
     /// <b>Keyed on the user, deliberately, not on the registration.</b> A wrong code finds no
     /// registration row, so there is nothing to count against - per-registration counting needs a
     /// second identifier submitted alongside the code, which only a pending-printer list would
-    /// supply. Keying on the account is also what makes the enrollment-DoS hazard unreachable: an
+    /// supply. Keying on the account is also what makes the enrolment-DoS hazard unreachable: an
     /// attacker can only burn their own budget, never a victim's pending registration.
     /// </para>
     /// </remarks>

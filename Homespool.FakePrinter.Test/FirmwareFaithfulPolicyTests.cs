@@ -29,7 +29,7 @@ public class FirmwareFaithfulPolicyTests
     [Fact]
     public void PauseWhilePrintingAnswersFinished()
     {
-        FirmwareFaithfulPolicy policy = new(_identity);
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
         _device.StartPrint(jobId: 301);
 
         IReadOnlyList<PlannedReply> replies = policy.Answer(JsonCommand(5, "PAUSE_PRINT"), _device);
@@ -51,7 +51,7 @@ public class FirmwareFaithfulPolicyTests
     [Fact]
     public void ResumeWhilePausedReportsTheStateItIsLeaving()
     {
-        FirmwareFaithfulPolicy policy = new(_identity);
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
         _device.StartPrint(jobId: 302);
         _device.TryPause();
 
@@ -71,7 +71,7 @@ public class FirmwareFaithfulPolicyTests
     [Fact]
     public void SetReadyReportsTheStateItIsEntering()
     {
-        FirmwareFaithfulPolicy policy = new(_identity);
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
 
         IReadOnlyList<PlannedReply> replies = policy.Answer(JsonCommand(8, "SET_PRINTER_READY"), _device);
 
@@ -84,7 +84,7 @@ public class FirmwareFaithfulPolicyTests
     [Fact]
     public void PauseWhileIdleAnswersRejectedWithTheFirmwareReason()
     {
-        FirmwareFaithfulPolicy policy = new(_identity);
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
 
         IReadOnlyList<PlannedReply> replies = policy.Answer(JsonCommand(5, "PAUSE_PRINT"), _device);
 
@@ -97,7 +97,7 @@ public class FirmwareFaithfulPolicyTests
     [Fact]
     public void SetReadyAnswersStateChanged()
     {
-        FirmwareFaithfulPolicy policy = new(_identity);
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
 
         IReadOnlyList<PlannedReply> replies = policy.Answer(JsonCommand(6, "SET_PRINTER_READY"), _device);
 
@@ -110,7 +110,7 @@ public class FirmwareFaithfulPolicyTests
     [Fact]
     public void SetIdleMidSessionIsRejectedLikeTheRealPrinter()
     {
-        FirmwareFaithfulPolicy policy = new(_identity);
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
 
         IReadOnlyList<PlannedReply> replies = policy.Answer(JsonCommand(7, "SET_PRINTER_IDLE"), _device);
 
@@ -123,7 +123,7 @@ public class FirmwareFaithfulPolicyTests
     [Fact]
     public void SendInfoAnswersInfoWithTheCommandId()
     {
-        FirmwareFaithfulPolicy policy = new(_identity);
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
 
         IReadOnlyList<PlannedReply> replies = policy.Answer(JsonCommand(320, "SEND_INFO"), _device);
 
@@ -137,7 +137,7 @@ public class FirmwareFaithfulPolicyTests
     [Fact]
     public void ARepeatedCommandIdIsRefused()
     {
-        FirmwareFaithfulPolicy policy = new(_identity);
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
         _device.StartPrint(jobId: 1);
 
         policy.Answer(JsonCommand(9, "PAUSE_PRINT"), _device);
@@ -153,7 +153,7 @@ public class FirmwareFaithfulPolicyTests
     [Fact]
     public void UnknownAndGarbageCommandsEarnTheirDistinctReasons()
     {
-        FirmwareFaithfulPolicy policy = new(_identity);
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
 
         IReadOnlyList<PlannedReply> unknown = policy.Answer(JsonCommand(10, "MAKE_COFFEE"), _device);
         IReadOnlyList<PlannedReply> garbage = policy.Answer(RawJsonFrame(11, "{{{"), _device);
@@ -173,7 +173,7 @@ public class FirmwareFaithfulPolicyTests
     [Fact]
     public void GcodeOpensABusyWindowThatRejectsOthersAndReAcceptsItself()
     {
-        FirmwareFaithfulPolicy policy = new(_identity) { GcodeExecutionTime = TimeSpan.FromSeconds(30) };
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System) { GcodeExecutionTime = TimeSpan.FromSeconds(30) };
         ServerCommandFrame gcode = new(ServerCommandKind.Gcode, 20, Encoding.UTF8.GetBytes("G28"));
 
         IReadOnlyList<PlannedReply> replies = policy.Answer(gcode, _device);
@@ -198,7 +198,7 @@ public class FirmwareFaithfulPolicyTests
     [Fact]
     public void DebugFramesGetNoAnswer()
     {
-        FirmwareFaithfulPolicy policy = new(_identity);
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
         ServerCommandFrame debug = new(ServerCommandKind.Debug, 30, Encoding.UTF8.GetBytes("hello"));
 
         policy.Answer(debug, _device).Should().BeEmpty();

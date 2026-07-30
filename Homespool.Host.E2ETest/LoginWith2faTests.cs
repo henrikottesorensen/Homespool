@@ -89,7 +89,7 @@ public sealed class LoginWith2faTests : IAsyncLifetime, IDisposable
     /// <summary>
     /// Seeds a confirmed account and enables 2FA on it directly via <see cref="UserManager{TUser}"/> -
     /// the same shortcut past <c>Manage/EnableAuthenticator</c>'s own form <see cref="LoginFlowTests"/>
-    /// takes past <c>Register</c>'s: this suite verifies login, not enrollment.
+    /// takes past <c>Register</c>'s: this suite verifies login, not enrolment.
     /// </summary>
     private async Task CreateTwoFactorEnabledUserAsync()
     {

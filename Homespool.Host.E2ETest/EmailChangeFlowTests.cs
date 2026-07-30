@@ -77,7 +77,7 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime, IDisposable
     public async Task RequestingAnEmailChangeSendsAConfirmationLink()
     {
         // Arrange
-        (HSUser _, HttpClient client) = await EnrollmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "changer@example.com");
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "changer@example.com");
 
         using (client)
         {
@@ -114,7 +114,7 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime, IDisposable
     public async Task ConfirmingTheChangeAppliesTheNewAddress()
     {
         // Arrange
-        (HSUser user, HttpClient client) = await EnrollmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "before@example.com");
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "before@example.com");
 
         using (client)
         {
@@ -167,7 +167,7 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime, IDisposable
     public async Task ManagePagesRender(string path)
     {
         // Arrange
-        (HSUser _, HttpClient client) = await EnrollmentFlowHelper.CreateAuthenticatedUserAsync(
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, $"manage{path.GetHashCode(StringComparison.Ordinal):X}@example.com");
 
         using (client)

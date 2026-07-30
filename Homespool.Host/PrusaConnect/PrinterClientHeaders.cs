@@ -14,7 +14,7 @@ namespace Homespool.Host.PrusaConnect;
 /// <b>Every property is optional, and reading these headers never throws.</b> An earlier version
 /// required <c>User-Agent-Printer</c>, <c>User-Agent-Version</c> and <c>Fingerprint</c>, throwing
 /// when any was absent — which the register actions caught and turned into a 400. That made
-/// enrollment impossible: Buddy sends **no** headers at all on <c>POST /p/register</c> and only
+/// enrolment impossible: Buddy sends **no** headers at all on <c>POST /p/register</c> and only
 /// <c>Code</c> on the poll, because during registration the printer has no token and its identity
 /// is being established rather than asserted. See notes/protocol-reference.md.
 /// </para>

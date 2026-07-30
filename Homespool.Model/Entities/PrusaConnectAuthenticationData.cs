@@ -19,7 +19,7 @@ namespace Homespool.Model.Entities;
 /// <em>is</em> an enrolled printer.
 /// </para>
 /// <para>
-/// Because both enrollment channels materialise a row here, a provisioned printer authenticates
+/// Because both enrolment channels materialise a row here, a provisioned printer authenticates
 /// through the identical single fingerprint lookup as a code-exchange one — there is no per-channel
 /// branch on the request path.
 /// </para>
@@ -28,7 +28,7 @@ public class PrusaConnectAuthenticationData
 {
     public long Id { get; set; }
 
-    /// <summary>The enrolled printer. Never null — a credential without a printer is not enrollment.</summary>
+    /// <summary>The enrolled printer. Never null — a credential without a printer is not enrolment.</summary>
     public int PrinterId { get; set; }
 
     [ForeignKey(nameof(PrinterId))]
@@ -51,6 +51,6 @@ public class PrusaConnectAuthenticationData
 
     public required string HashedToken { get; set; }
 
-    /// <summary>When enrollment completed — the token was issued (code exchange) or bound (USB key).</summary>
+    /// <summary>When enrolment completed — the token was issued (code exchange) or bound (USB key).</summary>
     public DateTimeOffset EnrolledAt { get; set; }
 }

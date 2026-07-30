@@ -24,7 +24,7 @@ using NSubstitute.ExceptionExtensions;
 namespace Homespool.Host.Test.Printers;
 
 /// <summary>
-/// The printer list: scoping to teams the user can read, enrollment status per row, and the
+/// The printer list: scoping to teams the user can read, enrolment status per row, and the
 /// regenerate action for a still-unbound USB-key token.
 /// </summary>
 public sealed class IndexModelTests : IDisposable
@@ -75,14 +75,14 @@ public sealed class IndexModelTests : IDisposable
 
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
-        PrusaConnectOptions options = new() { PublicHost = "printers.example.com" };
+        PrusaConnectOptions options = new() { PrinterHost = "printers.example.com" };
 
         connectionRegistry ??= new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance);
 
         IndexModel model = new(
-            new PrinterQueryService(context),
+            new PrinterQueryService(context, TimeProvider.System),
             new PrusaConnectService(context, new CodeGenerator(), new TokenService(), new TeamService(context),
-                NullLogger<PrusaConnectService>.Instance, Options.Create(options)),
+                TimeProvider.System, NullLogger<PrusaConnectService>.Instance, Options.Create(options)),
             new TeamService(context),
             users,
             Options.Create(options),
@@ -113,7 +113,7 @@ public sealed class IndexModelTests : IDisposable
     /// awaiting a USB connection, or neither (a code-exchange claim nobody has polled yet).
     /// </summary>
     [Fact]
-    public async Task OnGetAsyncReportsEnrollmentStatusPerPrinter()
+    public async Task OnGetAsyncReportsEnrolmentStatusPerPrinter()
     {
         // Arrange
         await using HSDbContext context = await MigratedContextAsync();

@@ -29,7 +29,7 @@ public class PrinterClientHeadersTests
     /// body — and only <c>Code</c> on the poll.
     /// </summary>
     /// <remarks>
-    /// This is the regression guard for the bug that made enrollment impossible: the type used to
+    /// This is the regression guard for the bug that made enrolment impossible: the type used to
     /// throw <see cref="ArgumentNullException"/> when User-Agent-Printer, User-Agent-Version or
     /// Fingerprint was absent, and the controller turned that into a 400 on every registration.
     /// </remarks>

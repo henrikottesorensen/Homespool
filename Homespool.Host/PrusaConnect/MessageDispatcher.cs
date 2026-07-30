@@ -28,11 +28,15 @@ public class MessageDispatcher
 {
     private readonly ILogger<MessageDispatcher> _logger;
     private readonly UnknownFieldTracker _unknownFields;
+    private readonly TimeProvider _timeProvider;
 
-    public MessageDispatcher(ILogger<MessageDispatcher> logger, UnknownFieldTracker unknownFields)
+    public MessageDispatcher(ILogger<MessageDispatcher> logger,
+                             UnknownFieldTracker unknownFields,
+                             TimeProvider timeProvider)
     {
         _logger = logger;
         _unknownFields = unknownFields;
+        _timeProvider = timeProvider;
     }
 
     /// <summary>
@@ -43,7 +47,7 @@ public class MessageDispatcher
     /// production shape maps to it, but test spies use it to observe the stream without an actor.</returns>
     public virtual ConnectionMessage? Classify(int printerId, JsonElement root)
     {
-        DateTimeOffset receivedAt = TimeProvider.System.GetUtcNow();
+        DateTimeOffset receivedAt = _timeProvider.GetUtcNow();
 
         if (root.TryGetProperty("event", out _))
         {

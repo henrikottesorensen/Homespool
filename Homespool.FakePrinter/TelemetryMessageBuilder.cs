@@ -1,4 +1,6 @@
+using System;
 using System.Buffers;
+using System.Globalization;
 using System.Text.Json;
 
 namespace Homespool.FakePrinter;
@@ -72,11 +74,71 @@ public static class TelemetryMessageBuilder
                 writer.WriteNumber("filament", 2428288.0);
             }
 
+            WriteSlotBlock(writer, readings);
+
             writer.WriteString("state", device.WireState);
             writer.WriteEndObject();
         }
 
         return buffer.WrittenSpan.ToArray();
+    }
+
+    /// <summary>
+    /// The <c>slot</c> object: numbered per-tool sub-objects beside the fixed <c>active</c>, plus
+    /// <c>state</c>/<c>command</c> on MMU builds.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Shape and key order from the real capture recorded in <c>notes/phase-1-storage.md</c> §12,
+    /// not from our own DTO - a fake built from our model can only ever agree with us. Keys are
+    /// <b>1-based</b>, and <c>fan_hotend</c>/<c>fan_print</c> are floats on the wire despite being
+    /// <c>uint16_t</c> in firmware, because they are rendered with <c>JSON_FIELD_FFIXED</c>.
+    /// </para>
+    /// <para>
+    /// <b>Emitted only when there is more than one tool</b>, matching firmware's
+    /// <c>enabled_tool_cnt() &gt; 1</c> gate: a single-tool printer sends no <c>slot</c> object at
+    /// all. That is why the committed capture contains none, and why the server's slot tables stayed
+    /// empty through every load run until this existed.
+    /// </para>
+    /// <para>
+    /// Per-tool values are derived from the printer-wide readings rather than tracked independently -
+    /// tool 1 reports the machine's own nozzle figure and each further tool is offset by a degree, so
+    /// the rows are distinguishable rather than identical. Clearly our invention, per mitigation #3:
+    /// a real multi-tool printer's idle tools sit near ambient, and modelling that honestly needs
+    /// per-tool state <see cref="FakeDevice"/> does not have.
+    /// </para>
+    /// </remarks>
+    private static void WriteSlotBlock(Utf8JsonWriter writer, TelemetryReadings readings)
+    {
+        if (readings.Tools <= 1)
+        {
+            return;
+        }
+
+        writer.WriteStartObject("slot");
+
+        for (int tool = 1; tool <= readings.Tools; tool++)
+        {
+            writer.WriteStartObject(tool.ToString(CultureInfo.InvariantCulture));
+            writer.WriteString("material", readings.Material);
+            writer.WriteNumber("temp", readings.NozzleTemperature + tool - 1);
+            writer.WriteNumber("fan_hotend", (double)readings.FanExtruder);
+            writer.WriteNumber("fan_print", (double)readings.FanPrint);
+            writer.WriteEndObject();
+        }
+
+        if (readings.MmuState is { } mmuState)
+        {
+            writer.WriteNumber("state", mmuState);
+        }
+
+        if (readings.MmuCommand is { } mmuCommand)
+        {
+            writer.WriteString("command", mmuCommand);
+        }
+
+        writer.WriteNumber("active", Math.Clamp(readings.ActiveTool, 1, readings.Tools));
+        writer.WriteEndObject();
     }
 
     private static void WriteJobBlock(Utf8JsonWriter writer, FakeDevice device, TelemetryReadings readings)

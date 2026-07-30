@@ -102,4 +102,89 @@ public class TelemetryMessageBuilderTests
             .Should().Equal(firmwareOrder,
                 "the field sits between time_remaining and progress, matching the firmware's own order");
     }
+
+    /// <summary>
+    /// A single-tool printer sends no <c>slot</c> object at all, matching firmware's
+    /// <c>enabled_tool_cnt() &gt; 1</c> gate - and it is the default, so every existing run keeps the
+    /// capture printer's shape exactly.
+    /// </summary>
+    [Fact]
+    public void ASingleToolPrinterSendsNoSlotObject()
+    {
+        FakeDevice device = new();
+
+        using JsonDocument document = JsonDocument.Parse(
+            TelemetryMessageBuilder.BuildFull(device, new TelemetryReadings()));
+
+        document.RootElement.TryGetProperty("slot", out _).Should().BeFalse(
+            "firmware emits the slot object only above one tool, so the committed capture has none");
+    }
+
+    /// <summary>
+    /// Above one tool the <c>slot</c> object carries a 1-based numbered sub-object per tool beside
+    /// <c>active</c>, as captured in notes/phase-1-storage.md §12.
+    /// </summary>
+    /// <remarks>
+    /// The keys being 1-based and the fan values being floats are both things the wire does and an
+    /// obvious implementation would not: <c>fan_hotend</c>/<c>fan_print</c> are <c>uint16_t</c> in
+    /// firmware but rendered with <c>JSON_FIELD_FFIXED</c>, so they arrive as <c>8185.0</c>.
+    /// </remarks>
+    [Fact]
+    public void MultipleToolsSendANumberedSlotObjectPerTool()
+    {
+        FakeDevice device = new();
+
+        using JsonDocument document = JsonDocument.Parse(
+            TelemetryMessageBuilder.BuildFull(device, new TelemetryReadings { Tools = 5, ActiveTool = 3 }));
+
+        JsonElement slot = document.RootElement.GetProperty("slot");
+
+        slot.GetProperty("active").GetInt32().Should().Be(3);
+
+        foreach (int tool in Enumerable.Range(1, 5))
+        {
+            JsonElement entry = slot.GetProperty(tool.ToString());
+
+            entry.GetProperty("material").GetString().Should().Be("PLA");
+            entry.GetProperty("temp").GetDouble().Should().Be(25.0 + tool - 1,
+                "each tool reports a distinguishable temperature, so the persisted rows are not identical");
+            entry.GetProperty("fan_hotend").ValueKind.Should().Be(JsonValueKind.Number);
+        }
+
+        slot.TryGetProperty("1", out _).Should().BeTrue("slot keys are 1-based on the wire");
+        slot.TryGetProperty("0", out _).Should().BeFalse("a zero-based key would be our invention, not firmware's");
+    }
+
+    /// <summary>
+    /// The MMU pair is absent rather than zero on a non-MMU printer, because absent and zero mean
+    /// different things - "cannot have one" versus "has one, idle".
+    /// </summary>
+    [Fact]
+    public void TheMmuFieldsAreAbsentUnlessAskedFor()
+    {
+        FakeDevice device = new();
+
+        using JsonDocument without = JsonDocument.Parse(
+            TelemetryMessageBuilder.BuildFull(device, new TelemetryReadings { Tools = 2 }));
+        using JsonDocument with = JsonDocument.Parse(
+            TelemetryMessageBuilder.BuildFull(device, new TelemetryReadings { Tools = 2, MmuState = 3, MmuCommand = "C" }));
+
+        without.RootElement.GetProperty("slot").TryGetProperty("state", out _).Should().BeFalse();
+        without.RootElement.GetProperty("slot").TryGetProperty("command", out _).Should().BeFalse();
+
+        with.RootElement.GetProperty("slot").GetProperty("state").GetInt32().Should().Be(3);
+        with.RootElement.GetProperty("slot").GetProperty("command").GetString().Should().Be("C");
+    }
+
+    /// <summary>An active tool outside the range is clamped rather than sent as nonsense.</summary>
+    [Fact]
+    public void AnOutOfRangeActiveToolIsClamped()
+    {
+        FakeDevice device = new();
+
+        using JsonDocument document = JsonDocument.Parse(
+            TelemetryMessageBuilder.BuildFull(device, new TelemetryReadings { Tools = 2, ActiveTool = 9 }));
+
+        document.RootElement.GetProperty("slot").GetProperty("active").GetInt32().Should().Be(2);
+    }
 }

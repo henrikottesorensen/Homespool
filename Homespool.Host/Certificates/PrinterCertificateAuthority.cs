@@ -80,7 +80,7 @@ public class PrinterCertificateAuthority
     private readonly ILogger<PrinterCertificateAuthority> _logger;
 
     public PrinterCertificateAuthority(IOptions<CertificateOptions> options,
-                                       PrusaConnect.Transfers.IHostEnvironmentAccessor environment,
+                                       IHostEnvironmentAccessor environment,
                                        TimeProvider time,
                                        ILogger<PrinterCertificateAuthority> logger)
     {

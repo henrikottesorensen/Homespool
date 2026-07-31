@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
-using Homespool.Host.PrusaConnect.Transfers;
+using Homespool.Host.PrintFiles;
 
 namespace Homespool.Host.Test;
 

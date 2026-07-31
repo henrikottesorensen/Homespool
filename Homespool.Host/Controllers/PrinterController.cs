@@ -1,8 +1,11 @@
 using System;
+using System.Buffers.Text;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 
 using Homespool.Host.Exceptions;
+using Homespool.Host.PrintFiles;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.Transfers;
@@ -15,14 +18,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace Homespool.Host.Controllers;
 
 /// <summary>
-/// Everything done <em>to</em> a printer over the app API: upload a file, send it to a printer,
-/// print it - as three separate calls - plus the six job-control verbs that act on whatever is
-/// already running.
+/// Everything done <em>to</em> a printer over the app API: send it one of your files, print
+/// something already on it, and the six job-control verbs that act on whatever is already running.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -33,11 +34,16 @@ namespace Homespool.Host.Controllers;
 /// resolved that rather than leaving an apology in the summary.
 /// </para>
 /// <para>
-/// A testing surface, and shaped like one (Henrik, 2026-07-27). Transfer and print are deliberately
-/// <b>not</b> combined: a transfer takes as long as it takes and a print starts instantly, so a
-/// single call would have to either block or lie about what it did. Keeping them apart also means
-/// that when a rig run fails it is obvious which half broke. A convenience call that does both is a
-/// later addition, and a pure one - nothing here needs rework for it.
+/// <b>Uploads left for <see cref="PrintFileController"/> on 2026-07-31</b>, when files stopped being
+/// something that happens to a printer and became a thing a user owns
+/// (<c>notes/file-storage.md</c>). What is left here genuinely needs a printer in the route.
+/// </para>
+/// <para>
+/// Transfer and print are deliberately <b>not</b> combined: a transfer takes as long as it takes and
+/// a print starts instantly, so a single call would have to either block or lie about what it did.
+/// Keeping them apart also means that when a rig run fails it is obvious which half broke. A
+/// convenience call that does both is a later addition, and a pure one - nothing here needs rework
+/// for it.
 /// </para>
 /// <para>
 /// Cookie- or token-authenticated like <see cref="PrinterAppController"/>, so it is exercisable with
@@ -52,94 +58,58 @@ namespace Homespool.Host.Controllers;
 [Authorize(Policy = Authorisation.Policies.Api)]
 public class PrinterController : ControllerBase
 {
-    private readonly UploadedFileStore _files;
+    /// <summary>
+    /// Bytes of randomness in a transfer token. 21 rather than 20 because base64url carries three
+    /// bytes per four characters, so 21 encodes to exactly 28 - filling firmware's hash buffer
+    /// (<see cref="StartConnectDownload.MaxHashLength"/>) with nothing left over and no padding.
+    /// </summary>
+    /// <remarks>
+    /// Unguessable is not load-bearing here - the token is only meaningful to the printer that was
+    /// just told to use it, and ownership is enforced before one is ever minted. It is random
+    /// because there is no reason for it to be anything else, and 168 bits is what the space
+    /// happened to be.
+    /// </remarks>
+    private const int TransferTokenBytes = 21;
+
+    private readonly UserFileStore _files;
     private readonly ITransferOffers _offers;
     private readonly PrinterCommandService _commands;
     private readonly PrinterQueryService _printers;
     private readonly UserManager<HSUser> _userManager;
-    private readonly FileStorageOptions _options;
     private readonly ILogger<PrinterController> _logger;
 
-    public PrinterController(UploadedFileStore files, ITransferOffers offers,
-        PrinterCommandService commands, PrinterQueryService printers, UserManager<HSUser> userManager,
-        IOptions<FileStorageOptions> options, ILogger<PrinterController> logger)
+    public PrinterController(UserFileStore files,
+                                    ITransferOffers offers,
+                                    PrinterCommandService commands,
+                                    PrinterQueryService printers,
+                                    UserManager<HSUser> userManager,
+                                    ILogger<PrinterController> logger)
     {
         _files = files;
         _offers = offers;
         _commands = commands;
         _printers = printers;
         _userManager = userManager;
-        _options = options.Value;
         _logger = logger;
     }
 
     /// <summary>
-    /// Uploads a file, raw. <c>PUT /api/v1/files/{fileName}</c> with the bytes as the body.
-    /// </summary>
-    /// <remarks>
-    /// Raw body rather than multipart, matching PrusaLink's own upload shape
-    /// (<c>PUT /api/v1/files/{storage}/{path}</c>, notes/transfer-protocol.md) and trivially
-    /// curl-able: <c>curl -T model.bgcode .../api/v1/files/model.bgcode</c>. It also streams
-    /// straight to disk, where multipart would buffer a few hundred megabytes first.
-    /// </remarks>
-    [HttpPut]
-    [Route("files/{fileName}")]
-    [RequestSizeLimit(long.MaxValue)] // Enforced against the configured cap below, not by MVC.
-    public async Task<IActionResult> Upload(string fileName, CancellationToken cancellationToken)
-    {
-        if (!UploadedFileStore.IsAllowedExtension(fileName))
-        {
-            return BadRequest("Only .gcode, .bgcode, .gco and .bgc are accepted - the printer would "
-                            + "refuse anything else after the transfer.");
-        }
-
-        // Content-Length is advisory (a client may omit it), so this rejects the obvious case early
-        // and the copy below is still bounded.
-        if (Request.ContentLength > _options.MaxUploadBytes)
-        {
-            return StatusCode(StatusCodes.Status413PayloadTooLarge,
-                $"Larger than the {_options.MaxUploadBytes}-byte limit.");
-        }
-
-        StoredFile stored;
-
-        try
-        {
-            await using LengthLimitingStream limited = new(Request.Body, _options.MaxUploadBytes);
-            stored = await _files.SaveAsync(fileName, limited, cancellationToken);
-        }
-        catch (UploadTooLargeException)
-        {
-            return StatusCode(StatusCodes.Status413PayloadTooLarge,
-                $"Larger than the {_options.MaxUploadBytes}-byte limit.");
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(e.Message);
-        }
-
-        // "hash" rather than "id": it is the same value Connect's app API calls a hash, and the same
-        // one command/start/cloud takes below. "printerPath" is what command/start/files will need
-        // once the transfer has run - reported here because the server owns that convention and had
-        // no way of telling anyone what it was.
-        return Ok(new
-        {
-            hash = stored.Id,
-            fileName = stored.FileName,
-            length = stored.Length,
-            printerPath = stored.PrinterPath,
-        });
-    }
-
-    /// <summary>
-    /// Tells a printer to fetch a file we hold. <c>PUT /api/v1/printers/{uuid}/command/start/cloud</c>.
+    /// Sends one of the caller's files to a printer. <c>POST /api/v1/printers/{uuid}/files</c>.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Modelled on Connect's own app API, which takes the same <c>{hash, teamId, printNow}</c> for
-    /// this operation (<c>docs/prusa-connect-mobile-app.jsonopenapi</c>). "Cloud" there means files
-    /// Connect holds, as opposed to <c>start/files</c> for files already on the printer - the same
-    /// distinction this server has, so the shape transfers directly.
+    /// <b>Was <c>command/start/cloud</c></b>, which named where <i>Connect</i> kept the bytes. What
+    /// actually distinguishes this from <see cref="Print"/> is whether the file has to be
+    /// transferred first, so that is what the two routes are named for now
+    /// (<c>notes/file-storage.md</c>). Gone with the old shape: <c>printNow</c>, which could only
+    /// answer 501, and the body's <c>teamId</c>, which existed because the spec carried it - the
+    /// team is a property of the printer and is read from it.
+    /// </para>
+    /// <para>
+    /// <b>The transfer token is minted here and thrown away afterwards.</b> The printer quotes it
+    /// back on the first range request of the transfer and never again, so it is correlation, not
+    /// identity - which is exactly why the file's own name does not have to fit firmware's
+    /// 28-character hash buffer, and why storage owes the wire nothing.
     /// </para>
     /// <para>
     /// Answers as soon as the printer accepts the command, which is not when the transfer finishes:
@@ -147,24 +117,24 @@ public class PrinterController : ControllerBase
     /// model takes minutes. Watch for <c>TRANSFER_FINISHED</c>, or the transfer fields in telemetry.
     /// </para>
     /// </remarks>
-    [HttpPut]
-    [Route("printers/{uuid:guid}/command/start/cloud")]
-    public async Task<IActionResult> StartFromCloud(Guid uuid, [FromBody] StartFromCloudRequest body, CancellationToken cancellationToken)
+    [HttpPost]
+    [Route("printers/{uuid:guid}/files")]
+    public async Task<IActionResult> SendFile(Guid uuid, [FromBody] SendFileRequest body, CancellationToken cancellationToken)
     {
-        if (body.PrintNow == true)
+        HSUser? caller = await _userManager.GetUserAsync(User);
+
+        if (caller is null)
         {
-            // Printing on completion means firing START_PRINT when TRANSFER_FINISHED arrives, which
-            // the actor does not do yet. Refusing is honest; silently transferring without printing
-            // would be worse than not accepting the field at all.
-            return StatusCode(StatusCodes.Status501NotImplemented,
-                "printNow is not implemented - transfer with printNow false, then call command/start/files.");
+            return Forbid();
         }
 
-        StoredFile? file = _files.Find(body.Hash);
+        // Scoped to the caller, so "someone else's file" and "no such file" are the same answer and
+        // neither confirms the other's existence. This is the ownership check, and it is structural.
+        StoredFile? file = _files.Find(caller.Id, body.Name);
 
         if (file is null)
         {
-            return NotFound($"No uploaded file with hash {body.Hash}.");
+            return NotFound($"You have no file named {body.Name}.");
         }
 
         if (file.Length >= uint.MaxValue)
@@ -180,49 +150,39 @@ public class PrinterController : ControllerBase
             return failure!;
         }
 
-        if (body.TeamId != printer.TeamId)
-        {
-            // The spec sends the team explicitly and we could derive it, but disagreeing about which
-            // team owns a printer means the caller is working from a stale view - better to say so
-            // than to act on our version of it.
-            return BadRequest($"Printer belongs to team {printer.TeamId}, not {body.TeamId}.");
-        }
+        string token = TransferToken();
 
-        // The file's own id is the transfer token: the printer quotes it back on the first range
-        // request, and that is how the actor finds these bytes again. One identifier, as in Connect.
-        _offers.Offer(file.Id, file.Path);
+        // Opens the file, which is what pins these bytes for the transfer - see ITransferOffers. It
+        // failing means the file went away between being found and being offered, which is a delete
+        // racing this send rather than anything the caller did wrong.
+        if (!_offers.Offer(token, file.Path))
+        {
+            return Conflict($"{file.FileName} could not be read - it may have just been deleted.");
+        }
 
         StartConnectDownload command = new()
         {
             Path = file.PrinterPath,
-            Hash = file.Id,
+            Hash = token,
             TeamId = (ulong)printer.TeamId,
             OriginalSize = file.Length,
         };
 
-        return await SendAsync(printer, command, cancellationToken, onFailure: () => _offers.Revoke(file.Id));
+        return await SendAsync(printer, command, cancellationToken, onFailure: () => _offers.Revoke(token));
     }
 
     /// <summary>
-    /// Prints a file already on the printer. <c>PUT /api/v1/printers/{uuid}/command/start/files</c>.
+    /// Prints a file already on the printer. <c>POST /api/v1/printers/{uuid}/print</c>.
     /// </summary>
     /// <remarks>
-    /// Connect's app API spells this the same way, with the same <c>{path, printNow}</c> body. Takes
-    /// a path on the <i>printer's</i> storage, not one of our hashes - a file can be on a printer
-    /// without this server having put it there, which is exactly why the two start operations are
-    /// separate.
+    /// Takes a path on the <i>printer's</i> storage, not one of ours - a file can be on a printer
+    /// without this server having put it there, which is exactly why sending and printing are
+    /// separate calls. A file we sent is at the <c>printerPath</c> the file API reports.
     /// </remarks>
-    [HttpPut]
-    [Route("printers/{uuid:guid}/command/start/files")]
-    public async Task<IActionResult> StartFromPrinterFiles(Guid uuid, [FromBody] StartFromFilesRequest body, CancellationToken cancellationToken)
+    [HttpPost]
+    [Route("printers/{uuid:guid}/print")]
+    public async Task<IActionResult> Print(Guid uuid, [FromBody] PrintRequest body, CancellationToken cancellationToken)
     {
-        if (body.PrintNow == false)
-        {
-            // The file is already on the printer, so there is nothing to do but print it. The spec
-            // carries the flag on both start operations; here only true means anything.
-            return BadRequest("printNow false is meaningless for a file already on the printer.");
-        }
-
         if (!body.Path.StartsWith("/usb/", StringComparison.Ordinal) || body.Path.Contains("/../", StringComparison.Ordinal))
         {
             // The printer enforces this itself (path_allowed, planner.cpp:135-141); rejecting here
@@ -302,6 +262,10 @@ public class PrinterController : ControllerBase
     public Task<IActionResult> Idle(Guid uuid, CancellationToken cancellationToken) =>
         SendJobControlAsync(uuid, new SetPrinterIdle(), cancellationToken);
 
+    /// <summary>A fresh transfer token: 21 random bytes, base64url'd to firmware's full 28.</summary>
+    private static string TransferToken() =>
+        Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(TransferTokenBytes));
+
     /// <summary>Resolves the printer, then sends - the whole body of every job-control verb above.</summary>
     private async Task<IActionResult> SendJobControlAsync(Guid uuid, ISendableCommand command, CancellationToken cancellationToken)
     {
@@ -370,27 +334,16 @@ public class PrinterController : ControllerBase
     }
 }
 
-/// <summary>
-/// Body of <c>command/start/cloud</c>, matching Connect's app API.
-/// </summary>
-public class StartFromCloudRequest
+/// <summary>Body of a send: which of the caller's files to transfer.</summary>
+public class SendFileRequest
 {
-    /// <summary>The uploaded file's id, which is also its transfer token.</summary>
-    public required string Hash { get; set; }
-
-    /// <summary>The team the caller believes owns the printer; validated, not trusted.</summary>
-    public required long TeamId { get; set; }
-
-    /// <summary>Print once the transfer completes. Not implemented - see the endpoint.</summary>
-    public bool? PrintNow { get; set; }
+    /// <summary>The file's name, as the file API lists it.</summary>
+    public required string Name { get; set; }
 }
 
-/// <summary>Body of <c>command/start/files</c>, matching Connect's app API.</summary>
-public class StartFromFilesRequest
+/// <summary>Body of a print: what to run, on the printer's own storage.</summary>
+public class PrintRequest
 {
-    /// <summary>Path on the printer's own storage, under <c>/usb/</c>.</summary>
+    /// <summary>Path on the printer, under <c>/usb/</c>.</summary>
     public required string Path { get; set; }
-
-    /// <summary>Only <c>true</c> is meaningful here; the file is already present.</summary>
-    public bool? PrintNow { get; set; }
 }

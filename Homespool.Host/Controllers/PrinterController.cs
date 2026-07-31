@@ -1,6 +1,4 @@
 using System;
-using System.Buffers.Text;
-using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -8,7 +6,6 @@ using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
-using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -58,35 +55,22 @@ namespace Homespool.Host.Controllers;
 [Authorize(Policy = Authorisation.Policies.Api)]
 public class PrinterController : ControllerBase
 {
-    /// <summary>
-    /// Bytes of randomness in a transfer token. 21 rather than 20 because base64url carries three
-    /// bytes per four characters, so 21 encodes to exactly 28 - filling firmware's hash buffer
-    /// (<see cref="StartConnectDownload.MaxHashLength"/>) with nothing left over and no padding.
-    /// </summary>
-    /// <remarks>
-    /// Unguessable is not load-bearing here - the token is only meaningful to the printer that was
-    /// just told to use it, and ownership is enforced before one is ever minted. It is random
-    /// because there is no reason for it to be anything else, and 168 bits is what the space
-    /// happened to be.
-    /// </remarks>
-    private const int TransferTokenBytes = 21;
-
     private readonly UserFileStore _files;
-    private readonly ITransferOffers _offers;
+    private readonly PrintFileSender _sender;
     private readonly PrinterCommandService _commands;
     private readonly PrinterQueryService _printers;
     private readonly UserManager<HSUser> _userManager;
     private readonly ILogger<PrinterController> _logger;
 
     public PrinterController(UserFileStore files,
-                                    ITransferOffers offers,
+                                    PrintFileSender sender,
                                     PrinterCommandService commands,
                                     PrinterQueryService printers,
                                     UserManager<HSUser> userManager,
                                     ILogger<PrinterController> logger)
     {
         _files = files;
-        _offers = offers;
+        _sender = sender;
         _commands = commands;
         _printers = printers;
         _userManager = userManager;
@@ -150,25 +134,35 @@ public class PrinterController : ControllerBase
             return failure!;
         }
 
-        string token = TransferToken();
+        // Minting the token, offering the bytes and cleaning up after a send that did not take all
+        // live in PrintFileSender, because the Files page needs exactly the same three things and
+        // the cleanup rule is the one worth having a single copy of.
+        const string wireName = "START_CONNECT_DOWNLOAD";
 
-        // Opens the file, which is what pins these bytes for the transfer - see ITransferOffers. It
-        // failing means the file went away between being found and being offered, which is a delete
-        // racing this send rather than anything the caller did wrong.
-        if (!_offers.Offer(token, file.Path))
+        try
         {
-            return Conflict($"{file.FileName} could not be read - it may have just been deleted.");
+            CommandOutcome? outcome = await _sender.SendAsync(printer, file, caller.Id, cancellationToken);
+
+            return outcome?.EventType is Events.Rejected or Events.Failed
+                ? StatusCode(StatusCodes.Status409Conflict,
+                    new { command = wireName, outcome = outcome.EventType.ToString(), reason = outcome.Reason })
+                : NoContent();
         }
-
-        StartConnectDownload command = new()
+        catch (PrintFileUnreadableException e)
         {
-            Path = file.PrinterPath,
-            Hash = token,
-            TeamId = (ulong)printer.TeamId,
-            OriginalSize = file.Length,
-        };
+            return Conflict(e.Message);
+        }
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
+            or CommandResponseTimedOutException or CommandSendTimedOutException)
+        {
+            _logger.LogInformation(e, "{Command} to printer {PrinterId} did not complete", wireName, printer.Id);
 
-        return await SendAsync(printer, command, cancellationToken, onFailure: () => _offers.Revoke(token));
+            return StatusCode(StatusCodes.Status409Conflict, new { command = wireName, error = e.Message });
+        }
+        catch (TeamAccessDeniedException)
+        {
+            return Forbid();
+        }
     }
 
     /// <summary>
@@ -261,10 +255,6 @@ public class PrinterController : ControllerBase
     [Route("printers/{uuid:guid}/command/idle")]
     public Task<IActionResult> Idle(Guid uuid, CancellationToken cancellationToken) =>
         SendJobControlAsync(uuid, new SetPrinterIdle(), cancellationToken);
-
-    /// <summary>A fresh transfer token: 21 random bytes, base64url'd to firmware's full 28.</summary>
-    private static string TransferToken() =>
-        Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(TransferTokenBytes));
 
     /// <summary>Resolves the printer, then sends - the whole body of every job-control verb above.</summary>
     private async Task<IActionResult> SendJobControlAsync(Guid uuid, ISendableCommand command, CancellationToken cancellationToken)

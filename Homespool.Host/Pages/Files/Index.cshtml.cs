@@ -8,6 +8,9 @@ using System.Threading.Tasks;
 
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
+using Homespool.Host.PrusaConnect;
+using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;
@@ -15,6 +18,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Homespool.Host.Pages.Files;
@@ -43,12 +47,23 @@ public class IndexModel : PageModel
     private readonly UserFileStore _files;
     private readonly UserManager<HSUser> _userManager;
     private readonly PrintFileStorageOptions _options;
+    private readonly PrinterQueryService _printers;
+    private readonly PrintFileSender _sender;
+    private readonly ILogger<IndexModel> _logger;
 
-    public IndexModel(UserFileStore files, UserManager<HSUser> userManager, IOptions<PrintFileStorageOptions> options)
+    public IndexModel(UserFileStore files,
+                      UserManager<HSUser> userManager,
+                      IOptions<PrintFileStorageOptions> options,
+                      PrinterQueryService printers,
+                      PrintFileSender sender,
+                      ILogger<IndexModel> logger)
     {
         _files = files;
         _userManager = userManager;
         _options = options.Value;
+        _printers = printers;
+        _sender = sender;
+        _logger = logger;
     }
 
     /// <summary>The columns that can be sorted on, as they appear in the query string.</summary>
@@ -98,6 +113,12 @@ public class IndexModel : PageModel
     /// <summary>Largest upload accepted, for the hint under the file picker.</summary>
     public long MaxUploadBytes => _options.MaxUploadBytes;
 
+    /// <summary>
+    /// The printers this user can see, for the per-row send control. Empty means the control is not
+    /// rendered at all - offering a select with nothing in it explains nothing.
+    /// </summary>
+    public IReadOnlyList<Printer> Printers { get; private set; } = [];
+
     /// <summary>Bytes as a person reads them. Binary units, because that is what a printer's storage uses.</summary>
     public static string FormatSize(long bytes)
     {
@@ -135,9 +156,10 @@ public class IndexModel : PageModel
     public string IndicatorFor(string column) =>
         column != Sort ? string.Empty : Descending ? " ↓" : " ↑";
 
-    public void OnGet(string? sort, bool desc, string? rename)
+    public async Task OnGetAsync(string? sort, bool desc, string? rename, CancellationToken cancellationToken)
     {
         Load(sort, desc);
+        await LoadPrintersAsync(cancellationToken);
 
         // Only offer to rename something that is actually there, so a stale link is an ordinary page
         // rather than an input editing nothing.
@@ -259,6 +281,103 @@ public class IndexModel : PageModel
         return RedirectToSelf(sort, desc);
     }
 
+    /// <summary>
+    /// Tells a printer to come and fetch one of the caller's files.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The same three steps the API endpoint takes, through the same
+    /// <see cref="PrintFileSender"/> - so the rule that a send which did not take leaves no offer
+    /// behind has one implementation rather than two that drift.
+    /// </para>
+    /// <para>
+    /// <b>Answers when the printer accepts the command, not when the transfer finishes.</b> A
+    /// full-size model takes minutes to move, so the message here says it has started; the page has
+    /// no way to show progress yet (<c>notes/file-storage.md</c>).
+    /// </para>
+    /// </remarks>
+    public async Task<IActionResult> OnPostSendAsync(string name, int printerId, string? sort, bool desc,
+        CancellationToken cancellationToken)
+    {
+        long? userId = UserId();
+
+        if (userId is null)
+        {
+            return Forbid();
+        }
+
+        StoredFile? file = _files.Find(userId.Value, name);
+
+        if (file is null)
+        {
+            (StatusMessage, StatusSuccess) = ($"There is no file named {name}.", false);
+
+            return RedirectToSelf(sort, desc);
+        }
+
+        if (file.Length >= uint.MaxValue)
+        {
+            // orig_size is uint32 on the wire; a file this large cannot be described at all.
+            (StatusMessage, StatusSuccess) = ("That file is too large to describe to a printer (4 GiB limit).", false);
+
+            return RedirectToSelf(sort, desc);
+        }
+
+        // Looked up in the caller's own list rather than fetched by the id the form supplied. That
+        // list is already scoped to them, so this *is* the ownership check - a printer id typed into
+        // the form by hand finds nothing rather than someone else's machine.
+        await LoadPrintersAsync(cancellationToken);
+
+        Printer? printer = Printers.FirstOrDefault(candidate => candidate.Id == printerId);
+
+        if (printer is null)
+        {
+            (StatusMessage, StatusSuccess) = ("That printer is not one of yours.", false);
+
+            return RedirectToSelf(sort, desc);
+        }
+
+        try
+        {
+            CommandOutcome? outcome = await _sender.SendAsync(printer, file, userId.Value, cancellationToken);
+
+            (StatusMessage, StatusSuccess) = outcome?.EventType is Events.Rejected or Events.Failed
+                ? ($"{PrinterName(printer)} refused it: {outcome!.Reason}", false)
+                : ($"Sending {file.FileName} to {PrinterName(printer)}. It moves at the printer's pace.", true);
+        }
+        catch (PrintFileUnreadableException e)
+        {
+            (StatusMessage, StatusSuccess) = (e.Message, false);
+        }
+        catch (PrinterNotConnectedException)
+        {
+            (StatusMessage, StatusSuccess) = ($"{PrinterName(printer)} isn't connected right now.", false);
+        }
+        catch (CommandAlreadyInFlightException)
+        {
+            (StatusMessage, StatusSuccess) = ($"{PrinterName(printer)} is still busy with a previous command.", false);
+        }
+        catch (CommandResponseTimedOutException)
+        {
+            (StatusMessage, StatusSuccess) = ($"{PrinterName(printer)} didn't answer in time.", false);
+        }
+        catch (TeamAccessDeniedException)
+        {
+            (StatusMessage, StatusSuccess) = ("You don't have permission to use that printer.", false);
+        }
+        catch (Exception e) when (!cancellationToken.IsCancellationRequested)
+        {
+            // The same backstop Pages/Printers/Index keeps, and for the same reason: a socket write
+            // racing a disconnect surfaces as whatever the socket layer produced rather than as one
+            // of the typed exceptions above, and an unhandled 500 is a worse answer than a sentence.
+            _logger.LogWarning(e, "Sending {FileName} to printer {PrinterId} failed unexpectedly", file.FileName, printer.Id);
+
+            (StatusMessage, StatusSuccess) = ("Something went wrong sending that file.", false);
+        }
+
+        return RedirectToSelf(sort, desc);
+    }
+
     public IActionResult OnPostRename(string name, string newName, string? sort, bool desc)
     {
         long? userId = UserId();
@@ -313,8 +432,25 @@ public class IndexModel : PageModel
     /// the table silently jumps back to its default after each delete, which feels broken and reads
     /// as a bug nobody can quite describe.
     /// </remarks>
+    /// <summary>
+    /// What to call a printer in a message. The same fallback chain <c>Pages/Printers/Index</c>
+    /// uses, and for the reason documented on <see cref="Printer.Name"/>: the uuid is the only part
+    /// that cannot be missing.
+    /// </summary>
+    private static string PrinterName(Printer printer) =>
+        printer.Name ?? printer.Model ?? printer.Uuid.ToString();
+
     private IActionResult RedirectToSelf(string? sort, bool desc) =>
         RedirectToPage(new { sort, desc });
+
+    private async Task LoadPrintersAsync(CancellationToken cancellationToken)
+    {
+        long? userId = UserId();
+
+        Printers = userId is null
+            ? []
+            : await _printers.ListPrintersForUserAsync(userId.Value, cancellationToken);
+    }
 
     private long? UserId() =>
         long.TryParse(_userManager.GetUserId(User), CultureInfo.InvariantCulture, out long id) ? id : null;

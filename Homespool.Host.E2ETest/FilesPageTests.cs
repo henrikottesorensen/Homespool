@@ -186,6 +186,56 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         client.Dispose();
     }
 
+    /// <summary>
+    /// With no printers there is nothing to send to, so the control is absent rather than empty.
+    /// </summary>
+    [Fact]
+    public async Task TheSendControlIsAbsentWhenThereAreNoPrinters()
+    {
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "pagenoprinters@example.com");
+
+        await UploadAsync(client, "lonely.gcode", 128);
+
+        string page = await (await client.GetAsync("/Files")).Content.ReadAsStringAsync();
+
+        page.Should().Contain("lonely.gcode");
+        page.Should().NotContain("handler=Send", "a select with no options is worse than no select");
+
+        client.Dispose();
+    }
+
+    /// <summary>
+    /// A printer id typed into the form by hand finds nothing rather than someone else's machine -
+    /// the send handler resolves it in the caller's own list, which is what scopes it.
+    /// </summary>
+    [Fact]
+    public async Task SendingToAPrinterThatIsNotYoursIsRefused()
+    {
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "pagesend@example.com");
+
+        await UploadAsync(client, "mine.gcode", 128);
+
+        string page = await (await client.GetAsync("/Files")).Content.ReadAsStringAsync();
+
+        using FormUrlEncodedContent form = new(new List<KeyValuePair<string, string>>
+        {
+            new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(page)),
+            new("printerId", "4242"),
+        });
+
+        using HttpResponseMessage response = await client.PostAsync(
+            "/Files?handler=Send&name=mine.gcode", form);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+
+        string after = await (await client.GetAsync("/Files")).Content.ReadAsStringAsync();
+        after.Should().Contain("not one of yours");
+
+        client.Dispose();
+    }
+
     [Fact]
     public async Task AnUnknownSortColumnFallsBackRatherThanFailing()
     {

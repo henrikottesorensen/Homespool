@@ -114,6 +114,25 @@ else
                     <td>@file.UploadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
                 }
                 <td class="text-end text-nowrap">
+                    @* Only when there is something to send to: a select with no options explains
+                       nothing, and an empty one next to every row is worse than its absence. *@
+                    @if (Model.Printers.Count > 0)
+                    {
+                        <form method="post" asp-page-handler="Send"
+                              asp-route-name="@file.FileName"
+                              asp-route-sort="@Model.Sort"
+                              asp-route-desc="@Model.Descending"
+                              class="d-inline-flex align-items-center gap-1 me-2">
+                            <select name="printerId" class="form-select form-select-sm w-auto"
+                                    aria-label="Printer to send @file.FileName to">
+                                @foreach (var printer in Model.Printers)
+                                {
+                                    <option value="@printer.Id">@(printer.Name ?? printer.Model ?? printer.Uuid.ToString())</option>
+                                }
+                            </select>
+                            <button type="submit" class="btn btn-sm btn-outline-primary">Send</button>
+                        </form>
+                    }
                     <a asp-page="./Index"
                        asp-route-sort="@Model.Sort"
                        asp-route-desc="@Model.Descending"

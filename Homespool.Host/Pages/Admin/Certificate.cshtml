@@ -141,27 +141,30 @@ else if (Model.Uncovered.Count > 0)
     </div>
 }
 
-@if (Model.Dropping.Count > 0)
-{
-    <div class="alert alert-warning" role="alert">
-        <strong>Reissuing would narrow this certificate.</strong> These names are covered today and
-        would not be carried over:
-        <div class="mt-2 mb-2">
+<form method="post" asp-page-handler="Reissue">
+    @if (Model.Dropping.Count > 0)
+    {
+        <div class="alert alert-warning" role="alert">
+            <strong>Reissuing would narrow this certificate.</strong> These names are covered today
+            and this machine no longer answers on them, so they would not be carried over. That is
+            usually right - a certificate should only vouch for what a printer can reach. But
+            <strong>any printer whose ini tells it to dial one of these will stop connecting</strong>
+            once the new certificate is served, reporting a bare TLS error that names nothing, and
+            putting it back means a USB visit to repoint it.
+            <p class="mt-2 mb-1">Tick any name a printer is still dialling and it will be kept:</p>
             @foreach (string name in Model.Dropping)
             {
-                <div><code>@name</code></div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="KeepNames" value="@name"
+                           id="keep-@name" />
+                    <label class="form-check-label" for="keep-@name">
+                        keep <code>@name</code>
+                    </label>
+                </div>
             }
         </div>
-        They are dropped because this machine no longer answers on them, which is usually right - a
-        certificate should only vouch for what a printer can reach. But <strong>any printer whose ini
-        tells it to dial one of these will stop connecting</strong> once the new certificate is
-        served, and the printer reports that as a bare TLS error naming nothing. Putting such a
-        printer back means a USB visit to repoint it, so check what your printers were given before
-        continuing.
-    </div>
-}
+    }
 
-<form method="post" asp-page-handler="Reissue">
     <button type="submit" class="btn btn-primary">Reissue for this machine's current addresses</button>
     <a class="btn btn-link" asp-page="/Index">Back</a>
 </form>

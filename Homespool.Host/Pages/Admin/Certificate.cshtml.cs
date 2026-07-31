@@ -82,6 +82,26 @@ public class CertificateModel : PageModel
     [TempData]
     public string? StatusMessage { get; set; }
 
+    /// <summary>
+    /// Names from <see cref="Dropping"/> the administrator ticked to carry into the new certificate.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Unticked by default, deliberately.</b> Dropping an unreachable name is usually right and is
+    /// what this deployment already did, so leaving every box clear reproduces the previous behaviour
+    /// exactly — an operator who presses the button without reading gets what they got before, never
+    /// something new. Ticking is the deliberate act, taken next to a warning that states the cost.
+    /// </para>
+    /// <para>
+    /// <b>Never trusted as a list of names.</b> It is intersected with what the previous leaf actually
+    /// covered before anything is signed, so it can only preserve a name and never introduce one. That
+    /// matters more here than almost anywhere: this authority is the entire trust store of every
+    /// provisioned printer, with no revocation.
+    /// </para>
+    /// </remarks>
+    [BindProperty]
+    public string[] KeepNames { get; set; } = [];
+
     /// <summary>Names this machine has that the certificate does not, which is what drift looks like.</summary>
     public IReadOnlyList<string> Uncovered =>
         [.. Current.Where(name => !Covered.Contains(name, StringComparer.OrdinalIgnoreCase))];
@@ -130,16 +150,8 @@ public class CertificateModel : PageModel
             return RedirectToPage();
         }
 
-        IReadOnlyList<string> names = await PrinterCertificateNames.ForThisMachineAsync(
+        IReadOnlyList<string> detected = await PrinterCertificateNames.ForThisMachineAsync(
             _connect, _certificates.ParsedContainerNetworks, _resolver, cancellationToken);
-
-        if (names.Count == 0)
-        {
-            StatusMessage = "No usable address could be detected and PrusaConnect:PrinterHost is not set, so a new "
-                          + "certificate would cover nothing a printer could verify. Set the address first.";
-
-            return RedirectToPage();
-        }
 
         // Read from the leaf on disk rather than from the Dropping property, which is only populated
         // by LoadAsync on the GET. Taken before IssueLeaf overwrites it, because a narrowing is
@@ -155,9 +167,39 @@ public class CertificateModel : PageModel
             }
         }
 
+        // WHAT THE OPERATOR ASKED TO CARRY OVER, INTERSECTED WITH WHAT THE OLD LEAF ACTUALLY COVERED.
+        // The intersection is the security control, not a tidiness one: this is a request body, and
+        // without it a crafted POST could put any name at all into a certificate that every provisioned
+        // printer trusts absolutely. Restricting to names the previous leaf already vouched for means
+        // this can only ever preserve a name, never introduce one.
+        string[] kept =
+        [
+            .. previouslyCovered.Where(name => KeepNames.Contains(name, StringComparer.OrdinalIgnoreCase))
+                                .Where(name => !detected.Contains(name, StringComparer.OrdinalIgnoreCase)),
+        ];
+
+        // Detected first: PrinterCertificateAuthority takes the first name as the subject, and the
+        // configured host leads the detected list, so appending keeps that.
+        string[] names = [.. detected, .. kept];
+
+        if (names.Length == 0)
+        {
+            StatusMessage = "No usable address could be detected and PrusaConnect:PrinterHost is not set, so a new "
+                          + "certificate would cover nothing a printer could verify. Set the address first.";
+
+            return RedirectToPage();
+        }
+
         string[] dropped = [.. previouslyCovered.Where(name => !names.Contains(name, StringComparer.OrdinalIgnoreCase))];
 
         using X509Certificate2 issued = _authority.IssueLeaf(names);
+
+        if (kept.Length > 0)
+        {
+            _logger.LogInformation("The reissued printer certificate keeps {Kept} at the administrator's request, "
+                                   + "although this machine no longer answers on those names. Printers already dialling "
+                                   + "them keep working; nothing else does.", string.Join(", ", kept));
+        }
 
         if (dropped.Length > 0)
         {
@@ -165,7 +207,7 @@ public class CertificateModel : PageModel
                                + "did. Any printer whose ini tells it to dial one of those names will fail its "
                                + "handshake once the proxy is reloaded, reporting a bare TLS error, and needs a USB "
                                + "visit to repoint it. They were dropped because this machine no longer answers on "
-                               + "them.", string.Join(", ", dropped));
+                               + "them and were not ticked to keep.", string.Join(", ", dropped));
         }
 
         _logger.LogWarning("The printer certificate was reissued for {Names} by {User}. It is served once the proxy "

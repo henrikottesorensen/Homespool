@@ -148,6 +148,81 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
+    /// A name the administrator ticks is carried into the new certificate, even though this machine
+    /// no longer answers on it.
+    /// </summary>
+    /// <remarks>
+    /// The operator is the only party who knows which address each printer's ini actually names, so
+    /// the choice belongs to them rather than to the address detector. Unticked stays the default, so
+    /// pressing the button without reading reproduces the previous behaviour exactly.
+    /// </remarks>
+    [Fact]
+    public async Task ATickedNameSurvivesTheReissue()
+    {
+        // Arrange
+        PrinterCertificateAuthority authority = _factory.Services.GetRequiredService<PrinterCertificateAuthority>();
+        authority.IssueLeaf(["a-printer-still-dials-this.lan"]).Dispose();
+
+        using HttpClient client = await AdministratorClientAsync();
+        string page = await (await client.GetAsync("/Admin/Certificate")).Content.ReadAsStringAsync();
+
+        // Act
+        using FormUrlEncodedContent form = new(
+        [
+            new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(page)),
+            new("KeepNames", "a-printer-still-dials-this.lan"),
+        ]);
+
+        using HttpResponseMessage response = await client.PostAsync("/Admin/Certificate?handler=Reissue", form);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+
+        using X509Certificate2? reissued = authority.LoadLeafIfIssued();
+
+        PrinterCertificateAuthority.NamesOf(reissued!).Should().Contain("a-printer-still-dials-this.lan",
+            "the administrator ticked it, and dropping it anyway would strand whichever printer is dialling it");
+    }
+
+    /// <summary>
+    /// <b>A name that was never in the old certificate cannot be added by posting it.</b>
+    /// </summary>
+    /// <remarks>
+    /// The tick list arrives in a request body, and this authority is the entire trust store of every
+    /// provisioned printer with no revocation behind it. So the list is intersected with what the
+    /// previous leaf actually covered before anything is signed: it can preserve a name, never
+    /// introduce one. Without that, a crafted POST would mint a certificate for any name it liked and
+    /// every printer would believe it.
+    /// </remarks>
+    [Fact]
+    public async Task ANameThatWasNeverCoveredCannotBeInjectedByPostingIt()
+    {
+        // Arrange
+        PrinterCertificateAuthority authority = _factory.Services.GetRequiredService<PrinterCertificateAuthority>();
+        authority.IssueLeaf(["an-old-address.lan"]).Dispose();
+
+        using HttpClient client = await AdministratorClientAsync();
+        string page = await (await client.GetAsync("/Admin/Certificate")).Content.ReadAsStringAsync();
+
+        // Act
+        using FormUrlEncodedContent form = new(
+        [
+            new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(page)),
+            new("KeepNames", "connect.prusa3d.com"),
+        ]);
+
+        using HttpResponseMessage response = await client.PostAsync("/Admin/Certificate?handler=Reissue", form);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+
+        using X509Certificate2? reissued = authority.LoadLeafIfIssued();
+
+        PrinterCertificateAuthority.NamesOf(reissued!).Should().NotContain("connect.prusa3d.com",
+            "the tick list may only preserve names the previous certificate already vouched for");
+    }
+
+    /// <summary>
     /// An ordinary user cannot see the page, let alone press the button.
     /// </summary>
     [Fact]

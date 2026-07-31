@@ -119,19 +119,23 @@ public class CertificateModel : PageModel
 
         using X509Certificate2 issued = _authority.IssueLeaf(names);
 
-        _logger.LogWarning("The printer certificate was reissued for {Names} by {User}. It is served from the next "
-                           + "restart; until then the previous certificate is still on the wire.",
+        _logger.LogWarning("The printer certificate was reissued for {Names} by {User}. It is served once the proxy "
+                           + "reloads; until then the previous certificate is still on the wire.",
                            string.Join(", ", names), User.Identity?.Name);
 
-        // The restart is the honest part of the message. Kestrel bound the old certificate when it
-        // started and holds it for the life of the process, so a page that said "done" would be
-        // describing a file rather than what printers actually meet.
+        // The reload is the honest part of the message, and it is the proxy's rather than this
+        // process's: nginx read the old certificate when it started and holds it until told
+        // otherwise, so a page that said "done" would be describing a file rather than what printers
+        // actually meet. It used to say RESTART THE SERVER, which was true when Kestrel served the
+        // certificate and is now both wrong and needlessly expensive - reloading nginx keeps the
+        // application, its database and every user session up.
         // Plain text, no markup: this is rendered as-is, and a page that shows an operator literal
         // asterisks around its most important sentence has undermined the sentence.
         StatusMessage = $"Reissued for {string.Join(", ", names)}, valid until "
-                      + $"{issued.NotAfter.ToUniversalTime():yyyy-MM-dd}. RESTART THE SERVER to serve it - until then "
-                      + "printers still meet the previous certificate. Nothing is needed at the printers themselves: "
-                      + "they trust the authority, which has not changed.";
+                      + $"{issued.NotAfter.ToUniversalTime():yyyy-MM-dd}. RELOAD THE PROXY to serve it - run "
+                      + "\"docker compose exec proxy nginx -s reload\" - until then printers still meet the previous "
+                      + "certificate. Nothing is needed at the printers themselves: they trust the authority, which "
+                      + "has not changed.";
 
         return RedirectToPage();
     }

@@ -21,10 +21,14 @@ TOKEN="${1:?usage: enrol.sh <setup-token>}"
 BASE="${BASE:-http://localhost:5052}"
 
 # /p/* lives on the printer listener and on no other, so the two registration calls below go
-# somewhere different from the account and API calls. Plain HTTP, which means the server must be
-# running with PrusaConnect__PrinterTls=false - the right setting for a rig, since the alternative is
-# teaching curl and the connect_rig binary to trust an authority minted minutes ago. Point this at
-# https://localhost:15443 and add --insecure to those two calls if you want the TLS path instead.
+# somewhere different from the account and API calls. Plain HTTP, and for a rig running the app
+# directly that is now simply what the listener is: the app serves no TLS on any port, because nginx
+# terminates the printer's in front of it in the shipped stack. PrusaConnect__PrinterTls=false is
+# still the right setting for a rig - it stops a certificate being minted and writes tls = false into
+# any ini - but it is no longer what makes this line work.
+#
+# There is no TLS path to point this at any more. To exercise one, put the shipped proxy in front:
+# `docker compose up` and dial its published printer port instead.
 PRINTER_BASE="${PRINTER_BASE:-http://localhost:15443}"
 EMAIL="${EMAIL:-rig@example.com}"
 PASSWORD="${PASSWORD:-Correct-Horse-Battery-Staple-1!}"

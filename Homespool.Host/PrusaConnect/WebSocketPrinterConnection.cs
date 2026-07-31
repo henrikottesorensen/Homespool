@@ -28,19 +28,87 @@ namespace Homespool.Host.PrusaConnect;
 public sealed class WebSocketPrinterConnection : IClosablePrinterConnection
 {
     /// <summary>
-    /// The largest payload a single frame may carry. One below the 16-bit ceiling's successor: at
-    /// 65 535 .NET writes the 16-bit length marker (126), and at 65 536 it switches to the 64-bit
-    /// marker (127) - which the firmware's client rejects outright, dropping the connection
-    /// (websocket.cpp:127-129). Measured, not inferred from the RFC.
+    /// Payload bytes per WebSocket frame when the connection is encrypted. <b>Sized by the printer's TLS record buffer, not by the
+    /// WebSocket protocol</b> - see the remarks, because the obvious value is wrong and the reason is
+    /// three layers down.
     /// </summary>
-    private const int MaxFramePayload = 65535;
+    /// <remarks>
+    /// <para>
+    /// <b>Was 65535</b>, which is the real WebSocket cap: their client implements only the 7-bit and
+    /// 16-bit length encodings and rejects the 64-bit marker as <c>Error::WebSocket</c>, killing the
+    /// connection (<c>websocket.cpp:127-129</c>). That is still true and still the ceiling. It is no
+    /// longer the binding constraint.
+    /// </para>
+    /// <para>
+    /// <b>The binding constraint is that the printer can hold 1024 bytes of TLS plaintext at a
+    /// time.</b> Buddy builds mbedtls with <c>MBEDTLS_SSL_IN_CONTENT_LEN</c> 1024 and
+    /// <c>OUT_CONTENT_LEN</c> 512 (<c>include/mbedtls/cipher_config_ece.h:69-74</c>), which reclaims
+    /// ~30 KB of SRAM - 16% of an MK4's - and is why TLS fits on the board at all. It asks the server
+    /// to respect that by negotiating RFC 6066 <c>max_fragment_length</c>, and Prusa's own servers
+    /// honour it, which is how every Connect-connected printer transfers files today.
+    /// </para>
+    /// <para>
+    /// <b><see cref="System.Net.Security.SslStream"/> does not.</b> Measured 2026-07-31 against a
+    /// throwaway TLS 1.2 server: a client offering <c>max_fragment_length := 2^9 (512)</c> got a
+    /// ServerHello carrying only <c>renegotiate</c> and <c>extended_master_secret</c> - no echo, so
+    /// per RFC 6066 not honoured - and one 8 KB write produced a single 8216-byte record. Asked for
+    /// in <c>dotnet/runtime#44241</c> since 2020, closed, still absent. RFC 8449
+    /// <c>record_size_limit</c> would not help either: mbedtls 2.28 predates it.
+    /// </para>
+    /// <para>
+    /// So the record size is ours to control, and the only lever is how much is handed to the stream
+    /// per write: <see cref="System.Net.WebSockets.WebSocket.SendAsync(ReadOnlyMemory{byte}, System.Net.WebSockets.WebSocketMessageType, bool, CancellationToken)"/>
+    /// is one frame is one write is one record. <b>1000 rather than 1024</b> leaves room for the
+    /// frame header inside the record. Their reader handles the resulting continuation fragments
+    /// properly - it consumes them until FIN and services Ping between them
+    /// (<c>connect.cpp:369-553</c>) - and the header rides only the first, which the loop below
+    /// already did.
+    /// </para>
+    /// <para>
+    /// <b>What this cost, measured on an MK3.5:</b> nothing detectable. A 316 KB bgcode moved in
+    /// ~1.2 s (~270 KB/s) against ~193 KB/s for a 1.9 MB file in 64 KiB frames over plaintext. That
+    /// is not fast in any absolute sense - the inline engine is round-trip bound and
+    /// <c>notes/transfer-protocol.md</c>, "Why throughput is capped", accounts for all of it - but
+    /// ~1900 frames per file demonstrably do not make it worse.
+    /// </para>
+    /// <para>
+    /// <b>One thing known and not addressed.</b> This assumes Kestrel writes one frame per record,
+    /// which held on hardware but is behaviour rather than contract; if its output pipe ever batched
+    /// two frames into one write the record would exceed 1024 and transfers would die again,
+    /// intermittently - the worst shape. TLS record headers are unencrypted, so a capture can check
+    /// that cheaply without decrypting anything, and that is the thing to do before trusting this
+    /// under load.
+    /// </para>
+    /// </remarks>
+    private const int TlsFramePayload = 1000;
+
+    /// <summary>
+    /// Payload bytes per frame in the clear, where the only limit is the WebSocket one their client
+    /// can parse: at 65 535 .NET writes the 16-bit length marker (126), and at 65 536 it switches to
+    /// the 64-bit marker (127), which the firmware rejects outright and drops the connection
+    /// (<c>websocket.cpp:127-129</c>). Measured, not inferred from the RFC.
+    /// </summary>
+    private const int PlaintextFramePayload = 65535;
 
     private readonly WebSocket _webSocket;
+    private readonly int _maxFramePayload;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
-    public WebSocketPrinterConnection(WebSocket webSocket)
+    /// <summary>Wraps an accepted socket, sized for the transport it arrived on.</summary>
+    /// <param name="webSocket">The accepted socket, already upgraded.</param>
+    /// <param name="overTls">
+    /// Whether this connection is encrypted, which decides the frame size - see
+    /// <see cref="TlsFramePayload"/> for why the two differ by 65x.
+    /// </param>
+    /// <remarks>
+    /// Taken from the connection rather than from configuration on the same reasoning the listener
+    /// split used for <c>Connection.LocalPort</c>: a flag can be set wrong, a socket cannot. It also
+    /// means a deployment serving both stays correct on each.
+    /// </remarks>
+    public WebSocketPrinterConnection(WebSocket webSocket, bool overTls)
     {
         _webSocket = webSocket;
+        _maxFramePayload = overTls ? TlsFramePayload : PlaintextFramePayload;
     }
 
     public bool IsOpen => _webSocket.State == WebSocketState.Open;
@@ -72,7 +140,7 @@ public sealed class WebSocketPrinterConnection : IClosablePrinterConnection
         // between is not a message either party can parse - and the close frame is a send too.
         await _writeLock.WaitAsync(cancellationToken);
 
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(MaxFramePayload);
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(_maxFramePayload);
 
         // Returned only on the normal path. If a read is abandoned - a cancelled await whose
         // underlying syscall keeps going, which is the usual shape of file I/O on Unix - it may still
@@ -91,7 +159,7 @@ public sealed class WebSocketPrinterConnection : IClosablePrinterConnection
 
             while (true)
             {
-                int room = MaxFramePayload - headerLength;
+                int room = _maxFramePayload - headerLength;
                 int want = (int)Math.Min(room, remaining);
                 int filled = 0;
 

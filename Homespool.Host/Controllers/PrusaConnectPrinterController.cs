@@ -79,7 +79,11 @@ public class PrusaConnectPrinterController : ControllerBase
                 using Stream socketStream = WebSocketStream.Create(webSocket, WebSocketMessageType.Binary);
                 PipeReader input = PipeReader.Create(socketStream, new StreamPipeReaderOptions(leaveOpen: true));
 
-                WebSocketPrinterConnection connection = new(webSocket);
+                // Request.IsHttps, not the PrinterTls option: the frame size has to match the
+                // transport this socket actually arrived on, and a configuration flag can disagree
+                // with reality where a socket cannot. Same reasoning as binding /p/* to
+                // Connection.LocalPort rather than to the Host header.
+                WebSocketPrinterConnection connection = new(webSocket, Request.IsHttps);
 
                 // Two reasons this read loop should stop, neither of them the printer's doing:
                 // RequestAborted (the client vanished, or Kestrel aborted us) and ApplicationStopping.

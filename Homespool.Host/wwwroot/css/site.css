@@ -87,3 +87,18 @@ body {
   white-space: nowrap;
   line-height: 60px;
 }
+
+/* The upload area, and what it looks like with a file held over it. Dashed because that is the
+   conventional shape of "you may drop here"; without scripting it is simply a border, and the
+   picker inside it behaves the same either way. */
+.upload-dropzone {
+  border: 2px dashed var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  padding: 1rem;
+  transition: border-color 0.15s ease-in-out, background-color 0.15s ease-in-out;
+}
+
+.upload-dropzone-active {
+  border-color: var(--bs-primary);
+  background-color: var(--bs-secondary-bg);
+}

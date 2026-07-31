@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
@@ -94,15 +95,39 @@ public sealed class UserFileStore
     /// </remarks>
     private static readonly string[] AllowedExtensions = [".gcode", ".bgcode", ".gco", ".bgc"];
 
+    /// <summary>
+    /// How long a staged upload nobody finished is kept before its bytes are thrown away.
+    /// </summary>
+    /// <remarks>
+    /// Only abandoned ones reach this: publishing and discarding both remove the entry. What is left
+    /// is the person who was asked "replace it?" and closed the tab, and generous is the right
+    /// setting - the cost of waiting is disk, and the cost of being early is losing an upload
+    /// somebody was still deciding about.
+    /// </remarks>
+    private static readonly TimeSpan PendingLifetime = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// Uploads that have arrived but have not been given a name yet, keyed by their token.
+    /// </summary>
+    /// <remarks>
+    /// In memory, like the transfer offer registry and for the same reason: a staged upload is only
+    /// meaningful to the request that will finish it, and one surviving a restart would be a file the
+    /// user has no way of hearing about again. The bytes on disk outlive the entry, which is what the
+    /// sweep is for.
+    /// </remarks>
+    private readonly ConcurrentDictionary<string, Pending> _pending = new(StringComparer.Ordinal);
+
     private readonly string _root;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<UserFileStore> _logger;
 
     public UserFileStore(IOptions<PrintFileStorageOptions> options, IHostEnvironmentAccessor environment,
-        ILogger<UserFileStore> logger)
+        TimeProvider timeProvider, ILogger<UserFileStore> logger)
     {
         _root = Path.IsPathRooted(options.Value.Directory)
             ? options.Value.Directory
             : Path.Combine(environment.ContentRootPath, options.Value.Directory);
+        _timeProvider = timeProvider;
         _logger = logger;
     }
 
@@ -197,6 +222,47 @@ public sealed class UserFileStore
     public async Task<StoredFile> SaveAsync(long userId, string fileName, Stream content, bool overwrite,
         CancellationToken cancellationToken)
     {
+        // Fails a doomed request before hundreds of megabytes cross the wire. The check inside
+        // Publish is the authoritative one; this is the courtesy.
+        if (!overwrite && Find(userId, RequireSafeName(fileName)) is not null)
+        {
+            throw new PrintFileNameConflictException(RequireSafeName(fileName));
+        }
+
+        PendingUpload pending = await StageAsync(userId, fileName, content, cancellationToken);
+
+        try
+        {
+            return Publish(userId, pending.Token, overwrite)!;
+        }
+        catch
+        {
+            Discard(userId, pending.Token);
+
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Streams <paramref name="content"/> to disk without giving it its name yet, and returns a
+    /// handle for finishing the job.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Exists so that a name clash need not cost the upload twice.</b> A page that wants to ask
+    /// "replace the file you already have?" can only ask after it knows there is a clash, which is
+    /// after the bytes have arrived - so throwing them away would mean the answer "yes, replace it"
+    /// re-sends the whole file. Staged bytes make that answer free
+    /// (<c>notes/file-storage.md</c>).
+    /// </para>
+    /// <para>
+    /// The name is validated here rather than at publish time, so a file no printer would accept is
+    /// refused before it is written rather than after.
+    /// </para>
+    /// </remarks>
+    public async Task<PendingUpload> StageAsync(long userId, string fileName, Stream content,
+        CancellationToken cancellationToken)
+    {
         string safeName = RequireSafeName(fileName);
 
         if (!IsAllowedExtension(safeName))
@@ -206,51 +272,21 @@ public sealed class UserFileStore
             throw new ArgumentException($"'{safeName}' is not a file a printer would accept.", nameof(fileName));
         }
 
-        if (!overwrite && Find(userId, safeName) is not null)
-        {
-            throw new PrintFileNameConflictException(safeName);
-        }
+        SweepAbandoned();
 
-        string directory = DirectoryFor(userId);
         string incoming = Path.Combine(_root, IncomingDirectory);
 
-        Directory.CreateDirectory(directory);
         Directory.CreateDirectory(incoming);
 
-        string temporary = Path.Combine(incoming, Guid.NewGuid().ToString("N"));
+        string token = Guid.NewGuid().ToString("N");
+        string temporary = Path.Combine(incoming, token);
 
         try
         {
-            await using (FileStream file = new(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
-                bufferSize: 64 * 1024, useAsync: true))
-            {
-                await content.CopyToAsync(file, cancellationToken);
-            }
+            await using FileStream file = new(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                bufferSize: 64 * 1024, useAsync: true);
 
-            // An existing file has to go before the rename when the caller asked for that, because
-            // File.Move(overwrite: true) would happily replace one they did not ask about - the
-            // case-insensitive match may be spelled differently from the name we are about to write.
-            StoredFile? existing = Find(userId, safeName);
-
-            if (existing is not null && !overwrite)
-            {
-                throw new PrintFileNameConflictException(safeName);
-            }
-
-            string path = Path.Combine(directory, safeName);
-
-            if (existing is not null && !string.Equals(existing.Path, path, StringComparison.Ordinal))
-            {
-                File.Delete(existing.Path);
-            }
-
-            File.Move(temporary, path, overwrite);
-
-            StoredFile stored = Describe(path);
-            _logger.LogInformation("Stored {FileName} for user {UserId} ({Length} bytes){Replaced}",
-                stored.FileName, userId, stored.Length, existing is null ? string.Empty : ", replacing");
-
-            return stored;
+            await content.CopyToAsync(file, cancellationToken);
         }
         catch
         {
@@ -258,6 +294,77 @@ public sealed class UserFileStore
 
             throw;
         }
+
+        long length = new FileInfo(temporary).Length;
+
+        _pending[token] = new Pending(userId, safeName, temporary, _timeProvider.GetUtcNow());
+
+        return new PendingUpload(token, safeName, length);
+    }
+
+    /// <summary>
+    /// Gives a staged upload its name, or null if there is no such staged upload for this user.
+    /// </summary>
+    /// <exception cref="PrintFileNameConflictException">The name is taken and <paramref name="overwrite"/> is false.</exception>
+    /// <remarks>
+    /// The rename is what publishes: until it runs the bytes are not listable, not printable and not
+    /// reachable by name. It is also atomic, so a reader sees the old file or the new one and never a
+    /// half-written mixture - and the new content lands on a <i>new</i> inode, which is what lets a
+    /// transfer already in flight keep serving the bytes it announced
+    /// (<see cref="PrusaConnect.Transfers.FileTransferContent"/>).
+    /// </remarks>
+    public StoredFile? Publish(long userId, string token, bool overwrite)
+    {
+        if (!_pending.TryGetValue(token, out Pending? pending) || pending.UserId != userId)
+        {
+            // Scoped by user for the same reason every other lookup here is: a token is not a
+            // capability, and one user finishing another's upload would be exactly that.
+            return null;
+        }
+
+        StoredFile? existing = Find(userId, pending.FileName);
+
+        if (existing is not null && !overwrite)
+        {
+            throw new PrintFileNameConflictException(pending.FileName);
+        }
+
+        string directory = DirectoryFor(userId);
+
+        Directory.CreateDirectory(directory);
+
+        string path = Path.Combine(directory, pending.FileName);
+
+        // An existing file has to go before the rename, because File.Move(overwrite: true) would
+        // replace only the exact path - the case-insensitive match may be spelled differently from
+        // the name about to be written, leaving two files where the user expects one.
+        if (existing is not null && !string.Equals(existing.Path, path, StringComparison.Ordinal))
+        {
+            File.Delete(existing.Path);
+        }
+
+        File.Move(pending.Path, path, overwrite);
+        _pending.TryRemove(token, out _);
+
+        StoredFile stored = Describe(path);
+        _logger.LogInformation("Stored {FileName} for user {UserId} ({Length} bytes){Replaced}",
+            stored.FileName, userId, stored.Length, existing is null ? string.Empty : ", replacing");
+
+        return stored;
+    }
+
+    /// <summary>Throws a staged upload away, and reports whether there was one to throw.</summary>
+    public bool Discard(long userId, string token)
+    {
+        if (!_pending.TryGetValue(token, out Pending? pending) || pending.UserId != userId)
+        {
+            return false;
+        }
+
+        _pending.TryRemove(token, out _);
+        DeleteQuietly(pending.Path);
+
+        return true;
     }
 
     /// <summary>Renames one of <paramref name="userId"/>'s files.</summary>
@@ -373,7 +480,58 @@ public sealed class UserFileStore
 
     private string DirectoryFor(long userId) =>
         Path.Combine(_root, userId.ToString(CultureInfo.InvariantCulture));
+
+    /// <summary>
+    /// Throws away staged uploads nobody finished. Runs when a new one starts, so it needs no timer.
+    /// </summary>
+    /// <remarks>
+    /// Sweeps the directory as well as the dictionary: a restart forgets what was staged while
+    /// leaving the bytes behind, and those orphans have nothing left to remove them. Files younger
+    /// than the lifetime are left alone whether or not they are known, because one of them may be
+    /// arriving right now.
+    /// </remarks>
+    private void SweepAbandoned()
+    {
+        DateTimeOffset cutoff = _timeProvider.GetUtcNow() - PendingLifetime;
+
+        foreach (KeyValuePair<string, Pending> entry in _pending)
+        {
+            if (entry.Value.StagedAt <= cutoff && _pending.TryRemove(entry))
+            {
+                DeleteQuietly(entry.Value.Path);
+                _logger.LogInformation("Discarded a staged upload nobody finished");
+            }
+        }
+
+        string incoming = Path.Combine(_root, IncomingDirectory);
+
+        if (!Directory.Exists(incoming))
+        {
+            return;
+        }
+
+        foreach (string path in Directory.EnumerateFiles(incoming))
+        {
+            if (new FileInfo(path).LastWriteTimeUtc <= cutoff.UtcDateTime
+                && !_pending.Values.Any(pending => string.Equals(pending.Path, path, StringComparison.Ordinal)))
+            {
+                DeleteQuietly(path);
+            }
+        }
+    }
+
+    /// <param name="UserId">Whose upload it is, so a token cannot be redeemed by anyone else.</param>
+    /// <param name="FileName">The name it will take when published.</param>
+    /// <param name="Path">Where the bytes are, under the incoming directory.</param>
+    /// <param name="StagedAt">When it arrived, so an abandoned one can be told from a fresh one.</param>
+    private sealed record Pending(long UserId, string FileName, string Path, DateTimeOffset StagedAt);
 }
+
+/// <summary>An upload that has arrived but has not been given its name yet.</summary>
+/// <param name="Token">Handle for publishing or discarding it. Meaningless to anyone else.</param>
+/// <param name="FileName">The name it will take, already reduced to something safe.</param>
+/// <param name="Length">Size in bytes, known because the bytes are already on disk.</param>
+public sealed record PendingUpload(string Token, string FileName, long Length);
 
 /// <summary>One of a user's files.</summary>
 /// <param name="FileName">The name as stored, which is also the name it takes on the printer.</param>

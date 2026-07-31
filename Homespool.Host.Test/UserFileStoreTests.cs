@@ -425,6 +425,7 @@ public sealed class UserFileStoreTests : IDisposable
     private UserFileStore NewStore() =>
         new(Options.Create(new PrintFileStorageOptions { Directory = _root }),
             new HostEnvironmentAccessor(_root),
+            TimeProvider.System,
             NullLogger<UserFileStore>.Instance);
 
     /// <summary>A body that dies part-way through, which is what a disconnecting client looks like.</summary>

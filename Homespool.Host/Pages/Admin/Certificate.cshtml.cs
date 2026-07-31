@@ -87,6 +87,30 @@ public class CertificateModel : PageModel
         [.. Current.Where(name => !Covered.Contains(name, StringComparer.OrdinalIgnoreCase))];
 
     /// <summary>
+    /// Names the certificate vouches for today that a reissue would <b>not</b> carry over — drift read
+    /// in the direction that costs something.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A reissue can narrow the certificate, and that is the one way this button can break a
+    /// working printer.</b> Names are filtered at issuance to what a printer could actually reach, so
+    /// a name detected once and no longer resolvable is dropped — correctly, since it vouches for
+    /// nothing. But a printer provisioned with that name in its ini is still dialling it, and after
+    /// the reissue and the proxy reload its handshake fails on a leaf that no longer covers the name
+    /// it asked for. mbedTLS reports that as a bare TLS error naming neither the name nor the
+    /// certificate, and the fix is a USB visit to repoint that printer.
+    /// </para>
+    /// <para>
+    /// So this is surfaced before the button rather than discovered afterwards. It is deliberately not
+    /// a block: narrowing is usually right, and the operator is the only one who knows which names
+    /// their printers were given. <c>PrusaConnect:PrinterHost</c> is taken as given at issuance and so
+    /// never appears here.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> Dropping =>
+        [.. Covered.Where(name => !Current.Contains(name, StringComparer.OrdinalIgnoreCase))];
+
+    /// <summary>
     /// True when the address printers are actually told to dial is absent from the certificate — the
     /// drift that stops provisioning outright rather than merely one address working.
     /// </summary>
@@ -117,7 +141,32 @@ public class CertificateModel : PageModel
             return RedirectToPage();
         }
 
+        // Read from the leaf on disk rather than from the Dropping property, which is only populated
+        // by LoadAsync on the GET. Taken before IssueLeaf overwrites it, because a narrowing is
+        // invisible afterwards: the old certificate is gone and the only evidence left is a printer
+        // that stopped connecting.
+        IReadOnlyList<string> previouslyCovered = [];
+
+        using (X509Certificate2? existing = _authority.LoadLeafIfIssued())
+        {
+            if (existing is not null)
+            {
+                previouslyCovered = PrinterCertificateAuthority.NamesOf(existing);
+            }
+        }
+
+        string[] dropped = [.. previouslyCovered.Where(name => !names.Contains(name, StringComparer.OrdinalIgnoreCase))];
+
         using X509Certificate2 issued = _authority.IssueLeaf(names);
+
+        if (dropped.Length > 0)
+        {
+            _logger.LogWarning("The reissued printer certificate NO LONGER covers {Dropped}, which the previous one "
+                               + "did. Any printer whose ini tells it to dial one of those names will fail its "
+                               + "handshake once the proxy is reloaded, reporting a bare TLS error, and needs a USB "
+                               + "visit to repoint it. They were dropped because this machine no longer answers on "
+                               + "them.", string.Join(", ", dropped));
+        }
 
         _logger.LogWarning("The printer certificate was reissued for {Names} by {User}. It is served once the proxy "
                            + "reloads; until then the previous certificate is still on the wire.",

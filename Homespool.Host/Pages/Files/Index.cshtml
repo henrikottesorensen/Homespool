@@ -1,0 +1,139 @@
+@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Files";
+}
+
+<h1>@ViewData["Title"]</h1>
+
+@if (!string.IsNullOrEmpty(Model.StatusMessage))
+{
+    <div class="alert @(Model.StatusSuccess ? "alert-success" : "alert-warning")" role="alert">@Model.StatusMessage</div>
+}
+
+@if (Model.PendingToken is not null)
+{
+    @* The bytes are already on disk, so answering this costs nothing more - which is the whole
+       reason the upload is held rather than thrown away on a clash. *@
+    <div class="alert alert-warning" role="alert">
+        <p>You already have a file named <strong>@Model.PendingName</strong>.</p>
+        <form method="post" asp-page-handler="Replace"
+              asp-route-token="@Model.PendingToken"
+              asp-route-sort="@Model.Sort"
+              asp-route-desc="@Model.Descending"
+              class="d-inline">
+            <button type="submit" class="btn btn-sm btn-warning">Replace it</button>
+        </form>
+        <form method="post" asp-page-handler="Discard"
+              asp-route-token="@Model.PendingToken"
+              asp-route-sort="@Model.Sort"
+              asp-route-desc="@Model.Descending"
+              class="d-inline">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Keep the one I have</button>
+        </form>
+    </div>
+}
+
+@* data-upload-dropzone is what site.js looks for. Dropping a file fills the input below rather than
+   uploading by itself, so the form, its antiforgery token and the handler are the one path in or
+   out - and with scripting off this is just a bordered box around a working file picker. *@
+<div class="upload-dropzone mb-2" data-upload-dropzone>
+    <form method="post" asp-page-handler="Upload" enctype="multipart/form-data"
+          asp-route-sort="@Model.Sort" asp-route-desc="@Model.Descending"
+          class="d-flex align-items-center gap-2">
+        <input type="file" name="file" accept=".gcode,.bgcode,.gco,.bgc" class="form-control" aria-label="File to upload" required />
+        <button type="submit" class="btn btn-primary text-nowrap">Upload</button>
+    </form>
+    <p class="text-body-secondary small mb-0 mt-2">
+        Drop a file here, or choose one. .gcode, .bgcode, .gco or .bgc, up to @IndexModel.FormatSize(Model.MaxUploadBytes).
+    </p>
+</div>
+
+@if (Model.Files.Count == 0)
+{
+    <p>No files yet. Upload a sliced model to send it to a printer.</p>
+}
+else
+{
+    <table class="table align-middle">
+        <thead>
+            <tr>
+                @* Headings are links rather than script: the sorted view is then linkable, bookmarkable
+                   and survives the back button, none of which a JavaScript toggle would give. *@
+                <th>
+                    <a asp-page="./Index"
+                       asp-route-sort="@IndexModel.Columns.Name"
+                       asp-route-desc="@Model.NextDescendingFor(IndexModel.Columns.Name)"
+                       aria-sort="@(Model.Sort == IndexModel.Columns.Name ? (Model.Descending ? "descending" : "ascending") : "none")"
+                       class="link-body-emphasis text-decoration-none">Name@(Model.IndicatorFor(IndexModel.Columns.Name))</a>
+                </th>
+                <th class="text-end">
+                    <a asp-page="./Index"
+                       asp-route-sort="@IndexModel.Columns.Size"
+                       asp-route-desc="@Model.NextDescendingFor(IndexModel.Columns.Size)"
+                       aria-sort="@(Model.Sort == IndexModel.Columns.Size ? (Model.Descending ? "descending" : "ascending") : "none")"
+                       class="link-body-emphasis text-decoration-none">Size@(Model.IndicatorFor(IndexModel.Columns.Size))</a>
+                </th>
+                <th>
+                    <a asp-page="./Index"
+                       asp-route-sort="@IndexModel.Columns.Uploaded"
+                       asp-route-desc="@Model.NextDescendingFor(IndexModel.Columns.Uploaded)"
+                       aria-sort="@(Model.Sort == IndexModel.Columns.Uploaded ? (Model.Descending ? "descending" : "ascending") : "none")"
+                       class="link-body-emphasis text-decoration-none">Uploaded@(Model.IndicatorFor(IndexModel.Columns.Uploaded))</a>
+                </th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var file in Model.Files)
+        {
+            <tr>
+                @if (Model.Renaming == file.FileName)
+                {
+                    <td colspan="3">
+                        <form method="post" asp-page-handler="Rename"
+                              asp-route-name="@file.FileName"
+                              asp-route-sort="@Model.Sort"
+                              asp-route-desc="@Model.Descending"
+                              class="d-flex gap-2">
+                            <input type="text" name="newName" value="@file.FileName" class="form-control form-control-sm"
+                                   aria-label="New file name" required />
+                            <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                            <a asp-page="./Index" asp-route-sort="@Model.Sort" asp-route-desc="@Model.Descending"
+                               class="btn btn-sm btn-outline-secondary">Cancel</a>
+                        </form>
+                    </td>
+                }
+                else
+                {
+                    <td>@file.FileName</td>
+                    <td class="text-end font-monospace">@IndexModel.FormatSize(file.Length)</td>
+                    @* Fixed format rather than a culture-dependent one, so the column reads the same
+                       whatever the server's locale is - notes/floating-point.md records the same trap
+                       biting number rendering elsewhere. *@
+                    <td>@file.UploadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
+                }
+                <td class="text-end text-nowrap">
+                    <a asp-page="./Index"
+                       asp-route-sort="@Model.Sort"
+                       asp-route-desc="@Model.Descending"
+                       asp-route-rename="@file.FileName"
+                       class="btn btn-sm btn-outline-secondary">Rename</a>
+                    @* Straight to the API, which already answers a cookie-authenticated GET - a second
+                       copy of the same download here would be one more place to get ownership wrong. *@
+                    <a href="/api/v1/files/@Uri.EscapeDataString(file.FileName)"
+                       class="btn btn-sm btn-outline-secondary">Download</a>
+                    <form method="post" asp-page-handler="Delete"
+                          asp-route-name="@file.FileName"
+                          asp-route-sort="@Model.Sort"
+                          asp-route-desc="@Model.Descending"
+                          class="d-inline"
+                          onsubmit="return confirm('Delete @file.FileName?');">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                    </form>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}

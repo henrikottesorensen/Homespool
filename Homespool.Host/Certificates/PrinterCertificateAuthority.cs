@@ -235,6 +235,18 @@ public class PrinterCertificateAuthority
 
         X509Certificate2 existing = X509CertificateLoader.LoadPkcs12FromFile(LeafPath, null, X509KeyStorageFlags.Exportable);
 
+        // The PEM copies, if this leaf predates them. Cheap to check and load-bearing on exactly one
+        // path: upgrading a deployment that was issued a certificate before nginx terminated printer
+        // TLS. Such a deployment has printer.pfx and nothing in the proxy directory, so without this
+        // the method above returns early, no PEM is ever written, and the proxy declines to serve the
+        // printer listener at all - every printer stops connecting, and the only diagnostic is a line
+        // in the proxy's log saying the leaf is missing, which reads as "PrinterTls must be off".
+        //
+        // Exported from the certificate already loaded rather than reissued: printers trust the
+        // authority, so a reissue would work, but it would silently roll the leaf on every upgrade
+        // and lose whatever names the operator had deliberately covered.
+        EnsureProxyPem(existing);
+
         // At Information because it is the answer to "what must a printer dial?", and the operator
         // needs it whenever provisioning does not work. It is also what step 6 will compare against.
         _logger.LogInformation("Serving the existing printer certificate for {Names}, valid until {NotAfter:o}. "
@@ -242,6 +254,51 @@ public class PrinterCertificateAuthority
                                string.Join(", ", NamesOf(existing)), existing.NotAfter, LeafPath);
 
         return existing;
+    }
+
+    /// <summary>
+    /// Writes the PEM pair the proxy reads, if it is not already beside the PKCS#12.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The upgrade path, and nothing else.</b> A leaf issued by any earlier version of this
+    /// deployment exists only as <c>printer.pfx</c>; nginx cannot read PKCS#12, so a stack upgraded
+    /// without this has a proxy with no certificate to present and printers that cannot connect. It is
+    /// idempotent and costs two <c>File.Exists</c> calls on every other start.
+    /// </para>
+    /// <para>
+    /// The certificate file gets the leaf <i>alone</i>, as everywhere else here — firmware requires
+    /// exactly one certificate presented.
+    /// </para>
+    /// </remarks>
+    private void EnsureProxyPem(X509Certificate2 leaf)
+    {
+        if (File.Exists(LeafCertificatePemPath) && File.Exists(LeafKeyPemPath))
+        {
+            return;
+        }
+
+        using ECDsa? key = leaf.GetECDsaPrivateKey();
+
+        if (key is null)
+        {
+            // Would mean a PKCS#12 written by something other than this class, since everything here
+            // is ECDSA P-256 by firmware necessity. Report it rather than throwing on the startup
+            // path: the pages still work, and the message names the fix.
+            _logger.LogError("The printer certificate in {Path} carries no ECDSA private key, so the PEM copies the "
+                             + "proxy needs cannot be written and printers will not be able to connect. Delete that "
+                             + "file and restart to have a new certificate issued.", LeafPath);
+
+            return;
+        }
+
+        System.IO.Directory.CreateDirectory(_proxyDirectory);
+
+        WriteProxyFile(LeafCertificatePemPath, Encoding.ASCII.GetBytes(leaf.ExportCertificatePem()));
+        WriteProxyFile(LeafKeyPemPath, Encoding.ASCII.GetBytes(key.ExportPkcs8PrivateKeyPem()));
+
+        _logger.LogInformation("Wrote the existing printer certificate to {Path} in PEM for the proxy, which reads "
+                               + "that rather than the PKCS#12 beside it.", LeafCertificatePemPath);
     }
 
     /// <summary>

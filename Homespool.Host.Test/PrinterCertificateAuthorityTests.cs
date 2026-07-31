@@ -350,6 +350,50 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
     }
 
     /// <summary>
+    /// A leaf issued before the proxy needed PEM gets the PEM written on the next start, without
+    /// being reissued.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is the upgrade path, and it failed on a real stack before this test existed.</b> Every
+    /// deployment issued a certificate by an earlier version has <c>printer.pfx</c> and no PEM at all;
+    /// <see cref="PrinterCertificateAuthority.EnsureLeaf"/> sees the PKCS#12, returns it, and used to
+    /// write nothing further - so nginx found no certificate, declined to serve the printer listener,
+    /// and every printer stopped connecting. The only diagnostic was a proxy log line reading as
+    /// "PrinterTls must be off", which is exactly the wrong thing to conclude.
+    /// <para>
+    /// The thumbprint assertion is the other half: exporting the existing leaf rather than issuing a
+    /// new one keeps whatever names the operator deliberately covered.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AnUpgradedDeploymentGetsThePemWithoutReissuingTheLeaf()
+    {
+        // Arrange - a deployment from before the proxy terminated printer TLS: PKCS#12, no PEM.
+        PrinterCertificateAuthority authority = NewAuthority();
+        using X509Certificate2 original = authority.IssueLeaf(["192.168.13.238"]);
+
+        File.Delete(authority.LeafCertificatePemPath);
+        File.Delete(authority.LeafKeyPemPath);
+
+        // Act - a restart on the new version.
+        using X509Certificate2 served = NewAuthority().EnsureLeaf(["something-else-entirely.lan"]);
+
+        // Assert
+        File.Exists(authority.LeafCertificatePemPath).Should().BeTrue(
+            "nginx reads PEM and cannot read the PKCS#12, so without this the proxy has nothing to present");
+        File.Exists(authority.LeafKeyPemPath).Should().BeTrue();
+
+        served.Thumbprint.Should().Be(original.Thumbprint,
+            "the existing leaf is exported, not reissued - reissuing would silently drop the names the "
+            + "operator had covered");
+
+        using X509Certificate2 fromPem = X509Certificate2.CreateFromPem(
+            File.ReadAllText(authority.LeafCertificatePemPath));
+
+        fromPem.Thumbprint.Should().Be(original.Thumbprint, "and the PEM has to be that same leaf");
+    }
+
+    /// <summary>
     /// Every name offered on the first run is covered, so the operator picking the wrong one to write
     /// into a printer's ini costs a re-downloaded bundle rather than a re-provisioned printer.
     /// </summary>

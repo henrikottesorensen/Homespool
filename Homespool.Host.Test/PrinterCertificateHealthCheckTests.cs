@@ -114,7 +114,10 @@ public sealed class PrinterCertificateHealthCheckTests : IDisposable
 
         // Assert
         result.Status.Should().Be(HealthStatus.Degraded);
-        result.Description.Should().Contain("expires on").And.Contain("restart");
+
+        // "proxy reload", not "restart": the proxy holds the leaf now, and telling an operator to
+        // restart the application would be both wrong and needlessly expensive.
+        result.Description.Should().Contain("expires on").And.Contain("proxy reload");
     }
 
     /// <summary>

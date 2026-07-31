@@ -3,7 +3,17 @@ WORKDIR /app
 # Create the database directory *before* dropping to the app user. A named volume mounted here
 # inherits this ownership; if the path did not exist in the image, Docker would create it owned
 # by root and the non-root app could not write, failing on the first migration.
-RUN mkdir -p /app/data && chown $APP_UID /app/data
+#
+# /app/data/proxy-certificates is a SECOND named volume, shared with the proxy, and it needs the same
+# treatment for the same reason - which was learned the hard way twice: without this line the app
+# starts, migrates, mints the authority, and then dies with UnauthorizedAccessException writing the
+# leaf, after the point where the failure still looks like a certificate problem.
+#
+# It is a separate volume rather than a subdirectory of the one above because the proxy mounts it and
+# must never see /app/data/certificates, which holds the authority's private key. See
+# CertificateOptions.ProxyDirectory.
+RUN mkdir -p /app/data /app/data/proxy-certificates \
+ && chown $APP_UID /app/data /app/data/proxy-certificates
 # The aspnet base image ships no HTTP client, and HEALTHCHECK needs something to make the request
 # with. Installed before the USER switch because apt needs root. If you would rather not carry curl,
 # drop this and the HEALTHCHECK below and declare the probe in compose or your orchestrator instead -

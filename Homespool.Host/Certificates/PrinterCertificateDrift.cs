@@ -25,8 +25,8 @@ public static class PrinterCertificateDrift
 {
     /// <summary>How long before the leaf expires to start saying so.</summary>
     /// <remarks>
-    /// Replacing it costs a button and a restart and nothing at any printer, so the notice only has to
-    /// beat the gap between an administrator's visits.
+    /// Replacing it costs a button and a proxy reload and nothing at any printer, so the notice only
+    /// has to beat the gap between an administrator's visits.
     /// </remarks>
     public static readonly TimeSpan LeafExpiryWarning = TimeSpan.FromDays(30);
 
@@ -104,9 +104,9 @@ public static class PrinterCertificateDrift
         if (leafExpires.Value - now < LeafExpiryWarning)
         {
             return new(PrinterCertificateState.LeafExpiring,
-                $"The printer certificate expires on {leafExpires.Value:yyyy-MM-dd}. Reissuing it costs a restart and "
-                + "nothing at the printers, which trust the authority rather than this certificate: Admin -> Printer "
-                + "certificate.");
+                $"The printer certificate expires on {leafExpires.Value:yyyy-MM-dd}. Reissuing it costs a proxy reload "
+                + "and nothing at the printers, which trust the authority rather than this certificate: Admin -> "
+                + "Printer certificate.");
         }
 
         if (authorityExpires is not null && authorityExpires.Value - now < AuthorityExpiryWarning)

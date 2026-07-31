@@ -26,12 +26,26 @@ public class ListenerOptions
     public const string SectionName = "Listeners";
 
     /// <summary>
-    /// The TLS listener printers connect to, carrying the leaf minted from our own authority.
+    /// The listener carrying the printer protocol: <c>/p/*</c> and nothing else.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// <b>Plain HTTP, with nginx terminating the printer's TLS in front of it</b> — it used to serve
+    /// the leaf minted from our own authority, and stopped because
+    /// <see cref="System.Net.Security.SslStream"/> ignores the <c>max_fragment_length</c> a printer
+    /// negotiates while OpenSSL honours it, which broke every file transfer
+    /// (<c>notes/tls-by-default.md</c>, "Decision 3a's premise has shifted"). Nothing but the proxy
+    /// reaches this port, so it is not published.
+    /// </para>
+    /// <para>
+    /// <c>PrusaConnect:PrinterTls=false</c> is the exception, and it is a capture tool rather than a
+    /// deployment: no leaf is issued, no proxy stands in front, and Compose publishes this port
+    /// directly so the wire can be read.
+    /// </para>
+    /// <para>
     /// Above 1024 because the container runs as a non-root user (<c>Dockerfile</c>, <c>USER
-    /// $APP_UID</c>) and could not bind 443 even if we wanted it to. Compose publishes the port a
-    /// printer actually dials onto this one.
+    /// $APP_UID</c>) and could not bind 443 even if we wanted it to.
+    /// </para>
     /// </remarks>
     public int PrinterPort { get; set; } = 15443;
 
@@ -39,11 +53,13 @@ public class ListenerOptions
     /// The plain-HTTP listener for people: pages, <c>/api</c>, <c>/health</c>, everything else.
     /// </summary>
     /// <remarks>
-    /// <b>Plain HTTP on purpose.</b> TLS for users is terminated in front of this process by the
-    /// operator's proxy, which takes a certificate of their choosing and does not ask where it came
-    /// from — the printer's ECDSA leaf must never be served to a browser, since it is signed by a
-    /// private authority no browser has any reason to trust. 8080 matches the base image's
-    /// <c>ASPNETCORE_HTTP_PORTS</c>, so a deployment that never sets this keeps the port it had.
+    /// <b>Plain HTTP on purpose</b>, as <see cref="PrinterPort"/> now is too — TLS for users is
+    /// terminated in front of this process by the proxy, which takes a certificate of the operator's
+    /// choosing. That the two listeners are terminated by the same nginx does not make them one
+    /// certificate: the printer's ECDSA leaf must never be served to a browser, since it is signed by
+    /// a private authority no browser has any reason to trust, so the proxy holds two and serves each
+    /// on its own port. 8080 matches the base image's <c>ASPNETCORE_HTTP_PORTS</c>, so a deployment
+    /// that never sets this keeps the port it had.
     /// </remarks>
     public int UserPort { get; set; } = 8080;
 

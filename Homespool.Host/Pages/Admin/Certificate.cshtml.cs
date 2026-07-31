@@ -82,9 +82,53 @@ public class CertificateModel : PageModel
     [TempData]
     public string? StatusMessage { get; set; }
 
+    /// <summary>
+    /// Names from <see cref="Dropping"/> the administrator ticked to carry into the new certificate.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Unticked by default, deliberately.</b> Dropping an unreachable name is usually right and is
+    /// what this deployment already did, so leaving every box clear reproduces the previous behaviour
+    /// exactly — an operator who presses the button without reading gets what they got before, never
+    /// something new. Ticking is the deliberate act, taken next to a warning that states the cost.
+    /// </para>
+    /// <para>
+    /// <b>Never trusted as a list of names.</b> It is intersected with what the previous leaf actually
+    /// covered before anything is signed, so it can only preserve a name and never introduce one. That
+    /// matters more here than almost anywhere: this authority is the entire trust store of every
+    /// provisioned printer, with no revocation.
+    /// </para>
+    /// </remarks>
+    [BindProperty]
+    public string[] KeepNames { get; set; } = [];
+
     /// <summary>Names this machine has that the certificate does not, which is what drift looks like.</summary>
     public IReadOnlyList<string> Uncovered =>
         [.. Current.Where(name => !Covered.Contains(name, StringComparer.OrdinalIgnoreCase))];
+
+    /// <summary>
+    /// Names the certificate vouches for today that a reissue would <b>not</b> carry over — drift read
+    /// in the direction that costs something.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A reissue can narrow the certificate, and that is the one way this button can break a
+    /// working printer.</b> Names are filtered at issuance to what a printer could actually reach, so
+    /// a name detected once and no longer resolvable is dropped — correctly, since it vouches for
+    /// nothing. But a printer provisioned with that name in its ini is still dialling it, and after
+    /// the reissue and the proxy reload its handshake fails on a leaf that no longer covers the name
+    /// it asked for. mbedTLS reports that as a bare TLS error naming neither the name nor the
+    /// certificate, and the fix is a USB visit to repoint that printer.
+    /// </para>
+    /// <para>
+    /// So this is surfaced before the button rather than discovered afterwards. It is deliberately not
+    /// a block: narrowing is usually right, and the operator is the only one who knows which names
+    /// their printers were given. <c>PrusaConnect:PrinterHost</c> is taken as given at issuance and so
+    /// never appears here.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> Dropping =>
+        [.. Covered.Where(name => !Current.Contains(name, StringComparer.OrdinalIgnoreCase))];
 
     /// <summary>
     /// True when the address printers are actually told to dial is absent from the certificate — the
@@ -106,10 +150,39 @@ public class CertificateModel : PageModel
             return RedirectToPage();
         }
 
-        IReadOnlyList<string> names = await PrinterCertificateNames.ForThisMachineAsync(
+        IReadOnlyList<string> detected = await PrinterCertificateNames.ForThisMachineAsync(
             _connect, _certificates.ParsedContainerNetworks, _resolver, cancellationToken);
 
-        if (names.Count == 0)
+        // Read from the leaf on disk rather than from the Dropping property, which is only populated
+        // by LoadAsync on the GET. Taken before IssueLeaf overwrites it, because a narrowing is
+        // invisible afterwards: the old certificate is gone and the only evidence left is a printer
+        // that stopped connecting.
+        IReadOnlyList<string> previouslyCovered = [];
+
+        using (X509Certificate2? existing = _authority.LoadLeafIfIssued())
+        {
+            if (existing is not null)
+            {
+                previouslyCovered = PrinterCertificateAuthority.NamesOf(existing);
+            }
+        }
+
+        // WHAT THE OPERATOR ASKED TO CARRY OVER, INTERSECTED WITH WHAT THE OLD LEAF ACTUALLY COVERED.
+        // The intersection is the security control, not a tidiness one: this is a request body, and
+        // without it a crafted POST could put any name at all into a certificate that every provisioned
+        // printer trusts absolutely. Restricting to names the previous leaf already vouched for means
+        // this can only ever preserve a name, never introduce one.
+        string[] kept =
+        [
+            .. previouslyCovered.Where(name => KeepNames.Contains(name, StringComparer.OrdinalIgnoreCase))
+                                .Where(name => !detected.Contains(name, StringComparer.OrdinalIgnoreCase)),
+        ];
+
+        // Detected first: PrinterCertificateAuthority takes the first name as the subject, and the
+        // configured host leads the detected list, so appending keeps that.
+        string[] names = [.. detected, .. kept];
+
+        if (names.Length == 0)
         {
             StatusMessage = "No usable address could be detected and PrusaConnect:PrinterHost is not set, so a new "
                           + "certificate would cover nothing a printer could verify. Set the address first.";
@@ -117,21 +190,53 @@ public class CertificateModel : PageModel
             return RedirectToPage();
         }
 
+        string[] dropped = [.. previouslyCovered.Where(name => !names.Contains(name, StringComparer.OrdinalIgnoreCase))];
+
         using X509Certificate2 issued = _authority.IssueLeaf(names);
 
-        _logger.LogWarning("The printer certificate was reissued for {Names} by {User}. It is served from the next "
-                           + "restart; until then the previous certificate is still on the wire.",
+        if (kept.Length > 0)
+        {
+            _logger.LogInformation("The reissued printer certificate keeps {Kept} at the administrator's request, "
+                                   + "although this machine no longer answers on those names. Printers already dialling "
+                                   + "them keep working; nothing else does.", string.Join(", ", kept));
+        }
+
+        if (dropped.Length > 0)
+        {
+            _logger.LogWarning("The reissued printer certificate NO LONGER covers {Dropped}, which the previous one "
+                               + "did. Any printer whose ini tells it to dial one of those names will fail its "
+                               + "handshake once the proxy is reloaded, reporting a bare TLS error, and needs a USB "
+                               + "visit to repoint it. They were dropped because this machine no longer answers on "
+                               + "them and were not ticked to keep.", string.Join(", ", dropped));
+        }
+
+        _logger.LogWarning("The printer certificate was reissued for {Names} by {User}. It is served once the proxy "
+                           + "reloads; until then the previous certificate is still on the wire.",
                            string.Join(", ", names), User.Identity?.Name);
 
-        // The restart is the honest part of the message. Kestrel bound the old certificate when it
-        // started and holds it for the life of the process, so a page that said "done" would be
-        // describing a file rather than what printers actually meet.
+        // The reload is the honest part of the message, and it is the proxy's rather than this
+        // process's: nginx read the old certificate when it started and holds it until told
+        // otherwise, so a page that said "done" would be describing a file rather than what printers
+        // actually meet. It used to say RESTART THE SERVER, which was true when Kestrel served the
+        // certificate and is now both wrong and needlessly expensive - reloading nginx keeps the
+        // application, its database and every user session up.
+        //
+        // The "next time each printer reconnects" clause is not hedging. Verified on hardware
+        // 2026-07-31: `nginx -s reload` is graceful, so a printer's existing WebSocket stays on the
+        // old worker with the OLD certificate until that connection closes - and a printer connection
+        // is idle-but-open for hours, so the old worker generation lives exactly as long. It is
+        // harmless, because both leaves chain to the authority the printer trusts, but an operator
+        // who reissues to fix an address, reloads, and then checks what is being served would
+        // otherwise conclude the reload had not worked.
+        //
         // Plain text, no markup: this is rendered as-is, and a page that shows an operator literal
         // asterisks around its most important sentence has undermined the sentence.
         StatusMessage = $"Reissued for {string.Join(", ", names)}, valid until "
-                      + $"{issued.NotAfter.ToUniversalTime():yyyy-MM-dd}. RESTART THE SERVER to serve it - until then "
-                      + "printers still meet the previous certificate. Nothing is needed at the printers themselves: "
-                      + "they trust the authority, which has not changed.";
+                      + $"{issued.NotAfter.ToUniversalTime():yyyy-MM-dd}. RELOAD THE PROXY to serve it - run "
+                      + "\"docker compose exec proxy nginx -s reload\". New connections get it immediately; a printer "
+                      + "that is already connected keeps meeting the previous certificate until it next reconnects, "
+                      + "which is harmless because both are signed by the same authority. Nothing is needed at the "
+                      + "printers themselves: that authority has not changed.";
 
         return RedirectToPage();
     }

@@ -57,7 +57,13 @@
                         {
                             @foreach (string name in Model.Covered)
                             {
-                                <div><code>@name</code></div>
+                                <div>
+                                    <code>@name</code>
+                                    @if (Model.Dropping.Contains(name))
+                                    {
+                                        <span class="badge text-bg-warning ms-1">a reissue would drop this</span>
+                                    }
+                                </div>
                             }
                         }
                     </td>
@@ -136,12 +142,38 @@ else if (Model.Uncovered.Count > 0)
 }
 
 <form method="post" asp-page-handler="Reissue">
+    @if (Model.Dropping.Count > 0)
+    {
+        <div class="alert alert-warning" role="alert">
+            <strong>Reissuing would narrow this certificate.</strong> These names are covered today
+            and this machine no longer answers on them, so they would not be carried over. That is
+            usually right - a certificate should only vouch for what a printer can reach. But
+            <strong>any printer whose ini tells it to dial one of these will stop connecting</strong>
+            once the new certificate is served, reporting a bare TLS error that names nothing, and
+            putting it back means a USB visit to repoint it.
+            <p class="mt-2 mb-1">Tick any name a printer is still dialling and it will be kept:</p>
+            @foreach (string name in Model.Dropping)
+            {
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="KeepNames" value="@name"
+                           id="keep-@name" />
+                    <label class="form-check-label" for="keep-@name">
+                        keep <code>@name</code>
+                    </label>
+                </div>
+            }
+        </div>
+    }
+
     <button type="submit" class="btn btn-primary">Reissue for this machine's current addresses</button>
     <a class="btn btn-link" asp-page="/Index">Back</a>
 </form>
 
 <p class="form-text mt-2">
-    A reissue needs a <strong>server restart</strong> to take effect: the running process bound the
-    current certificate when it started. Nothing is needed at the printers - they trust the authority,
-    which this does not touch.
+    A reissue needs the <strong>proxy reloaded</strong> to take effect - <code>docker compose exec
+    proxy nginx -s reload</code> - because the proxy is what presents this certificate to printers,
+    and it read the current one when it started. The application itself keeps running. A printer that
+    is already connected keeps meeting the old certificate until it next reconnects, since the reload
+    is graceful and does not interrupt live connections. Nothing is needed at the printers either:
+    both certificates are signed by the authority, which this does not touch.
 </p>

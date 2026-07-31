@@ -11,7 +11,9 @@
 # named volume instead, so incremental builds survive between runs.
 set -euo pipefail
 
-FIRMWARE_DIR="${FIRMWARE_DIR:-$HOME/Prusa-Firmware-Buddy}"
+# Every Prusa checkout lives under ~/Prusa (moved there 2026-07-31); this used to point straight at
+# the home directory. Override FIRMWARE_DIR if yours is somewhere else - the check below says so.
+FIRMWARE_DIR="${FIRMWARE_DIR:-$HOME/Prusa/Prusa-Firmware-Buddy}"
 USB_DIR="${USB_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/usb}"
 # connect_rig needs an enrolled identity (Homespool.FakePrinter.Cli enroll writes one). Mounted at a
 # fixed path inside the container so `--identity /identity.json` always works regardless of where it

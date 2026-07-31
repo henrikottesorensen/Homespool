@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # Upload a file to Homespool and tell a printer to fetch it - the first two of the three calls.
-# The third (start/files, i.e. print it) is deliberately separate and printed at the end, because a
-# transfer takes as long as it takes and a print starts instantly.
+# The third (print it) is deliberately separate and printed at the end, because a transfer takes as
+# long as it takes and a print starts instantly.
 #
 #   ./rig/transfer.sh private-captures/G_0.4n_0.2mm_PLA_MK3.5_2h45m.gcode
 #
@@ -49,21 +49,24 @@ echo "==> authenticated"
 
 NAME="$(basename "$FILE")"
 echo "==> uploading $NAME ($(wc -c <"$FILE" | tr -d ' ') bytes)"
-UPLOAD="$(curl -sS -H "$AUTH" -T "$FILE" "$BASE/api/v1/files/$NAME")"
+
+# ?overwrite=true because a rig run is normally the same file again: without it a second run is a
+# 409, which is the right default for a person and the wrong one for a script.
+UPLOAD="$(curl -sS -H "$AUTH" -T "$FILE" "$BASE/api/v1/files/$NAME?overwrite=true")"
 echo "    $UPLOAD"
 
-read -r HASH PRINTER_PATH <<<"$(python3 -c '
+read -r PRINTER_PATH <<<"$(python3 -c '
 import json,sys
 try:
     d=json.loads(sys.argv[1])
 except ValueError:
     sys.exit("upload did not return JSON - see the response above")
-print(d["hash"], d["printerPath"])' "$UPLOAD")"
+print(d["printerPath"])' "$UPLOAD")"
 
 echo "==> telling the printer to fetch it"
-curl -sS -H "$AUTH" -X PUT "$BASE/api/v1/printers/$UUID/command/start/cloud" \
+curl -sS -H "$AUTH" -X POST "$BASE/api/v1/printers/$UUID/files" \
     -H 'Content-Type: application/json' \
-    -d "{\"hash\":\"$HASH\",\"teamId\":$TEAM,\"printNow\":false}" \
+    -d "{\"name\":\"$NAME\"}" \
     -w '    HTTP %{http_code}\n'
 
 cat <<EOF
@@ -76,7 +79,7 @@ The bytes now move at the printer's pace - watch for TransferFinished in the log
 Then print it:
 
     curl -H "Authorization: Bearer \$(cat $TOKEN_FILE)" \\
-        -X PUT "$BASE/api/v1/printers/$UUID/command/start/files" \\
+        -X POST "$BASE/api/v1/printers/$UUID/print" \\
         -H 'Content-Type: application/json' \\
-        -d '{"path":"$PRINTER_PATH","printNow":true}'
+        -d '{"path":"$PRINTER_PATH"}'
 EOF

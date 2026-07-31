@@ -3,6 +3,7 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -16,18 +17,27 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Homespool.Host.E2ETest;
 
 /// <summary>
-/// The upload endpoint through the real pipeline: routing, authentication by cookie <b>and</b> by
+/// The file endpoints through the real pipeline: routing, authentication by cookie <b>and</b> by
 /// personal access token, model binding and the store's DI wiring, none of which a unit test of
-/// <c>UploadedFileStore</c> can reach.
+/// <c>UserFileStore</c> can reach.
 /// </summary>
 /// <remarks>
-/// The store's own rules - traversal, the extension allowlist, the size cap - are tested directly in
-/// <c>UploadedFileStoreTests</c> and <c>LengthLimitingStreamTests</c>, where the cases are cheap and
-/// exhaustive. These are here only to prove the endpoint is reachable and actually reaches the store,
-/// which is the part that silently breaks when a registration or a route changes.
+/// <para>
+/// The store's own rules - traversal, the extension allowlist, case folding, the size cap - are
+/// tested directly in <c>UserFileStoreTests</c> and <c>LengthLimitingStreamTests</c>, where the cases
+/// are cheap and exhaustive. These are here to prove the endpoints are reachable and actually reach
+/// the store, which is the part that silently breaks when a registration or a route changes - and,
+/// for the ownership cases, that the caller's identity is what scopes the answer.
+/// </para>
+/// <para>
+/// <b>The routes are ours as of 2026-07-31</b> (<c>notes/file-storage.md</c>): files are addressed by
+/// name rather than by a Connect-shaped hash, and the two start operations became send-versus-print.
+/// The tests for <c>printNow</c> and for the <c>hash</c>-shaped upload response went with those
+/// shapes rather than being rewritten.
+/// </para>
 /// </remarks>
 [Collection("WebApplicationFactory")]
-public sealed class FileUploadEndpointTests : IAsyncLifetime, IDisposable
+public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-upload-{Guid.NewGuid():N}.db");
     private HomespoolFactory _factory = null!;
@@ -68,7 +78,7 @@ public sealed class FileUploadEndpointTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
-    public async Task AnUploadedFileComesBackWithAHashAndItsLength()
+    public async Task AnUploadedFileComesBackWithItsNameAndSize()
     {
         // Arrange
         (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
@@ -84,19 +94,17 @@ public sealed class FileUploadEndpointTests : IAsyncLifetime, IDisposable
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         using JsonDocument payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        payload.RootElement.GetProperty("fileName").GetString().Should().Be("model.bgcode");
-        payload.RootElement.GetProperty("length").GetInt64().Should().Be(content.Length);
-        payload.RootElement.GetProperty("hash").GetString().Should().HaveLength(27,
-            "the upload's id is also its transfer token, shaped like Connect's own file hashes");
+        payload.RootElement.GetProperty("name").GetString().Should().Be("model.bgcode",
+            "the name is the identity now - there is no hash to report");
+        payload.RootElement.GetProperty("size").GetInt64().Should().Be(content.Length);
 
         client.Dispose();
     }
 
     /// <summary>
-    /// The upload reports where the file will land on the printer, which is what
-    /// <c>command/start/files</c> needs to print it afterwards. Before this the server owned that
-    /// convention and never stated it, leaving every caller to reconstruct <c>/usb/</c> + the name and
-    /// to break silently if it ever changed.
+    /// The upload reports where the file will land on the printer, which is what a print call needs
+    /// afterwards. Before this the server owned that convention and never stated it, leaving every
+    /// caller to reconstruct <c>/usb/</c> + the name and to break silently if it ever changed.
     /// </summary>
     /// <remarks>
     /// Asserted as the long name on purpose. It is tempting to expect an 8.3 short name here, because
@@ -143,32 +151,173 @@ public sealed class FileUploadEndpointTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
-    /// <c>printNow</c> is in Connect's spec for this operation and is deliberately refused rather
-    /// than ignored: printing on completion needs the actor to fire <c>START_PRINT</c> when
-    /// <c>TRANSFER_FINISHED</c> arrives, which it does not do yet. Accepting the field and silently
-    /// not printing would be the worst of the three options.
+    /// Uploading over an existing name is refused unless it is asked for. The whole reason overwrite
+    /// is opt-in: a re-slice and an accident look identical from here, and only one should be silent.
     /// </summary>
     [Fact]
-    public async Task PrintNowIsRefusedRatherThanIgnored()
+    public async Task AnExistingNameIsA409UntilOverwriteIsAskedFor()
     {
         // Arrange
         (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
-            _factory, "printnow@example.com");
+            _factory, "overwriter@example.com");
 
-        using StringContent body = new(
-            """{"hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaa","teamId":1,"printNow":true}""",
-            Encoding.UTF8, "application/json");
+        using (StreamContent first = new(new MemoryStream(Encoding.UTF8.GetBytes("first"))))
+        {
+            (await client.PutAsync("/api/v1/files/benchy.gcode", first)).Dispose();
+        }
 
         // Act
-        using HttpResponseMessage response = await client.PutAsync(
-            $"/api/v1/printers/{Guid.NewGuid()}/command/start/cloud", body);
+        using StreamContent second = new(new MemoryStream(Encoding.UTF8.GetBytes("second")));
+        using HttpResponseMessage conflict = await client.PutAsync("/api/v1/files/benchy.gcode", second);
+
+        using StreamContent third = new(new MemoryStream(Encoding.UTF8.GetBytes("second")));
+        using HttpResponseMessage replaced = await client.PutAsync(
+            "/api/v1/files/benchy.gcode?overwrite=true", third);
 
         // Assert
-        // Refused before the printer or the file is even looked up - the feature is absent, which is
-        // not a fact about this request's arguments.
-        response.StatusCode.Should().Be(HttpStatusCode.NotImplemented);
+        conflict.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        replaced.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using HttpResponseMessage download = await client.GetAsync("/api/v1/files/benchy.gcode");
+        (await download.Content.ReadAsStringAsync()).Should().Be("second");
 
         client.Dispose();
+    }
+
+    /// <summary>
+    /// List, download, rename and delete over one file - the lifecycle the store gained and the API
+    /// had no way to reach before.
+    /// </summary>
+    [Fact]
+    public async Task AFileCanBeListedDownloadedRenamedAndDeleted()
+    {
+        // Arrange
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "lifecycle@example.com");
+
+        using (StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes("G28 ; home\n"))))
+        {
+            (await client.PutAsync("/api/v1/files/old.gcode", body)).Dispose();
+        }
+
+        // Act & Assert
+        using (HttpResponseMessage listed = await client.GetAsync("/api/v1/files"))
+        {
+            using JsonDocument payload = JsonDocument.Parse(await listed.Content.ReadAsStringAsync());
+            payload.RootElement.GetArrayLength().Should().Be(1);
+            payload.RootElement[0].GetProperty("name").GetString().Should().Be("old.gcode");
+        }
+
+        using (HttpResponseMessage downloaded = await client.GetAsync("/api/v1/files/old.gcode"))
+        {
+            (await downloaded.Content.ReadAsStringAsync()).Should().Be("G28 ; home\n");
+        }
+
+        using (HttpResponseMessage renamed = await client.PatchAsJsonAsync(
+            "/api/v1/files/old.gcode", new { name = "new.gcode" }))
+        {
+            renamed.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        using (HttpResponseMessage gone = await client.GetAsync("/api/v1/files/old.gcode"))
+        {
+            gone.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+
+        using (HttpResponseMessage moved = await client.GetAsync("/api/v1/files/new.gcode"))
+        {
+            moved.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        using (HttpResponseMessage deleted = await client.DeleteAsync("/api/v1/files/new.gcode"))
+        {
+            deleted.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        }
+
+        using (HttpResponseMessage afterDelete = await client.GetAsync("/api/v1/files/new.gcode"))
+        {
+            afterDelete.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+
+        client.Dispose();
+    }
+
+    /// <summary>
+    /// The property the per-user layout exists for, asserted through the pipeline rather than against
+    /// the store: one user cannot see, fetch or delete another's file, and "someone else's" is
+    /// indistinguishable from "no such file".
+    /// </summary>
+    [Fact]
+    public async Task OneUsersFileIsUnreachableByAnother()
+    {
+        // Arrange
+        (HSUser _, HttpClient alice) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "alice@example.com");
+        (HSUser _, HttpClient bob) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "bob@example.com");
+
+        using (StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes("G28 ; alice's\n"))))
+        {
+            (await alice.PutAsync("/api/v1/files/secret.gcode", body)).Dispose();
+        }
+
+        // Act & Assert
+        using (HttpResponseMessage listed = await bob.GetAsync("/api/v1/files"))
+        {
+            using JsonDocument payload = JsonDocument.Parse(await listed.Content.ReadAsStringAsync());
+            payload.RootElement.GetArrayLength().Should().Be(0, "the listing is scoped to the caller");
+        }
+
+        using (HttpResponseMessage fetched = await bob.GetAsync("/api/v1/files/secret.gcode"))
+        {
+            fetched.StatusCode.Should().Be(HttpStatusCode.NotFound,
+                "404 rather than 403 - telling them apart would confirm the file exists");
+        }
+
+        using (HttpResponseMessage deleted = await bob.DeleteAsync("/api/v1/files/secret.gcode"))
+        {
+            deleted.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+
+        using (HttpResponseMessage stillThere = await alice.GetAsync("/api/v1/files/secret.gcode"))
+        {
+            stillThere.StatusCode.Should().Be(HttpStatusCode.OK, "and none of that touched the file");
+        }
+
+        alice.Dispose();
+        bob.Dispose();
+    }
+
+    /// <summary>
+    /// Sending refuses a file the caller does not have, with the same answer it gives for one that
+    /// does not exist. This is the ownership check on the send path, which the store cannot make on
+    /// its own because it never sees who is asking.
+    /// </summary>
+    [Fact]
+    public async Task SendingAFileYouDoNotOwnIsNotFound()
+    {
+        // Arrange
+        (HSUser _, HttpClient alice) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "sender@example.com");
+        (HSUser _, HttpClient bob) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "notsender@example.com");
+
+        using (StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes("G28\n"))))
+        {
+            (await alice.PutAsync("/api/v1/files/mine.gcode", body)).Dispose();
+        }
+
+        // Act
+        using HttpResponseMessage response = await bob.PostAsJsonAsync(
+            $"/api/v1/printers/{Guid.NewGuid()}/files", new { name = "mine.gcode" });
+
+        // Assert
+        // The file is resolved before the printer is, so this is the file's answer - and it is the
+        // same one an unknown name gets.
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        alice.Dispose();
+        bob.Dispose();
     }
 
     /// <summary>
@@ -182,12 +331,9 @@ public sealed class FileUploadEndpointTests : IAsyncLifetime, IDisposable
         (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "badpath@example.com");
 
-        using StringContent body = new(
-            """{"path":"/etc/passwd","printNow":true}""", Encoding.UTF8, "application/json");
-
         // Act
-        using HttpResponseMessage response = await client.PutAsync(
-            $"/api/v1/printers/{Guid.NewGuid()}/command/start/files", body);
+        using HttpResponseMessage response = await client.PostAsJsonAsync(
+            $"/api/v1/printers/{Guid.NewGuid()}/print", new { path = "/etc/passwd" });
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -261,8 +407,8 @@ public sealed class FileUploadEndpointTests : IAsyncLifetime, IDisposable
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         using JsonDocument payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        payload.RootElement.GetProperty("fileName").GetString().Should().Be("bearer.bgcode");
-        payload.RootElement.GetProperty("length").GetInt64().Should().Be(content.Length);
+        payload.RootElement.GetProperty("name").GetString().Should().Be("bearer.bgcode");
+        payload.RootElement.GetProperty("size").GetInt64().Should().Be(content.Length);
     }
 
     /// <summary>

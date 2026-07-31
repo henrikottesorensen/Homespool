@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text.RegularExpressions;
 
 using AwesomeAssertions;
 
@@ -62,6 +63,38 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
             certificate.GetECDsaPublicKey()!.KeySize.Should().Be(256);
             certificate.GetRSAPublicKey().Should().BeNull();
         }
+    }
+
+    /// <summary>
+    /// The PEM written for nginx carries the leaf and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// Firmware's <c>x509_crt_check_ee_locally_trusted</c> wants exactly one certificate presented.
+    /// A terminator handed leaf + authority fails verification looking like a protocol fault rather
+    /// than a certificate one - the shape of failure this project has spent whole afternoons on - so
+    /// the file being single is asserted rather than assumed.
+    /// </remarks>
+    [Fact]
+    public void TheNginxPemHoldsTheLeafAloneWithNoChain()
+    {
+        // Arrange
+        PrinterCertificateAuthority authority = NewAuthority();
+
+        // Act
+        using X509Certificate2 leaf = authority.IssueLeaf(["192.168.13.238"]);
+
+        string certificatePem = File.ReadAllText(authority.LeafCertificatePemPath);
+        string keyPem = File.ReadAllText(authority.LeafKeyPemPath);
+
+        // Assert
+        Regex.Matches(certificatePem, "BEGIN CERTIFICATE").Count.Should().Be(1,
+            "a second certificate here is the authority, and presenting it fails verification on the printer");
+
+        X509Certificate2 fromPem = X509Certificate2.CreateFromPem(certificatePem);
+
+        fromPem.Thumbprint.Should().Be(leaf.Thumbprint, "and it has to be the leaf that was just issued");
+        keyPem.Should().Contain("BEGIN PRIVATE KEY", "nginx needs the key beside it");
+        fromPem.Dispose();
     }
 
     /// <summary>

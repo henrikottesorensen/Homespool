@@ -4,7 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Homespool.Host.PrusaConnect.Transfers;
+namespace Homespool.Host.PrintFiles;
 
 /// <summary>
 /// Wraps a request body and throws once more than <c>limit</c> bytes have been read from it.
@@ -100,7 +100,7 @@ public sealed class LengthLimitingStream : Stream
     }
 }
 
-/// <summary>Thrown when an upload exceeds <see cref="FileStorageOptions.MaxUploadBytes"/>.</summary>
+/// <summary>Thrown when an upload exceeds <see cref="PrintFileStorageOptions.MaxUploadBytes"/>.</summary>
 public sealed class UploadTooLargeException : Exception
 {
     public UploadTooLargeException(long limit)

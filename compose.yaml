@@ -16,23 +16,21 @@ services:
     # churning between reissues, and makes the logs say "homespool" rather than a hex id.
     hostname: homespool
 
-    ports:
-      # ONLY the printer listener is published. The user listener stays inside this network, where
-      # the proxy below is the single way in - which is also what makes X-Real-IP worth trusting:
-      # a client that could reach Kestrel directly could simply write that header itself.
-      #
-      # Printers, and nothing else: /p/* exists on this listener alone, and no other route does.
-      # It is TLS on both sides - the container serves the certificate this deployment mints for
-      # itself, which is the one on the provisioning USB stick - so do NOT put a proxy in front of
-      # it. The firmware requires exactly one certificate presented, verifies it strictly against
-      # that single anchor, and pushes 256 KiB transfer chunks that nginx would buffer.
-      #
-      # 15443 on both sides: the app runs as a non-root user and cannot bind 443 inside the
-      # container, and 443 on the host belongs to the people-facing proxy - a browser URL carrying
-      # a port number is a daily papercut, while a printer's port is written into a generated ini
-      # and typed by nobody. Publish whatever you like here; PrusaConnect__PrinterPort must match,
-      # because that is the number every provisioning bundle tells a printer to dial.
-      - "${PRINTER_PORT:-15443}:15443"
+    # NOTHING is published from this container. Both listeners - people on 8080, printers on 15443 -
+    # stay inside this network, and the proxy below is the single way in to either. That is what makes
+    # X-Real-IP worth trusting on both of them: a client that could reach Kestrel directly could
+    # simply write that header itself.
+    #
+    # The printer port used to be published here, serving TLS from this container. It stopped because
+    # .NET cannot serve that TLS correctly: SslStream ignores the max_fragment_length a printer
+    # negotiates, so records arrive far larger than the kilobyte of plaintext the firmware holds, and
+    # file transfers fail. OpenSSL honours it, nginx is OpenSSL. See notes/tls-by-default.md,
+    # "Decision 3a's premise has shifted", and nginx/homespool-printer.conf.
+    #
+    # To read the printer wire in the clear, use the plaintext override rather than adding a port
+    # here: `docker compose -f compose.yaml -f compose.plaintext.yaml up`. It publishes this
+    # container's printer port and takes the proxy out of that path, which is what PRINTER_TLS=false
+    # means from both ends at once.
 
     environment:
       # Point SQLite at the mounted volume. appsettings.json keeps a relative path so that
@@ -45,10 +43,13 @@ services:
       # is minted on first run over every address this machine could see then; if it is set before
       # the first start, it is covered by construction.
       #
-      # PrinterPort is the host side of the printer mapping above, since printers reach this
-      # container directly. PrinterTls is one switch for both ends - the tls line written into every
-      # ini, and whether the listener serves TLS at all - so the two cannot disagree. Setting it
-      # false is a testing tool for reading the wire, never a deployment choice; startup says so.
+      # PrinterPort is the host side of the printer mapping, which now belongs to the proxy - it is
+      # the number every provisioning bundle tells a printer to dial, so it must match whatever is
+      # published there. PrinterTls is one switch for both ends - the tls line written into every ini,
+      # and whether a leaf is issued for the proxy to present - so the two cannot disagree: with it
+      # off nothing is issued, and the proxy has nothing to serve even if somebody wired it up anyway.
+      # Setting it false is a testing tool for reading the wire, never a deployment choice; startup
+      # says so, and compose.plaintext.yaml is how it is meant to be done.
 
       # Which peer may speak for the client - the network below, which is the proxy's and nothing
       # else's. Defaulted rather than left empty now that we ship the proxy: shipping it is what
@@ -93,6 +94,13 @@ services:
     volumes:
       - printerservice-data:/app/data
 
+      # The leaf the proxy presents to printers, and its key. A separate volume from the one above,
+      # and that separation is the point rather than tidiness: the authority's private key lives in
+      # /app/data/certificates, and whoever holds it can mint a certificate every provisioned printer
+      # will believe, permanently and with no revocation to stop it. The proxy is the container facing
+      # the network, so it gets the replaceable half and never the other one.
+      - homespool-printer-leaf:/app/data/proxy-certificates
+
     networks:
       - homespool
 
@@ -124,13 +132,22 @@ services:
     # anonymous and exempt from the setup gate, so they answer before the first administrator
     # exists. Alert on /health; never restart on it.
 
-  # The people-facing front door, and the reason "TLS by default" is true of a fresh
+  # The front door for everything, and the reason "TLS by default" is true of a fresh
   # `docker compose up` rather than of a deployment somebody finished configuring. It terminates TLS
-  # for pages and /api and passes plain HTTP to the app over this network.
+  # for pages and /api on one port and for printers on another, and passes plain HTTP to the app over
+  # this network.
   #
-  # Printers never come through here; see the port comments above. Delete this service and publish
-  # the app's own 8080 if you already run Traefik, Caddy or an nginx of your own - the app is built
-  # to sit behind one, and only needs XForwarded__KnownNetworks to name yours.
+  # Printers DO come through here, which reverses what this file used to say two ways up. They have
+  # their own port, their own server block and their own certificate - the ECDSA leaf the app mints,
+  # which is also the one on the provisioning USB stick - and none of that is shared with the
+  # browser's. It is not a preference: .NET cannot serve that TLS correctly, and OpenSSL can. See
+  # nginx/homespool-printer.conf.
+  #
+  # Replacing this with a Traefik, Caddy or nginx of your own is still supported for the people-facing
+  # half - the app only needs XForwarded__KnownNetworks to name yours - but the printer half is
+  # fussier than a normal reverse proxy: exactly one certificate presented, no chain, one ciphersuite,
+  # no response buffering, and OpenSSL rather than Go's crypto/tls. Read homespool-printer.conf before
+  # substituting anything for that half.
   proxy:
     image: homespool-proxy
     build:
@@ -139,6 +156,12 @@ services:
     ports:
       - "${PORT:-80}:8080"
       - "${HTTPS_PORT:-443}:8443"
+
+      # What a printer dials, and it must match PrusaConnect__PrinterPort above - that is the number
+      # written into every provisioning bundle. 15443 rather than 443 on both sides: containers here
+      # run as non-root users and cannot bind 443, and 443 on the host belongs to the browser, since a
+      # URL carrying a port number is a daily papercut while a printer's port is typed by nobody.
+      - "${PRINTER_PORT:-15443}:15443"
 
     environment:
       # Only used to name the self-signed certificate generated on first start. Browsers will warn
@@ -153,16 +176,34 @@ services:
       - ./nginx/homespool.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx/homespool-proxy.conf:/etc/nginx/homespool-proxy.conf:ro
 
-      # Holds the certificate. Named rather than a bind mount so the directory keeps the ownership
-      # the image gave it - an unprivileged nginx has to be able to write the self-signed one it
-      # generates, and a host directory would arrive owned by whoever created it.
+      # NOT into conf.d, deliberately. The entrypoint hook copies it there only when this deployment
+      # has a printer leaf to serve; dropped straight into conf.d it would be unconditional, and nginx
+      # would refuse to start at all on a stack with printer TLS turned off, taking the pages down
+      # with it over a certificate the operator deliberately does not have.
+      - ./nginx/homespool-printer.conf:/etc/nginx/homespool-printer.conf:ro
+
+      # Holds the user-facing certificate. Named rather than a bind mount so the directory keeps the
+      # ownership the image gave it - an unprivileged nginx has to be able to write the self-signed
+      # one it generates, and a host directory would arrive owned by whoever created it.
       - homespool-proxy-certs:/etc/nginx/certs
+
+      # And the printer-facing one, written by the app, read-only here. Read-only because this side
+      # never has any business changing it: reissue is the app's, through Admin -> Printer
+      # certificate, and a proxy that could rewrite the leaf could serve printers a certificate the
+      # app knows nothing about.
+      - homespool-printer-leaf:/etc/nginx/printer-certs:ro
 
     networks:
       - homespool
 
+    # service_healthy, not just "started". The app writes the printer leaf on its startup path, and
+    # this container reads it at start to decide whether to serve the printer listener at all - so
+    # starting them together would race, and the loser is a proxy that came up without printers and
+    # says nothing about it until one fails to connect. The hook has its own short wait as well; this
+    # is what makes that wait almost never elapse.
     depends_on:
-      - printerservice
+      printerservice:
+        condition: service_healthy
 
     restart: unless-stopped
 
@@ -189,3 +230,9 @@ volumes:
   # keeps meaning something - a certificate regenerated on every start teaches people that the
   # warning is noise.
   homespool-proxy-certs:
+
+  # The printer-facing leaf and its key, in PEM: written by the app, read by the proxy. Deliberately
+  # NOT part of printerservice-data, which holds the certificate authority's private key - the one
+  # secret here that cannot be rotated without a USB visit to every printer. This volume holds only
+  # what is safe to hand the network-facing container.
+  homespool-printer-leaf:

@@ -122,44 +122,36 @@ public class TransferChunkFramingTests
     }
 
     /// <summary>
-    /// Over TLS every frame has to fit the printer's TLS record buffer, which is a different and
-    /// much smaller limit than the WebSocket one.
+    /// Frames stay large whatever transport the printer dialled over — the WebSocket cap is the only
+    /// limit this process answers to.
     /// </summary>
     /// <remarks>
-    /// Buddy holds 1024 bytes of TLS plaintext (<c>MBEDTLS_SSL_IN_CONTENT_LEN</c>) and asks for that
-    /// with RFC 6066; <c>SslStream</c> ignores the request and sizes records by how much it is given
-    /// per write, so the frame size is the only lever. A real MK3.5 fails the transfer on the first
-    /// chunk without this - proven on hardware 2026-07-31 - and no in-process test can see it,
-    /// because the E2E pipe carries no TLS. This asserts the lever, which is the part that can rot.
+    /// <para>
+    /// <b>There were two tests here for one day, and this is what replaced them.</b> One asserted
+    /// that frames over TLS fit inside 1024 bytes, because Buddy holds that much TLS plaintext
+    /// (<c>MBEDTLS_SSL_IN_CONTENT_LEN</c>), asks for it with RFC 6066, and <c>SslStream</c> ignores
+    /// the request - so frame size was the only lever this process had over record size. A real MK3.5
+    /// failed the transfer on the first chunk without it, proven on hardware 2026-07-31.
+    /// </para>
+    /// <para>
+    /// <b>The lever moved rather than the requirement.</b> nginx terminates printer TLS now, OpenSSL
+    /// honours <c>max_fragment_length</c>, and the printer's request is answered at the layer that
+    /// negotiated it. So this process is back to writing whatever the WebSocket protocol allows, and
+    /// asserting a small frame here would now be asserting a workaround for a problem that is solved
+    /// elsewhere - which is exactly the kind of test that outlives its reason and blocks the fix.
+    /// </para>
+    /// <para>
+    /// <b>Nothing in this project can assert the replacement.</b> The guarantee lives in nginx's
+    /// OpenSSL, and the E2E pipe carries no TLS at all. It is checked on hardware, and a capture can
+    /// confirm the record sizes without decrypting anything - see
+    /// <c>WebSocketPrinterConnection.MaxFramePayload</c> for what to do if a transfer fails again.
+    /// </para>
     /// </remarks>
     [Fact]
-    public async Task OverTlsFramesFitThePrintersRecordBuffer()
+    public async Task FramesStayLargeWhateverTheTransport()
     {
         // Arrange
-        (WebSocketPrinterConnection connection, CaptureStream capture) = NewConnection(overTls: true);
-
-        // Act
-        using ArrayContent source = new(new byte[8192]);
-        await connection.SendChunkAsync(ChunkWireEncoder.EncodeHeader(1), source, 0, 8192, CancellationToken.None);
-
-        // Assert
-        IReadOnlyList<Frame> frames = Frame.ParseAll(capture.Written.ToArray());
-
-        frames.Should().OnlyContain(f => f.Payload.Length <= 1024 - 4,
-            "the frame plus its header has to fit one 1024-byte TLS record");
-        frames.Should().HaveCountGreaterThan(8, "8 KB in ~1 KB frames cannot be fewer");
-        frames[^1].Fin.Should().BeTrue("the message still has to end");
-    }
-
-    /// <summary>
-    /// The same payload in the clear stays in big frames - the small ones are a TLS tax, not a new
-    /// default, and paying it on a plaintext connection would be 65x the frames for nothing.
-    /// </summary>
-    [Fact]
-    public async Task InTheClearTheFramesStayLarge()
-    {
-        // Arrange
-        (WebSocketPrinterConnection connection, CaptureStream capture) = NewConnection(overTls: false);
+        (WebSocketPrinterConnection connection, CaptureStream capture) = NewConnection();
 
         // Act
         using ArrayContent source = new(new byte[8192]);
@@ -167,7 +159,8 @@ public class TransferChunkFramingTests
 
         // Assert
         Frame.ParseAll(capture.Written.ToArray()).Should().ContainSingle(
-            "8 KB is far inside the plaintext frame size, so it is one frame");
+            "8 KB is far inside the frame size, so it is one frame - and there is no longer a "
+            + "transport that makes it many");
     }
 
     /// <summary>
@@ -197,14 +190,12 @@ public class TransferChunkFramingTests
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
                      Justification = "The socket and its capture stream live for the duration of the test; neither holds an OS handle.")]
 
-    // overTls defaults to the plaintext frame size, which is what every case here was written
-    // against; the encrypted size has its own test rather than being folded into these.
-    private static (WebSocketPrinterConnection connection, CaptureStream capture) NewConnection(bool overTls = false)
+    private static (WebSocketPrinterConnection connection, CaptureStream capture) NewConnection()
     {
         CaptureStream capture = new();
         WebSocket socket = WebSocket.CreateFromStream(capture, isServer: true, null, TimeSpan.FromMinutes(1));
 
-        return (new WebSocketPrinterConnection(socket, overTls), capture);
+        return (new WebSocketPrinterConnection(socket), capture);
     }
 
     /// <summary>One parsed frame: enough of RFC 6455 to assert on what was written.</summary>

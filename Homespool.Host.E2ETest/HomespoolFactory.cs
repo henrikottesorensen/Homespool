@@ -113,11 +113,11 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
     /// Issues the printer certificate the way startup would, because nothing here binds a listener.
     /// </summary>
     /// <remarks>
-    /// <b>Production mints this while configuring Kestrel</b> - the printer listener cannot bind
-    /// without it - so a test host that skipped it was unlike production in a way that kept showing
-    /// up: the provisioning bundle had no address to offer, and the certificate health check called a
-    /// freshly started host degraded. Doing it here makes a test host resemble a started server, which
-    /// is what these tests are for.
+    /// <b>Production mints this on its startup path</b> - Program.EnsurePrinterCertificate, before the
+    /// first request, because the proxy reads the leaf when it starts - so a test host that skipped it
+    /// was unlike production in a way that kept showing up: the provisioning bundle had no address to
+    /// offer, and the certificate health check called a freshly started host degraded. Doing it here
+    /// makes a test host resemble a started server, which is what these tests are for.
     /// </remarks>
     protected override IHost CreateHost(IHostBuilder builder)
     {

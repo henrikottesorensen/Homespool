@@ -38,6 +38,31 @@ public class CertificateOptions
     public string Directory { get; set; } = "data/certificates";
 
     /// <summary>
+    /// Directory holding the leaf and its key in PEM, for nginx to read. Relative paths resolve
+    /// against the content root.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A separate directory from <see cref="Directory"/> for one reason: the proxy container mounts
+    /// this one, and the authority's private key must never be inside anything it mounts.</b> Both
+    /// files could sit beside <c>ca.pfx</c> — they did when nothing consumed them — and sharing that
+    /// directory would hand the internet-facing container the key that mints certificates every
+    /// provisioned printer trusts, permanently and undetectably. The leaf is the opposite kind of
+    /// secret: losing it costs a reissue and a proxy reload, because the printers trust the authority
+    /// rather than the leaf. That asymmetry is the whole reason this deployment uses a CA at all, and
+    /// this is where it pays.
+    /// </para>
+    /// <para>
+    /// <b>These two files are world-readable where everything else here is owner-only</b>, which is
+    /// deliberate and is the cost of the arrangement above: nginx runs as its own uid and could not
+    /// otherwise read a key the application wrote. What that exposes is scoped to the volume, which
+    /// only these two containers mount, and to a secret that is replaceable without touching a
+    /// printer.
+    /// </para>
+    /// </remarks>
+    public string ProxyDirectory { get; set; } = "data/proxy-certificates";
+
+    /// <summary>
     /// How long the certificate authority is valid, in days. Default fifteen years.
     /// </summary>
     /// <remarks>

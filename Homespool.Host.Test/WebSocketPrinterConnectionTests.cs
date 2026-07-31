@@ -23,7 +23,7 @@ public class WebSocketPrinterConnectionTests
     {
         // Arrange
         using FakeWebSocket socket = new();
-        WebSocketPrinterConnection connection = new(socket, overTls: false);
+        WebSocketPrinterConnection connection = new(socket);
         byte[] frame = Encoding.ASCII.GetBytes("J0000002A{\"command\":\"PAUSE_PRINT\"}");
 
         // Act
@@ -51,7 +51,7 @@ public class WebSocketPrinterConnectionTests
     {
         // Arrange
         using FakeWebSocket socket = new();
-        WebSocketPrinterConnection connection = new(socket, overTls: false);
+        WebSocketPrinterConnection connection = new(socket);
         socket.HoldSends();
 
         // A command send is in flight: inside the socket, holding the connection's write lock.
@@ -91,7 +91,7 @@ public class WebSocketPrinterConnectionTests
     {
         // Arrange
         using FakeWebSocket socket = new();
-        WebSocketPrinterConnection connection = new(socket, overTls: false);
+        WebSocketPrinterConnection connection = new(socket);
 
         // Act + Assert
         connection.IsOpen.Should().BeTrue();

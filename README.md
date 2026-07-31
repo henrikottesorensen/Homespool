@@ -59,8 +59,9 @@ cp .env.example .env      # set at least PRINTER_HOST before printers need to re
 docker compose up --build
 ```
 
-That brings up two containers: the application, and an nginx that terminates TLS for people. The
-database lives in a named volume (`printerservice-data`) so it survives container replacement.
+That brings up two containers: the application, and an nginx that terminates TLS for both of its
+audiences. The database lives in a named volume (`printerservice-data`) so it survives container
+replacement.
 
 **Everything is served over TLS from the first start, and the two audiences are kept apart.**
 
@@ -69,10 +70,23 @@ database lives in a named volume (`printerservice-data`) so it survives containe
 | **people** | pages, `/api` | `443` (`HTTPS_PORT`), with `80` redirecting to it | self-signed on first start; replace it with your own |
 | **printers** | `/p/*`, nothing else | `15443` (`PRINTER_PORT`) | minted by this deployment, and the one on the USB stick |
 
-The application's own port is **not published**. nginx reaches it over the compose network and is
-the only thing that can, which is also what makes the client address it reports worth believing.
-Routes are segregated the same way inside the app: `/p/*` exists on the printer listener alone, and
-every other route exists everywhere else, so a request on the wrong one is answered `404`.
+Two certificates, two ports, no overlap: the printer's is an ECDSA leaf signed by an authority no
+browser trusts, and the browser's is RSA, which the printer's single ciphersuite cannot use at all.
+
+**None of the application's own ports are published.** nginx reaches both over the compose network
+and is the only thing that can, which is also what makes the client address it reports worth
+believing. Routes are segregated the same way inside the app: `/p/*` exists on the printer listener
+alone, and every other route exists everywhere else, so a request on the wrong one is answered `404`
+— a boundary that is a socket rather than a line of proxy configuration.
+
+> **Why printers go through the proxy, given that they are the fussy client here.** Because .NET
+> cannot serve them correctly. A Prusa printer holds one kilobyte of TLS plaintext at a time and says
+> so by negotiating RFC 6066 `max_fragment_length`; `SslStream` ignores that and sends records
+> sixteen times larger, which breaks every file transfer. OpenSSL honours it. So the proxy is what
+> makes the printer path work rather than a layer it has to survive. If you substitute your own proxy
+> for this one, read `nginx/homespool-printer.conf` first — that half needs exactly one certificate
+> presented with no chain, one ciphersuite, no response buffering, and OpenSSL rather than Go's
+> `crypto/tls`.
 
 > **The browser will warn on first use, and that is honest.** The certificate the proxy generates
 > is signed by nobody. Serving your credentials in clear while you go and obtain a real certificate
@@ -250,12 +264,19 @@ In Docker, use the `__` (double underscore) form, e.g. `PrusaConnect__PrinterHos
 |---|---|---|
 | `PrinterHost` | *(empty)* | The hostname printers use to reach this server. **Required for USB-key provisioning** — there is no way to infer it from inside the process. |
 | `PrinterPort` | `15443` | Port for the generated snippet — the host side of the printer port mapping, not the port inside the container. Not 443: that belongs to the people-facing proxy. |
-| `PrinterTls` | `true` | Whether printers reach this server over TLS — the `tls` line in the ini **and** whether the printer listener serves TLS at all, so the two cannot disagree. See below. |
+| `PrinterTls` | `true` | Whether printers reach this deployment over TLS — the `tls` line in the ini **and** whether a certificate is issued for the proxy to present, so the two cannot disagree. See below. |
 | `RegistrationCodeLifetimeMinutes` | `60` | How long a registration code stays claimable. Prusa uses 24 h; one hour is a deliberately tighter default, since the code is a credential for adopting a printer. |
 
 #### Turning `PrinterTls` off, and when that is legitimate
 
-`PrusaConnect__PrinterTls=false` binds the printer listener as plain HTTP and issues no certificate.
+`PrusaConnect__PrinterTls=false` issues no certificate, so the proxy has nothing to present and stays
+out of the printer path entirely. In Compose it needs the plaintext override as well, which moves the
+published printer port off the proxy and onto the application:
+
+```bash
+docker compose -f compose.yaml -f compose.plaintext.yaml up
+```
+
 It exists for two jobs, both of them testing:
 
 - **Reading the protocol on the wire.** A capture of the TLS listener is ciphertext, so packet
@@ -275,15 +296,21 @@ belonging to another. Naming any of these makes Kestrel ignore `ASPNETCORE_URLS`
 
 | Setting | Default | Purpose |
 |---|---|---|
-| `PrinterPort` | `15443` | TLS, serving the printer certificate. `/p/*` exists here and nowhere else. Above 1024 because the container runs as a non-root user. |
-| `UserPort` | `8080` | Plain HTTP: pages, `/api`, `/health` — everything except `/p/*`. Not published to the host; the shipped proxy reaches it over the compose network and terminates TLS in front of it. |
+| `PrinterPort` | `15443` | Plain HTTP: `/p/*` and nothing else. Not published to the host; the shipped proxy reaches it over the compose network and terminates the printer's TLS in front of it. Above 1024 because the container runs as a non-root user. |
+| `UserPort` | `8080` | Plain HTTP: pages, `/api`, `/health` — everything except `/p/*`. Not published to the host either; same proxy, different port, different certificate. |
 | `UserHttpsPort` | *(none)* | An HTTPS listener for people, using the ASP.NET development certificate or `Kestrel:Certificates:Default`. Set it only if this process should serve user TLS itself; it never carries the printer's certificate. |
 
 ### `Certificates`
 
 The authority printers trust, minted on first run into `data/certificates` (inside the volume,
-so it survives container replacement). `connect.der` is the file that goes on the USB stick;
-`printer.pfx` is what the printer listener serves.
+so it survives container replacement). `connect.der` is the file that goes on the USB stick.
+
+The leaf is written twice: `printer.pfx` beside the authority, and the same certificate with its key
+in PEM under `data/proxy-certificates`, which is a **separate volume** — that is the one the proxy
+mounts, and it holds only the leaf. The authority's private key never goes near the container facing
+the network. The PEM certificate file holds the leaf **alone with no chain appended**, which is
+load-bearing: the firmware requires exactly one certificate presented, and a proxy that appends the
+authority fails in a way that reads as a protocol bug.
 
 **Its private key is the most sensitive secret in the deployment.** `custom_cert` replaces the
 firmware's trust store wholesale rather than adding to it, so this CA is each provisioned

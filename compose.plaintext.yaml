@@ -1,0 +1,37 @@
+# Puts the printer protocol back on the wire in the clear, so it can be captured.
+#
+#   docker compose -f compose.yaml -f compose.plaintext.yaml up
+#
+# Set PRINTER_TLS=false in .env as well. Both are needed and they do different halves of one thing:
+# the variable tells the app to issue no leaf and to write `tls = false` into every provisioning ini,
+# and this file moves the published printer port off the proxy and onto the app so that what a
+# printer dials is a plain socket. With the variable set and this file forgotten, the proxy publishes
+# a printer port it will not serve - the entrypoint hook finds no leaf and says so - and printers
+# reach nothing.
+#
+# THIS IS NOT A DEPLOYMENT SETTING. Every printer token crosses the network in clear in both
+# directions: the one on the USB stick and the one issued at claim. It exists because a capture of
+# the TLS path is ciphertext, and nothing else in this project can produce a legible recording of the
+# printer protocol. Use it on a network you control, for as long as the capture takes.
+#
+# The rigs under rig/ do not need this. They run the app directly rather than through Compose, and
+# rig/enrol.sh already dials the printer listener over plain http.
+
+services:
+  printerservice:
+    ports:
+      # The app's own printer listener, published directly. It is the same port either way - what
+      # changes is which container answers on it, and whether there is TLS in front.
+      - "${PRINTER_PORT:-15443}:15443"
+
+  proxy:
+    # !override rather than a shorter list, because Compose MERGES `ports` instead of replacing it:
+    # without it the proxy would keep its own 15443 publication, both containers would claim the same
+    # host port, and the stack would fail to start with a bind error naming neither this file nor the
+    # reason. Requires Compose v2.24 or newer.
+    #
+    # 80 and 443 are restated because overriding the list replaces all of it, and the people-facing
+    # half of the deployment has nothing to do with any of this - it keeps its TLS either way.
+    ports: !override
+      - "${PORT:-80}:8080"
+      - "${HTTPS_PORT:-443}:8443"

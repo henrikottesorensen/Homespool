@@ -339,8 +339,7 @@ public static class Program
                 bool printerListenerIsProxied = PrinterTransportIsSecure(app.Services);
 
                 app.UseWhen(
-                    context => Listeners.ForwardedHeaderScope.AppliesTo(
-                        context.Connection.LocalPort, printerPort, printerListenerIsProxied),
+                    Listeners.ForwardedHeaderScope.Predicate(printerPort, printerListenerIsProxied),
                     branch => branch.UseForwardedHeaders());
             }
 

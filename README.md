@@ -372,6 +372,18 @@ docker run -d -p 1025:1025 -p 8025:8025 axllent/mailpit
 Homespool.Host.IntegrationTest/start-mailpit-tls.sh
 ```
 
+The STARTTLS tests are the exception: they **skip** rather than fail when that script has not
+been run, since the certificate it generates cannot be assumed. A clean clone therefore runs
+green, and CI runs the script first so they execute there for real.
+
+### Continuous integration
+
+`.github/workflows/build-and-test.yml` runs the suite and then **builds the container images**,
+which is the part a laptop cannot check for itself: a warm layer cache keeps succeeding past the
+point a clean machine fails. The Dockerfile's restore layer was broken for weeks — through a
+project rename and several features — while every local build and the whole suite stayed green,
+because nothing built the image.
+
 ### Database
 
 SQLite via EF Core, one migration. The schema is regenerated in place rather than stacked

@@ -143,6 +143,8 @@ else if (Model.Uncovered.Count > 0)
 <p class="form-text mt-2">
     A reissue needs the <strong>proxy reloaded</strong> to take effect - <code>docker compose exec
     proxy nginx -s reload</code> - because the proxy is what presents this certificate to printers,
-    and it read the current one when it started. The application itself keeps running. Nothing is
-    needed at the printers either: they trust the authority, which this does not touch.
+    and it read the current one when it started. The application itself keeps running. A printer that
+    is already connected keeps meeting the old certificate until it next reconnects, since the reload
+    is graceful and does not interrupt live connections. Nothing is needed at the printers either:
+    both certificates are signed by the authority, which this does not touch.
 </p>

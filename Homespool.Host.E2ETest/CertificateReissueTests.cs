@@ -60,7 +60,7 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
-    /// Reissuing replaces the leaf, keeps the authority, and says that a restart is needed.
+    /// Reissuing replaces the leaf, keeps the authority, and says that a proxy reload is needed.
     /// </summary>
     /// <remarks>
     /// <b>The authority is the assertion that matters.</b> If a reissue rolled the CA, every printer
@@ -104,9 +104,12 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
             "rolling the authority would strand every printer already provisioned");
 
         string after = await (await client.GetAsync("/Admin/Certificate")).Content.ReadAsStringAsync();
-        after.Should().ContainEquivalentOf("restart the server",
-            "the running process still serves the old certificate, and a page that only said \"done\" would be "
-            + "describing a file rather than what printers meet");
+        after.Should().ContainEquivalentOf("reload the proxy",
+            "the proxy still serves the old certificate, and a page that only said \"done\" would be describing a "
+            + "file rather than what printers meet");
+        after.Should().NotContainEquivalentOf("restart the server",
+            "that was the instruction while Kestrel held the leaf; it is now both wrong and needlessly expensive, "
+            + "since reloading nginx keeps the application and every user session up");
     }
 
     /// <summary>

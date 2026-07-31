@@ -292,6 +292,10 @@ public static class Program
             // the one-time /setup token. Runs inline so setup state is settled before the first request.
             Services.AdminBootstrap.SeedAdminBootstrap(app.Services);
 
+            // The certificate nginx presents to printers. Inline, before Run, because the proxy waits
+            // on this container's health check and then reads the leaf off the shared volume.
+            EnsurePrinterCertificate(app);
+
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
             {
@@ -308,10 +312,22 @@ public static class Program
             // Before UseSerilogRequestLogging: otherwise every logged request carries the proxy's
             // address instead of the client's, which is the thing this exists to fix.
             //
-            // NOT applied to /p/*. Printers connect to Kestrel directly with no proxy in front, so a
-            // forwarded header there is attacker-supplied by definition - see XForwardedOptions.
-            // When the listener split lands this becomes belt-and-braces, because those routes will
-            // not exist on the proxied listener at all (notes/tls-by-default.md, decision 3a).
+            // Applied to the printer listener too, which reverses what decision 3a said, because the
+            // fact it rested on has changed: printers used to reach Kestrel directly, so a forwarded
+            // header on that listener was attacker-supplied by definition. nginx now terminates
+            // printer TLS as well, the port is not published, and the proxy is the only thing that can
+            // reach it - so X-Real-IP there is the proxy's word, exactly as it is for users. Without
+            // this a printer's real address disappears from the logs and becomes the proxy's, which is
+            // the diagnostic that finds a misbehaving printer on a LAN.
+            //
+            // Keyed on the port the connection arrived on rather than on the path, for the reason
+            // ListenerSegregationMiddleware gives at greater length: the port is a property of the
+            // socket and no header changes it. It also has to be the port here, because this runs
+            // before routing and there is no endpoint to ask yet.
+            //
+            // The exception is PrinterTls=false, where printers dial that port directly again and the
+            // header goes back to being written by whoever connected. One setting, both ends.
+            //
             // Registered ONLY when something is actually trusted. Clearing the framework's known
             // networks and adding nothing does not mean "trust nobody" - ASP.NET skips the peer check
             // entirely when both lists are empty, which means "trust anybody". Proven by probe:
@@ -319,8 +335,12 @@ public static class Program
             // instead, the same request was ignored. Leaving the middleware out is unambiguous.
             if (app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Services.XForwardedOptions>>().Value.TrustsAnything)
             {
+                int printerPort = ReadListenerOptions(builder.Configuration).PrinterPort;
+                bool printerListenerIsProxied = PrinterTransportIsSecure(app.Services);
+
                 app.UseWhen(
-                    context => !context.Request.Path.StartsWithSegments("/p", StringComparison.OrdinalIgnoreCase),
+                    context => Listeners.ForwardedHeaderScope.AppliesTo(
+                        context.Connection.LocalPort, printerPort, printerListenerIsProxied),
                     branch => branch.UseForwardedHeaders());
             }
 
@@ -524,8 +544,8 @@ public static class Program
     }
 
     /// <summary>
-    /// Binds the listeners: plain HTTP for people, TLS with our own leaf for printers, and the
-    /// classification middleware that keeps each set of routes on its own.
+    /// Binds the listeners — plain HTTP for people, plain HTTP for printers — and the classification
+    /// middleware that keeps each set of routes on its own.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -536,9 +556,22 @@ public static class Program
     /// image already used, so a deployment that sets nothing keeps the port it had.
     /// </para>
     /// <para>
-    /// The printer leaf must exist before Kestrel can bind, which is why it is minted here rather than
-    /// by a hosted service: a certificate issued after startup would be issued after the listener
-    /// needed it.
+    /// <b>Kestrel no longer terminates TLS for printers, and that reverses a recorded decision.</b>
+    /// It used to mint the leaf here and serve it on this very listener; it does neither, because
+    /// <see cref="System.Net.Security.SslStream"/> ignores the RFC 6066 <c>max_fragment_length</c> a
+    /// printer negotiates and OpenSSL honours it. A printer holds 1024 bytes of TLS plaintext at a
+    /// time, so a record larger than that kills every file transfer — which is what shipped, until
+    /// nginx was moved in front of this listener too (<c>notes/tls-by-default.md</c>, "Decision 3a's
+    /// premise has shifted"). The leaf is still ours: <see cref="EnsurePrinterCertificate"/> mints it
+    /// on the startup path, and nginx presents it.
+    /// </para>
+    /// <para>
+    /// <b>The split outlived the certificate that motivated it, deliberately.</b> With TLS gone from
+    /// both listeners they are two plain HTTP ports, and one would do — except that the boundary is
+    /// the point. <c>/p/*</c> exists on the printer listener alone, enforced by
+    /// <see cref="ConnectionInfo.LocalPort"/>; collapsing them would leave a line of nginx
+    /// configuration as the only thing between a proxied user request and the printer protocol,
+    /// turning a structural guarantee into a configuration one. Two ports cost four lines.
     /// </para>
     /// </remarks>
     private static void ConfigureListeners(WebApplicationBuilder builder)
@@ -550,15 +583,16 @@ public static class Program
         // Singleton: it holds the bound options and nothing per-request.
         builder.Services.AddSingleton<Listeners.ListenerSegregationMiddleware>();
 
-        // Pinned rather than left to be discovered, because what it discovers is the printer. With no
-        // HTTPS endpoint at all the redirection middleware could never determine a port and quietly
-        // did nothing; adding the printer listener hands it exactly one HTTPS address to find, and it
-        // then answers plain-HTTP user requests with a 307 to the *printer* port - where the route
-        // does not exist, behind a certificate no browser has any reason to trust. Measured, not
-        // reasoned: GET / on the user listener returned 307 to https://...:15443/ the first time both
-        // listeners came up. Null when no user-facing HTTPS port exists, which is also why the
-        // middleware itself is only registered in that case: when a proxy terminates TLS, redirecting
-        // to https is the proxy's job and it knows the public port - this process does not.
+        // Pinned rather than left to be discovered. It guarded against a measured failure: the printer
+        // listener used to be this process's only HTTPS endpoint, so the redirection middleware found
+        // it and answered plain-HTTP user requests with a 307 to the *printer* port - GET / on the
+        // user listener returned 307 to https://...:15443/ the first time both listeners came up.
+        // That endpoint is gone and discovery would now find the right port on its own, so this is no
+        // longer load-bearing; it is kept because it costs a line and because the next person to add
+        // an HTTPS listener here should find the trap written down rather than measure it again.
+        // Null when no user-facing HTTPS port exists, which is also why the middleware itself is only
+        // registered in that case: when a proxy terminates TLS, redirecting to https is the proxy's
+        // job and it knows the public port - this process does not.
         builder.Services.AddHttpsRedirection(options =>
             options.HttpsPort = ReadListenerOptions(builder.Configuration).UserHttpsPort);
 
@@ -576,47 +610,75 @@ public static class Program
                 options.ListenAnyIP(userHttpsPort, listen => listen.UseHttps());
             }
 
-            if (!PrinterTransportIsSecure(options.ApplicationServices))
-            {
-                // Plaintext, so the wire can be read. Nothing else in this project can produce a
-                // legible capture of the printer protocol: TLS is the point of the listener, and a
-                // capture of it is ciphertext.
-                Log.Warning("The printer listener on {Port} is PLAINTEXT because PrusaConnect:PrinterTls is false. "
-                            + "Every printer token crosses the network in clear, in both directions - the one on the "
-                            + "USB stick and the one issued at claim. This is for a capture or a rig on a network you "
-                            + "control; it is not a deployment setting, and no certificate is issued while it is off.",
-                            listeners.PrinterPort);
-
-                options.ListenAnyIP(listeners.PrinterPort);
-
-                return;
-            }
-
-            Certificates.PrinterCertificateAuthority authority =
-                options.ApplicationServices.GetRequiredService<Certificates.PrinterCertificateAuthority>();
-
-            options.ListenAnyIP(
-                listeners.PrinterPort,
-                listen => listen.UseHttps(authority.EnsureLeaf(PrinterCertificateNames(options.ApplicationServices))));
+            // Plain HTTP, and the same line whichever way the deployment is configured. With
+            // PrusaConnect:PrinterTls on, nginx terminates in front of this port and it is never
+            // published; with it off, this port is published directly and the wire is readable. The
+            // difference is what sits in front, which is compose.yaml's business rather than this
+            // process's - so there is one listener here and no branch.
+            options.ListenAnyIP(listeners.PrinterPort);
         });
     }
 
     /// <summary>
-    /// Whether printers reach this server over TLS — which is one question, not two.
+    /// Mints the authority and the leaf nginx presents to printers, unless this deployment has turned
+    /// printer TLS off.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b><c>PrusaConnect:PrinterTls</c> decides the listener as well as the ini it writes</b>, and
-    /// that is deliberate rather than convenient. It used to describe only what a printer was told,
-    /// because a proxy in front could terminate TLS and the two could legitimately differ. The listener
-    /// split ended that: nothing may sit in front of the printer port (the firmware trusts one anchor,
-    /// requires exactly one certificate, and a proxy would buffer 256 KiB transfer chunks), so the
-    /// transport a printer is told to use and the transport this process serves are the same fact.
+    /// <b>Before the first request rather than on demand</b>, and now for nginx's sake rather than
+    /// Kestrel's: the proxy reads <c>printer-leaf.pem</c> off the shared volume when it starts, and
+    /// <c>compose.yaml</c> holds it back until this container reports healthy, which is after this
+    /// runs. A leaf minted lazily would be minted after the thing that needs it had already given up.
+    /// </para>
+    /// <para>
+    /// It writes PEM as well as PKCS#12 (<see cref="Certificates.PrinterCertificateAuthority"/>), with
+    /// the leaf <i>alone</i> in the certificate file — firmware's
+    /// <c>x509_crt_check_ee_locally_trusted</c> requires exactly one certificate presented, and a
+    /// terminator that appends the authority fails in a way that reads as a protocol bug.
+    /// </para>
+    /// </remarks>
+    private static void EnsurePrinterCertificate(WebApplication app)
+    {
+        if (!PrinterTransportIsSecure(app.Services))
+        {
+            // Plaintext, so the wire can be read. Nothing else in this project can produce a legible
+            // capture of the printer protocol: TLS is the point of the path, and a capture of it is
+            // ciphertext.
+            Log.Warning("Printers reach this deployment in PLAINTEXT because PrusaConnect:PrinterTls is false, and no "
+                        + "certificate is issued while it is off. Every printer token crosses the network in clear, in "
+                        + "both directions - the one on the USB stick and the one issued at claim. This is for a capture "
+                        + "or a rig on a network you control; it is not a deployment setting. The proxy has no printer "
+                        + "certificate to serve either, so publish Listeners:PrinterPort directly.");
+
+            return;
+        }
+
+        app.Services.GetRequiredService<Certificates.PrinterCertificateAuthority>()
+           .EnsureLeaf(PrinterCertificateNames(app.Services))
+           .Dispose();
+    }
+
+    /// <summary>
+    /// Whether printers reach this deployment over TLS — which is one question, not two.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b><c>PrusaConnect:PrinterTls</c> decides whether a leaf is minted as well as what the ini
+    /// says</b>, and that is deliberate rather than convenient. It no longer decides the listener,
+    /// because the listener is plain HTTP either way — what changes is whether nginx stands in front
+    /// of it holding the leaf. The two ends still cannot disagree: with it off nothing is issued, so
+    /// the proxy has nothing to present even if an operator wired it up anyway.
     /// </para>
     /// <para>
     /// Two settings for one fact is the failure this project keeps finding: they disagree, every
     /// printer fails to connect, and neither value is wrong on its own so nothing can report it. One
     /// setting cannot disagree with itself.
+    /// </para>
+    /// <para>
+    /// It also decides whether forwarded headers are honoured on the printer listener — see
+    /// <see cref="AddForwardedHeaders"/>. With nginx in front, <c>X-Real-IP</c> on that listener comes
+    /// from the proxy and nothing else can reach the port; without it, a printer connects directly and
+    /// the same header is written by whoever dialled.
     /// </para>
     /// </remarks>
     private static bool PrinterTransportIsSecure(IServiceProvider services) =>
@@ -661,9 +723,10 @@ public static class Program
         Certificates.CertificateOptions certificates = services
             .GetRequiredService<Microsoft.Extensions.Options.IOptions<Certificates.CertificateOptions>>().Value;
 
-        // Blocking here is deliberate and bounded: Kestrel cannot bind the printer listener without a
-        // certificate, so there is nothing to be asynchronous for yet. The resolver caps each lookup,
-        // and only detected names are asked - the configured host is taken as given.
+        // Blocking here is deliberate and bounded: this runs on the startup path, before the first
+        // request and before the proxy is let through to read the leaf, so there is nothing to be
+        // asynchronous for yet. The resolver caps each lookup, and only detected names are asked -
+        // the configured host is taken as given.
         List<string> names = [.. Certificates.PrinterCertificateNames.ForThisMachineAsync(
             connect,
             certificates.ParsedContainerNetworks,
@@ -672,9 +735,9 @@ public static class Program
 
         if (names.Count == 0)
         {
-            // A machine with no usable address and no configured host: the listener still has to come
-            // up, but nothing will be able to verify it, so say why now rather than leaving an
-            // unexplained TLS failure at the printer.
+            // A machine with no usable address and no configured host: the proxy still has to have
+            // something to present, but nothing will be able to verify it, so say why now rather than
+            // leaving an unexplained TLS failure at the printer.
             Log.Warning("No printer-facing address could be detected and PrusaConnect:PrinterHost is not set, so the "
                         + "printer certificate covers only localhost. Set PrusaConnect:PrinterHost and delete the "
                         + "generated printer.pfx to have one issued that printers can actually verify.");

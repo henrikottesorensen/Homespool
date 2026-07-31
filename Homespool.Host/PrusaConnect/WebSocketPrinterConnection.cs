@@ -28,87 +28,61 @@ namespace Homespool.Host.PrusaConnect;
 public sealed class WebSocketPrinterConnection : IClosablePrinterConnection
 {
     /// <summary>
-    /// Payload bytes per WebSocket frame when the connection is encrypted. <b>Sized by the printer's TLS record buffer, not by the
-    /// WebSocket protocol</b> - see the remarks, because the obvious value is wrong and the reason is
-    /// three layers down.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>Was 65535</b>, which is the real WebSocket cap: their client implements only the 7-bit and
-    /// 16-bit length encodings and rejects the 64-bit marker as <c>Error::WebSocket</c>, killing the
-    /// connection (<c>websocket.cpp:127-129</c>). That is still true and still the ceiling. It is no
-    /// longer the binding constraint.
-    /// </para>
-    /// <para>
-    /// <b>The binding constraint is that the printer can hold 1024 bytes of TLS plaintext at a
-    /// time.</b> Buddy builds mbedtls with <c>MBEDTLS_SSL_IN_CONTENT_LEN</c> 1024 and
-    /// <c>OUT_CONTENT_LEN</c> 512 (<c>include/mbedtls/cipher_config_ece.h:69-74</c>), which reclaims
-    /// ~30 KB of SRAM - 16% of an MK4's - and is why TLS fits on the board at all. It asks the server
-    /// to respect that by negotiating RFC 6066 <c>max_fragment_length</c>, and Prusa's own servers
-    /// honour it, which is how every Connect-connected printer transfers files today.
-    /// </para>
-    /// <para>
-    /// <b><see cref="System.Net.Security.SslStream"/> does not.</b> Measured 2026-07-31 against a
-    /// throwaway TLS 1.2 server: a client offering <c>max_fragment_length := 2^9 (512)</c> got a
-    /// ServerHello carrying only <c>renegotiate</c> and <c>extended_master_secret</c> - no echo, so
-    /// per RFC 6066 not honoured - and one 8 KB write produced a single 8216-byte record. Asked for
-    /// in <c>dotnet/runtime#44241</c> since 2020, closed, still absent. RFC 8449
-    /// <c>record_size_limit</c> would not help either: mbedtls 2.28 predates it.
-    /// </para>
-    /// <para>
-    /// So the record size is ours to control, and the only lever is how much is handed to the stream
-    /// per write: <see cref="System.Net.WebSockets.WebSocket.SendAsync(ReadOnlyMemory{byte}, System.Net.WebSockets.WebSocketMessageType, bool, CancellationToken)"/>
-    /// is one frame is one write is one record. <b>1000 rather than 1024</b> leaves room for the
-    /// frame header inside the record. Their reader handles the resulting continuation fragments
-    /// properly - it consumes them until FIN and services Ping between them
-    /// (<c>connect.cpp:369-553</c>) - and the header rides only the first, which the loop below
-    /// already did.
-    /// </para>
-    /// <para>
-    /// <b>What this cost, measured on an MK3.5:</b> nothing detectable. A 316 KB bgcode moved in
-    /// ~1.2 s (~270 KB/s) against ~193 KB/s for a 1.9 MB file in 64 KiB frames over plaintext. That
-    /// is not fast in any absolute sense - the inline engine is round-trip bound and
-    /// <c>notes/transfer-protocol.md</c>, "Why throughput is capped", accounts for all of it - but
-    /// ~1900 frames per file demonstrably do not make it worse.
-    /// </para>
-    /// <para>
-    /// <b>One thing known and not addressed.</b> This assumes Kestrel writes one frame per record,
-    /// which held on hardware but is behaviour rather than contract; if its output pipe ever batched
-    /// two frames into one write the record would exceed 1024 and transfers would die again,
-    /// intermittently - the worst shape. TLS record headers are unencrypted, so a capture can check
-    /// that cheaply without decrypting anything, and that is the thing to do before trusting this
-    /// under load.
-    /// </para>
-    /// </remarks>
-    private const int TlsFramePayload = 1000;
-
-    /// <summary>
-    /// Payload bytes per frame in the clear, where the only limit is the WebSocket one their client
-    /// can parse: at 65 535 .NET writes the 16-bit length marker (126), and at 65 536 it switches to
-    /// the 64-bit marker (127), which the firmware rejects outright and drops the connection
+    /// Payload bytes per WebSocket frame. The only limit is the WebSocket one their client can parse:
+    /// at 65 535 .NET writes the 16-bit length marker (126), and at 65 536 it switches to the 64-bit
+    /// marker (127), which the firmware rejects outright and drops the connection
     /// (<c>websocket.cpp:127-129</c>). Measured, not inferred from the RFC.
     /// </summary>
-    private const int PlaintextFramePayload = 65535;
+    /// <remarks>
+    /// <para>
+    /// <b>This was 1000 on TLS connections for one day, and the reason it is not any more is the
+    /// whole of why nginx now terminates printer TLS.</b> The problem was real: Buddy builds mbedtls
+    /// with <c>MBEDTLS_SSL_IN_CONTENT_LEN</c> 1024 (<c>cipher_config_ece.h:69-74</c>), reclaiming
+    /// ~30 KB of SRAM and making TLS fit on the board at all, so a printer holds one kilobyte of TLS
+    /// plaintext at a time and a 256 KiB chunk write is far past it. It asks the server to respect
+    /// that by negotiating RFC 6066 <c>max_fragment_length</c>, and Prusa's own servers honour it -
+    /// which is how every Connect-connected printer transfers files today.
+    /// </para>
+    /// <para>
+    /// <b><see cref="System.Net.Security.SslStream"/> does not honour it</b> (measured 2026-07-31: a
+    /// client offering <c>2^9</c> got no echo in the ServerHello and one 8 KB write produced a single
+    /// 8216-byte record; <c>dotnet/runtime#44241</c>, open since 2020, closed unimplemented). So the
+    /// fix that shipped drove record size from this end instead, one frame per write per record, and
+    /// it worked on an MK3.5 - but only because Kestrel happened not to batch two frames into one
+    /// write. That was behaviour rather than contract, and unprovable by testing: an observation only
+    /// shows batching did not happen while it was watched.
+    /// </para>
+    /// <para>
+    /// <b>OpenSSL honours the extension, so the guarantee now lives at the layer that negotiated
+    /// it</b> - 536-byte records against a client asking for 2^9, measured the same day. nginx is
+    /// OpenSSL and terminates the printer connection, which leaves nothing here to guess at: this
+    /// process writes plain HTTP to a proxy on the same host, and record size is not its business.
+    /// See <c>notes/tls-by-default.md</c>, "Decision 3a's premise has shifted".
+    /// </para>
+    /// <para>
+    /// <b>If a transfer over TLS fails again, this is the thing to suspect first and NOT the thing to
+    /// fix.</b> A large frame failing means nginx did not honour <c>max_fragment_length</c> after
+    /// all - check the record sizes in a capture, which needs no decryption since record headers are
+    /// in the clear. Putting 1000 back would mask that, and mask it in the specific way that made the
+    /// original bug invisible for a day: it would work, and prove nothing about why.
+    /// </para>
+    /// </remarks>
+    private const int MaxFramePayload = 65535;
 
     private readonly WebSocket _webSocket;
-    private readonly int _maxFramePayload;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
-    /// <summary>Wraps an accepted socket, sized for the transport it arrived on.</summary>
+    /// <summary>Wraps an accepted socket.</summary>
     /// <param name="webSocket">The accepted socket, already upgraded.</param>
-    /// <param name="overTls">
-    /// Whether this connection is encrypted, which decides the frame size - see
-    /// <see cref="TlsFramePayload"/> for why the two differ by 65x.
-    /// </param>
     /// <remarks>
-    /// Taken from the connection rather than from configuration on the same reasoning the listener
-    /// split used for <c>Connection.LocalPort</c>: a flag can be set wrong, a socket cannot. It also
-    /// means a deployment serving both stays correct on each.
+    /// It used to take the transport as well, to size frames for it. It no longer needs to know: the
+    /// socket is plain HTTP to the proxy whatever a printer dialled, and the only party that has to
+    /// care about TLS record sizes is the one holding the TLS session. See
+    /// <see cref="MaxFramePayload"/>.
     /// </remarks>
-    public WebSocketPrinterConnection(WebSocket webSocket, bool overTls)
+    public WebSocketPrinterConnection(WebSocket webSocket)
     {
         _webSocket = webSocket;
-        _maxFramePayload = overTls ? TlsFramePayload : PlaintextFramePayload;
     }
 
     public bool IsOpen => _webSocket.State == WebSocketState.Open;
@@ -140,7 +114,7 @@ public sealed class WebSocketPrinterConnection : IClosablePrinterConnection
         // between is not a message either party can parse - and the close frame is a send too.
         await _writeLock.WaitAsync(cancellationToken);
 
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(_maxFramePayload);
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(MaxFramePayload);
 
         // Returned only on the normal path. If a read is abandoned - a cancelled await whose
         // underlying syscall keeps going, which is the usual shape of file I/O on Unix - it may still
@@ -159,7 +133,7 @@ public sealed class WebSocketPrinterConnection : IClosablePrinterConnection
 
             while (true)
             {
-                int room = _maxFramePayload - headerLength;
+                int room = MaxFramePayload - headerLength;
                 int want = (int)Math.Min(room, remaining);
                 int filled = 0;
 

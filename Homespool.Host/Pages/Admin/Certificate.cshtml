@@ -57,7 +57,13 @@
                         {
                             @foreach (string name in Model.Covered)
                             {
-                                <div><code>@name</code></div>
+                                <div>
+                                    <code>@name</code>
+                                    @if (Model.Dropping.Contains(name))
+                                    {
+                                        <span class="badge text-bg-warning ms-1">a reissue would drop this</span>
+                                    }
+                                </div>
                             }
                         }
                     </td>
@@ -132,6 +138,26 @@ else if (Model.Uncovered.Count > 0)
     <div class="alert alert-warning" role="alert">
         This machine has addresses the certificate does not cover. That is only a problem for printers
         told to dial one of them - the ones using a covered address are unaffected.
+    </div>
+}
+
+@if (Model.Dropping.Count > 0)
+{
+    <div class="alert alert-warning" role="alert">
+        <strong>Reissuing would narrow this certificate.</strong> These names are covered today and
+        would not be carried over:
+        <div class="mt-2 mb-2">
+            @foreach (string name in Model.Dropping)
+            {
+                <div><code>@name</code></div>
+            }
+        </div>
+        They are dropped because this machine no longer answers on them, which is usually right - a
+        certificate should only vouch for what a printer can reach. But <strong>any printer whose ini
+        tells it to dial one of these will stop connecting</strong> once the new certificate is
+        served, and the printer reports that as a bare TLS error naming nothing. Putting such a
+        printer back means a USB visit to repoint it, so check what your printers were given before
+        continuing.
     </div>
 }
 

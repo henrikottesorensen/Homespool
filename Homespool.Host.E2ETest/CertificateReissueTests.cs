@@ -113,6 +113,41 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
+    /// A reissue that would narrow the certificate says so before the button is pressed.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is the one way the reissue button can break a printer that was working.</b> Names are
+    /// filtered at issuance to what a printer could actually reach, so a name detected once and no
+    /// longer resolvable is dropped — correct in itself, since it vouches for nothing. But a printer
+    /// whose ini still names it keeps dialling it, and after the reissue and the proxy reload its
+    /// handshake fails against a leaf that no longer covers it. mbedTLS reports that as a bare TLS
+    /// error naming neither the name nor the certificate, and putting the printer back means a USB
+    /// visit. The page has always shown drift in the other direction — names this machine has that the
+    /// certificate lacks — and was silent about this one.
+    /// </remarks>
+    [Fact]
+    public async Task ThePageWarnsWhenAReissueWouldDropNamesTheCertificateCovers()
+    {
+        // Arrange - a leaf covering a name this machine cannot answer on, which is exactly what a
+        // moved DHCP lease or a renamed host leaves behind.
+        PrinterCertificateAuthority authority = _factory.Services.GetRequiredService<PrinterCertificateAuthority>();
+        using X509Certificate2 stale = authority.IssueLeaf(["an-old-address.lan"]);
+
+        using HttpClient client = await AdministratorClientAsync();
+
+        // Act
+        string page = await (await client.GetAsync("/Admin/Certificate")).Content.ReadAsStringAsync();
+
+        // Assert
+        page.Should().ContainEquivalentOf("would narrow this certificate",
+            "an operator about to drop a name their printers may be dialling has to be told before pressing, "
+            + "not after a printer stops connecting");
+        page.Should().Contain("an-old-address.lan", "and the warning has to name which names go");
+        page.Should().ContainEquivalentOf("USB visit",
+            "the cost of getting it wrong is what makes the warning worth reading");
+    }
+
+    /// <summary>
     /// An ordinary user cannot see the page, let alone press the button.
     /// </summary>
     [Fact]

@@ -1,3 +1,7 @@
+using System;
+
+using Microsoft.AspNetCore.Http;
+
 namespace Homespool.Host.Listeners;
 
 /// <summary>
@@ -51,4 +55,18 @@ public static class ForwardedHeaderScope
     /// </remarks>
     public static bool AppliesTo(int localPort, int printerPort, bool printerListenerIsProxied) =>
         localPort != printerPort || printerListenerIsProxied;
+
+    /// <summary>
+    /// The same rule as a predicate over a request, for <c>UseWhen</c>.
+    /// </summary>
+    /// <remarks>
+    /// <b>This exists so that "which property of the connection decides it" is covered by a test.</b>
+    /// Written inline at the call site it was not: <see cref="AppliesTo(int, int, bool)"/> takes an
+    /// <c>int</c>, so every one of its tests passes just as happily whether the caller reads
+    /// <see cref="ConnectionInfo.LocalPort"/> or <see cref="ConnectionInfo.RemotePort"/> — and reading
+    /// the remote port would hand the decision to the client, which is the whole thing this guards
+    /// against. Moving one line out of the pipeline puts it somewhere a test can reach.
+    /// </remarks>
+    public static Func<HttpContext, bool> Predicate(int printerPort, bool printerListenerIsProxied) =>
+        context => AppliesTo(context.Connection.LocalPort, printerPort, printerListenerIsProxied);
 }

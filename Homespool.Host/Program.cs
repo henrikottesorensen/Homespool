@@ -199,6 +199,10 @@ public static class Program
                 sp => new HostEnvironmentAccessor(sp.GetRequiredService<IWebHostEnvironment>().ContentRootPath));
             builder.Services.AddSingleton<PrintFiles.UserFileStore>();
 
+            // Scoped, following the command service it wraps. Shared by the API endpoint and the
+            // Files page so that "a send that did not take leaves no offer" has one implementation.
+            builder.Services.AddScoped<Services.PrintFileSender>();
+
             AddPrinterEndpointRateLimiting(builder);
 
             // Scoped, following the WebSocketHandler it runs: one session per accepted upgrade.

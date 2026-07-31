@@ -193,11 +193,15 @@ public static class Program
 
             // Uploaded gcode: options, the store, and the content-root accessor it needs. Singleton
             // because the store holds no per-request state - it is a path and a couple of rules.
-            builder.Services.Configure<PrusaConnect.Transfers.FileStorageOptions>(
-                builder.Configuration.GetSection(PrusaConnect.Transfers.FileStorageOptions.SectionName));
-            builder.Services.AddSingleton<PrusaConnect.Transfers.IHostEnvironmentAccessor>(
-                sp => new PrusaConnect.Transfers.HostEnvironmentAccessor(sp.GetRequiredService<IWebHostEnvironment>().ContentRootPath));
-            builder.Services.AddSingleton<PrusaConnect.Transfers.UploadedFileStore>();
+            builder.Services.Configure<PrintFiles.PrintFileStorageOptions>(
+                builder.Configuration.GetSection(PrintFiles.PrintFileStorageOptions.SectionName));
+            builder.Services.AddSingleton<IHostEnvironmentAccessor>(
+                sp => new HostEnvironmentAccessor(sp.GetRequiredService<IWebHostEnvironment>().ContentRootPath));
+            builder.Services.AddSingleton<PrintFiles.UserFileStore>();
+
+            // Scoped, following the command service it wraps. Shared by the API endpoint and the
+            // Files page so that "a send that did not take leaves no offer" has one implementation.
+            builder.Services.AddScoped<Services.PrintFileSender>();
 
             AddPrinterEndpointRateLimiting(builder);
 

@@ -1,12 +1,12 @@
-namespace Homespool.Host.PrusaConnect.Transfers;
+namespace Homespool.Host.PrintFiles;
 
 /// <summary>
 /// Where uploaded gcode lives and what is allowed in, bound from the <c>FileStorage</c>
 /// configuration section.
 /// </summary>
-public class FileStorageOptions
+public class PrintFileStorageOptions
 {
-    public const string SectionName = "FileStorage";
+    public const string SectionName = "PrintFiles";
 
     /// <summary>
     /// Directory for uploaded files. Relative paths resolve against the content root.

@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 using Homespool.Host.Certificates;
-using Homespool.Host.PrusaConnect.Transfers;
+using Homespool.Host.PrintFiles;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -102,7 +102,7 @@ public sealed class ContentRootIsolationTests : IAsyncLifetime, IDisposable
 
         // Act
         PrinterCertificateAuthority authority = _factory.Services.GetRequiredService<PrinterCertificateAuthority>();
-        FileStorageOptions files = _factory.Services.GetRequiredService<IOptions<FileStorageOptions>>().Value;
+        PrintFileStorageOptions files = _factory.Services.GetRequiredService<IOptions<PrintFileStorageOptions>>().Value;
         CertificateOptions certificates = _factory.Services.GetRequiredService<IOptions<CertificateOptions>>().Value;
 
         // Assert

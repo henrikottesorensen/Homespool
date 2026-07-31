@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -37,6 +38,21 @@ public class PrinterCertificateAuthority
     private const string AuthorityFileName = "ca.pfx";
     private const string AuthorityDerFileName = "connect.der";
     private const string LeafFileName = "printer.pfx";
+
+    /// <summary>
+    /// The leaf and its key in PEM, for a TLS terminator that cannot read PKCS#12 - nginx, which
+    /// terminates the printer connection as of 2026-07-31.
+    /// </summary>
+    /// <remarks>
+    /// <b>The certificate file holds the leaf alone, with no chain appended, and that is
+    /// load-bearing.</b> Firmware's <c>x509_crt_check_ee_locally_trusted</c> requires exactly one
+    /// certificate to be presented; a terminator that sends leaf + authority fails verification in a
+    /// way that reads as a protocol bug rather than a certificate one
+    /// (<c>notes/tls-by-default.md</c>, decision 3a).
+    /// </remarks>
+    private const string LeafCertificatePemFileName = "printer-leaf.pem";
+
+    private const string LeafKeyPemFileName = "printer-leaf.key.pem";
     private const string SubjectAlternativeNameOid = "2.5.29.17";
 
     /// <summary>
@@ -80,7 +96,7 @@ public class PrinterCertificateAuthority
     private readonly ILogger<PrinterCertificateAuthority> _logger;
 
     public PrinterCertificateAuthority(IOptions<CertificateOptions> options,
-                                       PrusaConnect.Transfers.IHostEnvironmentAccessor environment,
+                                       IHostEnvironmentAccessor environment,
                                        TimeProvider time,
                                        ILogger<PrinterCertificateAuthority> logger)
     {
@@ -100,6 +116,12 @@ public class PrinterCertificateAuthority
 
     /// <summary>Path of the leaf, as a PFX Kestrel can be pointed at.</summary>
     public string LeafPath => Path.Combine(_directory, LeafFileName);
+
+    /// <summary>Where the leaf is written in PEM, for nginx. See <see cref="LeafCertificatePemFileName"/>.</summary>
+    public string LeafCertificatePemPath => Path.Combine(_directory, LeafCertificatePemFileName);
+
+    /// <summary>Where the leaf's private key is written in PEM, for nginx.</summary>
+    public string LeafKeyPemPath => Path.Combine(_directory, LeafKeyPemFileName);
 
     /// <summary>
     /// The names a certificate vouches for, as they were written — <c>dNSName</c> entries, including
@@ -289,6 +311,12 @@ public class PrinterCertificateAuthority
         using X509Certificate2 withKey = issued.CopyWithPrivateKey(key);
 
         WriteFile(LeafPath, withKey.Export(X509ContentType.Pkcs12));
+
+        // PEM beside the PKCS#12, because nginx reads one and not the other. Deliberately the leaf
+        // on its own - see LeafCertificatePemFileName for why appending the authority breaks
+        // verification on the printer.
+        WriteFile(LeafCertificatePemPath, Encoding.ASCII.GetBytes(issued.ExportCertificatePem()));
+        WriteFile(LeafKeyPemPath, Encoding.ASCII.GetBytes(key.ExportPkcs8PrivateKeyPem()));
 
         _logger.LogInformation("Issued a printer certificate for {Names}, valid until {NotAfter:o}.",
                                string.Join(", ", distinct), issued.NotAfter);

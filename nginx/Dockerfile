@@ -2,14 +2,10 @@
 # certificate of the operator's choosing, printers on another with the leaf the application mints
 # from its own authority.
 #
-# Printers used to be excluded from here, and the comment that said so was confident and specific:
-# "putting a proxy in that path breaks a protocol verified byte-for-byte on hardware". What that
-# verification predated was TLS. Kestrel terminating it breaks the same protocol worse - SslStream
-# ignores the max_fragment_length a printer negotiates, so records arrive 16x larger than the
-# kilobyte of plaintext the firmware can hold, and file transfers fail. OpenSSL honours the
-# extension, nginx is OpenSSL, so the proxy is now the thing that makes the printer path work rather
-# than the thing that would break it. See notes/tls-by-default.md, "Decision 3a's premise has
-# shifted", and homespool-printer.conf.
+# The printer half is fussier than an ordinary reverse proxy and is the reason this image exists
+# rather than any nginx: it has to present exactly one certificate with no chain, offer one
+# ciphersuite, buffer nothing, and bound its TLS records to the kilobyte the firmware can hold. See
+# homespool-printer.conf before substituting anything for it.
 #
 # nginxinc/nginx-unprivileged rather than the mainline image: it runs as uid 101 with no root in the
 # picture at all, which is worth more here than the one convenience root buys - binding 80/443

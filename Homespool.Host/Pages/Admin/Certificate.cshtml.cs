@@ -129,13 +129,23 @@ public class CertificateModel : PageModel
         // actually meet. It used to say RESTART THE SERVER, which was true when Kestrel served the
         // certificate and is now both wrong and needlessly expensive - reloading nginx keeps the
         // application, its database and every user session up.
+        //
+        // The "next time each printer reconnects" clause is not hedging. Verified on hardware
+        // 2026-07-31: `nginx -s reload` is graceful, so a printer's existing WebSocket stays on the
+        // old worker with the OLD certificate until that connection closes - and a printer connection
+        // is idle-but-open for hours, so the old worker generation lives exactly as long. It is
+        // harmless, because both leaves chain to the authority the printer trusts, but an operator
+        // who reissues to fix an address, reloads, and then checks what is being served would
+        // otherwise conclude the reload had not worked.
+        //
         // Plain text, no markup: this is rendered as-is, and a page that shows an operator literal
         // asterisks around its most important sentence has undermined the sentence.
         StatusMessage = $"Reissued for {string.Join(", ", names)}, valid until "
                       + $"{issued.NotAfter.ToUniversalTime():yyyy-MM-dd}. RELOAD THE PROXY to serve it - run "
-                      + "\"docker compose exec proxy nginx -s reload\" - until then printers still meet the previous "
-                      + "certificate. Nothing is needed at the printers themselves: they trust the authority, which "
-                      + "has not changed.";
+                      + "\"docker compose exec proxy nginx -s reload\". New connections get it immediately; a printer "
+                      + "that is already connected keeps meeting the previous certificate until it next reconnects, "
+                      + "which is harmless because both are signed by the same authority. Nothing is needed at the "
+                      + "printers themselves: that authority has not changed.";
 
         return RedirectToPage();
     }

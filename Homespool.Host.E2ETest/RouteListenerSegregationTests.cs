@@ -7,12 +7,13 @@ using System.Net.Http;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-using Homespool.Host.Listeners;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit.Abstractions;
+
+using Homespool.Host.Listeners;
 
 namespace Homespool.Host.E2ETest;
 

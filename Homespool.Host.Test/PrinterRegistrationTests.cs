@@ -5,12 +5,6 @@ using System.Linq;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-using Homespool.Data;
-using Homespool.Host.Exceptions;
-using Homespool.Host.PrusaConnect;
-using Homespool.Host.PrusaConnect.DTO;
-using Homespool.Host.Services;
-using Homespool.Model.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -19,6 +13,13 @@ using Serilog;
 using Serilog.Core;
 using Serilog.Events;
 using Serilog.Extensions.Logging;
+
+using Homespool.Data;
+using Homespool.Host.Exceptions;
+using Homespool.Host.PrusaConnect;
+using Homespool.Host.PrusaConnect.DTO;
+using Homespool.Host.Services;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
 

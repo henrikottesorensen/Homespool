@@ -3,13 +3,14 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Homespool.Data;
-using Homespool.Model.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+
+using Homespool.Data;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Services;
 

@@ -6,10 +6,9 @@ using System.Text.Json;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Host.Services;
-
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Homespool.Host.E2ETest;
 

@@ -8,16 +8,17 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 
-using Homespool.Data;
-using Homespool.Host.PrusaConnect.DTO.App;
-using Homespool.Host.PrusaConnect.DTO.EventMessages;
-using Homespool.Host.PrusaConnect.DTO.Telemetry;
-using Homespool.Model.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+
+using Homespool.Data;
+using Homespool.Host.PrusaConnect.DTO.App;
+using Homespool.Host.PrusaConnect.DTO.EventMessages;
+using Homespool.Host.PrusaConnect.DTO.Telemetry;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.PrusaConnect;
 

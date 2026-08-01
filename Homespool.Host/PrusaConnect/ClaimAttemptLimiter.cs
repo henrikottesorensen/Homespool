@@ -2,10 +2,11 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Homespool.Data;
-using Homespool.Model.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+
+using Homespool.Data;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.PrusaConnect;
 

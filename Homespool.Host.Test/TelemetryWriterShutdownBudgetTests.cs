@@ -1,6 +1,7 @@
 using System;
 
 using AwesomeAssertions;
+
 using Homespool.Host.PrusaConnect;
 
 namespace Homespool.Host.Test;

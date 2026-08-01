@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Net;
 
 using AwesomeAssertions;
+
 using Homespool.Host.Services;
 
 namespace Homespool.Host.Test;

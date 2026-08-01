@@ -3,8 +3,9 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-using Homespool.Host.PrusaConnect;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+
+using Homespool.Host.PrusaConnect;
 
 namespace Homespool.Host.Test;
 

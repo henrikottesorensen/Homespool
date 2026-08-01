@@ -4,12 +4,13 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-using Homespool.Data;
-using Homespool.Host.PrusaConnect;
-using Homespool.Model.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+
+using Homespool.Data;
+using Homespool.Host.PrusaConnect;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
 

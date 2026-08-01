@@ -3,8 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 
 using AwesomeAssertions;
-using Homespool.Host.Services;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+
+using Homespool.Host.Services;
 
 namespace Homespool.Host.Test;
 

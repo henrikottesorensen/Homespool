@@ -14,7 +14,14 @@ insert_final_newline = true
 # Stylecop settings
 ## Using Directives
 dotnet_sort_system_directives_first = true
-dotnet_separate_import_directive_groups = true
+
+# UsingLayoutAnalyser owns the layout: System, then third party, then Homespool, as blocks separated
+# by a blank line. Nothing built in can express that - dotnet_separate_import_directive_groups splits
+# on the first-level namespace, so third party becomes a block per vendor and "ours" is not a concept
+# it has. It has to be off as well as unused: with it on, IDE0055 reports the layout below as a
+# formatting error, and EnforceCodeStyleInBuild makes that a build failure.
+dotnet_separate_import_directive_groups = false
+usinglayout.first_party_prefixes = Homespool
 
 ## naming rules
 stylecop.naming.tupleElementNameCasing = camelCase
@@ -527,7 +534,10 @@ dotnet_diagnostic.SA1127.severity = none
 dotnet_diagnostic.SA1201.severity = none
 dotnet_diagnostic.SA1202.severity = none
 dotnet_diagnostic.SA1204.severity = warning
-dotnet_diagnostic.SA1210.severity = warning
+# Off, and it cannot be anything else: SA1210 sorts the whole list alphabetically, so it wants
+# Homespool above Microsoft - exactly what the layout moves to the bottom. UA1000 takes over
+# ordering entirely. SA1208, SA1209, SA1211, SA1216 and SA1217 are unaffected and stay on.
+dotnet_diagnostic.SA1210.severity = none
 dotnet_diagnostic.SA1309.severity = none
 dotnet_diagnostic.SA1310.severity = warning
 dotnet_diagnostic.SA1401.severity = warning

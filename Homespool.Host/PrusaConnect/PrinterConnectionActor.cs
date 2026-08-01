@@ -6,11 +6,12 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 
+using Microsoft.Extensions.Logging;
+
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.DTO.Transfers;
 using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Services;
-using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.PrusaConnect;
 

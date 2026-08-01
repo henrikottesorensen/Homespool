@@ -2,12 +2,13 @@ using System.Linq;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-using Homespool.Host.Services;
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MimeKit;
+
+using Homespool.Host.Services;
 
 namespace Homespool.Host.Test;
 

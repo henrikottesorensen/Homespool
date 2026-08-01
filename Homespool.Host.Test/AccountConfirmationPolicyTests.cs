@@ -1,7 +1,8 @@
 using AwesomeAssertions;
+using Microsoft.Extensions.Options;
+
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
-using Microsoft.Extensions.Options;
 
 namespace Homespool.Host.Test;
 

@@ -7,12 +7,13 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-using Homespool.Host.Services;
-using Homespool.Model.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using OtpNet;
+
+using Homespool.Host.Services;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.E2ETest;
 

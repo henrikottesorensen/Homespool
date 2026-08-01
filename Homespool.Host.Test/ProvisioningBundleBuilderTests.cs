@@ -10,11 +10,12 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+
 using Homespool.Host.Certificates;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Transfers;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 namespace Homespool.Host.Test;
 

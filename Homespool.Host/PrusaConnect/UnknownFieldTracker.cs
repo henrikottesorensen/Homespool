@@ -5,8 +5,9 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 
-using Homespool.Host.Services;
 using Microsoft.Extensions.Logging;
+
+using Homespool.Host.Services;
 
 namespace Homespool.Host.PrusaConnect;
 

@@ -1,8 +1,9 @@
 using System.Collections.Generic;
 using System.Linq;
 
-using Homespool.Model.Entities;
 using Microsoft.AspNetCore.Mvc.Rendering;
+
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Services;
 

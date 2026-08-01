@@ -8,15 +8,16 @@ using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Homespool.Host.Exceptions;
-using Homespool.Host.PrusaConnect;
-using Homespool.Host.PrusaConnect.DTO;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+
+using Homespool.Host.Exceptions;
+using Homespool.Host.PrusaConnect;
+using Homespool.Host.PrusaConnect.DTO;
 
 namespace Homespool.Host.Controllers;
 

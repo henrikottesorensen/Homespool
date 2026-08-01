@@ -8,13 +8,14 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-using Homespool.Host.PrusaConnect;
-using Homespool.Host.PrusaConnect.Transfers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+
+using Homespool.Host.PrusaConnect;
+using Homespool.Host.PrusaConnect.Transfers;
 
 namespace Homespool.Host.Test;
 

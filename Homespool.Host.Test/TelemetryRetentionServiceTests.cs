@@ -4,15 +4,16 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-using Homespool.Data;
-using Homespool.Host.Services;
-using Homespool.Model;
-using Homespool.Model.Entities;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+
+using Homespool.Data;
+using Homespool.Host.Services;
+using Homespool.Model;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
 

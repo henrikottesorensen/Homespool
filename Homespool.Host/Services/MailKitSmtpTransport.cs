@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 
 using MailKit.Net.Smtp;
 using MailKit.Security;
-
 using MimeKit;
 
 namespace Homespool.Host.Services;

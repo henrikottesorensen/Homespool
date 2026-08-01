@@ -5,14 +5,15 @@ using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Homespool.Host.Certificates;
-using Homespool.Host.PrusaConnect;
-using Homespool.Host.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+
+using Homespool.Host.Certificates;
+using Homespool.Host.PrusaConnect;
+using Homespool.Host.Services;
 
 namespace Homespool.Host.Pages.Admin;
 

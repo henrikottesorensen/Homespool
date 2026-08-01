@@ -7,6 +7,12 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
+using NSubstitute;
+using NSubstitute.Core;
+
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
@@ -15,11 +21,6 @@ using Homespool.Host.PrusaConnect.DTO.Telemetry;
 using Homespool.Host.PrusaConnect.DTO.Transfers;
 using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Model;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Logging.Testing;
-using NSubstitute;
-using NSubstitute.Core;
 
 namespace Homespool.Host.Test;
 

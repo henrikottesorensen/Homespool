@@ -2,10 +2,10 @@ using System.Collections.Generic;
 using System.Linq;
 
 using AwesomeAssertions;
-
-using Homespool.Host.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.HttpOverrides;
+
+using Homespool.Host.Services;
 
 namespace Homespool.Host.Test;
 

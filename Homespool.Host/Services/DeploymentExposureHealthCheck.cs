@@ -4,10 +4,11 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Homespool.Host.Certificates;
-using Homespool.Host.PrusaConnect;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+
+using Homespool.Host.Certificates;
+using Homespool.Host.PrusaConnect;
 
 namespace Homespool.Host.Services;
 

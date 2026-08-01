@@ -1,8 +1,9 @@
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-using Homespool.Host.Services;
 using Microsoft.AspNetCore.Http;
+
+using Homespool.Host.Services;
 
 namespace Homespool.Host.Test;
 

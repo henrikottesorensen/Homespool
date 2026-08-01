@@ -91,7 +91,7 @@ public class PrintFileController : ControllerBase
     [HttpPut]
     [Route("{fileName}")]
     [RequestSizeLimit(long.MaxValue)] // Enforced against the configured cap below, not by MVC.
-    public async Task<IActionResult> Upload(string fileName,
+    public async Task<ActionResult<PrintFileReadDTO>> Upload(string fileName,
                                             [FromQuery] bool overwrite,
                                             CancellationToken cancellationToken)
     {
@@ -145,7 +145,7 @@ public class PrintFileController : ControllerBase
     [Route("{fileName}")]
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
                      Justification = "Ownership passes to FileStreamResult, which disposes the stream once the response has been written. Disposing it here would close it before a byte is sent.")]
-    public async Task<IActionResult> Download(string fileName)
+    public async Task<ActionResult> Download(string fileName)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
@@ -177,7 +177,7 @@ public class PrintFileController : ControllerBase
     /// </remarks>
     [HttpPatch]
     [Route("{fileName}")]
-    public async Task<IActionResult> Rename(string fileName, [FromBody] PrintFileRenameRequest body)
+    public async Task<ActionResult<PrintFileReadDTO>> Rename(string fileName, [FromBody] PrintFileRenameRequest body)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
@@ -209,7 +209,7 @@ public class PrintFileController : ControllerBase
     /// </remarks>
     [HttpDelete]
     [Route("{fileName}")]
-    public async Task<IActionResult> Delete(string fileName)
+    public async Task<ActionResult> Delete(string fileName)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 

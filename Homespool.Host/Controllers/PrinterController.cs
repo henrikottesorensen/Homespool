@@ -105,7 +105,7 @@ public class PrinterController : ControllerBase
     /// </remarks>
     [HttpPost]
     [Route("printers/{uuid:guid}/files")]
-    public async Task<IActionResult> SendFile(Guid uuid,
+    public async Task<ActionResult> SendFile(Guid uuid,
                                               [FromBody] SendFileRequest body,
                                               CancellationToken cancellationToken)
     {
@@ -131,7 +131,7 @@ public class PrinterController : ControllerBase
             return BadRequest("File is too large to describe to a printer (4 GiB limit).");
         }
 
-        (Printer? printer, IActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+        (Printer? printer, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
 
         if (printer is null)
         {
@@ -179,7 +179,7 @@ public class PrinterController : ControllerBase
     /// </remarks>
     [HttpPost]
     [Route("printers/{uuid:guid}/print")]
-    public async Task<IActionResult> Print(Guid uuid, [FromBody] PrintRequest body, CancellationToken cancellationToken)
+    public async Task<ActionResult> Print(Guid uuid, [FromBody] PrintRequest body, CancellationToken cancellationToken)
     {
         if (!body.Path.StartsWith("/usb/", StringComparison.Ordinal) || body.Path.Contains("/../", StringComparison.Ordinal))
         {
@@ -188,7 +188,7 @@ public class PrinterController : ControllerBase
             return BadRequest("Path must be under /usb/ and contain no '/../' segment.");
         }
 
-        (Printer? printer, IActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+        (Printer? printer, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
 
         if (printer is null)
         {
@@ -230,19 +230,19 @@ public class PrinterController : ControllerBase
     /// </remarks>
     [HttpGet]
     [Route("printers/{uuid:guid}/storage/usb/{**path}")]
-    public async Task<IActionResult> Storage(Guid uuid, string? path, CancellationToken cancellationToken)
+    public async Task<ActionResult<PrinterStorageReadDTO>> Storage(Guid uuid, string? path, CancellationToken cancellationToken)
     {
         // Firmware rejects traversal itself; catching it here means an attempt never reaches the
         // printer and the caller gets told why, rather than spending a command on a refusal.
-        if (path is not null && (path.Contains("/../", StringComparison.Ordinal)
-                                 || path.StartsWith("../", StringComparison.Ordinal)
-                                 || path.EndsWith("/..", StringComparison.Ordinal)
-                                 || path == ".."))
+        if (path is not null && (path.Contains("/../", StringComparison.Ordinal) ||
+                                 path.StartsWith("../", StringComparison.Ordinal) ||
+                                 path.EndsWith("/..", StringComparison.Ordinal) ||
+                                 path == ".."))
         {
             return BadRequest("Path must contain no '/../' segment.");
         }
 
-        (Printer? printer, IActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+        (Printer? printer, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
 
         if (printer is null)
         {
@@ -318,19 +318,19 @@ public class PrinterController : ControllerBase
     /// </remarks>
     [HttpPut]
     [Route("printers/{uuid:guid}/command/pause")]
-    public Task<IActionResult> Pause(Guid uuid, CancellationToken cancellationToken) =>
+    public Task<ActionResult> Pause(Guid uuid, CancellationToken cancellationToken) =>
         SendJobControlAsync(uuid, new PausePrint(), cancellationToken);
 
     /// <summary>Resumes a paused print. <c>PUT /api/v1/printers/{uuid}/command/resume</c>.</summary>
     [HttpPut]
     [Route("printers/{uuid:guid}/command/resume")]
-    public Task<IActionResult> Resume(Guid uuid, CancellationToken cancellationToken) =>
+    public Task<ActionResult> Resume(Guid uuid, CancellationToken cancellationToken) =>
         SendJobControlAsync(uuid, new ResumePrint(), cancellationToken);
 
     /// <summary>Stops a running print. <c>PUT /api/v1/printers/{uuid}/command/stop</c>.</summary>
     [HttpPut]
     [Route("printers/{uuid:guid}/command/stop")]
-    public Task<IActionResult> Stop(Guid uuid, CancellationToken cancellationToken) =>
+    public Task<ActionResult> Stop(Guid uuid, CancellationToken cancellationToken) =>
         SendJobControlAsync(uuid, new StopPrint(), cancellationToken);
 
     /// <summary>
@@ -340,13 +340,13 @@ public class PrinterController : ControllerBase
     /// success as far as this endpoint is concerned, since only Rejected and Failed are refusals.</remarks>
     [HttpPut]
     [Route("printers/{uuid:guid}/command/ready")]
-    public Task<IActionResult> Ready(Guid uuid, CancellationToken cancellationToken) =>
+    public Task<ActionResult> Ready(Guid uuid, CancellationToken cancellationToken) =>
         SendJobControlAsync(uuid, new SetPrinterReady(), cancellationToken);
 
     /// <summary>Cancels the ready state. <c>PUT /api/v1/printers/{uuid}/command/unready</c>.</summary>
     [HttpPut]
     [Route("printers/{uuid:guid}/command/unready")]
-    public Task<IActionResult> Unready(Guid uuid, CancellationToken cancellationToken) =>
+    public Task<ActionResult> Unready(Guid uuid, CancellationToken cancellationToken) =>
         SendJobControlAsync(uuid, new CancelPrinterReady(), cancellationToken);
 
     /// <summary>
@@ -362,20 +362,20 @@ public class PrinterController : ControllerBase
     /// </remarks>
     [HttpPut]
     [Route("printers/{uuid:guid}/command/idle")]
-    public Task<IActionResult> Idle(Guid uuid, CancellationToken cancellationToken) =>
+    public Task<ActionResult> Idle(Guid uuid, CancellationToken cancellationToken) =>
         SendJobControlAsync(uuid, new SetPrinterIdle(), cancellationToken);
 
     /// <summary>Resolves the printer, then sends - the whole body of every job-control verb above.</summary>
-    private async Task<IActionResult> SendJobControlAsync(Guid uuid,
+    private async Task<ActionResult> SendJobControlAsync(Guid uuid,
                                                           ISendableCommand command,
                                                           CancellationToken cancellationToken)
     {
-        (Printer? printer, IActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+        (Printer? printer, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
 
         return printer is null ? failure! : await SendAsync(printer, command, cancellationToken);
     }
 
-    private async Task<(Printer? printer, IActionResult? failure)> ResolveAsync(Guid uuid,
+    private async Task<(Printer? printer, ActionResult? failure)> ResolveAsync(Guid uuid,
                                                                                 CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
@@ -393,7 +393,7 @@ public class PrinterController : ControllerBase
         return printer is null ? (null, NotFound()) : (printer, null);
     }
 
-    private async Task<IActionResult> SendAsync(Printer printer,
+    private async Task<ActionResult> SendAsync(Printer printer,
                                                 ISendableCommand command,
                                                 CancellationToken cancellationToken,
                                                 Action? onFailure = null)

@@ -36,6 +36,12 @@ public sealed class FakeDevice
     /// </remarks>
     public FakeTransfer? Transfer { get; private set; }
 
+    /// <summary>
+    /// What is on the drive, so <c>SEND_FILE_INFO</c> has something to answer with. Seed it before
+    /// connecting; a completed transfer adds its own file, so sending and then listing agree.
+    /// </summary>
+    public FakeStorage Storage { get; } = new();
+
     /// <summary>The next transfer id to hand out. Firmware's come from the transfer slot; any
     /// increasing sequence is as good, and a predictable one makes tests readable.</summary>
     private int _nextTransferId = 1;

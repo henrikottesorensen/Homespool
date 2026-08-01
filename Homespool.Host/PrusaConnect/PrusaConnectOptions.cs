@@ -75,7 +75,7 @@ public class PrusaConnectOptions
     /// <para>
     /// <b>Printer-facing only, and named so since 2026-07-29.</b> It was <c>PublicHost</c>, which read
     /// as "the address of this deployment" and is not what it is: every consumer is the printer's ini
-    /// (<see cref="ConnectIniSnippet"/> and the page that renders it). Nothing user-facing reads it —
+    /// (<see cref="ConnectIni"/> and the page that renders it). Nothing user-facing reads it —
     /// absolute URLs in mail come from <c>Url.Page(..., protocol: Request.Scheme)</c>, i.e. from the
     /// incoming request, so the user-facing address is never configured at all. The rename matters
     /// because the printer address is about to stop being the same thing as the user address: they get
@@ -87,11 +87,28 @@ public class PrusaConnectOptions
     /// <summary>The port for the provisioning snippet. Prusa firmware defaults <c>connect_port</c> to 443.</summary>
     public int PrinterPort { get; set; } = 443;
 
-    /// <summary>Whether the printer should use TLS to reach this server. The firmware default is on.</summary>
+    /// <summary>
+    /// Whether printers reach this server over TLS. On by default, as the firmware is.
+    /// </summary>
     /// <remarks>
-    /// Note this governs the <b>printer's</b> transport only, and is configured on the printer side by
-    /// the <c>tls</c> key in its own ini. It says nothing about whether the web UI is served over TLS —
-    /// a distinction `README.md` has never drawn and `internet-exposure.md` #3 exists to fix.
+    /// <para>
+    /// <b>One setting, both ends.</b> It is the <c>tls</c> key written into a printer's ini
+    /// (<see cref="ConnectIni"/>) <i>and</i> whether the printer listener binds TLS at all
+    /// (<c>Program.ConfigureListeners</c>). Those were separate questions while a reverse proxy could
+    /// terminate TLS in front of this process; the listener split ended that — nothing may sit in front
+    /// of the printer port — so they are one fact with one switch, and cannot disagree.
+    /// </para>
+    /// <para>
+    /// <b>Turning it off is a testing tool, not a deployment option.</b> The printer's token then
+    /// crosses the network in clear in both directions: the one on the USB stick and the one issued at
+    /// claim. That is precisely what reading the protocol on the wire requires — a capture of the TLS
+    /// listener is ciphertext — and precisely what a household network does not want. Startup says so
+    /// every time, and no certificate is issued while it is off.
+    /// </para>
+    /// <para>
+    /// It still says nothing about whether the web UI is served over TLS: that is
+    /// <c>Listeners:UserHttpsPort</c>, or the proxy in front of <c>Listeners:UserPort</c>.
+    /// </para>
     /// </remarks>
     public bool PrinterTls { get; set; } = true;
 

@@ -87,7 +87,9 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime, IDisposable
     [Fact]
     public async Task PrinterRegistersIsClaimedAndTheFullAppApiLoopWorksThroughRealHttp()
     {
-        using HttpClient anonymous = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        // On the printer listener, because that is where /p/* exists - the same split the rest of
+        // this test already had between the printer's calls and the claiming user's appClient.
+        using HttpClient anonymous = PrinterListener.CreateClient(_factory);
 
         // ---------- printer: POST /p/register ----------
         HttpResponseMessage registerResponse = await EnrolmentFlowHelper.SendPrinterRegisterAsync(anonymous, new

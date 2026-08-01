@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -37,6 +38,22 @@ public class PrinterCertificateAuthority
     private const string AuthorityFileName = "ca.pfx";
     private const string AuthorityDerFileName = "connect.der";
     private const string LeafFileName = "printer.pfx";
+
+    /// <summary>
+    /// The leaf and its key in PEM, for a TLS terminator that cannot read PKCS#12 - nginx, which
+    /// terminates the printer connection as of 2026-07-31.
+    /// </summary>
+    /// <remarks>
+    /// <b>The certificate file holds the leaf alone, with no chain appended, and that is
+    /// load-bearing.</b> Firmware's <c>x509_crt_check_ee_locally_trusted</c> requires exactly one
+    /// certificate to be presented; a terminator that sends leaf + authority fails verification in a
+    /// way that reads as a protocol bug rather than a certificate one
+    /// (<c>notes/tls-by-default.md</c>, decision 3a).
+    /// </remarks>
+    private const string LeafCertificatePemFileName = "printer-leaf.pem";
+
+    private const string LeafKeyPemFileName = "printer-leaf.key.pem";
+    private const string SubjectAlternativeNameOid = "2.5.29.17";
 
     /// <summary>
     /// What both certificates claim as <c>notBefore</c>: 1960, deliberately before the epoch.
@@ -74,12 +91,13 @@ public class PrinterCertificateAuthority
     private static readonly DateTimeOffset NotBefore = new(1960, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     private readonly string _directory;
+    private readonly string _proxyDirectory;
     private readonly CertificateOptions _options;
     private readonly TimeProvider _time;
     private readonly ILogger<PrinterCertificateAuthority> _logger;
 
     public PrinterCertificateAuthority(IOptions<CertificateOptions> options,
-                                       PrusaConnect.Transfers.IHostEnvironmentAccessor environment,
+                                       IHostEnvironmentAccessor environment,
                                        TimeProvider time,
                                        ILogger<PrinterCertificateAuthority> logger)
     {
@@ -92,6 +110,10 @@ public class PrinterCertificateAuthority
         _directory = Path.IsPathRooted(_options.Directory)
             ? _options.Directory
             : Path.Combine(environment.ContentRootPath, _options.Directory);
+
+        _proxyDirectory = Path.IsPathRooted(_options.ProxyDirectory)
+            ? _options.ProxyDirectory
+            : Path.Combine(environment.ContentRootPath, _options.ProxyDirectory);
     }
 
     /// <summary>Path of the DER-encoded authority, which is what goes on the USB stick.</summary>
@@ -99,6 +121,41 @@ public class PrinterCertificateAuthority
 
     /// <summary>Path of the leaf, as a PFX Kestrel can be pointed at.</summary>
     public string LeafPath => Path.Combine(_directory, LeafFileName);
+
+    /// <summary>Where the leaf is written in PEM, for nginx. See <see cref="LeafCertificatePemFileName"/>.</summary>
+    /// <remarks>
+    /// In <see cref="CertificateOptions.ProxyDirectory"/> rather than beside the PKCS#12, because the
+    /// proxy container mounts that directory and must not be handed the authority's private key.
+    /// </remarks>
+    public string LeafCertificatePemPath => Path.Combine(_proxyDirectory, LeafCertificatePemFileName);
+
+    /// <summary>Where the leaf's private key is written in PEM, for nginx.</summary>
+    public string LeafKeyPemPath => Path.Combine(_proxyDirectory, LeafKeyPemFileName);
+
+    /// <summary>
+    /// The names a certificate vouches for, as they were written — <c>dNSName</c> entries, including
+    /// the ones that are really IP addresses.
+    /// </summary>
+    /// <remarks>
+    /// Reads the SAN rather than the subject on purpose: the subject is decoration here (mbedTLS
+    /// consults a CN only when there is no SAN at all), so the SAN is the whole of what a printer will
+    /// match against. Step 6's drift detection is the other caller this is shaped for — "is this
+    /// machine's address still in the certificate?" is exactly this list.
+    /// </remarks>
+    /// <param name="certificate">Any certificate; one with no SAN extension yields an empty list.</param>
+    public static IReadOnlyList<string> NamesOf(X509Certificate2 certificate)
+    {
+        ArgumentNullException.ThrowIfNull(certificate);
+
+        X509Extension? extension = certificate.Extensions[SubjectAlternativeNameOid];
+
+        if (extension is null)
+        {
+            return [];
+        }
+
+        return [.. new X509SubjectAlternativeNameExtension(extension.RawData, extension.Critical).EnumerateDnsNames()];
+    }
 
     /// <summary>
     /// Returns the authority, creating it on first call and loading it every time after.
@@ -145,11 +202,127 @@ public class PrinterCertificateAuthority
     }
 
     /// <summary>
+    /// Returns the leaf Kestrel serves to printers, issuing it over <paramref name="names"/> on the
+    /// first run and loading the same one every run after.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Issued once and then frozen, deliberately.</b> The obvious alternative — reissue whenever
+    /// the detected address set changes — was rejected (Henrik, 2026-07-29: <i>"automagically
+    /// reissuing cert smells like trouble to me"</i>) for three reasons that all bite in practice.
+    /// Interfaces flap: a VPN coming up, <c>docker0</c> appearing, a switch from wifi to ethernet, and
+    /// every reissue drops each printer connection as Kestrel picks up the new certificate. It is
+    /// non-deterministic: the certificate becomes a function of what the machine happened to look like
+    /// at boot, so "what does your certificate say?" cannot be answered without looking. And it is the
+    /// server quietly asserting new identities — joining a VPN would silently add that address to the
+    /// SANs, which is not a thing that should happen while nobody is watching.
+    /// </para>
+    /// <para>
+    /// So a moved DHCP lease is an operator action, not a self-healing one. That is what leaves drift
+    /// detection a real job (<c>notes/tls-by-default.md</c> step 6): notice that this machine's
+    /// address is no longer in the certificate and offer the reissue, rather than performing it
+    /// unasked. Deleting <c>printer.pfx</c> is the manual form of the same thing, and costs nothing at
+    /// a printer — they trust the authority, not the leaf.
+    /// </para>
+    /// </remarks>
+    /// <param name="names">Names to cover if this is the first run. Ignored once a leaf exists.</param>
+    public X509Certificate2 EnsureLeaf(IEnumerable<string> names)
+    {
+        if (!File.Exists(LeafPath))
+        {
+            return IssueLeaf(names);
+        }
+
+        X509Certificate2 existing = X509CertificateLoader.LoadPkcs12FromFile(LeafPath, null, X509KeyStorageFlags.Exportable);
+
+        // The PEM copies, if this leaf predates them. Cheap to check and load-bearing on exactly one
+        // path: upgrading a deployment that was issued a certificate before nginx terminated printer
+        // TLS. Such a deployment has printer.pfx and nothing in the proxy directory, so without this
+        // the method above returns early, no PEM is ever written, and the proxy declines to serve the
+        // printer listener at all - every printer stops connecting, and the only diagnostic is a line
+        // in the proxy's log saying the leaf is missing, which reads as "PrinterTls must be off".
+        //
+        // Exported from the certificate already loaded rather than reissued: printers trust the
+        // authority, so a reissue would work, but it would silently roll the leaf on every upgrade
+        // and lose whatever names the operator had deliberately covered.
+        EnsureProxyPem(existing);
+
+        // At Information because it is the answer to "what must a printer dial?", and the operator
+        // needs it whenever provisioning does not work. It is also what step 6 will compare against.
+        _logger.LogInformation("Serving the existing printer certificate for {Names}, valid until {NotAfter:o}. "
+                               + "Delete {Path} to have a new one issued for this machine's current addresses.",
+                               string.Join(", ", NamesOf(existing)), existing.NotAfter, LeafPath);
+
+        return existing;
+    }
+
+    /// <summary>
+    /// Writes the PEM pair the proxy reads, if it is not already beside the PKCS#12.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The upgrade path, and nothing else.</b> A leaf issued by any earlier version of this
+    /// deployment exists only as <c>printer.pfx</c>; nginx cannot read PKCS#12, so a stack upgraded
+    /// without this has a proxy with no certificate to present and printers that cannot connect. It is
+    /// idempotent and costs two <c>File.Exists</c> calls on every other start.
+    /// </para>
+    /// <para>
+    /// The certificate file gets the leaf <i>alone</i>, as everywhere else here — firmware requires
+    /// exactly one certificate presented.
+    /// </para>
+    /// </remarks>
+    private void EnsureProxyPem(X509Certificate2 leaf)
+    {
+        if (File.Exists(LeafCertificatePemPath) && File.Exists(LeafKeyPemPath))
+        {
+            return;
+        }
+
+        using ECDsa? key = leaf.GetECDsaPrivateKey();
+
+        if (key is null)
+        {
+            // Would mean a PKCS#12 written by something other than this class, since everything here
+            // is ECDSA P-256 by firmware necessity. Report it rather than throwing on the startup
+            // path: the pages still work, and the message names the fix.
+            _logger.LogError("The printer certificate in {Path} carries no ECDSA private key, so the PEM copies the "
+                             + "proxy needs cannot be written and printers will not be able to connect. Delete that "
+                             + "file and restart to have a new certificate issued.", LeafPath);
+
+            return;
+        }
+
+        System.IO.Directory.CreateDirectory(_proxyDirectory);
+
+        WriteProxyFile(LeafCertificatePemPath, Encoding.ASCII.GetBytes(leaf.ExportCertificatePem()));
+        WriteProxyFile(LeafKeyPemPath, Encoding.ASCII.GetBytes(key.ExportPkcs8PrivateKeyPem()));
+
+        _logger.LogInformation("Wrote the existing printer certificate to {Path} in PEM for the proxy, which reads "
+                               + "that rather than the PKCS#12 beside it.", LeafCertificatePemPath);
+    }
+
+    /// <summary>
+    /// The leaf as it stands, or null if none has been issued yet.
+    /// </summary>
+    /// <remarks>
+    /// For callers that need to know what the certificate says without being the reason one exists:
+    /// the provisioning bundle asking which names it may write, and step 6's drift detection. Issuing
+    /// belongs to <see cref="EnsureLeaf"/> and to startup, where the listener needs it — a page that
+    /// minted a certificate as a side effect of being rendered would be a surprising thing.
+    /// </remarks>
+    public X509Certificate2? LoadLeafIfIssued() =>
+        File.Exists(LeafPath)
+            ? X509CertificateLoader.LoadPkcs12FromFile(LeafPath, null, X509KeyStorageFlags.Exportable)
+            : null;
+
+    /// <summary>
     /// Issues the printer-facing leaf for <paramref name="names"/>, replacing any previous one.
     /// </summary>
     /// <remarks>
     /// Safe to call whenever the names change, precisely because the printer trusts the authority
-    /// rather than the leaf: a reissued leaf needs a server restart and nothing else.
+    /// rather than the leaf: a reissued leaf needs the proxy reloaded and nothing else. Not this
+    /// process restarted — it stopped serving the certificate when nginx took over printer TLS, so
+    /// what has to re-read the file is the proxy, which does it without dropping the application.
     /// </remarks>
     /// <param name="names">
     /// Every name or address a printer might be told to dial. All are written as <b>dNSName</b>
@@ -207,6 +380,16 @@ public class PrinterCertificateAuthority
 
         WriteFile(LeafPath, withKey.Export(X509ContentType.Pkcs12));
 
+        // PEM as well as PKCS#12, because nginx reads one and not the other, and in their own
+        // directory because that is the one the proxy mounts - see CertificateOptions.ProxyDirectory
+        // for why the authority's key must not be in there with them. Deliberately the leaf on its
+        // own, with no chain appended - see LeafCertificatePemFileName for why appending the
+        // authority breaks verification on the printer.
+        System.IO.Directory.CreateDirectory(_proxyDirectory);
+
+        WriteProxyFile(LeafCertificatePemPath, Encoding.ASCII.GetBytes(issued.ExportCertificatePem()));
+        WriteProxyFile(LeafKeyPemPath, Encoding.ASCII.GetBytes(key.ExportPkcs8PrivateKeyPem()));
+
         _logger.LogInformation("Issued a printer certificate for {Names}, valid until {NotAfter:o}.",
                                string.Join(", ", distinct), issued.NotAfter);
 
@@ -228,6 +411,31 @@ public class PrinterCertificateAuthority
         if (!OperatingSystem.IsWindows() && !path.EndsWith(".der", StringComparison.OrdinalIgnoreCase))
         {
             File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+    }
+
+    /// <summary>
+    /// Writes a file the proxy container has to be able to read.
+    /// </summary>
+    /// <remarks>
+    /// <b>Readable by everyone, which <see cref="WriteFile"/> deliberately is not.</b> nginx runs as
+    /// its own uid in its own container and cannot read a file this process wrote owner-only, so the
+    /// alternative to widening these two is a proxy that starts, finds a key it may not open, and
+    /// reports a certificate problem that has nothing to do with the certificate. What is widened is
+    /// bounded twice over: to a volume that only these two containers mount, and to the leaf, which is
+    /// replaceable without visiting a printer. <see cref="CertificateOptions.ProxyDirectory"/> carries
+    /// the full argument, including why the authority's key is not in the same directory.
+    /// </remarks>
+    private static void WriteProxyFile(string path, byte[] contents)
+    {
+        File.WriteAllBytes(path, contents);
+
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(path,
+                                 UnixFileMode.UserRead | UnixFileMode.UserWrite
+                               | UnixFileMode.GroupRead
+                               | UnixFileMode.OtherRead);
         }
     }
 }

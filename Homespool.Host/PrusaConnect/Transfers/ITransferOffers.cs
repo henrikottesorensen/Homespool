@@ -8,21 +8,28 @@ namespace Homespool.Host.PrusaConnect.Transfers;
 public interface ITransferOffers
 {
     /// <summary>
-    /// Offers <paramref name="path"/> under <paramref name="hash"/>, which is what the printer will
-    /// quote back on the first range request of the transfer.
+    /// Offers the file at <paramref name="path"/> under <paramref name="token"/>, which is what the
+    /// printer will quote back on the first range request of the transfer. Returns false if the file
+    /// could not be opened, which a caller that just looked it up should treat as it vanishing.
     /// </summary>
     /// <remarks>
-    /// The hash is supplied rather than generated here because it is already the uploaded file's
-    /// identifier - one value serves as both the file handle and the transfer token, which is how
-    /// Connect's own app API works (its <c>start/cloud</c> takes a <c>hash</c>, and that same hash
-    /// comes back from the printer). Re-offering an already-offered hash is fine and is what a
-    /// retried transfer does.
+    /// <para>
+    /// <b>The file is opened here, not when the printer asks.</b> That pins the bytes for the whole
+    /// transfer: an overwrite replaces the name, and this offer keeps serving what the command
+    /// declared. See <see cref="TransferOfferStore"/> for why the lazy version was a silent
+    /// corruption rather than a lesser guarantee.
+    /// </para>
+    /// <para>
+    /// The token is supplied rather than generated here because the caller has to put it in the
+    /// command it is about to send. It is minted per send and means nothing afterwards - it is
+    /// correlation, not identity, which is what lets the file it stands for be named anything at all.
+    /// </para>
     /// </remarks>
-    void Offer(string hash, string path);
+    bool Offer(string token, string path);
 
     /// <summary>
-    /// Withdraws an offer. Idempotent - an already-withdrawn or never-known hash is not an error,
-    /// because the transfer ending and an operator cancelling can race.
+    /// Withdraws an offer and closes what it held. Idempotent - an already-withdrawn or never-known
+    /// token is not an error, because the transfer ending and an operator cancelling can race.
     /// </summary>
-    void Revoke(string hash);
+    void Revoke(string token);
 }

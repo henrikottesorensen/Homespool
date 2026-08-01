@@ -5,8 +5,10 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 using Homespool.Data;
+using Homespool.Host.Certificates;
 using Homespool.Host.Pages.Printers;
 using Homespool.Host.PrusaConnect;
+using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 using Microsoft.AspNetCore.Http;
@@ -25,6 +27,10 @@ namespace Homespool.Host.Test.Printers;
 public sealed class AddModelTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-printers-add-{Guid.NewGuid():N}.db");
+
+    // The page offers the names its certificate covers, so these tests need a real one - the leaf is
+    // what decides whether a bundle can be built at all.
+    private readonly string _certificateRoot = Path.Combine(Path.GetTempPath(), $"ps-printers-add-certs-{Guid.NewGuid():N}");
 
     private HSDbContext NewContext()
     {
@@ -52,13 +58,34 @@ public sealed class AddModelTests : IDisposable
                 File.Delete(path);
             }
         }
+
+        if (Directory.Exists(_certificateRoot))
+        {
+            Directory.Delete(_certificateRoot, recursive: true);
+        }
+    }
+
+    private ProvisioningBundleBuilder NewBundleBuilder(PrusaConnectOptions options)
+    {
+        PrinterCertificateAuthority authority = new(
+            Options.Create(new CertificateOptions { Directory = "certs" }),
+            new HostEnvironmentAccessor(_certificateRoot),
+            TimeProvider.System,
+            NullLogger<PrinterCertificateAuthority>.Instance);
+
+        if (options.PrinterTls && options.IsPrinterAddressConfigured)
+        {
+            authority.EnsureLeaf([options.PrinterHost]);
+        }
+
+        return new ProvisioningBundleBuilder(Options.Create(options), Options.Create(new CertificateOptions()), authority, new DnsHostAddressResolver());
     }
 
     /// <summary>
     /// Builds an AddModel wired to real services, a signed-in user with a default team they can
     /// manage, and the fake PageContext plumbing unit-tested PageModels need.
     /// </summary>
-    private static async Task<(AddModel model, HSUser user)> NewModelAsync(HSDbContext context, string publicHost = "printers.example.com")
+    private async Task<(AddModel model, HSUser user)> NewModelAsync(HSDbContext context, string publicHost = "printers.example.com")
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 
@@ -81,7 +108,7 @@ public sealed class AddModelTests : IDisposable
         PrusaConnectService prusaConnectService = new(context, new CodeGenerator(), new TokenService(), new TeamService(context),
             TimeProvider.System, NullLogger<PrusaConnectService>.Instance, Options.Create(options));
 
-        AddModel model = new(prusaConnectService, new TeamService(context), users, new UnitOfWork(context),
+        AddModel model = new(prusaConnectService, NewBundleBuilder(options), new TeamService(context), users, new UnitOfWork(context),
             Options.Create(options), NullLogger<AddModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
@@ -139,7 +166,7 @@ public sealed class AddModelTests : IDisposable
         await model.OnPostAsync(CancellationToken.None);
 
         // Assert
-        model.Snippet.Should().BeNull();
+        model.Offer.Should().BeNull();
         model.ModelState.IsValid.Should().BeFalse();
         (await context.Printers.AnyAsync()).Should().BeFalse("nothing should be provisioned while unconfigured");
     }
@@ -167,14 +194,15 @@ public sealed class AddModelTests : IDisposable
         printer.Name.Should().Be("Bench printer");
         printer.Location.Should().Be("Workshop");
 
-        model.Snippet.Should().NotBeNull();
-        model.Snippet.Should().Contain("[service::connect]")
+        model.Offer.Should().NotBeNull();
+        model.Offer!.CanBuild.Should().BeTrue("the certificate covers the configured address");
+        model.Offer.Snippet.Should().Contain("[service::connect]")
             .And.Contain("hostname = printers.example.com")
             .And.Contain("port = 443")
             .And.Contain("tls = True");
 
         PrusaConnectProvisioning stored = await context.PrusaConnectProvisionings.SingleAsync();
-        string tokenInSnippet = model.Snippet!.Split("token = ")[1].Trim();
+        string tokenInSnippet = model.Offer!.Snippet.Split("token = ")[1].Trim();
         new TokenService().VerifyToken(tokenInSnippet, stored.HashedToken).Should()
             .BeTrue("the snippet must carry the same token that was hashed and stored");
 
@@ -199,7 +227,7 @@ public sealed class AddModelTests : IDisposable
         await model.OnPostAsync(CancellationToken.None);
 
         // Assert
-        model.Snippet.Should().BeNull();
+        model.Offer.Should().BeNull();
         model.ModelState.IsValid.Should().BeFalse();
         (await context.Printers.AnyAsync()).Should().BeFalse();
     }

@@ -28,16 +28,58 @@ namespace Homespool.Host.PrusaConnect;
 public sealed class WebSocketPrinterConnection : IClosablePrinterConnection
 {
     /// <summary>
-    /// The largest payload a single frame may carry. One below the 16-bit ceiling's successor: at
-    /// 65 535 .NET writes the 16-bit length marker (126), and at 65 536 it switches to the 64-bit
-    /// marker (127) - which the firmware's client rejects outright, dropping the connection
-    /// (websocket.cpp:127-129). Measured, not inferred from the RFC.
+    /// Payload bytes per WebSocket frame. The only limit is the WebSocket one their client can parse:
+    /// at 65 535 .NET writes the 16-bit length marker (126), and at 65 536 it switches to the 64-bit
+    /// marker (127), which the firmware rejects outright and drops the connection
+    /// (<c>websocket.cpp:127-129</c>). Measured, not inferred from the RFC.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This was 1000 on TLS connections for one day, and the reason it is not any more is the
+    /// whole of why nginx now terminates printer TLS.</b> The problem was real: Buddy builds mbedtls
+    /// with <c>MBEDTLS_SSL_IN_CONTENT_LEN</c> 1024 (<c>cipher_config_ece.h:69-74</c>), reclaiming
+    /// ~30 KB of SRAM and making TLS fit on the board at all, so a printer holds one kilobyte of TLS
+    /// plaintext at a time and a 256 KiB chunk write is far past it. It asks the server to respect
+    /// that by negotiating RFC 6066 <c>max_fragment_length</c>, and Prusa's own servers honour it -
+    /// which is how every Connect-connected printer transfers files today.
+    /// </para>
+    /// <para>
+    /// <b><see cref="System.Net.Security.SslStream"/> does not honour it</b> (measured 2026-07-31: a
+    /// client offering <c>2^9</c> got no echo in the ServerHello and one 8 KB write produced a single
+    /// 8216-byte record; <c>dotnet/runtime#44241</c>, open since 2020, closed unimplemented). So the
+    /// fix that shipped drove record size from this end instead, one frame per write per record, and
+    /// it worked on an MK3.5 - but only because Kestrel happened not to batch two frames into one
+    /// write. That was behaviour rather than contract, and unprovable by testing: an observation only
+    /// shows batching did not happen while it was watched.
+    /// </para>
+    /// <para>
+    /// <b>OpenSSL honours the extension, so the guarantee now lives at the layer that negotiated
+    /// it</b> - 536-byte records against a client asking for 2^9, measured the same day. nginx is
+    /// OpenSSL and terminates the printer connection, which leaves nothing here to guess at: this
+    /// process writes plain HTTP to a proxy on the same host, and record size is not its business.
+    /// See <c>notes/tls-by-default.md</c>, "Decision 3a's premise has shifted".
+    /// </para>
+    /// <para>
+    /// <b>If a transfer over TLS fails again, this is the thing to suspect first and NOT the thing to
+    /// fix.</b> A large frame failing means nginx did not honour <c>max_fragment_length</c> after
+    /// all - check the record sizes in a capture, which needs no decryption since record headers are
+    /// in the clear. Putting 1000 back would mask that, and mask it in the specific way that made the
+    /// original bug invisible for a day: it would work, and prove nothing about why.
+    /// </para>
+    /// </remarks>
     private const int MaxFramePayload = 65535;
 
     private readonly WebSocket _webSocket;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
+    /// <summary>Wraps an accepted socket.</summary>
+    /// <param name="webSocket">The accepted socket, already upgraded.</param>
+    /// <remarks>
+    /// It used to take the transport as well, to size frames for it. It no longer needs to know: the
+    /// socket is plain HTTP to the proxy whatever a printer dialled, and the only party that has to
+    /// care about TLS record sizes is the one holding the TLS session. See
+    /// <see cref="MaxFramePayload"/>.
+    /// </remarks>
     public WebSocketPrinterConnection(WebSocket webSocket)
     {
         _webSocket = webSocket;

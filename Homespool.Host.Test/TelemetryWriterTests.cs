@@ -739,6 +739,74 @@ public sealed class TelemetryWriterTests : IDisposable
     }
 
     /// <summary>
+    /// <c>INFO</c> carries <c>api_key</c> - <b>the printer's PrusaLink password</b>, which grants full
+    /// authenticated access to its HTTP API, including reading any file off the drive. Firmware
+    /// volunteers it on every connection, and this table is append-only with no retention sweep, so
+    /// without this it accumulates in clear text beside the printer's own address.
+    /// </summary>
+    /// <remarks>
+    /// Found in a live events table on 2026-07-31, having been written on every reconnection since
+    /// enrolment. Rotating the password on the printer does not remove the copies already stored,
+    /// which is exactly why the fix has to be at the write.
+    /// </remarks>
+    [Fact]
+    public async Task AnInfoEventStoresItsApiKeyRedacted()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        using JsonDocument payload = JsonDocument.Parse(
+            """
+            {"firmware":"6.5.7+12836","api_key":"vC7x4aZfohmcbzH","nozzle_diameter":0.4,
+             "network_info":{"wifi_ssid":"Heart of Gold","wifi_mac":"C8:C9:A3:22:F4:08","wifi_ipv4":"192.168.13.110","hostname":"prusa-mk35"},
+             "storages":[{"mountpoint":"/usb","read_only":false}]}
+            """);
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = Events.Info,
+            Status = "IDLE",
+            Data = payload.RootElement.Clone(),
+        });
+
+        // Assert
+        bool flushed = await WaitUntilAsync(async () =>
+        {
+            await using HSDbContext context = NewVerificationContext();
+            return await context.PrinterEvents.AnyAsync();
+        }, TimeSpan.FromSeconds(5));
+
+        flushed.Should().BeTrue();
+
+        await using HSDbContext verify = NewVerificationContext();
+        PrinterEvent stored = await verify.PrinterEvents.SingleAsync();
+
+        stored.Payload.Should().NotContain("vC7x4aZfohmcbzH", "the credential must never reach a row");
+        stored.Payload.Should().NotContain("Heart of Gold", "an SSID names where someone lives");
+        stored.Payload.Should().NotContain("C8:C9:A3:22:F4:08");
+
+        using JsonDocument kept = JsonDocument.Parse(stored.Payload!);
+
+        // Masked rather than dropped: a silently absent key reads as "firmware stopped sending it".
+        kept.RootElement.GetProperty("api_key").GetString().Should().Be("[redacted]");
+
+        JsonElement network = kept.RootElement.GetProperty("network_info");
+
+        // Nested, so a flat name match would have missed both of these entirely.
+        network.GetProperty("wifi_ssid").GetString().Should().Be("[redacted]");
+        network.GetProperty("wifi_mac").GetString().Should().Be("[redacted]");
+
+        // Everything else survives - a blacklist of three paths, not the FILE_INFO allowlist.
+        kept.RootElement.GetProperty("firmware").GetString().Should().Be("6.5.7+12836");
+        kept.RootElement.GetProperty("nozzle_diameter").GetDouble().Should().Be(0.4);
+        network.GetProperty("wifi_ipv4").GetString().Should().Be("192.168.13.110");
+        network.GetProperty("hostname").GetString().Should().Be("prusa-mk35");
+        kept.RootElement.GetProperty("storages").EnumerateArray().Should().ContainSingle();
+    }
+
+    /// <summary>
     /// <c>INFO</c> is the only message saying what a printer <i>is</i>, and until this landed nothing
     /// consumed it: <c>Printer.Firmware</c> had no assignment anywhere in the codebase, so the API
     /// reported <c>null</c> for every printer forever.

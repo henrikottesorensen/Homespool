@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text.RegularExpressions;
 
 using AwesomeAssertions;
 
@@ -62,6 +63,38 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
             certificate.GetECDsaPublicKey()!.KeySize.Should().Be(256);
             certificate.GetRSAPublicKey().Should().BeNull();
         }
+    }
+
+    /// <summary>
+    /// The PEM written for nginx carries the leaf and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// Firmware's <c>x509_crt_check_ee_locally_trusted</c> wants exactly one certificate presented.
+    /// A terminator handed leaf + authority fails verification looking like a protocol fault rather
+    /// than a certificate one - the shape of failure this project has spent whole afternoons on - so
+    /// the file being single is asserted rather than assumed.
+    /// </remarks>
+    [Fact]
+    public void TheNginxPemHoldsTheLeafAloneWithNoChain()
+    {
+        // Arrange
+        PrinterCertificateAuthority authority = NewAuthority();
+
+        // Act
+        using X509Certificate2 leaf = authority.IssueLeaf(["192.168.13.238"]);
+
+        string certificatePem = File.ReadAllText(authority.LeafCertificatePemPath);
+        string keyPem = File.ReadAllText(authority.LeafKeyPemPath);
+
+        // Assert
+        Regex.Matches(certificatePem, "BEGIN CERTIFICATE").Count.Should().Be(1,
+            "a second certificate here is the authority, and presenting it fails verification on the printer");
+
+        X509Certificate2 fromPem = X509Certificate2.CreateFromPem(certificatePem);
+
+        fromPem.Thumbprint.Should().Be(leaf.Thumbprint, "and it has to be the leaf that was just issued");
+        keyPem.Should().Contain("BEGIN PRIVATE KEY", "nginx needs the key beside it");
+        fromPem.Dispose();
     }
 
     /// <summary>
@@ -285,6 +318,95 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
 
         // Assert
         Assert.Throws<ArgumentException>(() => authority.IssueLeaf(["   ", string.Empty]));
+    }
+
+    /// <summary>
+    /// The leaf Kestrel serves is issued on the first run and never reissued on its own.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The names change constantly on a real machine - a VPN comes up, <c>docker0</c> appears, wifi
+    /// gives way to ethernet - and reissuing on each would drop every printer connection as Kestrel
+    /// picked up the new certificate, make the certificate a function of what the machine happened to
+    /// look like at boot, and silently expand what this server claims to be. So the second start gets
+    /// the certificate the first one issued, whatever the addresses say now.
+    /// </para>
+    /// <para>
+    /// Which is what leaves step 6 a real job: notice the drift, and offer the reissue.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheLeafIsIssuedOnceAndNotReissuedWhenTheNamesChange()
+    {
+        // Act
+        using X509Certificate2 first = NewAuthority().EnsureLeaf(["192.168.13.238"]);
+        using X509Certificate2 second = NewAuthority().EnsureLeaf(["192.168.13.99", "homespool.lan"]);   // a "restart", elsewhere
+
+        // Assert
+        second.Thumbprint.Should().Be(first.Thumbprint,
+            "an automatic reissue would drop every live printer connection, and nobody asked for one");
+        DnsNames(second).Should().BeEquivalentTo(["192.168.13.238"]);
+        second.HasPrivateKey.Should().BeTrue("Kestrel serves this, so the key has to survive the round trip to disk");
+    }
+
+    /// <summary>
+    /// A leaf issued before the proxy needed PEM gets the PEM written on the next start, without
+    /// being reissued.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is the upgrade path, and it failed on a real stack before this test existed.</b> Every
+    /// deployment issued a certificate by an earlier version has <c>printer.pfx</c> and no PEM at all;
+    /// <see cref="PrinterCertificateAuthority.EnsureLeaf"/> sees the PKCS#12, returns it, and used to
+    /// write nothing further - so nginx found no certificate, declined to serve the printer listener,
+    /// and every printer stopped connecting. The only diagnostic was a proxy log line reading as
+    /// "PrinterTls must be off", which is exactly the wrong thing to conclude.
+    /// <para>
+    /// The thumbprint assertion is the other half: exporting the existing leaf rather than issuing a
+    /// new one keeps whatever names the operator deliberately covered.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AnUpgradedDeploymentGetsThePemWithoutReissuingTheLeaf()
+    {
+        // Arrange - a deployment from before the proxy terminated printer TLS: PKCS#12, no PEM.
+        PrinterCertificateAuthority authority = NewAuthority();
+        using X509Certificate2 original = authority.IssueLeaf(["192.168.13.238"]);
+
+        File.Delete(authority.LeafCertificatePemPath);
+        File.Delete(authority.LeafKeyPemPath);
+
+        // Act - a restart on the new version.
+        using X509Certificate2 served = NewAuthority().EnsureLeaf(["something-else-entirely.lan"]);
+
+        // Assert
+        File.Exists(authority.LeafCertificatePemPath).Should().BeTrue(
+            "nginx reads PEM and cannot read the PKCS#12, so without this the proxy has nothing to present");
+        File.Exists(authority.LeafKeyPemPath).Should().BeTrue();
+
+        served.Thumbprint.Should().Be(original.Thumbprint,
+            "the existing leaf is exported, not reissued - reissuing would silently drop the names the "
+            + "operator had covered");
+
+        using X509Certificate2 fromPem = X509Certificate2.CreateFromPem(
+            File.ReadAllText(authority.LeafCertificatePemPath));
+
+        fromPem.Thumbprint.Should().Be(original.Thumbprint, "and the PEM has to be that same leaf");
+    }
+
+    /// <summary>
+    /// Every name offered on the first run is covered, so the operator picking the wrong one to write
+    /// into a printer's ini costs a re-downloaded bundle rather than a re-provisioned printer.
+    /// </summary>
+    [Fact]
+    public void TheFirstRunLeafCoversEveryNameItWasOffered()
+    {
+        // Act
+        using X509Certificate2 leaf = NewAuthority().EnsureLeaf(["homespool.lan", "192.168.13.238", "10.0.0.4"]);
+
+        // Assert
+        DnsNames(leaf).Should().BeEquivalentTo(["homespool.lan", "192.168.13.238", "10.0.0.4"]);
+        PrinterCertificateAuthority.NamesOf(leaf).Should().BeEquivalentTo(DnsNames(leaf),
+            "drift detection reads the names back through NamesOf, so it must see what was written");
     }
 
     public void Dispose()

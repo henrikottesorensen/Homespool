@@ -17,6 +17,13 @@ namespace Homespool.Host.ViewComponents;
 /// people who use the app are the same people who run it.
 /// </para>
 /// <para>
+/// <b>One item does not come from the report, and cannot.</b> Whether the administrator reading this
+/// is doing so over plain HTTP is a property of <i>their request</i> - this server has no user-facing
+/// address to inspect at startup, deliberately, since links in mail come from whatever the request
+/// said. A health check has no request; this does. So the exposure rule is asked here, and the banner
+/// stops being purely a rendering of the health report - which its own remarks used to promise.
+/// </para>
+/// <para>
 /// Running the checks per render is cheap by construction - they read in-memory counters, no
 /// database round trip - and this deliberately does not cache. A banner that lags the problem by a
 /// polling interval would be worse than none while someone is actively looking at whether the thing
@@ -41,6 +48,18 @@ public sealed class HealthBannerViewComponent : ViewComponent
 
         HealthReport report = await _healthChecks.CheckHealthAsync(HttpContext.RequestAborted);
 
-        return View(HealthBanner.From(report));
+        List<HealthBannerItem> items = [.. HealthBanner.From(report)];
+
+        ExposureVerdict session = DeploymentExposure.EvaluateAdminSession(
+            Request.IsHttps, HttpContext.Connection.RemoteIpAddress);
+
+        if (session.IsProblem)
+        {
+            // First, and in the loudest style available: everything else on this page is being read
+            // over the same connection, including whatever the reader is about to do about it.
+            items.Insert(0, new HealthBannerItem(session.Description, "alert-danger", "Insecure connection:"));
+        }
+
+        return View(items);
     }
 }

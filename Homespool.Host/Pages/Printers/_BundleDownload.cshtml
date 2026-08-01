@@ -1,0 +1,94 @@
+@model BundleOffer
+
+<div class="alert alert-success" role="alert">
+    <p class="mb-1">
+        <strong>Download this now.</strong> The token inside it is shown once and cannot be retrieved
+        again - if the download is lost before the printer connects, use "Regenerate" to issue a new one.
+    </p>
+
+    @if (Model.CanBuild)
+    {
+        <form method="post" asp-page="Bundle" class="mb-2">
+            <input type="hidden" name="Token" value="@Model.Token" />
+            <input type="hidden" name="PrinterId" value="@Model.PrinterId" />
+            <input type="hidden" name="PrinterName" value="@Model.PrinterName" />
+
+            <div class="mb-2">
+                <label for="bundle-hostname" class="form-label">
+                    Address this printer should dial
+                </label>
+                <select id="bundle-hostname" name="Hostname" class="form-select">
+                    @foreach (Homespool.Host.Certificates.PrinterAddressSuggestion name in Model.Names)
+                    {
+                        <option value="@name.Value">@name.Value</option>
+                    }
+                </select>
+@*  The choice between a name and an address is the choice between surviving a moved DHCP lease and
+    breaking silently one day, and the classifier already knows which is which. Rendering the note
+    under the select rather than inside each option keeps the sentences whole - they are too long to
+    read squeezed into a dropdown, and this is the one moment they are worth reading. *@
+                <div class="form-text">
+                    <p class="mb-1">
+                        These are the names this server's printer certificate covers. An address that is
+                        not on the list cannot be verified by a printer, however reachable it looks from
+                        here.
+                    </p>
+                    <ul class="mb-0">
+                        @foreach (Homespool.Host.Certificates.PrinterAddressSuggestion name in Model.Names)
+                        {
+                            <li><code>@name.Value</code> &mdash; @name.Note</li>
+                        }
+                    </ul>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Download provisioning bundle</button>
+        </form>
+
+        <p class="mb-2">
+            Unzip it onto the <strong>root</strong> of a USB stick - not into a folder, or the printer
+            will not find the files - then load it from the printer's own menu:
+            <em>Prusa Connect &rarr; Load Settings</em>.
+        </p>
+
+        @if (Model.TlsEnabled)
+        {
+            <p class="mb-2">
+                The zip carries <code>connect.der</code> as well, and the ini sets
+                <code>custom_cert = 1</code>. That <strong>replaces</strong> the printer's trust store
+                rather than adding to it, so while it is set the printer cannot talk to Prusa Connect.
+                The same warning is written inside the ini, where it is read at the moment it matters.
+            </p>
+        }
+        else
+        {
+            <p class="mb-2">
+                <strong>This deployment serves printers over plain HTTP</strong>
+                (<code>PrusaConnect:PrinterTls</code> is false), so the bundle carries no certificate
+                and this printer's token will cross the network in clear.
+            </p>
+        }
+
+        <details class="mb-0">
+            <summary>Read the ini instead</summary>
+            <p class="mt-2 mb-1">
+                What the file will contain, for <code>@Model.PreferredName</code>. Choosing a different
+                address above changes the <code>hostname</code> line to match.
+            </p>
+            <textarea class="form-control font-monospace" rows="7" readonly onclick="this.select()">@Model.Snippet</textarea>
+        </details>
+    }
+    else
+    {
+        <p class="mb-1">
+            This printer is provisioned, but no bundle can be built: the certificate carries no address a
+            printer could actually reach.
+        </p>
+        <p class="mb-0">
+            In a container that usually means the certificate was issued before
+            <code>PrusaConnect:PrinterHost</code> was set, so it covers only addresses inside the
+            container - which work from in there and nowhere else. Set the address printers should dial,
+            then reissue under <em>Admin &rarr; Printer certificate</em>.
+        </p>
+    }
+</div>

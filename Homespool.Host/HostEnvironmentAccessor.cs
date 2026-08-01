@@ -1,4 +1,4 @@
-namespace Homespool.Host.PrusaConnect.Transfers;
+namespace Homespool.Host;
 
 /// <summary>Supplies the content root without dragging <c>IWebHostEnvironment</c> into a test.</summary>
 public sealed class HostEnvironmentAccessor : IHostEnvironmentAccessor

@@ -122,6 +122,48 @@ public class TransferChunkFramingTests
     }
 
     /// <summary>
+    /// Frames stay large whatever transport the printer dialled over — the WebSocket cap is the only
+    /// limit this process answers to.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>There were two tests here for one day, and this is what replaced them.</b> One asserted
+    /// that frames over TLS fit inside 1024 bytes, because Buddy holds that much TLS plaintext
+    /// (<c>MBEDTLS_SSL_IN_CONTENT_LEN</c>), asks for it with RFC 6066, and <c>SslStream</c> ignores
+    /// the request - so frame size was the only lever this process had over record size. A real MK3.5
+    /// failed the transfer on the first chunk without it, proven on hardware 2026-07-31.
+    /// </para>
+    /// <para>
+    /// <b>The lever moved rather than the requirement.</b> nginx terminates printer TLS now, OpenSSL
+    /// honours <c>max_fragment_length</c>, and the printer's request is answered at the layer that
+    /// negotiated it. So this process is back to writing whatever the WebSocket protocol allows, and
+    /// asserting a small frame here would now be asserting a workaround for a problem that is solved
+    /// elsewhere - which is exactly the kind of test that outlives its reason and blocks the fix.
+    /// </para>
+    /// <para>
+    /// <b>Nothing in this project can assert the replacement.</b> The guarantee lives in nginx's
+    /// OpenSSL, and the E2E pipe carries no TLS at all. It is checked on hardware, and a capture can
+    /// confirm the record sizes without decrypting anything - see
+    /// <c>WebSocketPrinterConnection.MaxFramePayload</c> for what to do if a transfer fails again.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task FramesStayLargeWhateverTheTransport()
+    {
+        // Arrange
+        (WebSocketPrinterConnection connection, CaptureStream capture) = NewConnection();
+
+        // Act
+        using ArrayContent source = new(new byte[8192]);
+        await connection.SendChunkAsync(ChunkWireEncoder.EncodeHeader(1), source, 0, 8192, CancellationToken.None);
+
+        // Assert
+        Frame.ParseAll(capture.Written.ToArray()).Should().ContainSingle(
+            "8 KB is far inside the frame size, so it is one frame - and there is no longer a "
+            + "transport that makes it many");
+    }
+
+    /// <summary>
     /// Reads that come back short - which an ordinary file read is always allowed to do - must not
     /// end the chunk early. Under-delivering is the one failure firmware cannot recover from: the
     /// inline engine has no stall timeout, so the printer would wait forever.
@@ -147,6 +189,7 @@ public class TransferChunkFramingTests
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
                      Justification = "The socket and its capture stream live for the duration of the test; neither holds an OS handle.")]
+
     private static (WebSocketPrinterConnection connection, CaptureStream capture) NewConnection()
     {
         CaptureStream capture = new();

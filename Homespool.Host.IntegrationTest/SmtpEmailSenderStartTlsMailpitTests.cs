@@ -65,7 +65,7 @@ public sealed class SmtpEmailSenderStartTlsMailpitTests : IAsyncLifetime, IDispo
     /// A message sent over a real STARTTLS handshake, validated against the CA
     /// <c>start-mailpit-tls.sh</c> generated, is actually delivered.
     /// </summary>
-    [Fact]
+    [RequiresMailpitTlsFixtureFact]
     public async Task SendEmailAsyncDeliversAMessageOverAGenuineStartTlsHandshake()
     {
         // Arrange
@@ -96,7 +96,7 @@ public sealed class SmtpEmailSenderStartTlsMailpitTests : IAsyncLifetime, IDispo
     /// anything with the right shape. Mailpit's real leaf certificate is presented either way (it
     /// isn't reconfigured for this test); what changes is which CA the client trusts.
     /// </summary>
-    [Fact]
+    [RequiresMailpitTlsFixtureFact]
     public async Task SendEmailAsyncFailsWhenTheCertificateDoesNotChainToTheTrustedCa()
     {
         // Arrange
@@ -120,6 +120,9 @@ public sealed class SmtpEmailSenderStartTlsMailpitTests : IAsyncLifetime, IDispo
 
         if (!File.Exists(caCertPath))
         {
+            // Unreachable in practice: RequiresMailpitTlsFixtureFact skips the test before it runs.
+            // Kept so that calling this from somewhere without that attribute fails loudly rather than
+            // with a null reference three lines later.
             throw new InvalidOperationException(
                 $"CA certificate not found at {caCertPath}. Run ./start-mailpit-tls.sh first.");
         }

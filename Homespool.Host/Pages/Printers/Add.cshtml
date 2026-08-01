@@ -11,9 +11,9 @@
     contact this server first. The printer enrolls itself the moment it connects using the token.
 </p>
 
-@if (Model.Snippet is not null)
+@if (Model.Offer is not null)
 {
-    <partial name="_ConnectSnippet" model="Model.Snippet" />
+    <partial name="_BundleDownload" model="Model.Offer" />
 }
 
 @if (!Model.PrinterAddressConfigured)

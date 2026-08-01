@@ -45,4 +45,23 @@ docker run -d \
     -e MP_SMTP_TLS_KEY=/certs/key.pem \
     axllent/mailpit >/dev/null
 
-echo "Mailpit is up: SMTP on localhost:1025 (STARTTLS available), web UI at http://localhost:8025"
+# Wait for the port to answer before claiming it is up. `docker run -d` returns as soon as the
+# container is created, not when Mailpit is listening - which works by luck on a warm laptop and is a
+# race on a cold CI runner, where it would surface as an occasional failure in a test that has nothing
+# to do with whatever was being changed.
+echo "Waiting for SMTP on localhost:1025..."
+
+for attempt in $(seq 1 50); do
+    # bash's own /dev/tcp rather than nc, which is not on every CI image and whose flags differ
+    # between the BSD and OpenBSD builds.
+    if (exec 3<>/dev/tcp/localhost/1025) 2>/dev/null; then
+        echo "Mailpit is up: SMTP on localhost:1025 (STARTTLS available), web UI at http://localhost:8025"
+        exit 0
+    fi
+
+    sleep 0.2
+done
+
+echo "Mailpit did not start listening on 1025 within 10 seconds. Container log follows:" >&2
+docker logs "$container_name" >&2
+exit 1

@@ -71,7 +71,10 @@ public sealed class LengthLimitingStream : Stream
         return read;
     }
 
-    public override void Flush() => _inner.Flush();
+    public override void Flush()
+    {
+        _inner.Flush();
+    }
 
     /// <summary>
     /// Deliberately does not dispose the wrapped stream. This wraps the request body, which the
@@ -83,11 +86,20 @@ public sealed class LengthLimitingStream : Stream
         base.Dispose(disposing);
     }
 
-    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override long Seek(long offset, SeekOrigin origin)
+    {
+        throw new NotSupportedException();
+    }
 
-    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void SetLength(long value)
+    {
+        throw new NotSupportedException();
+    }
 
-    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count)
+    {
+        throw new NotSupportedException();
+    }
 
     private void Count(int read)
     {

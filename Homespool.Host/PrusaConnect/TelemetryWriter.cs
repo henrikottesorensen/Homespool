@@ -1231,9 +1231,11 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// where a multi-field struct read is not. A health check should never be able to see half of one
     /// flush and half of the next.
     /// </remarks>
-    private void PublishHealth(int pendingSamples, int pendingEvents) =>
+    private void PublishHealth(int pendingSamples, int pendingEvents)
+    {
         _health = new TelemetryHealthSnapshot(_lastFlushAt, _consecutiveFlushFailures, pendingSamples, pendingEvents,
                                               _dropWarnings.Total, _eventTrims.Total);
+    }
 
     /// <summary>
     /// Writes everything buffered since the last flush in one transaction, then clears the buffers.

@@ -71,8 +71,10 @@ public sealed class TelemetryWriterTests : IDisposable
         return false;
     }
 
-    private static async Task<int> SampleCountAsync(HSDbContext context) =>
-        await context.TelemetrySamples.CountAsync();
+    private static async Task<int> SampleCountAsync(HSDbContext context)
+    {
+        return await context.TelemetrySamples.CountAsync();
+    }
 
     /// <summary>
     /// Feeds one item at a time until <paramref name="observed"/> holds or the deadline passes.
@@ -111,29 +113,37 @@ public sealed class TelemetryWriterTests : IDisposable
     /// kill the service. Requires the exception to be attached, not just matching text - a flush
     /// failure with no exception would mean the writer swallowed the cause.
     /// </summary>
-    private static bool FlushFailed(FakeLogRecord record) =>
-        record.Level == LogLevel.Error
+    private static bool FlushFailed(FakeLogRecord record)
+    {
+        return record.Level == LogLevel.Error
         && record.Exception is not null
         && record.Message.Contains("flush failed");
+    }
 
-    private static StorageOptions DefaultOptions(int batchSize = 500, double flushIntervalSeconds = 30, double throttleSeconds = 0) =>
-        new()
+    private static StorageOptions DefaultOptions(int batchSize = 500, double flushIntervalSeconds = 30, double throttleSeconds = 0)
+    {
+        return new()
         {
             WriteBatchSize = batchSize,
             WriteFlushIntervalSeconds = flushIntervalSeconds,
             MinimumSampleIntervalSeconds = throttleSeconds,
         };
+    }
 
     /// <summary>
     /// True once an entry matching <paramref name="predicate"/> has been logged. Polled, because the
     /// writer logs from its own drain loop - there is no moment a test can await directly.
     /// </summary>
-    private Task<bool> LoggedAsync(Func<FakeLogRecord, bool> predicate) =>
-        WaitUntilAsync(() => Task.FromResult(LogRecords.Any(predicate)), TimeSpan.FromSeconds(5));
+    private Task<bool> LoggedAsync(Func<FakeLogRecord, bool> predicate)
+    {
+        return WaitUntilAsync(() => Task.FromResult(LogRecords.Any(predicate)), TimeSpan.FromSeconds(5));
+    }
 
     /// <summary>Renders the captured log for a failure message.</summary>
-    private string LogDump() =>
-        string.Join('\n', LogRecords.Select(r => $"{r.Level}: {r.Message}"));
+    private string LogDump()
+    {
+        return string.Join('\n', LogRecords.Select(r => $"{r.Level}: {r.Message}"));
+    }
 
     public void Dispose()
     {
@@ -188,8 +198,10 @@ public sealed class TelemetryWriterTests : IDisposable
         return _writer;
     }
 
-    private HSDbContext NewVerificationContext() =>
-        new(new DbContextOptionsBuilder<HSDbContext>().UseSqlite($"Data Source={_databasePath}").Options);
+    private HSDbContext NewVerificationContext()
+    {
+        return new(new DbContextOptionsBuilder<HSDbContext>().UseSqlite($"Data Source={_databasePath}").Options);
+    }
 
     /// <summary>
     /// <see cref="PrinterLiveState"/> and <see cref="TelemetrySample"/> both carry a required FK to

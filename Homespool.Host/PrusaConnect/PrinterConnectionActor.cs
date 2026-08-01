@@ -151,8 +151,10 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
 
     public Task Completion { get; }
 
-    public ValueTask PostAsync(ConnectionMessage message, CancellationToken cancellationToken) =>
-        _mailbox.Writer.WriteAsync(message, cancellationToken);
+    public ValueTask PostAsync(ConnectionMessage message, CancellationToken cancellationToken)
+    {
+        return _mailbox.Writer.WriteAsync(message, cancellationToken);
+    }
 
     public async Task<CommandSendResult> SendCommandAsync(ISendableCommand command, CancellationToken cancellationToken)
     {

@@ -106,8 +106,10 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
         return _service;
     }
 
-    private HSDbContext NewVerificationContext() =>
-        new(new DbContextOptionsBuilder<HSDbContext>().UseSqlite(_connectionString).Options);
+    private HSDbContext NewVerificationContext()
+    {
+        return new(new DbContextOptionsBuilder<HSDbContext>().UseSqlite(_connectionString).Options);
+    }
 
     private async Task SeedPrinterAsync(int printerId = 1)
     {

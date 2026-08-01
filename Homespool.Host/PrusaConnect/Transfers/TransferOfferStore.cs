@@ -248,8 +248,10 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
 
             public long Length => _content.Length;
 
-            public ValueTask<int> ReadAsync(Memory<byte> destination, long offset, CancellationToken cancellationToken) =>
-                _content.ReadAsync(destination, offset, cancellationToken);
+            public ValueTask<int> ReadAsync(Memory<byte> destination, long offset, CancellationToken cancellationToken)
+            {
+                return _content.ReadAsync(destination, offset, cancellationToken);
+            }
 
             public void Dispose()
             {

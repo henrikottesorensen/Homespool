@@ -36,15 +36,19 @@ public class ControllerResponseDocumentationTests
         typeof(PrinterAppController),
     ];
 
-    private static IEnumerable<MethodInfo> Actions(Type controller) =>
-        controller.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+    private static IEnumerable<MethodInfo> Actions(Type controller)
+    {
+        return controller.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
                   .Where(method => !method.IsSpecialName
                                    && method.GetCustomAttribute<NonActionAttribute>() is null);
+    }
 
-    private static Type Unwrapped(Type returnType) =>
-        returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>)
+    private static Type Unwrapped(Type returnType)
+    {
+        return returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>)
             ? returnType.GetGenericArguments()[0]
             : returnType;
+    }
 
     [Fact]
     public void EveryAppApiActionDocumentsItsStatusCodes()

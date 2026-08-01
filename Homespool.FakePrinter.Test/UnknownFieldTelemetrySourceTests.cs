@@ -24,13 +24,21 @@ public class UnknownFieldTelemetrySourceTests
     {
         public string Json { get; init; } = """{"state":"IDLE"}""";
 
-        public byte[]? NextMessage(FakeDevice device) => System.Text.Encoding.UTF8.GetBytes(Json);
+        public byte[]? NextMessage(FakeDevice device)
+        {
+            return System.Text.Encoding.UTF8.GetBytes(Json);
+        }
 
-        public TimeSpan DelayBeforeNext(FakeDevice device) => TimeSpan.FromSeconds(1);
+        public TimeSpan DelayBeforeNext(FakeDevice device)
+        {
+            return TimeSpan.FromSeconds(1);
+        }
     }
 
-    private static JsonDocument Next(ITelemetrySource source) =>
-        JsonDocument.Parse(source.NextMessage(new FakeDevice())!);
+    private static JsonDocument Next(ITelemetrySource source)
+    {
+        return JsonDocument.Parse(source.NextMessage(new FakeDevice())!);
+    }
 
     /// <summary>
     /// The added properties arrive, and the message is still valid JSON carrying what the inner

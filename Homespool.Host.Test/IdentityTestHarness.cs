@@ -71,10 +71,13 @@ internal static class IdentityTestHarness
     }
 
     /// <summary>A bare PageContext, enough for ModelState/HttpContext but no real routing.</summary>
-    public static PageContext NewPageContext(DefaultHttpContext httpContext) => new()
+    public static PageContext NewPageContext(DefaultHttpContext httpContext)
     {
-        HttpContext = httpContext,
-    };
+        return new()
+        {
+            HttpContext = httpContext,
+        };
+    }
 
     /// <summary>
     /// A fake <see cref="IUrlHelper"/> whose only real behaviour is <see cref="IUrlHelper.RouteUrl"/>,
@@ -82,8 +85,10 @@ internal static class IdentityTestHarness
     /// <c>"path?query"</c> string from the route values it's given, so a test can parse the accept-link
     /// or confirmation-link a PageModel builds without a real router.
     /// </summary>
-    public static IUrlHelper NewUrlHelper(DefaultHttpContext httpContext) =>
-        new FakeUrlHelper(new ActionContext(httpContext, new RouteData(), new PageActionDescriptor()));
+    public static IUrlHelper NewUrlHelper(DefaultHttpContext httpContext)
+    {
+        return new FakeUrlHelper(new ActionContext(httpContext, new RouteData(), new PageActionDescriptor()));
+    }
 
     private sealed class FakeUrlHelper(ActionContext actionContext) : IUrlHelper
     {
@@ -101,12 +106,24 @@ internal static class IdentityTestHarness
             return query.Length == 0 ? page : $"{page}?{query}";
         }
 
-        public string? Action(UrlActionContext actionContext) => throw new NotSupportedException("Not used by the pages under test.");
+        public string? Action(UrlActionContext actionContext)
+        {
+            throw new NotSupportedException("Not used by the pages under test.");
+        }
 
-        public string? Content(string? contentPath) => contentPath;
+        public string? Content(string? contentPath)
+        {
+            return contentPath;
+        }
 
-        public bool IsLocalUrl(string? url) => url?.StartsWith('/') == true;
+        public bool IsLocalUrl(string? url)
+        {
+            return url?.StartsWith('/') == true;
+        }
 
-        public string? Link(string? routeName, object? values) => throw new NotSupportedException("Not used by the pages under test.");
+        public string? Link(string? routeName, object? values)
+        {
+            throw new NotSupportedException("Not used by the pages under test.");
+        }
     }
 }

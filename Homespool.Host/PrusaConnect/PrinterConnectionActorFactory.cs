@@ -33,6 +33,8 @@ public class PrinterConnectionActorFactory
 
     /// <summary>Creates the actor and starts its loop; the caller owns completion via
     /// <see cref="IPrinterConnectionActor.Complete"/>.</summary>
-    public virtual IPrinterConnectionActor Create(int printerId, IPrinterConnection connection) =>
-        new PrinterConnectionActor(printerId, connection, _sink, _logger, _options.Value.CommandResponseTimeout, _contentStore);
+    public virtual IPrinterConnectionActor Create(int printerId, IPrinterConnection connection)
+    {
+        return new PrinterConnectionActor(printerId, connection, _sink, _logger, _options.Value.CommandResponseTimeout, _contentStore);
+    }
 }

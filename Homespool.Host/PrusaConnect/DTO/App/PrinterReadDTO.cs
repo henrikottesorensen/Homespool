@@ -146,25 +146,28 @@ public class PrinterReadDTO
     /// that has not loaded it should pass. Claim responses do exactly that: a printer claimed a moment
     /// ago has said nothing yet, so <c>UNKNOWN</c> is the true answer rather than a placeholder.
     /// </param>
-    public static PrinterReadDTO FromEntity(Printer printer, PrinterLiveState? liveState = null) => new()
+    public static PrinterReadDTO FromEntity(Printer printer, PrinterLiveState? liveState = null)
     {
-        Uuid = printer.Uuid,
-        Name = printer.Name,
-        Location = printer.Location,
-        PrinterType = printer.Model,
-        PrinterTypeName = PrinterModelNames.ForPrinterType(printer.Model),
-        SerialNumber = printer.SerialNumber,
-        HasMmuEnabled = printer.HasMmuEnabled,
-        NozzleDiameter = printer.NozzleDiameter,
-        Firmware = printer.Firmware,
+        return new()
+        {
+            Uuid = printer.Uuid,
+            Name = printer.Name,
+            Location = printer.Location,
+            PrinterType = printer.Model,
+            PrinterTypeName = PrinterModelNames.ForPrinterType(printer.Model),
+            SerialNumber = printer.SerialNumber,
+            HasMmuEnabled = printer.HasMmuEnabled,
+            NozzleDiameter = printer.NozzleDiameter,
+            Firmware = printer.Firmware,
 
-        // Not printer.Status - see the remarks on this class.
-        State = (liveState?.Status ?? PrinterStatus.Unknown).ToConnectState(),
-        Material = printer.LoadedMaterial ?? "UNKNOWN",
-        TeamId = printer.TeamId,
-        CreatedAt = printer.CreatedAt,
-        UpdatedAt = printer.UpdatedAt,
-    };
+            // Not printer.Status - see the remarks on this class.
+            State = (liveState?.Status ?? PrinterStatus.Unknown).ToConnectState(),
+            Material = printer.LoadedMaterial ?? "UNKNOWN",
+            TeamId = printer.TeamId,
+            CreatedAt = printer.CreatedAt,
+            UpdatedAt = printer.UpdatedAt,
+        };
+    }
 
     /// <summary>
     /// Maps a printer already paired with its live state and the calling user's membership.

@@ -53,8 +53,10 @@ public static class ForwardedHeaderScope
     /// misbehaving printer on a LAN — worth having, and not worth inventing.
     /// </para>
     /// </remarks>
-    public static bool AppliesTo(int localPort, int printerPort, bool printerListenerIsProxied) =>
-        localPort != printerPort || printerListenerIsProxied;
+    public static bool AppliesTo(int localPort, int printerPort, bool printerListenerIsProxied)
+    {
+        return localPort != printerPort || printerListenerIsProxied;
+    }
 
     /// <summary>
     /// The same rule as a predicate over a request, for <c>UseWhen</c>.
@@ -67,6 +69,8 @@ public static class ForwardedHeaderScope
     /// the remote port would hand the decision to the client, which is the whole thing this guards
     /// against. Moving one line out of the pipeline puts it somewhere a test can reach.
     /// </remarks>
-    public static Func<HttpContext, bool> Predicate(int printerPort, bool printerListenerIsProxied) =>
-        context => AppliesTo(context.Connection.LocalPort, printerPort, printerListenerIsProxied);
+    public static Func<HttpContext, bool> Predicate(int printerPort, bool printerListenerIsProxied)
+    {
+        return context => AppliesTo(context.Connection.LocalPort, printerPort, printerListenerIsProxied);
+    }
 }

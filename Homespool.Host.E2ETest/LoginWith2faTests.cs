@@ -46,12 +46,15 @@ public sealed class LoginWith2faTests : IAsyncLifetime, IDisposable
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-2fa-{Guid.NewGuid():N}.db");
     private HomespoolFactory _factory = null!;
 
-    private static FormUrlEncodedContent TwoFactorBody(string antiforgeryToken, string code) => new(new Dictionary<string, string>
+    private static FormUrlEncodedContent TwoFactorBody(string antiforgeryToken, string code)
     {
-        ["__RequestVerificationToken"] = antiforgeryToken,
-        ["RememberMe"] = "false",
-        ["Input.TwoFactorCode"] = code,
-    });
+        return new(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = antiforgeryToken,
+            ["RememberMe"] = "false",
+            ["Input.TwoFactorCode"] = code,
+        });
+    }
 
     public Task InitializeAsync()
     {

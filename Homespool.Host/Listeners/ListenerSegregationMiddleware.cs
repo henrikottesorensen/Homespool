@@ -105,6 +105,8 @@ public sealed class ListenerSegregationMiddleware : IMiddleware
     /// <see cref="ListenerClass.User"/>, rather than a lookup that could fail open: a port we cannot
     /// identify must never be able to serve printer endpoints.
     /// </remarks>
-    private ListenerClass ClassOf(int localPort) =>
-        localPort == _listeners.PrinterPort ? ListenerClass.Printer : ListenerClass.User;
+    private ListenerClass ClassOf(int localPort)
+    {
+        return localPort == _listeners.PrinterPort ? ListenerClass.Printer : ListenerClass.User;
+    }
 }

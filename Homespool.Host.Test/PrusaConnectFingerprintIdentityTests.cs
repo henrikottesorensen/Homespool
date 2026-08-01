@@ -58,13 +58,15 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
 
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-fpid-{Guid.NewGuid():N}.db");
 
-    private static PrusaConnectService NewService(HSDbContext context) =>
-        new(context,
+    private static PrusaConnectService NewService(HSDbContext context)
+    {
+        return new(context,
             new CodeGenerator(),
             new TokenService(),
             new TeamService(context),
             TimeProvider.System, NullLogger<PrusaConnectService>.Instance,
             Options.Create(new PrusaConnectOptions()));
+    }
 
     private HSDbContext NewContext()
     {
@@ -94,13 +96,16 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         }
     }
 
-    private static RegisterPrinterRequestDTO PrinterRequest() => new()
+    private static RegisterPrinterRequestDTO PrinterRequest()
     {
-        SerialNumber = "15715-4842441651816441",
-        FingerPrint = BodyFingerprint,
-        PrinterType = "1.3.5",
-        Firmware = "6.4.0+11974",
-    };
+        return new()
+        {
+            SerialNumber = "15715-4842441651816441",
+            FingerPrint = BodyFingerprint,
+            PrinterType = "1.3.5",
+            Firmware = "6.4.0+11974",
+        };
+    }
 
     private static async Task<TeamMember> AddTeamAsync(HSDbContext context, long userId, bool canManage, bool isDefault)
     {
@@ -569,8 +574,14 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
 
         public PrusaConnectAuthenticationSchemeOptions CurrentValue => _options;
 
-        public PrusaConnectAuthenticationSchemeOptions Get(string? name) => _options;
+        public PrusaConnectAuthenticationSchemeOptions Get(string? name)
+        {
+            return _options;
+        }
 
-        public IDisposable? OnChange(Action<PrusaConnectAuthenticationSchemeOptions, string?> listener) => null;
+        public IDisposable? OnChange(Action<PrusaConnectAuthenticationSchemeOptions, string?> listener)
+        {
+            return null;
+        }
     }
 }

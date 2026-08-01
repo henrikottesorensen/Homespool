@@ -33,26 +33,32 @@ public sealed class PrinterCertificateHealthCheckTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"hs-drift-{Guid.NewGuid():N}");
 
-    private static Task<HealthCheckResult> RunAsync(PrinterCertificateHealthCheck check) =>
-        check.CheckHealthAsync(new HealthCheckContext(), CancellationToken.None);
+    private static Task<HealthCheckResult> RunAsync(PrinterCertificateHealthCheck check)
+    {
+        return check.CheckHealthAsync(new HealthCheckContext(), CancellationToken.None);
+    }
 
-    private static PrinterCertificateHealthCheck NewCheck(PrinterCertificateAuthority authority, string host, bool tls = true) =>
-        new(authority,
+    private static PrinterCertificateHealthCheck NewCheck(PrinterCertificateAuthority authority, string host, bool tls = true)
+    {
+        return new(authority,
             Options.Create(new PrusaConnectOptions { PrinterHost = host, PrinterTls = tls }),
             Options.Create(new CertificateOptions()),
             new DnsHostAddressResolver(),
             TimeProvider.System);
+    }
 
-    private PrinterCertificateAuthority NewAuthority(int authorityDays = 5475, int leafDays = 730) =>
-        new(Options.Create(new CertificateOptions
-            {
-                Directory = "certs",
-                AuthorityValidityDays = authorityDays,
-                LeafValidityDays = leafDays,
-            }),
+    private PrinterCertificateAuthority NewAuthority(int authorityDays = 5475, int leafDays = 730)
+    {
+        return new(Options.Create(new CertificateOptions
+        {
+            Directory = "certs",
+            AuthorityValidityDays = authorityDays,
+            LeafValidityDays = leafDays,
+        }),
             new HostEnvironmentAccessor(_root),
             TimeProvider.System,
             NullLogger<PrinterCertificateAuthority>.Instance);
+    }
 
     /// <summary>
     /// A certificate covering the address printers are told to dial is healthy, whatever else this

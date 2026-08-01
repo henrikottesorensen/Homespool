@@ -34,10 +34,13 @@ public enum AlertAction
 /// </remarks>
 public static class AlertTransition
 {
-    public static AlertAction Decide(HealthStatus status, bool alreadyAlerted) => status switch
+    public static AlertAction Decide(HealthStatus status, bool alreadyAlerted)
     {
-        HealthStatus.Unhealthy when !alreadyAlerted => AlertAction.Alert,
-        HealthStatus.Healthy when alreadyAlerted => AlertAction.Recovered,
-        _ => AlertAction.None,
-    };
+        return status switch
+        {
+            HealthStatus.Unhealthy when !alreadyAlerted => AlertAction.Alert,
+            HealthStatus.Healthy when alreadyAlerted => AlertAction.Recovered,
+            _ => AlertAction.None,
+        };
+    }
 }

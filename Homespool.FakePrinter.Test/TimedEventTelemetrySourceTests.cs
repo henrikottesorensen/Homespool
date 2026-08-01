@@ -28,10 +28,15 @@ public class TimedEventTelemetrySourceTests
 {
     private sealed class TelemetryOnlySource : ITelemetrySource
     {
-        public byte[]? NextMessage(FakeDevice device) =>
-            System.Text.Encoding.UTF8.GetBytes("""{"state":"IDLE"}""");
+        public byte[]? NextMessage(FakeDevice device)
+        {
+            return System.Text.Encoding.UTF8.GetBytes("""{"state":"IDLE"}""");
+        }
 
-        public TimeSpan DelayBeforeNext(FakeDevice device) => TimeSpan.Zero;
+        public TimeSpan DelayBeforeNext(FakeDevice device)
+        {
+            return TimeSpan.Zero;
+        }
     }
 
     private static bool IsEvent(byte[]? message)

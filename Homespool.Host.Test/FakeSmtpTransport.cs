@@ -89,5 +89,8 @@ public sealed class FakeSmtpTransportFactory : ISmtpTransportFactory
         _transport = transport;
     }
 
-    public ISmtpTransport Create() => _transport;
+    public ISmtpTransport Create()
+    {
+        return _transport;
+    }
 }

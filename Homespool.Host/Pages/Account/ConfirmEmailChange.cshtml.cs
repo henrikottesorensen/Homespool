@@ -64,10 +64,12 @@ public class ConfirmEmailChangeModel : PageModel
     /// choice is this staleness, and this is the one moment someone can do something about it, so
     /// it is said here rather than left to be discovered when an alert goes missing.
     /// </remarks>
-    private static string AlertRecipientNotice(bool isAlertRecipient) =>
-        isAlertRecipient
+    private static string AlertRecipientNotice(bool isAlertRecipient)
+    {
+        return isAlertRecipient
             ? " Service health alerts will continue to go to your previous address until the service is restarted."
             : string.Empty;
+    }
 
     public async Task<IActionResult> OnGetAsync(string userId, string email, string code, CancellationToken cancellationToken)
     {
@@ -132,7 +134,9 @@ public class ConfirmEmailChangeModel : PageModel
     /// Whether this user receives the service's health alerts, which only administrators do, and
     /// only when there is a mail server to send them through.
     /// </summary>
-    private async Task<bool> IsAlertRecipientAsync(HSUser user) =>
-        _smtp.Value.IsConfigured
+    private async Task<bool> IsAlertRecipientAsync(HSUser user)
+    {
+        return _smtp.Value.IsConfigured
         && await _userManager.IsInRoleAsync(user, Services.AdminBootstrap.AdminRole);
+    }
 }

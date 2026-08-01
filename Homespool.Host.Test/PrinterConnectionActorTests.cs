@@ -59,8 +59,10 @@ public class PrinterConnectionActorTests
     /// </remarks>
     [SuppressMessage("Reliability", "CA2012:Use ValueTasks correctly",
                      Justification = "NSubstitute call specification, not an invocation; no ValueTask is produced to consume.")]
-    private static void OnSend(IPrinterConnection connection, Action<CallInfo> onSend) =>
+    private static void OnSend(IPrinterConnection connection, Action<CallInfo> onSend)
+    {
         connection.WhenForAnyArgs(c => c.SendAsync(default, default)).Do(onSend);
+    }
 
     /// <summary>An open connection that accepts and discards whatever is written to it.</summary>
     private static IPrinterConnection OpenConnection()
@@ -73,13 +75,15 @@ public class PrinterConnectionActorTests
 
     private static PrinterConnectionActor NewActor(IPrinterConnection connection, ITelemetrySink? sink = null,
         TimeSpan? responseTimeout = null, int printerId = 1, TimeSpan? sendTimeout = null,
-        ILogger<PrinterConnectionActor>? logger = null, ITransferContentStore? contentStore = null) =>
-        new(printerId, connection, sink ?? Substitute.For<ITelemetrySink>(),
+        ILogger<PrinterConnectionActor>? logger = null, ITransferContentStore? contentStore = null)
+    {
+        return new(printerId, connection, sink ?? Substitute.For<ITelemetrySink>(),
             logger ?? NullLogger<PrinterConnectionActor>.Instance, responseTimeout ?? TimeSpan.FromSeconds(10),
             contentStore ?? Substitute.For<ITransferContentStore>())
         {
             SendTimeout = sendTimeout ?? TimeSpan.FromSeconds(30),
         };
+    }
 
     /// <summary>
     /// A connection whose <c>SendAsync</c> never completes - a peer that is alive but has stopped
@@ -120,19 +124,28 @@ public class PrinterConnectionActorTests
     /// leaves a task incomplete (e.g. a pending command not failed on mailbox completion) fails the
     /// test instead of hanging the suite. Same convention as the parsing tests' run ceiling.
     /// </summary>
-    private static Task<T> Eventually<T>(Task<T> task) => task.WaitAsync(TimeSpan.FromSeconds(10));
+    private static Task<T> Eventually<T>(Task<T> task)
+    {
+        return task.WaitAsync(TimeSpan.FromSeconds(10));
+    }
 
     /// <inheritdoc cref="Eventually{T}"/>
-    private static Task Eventually(Task task) => task.WaitAsync(TimeSpan.FromSeconds(10));
+    private static Task Eventually(Task task)
+    {
+        return task.WaitAsync(TimeSpan.FromSeconds(10));
+    }
 
     /// <summary>The actor assigns the command id internally; the frame it wrote to the connection is
     /// the only place to read it back from (bytes 1-8, 8 hex digits).</summary>
-    private static uint CommandIdOf(byte[] frame) =>
-        uint.Parse(System.Text.Encoding.ASCII.GetString(frame, 1, 8), System.Globalization.NumberStyles.HexNumber);
+    private static uint CommandIdOf(byte[] frame)
+    {
+        return uint.Parse(System.Text.Encoding.ASCII.GetString(frame, 1, 8), System.Globalization.NumberStyles.HexNumber);
+    }
 
     private static InboundEventMessage EventAnswering(uint commandId, Events eventType = Events.Finished, string? reason = null,
-        string? dataJson = null) =>
-        new(DateTimeOffset.UtcNow, new EventDTO
+        string? dataJson = null)
+    {
+        return new(DateTimeOffset.UtcNow, new EventDTO
         {
             Status = "IDLE",
             EventType = eventType,
@@ -144,6 +157,7 @@ public class PrinterConnectionActorTests
             // buffer that a test would have to remember to dispose.
             Data = dataJson is null ? null : JsonSerializer.Deserialize<JsonElement>(dataJson),
         });
+    }
 
     [Fact]
     public async Task SendCommandAsyncReturnsNotConnectedWhenTheSocketIsClosed()
@@ -806,7 +820,10 @@ public class PrinterConnectionActorTests
             }
         }
 
-        public void Release() => _gate.Set();
+        public void Release()
+        {
+            _gate.Set();
+        }
 
         public void Enqueue(int printerId, DateTimeOffset receivedAt, TelemetryDTO telemetry)
         {
@@ -830,7 +847,10 @@ public class PrinterConnectionActorTests
         // Disposed by the test once the actor's loop has finished with it, unlike the production
         // write lock: this gate really does allocate a wait handle, and its lifetime ends with the
         // test rather than racing anything.
-        public void Dispose() => _gate.Dispose();
+        public void Dispose()
+        {
+            _gate.Dispose();
+        }
     }
 
     // ---------- Outbound command logging ----------

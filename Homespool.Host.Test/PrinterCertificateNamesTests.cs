@@ -38,9 +38,11 @@ public class PrinterCertificateNamesTests
             _answers = answers;
         }
 
-        public Task<IReadOnlyList<IPAddress>> ResolveAsync(string name, CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<IPAddress>>(
+        public Task<IReadOnlyList<IPAddress>> ResolveAsync(string name, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<IPAddress>>(
                 _answers.TryGetValue(name, out IPAddress[]? found) ? found : []);
+        }
     }
 
     /// <summary>

@@ -57,21 +57,26 @@ public sealed class ClaimModelTests : IDisposable
         }
     }
 
-    private static PrusaConnectService NewService(HSDbContext context) =>
-        new(context,
+    private static PrusaConnectService NewService(HSDbContext context)
+    {
+        return new(context,
             new CodeGenerator(),
             new TokenService(),
             new TeamService(context),
             TimeProvider.System, NullLogger<PrusaConnectService>.Instance,
             Options.Create(new PrusaConnectOptions()));
+    }
 
-    private static RegisterPrinterRequestDTO PrinterRequest(string fingerprint) => new()
+    private static RegisterPrinterRequestDTO PrinterRequest(string fingerprint)
     {
-        SerialNumber = $"SN-{fingerprint}",
-        FingerPrint = fingerprint,
-        PrinterType = "1.3.5",
-        Firmware = "6.4.0+11974",
-    };
+        return new()
+        {
+            SerialNumber = $"SN-{fingerprint}",
+            FingerPrint = fingerprint,
+            PrinterType = "1.3.5",
+            Firmware = "6.4.0+11974",
+        };
+    }
 
     private static async Task<(ClaimModel model, HSUser user)> NewModelAsync(HSDbContext context, string email = "owner@example.com")
     {

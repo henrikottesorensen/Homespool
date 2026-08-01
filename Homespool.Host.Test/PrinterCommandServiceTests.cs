@@ -121,8 +121,10 @@ public sealed class PrinterCommandServiceTests : IDisposable
         return (registry, actor);
     }
 
-    private static (PrinterConnectionRegistry registry, IPrinterConnectionActor actor) RegistryWithActor(int printerId, CommandSendOutcome outcome) =>
-        RegistryWithActor(printerId, new CommandSendResult(outcome, null));
+    private static (PrinterConnectionRegistry registry, IPrinterConnectionActor actor) RegistryWithActor(int printerId, CommandSendOutcome outcome)
+    {
+        return RegistryWithActor(printerId, new CommandSendResult(outcome, null));
+    }
 
     /// <summary>
     /// A question-asking command, standing in for <c>SendFileInfo</c> until that one is sendable.
@@ -147,10 +149,12 @@ public sealed class PrinterCommandServiceTests : IDisposable
         public string? Path { get; set; }
     }
 
-    private static CommandSendResult Answered(string? dataJson, Events eventType = Events.FileInfo, string? reason = null) =>
-        new(CommandSendOutcome.Completed,
+    private static CommandSendResult Answered(string? dataJson, Events eventType = Events.FileInfo, string? reason = null)
+    {
+        return new(CommandSendOutcome.Completed,
             new CommandOutcome(eventType, reason),
             dataJson is null ? null : JsonSerializer.Deserialize<JsonElement>(dataJson));
+    }
 
     [Fact]
     public async Task AskAsyncParsesTheAnswerIntoTheShapeTheCommandDeclared()

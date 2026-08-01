@@ -170,8 +170,10 @@ public class ListenerSegregationTests
         context.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
     }
 
-    private static Task<(bool nextCalled, HttpContext context)> RunAsync(ListenerClass requirement, int arrivedOnPort) =>
-        RunAsync((ListenerClass?)requirement, arrivedOnPort);
+    private static Task<(bool nextCalled, HttpContext context)> RunAsync(ListenerClass requirement, int arrivedOnPort)
+    {
+        return RunAsync((ListenerClass?)requirement, arrivedOnPort);
+    }
 
     private static async Task<(bool nextCalled, HttpContext context)> RunAsync(ListenerClass? requirement,
                                                                                int arrivedOnPort,

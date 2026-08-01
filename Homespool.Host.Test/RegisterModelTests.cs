@@ -63,8 +63,10 @@ public sealed class RegisterModelTests : IDisposable
         }
     }
 
-    private static InvitationService NewInvitationService(HSDbContext context) =>
-        new(context, new TokenService(), Options.Create(new InvitationOptions()));
+    private static InvitationService NewInvitationService(HSDbContext context)
+    {
+        return new(context, new TokenService(), Options.Create(new InvitationOptions()));
+    }
 
     /// <summary>
     /// Builds a RegisterModel wired to real services against <paramref name="context"/>, with a real
@@ -100,7 +102,10 @@ public sealed class RegisterModelTests : IDisposable
         return (model, httpContext, emailSender);
     }
 
-    private static string EncodeCode(string plaintext) => WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(plaintext));
+    private static string EncodeCode(string plaintext)
+    {
+        return WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(plaintext));
+    }
 
     private static void SetInvite(RegisterModel model, int inviteId, string plaintextToken)
     {

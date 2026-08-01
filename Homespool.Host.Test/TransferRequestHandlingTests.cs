@@ -229,8 +229,10 @@ public class TransferRequestHandlingTests
         await actor.Completion.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
-    private static async Task Post(PrinterConnectionActor actor, InlineRequestDTO request) =>
+    private static async Task Post(PrinterConnectionActor actor, InlineRequestDTO request)
+    {
         await actor.PostAsync(new InboundTransferRequestMessage(DateTimeOffset.UtcNow, request), CancellationToken.None);
+    }
 
     private static PrinterConnectionActor NewActor(IPrinterConnection connection, ITransferContent? content)
     {
@@ -288,9 +290,11 @@ public class TransferRequestHandlingTests
             return ValueTask.CompletedTask;
         }
 
-        private static uint ParseFileId(ReadOnlySpan<byte> header) =>
-            uint.Parse(System.Text.Encoding.ASCII.GetString(header[1..9]),
+        private static uint ParseFileId(ReadOnlySpan<byte> header)
+        {
+            return uint.Parse(System.Text.Encoding.ASCII.GetString(header[1..9]),
                 System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture);
+        }
     }
 
     /// <summary>Reports whether it was disposed, so the release-on-completion path is observable.</summary>
@@ -308,7 +312,10 @@ public class TransferRequestHandlingTests
             return ValueTask.FromResult(count);
         }
 
-        public void Dispose() => Disposed = true;
+        public void Dispose()
+        {
+            Disposed = true;
+        }
     }
 
     /// <summary>A disk that has stopped answering - a hung network mount, in effect.</summary>
@@ -316,8 +323,10 @@ public class TransferRequestHandlingTests
     {
         public long Length => long.MaxValue;
 
-        public ValueTask<int> ReadAsync(Memory<byte> destination, long offset, CancellationToken cancellationToken) =>
-            new(new TaskCompletionSource<int>().Task);
+        public ValueTask<int> ReadAsync(Memory<byte> destination, long offset, CancellationToken cancellationToken)
+        {
+            return new(new TaskCompletionSource<int>().Task);
+        }
 
         public void Dispose()
         {
@@ -332,8 +341,10 @@ public class TransferRequestHandlingTests
     {
         public bool IsOpen => true;
 
-        public ValueTask SendAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
+        public ValueTask SendAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
 
         public async ValueTask SendChunkAsync(ReadOnlyMemory<byte> header, ITransferContent content, long offset,
             long count, CancellationToken cancellationToken)

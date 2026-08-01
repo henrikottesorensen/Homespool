@@ -70,19 +70,24 @@ public sealed class IndexModelTests : IDisposable
         }
     }
 
-    private static Printer NewPrinter(int teamId, string? name = null) => new()
+    private static Printer NewPrinter(int teamId, string? name = null)
     {
-        Uuid = Guid.NewGuid(),
-        Type = PrinterType.PrusaConnect,
-        TeamId = teamId,
-        Name = name,
-        Status = PrinterStatus.Unknown,
-        CreatedAt = DateTimeOffset.UtcNow,
-        UpdatedAt = DateTimeOffset.UtcNow,
-    };
+        return new()
+        {
+            Uuid = Guid.NewGuid(),
+            Type = PrinterType.PrusaConnect,
+            TeamId = teamId,
+            Name = name,
+            Status = PrinterStatus.Unknown,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+    }
 
-    private Task<(IndexModel model, HSUser user, Team team)> NewModelAsync(HSDbContext context) =>
-        NewModelAsync(context, connectionRegistry: null);
+    private Task<(IndexModel model, HSUser user, Team team)> NewModelAsync(HSDbContext context)
+    {
+        return NewModelAsync(context, connectionRegistry: null);
+    }
 
     private async Task<(IndexModel model, HSUser user, Team team)> NewModelAsync(HSDbContext context, PrinterConnectionRegistry? connectionRegistry)
     {

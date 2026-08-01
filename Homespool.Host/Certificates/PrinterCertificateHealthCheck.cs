@@ -99,8 +99,10 @@ public sealed class PrinterCertificateHealthCheck : IHealthCheck
     }
 
     private static HealthCheckResult Result(PrinterCertificateVerdict verdict,
-                                            IReadOnlyDictionary<string, object>? data = null) =>
-        verdict.IsProblem
+                                            IReadOnlyDictionary<string, object>? data = null)
+    {
+        return verdict.IsProblem
             ? HealthCheckResult.Degraded(verdict.Description, data: data)
             : HealthCheckResult.Healthy(verdict.Description, data);
+    }
 }

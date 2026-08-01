@@ -151,5 +151,8 @@ public sealed class TelemetryPersistenceHealthCheck : IHealthCheck
         return Task.FromResult(HealthCheckResult.Healthy("Telemetry is being persisted.", data));
     }
 
-    private static TimeSpan Max(TimeSpan left, TimeSpan right) => left > right ? left : right;
+    private static TimeSpan Max(TimeSpan left, TimeSpan right)
+    {
+        return left > right ? left : right;
+    }
 }

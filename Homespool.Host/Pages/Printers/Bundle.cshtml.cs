@@ -43,7 +43,10 @@ public class BundleModel : PageModel
     /// <summary>
     /// Nothing to see. A GET here means a bookmark or a back button, not a working flow.
     /// </summary>
-    public IActionResult OnGet() => NotFound();
+    public IActionResult OnGet()
+    {
+        return NotFound();
+    }
 
     public async Task<IActionResult> OnPostAsync(string token, string hostname, int printerId, string? printerName, CancellationToken cancellationToken)
     {

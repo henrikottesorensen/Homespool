@@ -50,18 +50,23 @@ public class PrinterStorageReadDTO
     /// </summary>
     public IReadOnlyList<PrinterStorageEntryDTO>? Entries { get; set; }
 
-    public static PrinterStorageReadDTO FromEvent(FileInfoEventDataDTO data) => new()
+    public static PrinterStorageReadDTO FromEvent(FileInfoEventDataDTO data)
     {
-        Path = data.Path,
-        Name = data.DisplayName,
-        Kind = ToKind(data.Type),
-        ReadOnly = data.ReadOnly,
-        Entries = data.Children?.Select(PrinterStorageEntryDTO.FromChild).ToList(),
-    };
+        return new()
+        {
+            Path = data.Path,
+            Name = data.DisplayName,
+            Kind = ToKind(data.Type),
+            ReadOnly = data.ReadOnly,
+            Entries = data.Children?.Select(PrinterStorageEntryDTO.FromChild).ToList(),
+        };
+    }
 
     /// <summary>Firmware's Unix seconds as an instant, or null when it sent none.</summary>
-    internal static DateTimeOffset? ToInstant(long? unixSeconds) =>
-        unixSeconds is { } seconds ? DateTimeOffset.FromUnixTimeSeconds(seconds) : null;
+    internal static DateTimeOffset? ToInstant(long? unixSeconds)
+    {
+        return unixSeconds is { } seconds ? DateTimeOffset.FromUnixTimeSeconds(seconds) : null;
+    }
 
     /// <summary><c>PRINT_FILE</c> becomes <c>printFile</c>, <c>FOLDER</c> becomes <c>folder</c>.</summary>
     internal static string? ToKind(string? wireType)

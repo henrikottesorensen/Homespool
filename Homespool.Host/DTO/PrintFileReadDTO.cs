@@ -21,11 +21,14 @@ public class PrintFileReadDTO
     /// </summary>
     public required string PrinterPath { get; set; }
 
-    public static PrintFileReadDTO FromStored(StoredFile file) => new()
+    public static PrintFileReadDTO FromStored(StoredFile file)
     {
-        Name = file.FileName,
-        Size = file.Length,
-        UploadedAt = file.UploadedAt,
-        PrinterPath = file.PrinterPath,
-    };
+        return new()
+        {
+            Name = file.FileName,
+            Size = file.Length,
+            UploadedAt = file.UploadedAt,
+            PrinterPath = file.PrinterPath,
+        };
+    }
 }

@@ -310,10 +310,12 @@ public class PrinterCertificateAuthority
     /// belongs to <see cref="EnsureLeaf"/> and to startup, where the listener needs it — a page that
     /// minted a certificate as a side effect of being rendered would be a surprising thing.
     /// </remarks>
-    public X509Certificate2? LoadLeafIfIssued() =>
-        File.Exists(LeafPath)
+    public X509Certificate2? LoadLeafIfIssued()
+    {
+        return File.Exists(LeafPath)
             ? X509CertificateLoader.LoadPkcs12FromFile(LeafPath, null, X509KeyStorageFlags.Exportable)
             : null;
+    }
 
     /// <summary>
     /// Issues the printer-facing leaf for <paramref name="names"/>, replacing any previous one.

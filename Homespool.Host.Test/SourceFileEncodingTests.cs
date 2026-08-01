@@ -108,10 +108,15 @@ public class SourceFileEncodingTests
         }
     }
 
-    private static IReadOnlyList<string> AllSourceFiles() => SourceFiles(RepositoryRoot()).ToList();
+    private static IReadOnlyList<string> AllSourceFiles()
+    {
+        return SourceFiles(RepositoryRoot()).ToList();
+    }
 
-    private static string Relative(string path) =>
-        Path.GetRelativePath(RepositoryRoot().FullName, path);
+    private static string Relative(string path)
+    {
+        return Path.GetRelativePath(RepositoryRoot().FullName, path);
+    }
 
     /// <summary>
     /// The scan itself has to be known-good, or every assertion below passes vacuously the day the

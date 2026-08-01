@@ -13,7 +13,10 @@ namespace Homespool.Host.Test;
 
 public class PrinterLiveStateMergerTests
 {
-    private static PrinterLiveState NewState(int printerId = 1) => new() { PrinterId = printerId };
+    private static PrinterLiveState NewState(int printerId = 1)
+    {
+        return new() { PrinterId = printerId };
+    }
 
     /// <summary>
     /// A Reduced-mode message - only <c>state</c>, the one required field on

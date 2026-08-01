@@ -217,6 +217,8 @@ public class UnknownFieldTrackerTests
         tracker.DistinctFields.Should().BeEmpty();
     }
 
-    private static Dictionary<string, JsonElement> Unknown(string json) =>
-        JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json)!;
+    private static Dictionary<string, JsonElement> Unknown(string json)
+    {
+        return JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json)!;
+    }
 }

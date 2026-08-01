@@ -40,23 +40,28 @@ public sealed class PrinterRegistrationTests : IDisposable
 
     private static PrusaConnectService NewService(HSDbContext context,
                                                   int lifetimeMinutes = 60,
-                                                  ILogger<PrusaConnectService>? logger = null) =>
-        new(context,
+                                                  ILogger<PrusaConnectService>? logger = null)
+    {
+        return new(context,
             new CodeGenerator(),
             new TokenService(),
             new TeamService(context),
             TimeProvider.System,
             logger ?? NullLogger<PrusaConnectService>.Instance,
             Options.Create(new PrusaConnectOptions { RegistrationCodeLifetimeMinutes = lifetimeMinutes }));
+    }
 
     private static RegisterPrinterRequestDTO Request(string serial = "15715-4842441651816441",
-                                                     string fingerprint = "SUDBAJQ78CTJBNA8IHEMODUG43QD9H5GSBSFE0MMKBST8B9E0L") => new()
+                                                     string fingerprint = "SUDBAJQ78CTJBNA8IHEMODUG43QD9H5GSBSFE0MMKBST8B9E0L")
     {
-        SerialNumber = serial,
-        FingerPrint = fingerprint,
-        PrinterType = "1.3.5",
-        Firmware = "6.4.0+11974",
-    };
+        return new()
+        {
+            SerialNumber = serial,
+            FingerPrint = fingerprint,
+            PrinterType = "1.3.5",
+            Firmware = "6.4.0+11974",
+        };
+    }
 
     private HSDbContext NewContext()
     {
@@ -567,7 +572,10 @@ public sealed class PrinterRegistrationTests : IDisposable
 
         public IEnumerable<string> Entries => _events.SelectMany(Flatten);
 
-        public void Emit(LogEvent logEvent) => _events.Add(logEvent);
+        public void Emit(LogEvent logEvent)
+        {
+            _events.Add(logEvent);
+        }
 
         public ILogger<T> AsLogger<T>()
         {
@@ -578,7 +586,10 @@ public sealed class PrinterRegistrationTests : IDisposable
             return _factory.CreateLogger<T>();
         }
 
-        public void Dispose() => _factory?.Dispose();
+        public void Dispose()
+        {
+            _factory?.Dispose();
+        }
 
         private static IEnumerable<string> Flatten(LogEvent logEvent)
         {

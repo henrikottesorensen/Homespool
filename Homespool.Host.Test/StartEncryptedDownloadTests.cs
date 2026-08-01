@@ -20,13 +20,16 @@ namespace Homespool.Host.Test;
 /// </remarks>
 public class StartEncryptedDownloadTests
 {
-    private static StartEncryptedDownload Command() => new()
+    private static StartEncryptedDownload Command()
     {
-        Path = "/usb/enctest.gcode",
-        Key = Convert.FromHexString("000102030405060708090a0b0c0d0e0f"),
-        Iv = Convert.FromHexString("f0e0d0c0b0a090807060504030201000"),
-        OriginalSize = 1024,
-    };
+        return new()
+        {
+            Path = "/usb/enctest.gcode",
+            Key = Convert.FromHexString("000102030405060708090a0b0c0d0e0f"),
+            Iv = Convert.FromHexString("f0e0d0c0b0a090807060504030201000"),
+            OriginalSize = 1024,
+        };
+    }
 
     [Fact]
     public void TheFourRequiredKwargsAreAllPresent()

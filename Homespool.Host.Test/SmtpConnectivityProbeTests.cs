@@ -30,15 +30,21 @@ public sealed class SmtpConnectivityProbeTests
         {
         }
 
-        public Task RunOnceAsync(CancellationToken cancellationToken) => ExecuteAsync(cancellationToken);
+        public Task RunOnceAsync(CancellationToken cancellationToken)
+        {
+            return ExecuteAsync(cancellationToken);
+        }
     }
 
-    private static SmtpOptions DefaultOptions() => new()
+    private static SmtpOptions DefaultOptions()
     {
-        Host = "smtp.example.com",
-        Port = 587,
-        TimeoutSeconds = 5,
-    };
+        return new()
+        {
+            Host = "smtp.example.com",
+            Port = 587,
+            TimeoutSeconds = 5,
+        };
+    }
 
     private static (TestableSmtpConnectivityProbe probe, FakeSmtpTransport transport) NewProbe(SmtpOptions options)
     {

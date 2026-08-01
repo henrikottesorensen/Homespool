@@ -44,8 +44,13 @@ public sealed class FileTransferContent : ITransferContent
 
     public long Length { get; }
 
-    public ValueTask<int> ReadAsync(Memory<byte> destination, long offset, CancellationToken cancellationToken) =>
-        RandomAccess.ReadAsync(_handle, destination, offset, cancellationToken);
+    public ValueTask<int> ReadAsync(Memory<byte> destination, long offset, CancellationToken cancellationToken)
+    {
+        return RandomAccess.ReadAsync(_handle, destination, offset, cancellationToken);
+    }
 
-    public void Dispose() => _handle.Dispose();
+    public void Dispose()
+    {
+        _handle.Dispose();
+    }
 }

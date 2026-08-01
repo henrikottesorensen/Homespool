@@ -41,13 +41,16 @@ public class PrinterStorageEntryDTO
     /// </summary>
     public string? Kind { get; set; }
 
-    public static PrinterStorageEntryDTO FromChild(FileInfoChildDTO child) => new()
+    public static PrinterStorageEntryDTO FromChild(FileInfoChildDTO child)
     {
-        Name = child.DisplayName,
-        ShortName = child.Name,
-        Size = child.Size,
-        ModifiedAt = PrinterStorageReadDTO.ToInstant(child.ModifiedTimestamp),
-        ReadOnly = child.ReadOnly,
-        Kind = PrinterStorageReadDTO.ToKind(child.Type),
-    };
+        return new()
+        {
+            Name = child.DisplayName,
+            ShortName = child.Name,
+            Size = child.Size,
+            ModifiedAt = PrinterStorageReadDTO.ToInstant(child.ModifiedTimestamp),
+            ReadOnly = child.ReadOnly,
+            Kind = PrinterStorageReadDTO.ToKind(child.Type),
+        };
+    }
 }

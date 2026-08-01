@@ -137,14 +137,20 @@ public class IndexModel : PageModel
         return Page();
     }
 
-    public Task<IActionResult> OnPostPauseAsync(int printerId, CancellationToken cancellationToken) =>
-        SendCommandAsync(printerId, new PausePrint(), cancellationToken);
+    public Task<IActionResult> OnPostPauseAsync(int printerId, CancellationToken cancellationToken)
+    {
+        return SendCommandAsync(printerId, new PausePrint(), cancellationToken);
+    }
 
-    public Task<IActionResult> OnPostResumeAsync(int printerId, CancellationToken cancellationToken) =>
-        SendCommandAsync(printerId, new ResumePrint(), cancellationToken);
+    public Task<IActionResult> OnPostResumeAsync(int printerId, CancellationToken cancellationToken)
+    {
+        return SendCommandAsync(printerId, new ResumePrint(), cancellationToken);
+    }
 
-    public Task<IActionResult> OnPostStopAsync(int printerId, CancellationToken cancellationToken) =>
-        SendCommandAsync(printerId, new StopPrint(), cancellationToken);
+    public Task<IActionResult> OnPostStopAsync(int printerId, CancellationToken cancellationToken)
+    {
+        return SendCommandAsync(printerId, new StopPrint(), cancellationToken);
+    }
 
     private async Task<IActionResult> SendCommandAsync(int printerId, ISendableCommand command, CancellationToken cancellationToken)
     {

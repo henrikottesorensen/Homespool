@@ -126,6 +126,8 @@ public static class PrinterCertificateDrift
     /// Names as a person would read them out, because every one of these strings reaches an
     /// administrator's screen unedited.
     /// </summary>
-    private static string Describe(IReadOnlyList<string> names) =>
-        names.Count == 0 ? "nothing" : string.Join(", ", names);
+    private static string Describe(IReadOnlyList<string> names)
+    {
+        return names.Count == 0 ? "nothing" : string.Join(", ", names);
+    }
 }

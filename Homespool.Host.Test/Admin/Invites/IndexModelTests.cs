@@ -25,11 +25,15 @@ public sealed class IndexModelTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-invite-index-{Guid.NewGuid():N}.db");
 
-    private static InvitationService NewInvitationService(HSDbContext context) =>
-        new(context, new TokenService(), Options.Create(new InvitationOptions()));
+    private static InvitationService NewInvitationService(HSDbContext context)
+    {
+        return new(context, new TokenService(), Options.Create(new InvitationOptions()));
+    }
 
-    private static IndexModel NewModel(HSDbContext context) =>
-        new(NewInvitationService(context), new TeamService(context));
+    private static IndexModel NewModel(HSDbContext context)
+    {
+        return new(NewInvitationService(context), new TeamService(context));
+    }
 
     private HSDbContext NewContext()
     {

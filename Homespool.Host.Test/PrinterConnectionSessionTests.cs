@@ -62,11 +62,13 @@ public class PrinterConnectionSessionTests
         return actor;
     }
 
-    private PrinterConnectionSession NewSession(WebSocketHandler handler, IPrinterConnectionActor actor) =>
-        new(handler, _registry, new StubActorFactory(actor), _logger)
+    private PrinterConnectionSession NewSession(WebSocketHandler handler, IPrinterConnectionActor actor)
+    {
+        return new(handler, _registry, new StubActorFactory(actor), _logger)
         {
             ActorDrainTimeout = DrainTimeout,
         };
+    }
 
     /// <summary>
     /// Runs a session whose read loop ends the way <paramref name="handlerEnd"/> says, over a pipe
@@ -243,7 +245,10 @@ public class PrinterConnectionSessionTests
                                         Options.Create(new PrusaConnectOptions()),
                                         Substitute.For<ITransferContentStore>())
     {
-        public override IPrinterConnectionActor Create(int printerId, IPrinterConnection connection) => actor;
+        public override IPrinterConnectionActor Create(int printerId, IPrinterConnection connection)
+        {
+            return actor;
+        }
     }
 
     /// <summary>Supplies the read loop's ending, which is all the session cares about.</summary>
@@ -254,7 +259,10 @@ public class PrinterConnectionSessionTests
                 TimeProvider.System))
     {
         public override Task HandlePrusaWebsocket(PipeReader input, int printerId, IPrinterConnectionActor actor,
-                                                  CancellationToken cancellationToken) => end();
+                                                  CancellationToken cancellationToken)
+        {
+            return end();
+        }
     }
 
     /// <summary>
@@ -270,11 +278,17 @@ public class PrinterConnectionSessionTests
 
         public bool IsOpen => true;
 
-        public ValueTask SendAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        public ValueTask SendAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
 
         // These tests are about the session's teardown ordering; nothing here sends a transfer chunk.
         public ValueTask SendChunkAsync(ReadOnlyMemory<byte> header, ITransferContent content, long offset,
-            long count, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+            long count, CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
 
         public Task CloseOutputAsync(WebSocketCloseStatus closeStatus)
         {

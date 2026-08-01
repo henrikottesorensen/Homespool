@@ -34,13 +34,17 @@ public class PrinterNotFoundException : Exception
     /// above are for callers that actually have a fingerprint; the registration poll does not, because
     /// the printer sends only a <c>Code</c> header.
     /// </remarks>
-    public static PrinterNotFoundException ForUnknownRegistrationCode() =>
-        new("No printer registration matches the supplied registration code.", literalMessage: true);
+    public static PrinterNotFoundException ForUnknownRegistrationCode()
+    {
+        return new("No printer registration matches the supplied registration code.", literalMessage: true);
+    }
 
     /// <summary>No printer exists with the given id. Distinct from the fingerprint overloads above,
     /// which are for callers on the registration path that never have an id.</summary>
-    public static PrinterNotFoundException ForId(int printerId) =>
-        new($"Printer {printerId} was not found.", literalMessage: true);
+    public static PrinterNotFoundException ForId(int printerId)
+    {
+        return new($"Printer {printerId} was not found.", literalMessage: true);
+    }
 
     protected PrinterNotFoundException()
     {

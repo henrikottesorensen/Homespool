@@ -18,12 +18,15 @@ public class TeamMembershipDTO
 
     public required bool CanManage { get; set; }
 
-    public static TeamMembershipDTO FromEntity(TeamMember member) => new()
+    public static TeamMembershipDTO FromEntity(TeamMember member)
     {
-        Id = member.TeamId,
-        Name = member.Team?.Name,
-        CanRead = member.CanRead,
-        CanUse = member.CanUse,
-        CanManage = member.CanManage,
-    };
+        return new()
+        {
+            Id = member.TeamId,
+            Name = member.Team?.Name,
+            CanRead = member.CanRead,
+            CanUse = member.CanUse,
+            CanManage = member.CanManage,
+        };
+    }
 }

@@ -37,18 +37,24 @@ public sealed class SmtpEmailSenderStartTlsMailpitTests : IAsyncLifetime, IDispo
 {
     private readonly MailpitClient _mailpit = new();
 
-    private static SmtpOptions MailpitStartTlsOptions() => new()
+    private static SmtpOptions MailpitStartTlsOptions()
     {
-        Host = "localhost",
-        Port = 1025,
-        UseImplicitTls = false, // StartTls - what Mailpit's default configuration offers.
-        DisableTls = false,
-        FromAddress = "no-reply@printerservice.test",
-        FromName = "Homespool",
-        TimeoutSeconds = 5,
-    };
+        return new()
+        {
+            Host = "localhost",
+            Port = 1025,
+            UseImplicitTls = false, // StartTls - what Mailpit's default configuration offers.
+            DisableTls = false,
+            FromAddress = "no-reply@printerservice.test",
+            FromName = "Homespool",
+            TimeoutSeconds = 5,
+        };
+    }
 
-    public Task InitializeAsync() => _mailpit.ClearAsync();
+    public Task InitializeAsync()
+    {
+        return _mailpit.ClearAsync();
+    }
 
     public Task DisposeAsync()
     {
@@ -60,7 +66,10 @@ public sealed class SmtpEmailSenderStartTlsMailpitTests : IAsyncLifetime, IDispo
     // CA1001 wants IDisposable on a type owning a disposable field even though xUnit's IAsyncLifetime
     // already drives cleanup via DisposeAsync above; MailpitClient.Dispose is idempotent, so this is
     // a safe, redundant satisfier rather than a second real teardown path.
-    public void Dispose() => _mailpit.Dispose();
+    public void Dispose()
+    {
+        _mailpit.Dispose();
+    }
 
     /// <summary>
     /// A message sent over a real STARTTLS handshake, validated against the CA

@@ -30,22 +30,27 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-claim-{Guid.NewGuid():N}.db");
 
-    private static PrusaConnectService NewService(HSDbContext context, int lifetimeMinutes = 60) =>
-        new(context,
+    private static PrusaConnectService NewService(HSDbContext context, int lifetimeMinutes = 60)
+    {
+        return new(context,
             new CodeGenerator(),
             new TokenService(),
             new TeamService(context),
             TimeProvider.System, NullLogger<PrusaConnectService>.Instance,
             Options.Create(new PrusaConnectOptions { RegistrationCodeLifetimeMinutes = lifetimeMinutes }));
+    }
 
     private static RegisterPrinterRequestDTO PrinterRequest(string serial = "15715-4842441651816441",
-                                                             string fingerprint = "SUDBAJQ78CTJBNA8IHEMODUG43QD9H5GSBSFE0MMKBST8B9E0L") => new()
+                                                             string fingerprint = "SUDBAJQ78CTJBNA8IHEMODUG43QD9H5GSBSFE0MMKBST8B9E0L")
     {
-        SerialNumber = serial,
-        FingerPrint = fingerprint,
-        PrinterType = "1.3.5",
-        Firmware = "6.4.0+11974",
-    };
+        return new()
+        {
+            SerialNumber = serial,
+            FingerPrint = fingerprint,
+            PrinterType = "1.3.5",
+            Firmware = "6.4.0+11974",
+        };
+    }
 
     private HSDbContext NewContext()
     {

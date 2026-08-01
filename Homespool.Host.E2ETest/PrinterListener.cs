@@ -48,6 +48,8 @@ internal static class PrinterListener
     }
 
     /// <summary>The <c>/p/ws</c> address on the printer listener.</summary>
-    public static Uri WebSocketUri(WebApplicationFactory<PrinterAppController> factory) =>
-        new($"ws://localhost:{PortOf(factory)}/p/ws");
+    public static Uri WebSocketUri(WebApplicationFactory<PrinterAppController> factory)
+    {
+        return new($"ws://localhost:{PortOf(factory)}/p/ws");
+    }
 }

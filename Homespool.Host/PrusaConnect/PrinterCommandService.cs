@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -57,6 +58,79 @@ public class PrinterCommandService
     /// </returns>
     public async Task<CommandOutcome?> SendCommandAsync(int printerId, ISendableCommand commandData, long userId, CancellationToken cancellationToken)
     {
+        CommandSendResult result = await SendAndCheckAsync(printerId, commandData, userId, cancellationToken);
+
+        // Written, and nothing will answer it. Null rather than an invented event: there is no
+        // outcome to report, and fabricating one would misrepresent the wire.
+        return result.Outcome == CommandSendOutcome.Dispatched ? null : result.Response!;
+    }
+
+    /// <summary>
+    /// Asks a printer a question and hands back the answer already parsed into
+    /// <typeparamref name="TAnswer"/> - the counterpart to <see cref="SendCommandAsync"/>, for the
+    /// commands whose answer is a payload rather than a verdict.
+    /// </summary>
+    /// <typeparam name="TAnswer">Declared by the command itself, via <see cref="ISendableCommand{TAnswer}"/>.</typeparam>
+    /// <remarks>
+    /// <para>
+    /// <b>A separate name rather than an overload, deliberately.</b> Two overloads separated only by
+    /// <c>ISendableCommand</c> versus <c>ISendableCommand&lt;TAnswer&gt;</c> resolve on argument type,
+    /// and the failure mode of picking the wrong one is silent: the payload is simply dropped and the
+    /// caller sees a verdict with no answer, which looks exactly like an empty listing. A distinct
+    /// name makes that unrepresentable. It also reads as what it is - a command is <i>sent</i>, a
+    /// question is <i>asked</i>.
+    /// </para>
+    /// <para>
+    /// This is the one place an answering event's <c>data</c> is deserialised, and the reason
+    /// <c>CommandSendResult.Data</c> goes no further.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="CommandAnswerUnreadableException">
+    /// The printer answered with a payload that will not parse as <typeparamref name="TAnswer"/>.
+    /// </exception>
+    /// <returns>
+    /// The answer, with <see cref="CommandOutcome{TAnswer}.Answer"/> null when the printer replied
+    /// without a payload - a <c>Rejected</c> being the ordinary case, where
+    /// <see cref="CommandOutcome{TAnswer}.Reason"/> is what the caller wants. Null overall only for
+    /// a command declaring <see cref="ISendableCommand.ExpectsReply"/> false, as
+    /// <see cref="SendCommandAsync"/>.
+    /// </returns>
+    public async Task<CommandOutcome<TAnswer>?> AskAsync<TAnswer>(int printerId, ISendableCommand<TAnswer> commandData,
+        long userId, CancellationToken cancellationToken)
+    {
+        CommandSendResult result = await SendAndCheckAsync(printerId, commandData, userId, cancellationToken);
+
+        if (result.Outcome == CommandSendOutcome.Dispatched)
+        {
+            return null;
+        }
+
+        TAnswer? answer;
+
+        try
+        {
+            answer = result.Data is { } data ? data.Deserialize<TAnswer>() : default;
+        }
+        catch (JsonException e)
+        {
+            // Thrown rather than returned as a null answer, which would be indistinguishable from the
+            // printer refusing the command - and this service's contract is that everything that can
+            // go wrong throws, so the return value is only ever a real answer from the hardware.
+            throw new CommandAnswerUnreadableException(printerId, commandData.WireName, e);
+        }
+
+        return new CommandOutcome<TAnswer>(result.Response!.EventType, result.Response.Reason, answer);
+    }
+
+    /// <summary>
+    /// The half both entry points share: check the caller may use this printer, send, and turn every
+    /// way the send fell short into the exception that describes it. What comes back is always a
+    /// <see cref="CommandSendOutcome.Completed"/> or <see cref="CommandSendOutcome.Dispatched"/>
+    /// result, which is the only distinction the two callers still have to make.
+    /// </summary>
+    private async Task<CommandSendResult> SendAndCheckAsync(int printerId, ISendableCommand commandData, long userId,
+        CancellationToken cancellationToken)
+    {
         Printer? printer = await _dbContext.Printers.AsNoTracking().SingleOrDefaultAsync(p => p.Id == printerId, cancellationToken);
 
         if (printer is null)
@@ -84,11 +158,7 @@ public class PrinterCommandService
             CommandSendOutcome.AlreadyInFlight => throw new CommandAlreadyInFlightException(printerId),
             CommandSendOutcome.ResponseTimedOut => throw new CommandResponseTimedOutException(printerId),
             CommandSendOutcome.SendTimedOut => throw new CommandSendTimedOutException(printerId),
-
-            // Written, and nothing will answer it. Null rather than an invented event: there is no
-            // outcome to report, and fabricating one would misrepresent the wire.
-            CommandSendOutcome.Dispatched => null,
-            _ => result.Response!,
+            _ => result,
         };
     }
 }

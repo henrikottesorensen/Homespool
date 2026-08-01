@@ -3,8 +3,8 @@ using System.Text.Json;
 namespace Homespool.Host.PrusaConnect;
 
 /// <summary>
-/// The printer's answer to a sent command, e.g. <c>(Finished, null, null)</c> or
-/// <c>(Rejected, "No print to pause", null)</c> - confirmed against firmware source
+/// The printer's answer to a sent command, e.g. <c>(Finished, null)</c> or
+/// <c>(Rejected, "No print to pause")</c> - confirmed against firmware source
 /// (Prusa-Firmware-Buddy planner.cpp:667-790 at the pinned ref): a command's outcome always arrives
 /// as an ordinary event carrying the same <c>command_id</c>, not a distinct reply channel.
 /// </summary>
@@ -20,32 +20,25 @@ namespace Homespool.Host.PrusaConnect;
 /// The printer's own words when it rejected the command, e.g. "No print to pause". Null for the
 /// outcomes that carry no explanation, which is most of them.
 /// </param>
-/// <param name="Data">
-/// The answering event's <c>data</c> object, verbatim, or null when it carried none - which is most
-/// of them.
-/// <para>
-/// <b>Why an answer needs a payload at all.</b> For every command sent so far the event <i>type</i>
-/// is the whole answer: <c>Finished</c> means it worked and <c>Rejected</c> means it did not.
-/// <c>SEND_FILE_INFO</c> is the first where the payload <i>is</i> the answer - a directory listing
-/// arrives as the <c>children</c> of a <c>FILE_INFO</c>'s data (protocol-reference.md,
-/// "<c>SEND_FILE_INFO</c> on a directory enumerates it"). Without this the caller who asked the
-/// question cannot read the reply, even though the event itself is persisted like any other.
-/// </para>
-/// <para>
-/// <b>Verbatim rather than typed, deliberately.</b> Correlation is on <c>command_id</c> alone and
-/// nothing on this path interprets an event's shape; a typed answer here would drag every answering
-/// event's schema into the transport, to be widened again by the next command that asks a question.
-/// The caller knows which shape its own command produces and is the one place that can parse it
-/// without guessing.
-/// </para>
-/// <para>
-/// <b>Safe to hold past the read loop.</b> This is <c>EventDTO.Data</c>, which deserialisation backs
-/// with a document of its own rather than a buffer the loop goes on to reuse. The sink already
-/// depends on that: <c>TelemetryWriter</c> formats the same element off its channel, on another
-/// thread, well after the connection has moved on.
-/// </para>
+public sealed record CommandOutcome(Model.Events EventType, string? Reason);
+
+/// <summary>
+/// A <see cref="CommandOutcome"/> from a command that asked the printer a question, with the answer
+/// parsed into the shape that command declared.
+/// </summary>
+/// <typeparam name="TAnswer">
+/// The answering event's <c>data</c>, from
+/// <see cref="Commands.ISendableCommand{TAnswer}"/>.
+/// </typeparam>
+/// <param name="EventType">As <see cref="CommandOutcome.EventType"/>.</param>
+/// <param name="Reason">As <see cref="CommandOutcome.Reason"/>.</param>
+/// <param name="Answer">
+/// The parsed payload, or null when the printer answered without one - which a <c>Rejected</c>
+/// always does. <b>A verdict is still an answer</b>: a refusal arrives here with
+/// <see cref="EventType"/> set and this null, and callers must read the two together rather than
+/// treating null as failure.
 /// </param>
-public sealed record CommandOutcome(Model.Events EventType, string? Reason, JsonElement? Data);
+public sealed record CommandOutcome<TAnswer>(Model.Events EventType, string? Reason, TAnswer? Answer);
 
 /// <summary>
 /// How far a command got. Every value except <see cref="Completed"/> means the printer's answer is
@@ -153,4 +146,29 @@ public enum CommandSendOutcome
 /// The printer's answer, present only for <see cref="CommandSendOutcome.Completed"/> - the other
 /// outcomes are precisely the cases where no answer arrived.
 /// </param>
-public sealed record CommandSendResult(CommandSendOutcome Outcome, CommandOutcome? Response);
+/// <param name="Data">
+/// The answering event's <c>data</c> object, verbatim and unparsed, or null when it carried none -
+/// which is all but the commands that asked a question.
+/// <para>
+/// <b>This is as far as an untyped payload travels, and that is the point.</b> The transport cannot
+/// type it - correlation is on <c>command_id</c> alone and nothing here knows which command asked
+/// what - but a <c>JsonElement</c> handed to callers is a schema that ends up living in call sites.
+/// So it stops one layer up: <see cref="PrinterCommandService.AskAsync"/> deserialises it into the
+/// shape the command declared through <see cref="Commands.ISendableCommand{TAnswer}"/>, and nothing
+/// above that ever sees this property. <c>CommandSendResult</c> reaches exactly one production
+/// class, which is what makes that enforceable rather than merely encouraged.
+/// </para>
+/// <para>
+/// <b>Safe to hold past the read loop.</b> This is <c>EventDTO.Data</c>, which deserialisation backs
+/// with a document of its own rather than a buffer the loop goes on to reuse. The sink already
+/// depends on that: <c>TelemetryWriter</c> formats the same element off its channel, on another
+/// thread, well after the connection has moved on.
+/// </para>
+/// <para>
+/// Defaulted, unlike <see cref="Response"/>, because seven of the eight places this is constructed
+/// describe an answer that never arrived - no socket, no free slot, nothing written, nothing back -
+/// and there is no payload for them to forget. The one site that has data is the one that must pass
+/// it.
+/// </para>
+/// </param>
+public sealed record CommandSendResult(CommandSendOutcome Outcome, CommandOutcome? Response, JsonElement? Data = null);

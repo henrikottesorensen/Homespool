@@ -1,6 +1,9 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -120,6 +123,134 @@ public sealed class PrinterCommandServiceTests : IDisposable
     private static (PrinterConnectionRegistry registry, IPrinterConnectionActor actor) RegistryWithActor(int printerId, CommandSendOutcome outcome) =>
         RegistryWithActor(printerId, new CommandSendResult(outcome, null));
 
+    /// <summary>
+    /// A question-asking command, standing in for <c>SendFileInfo</c> until that one is sendable.
+    /// Deliberately local to the tests: what is under test is that <see cref="ISendableCommand{T}"/>
+    /// carries the answer's type through, not any particular command's wire shape.
+    /// </summary>
+    private sealed class AskSomething : ISendableCommand<AskSomethingAnswer>
+    {
+        public string WireName => "SEND_FILE_INFO";
+    }
+
+    // CA1812 flags this as never instantiated, which is true at compile time: System.Text.Json only
+    // ever builds it by reflection, which is the whole point of the test.
+    [SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes",
+                     Justification = "Only ever constructed by System.Text.Json when deserializing a command's answer.")]
+    private sealed class AskSomethingAnswer
+    {
+        [JsonPropertyName("file_count")]
+        public int FileCount { get; set; }
+
+        [JsonPropertyName("path")]
+        public string? Path { get; set; }
+    }
+
+    private static CommandSendResult Answered(string? dataJson, Events eventType = Events.FileInfo, string? reason = null) =>
+        new(CommandSendOutcome.Completed,
+            new CommandOutcome(eventType, reason),
+            dataJson is null ? null : JsonSerializer.Deserialize<JsonElement>(dataJson));
+
+    [Fact]
+    public async Task AskAsyncParsesTheAnswerIntoTheShapeTheCommandDeclared()
+    {
+        // Arrange
+        await using HSDbContext context = await MigratedContextAsync();
+
+        TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: false);
+        Printer printer = await AddPrinterAsync(context, membership.TeamId);
+
+        (PrinterConnectionRegistry registry, _) =
+            RegistryWithActor(printer.Id, Answered("""{"file_count":3,"path":"/usb","type":"FOLDER"}"""));
+        PrinterCommandService service = new(context, new TeamService(context), registry);
+
+        // Act
+        CommandOutcome<AskSomethingAnswer>? outcome =
+            await service.AskAsync(printer.Id, new AskSomething(), 1, CancellationToken.None);
+
+        // Assert
+        outcome.Should().NotBeNull();
+        outcome!.Answer.Should().NotBeNull();
+        outcome.Answer!.FileCount.Should().Be(3);
+        outcome.Answer.Path.Should().Be("/usb");
+    }
+
+    /// <summary>
+    /// A refusal is a real answer, and arrives with no payload - so a null
+    /// <see cref="CommandOutcome{T}.Answer"/> must not be read as failure.
+    /// </summary>
+    [Fact]
+    public async Task AskAsyncGivesTheVerdictAndNoAnswerWhenThePrinterRefused()
+    {
+        // Arrange
+        await using HSDbContext context = await MigratedContextAsync();
+
+        TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: false);
+        Printer printer = await AddPrinterAsync(context, membership.TeamId);
+
+        (PrinterConnectionRegistry registry, _) =
+            RegistryWithActor(printer.Id, Answered(null, Events.Rejected, "Won't execute the same command multiple times"));
+        PrinterCommandService service = new(context, new TeamService(context), registry);
+
+        // Act
+        CommandOutcome<AskSomethingAnswer>? outcome =
+            await service.AskAsync(printer.Id, new AskSomething(), 1, CancellationToken.None);
+
+        // Assert
+        outcome!.EventType.Should().Be(Events.Rejected);
+        outcome.Reason.Should().Be("Won't execute the same command multiple times");
+        outcome.Answer.Should().BeNull();
+    }
+
+    /// <summary>
+    /// A payload whose field types have moved throws, rather than arriving as a null answer that
+    /// would be indistinguishable from the printer refusing the command.
+    /// </summary>
+    [Fact]
+    public async Task AskAsyncThrowsWhenTheAnswerWillNotParse()
+    {
+        // Arrange
+        await using HSDbContext context = await MigratedContextAsync();
+
+        TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: false);
+        Printer printer = await AddPrinterAsync(context, membership.TeamId);
+
+        (PrinterConnectionRegistry registry, _) =
+            RegistryWithActor(printer.Id, Answered("""{"file_count":"three","path":"/usb"}"""));
+        PrinterCommandService service = new(context, new TeamService(context), registry);
+
+        // Act
+        Func<Task> ask = () => service.AskAsync(printer.Id, new AskSomething(), 1, CancellationToken.None);
+
+        // Assert
+        await ask.Should().ThrowAsync<CommandAnswerUnreadableException>()
+                 .Where(e => e.WireName == "SEND_FILE_INFO" && e.PrinterId == printer.Id);
+    }
+
+    /// <summary>
+    /// The permission gate is shared with <see cref="PrinterCommandService.SendCommandAsync"/> rather
+    /// than reimplemented - which is exactly what extracting the common half could have broken
+    /// silently, since nothing else asks a question yet.
+    /// </summary>
+    [Fact]
+    public async Task AskAsyncEnforcesCanUseLikeSendCommandAsyncDoes()
+    {
+        // Arrange
+        await using HSDbContext context = await MigratedContextAsync();
+
+        TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: false, canManage: false);
+        Printer printer = await AddPrinterAsync(context, membership.TeamId);
+
+        (PrinterConnectionRegistry registry, _) = RegistryWithActor(printer.Id, Answered("""{"file_count":1}"""));
+        PrinterCommandService service = new(context, new TeamService(context), registry);
+
+        // Act
+        Func<Task> ask = () => service.AskAsync(printer.Id, new AskSomething(), 1, CancellationToken.None);
+
+        // Assert
+        await ask.Should().ThrowAsync<TeamAccessDeniedException>();
+    }
+
     [Fact]
     public async Task SendCommandAsyncReturnsTheOutcomeWhenTheCallerCanUse()
     {
@@ -130,7 +261,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
         (PrinterConnectionRegistry registry, IPrinterConnectionActor actor) =
-            RegistryWithActor(printer.Id, new CommandSendResult(CommandSendOutcome.Completed, new CommandOutcome(Events.Finished, null, null)));
+            RegistryWithActor(printer.Id, new CommandSendResult(CommandSendOutcome.Completed, new CommandOutcome(Events.Finished, null)));
         PrinterCommandService service = new(context, new TeamService(context), registry);
         PausePrint command = new();
 

@@ -2,10 +2,12 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Homespool.Host.DTO;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
+using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -63,11 +65,11 @@ public class PrinterController : ControllerBase
     private readonly ILogger<PrinterController> _logger;
 
     public PrinterController(UserFileStore files,
-                                    PrintFileSender sender,
-                                    PrinterCommandService commands,
-                                    PrinterQueryService printers,
-                                    UserManager<HSUser> userManager,
-                                    ILogger<PrinterController> logger)
+                             PrintFileSender sender,
+                             PrinterCommandService commands,
+                             PrinterQueryService printers,
+                             UserManager<HSUser> userManager,
+                             ILogger<PrinterController> logger)
     {
         _files = files;
         _sender = sender;
@@ -103,7 +105,9 @@ public class PrinterController : ControllerBase
     /// </remarks>
     [HttpPost]
     [Route("printers/{uuid:guid}/files")]
-    public async Task<IActionResult> SendFile(Guid uuid, [FromBody] SendFileRequest body, CancellationToken cancellationToken)
+    public async Task<IActionResult> SendFile(Guid uuid,
+                                              [FromBody] SendFileRequest body,
+                                              CancellationToken cancellationToken)
     {
         HSUser? caller = await _userManager.GetUserAsync(User);
 
@@ -194,6 +198,111 @@ public class PrinterController : ControllerBase
         return await SendAsync(printer, new StartPrint { Path = body.Path }, cancellationToken);
     }
 
+    /// <summary>
+    /// Lists what is on the printer's own storage.
+    /// <c>GET /api/v1/printers/{uuid}/storage/usb/{path}</c>, with an empty path meaning the root.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b><c>usb</c> is literal, because it is the only storage that exists.</b> Firmware hard-codes
+    /// it in both directions: <c>path_allowed</c> accepts nothing else (planner.cpp:135-141), and the
+    /// <c>storages</c> array in <c>INFO</c> writes the mountpoint as the constant <c>"/usb"</c>
+    /// (render.cpp:353-366). A route segment that could only ever hold one value is better as that
+    /// value, so a wrong root is a 404 from routing rather than a command spent earning
+    /// <c>"Forbidden path"</c>.
+    /// </para>
+    /// <para>
+    /// <b>Percent signs in names are a real trap, not a theoretical one.</b> A captured listing
+    /// contains <c>wavy%20vase%20wide_0.4n_0.2mm_PLA_COREONE_1h56m.bgcode</c> - a literal
+    /// <c>%20</c> in the filename - so a client must send it as <c>%2520</c> or this resolves it to
+    /// a name with spaces and asks the printer about a file that does not exist.
+    /// </para>
+    /// <para>
+    /// Either name works in the path: firmware resolves long names as well as 8.3 aliases, since
+    /// FAT32 long-name support is live on <c>/usb</c>. Its <i>answer</i> is always in the 8.3 form
+    /// though - see <see cref="PrinterStorageReadDTO.Path"/>.
+    /// </para>
+    /// <para>
+    /// Gated on <c>CanUse</c> rather than <c>CanRead</c>, because although this reads, it does so by
+    /// making the printer go and work: <see cref="PrinterCommandService"/> is the one place that
+    /// decides, and it decides the same way for every command.
+    /// </para>
+    /// </remarks>
+    [HttpGet]
+    [Route("printers/{uuid:guid}/storage/usb/{**path}")]
+    public async Task<IActionResult> Storage(Guid uuid, string? path, CancellationToken cancellationToken)
+    {
+        // Firmware rejects traversal itself; catching it here means an attempt never reaches the
+        // printer and the caller gets told why, rather than spending a command on a refusal.
+        if (path is not null && (path.Contains("/../", StringComparison.Ordinal)
+                                 || path.StartsWith("../", StringComparison.Ordinal)
+                                 || path.EndsWith("/..", StringComparison.Ordinal)
+                                 || path == ".."))
+        {
+            return BadRequest("Path must contain no '/../' segment.");
+        }
+
+        (Printer? printer, IActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+
+        if (printer is null)
+        {
+            return failure!;
+        }
+
+        string trimmed = path?.Trim('/') ?? string.Empty;
+        SendFileInfo command = new() { Path = trimmed.Length == 0 ? "/usb" : $"/usb/{trimmed}" };
+        HSUser user = (await _userManager.GetUserAsync(User))!;
+
+        try
+        {
+            CommandOutcome<FileInfoEventDataDTO>? outcome =
+                await _commands.AskAsync(printer.Id, command, user.Id, cancellationToken);
+
+            if (outcome?.EventType is Events.Rejected or Events.Failed)
+            {
+                // Firmware answers a path that does not exist and a path it will not touch with the
+                // same event, distinguished only by reason text - so this stays one status code and
+                // hands the caller firmware's own words rather than guessing at a 404.
+                return StatusCode(StatusCodes.Status409Conflict,
+                    new { command = command.WireName, outcome = outcome.EventType.ToString(), reason = outcome.Reason });
+            }
+
+            if (outcome?.Answer is null)
+            {
+                // Answered, and with nothing in it. Not a refusal and not unreadable - there is
+                // simply no listing to return, and inventing an empty one would claim the storage is
+                // empty when what happened is that the printer said nothing.
+                _logger.LogInformation("{Command} to printer {PrinterId} answered {Outcome} with no data",
+                    command.WireName, printer.Id, outcome?.EventType.ToString() ?? "nothing");
+
+                return StatusCode(StatusCodes.Status502BadGateway,
+                    new { command = command.WireName, error = "The printer answered without a listing." });
+            }
+
+            return Ok(PrinterStorageReadDTO.FromEvent(outcome.Answer));
+        }
+        catch (CommandAnswerUnreadableException e)
+        {
+            // The printer answered and we could not read it, which is the gateway's failure and not
+            // the caller's - so 502 rather than the 409 the transport failures below get.
+            _logger.LogWarning(e, "{Command} to printer {PrinterId} answered unreadably", command.WireName, printer.Id);
+
+            return StatusCode(StatusCodes.Status502BadGateway,
+                new { command = command.WireName, error = e.Message });
+        }
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
+            or CommandResponseTimedOutException or CommandSendTimedOutException)
+        {
+            _logger.LogInformation(e, "{Command} to printer {PrinterId} did not complete", command.WireName, printer.Id);
+
+            return StatusCode(StatusCodes.Status409Conflict, new { command = command.WireName, error = e.Message });
+        }
+        catch (TeamAccessDeniedException)
+        {
+            return Forbid();
+        }
+    }
+
     /// <summary>Pauses a running print. <c>PUT /api/v1/printers/{uuid}/command/pause</c>.</summary>
     /// <remarks>
     /// The first of six job-control verbs, all named as Connect's own app API names them, all taking
@@ -257,14 +366,17 @@ public class PrinterController : ControllerBase
         SendJobControlAsync(uuid, new SetPrinterIdle(), cancellationToken);
 
     /// <summary>Resolves the printer, then sends - the whole body of every job-control verb above.</summary>
-    private async Task<IActionResult> SendJobControlAsync(Guid uuid, ISendableCommand command, CancellationToken cancellationToken)
+    private async Task<IActionResult> SendJobControlAsync(Guid uuid,
+                                                          ISendableCommand command,
+                                                          CancellationToken cancellationToken)
     {
         (Printer? printer, IActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
 
         return printer is null ? failure! : await SendAsync(printer, command, cancellationToken);
     }
 
-    private async Task<(Printer? printer, IActionResult? failure)> ResolveAsync(Guid uuid, CancellationToken cancellationToken)
+    private async Task<(Printer? printer, IActionResult? failure)> ResolveAsync(Guid uuid,
+                                                                                CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
@@ -281,8 +393,10 @@ public class PrinterController : ControllerBase
         return printer is null ? (null, NotFound()) : (printer, null);
     }
 
-    private async Task<IActionResult> SendAsync(Printer printer, ISendableCommand command,
-        CancellationToken cancellationToken, Action? onFailure = null)
+    private async Task<IActionResult> SendAsync(Printer printer,
+                                                ISendableCommand command,
+                                                CancellationToken cancellationToken,
+                                                Action? onFailure = null)
     {
         HSUser user = (await _userManager.GetUserAsync(User))!;
 
@@ -322,18 +436,18 @@ public class PrinterController : ControllerBase
             return Forbid();
         }
     }
-}
 
-/// <summary>Body of a send: which of the caller's files to transfer.</summary>
-public class SendFileRequest
-{
-    /// <summary>The file's name, as the file API lists it.</summary>
-    public required string Name { get; set; }
-}
+    /// <summary>Body of a send: which of the caller's files to transfer.</summary>
+    public class SendFileRequest
+    {
+        /// <summary>The file's name, as the file API lists it.</summary>
+        public required string Name { get; set; }
+    }
 
-/// <summary>Body of a print: what to run, on the printer's own storage.</summary>
-public class PrintRequest
-{
-    /// <summary>Path on the printer, under <c>/usb/</c>.</summary>
-    public required string Path { get; set; }
+    /// <summary>Body of a print: what to run, on the printer's own storage.</summary>
+    public class PrintRequest
+    {
+        /// <summary>Path on the printer, under <c>/usb/</c>.</summary>
+        public required string Path { get; set; }
+    }
 }

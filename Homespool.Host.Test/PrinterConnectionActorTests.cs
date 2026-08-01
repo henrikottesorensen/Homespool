@@ -214,7 +214,7 @@ public class PrinterConnectionActorTests
         // Assert
         result.Response!.EventType.Should().Be(Events.Rejected);
         result.Response.Reason.Should().Be("Can't set idle now");
-        result.Response.Data.Should().BeNull("an event that carried no data must not invent one");
+        result.Data.Should().BeNull("an event that carried no data must not invent one");
 
         actor.Complete();
         await Eventually(actor.Completion);
@@ -253,9 +253,9 @@ public class PrinterConnectionActorTests
 
         // Assert
         result.Outcome.Should().Be(CommandSendOutcome.Completed);
-        result.Response!.Data.Should().NotBeNull();
+        result.Data.Should().NotBeNull();
 
-        JsonElement child = result.Response.Data!.Value.GetProperty("children").EnumerateArray().Single();
+        JsonElement child = result.Data!.Value.GetProperty("children").EnumerateArray().Single();
 
         child.GetProperty("name").GetString().Should().Be("MODEL~1.GCO");
         child.GetProperty("display_name").GetString().Should().Be("model.gcode");

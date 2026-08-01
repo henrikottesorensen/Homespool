@@ -47,3 +47,33 @@ public interface ISendableCommand : ICommand
     /// </remarks>
     bool ExpectsReply => true;
 }
+
+/// <summary>
+/// A command whose answer is a <i>payload</i> rather than a verdict - one that asks the printer a
+/// question and gets data back, like <c>SEND_FILE_INFO</c> returning a directory listing.
+/// </summary>
+/// <typeparam name="TAnswer">
+/// The shape of the answering event's <c>data</c>, e.g. <c>FileInfoEventDataDTO</c> for
+/// <c>SEND_FILE_INFO</c>. Deserialised once, in <see cref="PrinterCommandService"/>.
+/// </typeparam>
+/// <remarks>
+/// <para>
+/// <b>A marker, deliberately - the type parameter is the whole declaration.</b> It is what lets
+/// <see cref="PrinterCommandService.AskAsync"/> return a typed answer without anything switching on
+/// event type at runtime: the command's own static type names the shape, so the compiler dispatches
+/// it and each new question-asking command adds nothing to any existing method.
+/// </para>
+/// <para>
+/// <b>Why the raw payload stops here.</b> The alternative was to hand callers the answering event's
+/// <c>data</c> as a <c>JsonElement</c> and let each parse it. That works exactly until the fifth
+/// caller, at which point the schema lives in five call sites and nowhere else. Above this
+/// interface the payload is always a real type; the untyped form exists only between the actor and
+/// the service, which is one hop and one reader.
+/// </para>
+/// <para>
+/// Commands answered by their event type alone - <c>Finished</c> or <c>Rejected</c>, which is all
+/// twelve sendable ones today - implement plain <see cref="ISendableCommand"/> and go through
+/// <see cref="PrinterCommandService.SendCommandAsync"/> unchanged.
+/// </para>
+/// </remarks>
+public interface ISendableCommand<TAnswer> : ISendableCommand;

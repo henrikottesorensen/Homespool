@@ -17,9 +17,9 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           # No global.json pins this, so the version lives here. Directory.Build.props targets
           # net10.0; the project is developed against 10.0.302.

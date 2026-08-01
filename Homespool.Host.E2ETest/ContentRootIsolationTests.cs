@@ -36,20 +36,20 @@ public sealed class ContentRootIsolationTests : IAsyncLifetime, IDisposable
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-contentroot-{Guid.NewGuid():N}.db");
     private HomespoolFactory _factory = null!;
 
-    public Task InitializeAsync()
+    public ValueTask InitializeAsync()
     {
         _factory = new HomespoolFactory($"Data Source={_databasePath}");
 
         _ = _factory.Server;
 
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         Dispose();
 
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     public void Dispose()

@@ -47,16 +47,16 @@ public sealed class TelemetryAlertMailpitTests : IAsyncLifetime, IDisposable
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-alert-{Guid.NewGuid():N}.db");
     private ServiceProvider? _provider;
 
-    public Task InitializeAsync()
+    public ValueTask InitializeAsync()
     {
-        return _mailpit.ClearAsync();
+        return new(_mailpit.ClearAsync());
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         Dispose();
 
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     public void Dispose()

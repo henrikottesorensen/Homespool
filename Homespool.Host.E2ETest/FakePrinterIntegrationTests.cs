@@ -50,7 +50,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     private HomespoolFactory _root = null!;
     private WebApplicationFactory<PrinterAppController> _factory = null!;
 
-    public Task InitializeAsync()
+    public ValueTask InitializeAsync()
     {
         _root = new HomespoolFactory($"Data Source={_databasePath}", null, _logs);
         _factory = _root.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
@@ -61,14 +61,14 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         using IServiceScope scope = _factory.Services.CreateScope();
         scope.ServiceProvider.GetRequiredService<SetupState>().MarkComplete();
 
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         Dispose();
 
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     public void Dispose()

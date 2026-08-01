@@ -41,7 +41,7 @@ public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
     private readonly CapturingSink _logs = new();
     private HomespoolFactory _factory = null!;
 
-    public Task InitializeAsync()
+    public ValueTask InitializeAsync()
     {
         _factory = new HomespoolFactory($"Data Source={_databasePath}", extraSinks: [_logs]);
 
@@ -51,14 +51,14 @@ public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
         // precondition these tests exercise.
         _ = _factory.Server;
 
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         Dispose();
 
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     // CA1001 wants IDisposable on a type owning a disposable field even though xUnit's IAsyncLifetime

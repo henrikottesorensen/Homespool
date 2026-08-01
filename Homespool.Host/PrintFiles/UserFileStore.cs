@@ -219,8 +219,13 @@ public sealed class UserFileStore
     /// authoritative, because two uploads of the same name can race between them.
     /// </para>
     /// </remarks>
+    /// <param name="displayName">
+    /// Decorates the directory this user's files live in, e.g. <c>12-Sørensen</c>. Used only when
+    /// there is no directory yet - an existing one is found by its id prefix and kept whatever its
+    /// name says, so this going stale is cosmetic. Null means the folder is the bare id.
+    /// </param>
     public async Task<StoredFile> SaveAsync(long userId, string fileName, Stream content, bool overwrite,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, string? displayName = null)
     {
         // Fails a doomed request before hundreds of megabytes cross the wire. The check inside
         // Publish is the authoritative one; this is the courtesy.
@@ -233,7 +238,7 @@ public sealed class UserFileStore
 
         try
         {
-            return Publish(userId, pending.Token, overwrite)!;
+            return Publish(userId, pending.Token, overwrite, displayName)!;
         }
         catch
         {
@@ -313,7 +318,7 @@ public sealed class UserFileStore
     /// transfer already in flight keep serving the bytes it announced
     /// (<see cref="PrusaConnect.Transfers.FileTransferContent"/>).
     /// </remarks>
-    public StoredFile? Publish(long userId, string token, bool overwrite)
+    public StoredFile? Publish(long userId, string token, bool overwrite, string? displayName = null)
     {
         if (!_pending.TryGetValue(token, out Pending? pending) || pending.UserId != userId)
         {
@@ -329,7 +334,10 @@ public sealed class UserFileStore
             throw new PrintFileNameConflictException(pending.FileName);
         }
 
-        string directory = DirectoryFor(userId);
+        // Resolved before it is created, and that order is load-bearing: building the name from the
+        // *current* display name each time would give a renamed user a second directory and split
+        // their files across both, with listings showing whichever the glob happened to hit.
+        string directory = DirectoryFor(userId, displayName);
 
         Directory.CreateDirectory(directory);
 
@@ -478,8 +486,47 @@ public sealed class UserFileStore
         }
     }
 
-    private string DirectoryFor(long userId) =>
-        Path.Combine(_root, userId.ToString(CultureInfo.InvariantCulture));
+    /// <summary>
+    /// A user's directory, found by its <c>{userId}-</c> prefix - so a display name that has changed
+    /// since the directory was made still resolves.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Returns the path whether or not it exists; callers check. When nothing matches, the name is
+    /// built from <paramref name="displayName"/>, which is why only the write path passes one - a
+    /// read has nothing to create and no reason to care what the folder would have been called.
+    /// </para>
+    /// <para>
+    /// <b>Ordered before taking the first.</b> Two matching directories are only reachable through a
+    /// crash mid-create or somebody meddling by hand, but <c>Directory.EnumerateDirectories</c>
+    /// promises no order at all - so an unordered "first" would make a user's files appear and
+    /// disappear between calls on an unchanged disk.
+    /// </para>
+    /// </remarks>
+    private string DirectoryFor(long userId, string? displayName = null)
+    {
+        if (Directory.Exists(_root))
+        {
+            List<string> matches = Directory.EnumerateDirectories(_root, UserDirectoryName.PatternFor(userId))
+                                            .Order(StringComparer.Ordinal)
+                                            .ToList();
+
+            if (matches.Count > 1)
+            {
+                _logger.LogWarning(
+                    "user {UserId} has {Count} storage directories ({Directories}); using the first. "
+                    + "Only one should exist - merge them by hand.",
+                    userId, matches.Count, string.Join(", ", matches.Select(Path.GetFileName)));
+            }
+
+            if (matches.Count > 0)
+            {
+                return matches[0];
+            }
+        }
+
+        return Path.Combine(_root, UserDirectoryName.For(userId, displayName));
+    }
 
     /// <summary>
     /// Throws away staged uploads nobody finished. Runs when a new one starts, so it needs no timer.

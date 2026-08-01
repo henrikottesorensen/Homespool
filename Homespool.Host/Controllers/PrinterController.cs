@@ -55,6 +55,9 @@ namespace Homespool.Host.Controllers;
 [ApiController]
 [Route("/api/v1")]
 [Authorize(Policy = Authorisation.Policies.Api)]
+
+// 401 is the auth policy's, not any action's - an unauthenticated caller never reaches one.
+[ProducesResponseType(StatusCodes.Status401Unauthorized)]
 public class PrinterController : ControllerBase
 {
     private readonly UserFileStore _files;
@@ -105,6 +108,11 @@ public class PrinterController : ControllerBase
     /// </remarks>
     [HttpPost]
     [Route("printers/{uuid:guid}/files")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult> SendFile(Guid uuid,
                                               [FromBody] SendFileRequest body,
                                               CancellationToken cancellationToken)
@@ -179,6 +187,11 @@ public class PrinterController : ControllerBase
     /// </remarks>
     [HttpPost]
     [Route("printers/{uuid:guid}/print")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult> Print(Guid uuid, [FromBody] PrintRequest body, CancellationToken cancellationToken)
     {
         if (!body.Path.StartsWith("/usb/", StringComparison.Ordinal) || body.Path.Contains("/../", StringComparison.Ordinal))
@@ -230,6 +243,12 @@ public class PrinterController : ControllerBase
     /// </remarks>
     [HttpGet]
     [Route("printers/{uuid:guid}/storage/usb/{**path}")]
+    [ProducesResponseType<PrinterStorageReadDTO>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
     public async Task<ActionResult<PrinterStorageReadDTO>> Storage(Guid uuid, string? path, CancellationToken cancellationToken)
     {
         // Firmware rejects traversal itself; catching it here means an attempt never reaches the
@@ -318,18 +337,30 @@ public class PrinterController : ControllerBase
     /// </remarks>
     [HttpPut]
     [Route("printers/{uuid:guid}/command/pause")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public Task<ActionResult> Pause(Guid uuid, CancellationToken cancellationToken) =>
         SendJobControlAsync(uuid, new PausePrint(), cancellationToken);
 
     /// <summary>Resumes a paused print. <c>PUT /api/v1/printers/{uuid}/command/resume</c>.</summary>
     [HttpPut]
     [Route("printers/{uuid:guid}/command/resume")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public Task<ActionResult> Resume(Guid uuid, CancellationToken cancellationToken) =>
         SendJobControlAsync(uuid, new ResumePrint(), cancellationToken);
 
     /// <summary>Stops a running print. <c>PUT /api/v1/printers/{uuid}/command/stop</c>.</summary>
     [HttpPut]
     [Route("printers/{uuid:guid}/command/stop")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public Task<ActionResult> Stop(Guid uuid, CancellationToken cancellationToken) =>
         SendJobControlAsync(uuid, new StopPrint(), cancellationToken);
 
@@ -340,12 +371,20 @@ public class PrinterController : ControllerBase
     /// success as far as this endpoint is concerned, since only Rejected and Failed are refusals.</remarks>
     [HttpPut]
     [Route("printers/{uuid:guid}/command/ready")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public Task<ActionResult> Ready(Guid uuid, CancellationToken cancellationToken) =>
         SendJobControlAsync(uuid, new SetPrinterReady(), cancellationToken);
 
     /// <summary>Cancels the ready state. <c>PUT /api/v1/printers/{uuid}/command/unready</c>.</summary>
     [HttpPut]
     [Route("printers/{uuid:guid}/command/unready")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public Task<ActionResult> Unready(Guid uuid, CancellationToken cancellationToken) =>
         SendJobControlAsync(uuid, new CancelPrinterReady(), cancellationToken);
 
@@ -362,6 +401,10 @@ public class PrinterController : ControllerBase
     /// </remarks>
     [HttpPut]
     [Route("printers/{uuid:guid}/command/idle")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public Task<ActionResult> Idle(Guid uuid, CancellationToken cancellationToken) =>
         SendJobControlAsync(uuid, new SetPrinterIdle(), cancellationToken);
 

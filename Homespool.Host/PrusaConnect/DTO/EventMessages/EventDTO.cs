@@ -51,18 +51,18 @@ public class EventDTO
     /// </summary>
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? Unknown { get; set; }
-}
 
-/// <summary>
-/// Maps <see cref="Events"/> to/from firmware's SCREAMING_SNAKE_CASE wire strings (e.g.
-/// <c>FileInfo</c> &lt;-&gt; <c>"FILE_INFO"</c>). <see cref="JsonConverterAttribute"/> only
-/// instantiates its target type via a parameterless constructor, so the naming policy has to be
-/// baked into a subclass rather than passed at the attribute site.
-/// </summary>
-public sealed class EventsJsonConverter : JsonStringEnumConverter<Events>
-{
-    public EventsJsonConverter()
-        : base(JsonNamingPolicy.SnakeCaseUpper)
+    /// <summary>
+    /// Maps <see cref="Events"/> to/from firmware's SCREAMING_SNAKE_CASE wire strings (e.g.
+    /// <c>FileInfo</c> &lt;-&gt; <c>"FILE_INFO"</c>). <see cref="JsonConverterAttribute"/> only
+    /// instantiates its target type via a parameterless constructor, so the naming policy has to be
+    /// baked into a subclass rather than passed at the attribute site.
+    /// </summary>
+    public sealed class EventsJsonConverter : JsonStringEnumConverter<Events>
     {
+        public EventsJsonConverter()
+            : base(JsonNamingPolicy.SnakeCaseUpper)
+        {
+        }
     }
 }

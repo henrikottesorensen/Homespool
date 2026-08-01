@@ -143,6 +143,11 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     private const int FinalFlushAttempts = 2;
 
     /// <summary>
+    /// What replaces a redacted value - a value, not an absence, so the redaction is legible.
+    /// </summary>
+    private const string RedactedMarker = "[redacted]";
+
+    /// <summary>
     /// Every field a <c>FILE_INFO</c>'s <c>data</c> carries that <b>firmware itself renders</b>. Read
     /// straight off render.cpp:466-498 at the pinned ref, where the branch is six fixed fields plus
     /// one variant chunk - and the variant's only non-gcode alternative is the directory listing,
@@ -155,6 +160,46 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// </remarks>
     private static readonly string[] FirmwareRenderedFileInfoFields =
         ["size", "m_timestamp", "read_only", "display_name", "type", "path", "children", "file_count"];
+
+    /// <summary>
+    /// Every <c>INFO</c> field masked before the payload reaches a row, as a dotted path from the
+    /// object's root. See <see cref="RedactCredentials"/> for why this is a blacklist where its
+    /// neighbour above is an allowlist.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Paths, not bare names</b>, so a same-named field elsewhere in the object is not redacted by
+    /// accident - and because two of these are nested and a flat match would never have reached them.
+    /// </para>
+    /// <para>
+    /// <b><c>api_key</c> is the credential</b>: the printer's PrusaLink password, which with the
+    /// address beside it grants full authenticated access to its HTTP API. That one is the security
+    /// fix. The other two are privacy, and the argument is different.
+    /// </para>
+    /// <para>
+    /// <b>The wifi fields are here because an SSID can leak where someone lives</b> (Henrik,
+    /// 2026-07-31). It is user-authored free text naming a home - often a surname or a street - and
+    /// SSIDs are searchable in public wardriving databases in a way a printer serial is not. Nothing
+    /// in this codebase reads either field; they were stored only because the payload was stored
+    /// verbatim. The one real diagnostic use - spotting a printer that joined the wrong SSID on a
+    /// multi-SSID network - is a question about <i>now</i>, answered by the current <c>INFO</c> or by
+    /// walking up to the printer and reading its screen. This table is history, and history of it buys
+    /// nothing.
+    /// </para>
+    /// <para>
+    /// <b>Weighed and deliberately kept:</b> <c>sn</c> identifies the user's own device to the user
+    /// and is what anyone would quote in a support conversation; <c>fingerprint</c> is how a
+    /// connection is tied to a printer at all. Neither is a bearer credential, and both earn their
+    /// place.
+    /// </para>
+    /// <para>
+    /// <b>Limit worth knowing:</b> matching descends into nested <i>objects</i> but not into arrays,
+    /// so a field inside <c>storages[]</c> could not be named here today. Nothing in <c>INFO</c> needs
+    /// it; if that changes, <see cref="RedactCredentials"/> is where it changes.
+    /// </para>
+    /// </remarks>
+    private static readonly string[] RedactedInfoFields =
+        ["api_key", "network_info.wifi_ssid", "network_info.wifi_mac"];
 
     private static readonly TimeSpan FinalFlushRetryDelay = TimeSpan.FromMilliseconds(250);
 
@@ -268,7 +313,8 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
     /// <summary>
     /// The event's <c>data</c> as it goes into the row - verbatim, except that a <c>FILE_INFO</c> is
-    /// reduced to <see cref="FirmwareRenderedFileInfoFields"/>.
+    /// reduced to <see cref="FirmwareRenderedFileInfoFields"/> and an <c>INFO</c> has its
+    /// <c>api_key</c> masked.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -311,6 +357,11 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             return null;
         }
 
+        if (dto.EventType == Model.Events.Info && element.ValueKind == JsonValueKind.Object)
+        {
+            return RedactCredentials(element);
+        }
+
         // Scoped to FILE_INFO deliberately. Every other event type has its own field set, and the
         // allowlist above describes this one only - applying it anywhere else would silently empty
         // payloads that are entirely firmware's own work.
@@ -337,6 +388,94 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         }
 
         return Encoding.UTF8.GetString(buffer.WrittenSpan);
+    }
+
+    /// <summary>
+    /// An <c>INFO</c> payload with every <see cref="RedactedInfoFields"/> entry masked. Today that is
+    /// <c>api_key</c> alone - <b>the printer's PrusaLink password</b>, which firmware volunteers in
+    /// every one of these (<see cref="DTO.EventMessages.InfoEventDataDTO.ApiKey"/> says why it is a
+    /// credential and what it unlocks).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Found in a live events table, 2026-07-31</b>, sitting in clear text beside the printer's
+    /// address - which is the pair that grants full authenticated access to its HTTP API, including
+    /// reading any file off the drive. Rotating the password on the printer does not remove earlier
+    /// copies, and this table is append-only with no retention sweep, so every reconnection since
+    /// enrolment had left one.
+    /// </para>
+    /// <para>
+    /// <b>A blacklist here, and an allowlist for <c>FILE_INFO</c> - deliberately opposite</b>, because
+    /// the risks are opposite. That one guards against <i>unbounded, attacker-influenced</i> gcode
+    /// headers, where nothing can be enumerated in advance. This one guards named fields in a small,
+    /// closed, firmware-rendered object that <see cref="UnknownFieldTracker"/> exists to watch for
+    /// changes - and an allowlist would silently drop the new firmware fields that tracker is meant to
+    /// surface. The residual risk is a *future* credential field arriving unnamed; that is what
+    /// re-reading render.cpp at a new pinned ref is for.
+    /// </para>
+    /// <para>
+    /// <b>Masked rather than dropped</b>, so the field's presence stays visible. A silently absent key
+    /// reads as "firmware stopped sending it" to whoever looks next, which is the sort of ambiguity
+    /// that costs an afternoon.
+    /// </para>
+    /// <para>
+    /// <b>This does not scrub rows already written.</b> Existing payloads keep whatever key was
+    /// current when they were stored; a deployment that cares needs to clear them out of band. Said
+    /// plainly here rather than left for someone to discover.
+    /// </para>
+    /// </remarks>
+    private static string RedactCredentials(JsonElement element)
+    {
+        ArrayBufferWriter<byte> buffer = new();
+
+        using (Utf8JsonWriter writer = new(buffer))
+        {
+            WriteRedacted(writer, element, prefix: null);
+        }
+
+        return Encoding.UTF8.GetString(buffer.WrittenSpan);
+    }
+
+    /// <summary>
+    /// Copies one object through, masking any property whose dotted path appears in
+    /// <see cref="RedactedInfoFields"/>, and recursing so nested ones are reachable.
+    /// </summary>
+    /// <param name="writer">Where the copy goes.</param>
+    /// <param name="element">The object being copied. Must be <see cref="JsonValueKind.Object"/>.</param>
+    /// <param name="prefix">
+    /// The dotted path of <paramref name="element"/> itself, or null at the root.
+    /// </param>
+    /// <remarks>
+    /// <b>Objects only, not arrays.</b> An array is copied whole, so a field inside one cannot be
+    /// named in the list. Nothing in <c>INFO</c> needs it - <c>storages</c> carries mount points and
+    /// free space - and descending into arrays would need an index or a wildcard in the path syntax,
+    /// which is more machinery than a list of three earns. The limit is stated on the list too, since
+    /// that is where someone will be looking when it matters.
+    /// </remarks>
+    private static void WriteRedacted(Utf8JsonWriter writer, JsonElement element, string? prefix)
+    {
+        writer.WriteStartObject();
+
+        foreach (JsonProperty property in element.EnumerateObject())
+        {
+            string path = prefix is null ? property.Name : $"{prefix}.{property.Name}";
+
+            if (Array.IndexOf(RedactedInfoFields, path) >= 0)
+            {
+                writer.WriteString(property.Name, RedactedMarker);
+            }
+            else if (property.Value.ValueKind == JsonValueKind.Object)
+            {
+                writer.WritePropertyName(property.Name);
+                WriteRedacted(writer, property.Value, path);
+            }
+            else
+            {
+                property.WriteTo(writer);
+            }
+        }
+
+        writer.WriteEndObject();
     }
 
     /// <summary>

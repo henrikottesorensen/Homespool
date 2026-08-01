@@ -5,12 +5,17 @@ using System.Linq;
 
 using Homespool.Data;
 using Homespool.Host.Controllers;
+using Homespool.Host.Listeners;
+using Homespool.Host.PrintFiles;
 using Homespool.Host.PrusaConnect;
-using Homespool.Host.PrusaConnect.Transfers;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Serilog.Core;
 
 namespace Homespool.Host.E2ETest;
@@ -47,32 +52,43 @@ namespace Homespool.Host.E2ETest;
 /// </remarks>
 public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppController>
 {
+    /// <summary>The printer address every test host advertises, and the first name in its certificate.</summary>
+    public const string PrinterHost = "printers.example.com";
+
     private readonly string _connectionString;
     private readonly IReadOnlyList<ILogEventSink> _extraSinks;
     private readonly MessageDispatcher? _messageDispatcher;
 
     /// <summary>
-    /// Where uploads go for this factory's lifetime, deleted with it.
+    /// The content root this factory's application resolves relative paths against, deleted with it.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>The database is not the only persistent state a test run touches.</b>
-    /// <see cref="FileStorageOptions.Directory"/> defaults to the relative <c>data/files</c>, and
-    /// <c>UploadedFileStore</c> resolves a relative path against the content root - which under
-    /// <see cref="WebApplicationFactory{TEntryPoint}"/> is the <i>real project directory</i>, not the
-    /// test output folder. So every upload test wrote into the same <c>Homespool.Host/data/files</c>
-    /// a running dev server serves from, and nothing removed them: 21 stale directories had
-    /// accumulated by 2026-07-28 before anyone noticed.
+    /// <b>One redirection, at the only seam that matters.</b> Components that keep files -
+    /// <c>UploadedFileStore</c>, <c>PrinterCertificateAuthority</c> - hold a relative directory in
+    /// options and resolve it through <see cref="IHostEnvironmentAccessor"/>. Under
+    /// <see cref="WebApplicationFactory{TEntryPoint}"/> that content root is the <i>real project
+    /// directory</i>, not the test output folder, so those relative paths land in the same
+    /// <c>Homespool.Host/data</c> a dev server uses. Pointing the accessor here moves all of them at
+    /// once, including the ones nobody has written yet.
     /// </para>
     /// <para>
-    /// That is the same fault this class's remarks already describe for the SQLite file, which took
-    /// two attempts to fix. The file store arrived later and did not inherit the lesson. Isolating it
-    /// here rather than in the one suite that uploads today means the next suite to touch the store
-    /// gets it for free - which is the whole reason the database override lives here too.
+    /// <b>It has caught three components, one at a time, and that is the point of fixing the
+    /// mechanism instead.</b> The SQLite file took two attempts. Uploads went unnoticed until 21 stale
+    /// directories had accumulated in the project tree. Certificates were worse than untidy: a test
+    /// issued one, read back the developer's own from a previous live run, and asserted against
+    /// <i>that</i> - a passing test measuring the wrong machine. Each was fixed on its own; each fix
+    /// left the next component to rediscover the trap.
+    /// </para>
+    /// <para>
+    /// The narrow hole this leaves: a component that injects <c>IWebHostEnvironment</c> and does its
+    /// own <c>Path.Combine</c> bypasses the accessor and this override with it. That is a convention
+    /// held by <see cref="HostEnvironmentAccessor"/>'s own documentation rather than by code, and
+    /// <c>ContentRootIsIsolatedTests</c> is what notices if this override is removed.
     /// </para>
     /// </remarks>
-    private readonly string _fileStorageRoot =
-        Path.Combine(Path.GetTempPath(), $"hs-files-{Guid.NewGuid():N}");
+    private readonly string _contentRoot =
+        Path.Combine(Path.GetTempPath(), $"hs-content-{Guid.NewGuid():N}");
 
     public HomespoolFactory(string connectionString,
                                  MessageDispatcher? messageDispatcher = null,
@@ -93,11 +109,54 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
     /// </remarks>
     public IReadOnlyList<ServiceDescriptor> RegisteredServices { get; private set; } = [];
 
+    /// <summary>
+    /// Issues the printer certificate the way startup would, because nothing here binds a listener.
+    /// </summary>
+    /// <remarks>
+    /// <b>Production mints this on its startup path</b> - Program.EnsurePrinterCertificate, before the
+    /// first request, because the proxy reads the leaf when it starts - so a test host that skipped it
+    /// was unlike production in a way that kept showing up: the provisioning bundle had no address to
+    /// offer, and the certificate health check called a freshly started host degraded. Doing it here
+    /// makes a test host resemble a started server, which is what these tests are for.
+    /// </remarks>
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        IHost host = base.CreateHost(builder);
+
+        PrusaConnectOptions connect = host.Services.GetRequiredService<IOptions<PrusaConnectOptions>>().Value;
+
+        if (connect.PrinterTls)
+        {
+            host.Services.GetRequiredService<Homespool.Host.Certificates.PrinterCertificateAuthority>()
+                .EnsureLeaf(Homespool.Host.Certificates.PrinterCertificateNames.ForThisMachineAsync(
+                    connect,
+                    host.Services.GetRequiredService<IOptions<Homespool.Host.Certificates.CertificateOptions>>()
+                        .Value.ParsedContainerNetworks,
+                    host.Services.GetRequiredService<Homespool.Host.Certificates.IHostAddressResolver>(),
+                    System.Threading.CancellationToken.None).GetAwaiter().GetResult())
+                .Dispose();
+        }
+
+        return host;
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.ConfigureServices(services =>
         {
             RegisteredServices = [.. services];
+
+            // Gives TestServer the one thing it has no way to have: a listener. Real requests carry
+            // the port they arrived on in Connection.LocalPort, which is what the segregation
+            // middleware reads and what a client cannot forge; TestServer accepts no connections at
+            // all, so that port is 0 for every request and every printer route would be refused.
+            //
+            // So the test's choice of port - the one in its base address - stands in for the choice
+            // of listener, and a test dials the printer listener by dialling its port. That keeps the
+            // production path free of test seams: nothing in Homespool.Host consults the Host header,
+            // here or anywhere.
+            services.AddSingleton<IStartupFilter>(
+                provider => new SimulatedListener(provider.GetRequiredService<IOptions<ListenerOptions>>()));
 
             ServiceDescriptor? descriptor = services.SingleOrDefault(
                 d => d.ServiceType == typeof(DbContextOptions<HSDbContext>));
@@ -109,11 +168,25 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
 
             services.AddDbContext<HSDbContext>(options => options.UseSqlite(_connectionString));
 
-            // PostConfigure rather than Configure: Program.cs binds this section from configuration,
-            // and only a post-configure step is guaranteed to run after that binding. An absolute
-            // path also bypasses the content-root resolution entirely, so it cannot be re-rooted
-            // back onto the project directory.
-            services.PostConfigure<FileStorageOptions>(options => options.Directory = _fileStorageRoot);
+            // Everything that keeps a file resolves its configured, relative directory against this.
+            // Replacing it is what isolates uploads, certificates and whatever comes next, in one
+            // place, instead of overriding each component's options as it is discovered escaping -
+            // which is how the first three were dealt with, one incident at a time.
+            Directory.CreateDirectory(_contentRoot);
+
+            ServiceDescriptor? environment = services.SingleOrDefault(
+                d => d.ServiceType == typeof(IHostEnvironmentAccessor));
+
+            if (environment is not null)
+            {
+                services.Remove(environment);
+            }
+
+            services.AddSingleton<IHostEnvironmentAccessor>(new HostEnvironmentAccessor(_contentRoot));
+
+            // A deterministic printer address, so no test depends on what a developer happens to have
+            // in appsettings.Development.json - which is a real machine's LAN address, and changes.
+            services.PostConfigure<PrusaConnectOptions>(options => options.PrinterHost = PrinterHost);
 
             // Program.cs's .ReadFrom.Services(services) call wires up any ILogEventSink registered
             // here alongside its own console sink - a bare Microsoft.Extensions.Logging.ILoggerProvider
@@ -148,8 +221,43 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
     }
 
     /// <summary>
-    /// Removes the upload directory along with the host. Best effort: a leaked temp directory is a
-    /// nuisance, a failed test run because cleanup threw is worse.
+    /// Sets <see cref="ConnectionInfo.LocalPort"/> from the port the test addressed, so
+    /// <c>ListenerSegregationMiddleware</c> sees the listener the test meant.
+    /// </summary>
+    /// <remarks>
+    /// A request with no port in its address is the user listener, which is what
+    /// <see cref="WebApplicationFactory{TEntryPoint}.CreateClient()"/> produces by default - so every
+    /// existing test keeps meaning what it meant, and only the printer-facing ones say otherwise.
+    /// </remarks>
+    private sealed class SimulatedListener : IStartupFilter
+    {
+        private readonly int _userPort;
+
+        public SimulatedListener(IOptions<ListenerOptions> listeners)
+        {
+            _userPort = listeners.Value.UserPort;
+        }
+
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next)
+        {
+            return app =>
+            {
+                app.Use(async (context, nextMiddleware) =>
+                {
+                    context.Connection.LocalPort = context.Request.Host.Port ?? _userPort;
+
+                    await nextMiddleware();
+                });
+
+                next(app);
+            };
+        }
+    }
+
+    /// <summary>
+    /// Removes the content root, and everything the application wrote into it, along with the host.
+    /// Best effort: a leaked temp directory is a nuisance, a failed test run because cleanup threw is
+    /// worse.
     /// </summary>
     protected override void Dispose(bool disposing)
     {
@@ -162,9 +270,9 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
 
         try
         {
-            if (Directory.Exists(_fileStorageRoot))
+            if (Directory.Exists(_contentRoot))
             {
-                Directory.Delete(_fileStorageRoot, recursive: true);
+                Directory.Delete(_contentRoot, recursive: true);
             }
         }
         catch (IOException)

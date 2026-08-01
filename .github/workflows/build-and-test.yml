@@ -1,0 +1,59 @@
+# Runs the suite and builds the container images on a machine that starts from nothing.
+#
+# The image build is the point. A laptop with a warm layer cache keeps succeeding past the moment a
+# clean machine cannot: the Dockerfile's restore layer was broken for weeks, through a project rename
+# and several features, while every local `dotnet build` and the whole test suite stayed green,
+# because nothing here ever built the image. That is the failure this exists to notice.
+name: build and test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          # No global.json pins this, so the version lives here. Directory.Build.props targets
+          # net10.0; the project is developed against 10.0.302.
+          dotnet-version: '10.0.x'
+
+      # Client-side assets are gitignored rather than committed, and the static-asset pipeline wants
+      # them present at build time. The Docker build does this for itself inside the image; this is
+      # for `dotnet test`, which does not.
+      - name: Fetch client-side assets
+        run: |
+          dotnet tool restore
+          cd Homespool.Host && dotnet libman restore
+
+      # Brings up Mailpit with STARTTLS and generates the throwaway CA the integration tests verify
+      # against. Without it those tests skip themselves, which is right for a laptop and wrong here:
+      # this is the only place a genuine STARTTLS negotiation is put in front of SmtpEmailSender, and
+      # notes/housekeeping.md records that alert mail had never actually been sent by anything.
+      - name: Start Mailpit with STARTTLS
+        run: ./Homespool.Host.IntegrationTest/start-mailpit-tls.sh
+
+      - name: Test
+        run: dotnet test Homespool.slnx --nologo
+
+      # Cheap, and compose.yaml carries real decisions now - two published ports, a pinned hostname,
+      # a network the application is told about by name.
+      - name: Validate the compose file
+        run: docker compose config > /dev/null
+
+      # Both images: the application and the proxy that terminates TLS in front of it.
+      - name: Build the container images
+        run: docker compose build
+
+      # always(), so a failed test still tears down. On an ephemeral runner that costs nothing; the
+      # same script runs on a laptop, where it does.
+      - name: Stop Mailpit
+        if: always()
+        run: ./Homespool.Host.IntegrationTest/stop-mailpit-tls.sh

@@ -59,18 +59,63 @@ cp .env.example .env      # set at least PRINTER_HOST before printers need to re
 docker compose up --build
 ```
 
-The database lives in a named volume (`printerservice-data`) so it survives container
-replacement. The container publishes port `8080` by default (`PORT` in `.env` to change it).
+That brings up two containers: the application, and an nginx that terminates TLS for both of its
+audiences. The database lives in a named volume (`printerservice-data`) so it survives container
+replacement.
+
+**Everything is served over TLS from the first start, and the two audiences are kept apart.**
+
+| | who | port | certificate |
+|---|---|---|---|
+| **people** | pages, `/api` | `443` (`HTTPS_PORT`), with `80` redirecting to it | self-signed on first start; replace it with your own |
+| **printers** | `/p/*`, nothing else | `15443` (`PRINTER_PORT`) | minted by this deployment, and the one on the USB stick |
+
+Two certificates, two ports, no overlap: the printer's is an ECDSA leaf signed by an authority no
+browser trusts, and the browser's is RSA, which the printer's single ciphersuite cannot use at all.
+
+**None of the application's own ports are published.** nginx reaches both over the compose network
+and is the only thing that can, which is also what makes the client address it reports worth
+believing. Routes are segregated the same way inside the app: `/p/*` exists on the printer listener
+alone, and every other route exists everywhere else, so a request on the wrong one is answered `404`
+— a boundary that is a socket rather than a line of proxy configuration.
+
+> **Why printers go through the proxy, given that they are the fussy client here.** Because .NET
+> cannot serve them correctly. A Prusa printer holds one kilobyte of TLS plaintext at a time and says
+> so by negotiating RFC 6066 `max_fragment_length`; `SslStream` ignores that and sends records
+> sixteen times larger, which breaks every file transfer. OpenSSL honours it. So the proxy is what
+> makes the printer path work rather than a layer it has to survive. If you substitute your own proxy
+> for this one, read `nginx/homespool-printer.conf` first — that half needs exactly one certificate
+> presented with no chain, one ciphersuite, no response buffering, and OpenSSL rather than Go's
+> `crypto/tls`.
+
+> **The browser will warn on first use, and that is honest.** The certificate the proxy generates
+> is signed by nobody. Serving your credentials in clear while you go and obtain a real certificate
+> would be the worse default. To replace it, put `homespool.crt` and `homespool.key` into the
+> `homespool-proxy-certs` volume and restart the proxy — nginx does not ask where a certificate came
+> from, which is exactly why the stack ships nginx rather than something that insists on fetching
+> one. `nginx/homespool.conf` has a commented HSTS line to uncomment once you have one.
+
+> **Already run Traefik, Caddy or your own nginx?** Delete the `proxy` service, publish the app's
+> `8080` yourself, and point `XForwarded__KnownNetworks` at your proxy's network. The application is
+> built to sit behind one; it just no longer *requires* you to have built that yourself.
+
+> **Do not put a reverse proxy in front of the printer port.** The printer firmware trusts a
+> single anchor, requires exactly one certificate to be presented, and pushes 256 KiB transfer
+> chunks that a proxy will buffer. Each of those fails in a way that looks like a protocol bug.
+> The shipped proxy answers `404` to `/p/` for the same reason.
 
 > **Do not put that volume on NFS, CIFS or a NAS share.** SQLite's WAL locking is unreliable
 > over network filesystems and will eventually corrupt the database. Use a local Docker
 > volume or a bind-mount to local disk.
 
-> **Set `PRINTER_HOST` in `.env` before adding printers.** There is no way to infer your
+> **Set `PRINTER_HOST` in `.env` before the first start.** There is no way to infer your
 > server's externally-reachable address from inside the container, so USB-key provisioning
-> (below) won't produce a usable snippet until it's set. If a reverse proxy terminates TLS in
-> front of this container, `PRINTER_HOST`/`PRINTER_PORT`/`PRINTER_TLS` describe the proxy's
-> address, not the container's. See [Configuration](#configuration).
+> (below) won't produce a usable snippet until it's set — and the printer certificate is issued
+> **once, on the first run**, covering every address the machine can see at that moment plus
+> whatever `PRINTER_HOST` says. Setting it first means it is covered by construction. Setting it
+> later is fine too, as long as it is one of the addresses that were detected; if it is not, delete
+> `data/certificates/printer.pfx` and restart to have a new certificate issued. See
+> [Configuration](#configuration).
 
 ### From source
 
@@ -128,21 +173,37 @@ Two ways, depending on whether the printer can already reach the server.
 Best when you are setting a printer up from scratch, or it has no way to reach the server yet.
 
 1. **Printers → Add printer (USB key)**, give it a name and location.
-2. Copy the `[service::connect]` snippet it shows you — this is the only time the token is
-   displayed.
-3. Paste it into `prusa_printer_settings.ini` on the printer's USB stick, alongside your own
-   `[network]` and Wi-Fi settings, and insert the stick.
+2. Choose the address this printer should dial — the list is the names your printer certificate
+   covers, and it defaults to `PrinterHost`.
+3. **Download provisioning bundle.** This is the only time the token is available.
+4. Unzip it onto the **root** of a USB stick — not into a folder, or the printer will find
+   neither file — and load it from the printer's own menu: *Prusa Connect → Load Settings*.
 
-```ini
-[service::connect]
-hostname = printers.example.com
-port = 443
-tls = True
-token = <generated for you>
+```
+prusa_printer_settings.ini     the [service::connect] section, with your token
+connect.der                    the certificate authority the printer must trust
+README.Bundle.md               these instructions, for whoever opens the zip
 ```
 
-The snippet only ever covers `[service::connect]`. Wi-Fi credentials are yours and this
-server neither has them nor wants them, so the rest of the file stays your business.
+The README travels *in* the zip on purpose: the person unpacking it onto a stick is often not the
+person who downloaded it, and by then this page is nowhere in sight.
+
+**Nothing is transcribed, and that is the point.** Every failure of the afternoon this was first
+done by hand was an assembly failure rather than a protocol one: a `;` comment (this parser treats
+it as an error, not a comment), an omitted key (silently reset to a default, and `token`'s default
+de-enrols the printer), a PEM renamed `.der`, a mistyped code. A generated file cannot make any of
+them.
+
+Only `[service::connect]` is written. Wi-Fi credentials are yours and this server neither has them
+nor wants them, so the rest of the file stays your business — add your `[network]` section to the
+same file or keep it in your own.
+
+> **`custom_cert = 1` replaces the printer's trust store rather than adding to it.** While it is
+> set, that printer cannot talk to Prusa Connect. The same warning is written into the ini itself,
+> where it is read at the printer rather than on this page.
+
+If you would rather read the file than trust it, *Read the ini instead* on the same page shows
+exactly what it will contain.
 
 The printer enrolls itself the moment it first connects, binding to that token. Until then
 it shows as *Awaiting USB connection*, and you can reissue the token if the stick was never
@@ -169,7 +230,7 @@ provisioning — write only the `[service::connect]` host/port/tls lines, no tok
 ```ini
 [service::connect]
 hostname = printers.example.com
-port = 443
+port = 15443
 tls = true
 ```
 
@@ -202,9 +263,76 @@ In Docker, use the `__` (double underscore) form, e.g. `PrusaConnect__PrinterHos
 | Setting | Default | Purpose |
 |---|---|---|
 | `PrinterHost` | *(empty)* | The hostname printers use to reach this server. **Required for USB-key provisioning** — there is no way to infer it from inside the process. |
-| `PrinterPort` | `443` | Port for the generated snippet. |
-| `PrinterTls` | `true` | Whether printers should use TLS. |
+| `PrinterPort` | `15443` | Port for the generated snippet — the host side of the printer port mapping, not the port inside the container. Not 443: that belongs to the people-facing proxy. |
+| `PrinterTls` | `true` | Whether printers reach this deployment over TLS — the `tls` line in the ini **and** whether a certificate is issued for the proxy to present, so the two cannot disagree. See below. |
 | `RegistrationCodeLifetimeMinutes` | `60` | How long a registration code stays claimable. Prusa uses 24 h; one hour is a deliberately tighter default, since the code is a credential for adopting a printer. |
+
+#### Turning `PrinterTls` off, and when that is legitimate
+
+`PrusaConnect__PrinterTls=false` issues no certificate, so the proxy has nothing to present and stays
+out of the printer path entirely. In Compose it needs the plaintext override as well, which moves the
+published printer port off the proxy and onto the application:
+
+```bash
+docker compose -f compose.yaml -f compose.plaintext.yaml up
+```
+
+It exists for two jobs, both of them testing:
+
+- **Reading the protocol on the wire.** A capture of the TLS listener is ciphertext, so packet
+  capture against a real printer or the firmware rig needs the plaintext path.
+- **Rigs.** `rig/enrol.sh` and `tools/slow-db/slow-db-rig.sh` drive the printer endpoints with curl
+  and the fake printer; the alternative is teaching each of them to trust a CA minted minutes ago.
+
+Every printer token then crosses the network in clear, in both directions — the one written to the
+USB stick and the one issued at claim. The server logs a warning saying so at every startup. **Do not
+run a deployment this way**, LAN-only included: a household LAN is exactly where a printer token is
+worth taking.
+
+### `Listeners`
+
+One listener per credential class, so a leaked credential of one kind reaches no surface
+belonging to another. Naming any of these makes Kestrel ignore `ASPNETCORE_URLS`.
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `PrinterPort` | `15443` | Plain HTTP: `/p/*` and nothing else. Not published to the host; the shipped proxy reaches it over the compose network and terminates the printer's TLS in front of it. Above 1024 because the container runs as a non-root user. |
+| `UserPort` | `8080` | Plain HTTP: pages, `/api`, `/health` — everything except `/p/*`. Not published to the host either; same proxy, different port, different certificate. |
+| `UserHttpsPort` | *(none)* | An HTTPS listener for people, using the ASP.NET development certificate or `Kestrel:Certificates:Default`. Set it only if this process should serve user TLS itself; it never carries the printer's certificate. |
+
+### `Certificates`
+
+The authority printers trust, minted on first run into `data/certificates` (inside the volume,
+so it survives container replacement). `connect.der` is the file that goes on the USB stick.
+
+The leaf is written twice: `printer.pfx` beside the authority, and the same certificate with its key
+in PEM under `data/proxy-certificates`, which is a **separate volume** — that is the one the proxy
+mounts, and it holds only the leaf. The authority's private key never goes near the container facing
+the network. The PEM certificate file holds the leaf **alone with no chain appended**, which is
+load-bearing: the firmware requires exactly one certificate presented, and a proxy that appends the
+authority fails in a way that reads as a protocol bug.
+
+**Its private key is the most sensitive secret in the deployment.** `custom_cert` replaces the
+firmware's trust store wholesale rather than adding to it, so this CA is each provisioned
+printer's *entire* trust store — and there is no revocation. Back up `data/`, but not to
+somewhere you would not put a private key.
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `Directory` | `data/certificates` | Where the authority and leaf live. |
+| `AuthorityValidityDays` | `5475` (15 years) | Replacing the authority means a USB visit to every printer, so a short life schedules guaranteed pain and mitigates nothing. |
+| `LeafValidityDays` | `730` | The leaf can be replaced with a restart, because printers trust the authority rather than the leaf. |
+| `AuthorityName` | `Homespool printer CA` | Cosmetic: it is never matched against anything, only read by a human inspecting `connect.der`. |
+
+The certificate is issued **once**, at first start, and then left alone — reissuing it automatically
+would drop every live printer connection each time an interface appeared, and quietly change what
+this server claims to be. When this machine's addresses move, `/health` and the administrator banner
+say so, and **Admin → Printer certificate** shows what the certificate covers against what the
+machine now has, with a button to reissue.
+
+A reissue needs a **server restart** to take effect, and needs nothing at any printer: they trust the
+authority, which a reissue does not touch. That is the whole reason this deployment mints an
+authority and a leaf rather than one self-signed certificate.
 
 ### `Smtp`
 
@@ -270,6 +398,18 @@ docker run -d -p 1025:1025 -p 8025:8025 axllent/mailpit
 # or, for the STARTTLS tests, which need a certificate:
 Homespool.Host.IntegrationTest/start-mailpit-tls.sh
 ```
+
+The STARTTLS tests are the exception: they **skip** rather than fail when that script has not
+been run, since the certificate it generates cannot be assumed. A clean clone therefore runs
+green, and CI runs the script first so they execute there for real.
+
+### Continuous integration
+
+`.github/workflows/build-and-test.yml` runs the suite and then **builds the container images**,
+which is the part a laptop cannot check for itself: a warm layer cache keeps succeeding past the
+point a clean machine fails. The Dockerfile's restore layer was broken for weeks — through a
+project rename and several features — while every local build and the whole suite stayed green,
+because nothing built the image.
 
 ### Database
 

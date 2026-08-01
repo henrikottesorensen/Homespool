@@ -79,6 +79,12 @@ public class PrusaConnectPrinterController : ControllerBase
                 using Stream socketStream = WebSocketStream.Create(webSocket, WebSocketMessageType.Binary);
                 PipeReader input = PipeReader.Create(socketStream, new StreamPipeReaderOptions(leaveOpen: true));
 
+                // No transport argument any more. It used to take Request.IsHttps to size frames for
+                // the printer's TLS record buffer; nginx terminates that TLS now and OpenSSL honours
+                // the max_fragment_length the printer negotiates, so this socket is plain HTTP to the
+                // proxy and record size is not this process's business. See WebSocketPrinterConnection
+                // .MaxFramePayload - including why putting the old sizing back would hide a real
+                // failure rather than fix one.
                 WebSocketPrinterConnection connection = new(webSocket);
 
                 // Two reasons this read loop should stop, neither of them the printer's doing:

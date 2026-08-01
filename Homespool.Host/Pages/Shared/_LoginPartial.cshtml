@@ -10,9 +10,17 @@
         <li class="nav-item">
             <a id="invites" class="nav-link" asp-page="/Admin/Invites/Index" title="Invitations">Invites</a>
         </li>
+@*  The certificate banner tells an administrator to come here, so there has to be a here to come to.
+    Admin-only, like Invites: it is the one page that can reissue what printers verify against. *@
+        <li class="nav-item">
+            <a id="certificate" class="nav-link" asp-page="/Admin/Certificate" title="Printer certificate">Certificate</a>
+        </li>
     }
     <li class="nav-item">
         <a id="printers" class="nav-link" asp-page="/Printers/Index" title="Printers">Printers</a>
+    </li>
+    <li class="nav-item">
+        <a id="files" class="nav-link" asp-page="/Files/Index" title="Files">Files</a>
     </li>
     <li class="nav-item">
 @*  The display name rides in the cookie as a claim (HSUserClaimsPrincipalFactory), so this costs no

@@ -137,4 +137,52 @@ public sealed class OpenApiDocumentTests : IAsyncLifetime, IDisposable
         SchemaOf(get, statusCode).GetProperty("$ref").GetString()
                                  .Should().Be("#/components/schemas/ProblemDetails");
     }
+
+    /// <summary>
+    /// The printer-facing protocol is in the document too - including <c>/p/ws</c>, which was absent
+    /// until it was given an <c>[HttpGet]</c>: ApiExplorer cannot describe an action with no method
+    /// constraint, so a route alone is invisible to it.
+    /// </summary>
+    [Theory]
+    [InlineData("/p/ws", "get")]
+    [InlineData("/p/register", "get")]
+    [InlineData("/p/register", "post")]
+    public async Task ThePrinterProtocolIsDocumented(string path, string verb)
+    {
+        // Arrange
+        JsonElement document = await DocumentAsync();
+
+        // Act
+        JsonElement paths = document.GetProperty("paths");
+
+        // Assert
+        paths.TryGetProperty(path, out JsonElement operations).Should().BeTrue();
+        operations.TryGetProperty(verb, out JsonElement operation).Should().BeTrue();
+        operation.GetProperty("responses").EnumerateObject().Should().NotBeEmpty();
+    }
+
+    /// <summary>
+    /// And its failures are <b>not</b> ProblemDetails, deliberately.
+    /// </summary>
+    /// <remarks>
+    /// <c>ApiExplorerVisibilityConvention</c> records why: <c>[ApiController]</c> is deliberately not
+    /// applied to these endpoints, because the status code is the whole contract and a 400 aborts
+    /// enrolment once the firmware exhausts its retries. Giving them a body would be a change to
+    /// Prusa's protocol surface rather than to ours, so the ProblemDetails rule stops at
+    /// <c>/api/v1</c> - and this pins that boundary rather than leaving it to be re-litigated.
+    /// </remarks>
+    [Fact]
+    public async Task ThePrinterProtocolsFailuresCarryNoProblemDetailsBody()
+    {
+        // Arrange
+        JsonElement document = await DocumentAsync();
+
+        // Act
+        JsonElement post = document.GetProperty("paths").GetProperty("/p/register").GetProperty("post");
+        JsonElement badRequest = post.GetProperty("responses").GetProperty("400");
+
+        // Assert
+        badRequest.TryGetProperty("content", out _)
+                  .Should().BeFalse("the status code is the whole contract on /p/*");
+    }
 }

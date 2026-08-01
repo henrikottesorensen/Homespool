@@ -40,8 +40,15 @@ public class PrusaConnectPrinterController : ControllerBase
         _logger = logger;
     }
 
+    // [HttpGet] as well as the route, so this reaches the OpenAPI document at all: ApiExplorer cannot
+    // describe an action with no method constraint, which is why /p/ws was the one printer endpoint
+    // missing from it. A WebSocket upgrade is a GET, so this also narrows the routing to what the
+    // protocol actually uses (Henrik, 2026-08-01, after the change was flagged as touching /p/*).
+    [HttpGet]
     [Route("/p/ws")]
     [EnableRateLimiting(Program.PrinterSocketRateLimitPolicy)]
+    [ProducesResponseType(typeof(void), StatusCodes.Status101SwitchingProtocols)]
+    [ProducesResponseType(typeof(void), StatusCodes.Status400BadRequest)]
     public async Task<ActionResult> ConnectWebSocket()
     {
         try
@@ -122,7 +129,12 @@ public class PrusaConnectPrinterController : ControllerBase
     [EnableRateLimiting(Program.PrinterRegistrationRateLimitPolicy)]
     [HttpPost]
     [Route("/p/register")]
-    public async Task<ActionResult<string>> RegisterPrinter([FromBody] RegisterPrinterRequestDTO printer)
+
+    // Firmware reads the status code and the Code header; the body is deliberately empty, and
+    // text/html rather than JSON because that is what Connect answers with.
+    [ProducesResponseType(typeof(void), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(void), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult> RegisterPrinter([FromBody] RegisterPrinterRequestDTO printer)
     {
         try
         {
@@ -153,7 +165,15 @@ public class PrusaConnectPrinterController : ControllerBase
     [EnableRateLimiting(Program.PrinterRegistrationRateLimitPolicy)]
     [HttpGet]
     [Route("/p/register")]
-    public async Task<ActionResult<string>> GetPrinterRegistrationStatus()
+
+    // 200 carries the token in a header and nothing in the body; 202 is the one answer here with a
+    // payload, telling the printer to poll again.
+    [ProducesResponseType(typeof(void), StatusCodes.Status200OK)]
+    [ProducesResponseType<MessageDTO>(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(void), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(void), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(void), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> GetPrinterRegistrationStatus()
     {
         try
         {

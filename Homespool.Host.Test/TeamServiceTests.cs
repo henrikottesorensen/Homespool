@@ -34,7 +34,7 @@ public sealed class TeamServiceTests : IDisposable
     private async Task<HSDbContext> MigratedContextAsync()
     {
         HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
     }
@@ -74,7 +74,7 @@ public sealed class TeamServiceTests : IDisposable
         Team first = new() { Name = "First", CreatedBy = 1, CreatedAt = DateTimeOffset.UtcNow };
         Team second = new() { Name = "Second", CreatedBy = 1, CreatedAt = DateTimeOffset.UtcNow };
         context.Teams.AddRange(first, second);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         IReadOnlyList<Team> teams = await new TeamService(context).GetAllTeamsAsync(CancellationToken.None);
@@ -98,7 +98,7 @@ public sealed class TeamServiceTests : IDisposable
         Team owned = new() { Name = "Mine", CreatedBy = 1, CreatedAt = DateTimeOffset.UtcNow };
         Team someoneElses = new() { Name = "Not mine", CreatedBy = 2, CreatedAt = DateTimeOffset.UtcNow };
         context.Teams.AddRange(owned, someoneElses);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         await new TeamService(context).AddMemberAsync(owned.Id, 1, canRead: true, canUse: true, canManage: true, CancellationToken.None);
         await new TeamService(context).AddMemberAsync(someoneElses.Id, 2, canRead: true, canUse: true, canManage: true, CancellationToken.None);

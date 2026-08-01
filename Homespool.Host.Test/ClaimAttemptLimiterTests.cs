@@ -48,7 +48,7 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
         HSUser user = new("claimer@example.com") { Email = "claimer@example.com" };
 
         context.Users.Add(user);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         return user;
     }
@@ -65,7 +65,7 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
     private async Task<HSDbContext> MigratedContextAsync()
     {
         HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
     }
@@ -209,7 +209,7 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
 
         // Act
         await using HSDbContext reopened = NewContext();
-        HSUser reloaded = await reopened.Users.SingleAsync();
+        HSUser reloaded = await reopened.Users.SingleAsync(TestContext.Current.CancellationToken);
 
         // Assert
         reloaded.FailedClaimAttempts.Should().Be(6);

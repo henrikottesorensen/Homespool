@@ -58,7 +58,7 @@ public sealed class UserFileStoreTests : IDisposable
         found!.FileName.Should().Be("model.bgcode", "the name is the identity, and the name it takes on the printer");
         found.Length.Should().Be(content.Length);
         found.PrinterPath.Should().Be("/usb/model.bgcode");
-        (await File.ReadAllBytesAsync(found.Path)).Should().Equal(content);
+        (await File.ReadAllBytesAsync(found.Path, TestContext.Current.CancellationToken)).Should().Equal(content);
         saved.Path.Should().Be(found.Path);
     }
 
@@ -95,8 +95,8 @@ public sealed class UserFileStoreTests : IDisposable
         await SaveAsync(store, Bob, "benchy.gcode", Encoding.UTF8.GetBytes("bob"));
 
         // Assert
-        (await File.ReadAllTextAsync(store.Find(Alice, "benchy.gcode")!.Path)).Should().Be("alice");
-        (await File.ReadAllTextAsync(store.Find(Bob, "benchy.gcode")!.Path)).Should().Be("bob");
+        (await File.ReadAllTextAsync(store.Find(Alice, "benchy.gcode")!.Path, TestContext.Current.CancellationToken)).Should().Be("alice");
+        (await File.ReadAllTextAsync(store.Find(Bob, "benchy.gcode")!.Path, TestContext.Current.CancellationToken)).Should().Be("bob");
     }
 
     /// <summary>
@@ -115,7 +115,7 @@ public sealed class UserFileStoreTests : IDisposable
 
         // Assert
         await act.Should().ThrowAsync<PrintFileNameConflictException>();
-        (await File.ReadAllTextAsync(store.Find(Alice, "benchy.gcode")!.Path)).Should().Be("first",
+        (await File.ReadAllTextAsync(store.Find(Alice, "benchy.gcode")!.Path, TestContext.Current.CancellationToken)).Should().Be("first",
             "a refused upload must not have replaced anything");
         store.List(Alice).Should().ContainSingle("nor left a second copy behind");
     }
@@ -131,7 +131,7 @@ public sealed class UserFileStoreTests : IDisposable
         StoredFile replaced = await SaveAsync(store, Alice, "benchy.gcode", Encoding.UTF8.GetBytes("second!"), overwrite: true);
 
         // Assert
-        (await File.ReadAllTextAsync(replaced.Path)).Should().Be("second!");
+        (await File.ReadAllTextAsync(replaced.Path, TestContext.Current.CancellationToken)).Should().Be("second!");
         replaced.Length.Should().Be(7);
         store.List(Alice).Should().ContainSingle();
     }
@@ -170,7 +170,7 @@ public sealed class UserFileStoreTests : IDisposable
         // Assert
         store.List(Alice).Should().ContainSingle("the old spelling must not survive beside the new one");
         replaced.FileName.Should().Be("benchy.gcode");
-        (await File.ReadAllTextAsync(replaced.Path)).Should().Be("second");
+        (await File.ReadAllTextAsync(replaced.Path, TestContext.Current.CancellationToken)).Should().Be("second");
     }
 
     /// <summary>
@@ -262,7 +262,7 @@ public sealed class UserFileStoreTests : IDisposable
         renamed.Should().NotBeNull();
         renamed!.FileName.Should().Be("new.gcode");
         renamed.PrinterPath.Should().Be("/usb/new.gcode");
-        (await File.ReadAllTextAsync(renamed.Path)).Should().Be("content", "a rename moves bytes, it does not copy them");
+        (await File.ReadAllTextAsync(renamed.Path, TestContext.Current.CancellationToken)).Should().Be("content", "a rename moves bytes, it does not copy them");
         store.List(Alice).Should().ContainSingle();
         store.Find(Alice, "old.gcode").Should().BeNull();
     }
@@ -280,7 +280,7 @@ public sealed class UserFileStoreTests : IDisposable
 
         // Assert
         act.Should().Throw<PrintFileNameConflictException>();
-        (await File.ReadAllTextAsync(store.Find(Alice, "two.gcode")!.Path)).Should().Be("two",
+        (await File.ReadAllTextAsync(store.Find(Alice, "two.gcode")!.Path, TestContext.Current.CancellationToken)).Should().Be("two",
             "the file that was already there must be untouched");
     }
 

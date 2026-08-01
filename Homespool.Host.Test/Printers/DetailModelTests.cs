@@ -43,7 +43,7 @@ public sealed class DetailModelTests : IDisposable
     private async Task<HSDbContext> MigratedContextAsync()
     {
         HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
     }
@@ -68,7 +68,7 @@ public sealed class DetailModelTests : IDisposable
         createResult.Succeeded.Should().BeTrue();
 
         Team team = context.AddDefaultTeam(user.Id, DateTimeOffset.UtcNow);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
@@ -118,11 +118,11 @@ public sealed class DetailModelTests : IDisposable
         (DetailModel model, _, _, _) = await NewModelAsync(context);
 
         Team someoneElsesTeam = context.AddDefaultTeam(2, DateTimeOffset.UtcNow);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         Printer printer = NewPrinter(someoneElsesTeam.Id);
         context.Printers.Add(printer);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         IActionResult result = await model.OnGetAsync(printer.Uuid, CancellationToken.None);
@@ -140,7 +140,7 @@ public sealed class DetailModelTests : IDisposable
 
         Printer printer = NewPrinter(team.Id, name: "MK3.5");
         context.Printers.Add(printer);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         IActionResult result = await model.OnGetAsync(printer.Uuid, CancellationToken.None);
@@ -162,7 +162,7 @@ public sealed class DetailModelTests : IDisposable
 
         Printer printer = NewPrinter(team.Id);
         context.Printers.Add(printer);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act - not connected
         await model.OnGetAsync(printer.Uuid, CancellationToken.None);

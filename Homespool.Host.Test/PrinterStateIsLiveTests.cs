@@ -49,7 +49,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
     private async Task<HSDbContext> MigratedContextAsync()
     {
         HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
     }
@@ -71,7 +71,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
     {
         Team team = new() { CreatedBy = userId, CreatedAt = DateTimeOffset.UtcNow, Name = teamName };
         context.Teams.Add(team);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         context.TeamMembers.Add(new TeamMember
         {
@@ -99,7 +99,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         };
 
         context.Printers.Add(printer);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         if (liveStatus is { } status)
         {
@@ -110,7 +110,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
                 LastSeenAt = DateTimeOffset.UtcNow,
             });
 
-            await context.SaveChangesAsync();
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
         return printer;
@@ -196,7 +196,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         printer.SerialNumber = "SN-12345";
         printer.NozzleDiameter = 0.4f;
         printer.Firmware = "6.5.7";
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         PrinterWithState? found = await new PrinterQueryService(context, TimeProvider.System)

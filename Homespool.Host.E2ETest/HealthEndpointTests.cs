@@ -68,7 +68,7 @@ public sealed class HealthEndpointTests : IAsyncLifetime, IDisposable
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         // Act
-        HttpResponseMessage response = await client.GetAsync("/health");
+        HttpResponseMessage response = await client.GetAsync("/health", TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK,
@@ -82,8 +82,8 @@ public sealed class HealthEndpointTests : IAsyncLifetime, IDisposable
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         // Act
-        HttpResponseMessage response = await client.GetAsync("/health");
-        string body = await response.Content.ReadAsStringAsync();
+        HttpResponseMessage response = await client.GetAsync("/health", TestContext.Current.CancellationToken);
+        string body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         // Assert
         response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
@@ -120,8 +120,8 @@ public sealed class HealthEndpointTests : IAsyncLifetime, IDisposable
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         // Act
-        HttpResponseMessage response = await client.GetAsync("/health/live");
-        string body = await response.Content.ReadAsStringAsync();
+        HttpResponseMessage response = await client.GetAsync("/health/live", TestContext.Current.CancellationToken);
+        string body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -153,8 +153,8 @@ public sealed class HealthEndpointTests : IAsyncLifetime, IDisposable
 
         // Act - /setup is the one page reachable before an administrator exists, and it renders the
         // shared layout like any other.
-        HttpResponseMessage response = await client.GetAsync("/setup");
-        string body = await response.Content.ReadAsStringAsync();
+        HttpResponseMessage response = await client.GetAsync("/setup", TestContext.Current.CancellationToken);
+        string body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK,

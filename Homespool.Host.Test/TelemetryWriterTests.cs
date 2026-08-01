@@ -180,7 +180,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         await using (AsyncServiceScope migrationScope = _provider.CreateAsyncScope())
         {
-            await migrationScope.ServiceProvider.GetRequiredService<HSDbContext>().Database.MigrateAsync();
+            await migrationScope.ServiceProvider.GetRequiredService<HSDbContext>().Database.MigrateAsync(TestContext.Current.CancellationToken);
         }
 
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
@@ -212,11 +212,11 @@ public sealed class TelemetryWriterTests : IDisposable
     private async Task SeedPrinterAsync(int printerId = 1)
     {
         await using HSDbContext context = NewVerificationContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         Team team = new() { CreatedBy = 1, CreatedAt = DateTimeOffset.UtcNow };
         context.Teams.Add(team);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         context.Printers.Add(new Printer
         {
@@ -228,7 +228,7 @@ public sealed class TelemetryWriterTests : IDisposable
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         });
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
     /// <summary>
@@ -239,12 +239,12 @@ public sealed class TelemetryWriterTests : IDisposable
     {
         await using HSDbContext context = NewVerificationContext();
 
-        Printer printer = await context.Printers.SingleAsync(p => p.Id == printerId);
+        Printer printer = await context.Printers.SingleAsync(p => p.Id == printerId, TestContext.Current.CancellationToken);
         int teamId = printer.TeamId;
         Guid uuid = printer.Uuid;
 
         context.Printers.Remove(printer);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         return async () =>
         {
@@ -261,7 +261,7 @@ public sealed class TelemetryWriterTests : IDisposable
                 UpdatedAt = DateTimeOffset.UtcNow,
             });
 
-            await restore.SaveChangesAsync();
+            await restore.SaveChangesAsync(TestContext.Current.CancellationToken);
         };
     }
 
@@ -307,7 +307,7 @@ public sealed class TelemetryWriterTests : IDisposable
         firstAttemptFailed.Should().BeTrue($"the arrangement depends on the first shutdown flush failing.\n{LogDump()}");
 
         await restorePrinter();
-        await stopping.WaitAsync(TimeSpan.FromSeconds(30));
+        await stopping.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
 
         // Assert
         await using HSDbContext verify = NewVerificationContext();
@@ -425,10 +425,10 @@ public sealed class TelemetryWriterTests : IDisposable
         for (int i = 0; i < 100; i++)
         {
             writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow.AddSeconds(i), new TelemetryDTO { Status = "PRINTING", Progress = i });
-            await Task.Delay(2);
+            await Task.Delay(2, TestContext.Current.CancellationToken);
         }
 
-        await Task.Delay(500);
+        await Task.Delay(500, TestContext.Current.CancellationToken);
 
         // Assert
         LogRecords.Count(FlushFailed).Should().Be(1,
@@ -477,7 +477,7 @@ public sealed class TelemetryWriterTests : IDisposable
         for (int i = 0; i < 100; i++)
         {
             writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING", Progress = i });
-            await Task.Delay(2);
+            await Task.Delay(2, TestContext.Current.CancellationToken);
         }
 
         bool trimmed = await LoggedAsync(record => record.Message.Contains("buffered telemetry sample"));
@@ -526,7 +526,7 @@ public sealed class TelemetryWriterTests : IDisposable
         {
             writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow,
                 new EventDTO { EventType = Events.StateChanged, Status = "PRINTING" });
-            await Task.Delay(2);
+            await Task.Delay(2, TestContext.Current.CancellationToken);
         }
 
         bool trimmed = await LoggedAsync(record => record.Message.Contains("buffered printer event"));
@@ -568,7 +568,7 @@ public sealed class TelemetryWriterTests : IDisposable
         flushed.Should().BeTrue("a single item should flush immediately once it reaches the batch size");
 
         await using HSDbContext verify = NewVerificationContext();
-        PrinterLiveState state = await verify.PrinterLiveStates.SingleAsync();
+        PrinterLiveState state = await verify.PrinterLiveStates.SingleAsync(TestContext.Current.CancellationToken);
         state.PrinterId.Should().Be(1);
         state.Status.Should().Be(PrinterStatus.Printing);
     }
@@ -667,10 +667,10 @@ public sealed class TelemetryWriterTests : IDisposable
         LogRecords.Where(FlushFailed).Should().BeEmpty($"no flush should have failed.\n{LogDump()}");
 
         (await SampleCountAsync(verify)).Should().Be(25, $"everything queued must survive the drain.\n{LogDump()}");
-        (await verify.PrinterEvents.CountAsync()).Should().Be(1, $"an event queued at shutdown is a discrete fact that never repeats.\n{LogDump()}");
+        (await verify.PrinterEvents.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1, $"an event queued at shutdown is a discrete fact that never repeats.\n{LogDump()}");
 
         // And the live state reflects the last message merged, not an arbitrary earlier one.
-        PrinterLiveState state = await verify.PrinterLiveStates.SingleAsync();
+        PrinterLiveState state = await verify.PrinterLiveStates.SingleAsync(TestContext.Current.CancellationToken);
         state.Progress.Should().Be(24);
     }
 
@@ -702,7 +702,7 @@ public sealed class TelemetryWriterTests : IDisposable
         bool liveStateUpdated = await WaitUntilAsync(async () =>
         {
             await using HSDbContext context = NewVerificationContext();
-            PrinterLiveState? state = await context.PrinterLiveStates.SingleOrDefaultAsync();
+            PrinterLiveState? state = await context.PrinterLiveStates.SingleOrDefaultAsync(TestContext.Current.CancellationToken);
             return state?.NozzleTemperature == 210;
         }, TimeSpan.FromSeconds(5));
 
@@ -742,7 +742,7 @@ public sealed class TelemetryWriterTests : IDisposable
         flushed.Should().BeTrue();
 
         await using HSDbContext verify = NewVerificationContext();
-        PrinterEvent stored = await verify.PrinterEvents.SingleAsync();
+        PrinterEvent stored = await verify.PrinterEvents.SingleAsync(TestContext.Current.CancellationToken);
 
         stored.PrinterId.Should().Be(1);
         stored.EventType.Should().Be(Events.Info);
@@ -794,7 +794,7 @@ public sealed class TelemetryWriterTests : IDisposable
         flushed.Should().BeTrue();
 
         await using HSDbContext verify = NewVerificationContext();
-        PrinterEvent stored = await verify.PrinterEvents.SingleAsync();
+        PrinterEvent stored = await verify.PrinterEvents.SingleAsync(TestContext.Current.CancellationToken);
 
         stored.Payload.Should().NotContain("vC7x4aZfohmcbzH", "the credential must never reach a row");
         stored.Payload.Should().NotContain("example-network", "an SSID names where someone lives");
@@ -845,13 +845,13 @@ public sealed class TelemetryWriterTests : IDisposable
         bool applied = await WaitUntilAsync(async () =>
         {
             await using HSDbContext context = NewVerificationContext();
-            return await context.Printers.AnyAsync(p => p.Firmware != null);
+            return await context.Printers.AnyAsync(p => p.Firmware != null, TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
         applied.Should().BeTrue();
 
         await using HSDbContext verify = NewVerificationContext();
-        Printer printer = await verify.Printers.SingleAsync();
+        Printer printer = await verify.Printers.SingleAsync(TestContext.Current.CancellationToken);
 
         printer.Firmware.Should().Be("6.5.7");
         printer.Model.Should().Be("1.3.5");
@@ -880,7 +880,7 @@ public sealed class TelemetryWriterTests : IDisposable
         await WaitUntilAsync(async () =>
         {
             await using HSDbContext context = NewVerificationContext();
-            return await context.Printers.AnyAsync(p => p.Firmware == "6.5.7");
+            return await context.Printers.AnyAsync(p => p.Firmware == "6.5.7", TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
@@ -892,13 +892,13 @@ public sealed class TelemetryWriterTests : IDisposable
         bool upgraded = await WaitUntilAsync(async () =>
         {
             await using HSDbContext context = NewVerificationContext();
-            return await context.Printers.AnyAsync(p => p.Firmware == "6.6.3");
+            return await context.Printers.AnyAsync(p => p.Firmware == "6.6.3", TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
         upgraded.Should().BeTrue();
 
         await using HSDbContext verify = NewVerificationContext();
-        Printer printer = await verify.Printers.SingleAsync();
+        Printer printer = await verify.Printers.SingleAsync(TestContext.Current.CancellationToken);
 
         printer.Model.Should().Be("1.3.5", "an upgrade kit changes the model under the same identity");
     }
@@ -928,7 +928,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
             // A range, not equality: SQLite stores REAL as a double, so a widened float never
             // compares equal to the clean double EF sends as the parameter.
-            return await context.Printers.AnyAsync(p => p.NozzleDiameter < 0.5f);
+            return await context.Printers.AnyAsync(p => p.NozzleDiameter < 0.5f, TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
         // Act
@@ -941,13 +941,13 @@ public sealed class TelemetryWriterTests : IDisposable
         bool swappedIn = await WaitUntilAsync(async () =>
         {
             await using HSDbContext context = NewVerificationContext();
-            return await context.Printers.AnyAsync(p => p.NozzleDiameter > 0.5f);
+            return await context.Printers.AnyAsync(p => p.NozzleDiameter > 0.5f, TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
         swappedIn.Should().BeTrue();
 
         await using HSDbContext verify = NewVerificationContext();
-        (await verify.Printers.SingleAsync()).NozzleDiameter.Should().BeApproximately(0.6f, 0.001f);
+        (await verify.Printers.SingleAsync(TestContext.Current.CancellationToken)).NozzleDiameter.Should().BeApproximately(0.6f, 0.001f);
     }
 
     /// <summary>
@@ -984,12 +984,12 @@ public sealed class TelemetryWriterTests : IDisposable
         await WaitUntilAsync(async () =>
         {
             await using HSDbContext context = NewVerificationContext();
-            return await context.Printers.AnyAsync(p => p.NozzleDiameter != null);
+            return await context.Printers.AnyAsync(p => p.NozzleDiameter != null, TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
         // Assert
         await using HSDbContext verify = NewVerificationContext();
-        Printer printer = await verify.Printers.SingleAsync();
+        Printer printer = await verify.Printers.SingleAsync(TestContext.Current.CancellationToken);
 
         printer.NozzleDiameter.Should().Be(0.4f, "EF narrows the stored double back to the float that was written");
         JsonSerializer.Serialize(printer.NozzleDiameter).Should().Be("0.4");
@@ -1000,13 +1000,13 @@ public sealed class TelemetryWriterTests : IDisposable
         // The three ways of asking "is this 0.4?" in SQL, and which of them work. EF has no
         // approximate-equality helper, so the choice is between a range and Math.Abs - the latter
         // translating to SQLite's abs(). Equality is the one that silently matches nothing.
-        (await verify.Printers.CountAsync(p => p.NozzleDiameter == 0.4f))
+        (await verify.Printers.CountAsync(p => p.NozzleDiameter == 0.4f, TestContext.Current.CancellationToken))
             .Should().Be(0, "float equality against a REAL column matches nothing");
 
-        (await verify.Printers.CountAsync(p => p.NozzleDiameter > 0.39f && p.NozzleDiameter < 0.41f))
+        (await verify.Printers.CountAsync(p => p.NozzleDiameter > 0.39f && p.NozzleDiameter < 0.41f, TestContext.Current.CancellationToken))
             .Should().Be(1, "a range is the simplest thing that works");
 
-        (await verify.Printers.CountAsync(p => Math.Abs(p.NozzleDiameter!.Value - 0.4f) < 0.001f))
+        (await verify.Printers.CountAsync(p => Math.Abs(p.NozzleDiameter!.Value - 0.4f) < 0.001f, TestContext.Current.CancellationToken))
             .Should().Be(1, "Math.Abs translates to abs() and is the closest thing to an epsilon compare");
     }
 
@@ -1033,7 +1033,7 @@ public sealed class TelemetryWriterTests : IDisposable
         bool applied = await WaitUntilAsync(async () =>
         {
             await using HSDbContext context = NewVerificationContext();
-            return await context.Printers.AnyAsync(p => p.HasMmuEnabled);
+            return await context.Printers.AnyAsync(p => p.HasMmuEnabled, TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
         applied.Should().BeTrue();
@@ -1063,7 +1063,7 @@ public sealed class TelemetryWriterTests : IDisposable
         await WaitUntilAsync(async () =>
         {
             await using HSDbContext context = NewVerificationContext();
-            return await context.Printers.AnyAsync(p => p.HasMmuEnabled);
+            return await context.Printers.AnyAsync(p => p.HasMmuEnabled, TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
         // Act
@@ -1076,14 +1076,14 @@ public sealed class TelemetryWriterTests : IDisposable
         bool processed = await WaitUntilAsync(async () =>
         {
             await using HSDbContext context = NewVerificationContext();
-            return await context.Printers.AnyAsync(p => p.Firmware == "6.5.7");
+            return await context.Printers.AnyAsync(p => p.Firmware == "6.5.7", TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
         // Assert
         processed.Should().BeTrue();
 
         await using HSDbContext verify = NewVerificationContext();
-        (await verify.Printers.SingleAsync()).HasMmuEnabled.Should().BeTrue();
+        (await verify.Printers.SingleAsync(TestContext.Current.CancellationToken)).HasMmuEnabled.Should().BeTrue();
     }
 
     /// <summary>
@@ -1110,13 +1110,13 @@ public sealed class TelemetryWriterTests : IDisposable
         bool applied = await WaitUntilAsync(async () =>
         {
             await using HSDbContext context = NewVerificationContext();
-            return await context.Printers.AnyAsync(p => p.SerialNumber != null);
+            return await context.Printers.AnyAsync(p => p.SerialNumber != null, TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
         applied.Should().BeTrue();
 
         await using HSDbContext verify = NewVerificationContext();
-        (await verify.Printers.SingleAsync()).SerialNumber.Should().Be("SN-12345");
+        (await verify.Printers.SingleAsync(TestContext.Current.CancellationToken)).SerialNumber.Should().Be("SN-12345");
     }
 
     /// <summary>
@@ -1143,7 +1143,7 @@ public sealed class TelemetryWriterTests : IDisposable
         await WaitUntilAsync(async () =>
         {
             await using HSDbContext context = NewVerificationContext();
-            return await context.Printers.AnyAsync(p => p.SerialNumber == "SN-ORIGINAL");
+            return await context.Printers.AnyAsync(p => p.SerialNumber == "SN-ORIGINAL", TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
         // Act
@@ -1157,14 +1157,14 @@ public sealed class TelemetryWriterTests : IDisposable
         bool processed = await WaitUntilAsync(async () =>
         {
             await using HSDbContext context = NewVerificationContext();
-            return await context.Printers.AnyAsync(p => p.Firmware == "6.6.3");
+            return await context.Printers.AnyAsync(p => p.Firmware == "6.6.3", TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
         // Assert
         processed.Should().BeTrue();
 
         await using HSDbContext verify = NewVerificationContext();
-        (await verify.Printers.SingleAsync()).SerialNumber.Should().Be("SN-ORIGINAL");
+        (await verify.Printers.SingleAsync(TestContext.Current.CancellationToken)).SerialNumber.Should().Be("SN-ORIGINAL");
     }
 
     /// <summary>
@@ -1189,7 +1189,7 @@ public sealed class TelemetryWriterTests : IDisposable
         await WaitUntilAsync(async () =>
         {
             await using HSDbContext context = NewVerificationContext();
-            return await context.Printers.AnyAsync(p => p.Firmware == "6.5.7");
+            return await context.Printers.AnyAsync(p => p.Firmware == "6.5.7", TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
         // Act
@@ -1206,7 +1206,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         // Assert
         await using HSDbContext verify = NewVerificationContext();
-        Printer printer = await verify.Printers.SingleAsync();
+        Printer printer = await verify.Printers.SingleAsync(TestContext.Current.CancellationToken);
 
         printer.Firmware.Should().Be("6.5.7");
         printer.Model.Should().Be("1.3.5");
@@ -1256,7 +1256,7 @@ public sealed class TelemetryWriterTests : IDisposable
         flushed.Should().BeTrue();
 
         await using HSDbContext verify = NewVerificationContext();
-        PrinterEvent stored = await verify.PrinterEvents.SingleAsync();
+        PrinterEvent stored = await verify.PrinterEvents.SingleAsync(TestContext.Current.CancellationToken);
 
         using JsonDocument kept = JsonDocument.Parse(stored.Payload!);
         kept.RootElement.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(
@@ -1306,7 +1306,7 @@ public sealed class TelemetryWriterTests : IDisposable
         flushed.Should().BeTrue();
 
         await using HSDbContext verify = NewVerificationContext();
-        PrinterEvent stored = await verify.PrinterEvents.SingleAsync();
+        PrinterEvent stored = await verify.PrinterEvents.SingleAsync(TestContext.Current.CancellationToken);
 
         stored.Payload.Should().Be(
             """{"start_cmd_id":42,"type":"FROM_CONNECT","path":"/usb/model.gcode","progress":12.5}""",
@@ -1335,7 +1335,7 @@ public sealed class TelemetryWriterTests : IDisposable
         bool secondFlushLanded = await WaitUntilAsync(async () =>
         {
             await using HSDbContext context = NewVerificationContext();
-            PrinterLiveState? state = await context.PrinterLiveStates.SingleOrDefaultAsync();
+            PrinterLiveState? state = await context.PrinterLiveStates.SingleOrDefaultAsync(TestContext.Current.CancellationToken);
             return state?.Status == PrinterStatus.Printing;
         }, TimeSpan.FromSeconds(5));
 
@@ -1343,7 +1343,7 @@ public sealed class TelemetryWriterTests : IDisposable
         secondFlushLanded.Should().BeTrue();
 
         await using HSDbContext verify = NewVerificationContext();
-        (await verify.PrinterLiveStates.CountAsync()).Should().Be(1,
+        (await verify.PrinterLiveStates.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
             "a second flush for a printer already in the database must update its row, not insert another");
     }
 
@@ -1399,7 +1399,7 @@ public sealed class TelemetryWriterTests : IDisposable
         secondSlotPersisted.Should().BeTrue("a slot seen for the first time in a later flush must be inserted, not silently dropped");
 
         await using HSDbContext verify = NewVerificationContext();
-        (await verify.PrinterLiveSlotStates.Select(s => s.SlotNumber).OrderBy(n => n).ToListAsync())
+        (await verify.PrinterLiveSlotStates.Select(s => s.SlotNumber).OrderBy(n => n).ToListAsync(TestContext.Current.CancellationToken))
             .Should().Equal([1, 2], "the first flush's slot must survive, not be replaced by the second's");
     }
 
@@ -1475,7 +1475,7 @@ public sealed class TelemetryWriterTests : IDisposable
         LogRecords.Where(FlushFailed).Should().BeEmpty("no flush should have failed at all");
 
         await using HSDbContext verify = NewVerificationContext();
-        Printer printer = await verify.Printers.SingleAsync();
+        Printer printer = await verify.Printers.SingleAsync(TestContext.Current.CancellationToken);
         printer.LoadedMaterial.Should().Be("PETG", "the later material must reach the printer row as well");
     }
 
@@ -1498,8 +1498,8 @@ public sealed class TelemetryWriterTests : IDisposable
 
         // Assert - DropOldest must mean Enqueue is always a non-blocking TryWrite; this would hang
         // (rather than throw) if that regressed to a blocking write against a full bounded channel.
-        Task enqueueTask = Task.Run(enqueueMany);
-        Task completed = await Task.WhenAny(enqueueTask, Task.Delay(TimeSpan.FromSeconds(5)));
+        Task enqueueTask = Task.Run(enqueueMany, TestContext.Current.CancellationToken);
+        Task completed = await Task.WhenAny(enqueueTask, Task.Delay(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
 
         completed.Should().Be(enqueueTask, "Enqueue must never block, even against a full channel");
         enqueueTask.IsFaulted.Should().BeFalse();
@@ -1570,7 +1570,7 @@ public sealed class TelemetryWriterTests : IDisposable
             writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
         }
 
-        await Task.Delay(150);
+        await Task.Delay(150, TestContext.Current.CancellationToken);
 
         // The 11th drop arrives past the interval and must carry the 9 silent ones with it.
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
@@ -1713,7 +1713,7 @@ public sealed class TelemetryWriterTests : IDisposable
         bool persisted = await WaitUntilAsync(async () =>
         {
             await using HSDbContext context = NewVerificationContext();
-            PrinterLiveState? state = await context.PrinterLiveStates.SingleOrDefaultAsync();
+            PrinterLiveState? state = await context.PrinterLiveStates.SingleOrDefaultAsync(TestContext.Current.CancellationToken);
             return state?.Status == PrinterStatus.Idle;
         }, TimeSpan.FromSeconds(5));
 
@@ -1748,7 +1748,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         // Assert
         await using HSDbContext verify = NewVerificationContext();
-        Printer printer1 = await verify.Printers.SingleAsync(p => p.Id == 1);
+        Printer printer1 = await verify.Printers.SingleAsync(p => p.Id == 1, TestContext.Current.CancellationToken);
         printer1.LoadedMaterial.Should().BeNull("a failed flush must not leave a partial write behind");
     }
 

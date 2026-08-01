@@ -86,7 +86,7 @@ public sealed class PrinterRegistrationTests : IDisposable
     private async Task<HSDbContext> MigratedContextAsync()
     {
         HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
     }
@@ -110,7 +110,7 @@ public sealed class PrinterRegistrationTests : IDisposable
         CodeResponseDTO response = await NewService(context).GetPrinterCode(Request());
 
         // Assert
-        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync();
+        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
 
         stored.SerialNumber.Should().Be("15715-4842441651816441");
         stored.FingerPrint.Should().Be("SUDBAJQ78CTJBNA8IHEMODUG43QD9H5GSBSFE0MMKBST8B9E0L");
@@ -140,7 +140,7 @@ public sealed class PrinterRegistrationTests : IDisposable
 
         // Assert
         second.Should().Be(first);
-        (await context.PrusaConnectRegistrations.CountAsync()).Should().Be(1);
+        (await context.PrusaConnectRegistrations.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
     }
 
     /// <summary>
@@ -161,7 +161,7 @@ public sealed class PrinterRegistrationTests : IDisposable
         await NewService(context, lifetimeMinutes: 90).GetPrinterCode(Request());
 
         // Assert
-        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync();
+        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
 
         (stored.TemporaryCodeExpiry - stored.CreatedAt).Should()
             .Be(TimeSpan.FromMinutes(90), "both come from a single clock read");
@@ -183,16 +183,16 @@ public sealed class PrinterRegistrationTests : IDisposable
 
         string original = (await service.GetPrinterCode(Request())).TemporaryCode;
 
-        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync();
+        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
         stored.TemporaryCodeExpiry = DateTimeOffset.UtcNow.AddHours(-1);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         string renewed = (await service.GetPrinterCode(Request())).TemporaryCode;
 
         // Assert
         renewed.Should().NotBe(original);
-        (await context.PrusaConnectRegistrations.CountAsync()).Should().Be(1, "the row is renewed, not duplicated");
+        (await context.PrusaConnectRegistrations.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1, "the row is renewed, not duplicated");
     }
 
     /// <summary>
@@ -218,7 +218,7 @@ public sealed class PrinterRegistrationTests : IDisposable
 
         // Assert
         await replacement.Should().NotThrowAsync();
-        (await context.PrusaConnectRegistrations.CountAsync()).Should().Be(2);
+        (await context.PrusaConnectRegistrations.CountAsync(TestContext.Current.CancellationToken)).Should().Be(2);
     }
 
     // ---------- GET /p/register ----------
@@ -269,12 +269,12 @@ public sealed class PrinterRegistrationTests : IDisposable
         // Assert
         token.Should().NotBeNullOrWhiteSpace();
 
-        PrusaConnectAuthenticationData enrolled = await context.PrusaConnectAuthentication.SingleAsync();
+        PrusaConnectAuthenticationData enrolled = await context.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken);
         enrolled.HashedToken.Should().NotBeNullOrWhiteSpace();
         enrolled.HashedToken.Should().NotBe(token, "the token must never be stored in the clear");
         new TokenService().VerifyToken(token, enrolled.HashedToken).Should().BeTrue();
 
-        (await context.PrusaConnectRegistrations.AnyAsync()).Should().BeFalse("the registration is consumed once the token is issued");
+        (await context.PrusaConnectRegistrations.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse("the registration is consumed once the token is issued");
     }
 
     /// <summary>
@@ -315,9 +315,9 @@ public sealed class PrinterRegistrationTests : IDisposable
         string code = (await service.GetPrinterCode(Request())).TemporaryCode;
         await ClaimAsync(context);
 
-        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync();
+        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
         stored.TemporaryCodeExpiry = DateTimeOffset.UtcNow.AddSeconds(-1);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         Func<Task> act = () => service.GetToken(code);
@@ -402,7 +402,7 @@ public sealed class PrinterRegistrationTests : IDisposable
         await Record.ExceptionAsync(() => service.GetToken(code));
 
         // Assert
-        PrusaConnectAuthenticationData enrolled = await context.PrusaConnectAuthentication.SingleAsync();
+        PrusaConnectAuthenticationData enrolled = await context.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken);
 
         new TokenService().VerifyToken(token, enrolled.HashedToken).Should()
             .BeTrue("the printer's token must survive someone else replaying the code");
@@ -460,7 +460,7 @@ public sealed class PrinterRegistrationTests : IDisposable
         await service.GetToken(code);
 
         // Assert
-        PrusaConnectAuthenticationData enrolled = await context.PrusaConnectAuthentication.SingleAsync();
+        PrusaConnectAuthenticationData enrolled = await context.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken);
 
         enrolled.EnrolledAt.Should().BeOnOrAfter(before.AddSeconds(-1)).And.BeOnOrBefore(DateTimeOffset.UtcNow.AddSeconds(1));
     }
@@ -512,9 +512,9 @@ public sealed class PrinterRegistrationTests : IDisposable
 
         await service.GetPrinterCode(Request());
 
-        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync();
+        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
         stored.TemporaryCodeExpiry = DateTimeOffset.UtcNow.AddHours(-1);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         string renewed = (await service.GetPrinterCode(Request())).TemporaryCode;
@@ -541,7 +541,7 @@ public sealed class PrinterRegistrationTests : IDisposable
         await NewService(context, logger: sink.AsLogger<PrusaConnectService>()).GetPrinterCode(Request());
 
         // Assert
-        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync();
+        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
 
         stored.Id.Should().BeGreaterThan(0, "the key is assigned by the insert, so the log has to come after the save");
         sink.Entries.Should().ContainMatch($"RegistrationId={stored.Id}");
@@ -615,7 +615,7 @@ public sealed class PrinterRegistrationTests : IDisposable
         };
 
         context.Teams.Add(team);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         Printer printer = new()
         {
@@ -628,10 +628,10 @@ public sealed class PrinterRegistrationTests : IDisposable
         };
 
         context.Printers.Add(printer);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         PrusaConnectRegistration registration = await context.PrusaConnectRegistrations.SingleAsync();
         registration.PrinterId = printer.Id;
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 }

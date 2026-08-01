@@ -147,19 +147,19 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     {
         // Arrange
         await using HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         context.PrusaConnectRegistrations.Add(NewRegistration("fp-1", ChronologicalOrder[0]));
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         await using System.Data.Common.DbConnection connection = context.Database.GetDbConnection();
-        await connection.OpenAsync();
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
         await using System.Data.Common.DbCommand command = connection.CreateCommand();
         command.CommandText = "select typeof(TemporaryCodeExpiry) from PrusaConnectRegistrations limit 1";
 
         // Assert
-        (await command.ExecuteScalarAsync())?.ToString().Should().Be("integer");
+        (await command.ExecuteScalarAsync(TestContext.Current.CancellationToken))?.ToString().Should().Be("integer");
     }
 
     /// <summary>
@@ -174,7 +174,7 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     {
         // Arrange
         await using HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         // insert shuffled, so a passing result cannot come from insertion order
         foreach ((DateTimeOffset stamp, int i) in ChronologicalOrder.Select((s, i) => (s, i)).OrderBy(_ => Guid.NewGuid()))
@@ -182,13 +182,13 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
             context.PrusaConnectRegistrations.Add(NewRegistration($"fp-{i}", stamp));
         }
 
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         List<DateTimeOffset> sorted = await context.PrusaConnectRegistrations
             .OrderBy(a => a.TemporaryCodeExpiry)
             .Select(a => a.TemporaryCodeExpiry)
-            .ToListAsync();
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
         sorted.Should().Equal(ChronologicalOrder.Select(s => s.ToUniversalTime()));
@@ -207,14 +207,14 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     {
         // Arrange
         await using HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         foreach ((DateTimeOffset stamp, int i) in ChronologicalOrder.Select((s, i) => (s, i)))
         {
             context.PrusaConnectRegistrations.Add(NewRegistration($"fp-{i}", stamp));
         }
 
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // the +13:00 rows sit inside this window; the broken converter drops them entirely
         DateTimeOffset from = ChronologicalOrder[1];
@@ -225,7 +225,7 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
             .Where(a => a.TemporaryCodeExpiry >= from && a.TemporaryCodeExpiry <= to)
             .OrderBy(a => a.TemporaryCodeExpiry)
             .Select(a => a.TemporaryCodeExpiry)
-            .ToListAsync();
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
         matched.Should().Equal(ChronologicalOrder[1..6].Select(s => s.ToUniversalTime()));
@@ -237,25 +237,25 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     {
         // Arrange
         await using HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         foreach ((DateTimeOffset stamp, int i) in ChronologicalOrder.Select((s, i) => (s, i)))
         {
             context.PrusaConnectRegistrations.Add(NewRegistration($"fp-{i}", stamp));
         }
 
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         DateTimeOffset cutoff = ChronologicalOrder[3];
 
         // Act
         int deleted = await context.PrusaConnectRegistrations
             .Where(a => a.TemporaryCodeExpiry < cutoff)
-            .ExecuteDeleteAsync();
+            .ExecuteDeleteAsync(TestContext.Current.CancellationToken);
 
         // Assert
         deleted.Should().Be(3);
-        (await context.PrusaConnectRegistrations.CountAsync()).Should().Be(4);
+        (await context.PrusaConnectRegistrations.CountAsync(TestContext.Current.CancellationToken)).Should().Be(4);
     }
 
     /// <summary>
@@ -272,7 +272,7 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     {
         // Arrange
         await using HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         // deliberately carries sub-millisecond ticks and a non-zero offset
         DateTimeOffset original = new DateTimeOffset(2026, 3, 30, 11, 14, 1, 123, TimeSpan.Zero)
@@ -280,11 +280,11 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
             .ToOffset(TimeSpan.FromHours(13));
 
         context.PrusaConnectRegistrations.Add(NewRegistration("fp-rt", original));
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
         context.ChangeTracker.Clear();
 
         // Act
-        DateTimeOffset readBack = (await context.PrusaConnectRegistrations.SingleAsync()).TemporaryCodeExpiry;
+        DateTimeOffset readBack = (await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken)).TemporaryCodeExpiry;
 
         // Assert
         readBack.Offset.Should().Be(TimeSpan.Zero, "values round-trip as UTC; the offset is not stored");
@@ -306,7 +306,7 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     {
         // Arrange
         await using HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         Invitation row = new()
         {
@@ -319,11 +319,11 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
 
         // Act
         context.Invitations.Add(row);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
         context.ChangeTracker.Clear();
 
         // Assert
-        (await context.Invitations.SingleAsync()).UsedAt.Should().BeNull();
+        (await context.Invitations.SingleAsync(TestContext.Current.CancellationToken)).UsedAt.Should().BeNull();
     }
 
     private static PrusaConnectRegistration NewRegistration(string fingerPrint, DateTimeOffset expiry)

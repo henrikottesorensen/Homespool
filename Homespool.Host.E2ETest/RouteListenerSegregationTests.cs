@@ -151,7 +151,7 @@ public sealed class RouteListenerSegregationTests : IAsyncLifetime, IDisposable
         using HttpClient user = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         // Act
-        using HttpResponseMessage response = await user.GetAsync("/p/register");
+        using HttpResponseMessage response = await user.GetAsync("/p/register", TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.NotFound,
@@ -173,7 +173,7 @@ public sealed class RouteListenerSegregationTests : IAsyncLifetime, IDisposable
         using HttpClient printer = PrinterListener.CreateClient(_factory);
 
         // Act
-        using HttpResponseMessage response = await printer.GetAsync(path);
+        using HttpResponseMessage response = await printer.GetAsync(path, TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
@@ -191,8 +191,8 @@ public sealed class RouteListenerSegregationTests : IAsyncLifetime, IDisposable
         using HttpClient printer = PrinterListener.CreateClient(_factory);
 
         // Act
-        using HttpResponseMessage health = await user.GetAsync("/health");
-        using HttpResponseMessage register = await printer.GetAsync("/p/register");
+        using HttpResponseMessage health = await user.GetAsync("/health", TestContext.Current.CancellationToken);
+        using HttpResponseMessage register = await printer.GetAsync("/p/register", TestContext.Current.CancellationToken);
 
         // Assert
         health.StatusCode.Should().Be(HttpStatusCode.OK);

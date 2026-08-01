@@ -46,7 +46,7 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
         };
 
         context.Users.Add(user);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         return user;
     }
@@ -63,7 +63,7 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
     private async Task<HSDbContext> MigratedContextAsync()
     {
         HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
     }

@@ -82,7 +82,7 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
 
         using HttpClient client = await AdministratorClientAsync();
 
-        string page = await (await client.GetAsync("/Admin/Certificate")).Content.ReadAsStringAsync();
+        string page = await (await client.GetAsync("/Admin/Certificate", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         page.Should().Contain("an-old-address.lan", "the page has to show what the certificate covers today");
 
         // Act
@@ -91,7 +91,7 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
             new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(page)),
         ]);
 
-        using HttpResponseMessage response = await client.PostAsync("/Admin/Certificate?handler=Reissue", form);
+        using HttpResponseMessage response = await client.PostAsync("/Admin/Certificate?handler=Reissue", form, TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Redirect);
@@ -104,7 +104,7 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
         authority.EnsureAuthority().Thumbprint.Should().Be(originalAuthority.Thumbprint,
             "rolling the authority would strand every printer already provisioned");
 
-        string after = await (await client.GetAsync("/Admin/Certificate")).Content.ReadAsStringAsync();
+        string after = await (await client.GetAsync("/Admin/Certificate", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         after.Should().ContainEquivalentOf("reload the proxy",
             "the proxy still serves the old certificate, and a page that only said \"done\" would be describing a "
             + "file rather than what printers meet");
@@ -137,7 +137,7 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
         using HttpClient client = await AdministratorClientAsync();
 
         // Act
-        string page = await (await client.GetAsync("/Admin/Certificate")).Content.ReadAsStringAsync();
+        string page = await (await client.GetAsync("/Admin/Certificate", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         // Assert
         page.Should().ContainEquivalentOf("would narrow this certificate",
@@ -165,7 +165,7 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
         authority.IssueLeaf(["a-printer-still-dials-this.lan"]).Dispose();
 
         using HttpClient client = await AdministratorClientAsync();
-        string page = await (await client.GetAsync("/Admin/Certificate")).Content.ReadAsStringAsync();
+        string page = await (await client.GetAsync("/Admin/Certificate", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         // Act
         using FormUrlEncodedContent form = new(
@@ -174,7 +174,7 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
             new("KeepNames", "a-printer-still-dials-this.lan"),
         ]);
 
-        using HttpResponseMessage response = await client.PostAsync("/Admin/Certificate?handler=Reissue", form);
+        using HttpResponseMessage response = await client.PostAsync("/Admin/Certificate?handler=Reissue", form, TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Redirect);
@@ -203,7 +203,7 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
         authority.IssueLeaf(["an-old-address.lan"]).Dispose();
 
         using HttpClient client = await AdministratorClientAsync();
-        string page = await (await client.GetAsync("/Admin/Certificate")).Content.ReadAsStringAsync();
+        string page = await (await client.GetAsync("/Admin/Certificate", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         // Act
         using FormUrlEncodedContent form = new(
@@ -212,7 +212,7 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
             new("KeepNames", "connect.prusa3d.com"),
         ]);
 
-        using HttpResponseMessage response = await client.PostAsync("/Admin/Certificate?handler=Reissue", form);
+        using HttpResponseMessage response = await client.PostAsync("/Admin/Certificate?handler=Reissue", form, TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Redirect);
@@ -235,7 +235,7 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
         using (client)
         {
             // Act
-            using HttpResponseMessage response = await client.GetAsync("/Admin/Certificate");
+            using HttpResponseMessage response = await client.GetAsync("/Admin/Certificate", TestContext.Current.CancellationToken);
 
             // Assert
             response.StatusCode.Should().Be(HttpStatusCode.Redirect);

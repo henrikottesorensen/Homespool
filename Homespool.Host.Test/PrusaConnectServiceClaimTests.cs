@@ -64,7 +64,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
     private async Task<HSDbContext> MigratedContextAsync()
     {
         HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
     }
@@ -100,7 +100,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         };
 
         context.Teams.Add(team);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         return team.Members.Single();
     }
@@ -130,7 +130,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         printer.Name.Should().Be("My printer");
         printer.Location.Should().Be("Office");
 
-        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync();
+        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
         stored.PrinterId.Should().Be(printer.Id);
     }
 
@@ -221,7 +221,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
 
         // Assert
         await secondClaim.Should().ThrowAsync<RegistrationAlreadyClaimedException>();
-        (await context.Printers.CountAsync()).Should().Be(1, "the second claim must not create a competing printer");
+        (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1, "the second claim must not create a competing printer");
     }
 
     /// <summary>

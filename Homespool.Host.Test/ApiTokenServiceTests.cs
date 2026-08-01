@@ -37,7 +37,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         };
 
         context.Users.Add(user);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         return user;
     }
@@ -54,7 +54,7 @@ public sealed class ApiTokenServiceTests : IDisposable
     private async Task<HSDbContext> MigratedContextAsync()
     {
         HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
     }
@@ -109,7 +109,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         plaintext.Should().StartWith(ApiTokenService.Prefix);
         plaintext.Should().HaveLength(ApiTokenService.Prefix.Length + ApiTokenService.SecretLength);
 
-        ApiToken stored = await context.ApiTokens.SingleAsync();
+        ApiToken stored = await context.ApiTokens.SingleAsync(TestContext.Current.CancellationToken);
 
         stored.Id.Should().Be(token.Id);
         stored.UserId.Should().Be(user.Id);
@@ -285,7 +285,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         // The two are minted in the same millisecond, so order by CreatedAt alone is not decidable -
         // separate them rather than assert on a tie the database is entitled to break either way.
         newer.CreatedAt = older.CreatedAt.AddMinutes(1);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         IReadOnlyList<ApiToken> listed = await service.ListAsync(owner.Id, CancellationToken.None);
@@ -313,7 +313,7 @@ public sealed class ApiTokenServiceTests : IDisposable
 
         // Act
         context.Users.Remove(user);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Assert
         (await service.FindByCredentialAsync(plaintext, CancellationToken.None)).Should().BeNull();

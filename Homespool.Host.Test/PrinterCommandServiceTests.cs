@@ -45,7 +45,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
     private async Task<HSDbContext> MigratedContextAsync()
     {
         HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
     }
@@ -81,7 +81,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         };
 
         context.Teams.Add(team);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         return team.Members.Single();
     }
@@ -99,7 +99,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         };
 
         context.Printers.Add(printer);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         return printer;
     }

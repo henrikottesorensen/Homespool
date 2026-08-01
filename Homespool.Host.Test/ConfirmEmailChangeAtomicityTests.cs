@@ -54,7 +54,7 @@ public sealed class ConfirmEmailChangeAtomicityTests : IDisposable
     private async Task<HSDbContext> MigratedContextAsync()
     {
         HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
     }
@@ -120,7 +120,7 @@ public sealed class ConfirmEmailChangeAtomicityTests : IDisposable
         await model.OnGetAsync(user.Id.ToString(), "after@example.com", code, CancellationToken.None);
 
         // Assert
-        HSUser reloaded = await context.Users.AsNoTracking().SingleAsync(u => u.Id == user.Id);
+        HSUser reloaded = await context.Users.AsNoTracking().SingleAsync(u => u.Id == user.Id, TestContext.Current.CancellationToken);
 
         reloaded.Email.Should().Be("after@example.com");
         reloaded.UserName.Should().Be("after@example.com", "the username is the sign-in identifier here");
@@ -156,7 +156,7 @@ public sealed class ConfirmEmailChangeAtomicityTests : IDisposable
         // AsNoTracking, and a fresh read: the tracked instance still carries the values the rolled-back
         // calls set on it in memory, so asserting against it would pass whether or not anything was
         // written. What matters is the row.
-        HSUser reloaded = await context.Users.AsNoTracking().SingleAsync(u => u.Id == mover.Id);
+        HSUser reloaded = await context.Users.AsNoTracking().SingleAsync(u => u.Id == mover.Id, TestContext.Current.CancellationToken);
 
         reloaded.Email.Should().Be("mover@example.com", "the email change must have rolled back with the username");
         reloaded.UserName.Should().Be("mover@example.com");

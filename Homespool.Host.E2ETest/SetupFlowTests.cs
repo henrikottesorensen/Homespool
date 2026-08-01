@@ -102,9 +102,9 @@ public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
         string token = ReadBootstrapTokenFromLog();
 
-        HttpResponseMessage getResponse = await client.GetAsync("/setup");
+        HttpResponseMessage getResponse = await client.GetAsync("/setup", TestContext.Current.CancellationToken);
         getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        string antiforgeryToken = AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync());
+        string antiforgeryToken = AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
         using FormUrlEncodedContent body = new(new Dictionary<string, string>
         {
@@ -116,14 +116,14 @@ public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
         });
 
         // Act
-        HttpResponseMessage postResponse = await client.PostAsync("/setup", body);
+        HttpResponseMessage postResponse = await client.PostAsync("/setup", body, TestContext.Current.CancellationToken);
 
         // Assert
         postResponse.StatusCode.Should().Be(HttpStatusCode.Redirect, "a successful setup redirects to the app root");
         postResponse.Headers.Location!.OriginalString.Should().Be("/");
         postResponse.Headers.Should().Contain(h => h.Key == "Set-Cookie", "signing the new admin in issues a cookie");
 
-        HttpResponseMessage secondGet = await client.GetAsync("/setup");
+        HttpResponseMessage secondGet = await client.GetAsync("/setup", TestContext.Current.CancellationToken);
         secondGet.StatusCode.Should().Be(HttpStatusCode.NotFound, "setup must close the moment an administrator exists");
 
         using IServiceScope scope = _factory.Services.CreateScope();
@@ -140,8 +140,8 @@ public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
         // Arrange
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
-        HttpResponseMessage getResponse = await client.GetAsync("/setup");
-        string antiforgeryToken = AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync());
+        HttpResponseMessage getResponse = await client.GetAsync("/setup", TestContext.Current.CancellationToken);
+        string antiforgeryToken = AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
         using FormUrlEncodedContent body = new(new Dictionary<string, string>
         {
@@ -153,12 +153,12 @@ public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
         });
 
         // Act
-        HttpResponseMessage postResponse = await client.PostAsync("/setup", body);
+        HttpResponseMessage postResponse = await client.PostAsync("/setup", body, TestContext.Current.CancellationToken);
 
         // Assert
         postResponse.StatusCode.Should().Be(HttpStatusCode.OK, "a rejected token re-renders the page rather than redirecting");
 
-        HttpResponseMessage stillOpenGet = await client.GetAsync("/setup");
+        HttpResponseMessage stillOpenGet = await client.GetAsync("/setup", TestContext.Current.CancellationToken);
         stillOpenGet.StatusCode.Should().Be(HttpStatusCode.OK, "no administrator was created, so setup must still be reachable");
     }
 
@@ -174,7 +174,7 @@ public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
 
         // A GET first, so the antiforgery cookie is present - only the form field is withheld, which
         // is exactly what a forged cross-site request would look like.
-        await client.GetAsync("/setup");
+        await client.GetAsync("/setup", TestContext.Current.CancellationToken);
         string token = ReadBootstrapTokenFromLog();
 
         using FormUrlEncodedContent body = new(new Dictionary<string, string>
@@ -186,12 +186,12 @@ public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
         });
 
         // Act
-        HttpResponseMessage postResponse = await client.PostAsync("/setup", body);
+        HttpResponseMessage postResponse = await client.PostAsync("/setup", body, TestContext.Current.CancellationToken);
 
         // Assert
         postResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
-        HttpResponseMessage stillOpenGet = await client.GetAsync("/setup");
+        HttpResponseMessage stillOpenGet = await client.GetAsync("/setup", TestContext.Current.CancellationToken);
         stillOpenGet.StatusCode.Should().Be(HttpStatusCode.OK, "the rejected request must not have created an administrator");
     }
 }

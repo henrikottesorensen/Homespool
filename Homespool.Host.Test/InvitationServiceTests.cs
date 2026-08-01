@@ -45,7 +45,7 @@ public sealed class InvitationServiceTests : IDisposable
     private async Task<HSDbContext> MigratedContextAsync()
     {
         HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
     }
@@ -81,7 +81,7 @@ public sealed class InvitationServiceTests : IDisposable
             "invitee@example.com", teamId: null, invitedBy: 1, expiresAt: null, CancellationToken.None);
 
         // Assert
-        Invitation stored = await context.Invitations.SingleAsync();
+        Invitation stored = await context.Invitations.SingleAsync(TestContext.Current.CancellationToken);
 
         stored.Id.Should().Be(invitation.Id);
         stored.Email.Should().Be("invitee@example.com");
@@ -126,7 +126,7 @@ public sealed class InvitationServiceTests : IDisposable
         await using HSDbContext context = await MigratedContextAsync();
         Team team = new() { CreatedBy = 1, CreatedAt = DateTimeOffset.UtcNow };
         context.Teams.Add(team);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         (Invitation invitation, _) = await NewService(context).CreateAsync(
@@ -213,7 +213,7 @@ public sealed class InvitationServiceTests : IDisposable
         await service.MarkUsedAsync(tracked, CancellationToken.None);
 
         // Assert
-        Invitation stored = await context.Invitations.SingleAsync(i => i.Id == invitation.Id);
+        Invitation stored = await context.Invitations.SingleAsync(i => i.Id == invitation.Id, TestContext.Current.CancellationToken);
         stored.UsedAt.Should().NotBeNull();
 
         (await service.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should().BeNull();
@@ -238,7 +238,7 @@ public sealed class InvitationServiceTests : IDisposable
         await service.RevokeAsync(invitation.Id, CancellationToken.None);
 
         // Assert
-        Invitation stored = await context.Invitations.SingleAsync(i => i.Id == invitation.Id);
+        Invitation stored = await context.Invitations.SingleAsync(i => i.Id == invitation.Id, TestContext.Current.CancellationToken);
         stored.ExpiresAt.Should().BeOnOrBefore(DateTimeOffset.UtcNow);
 
         (await service.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should().BeNull();
@@ -276,7 +276,7 @@ public sealed class InvitationServiceTests : IDisposable
 
         (Invitation first, _) = await service.CreateAsync("first@example.com", null, 1, null, CancellationToken.None);
         first.CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-10);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         (Invitation second, _) = await service.CreateAsync("second@example.com", null, 1, null, CancellationToken.None);
 

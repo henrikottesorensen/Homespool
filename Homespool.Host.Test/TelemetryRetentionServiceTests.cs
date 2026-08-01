@@ -94,7 +94,7 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
 
         await using (AsyncServiceScope migrationScope = _provider.CreateAsyncScope())
         {
-            await migrationScope.ServiceProvider.GetRequiredService<HSDbContext>().Database.MigrateAsync();
+            await migrationScope.ServiceProvider.GetRequiredService<HSDbContext>().Database.MigrateAsync(TestContext.Current.CancellationToken);
         }
 
         _service = new TelemetryRetentionService(_provider.GetRequiredService<IServiceScopeFactory>(),
@@ -114,11 +114,11 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
     private async Task SeedPrinterAsync(int printerId = 1)
     {
         await using HSDbContext context = NewVerificationContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         Team team = new() { CreatedBy = 1, CreatedAt = DateTimeOffset.UtcNow };
         context.Teams.Add(team);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         context.Printers.Add(new Printer
         {
@@ -130,7 +130,7 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         });
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
     private async Task SeedSampleAsync(int printerId, DateTimeOffset timestamp)
@@ -144,7 +144,7 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
             Status = PrinterStatus.Idle,
         });
 
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -166,7 +166,7 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
         sweptDown.Should().BeTrue("the sweep should run once at startup, without waiting for the hourly timer");
 
         await using HSDbContext verify = NewVerificationContext();
-        TelemetrySample remaining = await verify.TelemetrySamples.SingleAsync();
+        TelemetrySample remaining = await verify.TelemetrySamples.SingleAsync(TestContext.Current.CancellationToken);
         remaining.Timestamp.Should().BeCloseTo(DateTimeOffset.UtcNow.AddHours(-1), TimeSpan.FromMinutes(1));
     }
 
@@ -180,10 +180,10 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
 
         // Nothing to poll for a negative - give the (disabled) sweep a beat to have run, then assert
         // the row is still there.
-        await Task.Delay(200);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
 
         await using HSDbContext verify = NewVerificationContext();
-        (await verify.TelemetrySamples.CountAsync()).Should().Be(1);
+        (await verify.TelemetrySamples.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
     }
 
     [Fact]
@@ -201,7 +201,7 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
                 Slots = [new TelemetrySlotSample { SlotNumber = 1 }],
             });
 
-            await context.SaveChangesAsync();
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
         await StartServiceAsync(new StorageOptions { TelemetryRetentionDays = 14 });
@@ -216,7 +216,7 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
         sweptDown.Should().BeTrue();
 
         await using HSDbContext verify = NewVerificationContext();
-        (await verify.TelemetrySlotSamples.AnyAsync()).Should().BeFalse(
+        (await verify.TelemetrySlotSamples.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse(
             "the FK to TelemetrySample is ON DELETE CASCADE and this database has foreign keys enabled");
     }
 }

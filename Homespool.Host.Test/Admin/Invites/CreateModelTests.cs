@@ -43,7 +43,7 @@ public sealed class CreateModelTests : IDisposable
     private async Task<HSDbContext> MigratedContextAsync()
     {
         HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
     }
@@ -119,7 +119,7 @@ public sealed class CreateModelTests : IDisposable
         // Arrange
         await using HSDbContext context = await MigratedContextAsync();
         context.Teams.Add(new Team { Name = "Print Squad", CreatedBy = 1, CreatedAt = DateTimeOffset.UtcNow });
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         (CreateModel model, _, _) = await NewModelAsync(context);
 
@@ -151,7 +151,7 @@ public sealed class CreateModelTests : IDisposable
         await model.OnPostAsync(CancellationToken.None);
 
         // Assert
-        Invitation stored = await context.Invitations.SingleAsync();
+        Invitation stored = await context.Invitations.SingleAsync(TestContext.Current.CancellationToken);
         stored.Email.Should().Be("invitee@example.com");
         stored.TeamId.Should().BeNull();
         stored.InvitedBy.Should().Be(admin.Id);
@@ -181,7 +181,7 @@ public sealed class CreateModelTests : IDisposable
         await model.OnPostAsync(CancellationToken.None);
 
         // Assert
-        Invitation stored = await context.Invitations.SingleAsync();
+        Invitation stored = await context.Invitations.SingleAsync(TestContext.Current.CancellationToken);
         string code = ExtractQueryValue(model.AcceptLink!, "code")!;
         string plaintext = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(code));
 
@@ -196,7 +196,7 @@ public sealed class CreateModelTests : IDisposable
         await using HSDbContext context = await MigratedContextAsync();
         Team team = new() { Name = "Print Squad", CreatedBy = 1, CreatedAt = DateTimeOffset.UtcNow };
         context.Teams.Add(team);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         (CreateModel model, _, _) = await NewModelAsync(context);
         model.Input.Email = "invitee@example.com";
@@ -206,7 +206,7 @@ public sealed class CreateModelTests : IDisposable
         await model.OnPostAsync(CancellationToken.None);
 
         // Assert
-        Invitation stored = await context.Invitations.SingleAsync();
+        Invitation stored = await context.Invitations.SingleAsync(TestContext.Current.CancellationToken);
         stored.TeamId.Should().Be(team.Id);
     }
 
@@ -226,7 +226,7 @@ public sealed class CreateModelTests : IDisposable
         await model.OnPostAsync(CancellationToken.None);
 
         // Assert
-        Invitation stored = await context.Invitations.SingleAsync();
+        Invitation stored = await context.Invitations.SingleAsync(TestContext.Current.CancellationToken);
         stored.ExpiresAt.Should().BeOnOrAfter(before.AddHours(3)).And.BeOnOrBefore(DateTimeOffset.UtcNow.AddHours(3));
     }
 
@@ -246,7 +246,7 @@ public sealed class CreateModelTests : IDisposable
 
         // Assert
         result.Should().BeOfType<PageResult>();
-        (await context.Invitations.CountAsync()).Should().Be(0);
+        (await context.Invitations.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
         model.TeamOptions.Should().NotBeEmpty("options still reload even on a rejected submission");
     }
 
@@ -267,6 +267,6 @@ public sealed class CreateModelTests : IDisposable
 
         // Assert
         result.Should().BeOfType<ForbidResult>();
-        (await context.Invitations.CountAsync()).Should().Be(0);
+        (await context.Invitations.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
     }
 }

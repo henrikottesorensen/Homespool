@@ -87,7 +87,7 @@ public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime, IDisposabl
 
         using (client)
         {
-            string addPage = await (await client.GetAsync("/Printers/Add")).Content.ReadAsStringAsync();
+            string addPage = await (await client.GetAsync("/Printers/Add", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
             // Act - provision, which renders the download form with the one-time token in it.
             using FormUrlEncodedContent provisionForm = new(
@@ -97,11 +97,11 @@ public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime, IDisposabl
                 new("Input.Location", "Workshop"),
             ]);
 
-            using HttpResponseMessage provisioned = await client.PostAsync("/Printers/Add", provisionForm);
+            using HttpResponseMessage provisioned = await client.PostAsync("/Printers/Add", provisionForm, TestContext.Current.CancellationToken);
 
             provisioned.StatusCode.Should().Be(HttpStatusCode.OK);
 
-            string html = await provisioned.Content.ReadAsStringAsync();
+            string html = await provisioned.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             string token = HiddenFieldValue(html, "Token");
 
             html.Should().Contain(PrinterHost, "the address the certificate covers is offered as the default");
@@ -116,7 +116,7 @@ public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime, IDisposabl
                 new("PrinterName", "Bench printer"),
             ]);
 
-            using HttpResponseMessage download = await client.PostAsync("/Printers/Bundle", downloadForm);
+            using HttpResponseMessage download = await client.PostAsync("/Printers/Bundle", downloadForm, TestContext.Current.CancellationToken);
 
             // Assert
             download.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -124,7 +124,7 @@ public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime, IDisposabl
             download.Content.Headers.ContentDisposition?.FileName.Should().Be("homespool-bench-printer.zip",
                 "a downloads folder ends up holding several of these");
 
-            Dictionary<string, byte[]> entries = Entries(await download.Content.ReadAsByteArrayAsync());
+            Dictionary<string, byte[]> entries = Entries(await download.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken));
 
             entries.Keys.Should().BeEquivalentTo(["prusa_printer_settings.ini", "connect.der", "README.Bundle.md"]);
 
@@ -141,7 +141,7 @@ public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime, IDisposabl
             using IServiceScope scope = _factory.Services.CreateScope();
             Data.HSDbContext context = scope.ServiceProvider.GetRequiredService<Data.HSDbContext>();
             PrusaConnectProvisioning stored = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
-                .SingleAsync(context.PrusaConnectProvisionings);
+                .SingleAsync(context.PrusaConnectProvisionings, TestContext.Current.CancellationToken);
 
             new TokenService().VerifyToken(tokenInFile, stored.HashedToken).Should().BeTrue(
                 "the file has to carry the token the printer will authenticate with, not a copy of something else");
@@ -165,7 +165,7 @@ public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime, IDisposabl
 
         using (client)
         {
-            string addPage = await (await client.GetAsync("/Printers/Add")).Content.ReadAsStringAsync();
+            string addPage = await (await client.GetAsync("/Printers/Add", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
             // Act
             using FormUrlEncodedContent refusedForm = new(
@@ -176,11 +176,11 @@ public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime, IDisposabl
                 new("PrinterId", "1"),
             ]);
 
-            using HttpResponseMessage refused = await client.PostAsync("/Printers/Bundle", refusedForm);
+            using HttpResponseMessage refused = await client.PostAsync("/Printers/Bundle", refusedForm, TestContext.Current.CancellationToken);
 
             // Assert
             refused.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-            (await refused.Content.ReadAsStringAsync()).Should().Contain("does not cover");
+            (await refused.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().Contain("does not cover");
         }
     }
 

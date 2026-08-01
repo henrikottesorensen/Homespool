@@ -65,10 +65,10 @@ public class WebSocketPrinterConnectionTests
 
         // Give an unserialized close time to slip out ahead of the send it should be waiting for;
         // without this the assertion could pass on timing rather than on ordering.
-        await System.Threading.Tasks.Task.Delay(50);
+        await System.Threading.Tasks.Task.Delay(50, TestContext.Current.CancellationToken);
 
         socket.ReleaseSends();
-        await System.Threading.Tasks.Task.WhenAll(send, close).WaitAsync(TimeSpan.FromSeconds(10));
+        await System.Threading.Tasks.Task.WhenAll(send, close).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         // Assert
         socket.Operations.Should().Equal(

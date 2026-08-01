@@ -82,13 +82,13 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime, IDisposable
 
         using (client)
         {
-            HttpResponseMessage pageResponse = await client.GetAsync("/Account/Manage/Email");
+            HttpResponseMessage pageResponse = await client.GetAsync("/Account/Manage/Email", TestContext.Current.CancellationToken);
 
             pageResponse.StatusCode.Should().Be(HttpStatusCode.OK,
                 "every page under Account/Manage rendered a 500 while its layout pointed at the "
               + "Identity.UI file that was removed with the package");
 
-            string page = await pageResponse.Content.ReadAsStringAsync();
+            string page = await pageResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             string token = AntiforgeryTestHelper.ExtractToken(page);
 
             // Act
@@ -98,7 +98,7 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime, IDisposable
                 ["__RequestVerificationToken"] = token,
             });
 
-            HttpResponseMessage response = await client.PostAsync("/Account/Manage/Email?handler=ChangeEmail", body);
+            HttpResponseMessage response = await client.PostAsync("/Account/Manage/Email?handler=ChangeEmail", body, TestContext.Current.CancellationToken);
 
             // Assert
             response.StatusCode.Should().Be(HttpStatusCode.Redirect,
@@ -119,7 +119,7 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime, IDisposable
 
         using (client)
         {
-            string page = await client.GetStringAsync("/Account/Manage/Email");
+            string page = await client.GetStringAsync("/Account/Manage/Email", TestContext.Current.CancellationToken);
             string token = AntiforgeryTestHelper.ExtractToken(page);
 
             using FormUrlEncodedContent body = new(new Dictionary<string, string>
@@ -128,7 +128,7 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime, IDisposable
                 ["__RequestVerificationToken"] = token,
             });
 
-            await client.PostAsync("/Account/Manage/Email?handler=ChangeEmail", body);
+            await client.PostAsync("/Account/Manage/Email?handler=ChangeEmail", body, TestContext.Current.CancellationToken);
 
             // The token the emailed link would carry. Generated here rather than scraped out of the
             // captured mail, so this test covers the confirmation page rather than the formatting of
@@ -136,7 +136,7 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime, IDisposable
             string confirmUrl = await BuildConfirmUrlAsync(user.Id, "after@example.com");
 
             // Act
-            HttpResponseMessage confirm = await client.GetAsync(confirmUrl);
+            HttpResponseMessage confirm = await client.GetAsync(confirmUrl, TestContext.Current.CancellationToken);
 
             // Assert
             confirm.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -174,7 +174,7 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime, IDisposable
         using (client)
         {
             // Act
-            HttpResponseMessage response = await client.GetAsync(path);
+            HttpResponseMessage response = await client.GetAsync(path, TestContext.Current.CancellationToken);
 
             // Assert
             response.StatusCode.Should().Be(HttpStatusCode.OK);

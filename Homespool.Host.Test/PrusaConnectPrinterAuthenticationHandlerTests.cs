@@ -50,7 +50,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
         };
 
         context.Teams.Add(team);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         Printer printer = new()
         {
@@ -64,7 +64,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
         };
 
         context.Printers.Add(printer);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         return printer;
     }
@@ -85,7 +85,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
             EnrolledAt = DateTimeOffset.UtcNow,
         });
 
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         return (printer, token);
     }
@@ -105,7 +105,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
             CreatedAt = DateTimeOffset.UtcNow,
         });
 
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         return (printer, token);
     }
@@ -122,7 +122,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     private async Task<HSDbContext> MigratedContextAsync()
     {
         HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
     }
@@ -285,11 +285,11 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
 
         await using HSDbContext verify = NewContext();
 
-        PrusaConnectAuthenticationData enrolled = await verify.PrusaConnectAuthentication.SingleAsync();
+        PrusaConnectAuthenticationData enrolled = await verify.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken);
         enrolled.PrinterId.Should().Be(printer.Id);
         enrolled.FingerPrintKey.Should().Be(Fingerprint, "the presented fingerprint is bound to the printer");
 
-        (await verify.PrusaConnectProvisionings.AnyAsync()).Should()
+        (await verify.PrusaConnectProvisionings.AnyAsync(TestContext.Current.CancellationToken)).Should()
             .BeFalse("the provisioning token is consumed by the promotion");
     }
 
@@ -309,7 +309,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
 
         // Assert
         await using HSDbContext verify = NewContext();
-        PrusaConnectAuthenticationData enrolled = await verify.PrusaConnectAuthentication.SingleAsync();
+        PrusaConnectAuthenticationData enrolled = await verify.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken);
 
         new TokenService().VerifyToken(token, enrolled.HashedToken).Should().BeTrue();
     }
@@ -341,7 +341,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
         result.Succeeded.Should().BeTrue();
         result.Principal!.FindFirst(HSClaimTypes.PrinterId)!.Value.Should().Be($"{printer.Id}");
 
-        (await second.PrusaConnectProvisionings.AnyAsync()).Should()
+        (await second.PrusaConnectProvisionings.AnyAsync(TestContext.Current.CancellationToken)).Should()
             .BeFalse("nothing remains in the provisioning table to have served this request");
     }
 
@@ -366,8 +366,8 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
         result.Succeeded.Should().BeFalse();
 
         await using HSDbContext verify = NewContext();
-        (await verify.PrusaConnectAuthentication.AnyAsync()).Should().BeFalse("nothing was enrolled");
-        (await verify.PrusaConnectProvisionings.CountAsync()).Should().Be(1, "the real printer's token must survive a wrong guess");
+        (await verify.PrusaConnectAuthentication.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse("nothing was enrolled");
+        (await verify.PrusaConnectProvisionings.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1, "the real printer's token must survive a wrong guess");
     }
 
     /// <summary>
@@ -392,8 +392,8 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
         result.Principal!.FindFirst(HSClaimTypes.PrinterId)!.Value.Should().Be($"{target.Id}");
 
         await using HSDbContext verify = NewContext();
-        (await verify.PrusaConnectProvisionings.CountAsync()).Should().Be(2, "the other two are untouched");
-        (await verify.PrusaConnectAuthentication.SingleAsync()).PrinterId.Should().Be(target.Id);
+        (await verify.PrusaConnectProvisionings.CountAsync(TestContext.Current.CancellationToken)).Should().Be(2, "the other two are untouched");
+        (await verify.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken)).PrinterId.Should().Be(target.Id);
     }
 
     /// <summary>
@@ -414,7 +414,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
             CreatedAt = DateTimeOffset.UtcNow,
         });
 
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         AuthenticateResult result = await AuthenticateAsync(context, Fingerprint, enrolledToken);
@@ -453,11 +453,11 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
 
         await using HSDbContext verify = NewContext();
 
-        PrusaConnectAuthenticationData enrolled = await verify.PrusaConnectAuthentication.SingleAsync();
+        PrusaConnectAuthenticationData enrolled = await verify.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken);
         enrolled.PrinterId.Should().Be(printer.Id);
         enrolled.FingerPrintKey.Should().Be(Fingerprint);
 
-        (await verify.PrusaConnectProvisionings.AnyAsync()).Should().BeFalse("the token is consumed exactly once");
+        (await verify.PrusaConnectProvisionings.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse("the token is consumed exactly once");
     }
 
     /// <summary>

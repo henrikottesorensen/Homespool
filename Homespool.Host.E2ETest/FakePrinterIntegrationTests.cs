@@ -110,19 +110,19 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         await using FakePrinterClient fake = new(identity, TimeProvider.System, new FakePrinterOptions { TelemetrySource = source });
         fake.Token = token;
 
-        await fake.ConnectAsync(ConnectViaTestServerAsync);
+        await fake.ConnectAsync(ConnectViaTestServerAsync, TestContext.Current.CancellationToken);
         using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(120));
         Task run = fake.RunAsync(cancellation.Token);
 
-        await fake.TelemetryCompleted.WaitAsync(TimeSpan.FromSeconds(90));
+        await fake.TelemetryCompleted.WaitAsync(TimeSpan.FromSeconds(90), TestContext.Current.CancellationToken);
 
         // The capture holds 2058 telemetry documents and 5 events (CaptureReplayTests' counts);
         // the fake's own connect-time INFO makes it 6 events.
         int samples = await WaitForCountAsync(
-            context => context.TelemetrySamples.CountAsync(s => s.PrinterId == printerId),
+            context => context.TelemetrySamples.CountAsync(s => s.PrinterId == printerId, TestContext.Current.CancellationToken),
             atLeast: 2058);
         int events = await WaitForCountAsync(
-            context => context.PrinterEvents.CountAsync(e => e.PrinterId == printerId),
+            context => context.PrinterEvents.CountAsync(e => e.PrinterId == printerId, TestContext.Current.CancellationToken),
             atLeast: 6);
 
         samples.Should().Be(2058, "every telemetry message in the capture becomes exactly one dense sample");
@@ -131,13 +131,13 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         using (IServiceScope scope = _factory.Services.CreateScope())
         {
             HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
-            PrinterLiveState liveState = await context.PrinterLiveStates.SingleAsync(l => l.PrinterId == printerId);
+            PrinterLiveState liveState = await context.PrinterLiveStates.SingleAsync(l => l.PrinterId == printerId, TestContext.Current.CancellationToken);
             liveState.LastSeenAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromMinutes(5),
                 "the merge ran against real replayed data just now");
         }
 
-        await fake.CloseAsync();
-        await run.WaitAsync(TimeSpan.FromSeconds(10));
+        await fake.CloseAsync(TestContext.Current.CancellationToken);
+        await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         fake.ReplyFault.Should().BeNull();
         _logs.Failures.Should().BeEmpty("a faithful replay is not an error path");
@@ -269,7 +269,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             await act.Should().ThrowAsync<PrinterNotConnectedException>(
                 "teardown must fail the pending command, not leave it to the timeout");
 
-            await run.WaitAsync(TimeSpan.FromSeconds(10));
+            await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         }
     }
 
@@ -288,20 +288,20 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             await using FakePrinterClient fake = new(identity, TimeProvider.System);
             fake.Token = token;
 
-            await fake.ConnectAsync(ConnectViaTestServerAsync);
+            await fake.ConnectAsync(ConnectViaTestServerAsync, TestContext.Current.CancellationToken);
             using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(30));
             Task run = fake.RunAsync(cancellation.Token);
             await WaitUntilConnectedAsync(printerId);
 
-            await fake.CloseAsync();
-            await run.WaitAsync(TimeSpan.FromSeconds(10));
+            await fake.CloseAsync(TestContext.Current.CancellationToken);
+            await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         }
 
         await using FakePrinterClient last = new(identity, TimeProvider.System);
         last.Token = token;
         last.Device.StartPrint(jobId: 1);
 
-        await last.ConnectAsync(ConnectViaTestServerAsync);
+        await last.ConnectAsync(ConnectViaTestServerAsync, TestContext.Current.CancellationToken);
         using CancellationTokenSource lastCancellation = new(TimeSpan.FromSeconds(30));
         Task lastRun = last.RunAsync(lastCancellation.Token);
         await WaitUntilConnectedAsync(printerId);
@@ -459,18 +459,18 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         await using (FakePrinterClient dropped = new(identity, TimeProvider.System))
         {
             dropped.Token = token;
-            await dropped.ConnectAsync(ConnectViaTestServerAsync);
+            await dropped.ConnectAsync(ConnectViaTestServerAsync, TestContext.Current.CancellationToken);
             Task droppedRun = dropped.RunAsync(CancellationToken.None);
             await WaitUntilConnectedAsync(printerId);
 
             await SendCommandAsync(printerId, userId, command);
-            await dropped.CloseAsync();
-            await droppedRun.WaitAsync(TimeSpan.FromSeconds(10));
+            await dropped.CloseAsync(TestContext.Current.CancellationToken);
+            await droppedRun.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         }
 
         await using FakePrinterClient reconnected = new(identity, TimeProvider.System);
         reconnected.Token = token;
-        await reconnected.ConnectAsync(ConnectViaTestServerAsync);
+        await reconnected.ConnectAsync(ConnectViaTestServerAsync, TestContext.Current.CancellationToken);
         Task run = reconnected.RunAsync(CancellationToken.None);
         await WaitUntilConnectedAsync(printerId);
 
@@ -500,8 +500,8 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
     private static async Task EndRunAsync(FakePrinterClient fake, Task run)
     {
-        await fake.CloseAsync();
-        await run.WaitAsync(TimeSpan.FromSeconds(10));
+        await fake.CloseAsync(TestContext.Current.CancellationToken);
+        await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         fake.ReplyFault.Should().BeNull("a faulted fake would invalidate what this test claims about the server");
     }
@@ -563,17 +563,17 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         using HttpClient anonymous = PrinterListener.CreateClient(_factory);
 
         // Act - one register, then far more polls than a real printer manages in a minute.
-        string code = await fake.RegisterAsync(anonymous);
+        string code = await fake.RegisterAsync(anonymous, TestContext.Current.CancellationToken);
 
         for (int i = 0; i < 40; i++)
         {
-            string? token = await fake.PollForTokenOnceAsync(anonymous, code);
+            string? token = await fake.PollForTokenOnceAsync(anonymous, code, TestContext.Current.CancellationToken);
             token.Should().BeNull("nothing has claimed this registration, so every poll is a pending 202");
         }
 
         // Assert - a 429 anywhere above would have surfaced as an exception from
         // EnsureSuccessStatusCode inside the helpers; assert the endpoint is still serving normally.
-        string second = await fake.RegisterAsync(anonymous);
+        string second = await fake.RegisterAsync(anonymous, TestContext.Current.CancellationToken);
 
         second.Should().NotBeNullOrEmpty("the endpoint must still answer a printer after a minute's worth of polling");
     }
@@ -606,7 +606,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         fake.Token = token;
         fake.Device.StartPrint(jobId: 77);
 
-        await fake.ConnectAsync(ConnectViaTestServerAsync);
+        await fake.ConnectAsync(ConnectViaTestServerAsync, TestContext.Current.CancellationToken);
         Task run = fake.RunAsync(CancellationToken.None);
 
         // Act
@@ -616,7 +616,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
 
             return await context.TelemetrySamples
-                .AnyAsync(sample => sample.PrinterId == printerId && sample.TimeToFilamentChange == 300);
+                .AnyAsync(sample => sample.PrinterId == printerId && sample.TimeToFilamentChange == 300, TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(20));
 
         // Assert
@@ -625,7 +625,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         using (IServiceScope scope = _factory.Services.CreateScope())
         {
             HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
-            PrinterLiveState liveState = await context.PrinterLiveStates.SingleAsync(l => l.PrinterId == printerId);
+            PrinterLiveState liveState = await context.PrinterLiveStates.SingleAsync(l => l.PrinterId == printerId, TestContext.Current.CancellationToken);
 
             liveState.TimeToFilamentChange.Should().Be(300,
                 "the live view is what a UI reads, so the merge has to keep it");
@@ -673,12 +673,12 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         // Act
-        using HttpResponseMessage response = await client.GetAsync($"/api/v1/printers/{uuid}/storage/usb");
+        using HttpResponseMessage response = await client.GetAsync($"/api/v1/printers/{uuid}/storage/usb", TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        JsonElement listing = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+        JsonElement listing = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).RootElement;
 
         listing.GetProperty("path").GetString().Should().Be("/usb");
         listing.GetProperty("kind").GetString().Should().Be("folder");
@@ -697,11 +697,11 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         entries.Should().ContainSingle(e => e.GetProperty("kind").GetString() == "folder");
 
         // And the nested path lists on its own, which is what the catch-all route is for.
-        using HttpResponseMessage nested = await client.GetAsync($"/api/v1/printers/{uuid}/storage/usb/sub");
+        using HttpResponseMessage nested = await client.GetAsync($"/api/v1/printers/{uuid}/storage/usb/sub", TestContext.Current.CancellationToken);
 
         nested.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        JsonDocument.Parse(await nested.Content.ReadAsStringAsync())
+        JsonDocument.Parse(await nested.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
                     .RootElement.GetProperty("entries").EnumerateArray()
                     .Single().GetProperty("name").GetString().Should().Be("deep.bgcode");
 
@@ -731,13 +731,13 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
         // Act
         using HttpResponseMessage response =
-            await client.GetAsync($"/api/v1/printers/{uuid}/storage/usb/nothing-here.gcode");
+            await client.GetAsync($"/api/v1/printers/{uuid}/storage/usb/nothing-here.gcode", TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
         response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
 
-        JsonElement problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+        JsonElement problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).RootElement;
 
         problem.GetProperty("detail").GetString().Should().Be("File not found",
             "the printer's own words, not ours");
@@ -752,7 +752,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     {
         using IServiceScope scope = _factory.Services.CreateScope();
         HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
-        Guid uuid = (await context.Printers.SingleAsync(p => p.Id == printerId)).Uuid;
+        Guid uuid = (await context.Printers.SingleAsync(p => p.Id == printerId, TestContext.Current.CancellationToken)).Uuid;
 
         ApiTokenService tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
         (_, string token) = await tokens.CreateAsync(userId, "storage-e2e", CancellationToken.None);
@@ -826,7 +826,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         using (IServiceScope scope = _factory.Services.CreateScope())
         {
             HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
-            uuid = (await context.Printers.SingleAsync(p => p.Id == printerId)).Uuid;
+            uuid = (await context.Printers.SingleAsync(p => p.Id == printerId, TestContext.Current.CancellationToken)).Uuid;
 
             ApiTokenService tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
             (_, token) = await tokens.CreateAsync(userId, "e2e", CancellationToken.None);
@@ -837,7 +837,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
         // Act
         using HttpResponseMessage response = await client.PutAsync(
-            $"/api/v1/printers/{uuid}/command/pause", content: null);
+            $"/api/v1/printers/{uuid}/command/pause", content: null, TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.NoContent,
@@ -848,7 +848,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
         // A printer nobody may see is indistinguishable from one that does not exist.
         using HttpResponseMessage unknown = await client.PutAsync(
-            $"/api/v1/printers/{Guid.NewGuid()}/command/pause", content: null);
+            $"/api/v1/printers/{Guid.NewGuid()}/command/pause", content: null, TestContext.Current.CancellationToken);
 
         unknown.StatusCode.Should().Be(HttpStatusCode.NotFound);
 

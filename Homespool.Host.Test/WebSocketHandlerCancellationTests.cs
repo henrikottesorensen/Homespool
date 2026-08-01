@@ -58,14 +58,14 @@ public class WebSocketHandlerCancellationTests
 
         // Nothing is ever written, so once the loop has started there is exactly one place it can
         // be: awaiting ReadAsync. No race to lose - only a moment to let it get there.
-        await Task.Delay(50);
+        await Task.Delay(50, TestContext.Current.CancellationToken);
         run.IsCompleted.Should().BeFalse("the loop should still be waiting for bytes that never come");
 
         // Act
         await cts.CancelAsync();
 
         // Assert
-        Func<Task> act = async () => await run.WaitAsync(TimeSpan.FromSeconds(10));
+        Func<Task> act = async () => await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         await act.Should().ThrowAsync<OperationCanceledException>(
             "a cancelled read is how the connection stops when the host is shutting down");
@@ -87,7 +87,7 @@ public class WebSocketHandlerCancellationTests
 
         // A whole message is waiting: proof the loop stopped because the token said so, not because
         // there was nothing to do.
-        await wire.Writer.WriteAsync(Encoding.UTF8.GetBytes("""{"state":"IDLE"}"""));
+        await wire.Writer.WriteAsync(Encoding.UTF8.GetBytes("""{"state":"IDLE"}"""), TestContext.Current.CancellationToken);
 
         using CancellationTokenSource cts = new();
         await cts.CancelAsync();
@@ -95,7 +95,7 @@ public class WebSocketHandlerCancellationTests
         // Act
         Func<Task> act = async () =>
             await NewHandler(dispatcher).HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(), cts.Token)
-                                        .WaitAsync(TimeSpan.FromSeconds(10));
+                                        .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         // Assert
         await act.Should().NotThrowAsync(

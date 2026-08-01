@@ -41,7 +41,7 @@ public sealed class ClaimModelTests : IDisposable
     private async Task<HSDbContext> MigratedContextAsync()
     {
         HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
     }
@@ -87,7 +87,7 @@ public sealed class ClaimModelTests : IDisposable
         createResult.Succeeded.Should().BeTrue();
 
         context.AddDefaultTeam(user.Id, DateTimeOffset.UtcNow);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
@@ -124,7 +124,7 @@ public sealed class ClaimModelTests : IDisposable
 
         Team usableOnly = new() { CreatedBy = user.Id, CreatedAt = DateTimeOffset.UtcNow };
         context.Teams.Add(usableOnly);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         context.TeamMembers.Add(new TeamMember
         {
@@ -135,7 +135,7 @@ public sealed class ClaimModelTests : IDisposable
             CanManage = false,
             IsDefault = false,
         });
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         await model.OnGetAsync(CancellationToken.None);
@@ -167,10 +167,10 @@ public sealed class ClaimModelTests : IDisposable
         RedirectToPageResult redirect = result.Should().BeOfType<RedirectToPageResult>().Subject;
         redirect.PageName.Should().Be("Index");
 
-        Printer printer = await context.Printers.SingleAsync();
+        Printer printer = await context.Printers.SingleAsync(TestContext.Current.CancellationToken);
         printer.Name.Should().Be("Bench printer");
 
-        PrusaConnectRegistration registration = await context.PrusaConnectRegistrations.SingleAsync();
+        PrusaConnectRegistration registration = await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
         registration.PrinterId.Should().Be(printer.Id);
 
         model.StatusSuccess.Should().BeTrue();
@@ -198,7 +198,7 @@ public sealed class ClaimModelTests : IDisposable
 
         // Assert
         result.Should().BeOfType<RedirectToPageResult>();
-        (await context.Printers.CountAsync()).Should().Be(1);
+        (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
     }
 
     /// <summary>An unknown code is rejected without creating a printer.</summary>
@@ -216,7 +216,7 @@ public sealed class ClaimModelTests : IDisposable
         // Assert
         result.Should().BeOfType<PageResult>();
         model.ModelState.IsValid.Should().BeFalse();
-        (await context.Printers.AnyAsync()).Should().BeFalse();
+        (await context.Printers.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse();
     }
 
     /// <summary>A code already claimed by someone else is rejected, and no competing printer is created.</summary>
@@ -239,7 +239,7 @@ public sealed class ClaimModelTests : IDisposable
         // Assert
         result.Should().BeOfType<PageResult>();
         second.ModelState.IsValid.Should().BeFalse();
-        (await context.Printers.CountAsync()).Should().Be(1, "the second claim must not create a competing printer");
+        (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1, "the second claim must not create a competing printer");
     }
 
     /// <summary>A team the caller cannot manage is rejected, and nothing is created.</summary>
@@ -252,7 +252,7 @@ public sealed class ClaimModelTests : IDisposable
 
         Team someoneElses = new() { CreatedBy = 999, CreatedAt = DateTimeOffset.UtcNow };
         context.Teams.Add(someoneElses);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         string code = await SeedClaimableCodeAsync(context, "FP-WRONG-TEAM");
         model.Input.Code = code;
@@ -264,7 +264,7 @@ public sealed class ClaimModelTests : IDisposable
         // Assert
         result.Should().BeOfType<PageResult>();
         model.ModelState.IsValid.Should().BeFalse();
-        (await context.Printers.AnyAsync()).Should().BeFalse();
+        (await context.Printers.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse();
     }
 
     /// <summary>An empty code fails validation before the service (and the database) are ever touched.</summary>
@@ -282,7 +282,7 @@ public sealed class ClaimModelTests : IDisposable
 
         // Assert
         result.Should().BeOfType<PageResult>();
-        (await context.Printers.AnyAsync()).Should().BeFalse();
-        (await context.PrusaConnectRegistrations.AnyAsync()).Should().BeFalse();
+        (await context.Printers.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse();
+        (await context.PrusaConnectRegistrations.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse();
     }
 }

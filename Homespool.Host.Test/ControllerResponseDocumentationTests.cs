@@ -99,4 +99,30 @@ public class ControllerResponseDocumentationTests
         // Assert
         mismatched.Should().BeEmpty();
     }
+
+    /// <summary>
+    /// Every documented failure says <see cref="ProblemDetails"/>, because that is what these
+    /// endpoints return.
+    /// </summary>
+    /// <remarks>
+    /// The rule exists because the document said it first. A <c>[ProducesResponseType]</c> with no
+    /// type is not "no body" - for a client-error code the generator fills in <c>ProblemDetails</c>
+    /// from <c>ApiBehaviorOptions</c>, so documenting the codes silently asserted a shape the
+    /// anonymous-object bodies did not have. Stating the type here means the claim is deliberate, and
+    /// this test means a new endpoint cannot quietly reintroduce a second error shape.
+    /// </remarks>
+    [Fact]
+    public void EveryDocumentedFailureIsAProblemDetails()
+    {
+        // Act
+        List<string> untyped = (from controller in AppApiControllers
+                                from action in Actions(controller)
+                                from attribute in action.GetCustomAttributes<ProducesResponseTypeAttribute>()
+                                where attribute.StatusCode >= 400 && attribute.Type != typeof(ProblemDetails)
+                                select $"{controller.Name}.{action.Name} documents {attribute.StatusCode} "
+                                       + $"as {attribute.Type.Name}").ToList();
+
+        // Assert
+        untyped.Should().BeEmpty();
+    }
 }

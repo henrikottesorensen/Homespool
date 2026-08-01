@@ -18,7 +18,7 @@ public class PrintFileStorageOptions
     /// filesystems in AGENT-NOTES §5 applies here too, for a different reason: reads happen on the
     /// connection actor's loop, bounded only by its send timeout.
     /// </remarks>
-    public string Directory { get; set; } = "data/files";
+    public string Directory { get; set; } = "data/printfiles";
 
     /// <summary>
     /// Largest upload accepted, in bytes. Default 512 MiB.

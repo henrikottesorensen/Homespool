@@ -421,6 +421,98 @@ public sealed class UserFileStoreTests : IDisposable
         bool overwrite = false) =>
         store.SaveAsync(userId, fileName, new MemoryStream(content), overwrite, CancellationToken.None);
 
+    /// <summary>
+    /// The directory carries the user's name beside their id, which is the whole reason the layout
+    /// changed - <c>ls</c> in the data directory should say whose files these are.
+    /// </summary>
+    [Fact]
+    public async Task AFileLandsInADirectoryNamedForItsOwner()
+    {
+        // Arrange
+        UserFileStore store = NewStore();
+
+        // Act
+        await store.SaveAsync(Alice, "model.gcode", new MemoryStream([1, 2, 3]), overwrite: false,
+            CancellationToken.None, "Sørensen");
+
+        // Assert
+        Directory.EnumerateDirectories(_root).Select(Path.GetFileName)
+                 .Should().ContainSingle(name => name == "1-Sørensen");
+    }
+
+    /// <summary>
+    /// <b>A user who changes their display name keeps one directory.</b> This is the property the
+    /// whole prefix-glob design exists to hold, and the way to break it is to build the directory
+    /// name from the current display name on every save instead of resolving first.
+    /// </summary>
+    /// <remarks>
+    /// The failure it guards against is quiet rather than loud: two directories, each holding half of
+    /// someone's files, with listings showing whichever the glob happened to reach first.
+    /// </remarks>
+    [Fact]
+    public async Task ARenamedUserKeepsOneDirectoryAndAllTheirFiles()
+    {
+        // Arrange
+        UserFileStore store = NewStore();
+
+        await store.SaveAsync(Alice, "first.gcode", new MemoryStream([1]), overwrite: false,
+            CancellationToken.None, "henrik");
+
+        // Act - the same user, now displaying under a different name.
+        await store.SaveAsync(Alice, "second.gcode", new MemoryStream([2]), overwrite: false,
+            CancellationToken.None, "Henrik Sørensen");
+
+        // Assert
+        Directory.EnumerateDirectories(_root).Where(d => Path.GetFileName(d) != ".incoming")
+                 .Should().ContainSingle("a rename must not split a user's files across two folders");
+
+        store.List(Alice).Select(file => file.FileName)
+             .Should().BeEquivalentTo(["first.gcode", "second.gcode"]);
+    }
+
+    /// <summary>
+    /// A directory whose name is stale, or has no name at all, still resolves - lookup reads the id
+    /// prefix and nothing else.
+    /// </summary>
+    [Theory]
+    [InlineData("1-whoever-they-used-to-be")]
+    [InlineData("1-Ægir")]
+    public async Task ADirectoryResolvesByItsIdPrefixWhateverTheNameSays(string existingDirectory)
+    {
+        // Arrange - a directory already on disk, as an earlier save would have left it.
+        UserFileStore store = NewStore();
+
+        Directory.CreateDirectory(Path.Combine(_root, existingDirectory));
+
+        // Act
+        await store.SaveAsync(Alice, "model.gcode", new MemoryStream([1]), overwrite: false,
+            CancellationToken.None, "Something Else Entirely");
+
+        // Assert
+        store.Find(Alice, "model.gcode").Should().NotBeNull();
+
+        File.Exists(Path.Combine(_root, existingDirectory, "model.gcode"))
+            .Should().BeTrue("the existing directory is the one that must have been used");
+    }
+
+    /// <summary>Another user's prefix must not be reachable through the glob.</summary>
+    [Fact]
+    public async Task AnIdIsNotAPrefixOfAnotherId()
+    {
+        // Arrange
+        UserFileStore store = NewStore();
+
+        // 1 and 12: without the hyphen in the pattern, "1-*" would claim "12-*" too.
+        await store.SaveAsync(Alice, "alice.gcode", new MemoryStream([1]), overwrite: false,
+            CancellationToken.None, "alice");
+        await store.SaveAsync(12, "twelve.gcode", new MemoryStream([2]), overwrite: false,
+            CancellationToken.None, "twelve");
+
+        // Act & Assert
+        store.List(Alice).Should().ContainSingle(file => file.FileName == "alice.gcode");
+        store.List(12).Should().ContainSingle(file => file.FileName == "twelve.gcode");
+    }
+
     private UserFileStore NewStore() =>
         new(Options.Create(new PrintFileStorageOptions { Directory = _root }),
             new HostEnvironmentAccessor(_root),

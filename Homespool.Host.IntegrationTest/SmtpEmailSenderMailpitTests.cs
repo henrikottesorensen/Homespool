@@ -56,16 +56,16 @@ public sealed class SmtpEmailSenderMailpitTests : IAsyncLifetime, IDisposable
         return new(Options.Create(options), new MailKitSmtpTransportFactory(), NullLogger<SmtpEmailSender>.Instance);
     }
 
-    public Task InitializeAsync()
+    public ValueTask InitializeAsync()
     {
-        return _mailpit.ClearAsync();
+        return new(_mailpit.ClearAsync());
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         Dispose();
 
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     // CA1001 wants IDisposable on a type owning a disposable field even though xUnit's IAsyncLifetime

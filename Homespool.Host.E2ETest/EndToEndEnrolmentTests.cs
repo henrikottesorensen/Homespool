@@ -40,7 +40,7 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime, IDisposable
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-e2e-{Guid.NewGuid():N}.db");
     private HomespoolFactory _factory = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _factory = new HomespoolFactory($"Data Source={_databasePath}");
 
@@ -56,11 +56,11 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime, IDisposable
         scope.ServiceProvider.GetRequiredService<SetupState>().MarkComplete();
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         Dispose();
 
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     // CA1001 wants IDisposable on a type owning a disposable field even though xUnit's IAsyncLifetime

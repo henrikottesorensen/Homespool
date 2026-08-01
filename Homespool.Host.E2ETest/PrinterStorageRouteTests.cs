@@ -35,7 +35,7 @@ public sealed class PrinterStorageRouteTests : IAsyncLifetime, IDisposable
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-storageroute-{Guid.NewGuid():N}.db");
     private HomespoolFactory _factory = null!;
 
-    public Task InitializeAsync()
+    public ValueTask InitializeAsync()
     {
         _factory = new HomespoolFactory($"Data Source={_databasePath}");
 
@@ -44,14 +44,14 @@ public sealed class PrinterStorageRouteTests : IAsyncLifetime, IDisposable
         using IServiceScope scope = _factory.Services.CreateScope();
         scope.ServiceProvider.GetRequiredService<SetupState>().MarkComplete();
 
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         Dispose();
 
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     public void Dispose()

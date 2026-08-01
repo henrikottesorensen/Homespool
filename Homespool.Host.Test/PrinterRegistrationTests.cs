@@ -343,7 +343,7 @@ public sealed class PrinterRegistrationTests : IDisposable
         await using HSDbContext context = await MigratedContextAsync();
 
         // Act
-        Exception thrown = await Record.ExceptionAsync(() => NewService(context).GetToken("SECRET-CODE-VALUE"));
+        Exception? thrown = await Record.ExceptionAsync(() => NewService(context).GetToken("SECRET-CODE-VALUE"));
 
         // Assert
         thrown.Should().BeOfType<PrinterNotFoundException>();

@@ -29,7 +29,18 @@ namespace Homespool.Host.IntegrationTest;
 /// </remarks>
 public sealed class RequiresMailpitTlsFixtureFactAttribute : FactAttribute
 {
-    public RequiresMailpitTlsFixtureFactAttribute([CallerFilePath] string sourceFilePath = "")
+    /// <summary>Skips the test at discovery when the local Mailpit TLS fixture is absent.</summary>
+    /// <param name="sourceFilePath">
+    /// Where the test is declared, which locates the fixture directory beside it - and, since v3,
+    /// what the runner reports as the test's source location.
+    /// </param>
+    /// <param name="sourceLineNumber">
+    /// Required by xUnit3003: a custom <see cref="FactAttribute"/> must be able to tell v3's
+    /// in-process runner where it came from, or the test has no source information at all.
+    /// </param>
+    public RequiresMailpitTlsFixtureFactAttribute([CallerFilePath] string sourceFilePath = "",
+                                                  [CallerLineNumber] int sourceLineNumber = -1)
+        : base(sourceFilePath, sourceLineNumber)
     {
         string caCertPath = Path.Combine(Path.GetDirectoryName(sourceFilePath)!, ".mailpit-tls", "ca-cert.pem");
 

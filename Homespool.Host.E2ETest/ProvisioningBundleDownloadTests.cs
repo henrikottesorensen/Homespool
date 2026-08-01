@@ -44,7 +44,7 @@ public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime, IDisposabl
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-bundle-e2e-{Guid.NewGuid():N}.db");
     private HomespoolFactory _factory = null!;
 
-    public Task InitializeAsync()
+    public ValueTask InitializeAsync()
     {
         _factory = new HomespoolFactory($"Data Source={_databasePath}");
 
@@ -52,14 +52,14 @@ public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime, IDisposabl
 
         _factory.Services.GetRequiredService<Services.SetupState>().MarkComplete();
 
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         Dispose();
 
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     public void Dispose()

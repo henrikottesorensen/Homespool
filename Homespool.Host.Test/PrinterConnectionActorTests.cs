@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -128,8 +129,20 @@ public class PrinterConnectionActorTests
     private static uint CommandIdOf(byte[] frame) =>
         uint.Parse(System.Text.Encoding.ASCII.GetString(frame, 1, 8), System.Globalization.NumberStyles.HexNumber);
 
-    private static InboundEventMessage EventAnswering(uint commandId, Events eventType = Events.Finished, string? reason = null) =>
-        new(DateTimeOffset.UtcNow, new EventDTO { Status = "IDLE", EventType = eventType, CommandId = commandId, Reason = reason });
+    private static InboundEventMessage EventAnswering(uint commandId, Events eventType = Events.Finished, string? reason = null,
+        string? dataJson = null) =>
+        new(DateTimeOffset.UtcNow, new EventDTO
+        {
+            Status = "IDLE",
+            EventType = eventType,
+            CommandId = commandId,
+            Reason = reason,
+
+            // Deserialised rather than JsonDocument.Parse'd: that is what the real path produces, and
+            // it hands back an element backed by its own document rather than one holding a pooled
+            // buffer that a test would have to remember to dispose.
+            Data = dataJson is null ? null : JsonSerializer.Deserialize<JsonElement>(dataJson),
+        });
 
     [Fact]
     public async Task SendCommandAsyncReturnsNotConnectedWhenTheSocketIsClosed()
@@ -201,6 +214,52 @@ public class PrinterConnectionActorTests
         // Assert
         result.Response!.EventType.Should().Be(Events.Rejected);
         result.Response.Reason.Should().Be("Can't set idle now");
+        result.Response.Data.Should().BeNull("an event that carried no data must not invent one");
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// The answering event's <c>data</c> reaches the caller that asked, intact.
+    /// </summary>
+    /// <remarks>
+    /// Every other command is answered by its event <i>type</i> - <c>Finished</c> or
+    /// <c>Rejected</c> - and needs nothing else. <c>SEND_FILE_INFO</c> is the first where the
+    /// payload is the answer: a directory listing comes back as the <c>children</c> of a
+    /// <c>FILE_INFO</c>, short name beside long, which is the shape this asserts on rather than
+    /// merely checking something non-null arrived.
+    /// </remarks>
+    [Fact]
+    public async Task TheAnsweringEventsPayloadReachesTheCallerThatAskedForIt()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames));
+
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PausePrint(), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+
+        const string listing = """
+            {"children":[{"name":"MODEL~1.GCO","display_name":"model.gcode","size":614400,
+                          "read_only":false,"type":"PRINT_FILE"}],
+             "file_count":1,"display_name":"usb","type":"FOLDER","path":"/usb"}
+            """;
+
+        // Act
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), Events.FileInfo, dataJson: listing),
+            CancellationToken.None);
+        CommandSendResult result = await Eventually(sendTask);
+
+        // Assert
+        result.Outcome.Should().Be(CommandSendOutcome.Completed);
+        result.Response!.Data.Should().NotBeNull();
+
+        JsonElement child = result.Response.Data!.Value.GetProperty("children").EnumerateArray().Single();
+
+        child.GetProperty("name").GetString().Should().Be("MODEL~1.GCO");
+        child.GetProperty("display_name").GetString().Should().Be("model.gcode");
+        child.GetProperty("size").GetInt64().Should().Be(614400);
 
         actor.Complete();
         await Eventually(actor.Completion);

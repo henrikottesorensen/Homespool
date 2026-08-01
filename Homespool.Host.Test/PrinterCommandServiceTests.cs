@@ -130,7 +130,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
         (PrinterConnectionRegistry registry, IPrinterConnectionActor actor) =
-            RegistryWithActor(printer.Id, new CommandSendResult(CommandSendOutcome.Completed, new CommandOutcome(Events.Finished, null)));
+            RegistryWithActor(printer.Id, new CommandSendResult(CommandSendOutcome.Completed, new CommandOutcome(Events.Finished, null, null)));
         PrinterCommandService service = new(context, new TeamService(context), registry);
         PausePrint command = new();
 

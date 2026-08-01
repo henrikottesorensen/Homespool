@@ -444,8 +444,10 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                 Stopwatch.GetElapsedTime(answered.SentAt).TotalMilliseconds,
                 eventDto.Reason is null ? string.Empty : $": {eventDto.Reason}");
 
+            // Data goes to the caller and never to the log line above: a payload is the one part of
+            // an answer that can carry anything, and FILE_INFO's runs to ~90 KB with a preview in it.
             answered.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.Completed,
-                new CommandOutcome(eventDto.EventType, eventDto.Reason)));
+                new CommandOutcome(eventDto.EventType, eventDto.Reason, eventDto.Data)));
         }
 
         EndTransferIfTerminal(eventDto);

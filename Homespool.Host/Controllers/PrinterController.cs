@@ -137,7 +137,7 @@ public class PrinterController : ControllerBase
         {
             // orig_size is uint32 on the wire; a file this large cannot be described at all.
             return this.Failure(StatusCodes.Status400BadRequest,
-                "File is too large to describe to a printer (4 GiB limit).");
+                "Files must be under 4 GiB - a printer cannot be sent anything larger.");
         }
 
         (Printer? printer, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);

@@ -322,7 +322,7 @@ public class IndexModel : PageModel
         if (file.Length >= uint.MaxValue)
         {
             // orig_size is uint32 on the wire; a file this large cannot be described at all.
-            (StatusMessage, StatusSuccess) = ("That file is too large to describe to a printer (4 GiB limit).", false);
+            (StatusMessage, StatusSuccess) = ("That file is over 4 GiB - a printer cannot be sent anything larger.", false);
 
             return RedirectToSelf(sort, desc);
         }

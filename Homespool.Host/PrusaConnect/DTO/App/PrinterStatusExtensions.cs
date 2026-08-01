@@ -11,21 +11,24 @@ namespace Homespool.Host.PrusaConnect.DTO.App;
 /// </summary>
 public static class PrinterStatusExtensions
 {
-    public static string ToConnectState(this PrinterStatus status) => status switch
+    public static string ToConnectState(this PrinterStatus status)
     {
-        PrinterStatus.Idle => "IDLE",
-        PrinterStatus.Ready => "READY",
-        PrinterStatus.Printing => "PRINTING",
-        PrinterStatus.Paused => "PAUSED",
-        PrinterStatus.Attention => "ATTENTION",
-        PrinterStatus.Stopped => "STOPPED",
-        PrinterStatus.Finished => "FINISHED",
-        PrinterStatus.Busy => "BUSY",
-        PrinterStatus.Error => "ERROR",
-        PrinterStatus.Manipulating => "MANIPULATING",
-        PrinterStatus.Offline => "OFFLINE",
-        _ => "UNKNOWN",
-    };
+        return status switch
+        {
+            PrinterStatus.Idle => "IDLE",
+            PrinterStatus.Ready => "READY",
+            PrinterStatus.Printing => "PRINTING",
+            PrinterStatus.Paused => "PAUSED",
+            PrinterStatus.Attention => "ATTENTION",
+            PrinterStatus.Stopped => "STOPPED",
+            PrinterStatus.Finished => "FINISHED",
+            PrinterStatus.Busy => "BUSY",
+            PrinterStatus.Error => "ERROR",
+            PrinterStatus.Manipulating => "MANIPULATING",
+            PrinterStatus.Offline => "OFFLINE",
+            _ => "UNKNOWN",
+        };
+    }
 
     /// <summary>
     /// Parses the <c>state</c> field firmware/the SDK actually send on <c>TelemetryDTO</c>/
@@ -36,18 +39,21 @@ public static class PrinterStatusExtensions
     /// wire value silently pass as one even though it isn't part of the real 9-value vocabulary
     /// (<c>Prusa-Connect-SDK-Printer/prusa/connect/printer/const.py</c> <c>State</c>).
     /// </summary>
-    public static PrinterStatus ParseWireState(string wireValue) => wireValue switch
+    public static PrinterStatus ParseWireState(string wireValue)
     {
-        "IDLE" => PrinterStatus.Idle,
-        "BUSY" => PrinterStatus.Busy,
-        "PRINTING" => PrinterStatus.Printing,
-        "PAUSED" => PrinterStatus.Paused,
-        "FINISHED" => PrinterStatus.Finished,
-        "STOPPED" => PrinterStatus.Stopped,
-        "ERROR" => PrinterStatus.Error,
-        "ATTENTION" => PrinterStatus.Attention,
-        "READY" => PrinterStatus.Ready,
-        _ => throw new ArgumentOutOfRangeException(nameof(wireValue), wireValue,
-                                                    "Not one of the 9 printer states firmware sends."),
-    };
+        return wireValue switch
+        {
+            "IDLE" => PrinterStatus.Idle,
+            "BUSY" => PrinterStatus.Busy,
+            "PRINTING" => PrinterStatus.Printing,
+            "PAUSED" => PrinterStatus.Paused,
+            "FINISHED" => PrinterStatus.Finished,
+            "STOPPED" => PrinterStatus.Stopped,
+            "ERROR" => PrinterStatus.Error,
+            "ATTENTION" => PrinterStatus.Attention,
+            "READY" => PrinterStatus.Ready,
+            _ => throw new ArgumentOutOfRangeException(nameof(wireValue), wireValue,
+                                                        "Not one of the 9 printer states firmware sends."),
+        };
+    }
 }

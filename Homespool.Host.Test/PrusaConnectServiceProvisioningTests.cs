@@ -30,13 +30,15 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-prov-{Guid.NewGuid():N}.db");
 
-    private static PrusaConnectService NewService(HSDbContext context) =>
-        new(context,
+    private static PrusaConnectService NewService(HSDbContext context)
+    {
+        return new(context,
             new CodeGenerator(),
             new TokenService(),
             new TeamService(context),
             TimeProvider.System, NullLogger<PrusaConnectService>.Instance,
             Options.Create(new PrusaConnectOptions()));
+    }
 
     private HSDbContext NewContext()
     {

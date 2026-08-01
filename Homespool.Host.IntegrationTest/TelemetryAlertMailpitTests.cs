@@ -47,7 +47,10 @@ public sealed class TelemetryAlertMailpitTests : IAsyncLifetime, IDisposable
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-alert-{Guid.NewGuid():N}.db");
     private ServiceProvider? _provider;
 
-    public Task InitializeAsync() => _mailpit.ClearAsync();
+    public Task InitializeAsync()
+    {
+        return _mailpit.ClearAsync();
+    }
 
     public Task DisposeAsync()
     {
@@ -124,10 +127,12 @@ public sealed class TelemetryAlertMailpitTests : IAsyncLifetime, IDisposable
         return _provider;
     }
 
-    private TelemetryAlertService NewAlertService(ServiceProvider provider) =>
-        new(provider.GetRequiredService<HealthCheckService>(),
+    private TelemetryAlertService NewAlertService(ServiceProvider provider)
+    {
+        return new(provider.GetRequiredService<HealthCheckService>(),
             provider.GetRequiredService<IServiceScopeFactory>(),
             NullLogger<TelemetryAlertService>.Instance);
+    }
 
     [Fact]
     public async Task AnUnhealthyServiceEmailsTheAdministrator()

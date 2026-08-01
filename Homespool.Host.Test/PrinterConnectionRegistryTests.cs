@@ -167,5 +167,8 @@ public class PrinterConnectionRegistryTests
         _logger.Collector.GetSnapshot().Should().BeEmpty();
     }
 
-    private PrinterConnectionRegistry NewRegistry() => new(_logger);
+    private PrinterConnectionRegistry NewRegistry()
+    {
+        return new(_logger);
+    }
 }

@@ -279,10 +279,15 @@ public class TransferChunkFramingTests
             set { }
         }
 
-        public override void Write(ReadOnlySpan<byte> buffer) => Written.AddRange(buffer.ToArray());
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            Written.AddRange(buffer.ToArray());
+        }
 
-        public override void Write(byte[] buffer, int offset, int count) =>
+        public override void Write(byte[] buffer, int offset, int count)
+        {
             Written.AddRange(buffer.AsSpan(offset, count).ToArray());
+        }
 
         public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
         {
@@ -302,12 +307,20 @@ public class TransferChunkFramingTests
         {
         }
 
-        public override int Read(byte[] buffer, int offset, int count) => 0;
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            return 0;
+        }
 
-        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
-            Task.FromResult(0);
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(0);
+        }
 
-        public override long Seek(long offset, SeekOrigin origin) => 0;
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            return 0;
+        }
 
         public override void SetLength(long value)
         {

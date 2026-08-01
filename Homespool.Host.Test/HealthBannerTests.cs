@@ -15,11 +15,13 @@ namespace Homespool.Host.Test;
 /// </summary>
 public class HealthBannerTests
 {
-    private static HealthReport Report(params (string name, HealthStatus status, string? description)[] entries) =>
-        new(entries.ToDictionary(
+    private static HealthReport Report(params (string name, HealthStatus status, string? description)[] entries)
+    {
+        return new(entries.ToDictionary(
                 e => e.name,
                 e => new HealthReportEntry(e.status, e.description, TimeSpan.Zero, exception: null, data: null)),
             TimeSpan.Zero);
+    }
 
     [Fact]
     public void AHealthyReportShowsNothing()

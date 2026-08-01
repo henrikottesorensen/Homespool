@@ -82,16 +82,19 @@ public sealed class DetailModelTests : IDisposable
         return (model, user, team, connectionRegistry);
     }
 
-    private static Printer NewPrinter(int teamId, string? name = null) => new()
+    private static Printer NewPrinter(int teamId, string? name = null)
     {
-        Uuid = Guid.NewGuid(),
-        Type = PrinterType.PrusaConnect,
-        TeamId = teamId,
-        Name = name,
-        Status = PrinterStatus.Unknown,
-        CreatedAt = DateTimeOffset.UtcNow,
-        UpdatedAt = DateTimeOffset.UtcNow,
-    };
+        return new()
+        {
+            Uuid = Guid.NewGuid(),
+            Type = PrinterType.PrusaConnect,
+            TeamId = teamId,
+            Name = name,
+            Status = PrinterStatus.Unknown,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+    }
 
     [Fact]
     public async Task OnGetAsyncReturnsNotFoundForAnUnknownUuid()

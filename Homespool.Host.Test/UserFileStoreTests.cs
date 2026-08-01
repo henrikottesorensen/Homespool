@@ -414,12 +414,16 @@ public sealed class UserFileStoreTests : IDisposable
     // this case is the security property stated as an assertion rather than left as an absence.
     [InlineData("firmware.bbf", false)]
     [InlineData("FIRMWARE.BBF", false)]
-    public void OnlyPrinterAcceptableExtensionsAreAllowed(string name, bool allowed) =>
+    public void OnlyPrinterAcceptableExtensionsAreAllowed(string name, bool allowed)
+    {
         UserFileStore.IsAllowedExtension(name).Should().Be(allowed);
+    }
 
     private static Task<StoredFile> SaveAsync(UserFileStore store, long userId, string fileName, byte[] content,
-        bool overwrite = false) =>
-        store.SaveAsync(userId, fileName, new MemoryStream(content), overwrite, CancellationToken.None);
+        bool overwrite = false)
+    {
+        return store.SaveAsync(userId, fileName, new MemoryStream(content), overwrite, CancellationToken.None);
+    }
 
     /// <summary>
     /// The directory carries the user's name beside their id, which is the whole reason the layout
@@ -513,11 +517,13 @@ public sealed class UserFileStoreTests : IDisposable
         store.List(12).Should().ContainSingle(file => file.FileName == "twelve.gcode");
     }
 
-    private UserFileStore NewStore() =>
-        new(Options.Create(new PrintFileStorageOptions { Directory = _root }),
+    private UserFileStore NewStore()
+    {
+        return new(Options.Create(new PrintFileStorageOptions { Directory = _root }),
             new HostEnvironmentAccessor(_root),
             TimeProvider.System,
             NullLogger<UserFileStore>.Instance);
+    }
 
     /// <summary>A body that dies part-way through, which is what a disconnecting client looks like.</summary>
     private sealed class ThrowingStream : Stream
@@ -540,12 +546,24 @@ public sealed class UserFileStoreTests : IDisposable
         {
         }
 
-        public override int Read(byte[] buffer, int offset, int count) => throw new IOException("The client went away.");
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            throw new IOException("The client went away.");
+        }
 
-        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            throw new NotSupportedException();
+        }
 
-        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void SetLength(long value)
+        {
+            throw new NotSupportedException();
+        }
 
-        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            throw new NotSupportedException();
+        }
     }
 }

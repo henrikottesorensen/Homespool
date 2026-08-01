@@ -22,11 +22,14 @@ public class UserReadDTO
 
     public required IReadOnlyList<TeamMembershipDTO> Teams { get; set; }
 
-    public static UserReadDTO FromEntity(HSUser user, IReadOnlyList<TeamMember> memberships) => new()
+    public static UserReadDTO FromEntity(HSUser user, IReadOnlyList<TeamMember> memberships)
     {
-        Id = user.Id,
-        Name = user.DisplayName ?? user.UserName ?? user.Email ?? string.Empty,
-        Email = user.Email,
-        Teams = memberships.Select(TeamMembershipDTO.FromEntity).ToList(),
-    };
+        return new()
+        {
+            Id = user.Id,
+            Name = user.DisplayName ?? user.UserName ?? user.Email ?? string.Empty,
+            Email = user.Email,
+            Teams = memberships.Select(TeamMembershipDTO.FromEntity).ToList(),
+        };
+    }
 }

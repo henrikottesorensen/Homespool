@@ -470,17 +470,20 @@ public class PrusaConnectService
         return new PrinterEnrolmentStatus(enrolled, awaitingProvisioning);
     }
 
-    private static Printer NewPrinter(string? name, string? location, int teamId, DateTimeOffset now) => new()
+    private static Printer NewPrinter(string? name, string? location, int teamId, DateTimeOffset now)
     {
-        Uuid = Guid.NewGuid(),
-        Type = PrinterType.PrusaConnect,
-        TeamId = teamId,
-        Name = name,
-        Location = location,
-        Status = PrinterStatus.Unknown,
-        CreatedAt = now,
-        UpdatedAt = now,
-    };
+        return new()
+        {
+            Uuid = Guid.NewGuid(),
+            Type = PrinterType.PrusaConnect,
+            TeamId = teamId,
+            Name = name,
+            Location = location,
+            Status = PrinterStatus.Unknown,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+    }
 
     /// <summary>
     /// Resolves the team a newly-added printer lands in. An explicit <paramref name="teamId"/> requires

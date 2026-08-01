@@ -51,9 +51,11 @@ public sealed class ProvisioningBundleUnreachableNameTests : IDisposable
             _answers = answers;
         }
 
-        public Task<IReadOnlyList<IPAddress>> ResolveAsync(string name, CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<IPAddress>>(
+        public Task<IReadOnlyList<IPAddress>> ResolveAsync(string name, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<IPAddress>>(
                 _answers.TryGetValue(name, out IPAddress[]? found) ? found : []);
+        }
     }
 
     /// <summary>The rule itself, with no certificate and no network anywhere near it.</summary>
@@ -187,17 +189,21 @@ public sealed class ProvisioningBundleUnreachableNameTests : IDisposable
         (await act.Should().ThrowAsync<ArgumentException>()).WithMessage("*resolves only inside this container*");
     }
 
-    private static ProvisioningBundleBuilder NewBuilder(PrinterCertificateAuthority authority, IHostAddressResolver resolver) =>
-        new(Options.Create(new PrusaConnectOptions { PrinterHost = "192.168.13.238", PrinterPort = 15443, PrinterTls = true }),
+    private static ProvisioningBundleBuilder NewBuilder(PrinterCertificateAuthority authority, IHostAddressResolver resolver)
+    {
+        return new(Options.Create(new PrusaConnectOptions { PrinterHost = "192.168.13.238", PrinterPort = 15443, PrinterTls = true }),
             Options.Create(new CertificateOptions { ContainerNetworks = ["172.16.0.0/12"] }),
             authority,
             resolver);
+    }
 
-    private PrinterCertificateAuthority NewAuthority() =>
-        new(Options.Create(new CertificateOptions { Directory = "certs" }),
+    private PrinterCertificateAuthority NewAuthority()
+    {
+        return new(Options.Create(new CertificateOptions { Directory = "certs" }),
             new HostEnvironmentAccessor(_root),
             TimeProvider.System,
             NullLogger<PrinterCertificateAuthority>.Instance);
+    }
 
     public void Dispose()
     {

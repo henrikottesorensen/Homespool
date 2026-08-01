@@ -30,8 +30,9 @@ public class PrinterCertificateDriftTests
                                                       IReadOnlyList<string> current,
                                                       string? configuredHost = null,
                                                       int leafDays = 400,
-                                                      int authorityDays = 5000) =>
-        PrinterCertificateDrift.Evaluate(
+                                                      int authorityDays = 5000)
+    {
+        return PrinterCertificateDrift.Evaluate(
             tlsEnabled: true,
             configuredHost,
             covered,
@@ -39,6 +40,7 @@ public class PrinterCertificateDriftTests
             Now.AddDays(leafDays),
             Now.AddDays(authorityDays),
             Now);
+    }
 
     /// <summary>
     /// <b>The case this feature exists for.</b> The certificate names one address, the machine now has

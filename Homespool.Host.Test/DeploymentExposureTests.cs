@@ -19,8 +19,10 @@ public class DeploymentExposureTests
 {
     private static readonly IReadOnlyList<IPNetwork> ContainerNetworks = [IPNetwork.Parse("172.16.0.0/12")];
 
-    private static IReadOnlyList<IPAddress> At(params string[] addresses) =>
-        [.. System.Linq.Enumerable.Select(addresses, IPAddress.Parse)];
+    private static IReadOnlyList<IPAddress> At(params string[] addresses)
+    {
+        return [.. System.Linq.Enumerable.Select(addresses, IPAddress.Parse)];
+    }
 
     /// <summary>
     /// The case the warning exists for: plaintext, at an address the internet can reach.

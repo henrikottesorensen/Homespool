@@ -22,9 +22,11 @@ public class TelemetryWriterLivenessHealthCheckTests
         public bool IsDraining { get; set; } = true;
     }
 
-    private static async Task<HealthCheckResult> CheckAsync(StubHealthSource source) =>
-        await new TelemetryWriterLivenessHealthCheck(source)
+    private static async Task<HealthCheckResult> CheckAsync(StubHealthSource source)
+    {
+        return await new TelemetryWriterLivenessHealthCheck(source)
             .CheckHealthAsync(new HealthCheckContext(), CancellationToken.None);
+    }
 
     [Fact]
     public async Task ARunningDrainLoopIsHealthy()

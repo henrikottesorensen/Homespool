@@ -31,8 +31,9 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
     private static ClaimAttemptLimiter NewLimiter(HSDbContext context,
                                                   int maxAttempts = 5,
                                                   int baseSeconds = 30,
-                                                  int maxSeconds = 3600) =>
-        new(context,
+                                                  int maxSeconds = 3600)
+    {
+        return new(context,
             Options.Create(new PrusaConnectOptions
             {
                 MaxFailedClaimAttempts = maxAttempts,
@@ -40,6 +41,7 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
                 ClaimLockoutMaxSeconds = maxSeconds,
             }),
             NullLogger<ClaimAttemptLimiter>.Instance);
+    }
 
     private static async Task<HSUser> SeedUserAsync(HSDbContext context)
     {

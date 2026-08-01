@@ -138,7 +138,10 @@ public class CertificateModel : PageModel
     public bool ConfiguredHostUncovered =>
         ConfiguredHost is not null && !Covered.Contains(ConfiguredHost, StringComparer.OrdinalIgnoreCase);
 
-    public Task OnGetAsync(CancellationToken cancellationToken) => LoadAsync(cancellationToken);
+    public Task OnGetAsync(CancellationToken cancellationToken)
+    {
+        return LoadAsync(cancellationToken);
+    }
 
     public async Task<IActionResult> OnPostReissueAsync(CancellationToken cancellationToken)
     {

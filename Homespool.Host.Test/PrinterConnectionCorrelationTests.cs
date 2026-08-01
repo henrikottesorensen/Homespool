@@ -46,7 +46,10 @@ public sealed class PrinterConnectionCorrelationTests : IDisposable
         });
     }
 
-    public void Dispose() => _factory.Dispose();
+    public void Dispose()
+    {
+        _factory.Dispose();
+    }
 
     private IReadOnlyList<FakeLogRecord> Records => _collector.GetSnapshot();
 
@@ -58,11 +61,13 @@ public sealed class PrinterConnectionCorrelationTests : IDisposable
         return actor;
     }
 
-    private static IReadOnlyDictionary<string, object?> ScopeOf(FakeLogRecord record) =>
-        record.Scopes
+    private static IReadOnlyDictionary<string, object?> ScopeOf(FakeLogRecord record)
+    {
+        return record.Scopes
               .OfType<IEnumerable<KeyValuePair<string, object>>>()
               .SelectMany(scope => scope)
               .ToDictionary(pair => pair.Key, pair => (object?)pair.Value);
+    }
 
     private async Task RunSessionAsync(PrinterConnectionActorFactory actorFactory)
     {
@@ -175,11 +180,20 @@ public sealed class PrinterConnectionCorrelationTests : IDisposable
     {
         public bool IsOpen => true;
 
-        public ValueTask SendAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        public ValueTask SendAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
 
         public ValueTask SendChunkAsync(ReadOnlyMemory<byte> header, ITransferContent content, long offset,
-                                        long count, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+                                        long count, CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
 
-        public Task CloseOutputAsync(System.Net.WebSockets.WebSocketCloseStatus status) => Task.CompletedTask;
+        public Task CloseOutputAsync(System.Net.WebSockets.WebSocketCloseStatus status)
+        {
+            return Task.CompletedTask;
+        }
     }
 }

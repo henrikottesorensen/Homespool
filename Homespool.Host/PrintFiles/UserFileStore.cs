@@ -132,8 +132,10 @@ public sealed class UserFileStore
     }
 
     /// <summary>Whether the name ends in something a printer would accept.</summary>
-    public static bool IsAllowedExtension(string fileName) =>
-        AllowedExtensions.Contains(Path.GetExtension(fileName), StringComparer.OrdinalIgnoreCase);
+    public static bool IsAllowedExtension(string fileName)
+    {
+        return AllowedExtensions.Contains(Path.GetExtension(fileName), StringComparer.OrdinalIgnoreCase);
+    }
 
     /// <summary>Everything <paramref name="userId"/> has uploaded, oldest name first.</summary>
     /// <remarks>
@@ -468,10 +470,12 @@ public sealed class UserFileStore
         return name;
     }
 
-    private static string RequireSafeName(string fileName) =>
-        SafeName(fileName) ?? throw new ArgumentException(
+    private static string RequireSafeName(string fileName)
+    {
+        return SafeName(fileName) ?? throw new ArgumentException(
             "File name is empty, or is a directory reference, once its directory part is removed.",
             nameof(fileName));
+    }
 
     /// <summary>Deletes a path if it is there, and never throws for a path that is not.</summary>
     private static void DeleteQuietly(string path)

@@ -188,7 +188,10 @@ public sealed class TelemetryAlertService : BackgroundService
     /// service, or re-reading on a schedule for a list that otherwise never changes at all.
     /// </para>
     /// </remarks>
-    private bool ShouldRefreshRecipients() => _recipients.Count == 0;
+    private bool ShouldRefreshRecipients()
+    {
+        return _recipients.Count == 0;
+    }
 
     private async Task RefreshRecipientsAsync(CancellationToken cancellationToken)
     {

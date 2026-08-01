@@ -85,7 +85,10 @@ public sealed class PrinterConnectionRegistry
         _actors.TryRemove(new KeyValuePair<int, IPrinterConnectionActor>(printerId, actor));
     }
 
-    public bool TryGet(int printerId, out IPrinterConnectionActor? actor) => _actors.TryGetValue(printerId, out actor);
+    public bool TryGet(int printerId, out IPrinterConnectionActor? actor)
+    {
+        return _actors.TryGetValue(printerId, out actor);
+    }
 
     /// <summary>
     /// Installs <paramref name="actor"/> and returns whatever it replaced, atomically - so two
@@ -110,5 +113,8 @@ public sealed class PrinterConnectionRegistry
         }
     }
 
-    public bool IsConnected(int printerId) => _actors.TryGetValue(printerId, out IPrinterConnectionActor? actor) && actor.IsOpen;
+    public bool IsConnected(int printerId)
+    {
+        return _actors.TryGetValue(printerId, out IPrinterConnectionActor? actor) && actor.IsOpen;
+    }
 }

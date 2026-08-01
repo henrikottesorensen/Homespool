@@ -13,5 +13,8 @@ public interface ISmtpTransportFactory
 /// <summary>The production factory: a real MailKit-backed transport every time.</summary>
 public sealed class MailKitSmtpTransportFactory : ISmtpTransportFactory
 {
-    public ISmtpTransport Create() => new MailKitSmtpTransport();
+    public ISmtpTransport Create()
+    {
+        return new MailKitSmtpTransport();
+    }
 }

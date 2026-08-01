@@ -31,12 +31,15 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-login-{Guid.NewGuid():N}.db");
     private HomespoolFactory _factory = null!;
 
-    private static FormUrlEncodedContent LoginBody(string antiforgeryToken, string email, string password) => new(new Dictionary<string, string>
+    private static FormUrlEncodedContent LoginBody(string antiforgeryToken, string email, string password)
     {
-        ["__RequestVerificationToken"] = antiforgeryToken,
-        ["Input.Email"] = email,
-        ["Input.Password"] = password,
-    });
+        return new(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = antiforgeryToken,
+            ["Input.Email"] = email,
+            ["Input.Password"] = password,
+        });
+    }
 
     public Task InitializeAsync()
     {

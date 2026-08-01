@@ -681,9 +681,11 @@ public static class Program
     /// the same header is written by whoever dialled.
     /// </para>
     /// </remarks>
-    private static bool PrinterTransportIsSecure(IServiceProvider services) =>
-        services.GetRequiredService<Microsoft.Extensions.Options.IOptions<PrusaConnect.PrusaConnectOptions>>()
+    private static bool PrinterTransportIsSecure(IServiceProvider services)
+    {
+        return services.GetRequiredService<Microsoft.Extensions.Options.IOptions<PrusaConnect.PrusaConnectOptions>>()
                 .Value.PrinterTls;
+    }
 
     /// <summary>
     /// Binds <see cref="Listeners.ListenerOptions"/> straight from configuration, for the two places

@@ -37,8 +37,10 @@ namespace Homespool.Host.Test;
 /// </remarks>
 public class WebSocketHandlerCancellationTests
 {
-    private static WebSocketHandler NewHandler(RecordingMessageDispatcher dispatcher) =>
-        new(NullLogger<WebSocketHandler>.Instance, dispatcher);
+    private static WebSocketHandler NewHandler(RecordingMessageDispatcher dispatcher)
+    {
+        return new(NullLogger<WebSocketHandler>.Instance, dispatcher);
+    }
 
     /// <summary>
     /// Cancelling while the loop waits for bytes ends it by throwing, which is what the controller

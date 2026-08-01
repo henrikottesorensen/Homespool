@@ -155,6 +155,8 @@ public class CertificateOptions
     public IReadOnlyList<System.Net.IPNetwork> ParsedContainerNetworks =>
         [.. (ContainerNetworks ?? []).Select(TryParseNetwork).Where(n => n is not null).Select(n => n!.Value)];
 
-    private static System.Net.IPNetwork? TryParseNetwork(string cidr) =>
-        System.Net.IPNetwork.TryParse(cidr, out System.Net.IPNetwork parsed) ? parsed : null;
+    private static System.Net.IPNetwork? TryParseNetwork(string cidr)
+    {
+        return System.Net.IPNetwork.TryParse(cidr, out System.Net.IPNetwork parsed) ? parsed : null;
+    }
 }

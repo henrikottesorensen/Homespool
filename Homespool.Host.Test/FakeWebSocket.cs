@@ -66,11 +66,20 @@ internal sealed class FakeWebSocket : WebSocket
     /// <see cref="SendStarted"/>, until <see cref="ReleaseSends"/>. Simulates a send that is
     /// genuinely mid-flight - the state a concurrent close has to respect.
     /// </summary>
-    public void HoldSends() => _holdSends = true;
+    public void HoldSends()
+    {
+        _holdSends = true;
+    }
 
-    public void ReleaseSends() => _sendGate.TrySetResult();
+    public void ReleaseSends()
+    {
+        _sendGate.TrySetResult();
+    }
 
-    public override void Abort() => _state = WebSocketState.Aborted;
+    public override void Abort()
+    {
+        _state = WebSocketState.Aborted;
+    }
 
     public override Task CloseAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken)
     {
@@ -87,10 +96,15 @@ internal sealed class FakeWebSocket : WebSocket
         return Task.CompletedTask;
     }
 
-    public override void Dispose() => _state = WebSocketState.Closed;
+    public override void Dispose()
+    {
+        _state = WebSocketState.Closed;
+    }
 
-    public override Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken) =>
+    public override Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
+    {
         throw new NotSupportedException("This fake only supports the write side; parse-loop tests read from a PipeReader instead.");
+    }
 
     public override async Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType messageType, bool endOfMessage, CancellationToken cancellationToken)
     {
@@ -110,7 +124,10 @@ internal sealed class FakeWebSocket : WebSocket
     }
 
     /// <summary>Closes the socket, as the remote peer going away would.</summary>
-    public void Close() => _state = WebSocketState.Closed;
+    public void Close()
+    {
+        _state = WebSocketState.Closed;
+    }
 
     private void Record(string operation)
     {

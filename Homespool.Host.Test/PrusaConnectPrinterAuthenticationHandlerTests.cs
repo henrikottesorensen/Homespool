@@ -470,8 +470,14 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
 
         public PrusaConnectAuthenticationSchemeOptions CurrentValue => _options;
 
-        public PrusaConnectAuthenticationSchemeOptions Get(string? name) => _options;
+        public PrusaConnectAuthenticationSchemeOptions Get(string? name)
+        {
+            return _options;
+        }
 
-        public IDisposable? OnChange(Action<PrusaConnectAuthenticationSchemeOptions, string?> listener) => null;
+        public IDisposable? OnChange(Action<PrusaConnectAuthenticationSchemeOptions, string?> listener)
+        {
+            return null;
+        }
     }
 }

@@ -14,8 +14,10 @@ namespace Homespool.Host.Test;
 /// </remarks>
 public class ProvisioningReadmeTests
 {
-    private static PrusaConnectOptions Options(bool tls = true) =>
-        new() { PrinterHost = "printers.example.com", PrinterPort = 15443, PrinterTls = tls };
+    private static PrusaConnectOptions Options(bool tls = true)
+    {
+        return new() { PrinterHost = "printers.example.com", PrinterPort = 15443, PrinterTls = tls };
+    }
 
     /// <summary>
     /// The two things most likely to go wrong are in it: the files go at the root of the stick, and

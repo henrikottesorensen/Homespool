@@ -292,8 +292,14 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
 
         public ApiTokenAuthenticationSchemeOptions CurrentValue => _options;
 
-        public ApiTokenAuthenticationSchemeOptions Get(string? name) => _options;
+        public ApiTokenAuthenticationSchemeOptions Get(string? name)
+        {
+            return _options;
+        }
 
-        public IDisposable? OnChange(Action<ApiTokenAuthenticationSchemeOptions, string?> listener) => null;
+        public IDisposable? OnChange(Action<ApiTokenAuthenticationSchemeOptions, string?> listener)
+        {
+            return null;
+        }
     }
 }

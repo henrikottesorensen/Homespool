@@ -326,12 +326,15 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
         (await context.Invitations.SingleAsync()).UsedAt.Should().BeNull();
     }
 
-    private static PrusaConnectRegistration NewRegistration(string fingerPrint, DateTimeOffset expiry) => new()
+    private static PrusaConnectRegistration NewRegistration(string fingerPrint, DateTimeOffset expiry)
     {
-        FingerPrint = fingerPrint,
-        SerialNumber = $"sn-{fingerPrint}",
-        TemporaryCode = $"code-{fingerPrint}",
-        TemporaryCodeExpiry = expiry,
-        CreatedAt = expiry,
-    };
+        return new()
+        {
+            FingerPrint = fingerPrint,
+            SerialNumber = $"sn-{fingerPrint}",
+            TemporaryCode = $"code-{fingerPrint}",
+            TemporaryCodeExpiry = expiry,
+            CreatedAt = expiry,
+        };
+    }
 }

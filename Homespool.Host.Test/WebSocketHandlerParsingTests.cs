@@ -213,8 +213,10 @@ public class WebSocketHandlerParsingTests
         await act.Should().ThrowAsync<JsonException>();
     }
 
-    private static Task<IReadOnlyList<string>> RunHandlerAsync(string payload, int chunkSize) =>
-        RunHandlerAsync(Encoding.UTF8.GetBytes(payload), [chunkSize]);
+    private static Task<IReadOnlyList<string>> RunHandlerAsync(string payload, int chunkSize)
+    {
+        return RunHandlerAsync(Encoding.UTF8.GetBytes(payload), [chunkSize]);
+    }
 
     /// <summary>Delivers the payload as exactly two frames, split at <paramref name="splitAt"/>.</summary>
     private static Task<IReadOnlyList<string>> RunHandlerSplitOnceAsync(string payload, int splitAt)

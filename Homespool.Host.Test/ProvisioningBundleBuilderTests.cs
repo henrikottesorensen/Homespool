@@ -52,22 +52,29 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
             StringComparer.Ordinal);
     }
 
-    private static string IniOf(byte[] zip) => Encoding.UTF8.GetString(Entries(zip)["prusa_printer_settings.ini"]);
+    private static string IniOf(byte[] zip)
+    {
+        return Encoding.UTF8.GetString(Entries(zip)["prusa_printer_settings.ini"]);
+    }
 
-    private PrinterCertificateAuthority NewAuthority() =>
-        new(Options.Create(new CertificateOptions { Directory = "certs" }),
+    private PrinterCertificateAuthority NewAuthority()
+    {
+        return new(Options.Create(new CertificateOptions { Directory = "certs" }),
             new HostEnvironmentAccessor(_root),
             TimeProvider.System,
             NullLogger<PrinterCertificateAuthority>.Instance);
+    }
 
     private ProvisioningBundleBuilder NewBuilder(PrinterCertificateAuthority authority,
                                                 bool tls = true,
                                                 string host = "printers.example.com",
-                                                IHostAddressResolver? resolver = null) =>
-        new(Options.Create(new PrusaConnectOptions { PrinterHost = host, PrinterPort = 15443, PrinterTls = tls }),
+                                                IHostAddressResolver? resolver = null)
+    {
+        return new(Options.Create(new PrusaConnectOptions { PrinterHost = host, PrinterPort = 15443, PrinterTls = tls }),
             Options.Create(new CertificateOptions { ContainerNetworks = ["172.16.0.0/12"] }),
             authority,
             resolver ?? new FakeResolver());
+    }
 
     /// <summary>
     /// Answers what a test says it answers, so "resolves inside the container", "resolves on the LAN"
@@ -82,9 +89,11 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
             _answers = answers ?? [];
         }
 
-        public Task<IReadOnlyList<IPAddress>> ResolveAsync(string name, CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<IPAddress>>(
+        public Task<IReadOnlyList<IPAddress>> ResolveAsync(string name, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<IPAddress>>(
                 _answers.TryGetValue(name, out IPAddress[]? found) ? found : []);
+        }
     }
 
     /// <summary>

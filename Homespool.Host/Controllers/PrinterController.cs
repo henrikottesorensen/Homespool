@@ -342,8 +342,10 @@ public class PrinterController : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public Task<ActionResult> Pause(Guid uuid, CancellationToken cancellationToken) =>
-        SendJobControlAsync(uuid, new PausePrint(), cancellationToken);
+    public Task<ActionResult> Pause(Guid uuid, CancellationToken cancellationToken)
+    {
+        return SendJobControlAsync(uuid, new PausePrint(), cancellationToken);
+    }
 
     /// <summary>Resumes a paused print. <c>PUT /api/v1/printers/{uuid}/command/resume</c>.</summary>
     [HttpPut]
@@ -352,8 +354,10 @@ public class PrinterController : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public Task<ActionResult> Resume(Guid uuid, CancellationToken cancellationToken) =>
-        SendJobControlAsync(uuid, new ResumePrint(), cancellationToken);
+    public Task<ActionResult> Resume(Guid uuid, CancellationToken cancellationToken)
+    {
+        return SendJobControlAsync(uuid, new ResumePrint(), cancellationToken);
+    }
 
     /// <summary>Stops a running print. <c>PUT /api/v1/printers/{uuid}/command/stop</c>.</summary>
     [HttpPut]
@@ -362,8 +366,10 @@ public class PrinterController : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public Task<ActionResult> Stop(Guid uuid, CancellationToken cancellationToken) =>
-        SendJobControlAsync(uuid, new StopPrint(), cancellationToken);
+    public Task<ActionResult> Stop(Guid uuid, CancellationToken cancellationToken)
+    {
+        return SendJobControlAsync(uuid, new StopPrint(), cancellationToken);
+    }
 
     /// <summary>
     /// Marks the printer ready for a queued job. <c>PUT /api/v1/printers/{uuid}/command/ready</c>.
@@ -376,8 +382,10 @@ public class PrinterController : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public Task<ActionResult> Ready(Guid uuid, CancellationToken cancellationToken) =>
-        SendJobControlAsync(uuid, new SetPrinterReady(), cancellationToken);
+    public Task<ActionResult> Ready(Guid uuid, CancellationToken cancellationToken)
+    {
+        return SendJobControlAsync(uuid, new SetPrinterReady(), cancellationToken);
+    }
 
     /// <summary>Cancels the ready state. <c>PUT /api/v1/printers/{uuid}/command/unready</c>.</summary>
     [HttpPut]
@@ -386,8 +394,10 @@ public class PrinterController : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public Task<ActionResult> Unready(Guid uuid, CancellationToken cancellationToken) =>
-        SendJobControlAsync(uuid, new CancelPrinterReady(), cancellationToken);
+    public Task<ActionResult> Unready(Guid uuid, CancellationToken cancellationToken)
+    {
+        return SendJobControlAsync(uuid, new CancelPrinterReady(), cancellationToken);
+    }
 
     /// <summary>
     /// Returns the printer to idle. <c>PUT /api/v1/printers/{uuid}/command/idle</c>.
@@ -406,8 +416,10 @@ public class PrinterController : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public Task<ActionResult> Idle(Guid uuid, CancellationToken cancellationToken) =>
-        SendJobControlAsync(uuid, new SetPrinterIdle(), cancellationToken);
+    public Task<ActionResult> Idle(Guid uuid, CancellationToken cancellationToken)
+    {
+        return SendJobControlAsync(uuid, new SetPrinterIdle(), cancellationToken);
+    }
 
     /// <summary>Resolves the printer, then sends - the whole body of every job-control verb above.</summary>
     private async Task<ActionResult> SendJobControlAsync(Guid uuid,

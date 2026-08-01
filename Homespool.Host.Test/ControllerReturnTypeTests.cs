@@ -43,16 +43,20 @@ public class ControllerReturnTypeTests
     /// private helper returning <see cref="IActionResult"/> puts the interface back into the file it
     /// was removed from.
     /// </summary>
-    private static IEnumerable<MethodInfo> DeclaredMethods(Type controller) =>
-        controller.GetMethods(BindingFlags.Public | BindingFlags.NonPublic
+    private static IEnumerable<MethodInfo> DeclaredMethods(Type controller)
+    {
+        return controller.GetMethods(BindingFlags.Public | BindingFlags.NonPublic
                               | BindingFlags.Instance | BindingFlags.DeclaredOnly)
                   .Where(method => !method.IsSpecialName);
+    }
 
     /// <summary>The type an action actually answers with, unwrapped from its <see cref="Task{T}"/>.</summary>
-    private static Type Unwrapped(Type returnType) =>
-        returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>)
+    private static Type Unwrapped(Type returnType)
+    {
+        return returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>)
             ? returnType.GetGenericArguments()[0]
             : returnType;
+    }
 
     [Fact]
     public void NoControllerMethodReturnsIActionResult()

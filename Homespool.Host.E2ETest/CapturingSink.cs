@@ -26,7 +26,10 @@ public sealed class CapturingSink : ILogEventSink
 {
     private readonly ConcurrentBag<LogEvent> _events = new();
 
-    public void Emit(LogEvent logEvent) => _events.Add(logEvent);
+    public void Emit(LogEvent logEvent)
+    {
+        _events.Add(logEvent);
+    }
 
     /// <summary>
     /// Every event at <see cref="LogEventLevel.Error"/> or above. A request that completes normally
@@ -42,10 +45,12 @@ public sealed class CapturingSink : ILogEventSink
     /// matches. Strips the surrounding quotes <see cref="ScalarValue"/>'s default rendering adds for
     /// strings.
     /// </summary>
-    public string? FindPropertyValue(string propertyName) =>
-        _events
+    public string? FindPropertyValue(string propertyName)
+    {
+        return _events
             .SelectMany(e => e.Properties)
             .Where(p => p.Key == propertyName)
             .Select(p => p.Value is ScalarValue { Value: string s } ? s : p.Value.ToString())
             .FirstOrDefault();
+    }
 }

@@ -123,11 +123,16 @@ public sealed class MailpitClient : IDisposable
         return true;
     }
 
-    public async Task<MailpitMessage> GetMessageAsync(string id) =>
-        await _http.GetFromJsonAsync<MailpitMessage>($"/api/v1/message/{id}")
+    public async Task<MailpitMessage> GetMessageAsync(string id)
+    {
+        return await _http.GetFromJsonAsync<MailpitMessage>($"/api/v1/message/{id}")
         ?? throw new InvalidOperationException("Mailpit returned an empty response.");
+    }
 
-    public void Dispose() => _http.Dispose();
+    public void Dispose()
+    {
+        _http.Dispose();
+    }
 
     // ---------- Mailpit API v1 shapes - only the fields these tests read ----------
     //

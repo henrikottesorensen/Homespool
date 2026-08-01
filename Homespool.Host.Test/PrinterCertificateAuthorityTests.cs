@@ -29,16 +29,20 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
 
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"hs-ca-{Guid.NewGuid():N}");
 
-    private static string[] DnsNames(X509Certificate2 certificate) =>
-        certificate.Extensions.OfType<X509SubjectAlternativeNameExtension>()
+    private static string[] DnsNames(X509Certificate2 certificate)
+    {
+        return certificate.Extensions.OfType<X509SubjectAlternativeNameExtension>()
                    .SelectMany(e => e.EnumerateDnsNames())
                    .ToArray();
+    }
 
-    private PrinterCertificateAuthority NewAuthority() =>
-        new(Options.Create(new CertificateOptions { Directory = "certs" }),
+    private PrinterCertificateAuthority NewAuthority()
+    {
+        return new(Options.Create(new CertificateOptions { Directory = "certs" }),
             new HostEnvironmentAccessor(_root),
             TimeProvider.System,
             NullLogger<PrinterCertificateAuthority>.Instance);
+    }
 
     /// <summary>
     /// Both the authority and the leaf use ECDSA on P-256.

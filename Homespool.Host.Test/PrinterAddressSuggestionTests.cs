@@ -25,8 +25,10 @@ public class PrinterAddressSuggestionTests
     /// </summary>
     private static readonly IReadOnlyList<IPNetwork> DockerDefault = [IPNetwork.Parse("172.16.0.0/12")];
 
-    private static PrinterAddressSuggestion? Find(IReadOnlyList<PrinterAddressSuggestion> all, string value) =>
-        all.FirstOrDefault(s => s.Value == value);
+    private static PrinterAddressSuggestion? Find(IReadOnlyList<PrinterAddressSuggestion> all, string value)
+    {
+        return all.FirstOrDefault(s => s.Value == value);
+    }
 
     /// <summary>
     /// A Docker-range address is offered but flagged as almost certainly the container's own.

@@ -30,14 +30,17 @@ public sealed class SmtpEmailSenderTests
         return (sender, transport);
     }
 
-    private static SmtpOptions DefaultOptions() => new()
+    private static SmtpOptions DefaultOptions()
     {
-        Host = "smtp.example.com",
-        Port = 587,
-        FromAddress = "no-reply@example.com",
-        FromName = "Homespool",
-        TimeoutSeconds = 5,
-    };
+        return new()
+        {
+            Host = "smtp.example.com",
+            Port = 587,
+            FromAddress = "no-reply@example.com",
+            FromName = "Homespool",
+            TimeoutSeconds = 5,
+        };
+    }
 
     // ---------- envelope ----------
 

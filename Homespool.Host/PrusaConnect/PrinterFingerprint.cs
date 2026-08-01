@@ -37,6 +37,8 @@ public static class PrinterFingerprint
     /// not a printer we know, and it should fail the lookup rather than be silently reshaped into
     /// something that might match.
     /// </summary>
-    public static string Key(string fingerprint) =>
-        fingerprint.Length <= KeyLength ? fingerprint : fingerprint[..KeyLength];
+    public static string Key(string fingerprint)
+    {
+        return fingerprint.Length <= KeyLength ? fingerprint : fingerprint[..KeyLength];
+    }
 }

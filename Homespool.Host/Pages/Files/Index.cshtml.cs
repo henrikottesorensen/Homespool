@@ -149,12 +149,16 @@ public class IndexModel : PageModel
     /// are what someone is looking for, while <c>a.gcode</c> is where an alphabetical list should
     /// start. Always-ascending would make two of the three headings need a second click to be useful.
     /// </remarks>
-    public bool NextDescendingFor(string column) =>
-        column == Sort ? !Descending : column != Columns.Name;
+    public bool NextDescendingFor(string column)
+    {
+        return column == Sort ? !Descending : column != Columns.Name;
+    }
 
     /// <summary>The arrow for a heading: direction when it is the sorted column, nothing when it is not.</summary>
-    public string IndicatorFor(string column) =>
-        column != Sort ? string.Empty : Descending ? " ↓" : " ↑";
+    public string IndicatorFor(string column)
+    {
+        return column != Sort ? string.Empty : Descending ? " ↓" : " ↑";
+    }
 
     public async Task OnGetAsync(string? sort, bool desc, string? rename, CancellationToken cancellationToken)
     {
@@ -437,11 +441,15 @@ public class IndexModel : PageModel
     /// uses, and for the reason documented on <see cref="Printer.Name"/>: the uuid is the only part
     /// that cannot be missing.
     /// </summary>
-    private static string PrinterName(Printer printer) =>
-        printer.Name ?? printer.Model ?? printer.Uuid.ToString();
+    private static string PrinterName(Printer printer)
+    {
+        return printer.Name ?? printer.Model ?? printer.Uuid.ToString();
+    }
 
-    private IActionResult RedirectToSelf(string? sort, bool desc) =>
-        RedirectToPage(new { sort, desc });
+    private IActionResult RedirectToSelf(string? sort, bool desc)
+    {
+        return RedirectToPage(new { sort, desc });
+    }
 
     private async Task LoadPrintersAsync(CancellationToken cancellationToken)
     {
@@ -452,15 +460,20 @@ public class IndexModel : PageModel
             : await _printers.ListPrintersForUserAsync(userId.Value, cancellationToken);
     }
 
-    private long? UserId() =>
-        long.TryParse(_userManager.GetUserId(User), CultureInfo.InvariantCulture, out long id) ? id : null;
+    private long? UserId()
+    {
+        return long.TryParse(_userManager.GetUserId(User), CultureInfo.InvariantCulture, out long id) ? id : null;
+    }
 
     /// <summary>
     /// The display name that decorates this user's storage directory, read from the sign-in cookie
     /// rather than the database - <c>HSUserClaimsPrincipalFactory</c> puts it there so the header
     /// costs no query, and an upload has no more reason to pay for one.
     /// </summary>
-    private string? DisplayName() => User.FindFirst(HSUserClaimsPrincipalFactory.DisplayNameClaim)?.Value;
+    private string? DisplayName()
+    {
+        return User.FindFirst(HSUserClaimsPrincipalFactory.DisplayNameClaim)?.Value;
+    }
 
     private void Load(string? sort, bool desc)
     {

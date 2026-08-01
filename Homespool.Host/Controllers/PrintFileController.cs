@@ -44,6 +44,9 @@ namespace Homespool.Host.Controllers;
 [ApiController]
 [Route("/api/v1/files")]
 [Authorize(Policy = Authorisation.Policies.Api)]
+
+// 401 is the auth policy's, not any action's - an unauthenticated caller never reaches one.
+[ProducesResponseType(StatusCodes.Status401Unauthorized)]
 public class PrintFileController : ControllerBase
 {
     private readonly UserFileStore _files;
@@ -59,6 +62,8 @@ public class PrintFileController : ControllerBase
 
     /// <summary>Everything the caller has uploaded. <c>GET /api/v1/files</c>.</summary>
     [HttpGet]
+    [ProducesResponseType<IReadOnlyList<PrintFileReadDTO>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<IReadOnlyList<PrintFileReadDTO>>> List()
     {
         HSUser? user = await _userManager.GetUserAsync(User);
@@ -91,6 +96,11 @@ public class PrintFileController : ControllerBase
     [HttpPut]
     [Route("{fileName}")]
     [RequestSizeLimit(long.MaxValue)] // Enforced against the configured cap below, not by MVC.
+    [ProducesResponseType<PrintFileReadDTO>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status413PayloadTooLarge)]
     public async Task<ActionResult<PrintFileReadDTO>> Upload(string fileName,
                                             [FromQuery] bool overwrite,
                                             CancellationToken cancellationToken)
@@ -145,6 +155,10 @@ public class PrintFileController : ControllerBase
     [Route("{fileName}")]
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
                      Justification = "Ownership passes to FileStreamResult, which disposes the stream once the response has been written. Disposing it here would close it before a byte is sent.")]
+    [Produces("application/octet-stream")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult> Download(string fileName)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
@@ -177,6 +191,11 @@ public class PrintFileController : ControllerBase
     /// </remarks>
     [HttpPatch]
     [Route("{fileName}")]
+    [ProducesResponseType<PrintFileReadDTO>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<PrintFileReadDTO>> Rename(string fileName, [FromBody] PrintFileRenameRequest body)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
@@ -209,6 +228,9 @@ public class PrintFileController : ControllerBase
     /// </remarks>
     [HttpDelete]
     [Route("{fileName}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult> Delete(string fileName)
     {
         HSUser? user = await _userManager.GetUserAsync(User);

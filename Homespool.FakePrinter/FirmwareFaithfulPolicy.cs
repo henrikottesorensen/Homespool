@@ -254,6 +254,11 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
                 // planner.cpp:735-740 - the INFO event, carrying the command id.
                 return [Reply(EventMessageBuilder.BuildInfo(_identity, device.WireState, frame.CommandId, device.JobId))];
 
+            case "SEND_FILE_INFO":
+                // planner.cpp:751-759 - the path is checked before anything is rendered, and a path
+                // outside /usb is refused rather than answered.
+                return SendFileInfo(frame, device);
+
             case "START_CONNECT_DOWNLOAD":
             case "START_INLINE_DOWNLOAD":
                 // Both spellings, one handler, because Connect sends whichever and the printer
@@ -275,6 +280,47 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
     /// the transfer slot (<c>init_transfer</c>, planner.cpp:209-221 runs before
     /// <c>Transfer::begin</c>), so a bad path is refused even while another transfer is running.
     /// </remarks>
+    /// <summary>
+    /// Answers a <c>SEND_FILE_INFO</c>: a directory enumerates, a file describes itself, and a path
+    /// outside <c>/usb</c> is refused before anything is rendered.
+    /// </summary>
+    /// <remarks>
+    /// The refusal wording is firmware's own - <c>path_allowed</c> fails and the planner builds
+    /// <c>Rejected{"Forbidden path"}</c> (planner.cpp:751-759). A path that is simply absent gets the
+    /// same treatment here: firmware would fail inside the renderer instead, but a refusal is the
+    /// honest answer a fake can give without inventing a second failure shape.
+    /// </remarks>
+    private IReadOnlyList<PlannedReply> SendFileInfo(ServerCommandFrame frame, FakeDevice device)
+    {
+        string? path = PathArgument.TryParse(frame.Payload);
+
+        if (path is null)
+        {
+            return [Reject(frame.CommandId, device, "Missing or broken parameters")];
+        }
+
+        bool onUsb = path.StartsWith(FakeStorage.Root + "/", StringComparison.Ordinal)
+                     || string.Equals(path, FakeStorage.Root, StringComparison.Ordinal);
+
+        if (!onUsb || path.Contains("/../", StringComparison.Ordinal))
+        {
+            return [Reject(frame.CommandId, device, "Forbidden path")];
+        }
+
+        FakeStorageEntry? entry = device.Storage.Find(path);
+
+        if (entry is null)
+        {
+            return [Reject(frame.CommandId, device, "File not found")];
+        }
+
+        return entry.IsFolder
+            ? [Reply(EventMessageBuilder.BuildFolderInfo(device.WireState, path,
+                device.Storage.Children(path), frame.CommandId))]
+            : [Reply(EventMessageBuilder.BuildFileInfo(device.WireState, path, entry.Size, entry.Modified,
+                frame.CommandId))];
+    }
+
     private IReadOnlyList<PlannedReply> StartDownload(ServerCommandFrame frame, FakeDevice device)
     {
         StartDownloadArguments? arguments = StartDownloadArguments.TryParse(frame.Payload);
@@ -357,12 +403,19 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
             case ChunkOutcome.Completed:
                 device.EndTransfer();
 
+                // The file is now on the drive, so a later SEND_FILE_INFO finds it. Without this the
+                // fake would report a transfer finishing and then deny the file exists, which is the
+                // kind of incoherence that makes an end-to-end test prove nothing.
+                long completedAt = _time.GetUtcNow().ToUnixTimeSeconds();
+
+                device.Storage.AddFile(transfer.Path, transfer.TotalSize, completedAt);
+
                 return
                 [
                     Reply(EventMessageBuilder.BuildTransferTerminal("TRANSFER_FINISHED", device.WireState,
                         transfer.TransferId, transfer.StartCommandId)),
                     Reply(EventMessageBuilder.BuildFileInfo(device.WireState, transfer.Path, transfer.TotalSize,
-                        _time.GetUtcNow().ToUnixTimeSeconds())),
+                        completedAt)),
                 ];
 
             default:

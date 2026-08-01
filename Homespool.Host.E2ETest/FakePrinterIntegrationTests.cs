@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.WebSockets;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -629,6 +631,132 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         }
 
         await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// The storage listing, whole: an HTTP GET becomes a <c>SEND_FILE_INFO</c> to a live printer, its
+    /// answering <c>FILE_INFO</c> is parsed out of the command's own reply, and the entries come back
+    /// in this API's vocabulary rather than firmware's.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the first command whose <i>payload</i> is the answer, so it exercises a path nothing
+    /// else does: <c>CommandOutcome&lt;T&gt;</c> carrying a deserialised body up through
+    /// <c>AskAsync</c>. A job-control verb would still pass with the payload thrown away.
+    /// </para>
+    /// <para>
+    /// <b>What this does not prove: 8.3 aliasing.</b> The fake has no FAT filesystem, so its short
+    /// and long names coincide - see <c>FakeStorage</c>'s remarks. Hardware aliases nearly every
+    /// entry, and that case is covered by replaying a real capture in the host's
+    /// <c>CaptureReplayTests</c> instead. The two tests are complements, and neither is sufficient.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task TheStorageListingReachesAConnectedPrinterAndComesBackInOurVocabulary()
+    {
+        // Arrange
+        (FakePrinterClient fake, Task run, int printerId, long userId) = await StartConnectedFakeAsync(
+            configure: f =>
+            {
+                f.Device.Storage.AddFile("/usb/lampshade.gcode", 7647560, 1764804970);
+                f.Device.Storage.AddFolder("/usb/sub");
+
+                // One level down, so the listing proves it reports direct children rather than
+                // everything on the drive.
+                f.Device.Storage.AddFile("/usb/sub/deep.bgcode", 4242, 1764805000);
+            });
+
+        (Guid uuid, string token) = await UuidAndTokenAsync(printerId, userId);
+
+        using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        // Act
+        using HttpResponseMessage response = await client.GetAsync($"/api/v1/printers/{uuid}/storage/usb");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        JsonElement listing = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+
+        listing.GetProperty("path").GetString().Should().Be("/usb");
+        listing.GetProperty("kind").GetString().Should().Be("folder");
+
+        JsonElement[] entries = listing.GetProperty("entries").EnumerateArray().ToArray();
+        entries.Should().HaveCount(2, "the file one level down is not a child of /usb");
+
+        JsonElement file = entries.Single(e => e.GetProperty("kind").GetString() == "printFile");
+        file.GetProperty("name").GetString().Should().Be("lampshade.gcode");
+        file.GetProperty("size").GetInt64().Should().Be(7647560);
+
+        // Translated out of firmware's Unix seconds, which is the point of having our own DTO.
+        file.GetProperty("modifiedAt").GetDateTimeOffset()
+            .Should().Be(DateTimeOffset.FromUnixTimeSeconds(1764804970));
+
+        entries.Should().ContainSingle(e => e.GetProperty("kind").GetString() == "folder");
+
+        // And the nested path lists on its own, which is what the catch-all route is for.
+        using HttpResponseMessage nested = await client.GetAsync($"/api/v1/printers/{uuid}/storage/usb/sub");
+
+        nested.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        JsonDocument.Parse(await nested.Content.ReadAsStringAsync())
+                    .RootElement.GetProperty("entries").EnumerateArray()
+                    .Single().GetProperty("name").GetString().Should().Be("deep.bgcode");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// A path the printer will not answer for comes back as its own refusal, in a ProblemDetails
+    /// carrying firmware's words - not as an invented 404.
+    /// </summary>
+    /// <remarks>
+    /// The API cannot tell "no such path" from any other refusal without matching on that text, so it
+    /// does not try; the caller gets the reason and decides. This is also the only end-to-end proof
+    /// that a real printer refusal reaches the caller as ProblemDetails rather than as the anonymous
+    /// object it used to be.
+    /// </remarks>
+    [Fact]
+    public async Task APathThePrinterRefusesComesBackAsItsOwnReason()
+    {
+        // Arrange
+        (FakePrinterClient fake, Task run, int printerId, long userId) = await StartConnectedFakeAsync();
+
+        (Guid uuid, string token) = await UuidAndTokenAsync(printerId, userId);
+
+        using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        // Act
+        using HttpResponseMessage response =
+            await client.GetAsync($"/api/v1/printers/{uuid}/storage/usb/nothing-here.gcode");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+
+        JsonElement problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+
+        problem.GetProperty("detail").GetString().Should().Be("File not found",
+            "the printer's own words, not ours");
+        problem.GetProperty("command").GetString().Should().Be("SEND_FILE_INFO");
+        problem.GetProperty("outcome").GetString().Should().Be("Rejected");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>The printer's uuid and a personal access token for its owner.</summary>
+    private async Task<(Guid uuid, string token)> UuidAndTokenAsync(int printerId, long userId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+        Guid uuid = (await context.Printers.SingleAsync(p => p.Id == printerId)).Uuid;
+
+        ApiTokenService tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
+        (_, string token) = await tokens.CreateAsync(userId, "storage-e2e", CancellationToken.None);
+
+        return (uuid, token);
     }
 
     private Task<(PrinterIdentity identity, string token, int printerId, long userId)> EnrolNewPrinterAsync()

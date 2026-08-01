@@ -1,5 +1,6 @@
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.Text.Json;
 
 namespace Homespool.FakePrinter;
@@ -214,6 +215,89 @@ public static class EventMessageBuilder
             writer.WriteBoolean("read_only", false);
             writer.WriteString("display_name", NameOf(path));
             writer.WriteString("type", "PRINT_FILE");
+            writer.WriteString("path", path);
+            writer.WriteEndObject();
+
+            writer.WriteString("state", state);
+
+            if (commandId.HasValue)
+            {
+                writer.WriteNumber("command_id", commandId.Value);
+            }
+
+            writer.WriteString("event", "FILE_INFO");
+            writer.WriteEndObject();
+        }
+
+        return buffer.WrittenSpan.ToArray();
+    }
+
+    /// <summary>
+    /// <c>FILE_INFO</c> for a <i>directory</i> - the <c>DirRenderer</c> variant, which is how a
+    /// storage listing is obtained at all. There is no "list files" command in the 26-command
+    /// vocabulary; <c>SEND_FILE_INFO</c> on a directory enumerates it (render.cpp:1006-1068).
+    /// </summary>
+    /// <param name="state">The wire device state.</param>
+    /// <param name="path">The directory asked about.</param>
+    /// <param name="children">Its direct entries, already filtered to one level.</param>
+    /// <param name="commandId">The <c>SEND_FILE_INFO</c> this answers.</param>
+    /// <remarks>
+    /// <para>
+    /// Field order and shape are the renderer's: <c>children</c> then <c>file_count</c>, with each
+    /// child carrying <c>name</c> (the short name on hardware) beside <c>display_name</c> (the long
+    /// one). <c>file_count</c> is rendered beside the array rather than derived from it, exactly as
+    /// firmware does.
+    /// </para>
+    /// <para>
+    /// The same <b>no 8.3 aliasing</b> deviation as <see cref="BuildFileInfo"/> applies, and here it
+    /// is at its most visible: on hardware <c>name</c> and <c>display_name</c> differ for nearly
+    /// every entry, and here they are equal. The two are still written from their proper sources, so
+    /// a consumer that reads the wrong one is still wrong - it just cannot be caught here. See
+    /// <c>FakeStorage</c>'s remarks for where the aliased case is covered instead.
+    /// </para>
+    /// <para>
+    /// Three firmware behaviours are deliberately not modelled, because a fake drive cannot produce
+    /// them honestly: dot-files being skipped, an in-progress transfer appearing as a read-only
+    /// regular file, and an incomplete <c>.bbf</c> being hidden entirely (render.cpp:1017-1036).
+    /// </para>
+    /// </remarks>
+    public static byte[] BuildFolderInfo(string state, string path,
+                                         IReadOnlyList<FakeStorageEntry> children, uint? commandId = null)
+    {
+        ArgumentNullException.ThrowIfNull(children);
+
+        ArrayBufferWriter<byte> buffer = new();
+
+        using (Utf8JsonWriter writer = new(buffer))
+        {
+            writer.WriteStartObject();
+
+            writer.WriteStartObject("data");
+            writer.WriteStartArray("children");
+
+            foreach (FakeStorageEntry child in children)
+            {
+                writer.WriteStartObject();
+                writer.WriteString("name", NameOf(child.Path));
+                writer.WriteString("display_name", NameOf(child.Path));
+
+                if (!child.IsFolder)
+                {
+                    writer.WriteNumber("size", child.Size);
+                    writer.WriteNumber("m_timestamp", child.Modified);
+                }
+
+                writer.WriteBoolean("read_only", false);
+                writer.WriteString("type", child.IsFolder ? "FOLDER" : "PRINT_FILE");
+                writer.WriteEndObject();
+            }
+
+            writer.WriteEndArray();
+
+            writer.WriteNumber("file_count", children.Count);
+            writer.WriteBoolean("read_only", false);
+            writer.WriteString("display_name", NameOf(path));
+            writer.WriteString("type", "FOLDER");
             writer.WriteString("path", path);
             writer.WriteEndObject();
 

@@ -62,7 +62,7 @@ public class LogThrottleTests
             throttle.Record();
         }
 
-        await Task.Delay(150);
+        await Task.Delay(150, TestContext.Current.CancellationToken);
 
         LogThrottleWindow? summary = throttle.Record();
 
@@ -96,7 +96,7 @@ public class LogThrottleTests
                         System.Threading.Interlocked.Increment(ref elected);
                     }
                 }
-            });
+            }, TestContext.Current.CancellationToken);
         }
 
         await Task.WhenAll(recorders);

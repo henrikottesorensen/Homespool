@@ -55,7 +55,7 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
     private async Task<HSDbContext> MigratedContextAsync()
     {
         HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
     }
@@ -123,7 +123,7 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
         // Assert
         result.Should().BeOfType<RedirectToPageResult>();
 
-        (await context.ApiTokens.CountAsync()).Should().Be(0);
+        (await context.ApiTokens.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
         (await tokens.FindByCredentialAsync(first, CancellationToken.None)).Should().BeNull(
             "a token that still authenticates has not been revoked, whatever the row count says");
 

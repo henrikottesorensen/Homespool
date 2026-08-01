@@ -40,7 +40,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
     private async Task<HSDbContext> MigratedContextAsync()
     {
         HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
     }
@@ -76,7 +76,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
         };
 
         context.Teams.Add(team);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         return team.Members.Single();
     }
@@ -96,7 +96,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
         };
 
         context.Printers.Add(printer);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         return printer;
     }
@@ -215,7 +215,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
         updated!.Printer.Name.Should().Be("New name");
         updated.Printer.Location.Should().Be("New location");
 
-        Printer stored = await context.Printers.SingleAsync(p => p.Id == printer.Id);
+        Printer stored = await context.Printers.SingleAsync(p => p.Id == printer.Id, TestContext.Current.CancellationToken);
         stored.Name.Should().Be("New name");
         stored.Location.Should().Be("New location");
     }
@@ -288,7 +288,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: true);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
         printer.UpdatedAt = DateTimeOffset.UtcNow.AddDays(-1);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         DateTimeOffset before = DateTimeOffset.UtcNow;
 
@@ -402,7 +402,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
             new PrinterEvent { PrinterId = printer.Id, Timestamp = now.AddMinutes(-1), EventType = Events.Info, Status = PrinterStatus.Printing },
             new PrinterEvent { PrinterId = printer.Id, Timestamp = now, EventType = Events.Finished, Status = PrinterStatus.Printing, Reason = "No print to pause" });
 
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         PrinterStatistics? statistics = await new PrinterQueryService(context, TimeProvider.System)
@@ -439,7 +439,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
             context.TelemetrySamples.Add(new TelemetrySample { PrinterId = printer.Id, Timestamp = now.AddSeconds(-i), Status = PrinterStatus.Printing, Progress = i });
         }
 
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         PrinterStatistics? statistics = await new PrinterQueryService(context, TimeProvider.System)

@@ -126,13 +126,13 @@ public class PrinterConnectionActorTests
     /// </summary>
     private static Task<T> Eventually<T>(Task<T> task)
     {
-        return task.WaitAsync(TimeSpan.FromSeconds(10));
+        return task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
     }
 
     /// <inheritdoc cref="Eventually{T}"/>
     private static Task Eventually(Task task)
     {
-        return task.WaitAsync(TimeSpan.FromSeconds(10));
+        return task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
     }
 
     /// <summary>The actor assigns the command id internally; the frame it wrote to the connection is
@@ -711,7 +711,7 @@ public class PrinterConnectionActorTests
         await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0])), CancellationToken.None);
 
         // Act - the deadline passes while the ack sits in the mailbox, unread.
-        await Task.Delay(TimeSpan.FromMilliseconds(1500));
+        await Task.Delay(TimeSpan.FromMilliseconds(1500), TestContext.Current.CancellationToken);
         sink.Release();
 
         // Assert

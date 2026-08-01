@@ -29,7 +29,7 @@ public class LengthLimitingStreamTests
 
         // Act
         using MemoryStream sink = new();
-        await limited.CopyToAsync(sink);
+        await limited.CopyToAsync(sink, TestContext.Current.CancellationToken);
 
         // Assert
         sink.Length.Should().Be(500);

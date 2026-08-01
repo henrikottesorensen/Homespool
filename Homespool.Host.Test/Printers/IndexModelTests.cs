@@ -49,7 +49,7 @@ public sealed class IndexModelTests : IDisposable
     private async Task<HSDbContext> MigratedContextAsync()
     {
         HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
     }
@@ -98,7 +98,7 @@ public sealed class IndexModelTests : IDisposable
         createResult.Succeeded.Should().BeTrue();
 
         Team team = context.AddDefaultTeam(user.Id, DateTimeOffset.UtcNow);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
@@ -151,7 +151,7 @@ public sealed class IndexModelTests : IDisposable
         Printer neither = NewPrinter(team.Id, "Freshly claimed printer");
 
         context.Printers.AddRange(enrolled, provisioned, neither);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         TokenService tokenService = new();
 
@@ -170,7 +170,7 @@ public sealed class IndexModelTests : IDisposable
             CreatedAt = DateTimeOffset.UtcNow,
         });
 
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         await model.OnGetAsync(CancellationToken.None);
@@ -196,10 +196,10 @@ public sealed class IndexModelTests : IDisposable
 
         Team othersTeam = new() { CreatedBy = 999, CreatedAt = DateTimeOffset.UtcNow };
         context.Teams.Add(othersTeam);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         context.Printers.Add(NewPrinter(othersTeam.Id, "Someone else's printer"));
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         await model.OnGetAsync(CancellationToken.None);
@@ -220,7 +220,7 @@ public sealed class IndexModelTests : IDisposable
 
         Printer printer = NewPrinter(team.Id);
         context.Printers.Add(printer);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         TokenService tokenService = new();
         string originalToken = tokenService.GenerateToken();
@@ -232,7 +232,7 @@ public sealed class IndexModelTests : IDisposable
             CreatedAt = DateTimeOffset.UtcNow,
         });
 
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         await model.OnPostRegenerateAsync(printer.Id, CancellationToken.None);
@@ -244,7 +244,7 @@ public sealed class IndexModelTests : IDisposable
         string reissuedToken = model.Offer!.Snippet.Split("token = ")[1].Trim();
         reissuedToken.Should().NotBe(originalToken);
 
-        PrusaConnectProvisioning stored = await context.PrusaConnectProvisionings.SingleAsync();
+        PrusaConnectProvisioning stored = await context.PrusaConnectProvisionings.SingleAsync(TestContext.Current.CancellationToken);
         tokenService.VerifyToken(reissuedToken, stored.HashedToken).Should().BeTrue();
         tokenService.VerifyToken(originalToken, stored.HashedToken).Should().BeFalse("the old token must stop working");
     }
@@ -275,11 +275,11 @@ public sealed class IndexModelTests : IDisposable
 
         Team othersTeam = new() { CreatedBy = 999, CreatedAt = DateTimeOffset.UtcNow };
         context.Teams.Add(othersTeam);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         Printer printer = NewPrinter(othersTeam.Id);
         context.Printers.Add(printer);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         context.PrusaConnectProvisionings.Add(new PrusaConnectProvisioning
         {
@@ -287,7 +287,7 @@ public sealed class IndexModelTests : IDisposable
             HashedToken = new TokenService().HashToken(new TokenService().GenerateToken()),
             CreatedAt = DateTimeOffset.UtcNow,
         });
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         await model.OnPostRegenerateAsync(printer.Id, CancellationToken.None);
@@ -316,7 +316,7 @@ public sealed class IndexModelTests : IDisposable
 
         Printer printer = NewPrinter(team.Id);
         context.Printers.Add(printer);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         context.PrusaConnectAuthentication.Add(new PrusaConnectAuthenticationData
         {
@@ -325,7 +325,7 @@ public sealed class IndexModelTests : IDisposable
             HashedToken = new TokenService().HashToken(new TokenService().GenerateToken()),
             EnrolledAt = DateTimeOffset.UtcNow,
         });
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         await model.OnPostRegenerateAsync(printer.Id, CancellationToken.None);
@@ -357,7 +357,7 @@ public sealed class IndexModelTests : IDisposable
 
         Printer printer = NewPrinter(team.Id);
         context.Printers.Add(printer);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())

@@ -118,11 +118,11 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime, IDisposable
                 name = "Living room MK4",
                 location = "Living room",
                 code,
-            });
+            }, TestContext.Current.CancellationToken);
 
             claimResponse.StatusCode.Should().Be(HttpStatusCode.Created);
 
-            JsonDocument claimed = JsonDocument.Parse(await claimResponse.Content.ReadAsStringAsync());
+            JsonDocument claimed = JsonDocument.Parse(await claimResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             Guid uuid = claimed.RootElement.GetProperty("uuid").GetGuid();
             claimed.RootElement.GetProperty("name").GetString().Should().Be("Living room MK4");
             claimed.RootElement.GetProperty("state").GetString().Should().Be("UNKNOWN");
@@ -133,32 +133,32 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime, IDisposable
             postPollResponse.Headers.GetValues("Token").Single().Should().NotBeNullOrWhiteSpace();
 
             // ---------- app: GET /api/v1/user ----------
-            JsonDocument user = JsonDocument.Parse(await (await appClient.GetAsync("/api/v1/user")).Content.ReadAsStringAsync());
+            JsonDocument user = JsonDocument.Parse(await (await appClient.GetAsync("/api/v1/user", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             user.RootElement.GetProperty("id").GetInt64().Should().Be(claimer.Id);
             user.RootElement.GetProperty("teams").GetArrayLength().Should().Be(1, "every account has exactly one default team");
 
             // ---------- app: GET /api/v1/printers ----------
-            HttpResponseMessage listResponse = await appClient.GetAsync("/api/v1/printers");
+            HttpResponseMessage listResponse = await appClient.GetAsync("/api/v1/printers", TestContext.Current.CancellationToken);
             listResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-            JsonDocument list = JsonDocument.Parse(await listResponse.Content.ReadAsStringAsync());
+            JsonDocument list = JsonDocument.Parse(await listResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             list.RootElement.GetArrayLength().Should().Be(1);
             list.RootElement[0].GetProperty("uuid").GetGuid().Should().Be(uuid);
 
             // ---------- app: GET /api/v1/printers/{uuid} ----------
-            HttpResponseMessage getResponse = await appClient.GetAsync($"/api/v1/printers/{uuid}");
+            HttpResponseMessage getResponse = await appClient.GetAsync($"/api/v1/printers/{uuid}", TestContext.Current.CancellationToken);
             getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
             // ---------- app: PATCH /api/v1/printers/{uuid} ----------
             using JsonContent patchBody = JsonContent.Create(new { name = "Renamed MK4", location = "Garage" });
-            HttpResponseMessage patchResponse = await appClient.PatchAsync($"/api/v1/printers/{uuid}", patchBody);
+            HttpResponseMessage patchResponse = await appClient.PatchAsync($"/api/v1/printers/{uuid}", patchBody, TestContext.Current.CancellationToken);
 
             patchResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-            JsonDocument patched = JsonDocument.Parse(await patchResponse.Content.ReadAsStringAsync());
+            JsonDocument patched = JsonDocument.Parse(await patchResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             patched.RootElement.GetProperty("name").GetString().Should().Be("Renamed MK4");
             patched.RootElement.GetProperty("location").GetString().Should().Be("Garage");
 
-            HttpResponseMessage reGetResponse = await appClient.GetAsync($"/api/v1/printers/{uuid}");
-            JsonDocument reGet = JsonDocument.Parse(await reGetResponse.Content.ReadAsStringAsync());
+            HttpResponseMessage reGetResponse = await appClient.GetAsync($"/api/v1/printers/{uuid}", TestContext.Current.CancellationToken);
+            JsonDocument reGet = JsonDocument.Parse(await reGetResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             reGet.RootElement.GetProperty("name").GetString().Should().Be("Renamed MK4", "the patch must have persisted");
         }
     }
@@ -183,7 +183,7 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime, IDisposable
     {
         using HttpClient anonymous = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
-        HttpResponseMessage response = await anonymous.GetAsync("/api/v1/printers");
+        HttpResponseMessage response = await anonymous.GetAsync("/api/v1/printers", TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         response.Headers.Location.Should().BeNull("an API caller has nowhere to follow a login redirect to");
@@ -212,7 +212,7 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime, IDisposable
         try
         {
             // Act
-            HttpResponseMessage response = await client.GetAsync("/api/v1/printers");
+            HttpResponseMessage response = await client.GetAsync("/api/v1/printers", TestContext.Current.CancellationToken);
 
             // Assert
             response.StatusCode.Should().Be(HttpStatusCode.Redirect);

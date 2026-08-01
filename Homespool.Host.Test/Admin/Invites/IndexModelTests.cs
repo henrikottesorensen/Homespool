@@ -47,7 +47,7 @@ public sealed class IndexModelTests : IDisposable
     private async Task<HSDbContext> MigratedContextAsync()
     {
         HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
     }
@@ -148,7 +148,7 @@ public sealed class IndexModelTests : IDisposable
 
         Team team = new() { Name = "Print Squad", CreatedBy = 1, CreatedAt = DateTimeOffset.UtcNow };
         context.Teams.Add(team);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         IndexModel model = NewModel(context);
         await model.OnGetAsync(CancellationToken.None);
@@ -200,7 +200,7 @@ public sealed class IndexModelTests : IDisposable
 
         (Invitation first, _) = await invitationService.CreateAsync("first@example.com", null, 1, null, CancellationToken.None);
         first.CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-10);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         (Invitation second, _) = await invitationService.CreateAsync("second@example.com", null, 1, null, CancellationToken.None);
 

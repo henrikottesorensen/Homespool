@@ -188,7 +188,7 @@ public class PrinterConnectionSessionTests
         Task session = run();
 
         // Assert
-        await session.WaitAsync(TimeSpan.FromSeconds(5));
+        await session.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         connection.CloseStatus.Should().Be(WebSocketCloseStatus.NormalClosure, "the close is attempted regardless");
         LogRecords.Should().ContainSingle(r => r.Level == LogLevel.Warning)
                   .Which.Message.Should().Contain("abandoning");
@@ -234,7 +234,7 @@ public class PrinterConnectionSessionTests
         await session.RunAsync(PrinterId, connection, wire.Reader, CancellationToken.None);
 
         // Assert - a write after the reader completed reports it, which is how a producer learns
-        FlushResult flush = await wire.Writer.WriteAsync(new byte[] { 1 });
+        FlushResult flush = await wire.Writer.WriteAsync(new byte[] { 1 }, TestContext.Current.CancellationToken);
         flush.IsCompleted.Should().BeTrue();
     }
 

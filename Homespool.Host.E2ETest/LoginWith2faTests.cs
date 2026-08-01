@@ -158,7 +158,7 @@ public sealed class LoginWith2faTests : IAsyncLifetime, IDisposable
         HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         HttpResponseMessage loginGet = await client.GetAsync("/Account/Login");
-        string loginAntiforgeryToken = AntiforgeryTestHelper.ExtractToken(await loginGet.Content.ReadAsStringAsync());
+        string loginAntiforgeryToken = AntiforgeryTestHelper.ExtractToken(await loginGet.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
         using FormUrlEncodedContent loginBody = new(new Dictionary<string, string>
         {
@@ -176,7 +176,7 @@ public sealed class LoginWith2faTests : IAsyncLifetime, IDisposable
 
         HttpResponseMessage twoFactorGet = await client.GetAsync(loginPostResponse.Headers.Location);
         twoFactorGet.StatusCode.Should().Be(HttpStatusCode.OK);
-        string twoFactorAntiforgeryToken = AntiforgeryTestHelper.ExtractToken(await twoFactorGet.Content.ReadAsStringAsync());
+        string twoFactorAntiforgeryToken = AntiforgeryTestHelper.ExtractToken(await twoFactorGet.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
         return (client, twoFactorAntiforgeryToken);
     }
@@ -197,7 +197,7 @@ public sealed class LoginWith2faTests : IAsyncLifetime, IDisposable
             using FormUrlEncodedContent body = TwoFactorBody(antiforgeryToken, code);
 
             // Act
-            HttpResponseMessage postResponse = await client.PostAsync("/Account/LoginWith2fa", body);
+            HttpResponseMessage postResponse = await client.PostAsync("/Account/LoginWith2fa", body, TestContext.Current.CancellationToken);
 
             // Assert
             postResponse.StatusCode.Should().Be(HttpStatusCode.Redirect, "a valid code completes sign-in and redirects to the return URL");
@@ -219,13 +219,13 @@ public sealed class LoginWith2faTests : IAsyncLifetime, IDisposable
             using FormUrlEncodedContent body = TwoFactorBody(antiforgeryToken, "000000");
 
             // Act
-            HttpResponseMessage postResponse = await client.PostAsync("/Account/LoginWith2fa", body);
+            HttpResponseMessage postResponse = await client.PostAsync("/Account/LoginWith2fa", body, TestContext.Current.CancellationToken);
 
             // Assert
             postResponse.StatusCode.Should().Be(HttpStatusCode.OK, "a rejected code re-renders the page rather than redirecting");
             IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, postResponse).Should().BeFalse();
 
-            string html = await postResponse.Content.ReadAsStringAsync();
+            string html = await postResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             html.Should().Contain("Invalid authenticator code");
         }
     }
@@ -252,7 +252,7 @@ public sealed class LoginWith2faTests : IAsyncLifetime, IDisposable
             for (int attempt = 0; attempt < 10; attempt++)
             {
                 using FormUrlEncodedContent body = TwoFactorBody(antiforgeryToken, "000000");
-                lastResponse = await client.PostAsync("/Account/LoginWith2fa", body);
+                lastResponse = await client.PostAsync("/Account/LoginWith2fa", body, TestContext.Current.CancellationToken);
 
                 if (lastResponse.StatusCode == HttpStatusCode.Redirect)
                 {

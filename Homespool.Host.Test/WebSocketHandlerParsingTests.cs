@@ -207,7 +207,7 @@ public class WebSocketHandlerParsingTests
         await WriteInChunksAsync(wire.Writer, Encoding.UTF8.GetBytes("""{"job_id":301,,,}"""), chunkSize: 4096);
         await wire.Writer.CompleteAsync();
 
-        Func<Task> act = async () => await run.WaitAsync(TimeSpan.FromSeconds(10));
+        Func<Task> act = async () => await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         // Assert
         await act.Should().ThrowAsync<JsonException>();
@@ -256,7 +256,7 @@ public class WebSocketHandlerParsingTests
 
         // A generous ceiling: this exists so a regression that spins or blocks fails the test
         // instead of hanging the suite, which is how the old parsing spike used to behave.
-        await run.WaitAsync(TimeSpan.FromSeconds(10));
+        await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         return dispatcher.Received;
     }

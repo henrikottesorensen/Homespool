@@ -545,7 +545,7 @@ dotnet_diagnostic.SA1210.severity = none
 # it is off for exactly as long as it takes to do that separately, then it goes to warning like the
 # rest. Tracked in notes/backlog.md; if you are reading this and that entry is gone, the rule was
 # forgotten rather than retired.
-dotnet_diagnostic.xUnit1051.severity = none
+dotnet_diagnostic.xUnit1051.severity = warning
 dotnet_diagnostic.SA1309.severity = none
 dotnet_diagnostic.SA1310.severity = warning
 dotnet_diagnostic.SA1401.severity = warning

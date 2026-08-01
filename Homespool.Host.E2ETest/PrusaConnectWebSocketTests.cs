@@ -103,7 +103,7 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
 
         // The server-side read loop runs on its own task; give it a moment to observe the message
         // before tearing the connection down.
-        await Task.Delay(TimeSpan.FromMilliseconds(200));
+        await Task.Delay(TimeSpan.FromMilliseconds(200), TestContext.Current.CancellationToken);
 
         await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "test complete", CancellationToken.None);
 
@@ -155,8 +155,8 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
         using WebSocket socket = await ConnectAsPrinterAsync();
 
         // Act
-        await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "test complete", CancellationToken.None)
-                    .WaitAsync(TimeSpan.FromSeconds(10));
+        await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "test complete", TestContext.Current.CancellationToken)
+                    .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         // Assert
         socket.CloseStatus.Should().Be(WebSocketCloseStatus.NormalClosure,
@@ -184,8 +184,8 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
         await socket.SendAsync(garbage, WebSocketMessageType.Text, endOfMessage: true, CancellationToken.None);
 
         byte[] buffer = new byte[256];
-        WebSocketReceiveResult result = await socket.ReceiveAsync(buffer, CancellationToken.None)
-                                                    .WaitAsync(TimeSpan.FromSeconds(10));
+        WebSocketReceiveResult result = await socket.ReceiveAsync(buffer, TestContext.Current.CancellationToken)
+                                                    .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         // Assert
         result.MessageType.Should().Be(WebSocketMessageType.Close,

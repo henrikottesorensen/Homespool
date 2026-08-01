@@ -45,7 +45,7 @@ public sealed class AddModelTests : IDisposable
     private async Task<HSDbContext> MigratedContextAsync()
     {
         HSDbContext context = NewContext();
-        await context.Database.MigrateAsync();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
     }
@@ -95,7 +95,7 @@ public sealed class AddModelTests : IDisposable
         createResult.Succeeded.Should().BeTrue();
 
         context.AddDefaultTeam(user.Id, DateTimeOffset.UtcNow);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
@@ -130,7 +130,7 @@ public sealed class AddModelTests : IDisposable
 
         Team usableOnly = new() { CreatedBy = user.Id, CreatedAt = DateTimeOffset.UtcNow };
         context.Teams.Add(usableOnly);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         context.TeamMembers.Add(new TeamMember
         {
@@ -141,7 +141,7 @@ public sealed class AddModelTests : IDisposable
             CanManage = false,
             IsDefault = false,
         });
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         await model.OnGetAsync(CancellationToken.None);
@@ -169,7 +169,7 @@ public sealed class AddModelTests : IDisposable
         // Assert
         model.Offer.Should().BeNull();
         model.ModelState.IsValid.Should().BeFalse();
-        (await context.Printers.AnyAsync()).Should().BeFalse("nothing should be provisioned while unconfigured");
+        (await context.Printers.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse("nothing should be provisioned while unconfigured");
     }
 
     /// <summary>
@@ -191,7 +191,7 @@ public sealed class AddModelTests : IDisposable
         // Assert
         result.Should().BeOfType<PageResult>();
 
-        Printer printer = await context.Printers.SingleAsync();
+        Printer printer = await context.Printers.SingleAsync(TestContext.Current.CancellationToken);
         printer.Name.Should().Be("Bench printer");
         printer.Location.Should().Be("Workshop");
 
@@ -202,7 +202,7 @@ public sealed class AddModelTests : IDisposable
             .And.Contain("port = 443")
             .And.Contain("tls = True");
 
-        PrusaConnectProvisioning stored = await context.PrusaConnectProvisionings.SingleAsync();
+        PrusaConnectProvisioning stored = await context.PrusaConnectProvisionings.SingleAsync(TestContext.Current.CancellationToken);
         string tokenInSnippet = model.Offer!.Snippet.Split("token = ")[1].Trim();
         new TokenService().VerifyToken(tokenInSnippet, stored.HashedToken).Should()
             .BeTrue("the snippet must carry the same token that was hashed and stored");
@@ -220,7 +220,7 @@ public sealed class AddModelTests : IDisposable
 
         Team someoneElses = new() { CreatedBy = 999, CreatedAt = DateTimeOffset.UtcNow };
         context.Teams.Add(someoneElses);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         model.Input.TeamId = someoneElses.Id;
 
@@ -230,6 +230,6 @@ public sealed class AddModelTests : IDisposable
         // Assert
         model.Offer.Should().BeNull();
         model.ModelState.IsValid.Should().BeFalse();
-        (await context.Printers.AnyAsync()).Should().BeFalse();
+        (await context.Printers.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse();
     }
 }

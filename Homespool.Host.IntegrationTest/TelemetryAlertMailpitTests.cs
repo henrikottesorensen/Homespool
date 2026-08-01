@@ -112,7 +112,7 @@ public sealed class TelemetryAlertMailpitTests : IAsyncLifetime, IDisposable
         await using (AsyncServiceScope scope = _provider.CreateAsyncScope())
         {
             HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
-            await context.Database.MigrateAsync();
+            await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
             RoleManager<IdentityRole<long>> roles = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<long>>>();
             await roles.CreateAsync(new IdentityRole<long>(AdminBootstrap.AdminRole));

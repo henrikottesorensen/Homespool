@@ -84,7 +84,7 @@ public sealed class OpenApiDocumentTests : IAsyncLifetime, IDisposable
 
         response.StatusCode.Should().Be(HttpStatusCode.OK, "the document is served at /openapi/v1.json");
 
-        return JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.Clone();
+        return JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).RootElement.Clone();
     }
 
     /// <summary>

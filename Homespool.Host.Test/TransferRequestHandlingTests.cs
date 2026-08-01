@@ -226,7 +226,7 @@ public class TransferRequestHandlingTests
         // Assert
         // Abandoning the connection is the actor completing its own mailbox, which is what makes the
         // read loop exit and the socket get disposed.
-        await actor.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        await actor.Completion.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
     }
 
     private static async Task Post(PrinterConnectionActor actor, InlineRequestDTO request)

@@ -83,7 +83,7 @@ public sealed class PrinterStorageRouteTests : IAsyncLifetime, IDisposable
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         // Act
-        using HttpResponseMessage response = await client.GetAsync(url);
+        using HttpResponseMessage response = await client.GetAsync(url, TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
@@ -102,7 +102,7 @@ public sealed class PrinterStorageRouteTests : IAsyncLifetime, IDisposable
 
         // Act
         using HttpResponseMessage response =
-            await client.GetAsync("/api/v1/printers/11111111-1111-1111-1111-111111111111/storage/sdcard");
+            await client.GetAsync("/api/v1/printers/11111111-1111-1111-1111-111111111111/storage/sdcard", TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);

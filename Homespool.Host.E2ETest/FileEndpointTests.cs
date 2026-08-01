@@ -147,6 +147,17 @@ public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
+        // And the body really is the ProblemDetails the OpenAPI document promises. Asserted on a live
+        // response rather than on the attribute, because the attribute was the thing that turned out
+        // to be describing a shape the endpoint did not return - see OpenApiDocumentTests.
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+
+        JsonElement problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+
+        problem.GetProperty("status").GetInt32().Should().Be(400);
+        problem.GetProperty("detail").GetString().Should().Contain(".gcode");
+        problem.TryGetProperty("title", out _).Should().BeTrue();
+
         client.Dispose();
     }
 

@@ -37,7 +37,7 @@ namespace Homespool.Host.Controllers;
 [Authorize(Policy = Authorisation.Policies.Api)]
 
 // 401 is the auth policy's, not any action's - an unauthenticated caller never reaches one.
-[ProducesResponseType(StatusCodes.Status401Unauthorized)]
+[ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
 public class PrinterAppController : ControllerBase
 {
     private readonly PrusaConnectService _prusaConnectService;
@@ -65,10 +65,10 @@ public class PrinterAppController : ControllerBase
     [HttpPost]
     [Route("printers/register")]
     [ProducesResponseType<PrinterReadDTO>(StatusCodes.Status201Created)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<PrinterReadDTO>> RegisterPrinter([FromBody] RegisterPrinterAppRequestDTO body, CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
@@ -127,7 +127,7 @@ public class PrinterAppController : ControllerBase
     [HttpGet]
     [Route("user")]
     [ProducesResponseType<UserReadDTO>(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<UserReadDTO>> GetCurrentUser(CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
@@ -145,7 +145,7 @@ public class PrinterAppController : ControllerBase
     [HttpGet]
     [Route("printers")]
     [ProducesResponseType<IReadOnlyList<PrinterReadDTO>>(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<IReadOnlyList<PrinterReadDTO>>> ListPrinters(CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
@@ -163,8 +163,8 @@ public class PrinterAppController : ControllerBase
     [HttpGet]
     [Route("printers/{uuid:guid}")]
     [ProducesResponseType<PrinterReadDTO>(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<PrinterReadDTO>> GetPrinter(Guid uuid, CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
@@ -187,9 +187,9 @@ public class PrinterAppController : ControllerBase
     [HttpPatch]
     [Route("printers/{uuid:guid}")]
     [ProducesResponseType<PrinterReadDTO>(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<PrinterReadDTO>> PatchPrinter(Guid uuid, [FromBody] PrinterPatchInputDTO body, CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);

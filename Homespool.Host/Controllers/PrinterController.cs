@@ -57,7 +57,7 @@ namespace Homespool.Host.Controllers;
 [Authorize(Policy = Authorisation.Policies.Api)]
 
 // 401 is the auth policy's, not any action's - an unauthenticated caller never reaches one.
-[ProducesResponseType(StatusCodes.Status401Unauthorized)]
+[ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
 public class PrinterController : ControllerBase
 {
     private readonly UserFileStore _files;
@@ -109,10 +109,10 @@ public class PrinterController : ControllerBase
     [HttpPost]
     [Route("printers/{uuid:guid}/files")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public async Task<ActionResult> SendFile(Guid uuid,
                                               [FromBody] SendFileRequest body,
                                               CancellationToken cancellationToken)
@@ -130,13 +130,14 @@ public class PrinterController : ControllerBase
 
         if (file is null)
         {
-            return NotFound($"You have no file named {body.Name}.");
+            return this.Failure(StatusCodes.Status404NotFound, $"You have no file named {body.Name}.");
         }
 
         if (file.Length >= uint.MaxValue)
         {
             // orig_size is uint32 on the wire; a file this large cannot be described at all.
-            return BadRequest("File is too large to describe to a printer (4 GiB limit).");
+            return this.Failure(StatusCodes.Status400BadRequest,
+                "File is too large to describe to a printer (4 GiB limit).");
         }
 
         (Printer? printer, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
@@ -156,20 +157,20 @@ public class PrinterController : ControllerBase
             CommandOutcome? outcome = await _sender.SendAsync(printer, file, caller.Id, cancellationToken);
 
             return outcome?.EventType is Events.Rejected or Events.Failed
-                ? StatusCode(StatusCodes.Status409Conflict,
-                    new { command = wireName, outcome = outcome.EventType.ToString(), reason = outcome.Reason })
+                ? this.CommandFailure(StatusCodes.Status409Conflict, wireName,
+                    outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString())
                 : NoContent();
         }
         catch (PrintFileUnreadableException e)
         {
-            return Conflict(e.Message);
+            return this.Failure(StatusCodes.Status409Conflict, e.Message);
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
             or CommandResponseTimedOutException or CommandSendTimedOutException)
         {
             _logger.LogInformation(e, "{Command} to printer {PrinterId} did not complete", wireName, printer.Id);
 
-            return StatusCode(StatusCodes.Status409Conflict, new { command = wireName, error = e.Message });
+            return this.CommandFailure(StatusCodes.Status409Conflict, wireName, e.Message);
         }
         catch (TeamAccessDeniedException)
         {
@@ -188,17 +189,18 @@ public class PrinterController : ControllerBase
     [HttpPost]
     [Route("printers/{uuid:guid}/print")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public async Task<ActionResult> Print(Guid uuid, [FromBody] PrintRequest body, CancellationToken cancellationToken)
     {
         if (!body.Path.StartsWith("/usb/", StringComparison.Ordinal) || body.Path.Contains("/../", StringComparison.Ordinal))
         {
             // The printer enforces this itself (path_allowed, planner.cpp:135-141); rejecting here
             // turns a silent refusal into an explanation.
-            return BadRequest("Path must be under /usb/ and contain no '/../' segment.");
+            return this.Failure(StatusCodes.Status400BadRequest,
+                "Path must be under /usb/ and contain no '/../' segment.");
         }
 
         (Printer? printer, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
@@ -244,11 +246,11 @@ public class PrinterController : ControllerBase
     [HttpGet]
     [Route("printers/{uuid:guid}/storage/usb/{**path}")]
     [ProducesResponseType<PrinterStorageReadDTO>(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
-    [ProducesResponseType(StatusCodes.Status502BadGateway)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status502BadGateway)]
     public async Task<ActionResult<PrinterStorageReadDTO>> Storage(Guid uuid, string? path, CancellationToken cancellationToken)
     {
         // Firmware rejects traversal itself; catching it here means an attempt never reaches the
@@ -258,7 +260,7 @@ public class PrinterController : ControllerBase
                                  path.EndsWith("/..", StringComparison.Ordinal) ||
                                  path == ".."))
         {
-            return BadRequest("Path must contain no '/../' segment.");
+            return this.Failure(StatusCodes.Status400BadRequest, "Path must contain no '/../' segment.");
         }
 
         (Printer? printer, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
@@ -282,8 +284,8 @@ public class PrinterController : ControllerBase
                 // Firmware answers a path that does not exist and a path it will not touch with the
                 // same event, distinguished only by reason text - so this stays one status code and
                 // hands the caller firmware's own words rather than guessing at a 404.
-                return StatusCode(StatusCodes.Status409Conflict,
-                    new { command = command.WireName, outcome = outcome.EventType.ToString(), reason = outcome.Reason });
+                return this.CommandFailure(StatusCodes.Status409Conflict, command.WireName,
+                    outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString());
             }
 
             if (outcome?.Answer is null)
@@ -294,8 +296,8 @@ public class PrinterController : ControllerBase
                 _logger.LogInformation("{Command} to printer {PrinterId} answered {Outcome} with no data",
                     command.WireName, printer.Id, outcome?.EventType.ToString() ?? "nothing");
 
-                return StatusCode(StatusCodes.Status502BadGateway,
-                    new { command = command.WireName, error = "The printer answered without a listing." });
+                return this.CommandFailure(StatusCodes.Status502BadGateway, command.WireName,
+                    "The printer answered without a listing.");
             }
 
             return Ok(PrinterStorageReadDTO.FromEvent(outcome.Answer));
@@ -306,15 +308,14 @@ public class PrinterController : ControllerBase
             // the caller's - so 502 rather than the 409 the transport failures below get.
             _logger.LogWarning(e, "{Command} to printer {PrinterId} answered unreadably", command.WireName, printer.Id);
 
-            return StatusCode(StatusCodes.Status502BadGateway,
-                new { command = command.WireName, error = e.Message });
+            return this.CommandFailure(StatusCodes.Status502BadGateway, command.WireName, e.Message);
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
             or CommandResponseTimedOutException or CommandSendTimedOutException)
         {
             _logger.LogInformation(e, "{Command} to printer {PrinterId} did not complete", command.WireName, printer.Id);
 
-            return StatusCode(StatusCodes.Status409Conflict, new { command = command.WireName, error = e.Message });
+            return this.CommandFailure(StatusCodes.Status409Conflict, command.WireName, e.Message);
         }
         catch (TeamAccessDeniedException)
         {
@@ -338,9 +339,9 @@ public class PrinterController : ControllerBase
     [HttpPut]
     [Route("printers/{uuid:guid}/command/pause")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public Task<ActionResult> Pause(Guid uuid, CancellationToken cancellationToken) =>
         SendJobControlAsync(uuid, new PausePrint(), cancellationToken);
 
@@ -348,9 +349,9 @@ public class PrinterController : ControllerBase
     [HttpPut]
     [Route("printers/{uuid:guid}/command/resume")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public Task<ActionResult> Resume(Guid uuid, CancellationToken cancellationToken) =>
         SendJobControlAsync(uuid, new ResumePrint(), cancellationToken);
 
@@ -358,9 +359,9 @@ public class PrinterController : ControllerBase
     [HttpPut]
     [Route("printers/{uuid:guid}/command/stop")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public Task<ActionResult> Stop(Guid uuid, CancellationToken cancellationToken) =>
         SendJobControlAsync(uuid, new StopPrint(), cancellationToken);
 
@@ -372,9 +373,9 @@ public class PrinterController : ControllerBase
     [HttpPut]
     [Route("printers/{uuid:guid}/command/ready")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public Task<ActionResult> Ready(Guid uuid, CancellationToken cancellationToken) =>
         SendJobControlAsync(uuid, new SetPrinterReady(), cancellationToken);
 
@@ -382,9 +383,9 @@ public class PrinterController : ControllerBase
     [HttpPut]
     [Route("printers/{uuid:guid}/command/unready")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public Task<ActionResult> Unready(Guid uuid, CancellationToken cancellationToken) =>
         SendJobControlAsync(uuid, new CancelPrinterReady(), cancellationToken);
 
@@ -402,9 +403,9 @@ public class PrinterController : ControllerBase
     [HttpPut]
     [Route("printers/{uuid:guid}/command/idle")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public Task<ActionResult> Idle(Guid uuid, CancellationToken cancellationToken) =>
         SendJobControlAsync(uuid, new SetPrinterIdle(), cancellationToken);
 
@@ -454,8 +455,8 @@ public class PrinterController : ControllerBase
             {
                 onFailure?.Invoke();
 
-                return StatusCode(StatusCodes.Status409Conflict,
-                    new { command = command.WireName, outcome = outcome.EventType.ToString(), reason = outcome.Reason });
+                return this.CommandFailure(StatusCodes.Status409Conflict, command.WireName,
+                    outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString());
             }
 
             // 204, which is ours rather than the spec's - Connect documents 200 with a Command
@@ -470,7 +471,7 @@ public class PrinterController : ControllerBase
             onFailure?.Invoke();
             _logger.LogInformation(e, "{Command} to printer {PrinterId} did not complete", command.WireName, printer.Id);
 
-            return StatusCode(StatusCodes.Status409Conflict, new { command = command.WireName, error = e.Message });
+            return this.CommandFailure(StatusCodes.Status409Conflict, command.WireName, e.Message);
         }
         catch (TeamAccessDeniedException)
         {

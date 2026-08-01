@@ -1,0 +1,140 @@
+using System;
+using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Text.Json;
+using System.Threading.Tasks;
+
+using AwesomeAssertions;
+
+using Homespool.Host.Services;
+
+using Microsoft.Extensions.DependencyInjection;
+
+namespace Homespool.Host.E2ETest;
+
+/// <summary>
+/// What the generated OpenAPI document actually says - as opposed to what the attributes on the
+/// controllers say, which is not the same question.
+/// </summary>
+/// <remarks>
+/// <b>This exists because the difference bit us.</b> A <c>[ProducesResponseType]</c> with no type
+/// does not document "no body": for a client-error code the generator substitutes
+/// <c>ProblemDetails</c> from <c>ApiBehaviorOptions</c>. Documenting the status codes therefore made
+/// the document assert a shape the anonymous-object bodies did not have, and every reflection test
+/// over the attributes passed while it was wrong - because the attributes were fine and the
+/// generator's interpretation of them was the surprise. Only reading the document found it, so
+/// reading the document is now a test.
+/// </remarks>
+[Collection("WebApplicationFactory")]
+public sealed class OpenApiDocumentTests : IAsyncLifetime, IDisposable
+{
+    private const string StoragePath = "/api/v1/printers/{uuid}/storage/usb/{path}";
+
+    private static JsonElement SchemaOf(JsonElement operation, string statusCode)
+    {
+        JsonElement content = operation.GetProperty("responses").GetProperty(statusCode).GetProperty("content");
+
+        foreach (JsonProperty mediaType in content.EnumerateObject())
+        {
+            return mediaType.Value.GetProperty("schema");
+        }
+
+        throw new InvalidOperationException($"{statusCode} is documented with no content at all.");
+    }
+
+    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-openapi-{Guid.NewGuid():N}.db");
+    private HomespoolFactory _factory = null!;
+
+    public Task InitializeAsync()
+    {
+        _factory = new HomespoolFactory($"Data Source={_databasePath}");
+
+        _ = _factory.Server;
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+        scope.ServiceProvider.GetRequiredService<SetupState>().MarkComplete();
+
+        return Task.CompletedTask;
+    }
+
+    public Task DisposeAsync()
+    {
+        Dispose();
+
+        return Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        _factory.Dispose();
+
+        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    private async Task<JsonElement> DocumentAsync()
+    {
+        using HttpClient client = _factory.CreateClient();
+        using HttpResponseMessage response = await client.GetAsync("/openapi/v1.json");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, "the document is served at /openapi/v1.json");
+
+        return JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.Clone();
+    }
+
+    /// <summary>
+    /// The success body is described by its own schema - the whole point of typing the return as
+    /// <c>ActionResult&lt;T&gt;</c> rather than <c>IActionResult</c>.
+    /// </summary>
+    [Fact]
+    public async Task TheStorageListingDocumentsItsResponseSchema()
+    {
+        // Arrange
+        JsonElement document = await DocumentAsync();
+
+        // Act
+        JsonElement get = document.GetProperty("paths").GetProperty(StoragePath).GetProperty("get");
+
+        // Assert
+        SchemaOf(get, "200").GetProperty("$ref").GetString()
+                            .Should().Be("#/components/schemas/PrinterStorageReadDTO");
+
+        // And the entry shape it nests, since a listing with untyped children would document nothing
+        // that matters.
+        document.GetProperty("components").GetProperty("schemas")
+                .TryGetProperty("PrinterStorageEntryDTO", out _).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// Every failure the document describes is a <c>ProblemDetails</c>, and the responses really are
+    /// - including the 502, which is <b>not</b> a client-error code and therefore gets no shape
+    /// inferred for it. That one is the tell: before the attributes named the type, it was the only
+    /// response the document left honestly undescribed while the 4xx ones claimed a shape they did
+    /// not have.
+    /// </summary>
+    [Theory]
+    [InlineData("400")]
+    [InlineData("401")]
+    [InlineData("403")]
+    [InlineData("404")]
+    [InlineData("409")]
+    [InlineData("502")]
+    public async Task EveryDocumentedFailureCarriesTheProblemDetailsSchema(string statusCode)
+    {
+        // Arrange
+        JsonElement document = await DocumentAsync();
+
+        // Act
+        JsonElement get = document.GetProperty("paths").GetProperty(StoragePath).GetProperty("get");
+
+        // Assert
+        SchemaOf(get, statusCode).GetProperty("$ref").GetString()
+                                 .Should().Be("#/components/schemas/ProblemDetails");
+    }
+}

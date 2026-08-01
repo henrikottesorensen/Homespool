@@ -5,16 +5,17 @@ using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 
 using Duende.IdentityModel;
-using Homespool.Data;
-using Homespool.Host.PrusaConnect;
-using Homespool.Host.Services;
-using Homespool.Model.Entities;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
+
+using Homespool.Data;
+using Homespool.Host.PrusaConnect;
+using Homespool.Host.Services;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Authentication;
 

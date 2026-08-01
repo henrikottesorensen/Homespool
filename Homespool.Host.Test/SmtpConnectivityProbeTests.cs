@@ -3,10 +3,11 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-using Homespool.Host.Services;
 using MailKit.Security;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+
+using Homespool.Host.Services;
 
 namespace Homespool.Host.Test;
 

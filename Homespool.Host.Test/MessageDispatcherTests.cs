@@ -2,8 +2,9 @@ using System;
 using System.Text.Json;
 
 using AwesomeAssertions;
-using Homespool.Host.PrusaConnect;
 using Microsoft.Extensions.Logging.Abstractions;
+
+using Homespool.Host.PrusaConnect;
 
 namespace Homespool.Host.Test;
 

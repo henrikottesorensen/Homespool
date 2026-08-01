@@ -36,6 +36,16 @@
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
+
+        <!--
+            The using layout StyleCop cannot express: System, then third party, then Homespool, as
+            blocks separated by a blank line. SA1210 has to be off for it, which .editorconfig says
+            more about. Everywhere for the same reason StyleCop is everywhere.
+        -->
+        <PackageReference Include="UsingLayoutAnalyser" Version="0.1.0">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
     </ItemGroup>
 
 </Project>

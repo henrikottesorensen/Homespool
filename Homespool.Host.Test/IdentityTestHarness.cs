@@ -4,9 +4,6 @@ using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 
-using Homespool.Data;
-using Homespool.Host.Services;
-using Homespool.Model.Entities;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -15,6 +12,10 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+
+using Homespool.Data;
+using Homespool.Host.Services;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
 

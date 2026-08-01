@@ -1,6 +1,7 @@
-using Homespool.Host.PrusaConnect.Transfers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+
+using Homespool.Host.PrusaConnect.Transfers;
 
 namespace Homespool.Host.PrusaConnect;
 

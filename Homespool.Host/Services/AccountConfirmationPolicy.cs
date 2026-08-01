@@ -1,7 +1,8 @@
 using System;
 
-using Homespool.Model.Entities;
 using Microsoft.Extensions.Options;
+
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Services;
 

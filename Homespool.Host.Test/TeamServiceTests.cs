@@ -6,10 +6,11 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+using Microsoft.EntityFrameworkCore;
+
 using Homespool.Data;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
-using Microsoft.EntityFrameworkCore;
 
 namespace Homespool.Host.Test;
 

@@ -1,8 +1,9 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-using Homespool.Data;
 using Microsoft.EntityFrameworkCore.Storage;
+
+using Homespool.Data;
 
 namespace Homespool.Host.Services;
 

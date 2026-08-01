@@ -5,9 +5,6 @@ using System.Net;
 using System.Text.Json;
 using System.Threading.Tasks;
 
-using Homespool.Data;
-using Homespool.Host.Authentication;
-using Homespool.Host.Listeners;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -25,6 +22,10 @@ using Scalar.AspNetCore;
 using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
+
+using Homespool.Data;
+using Homespool.Host.Authentication;
+using Homespool.Host.Listeners;
 
 namespace Homespool.Host;
 

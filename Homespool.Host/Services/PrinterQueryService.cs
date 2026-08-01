@@ -4,11 +4,12 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Microsoft.EntityFrameworkCore;
+
 using Homespool.Data;
 using Homespool.Host.Exceptions;
 using Homespool.Model;
 using Homespool.Model.Entities;
-using Microsoft.EntityFrameworkCore;
 
 namespace Homespool.Host.Services;
 

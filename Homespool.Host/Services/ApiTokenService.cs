@@ -7,9 +7,10 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Microsoft.EntityFrameworkCore;
+
 using Homespool.Data;
 using Homespool.Model.Entities;
-using Microsoft.EntityFrameworkCore;
 
 namespace Homespool.Host.Services;
 

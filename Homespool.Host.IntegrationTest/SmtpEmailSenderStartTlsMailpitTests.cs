@@ -6,9 +6,10 @@ using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-using Homespool.Host.Services;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+
+using Homespool.Host.Services;
 
 namespace Homespool.Host.IntegrationTest;
 

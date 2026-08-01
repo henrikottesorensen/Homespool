@@ -6,11 +6,12 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+
 using Homespool.FakePrinter;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Services;
-using Microsoft.AspNetCore.TestHost;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Homespool.Host.E2ETest;
 

@@ -3,9 +3,10 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Homespool.Data;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+
+using Homespool.Data;
 
 namespace Homespool.Host.PrusaConnect;
 

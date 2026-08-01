@@ -6,8 +6,9 @@ using System.Text.Json;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-using Homespool.Host.E2ETest;
 using Microsoft.AspNetCore.Mvc.Testing;
+
+using Homespool.Host.E2ETest;
 
 namespace Homespool.Host.E2ETest;
 

@@ -7,7 +7,6 @@ using System.Text.Json;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-
 using Microsoft.AspNetCore.WebUtilities;
 
 namespace Homespool.Host.Test;

@@ -1,9 +1,10 @@
 using System.Security.Claims;
 using System.Threading.Tasks;
 
-using Homespool.Model.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
+
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Services;
 

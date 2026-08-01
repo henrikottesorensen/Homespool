@@ -6,14 +6,14 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.PrusaConnect.DTO.Transfers;
 using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Model;
-using Microsoft.Extensions.Logging.Abstractions;
-using NSubstitute;
 
 namespace Homespool.Host.Test;
 

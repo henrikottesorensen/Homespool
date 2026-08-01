@@ -3,14 +3,13 @@ using System.Net;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-
-using Homespool.Host.Listeners;
-using Homespool.Host.Services;
-
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.DependencyInjection;
+
+using Homespool.Host.Listeners;
+using Homespool.Host.Services;
 
 namespace Homespool.Host.Test;
 

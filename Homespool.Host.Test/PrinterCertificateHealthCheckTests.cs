@@ -4,12 +4,13 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-using Homespool.Host.Certificates;
-using Homespool.Host.PrusaConnect;
-using Homespool.Host.PrusaConnect.Transfers;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+
+using Homespool.Host.Certificates;
+using Homespool.Host.PrusaConnect;
+using Homespool.Host.PrusaConnect.Transfers;
 
 namespace Homespool.Host.Test;
 

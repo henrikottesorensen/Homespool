@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+
 using Homespool.Host.Certificates;
 using Homespool.Host.PrusaConnect;
 

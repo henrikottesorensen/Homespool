@@ -5,17 +5,18 @@ using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+
 using Homespool.Data;
 using Homespool.Host.Authentication;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Http;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 namespace Homespool.Host.Test;
 

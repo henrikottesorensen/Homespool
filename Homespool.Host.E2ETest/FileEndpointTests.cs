@@ -10,9 +10,10 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+using Microsoft.Extensions.DependencyInjection;
+
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Homespool.Host.E2ETest;
 

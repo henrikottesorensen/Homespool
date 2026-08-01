@@ -11,6 +11,11 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+
 using Homespool.Data;
 using Homespool.FakePrinter;
 using Homespool.Host.Controllers;
@@ -21,10 +26,6 @@ using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
-using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.AspNetCore.TestHost;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Homespool.Host.E2ETest;
 

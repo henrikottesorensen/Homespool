@@ -1,8 +1,9 @@
 using System;
 
 using AwesomeAssertions;
-using Homespool.Host.PrusaConnect;
 using Microsoft.AspNetCore.Http;
+
+using Homespool.Host.PrusaConnect;
 
 namespace Homespool.Host.Test;
 

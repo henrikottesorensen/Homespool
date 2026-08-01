@@ -6,12 +6,13 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+
 using Homespool.Data;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 
 namespace Homespool.Host.Test;
 

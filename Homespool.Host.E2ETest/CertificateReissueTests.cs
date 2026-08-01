@@ -6,10 +6,11 @@ using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+using Microsoft.Extensions.DependencyInjection;
+
 using Homespool.Host.Certificates;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Homespool.Host.E2ETest;
 

@@ -2,10 +2,8 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using MailKit.Security;
-
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-
 using MimeKit;
 using MimeKit.Text;
 

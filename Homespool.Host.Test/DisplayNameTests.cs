@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 
 using AwesomeAssertions;
+
 using Homespool.Host.PrusaConnect.DTO.App;
 using Homespool.Model.Entities;
 

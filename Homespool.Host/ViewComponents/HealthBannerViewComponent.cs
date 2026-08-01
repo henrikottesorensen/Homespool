@@ -1,9 +1,10 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-using Homespool.Host.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+
+using Homespool.Host.Services;
 
 namespace Homespool.Host.ViewComponents;
 

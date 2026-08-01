@@ -9,8 +9,9 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Homespool.Host.Certificates;
 using Microsoft.Extensions.Options;
+
+using Homespool.Host.Certificates;
 
 namespace Homespool.Host.PrusaConnect;
 

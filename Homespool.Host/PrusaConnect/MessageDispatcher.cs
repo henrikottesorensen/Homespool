@@ -1,10 +1,11 @@
 using System;
 using System.Text.Json;
 
+using Microsoft.Extensions.Logging;
+
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.PrusaConnect.DTO.Telemetry;
 using Homespool.Host.PrusaConnect.DTO.Transfers;
-using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.PrusaConnect;
 

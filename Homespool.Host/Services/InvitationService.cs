@@ -4,11 +4,12 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+
 using Homespool.Data;
 using Homespool.Host.PrusaConnect;
 using Homespool.Model.Entities;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 
 namespace Homespool.Host.Services;
 

@@ -2,6 +2,12 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+
 using Homespool.Host.DTO;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
@@ -11,12 +17,6 @@ using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
-
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.Controllers;
 

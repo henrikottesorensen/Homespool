@@ -3,10 +3,11 @@ using System.IO;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-using Homespool.Host.Certificates;
-using Homespool.Host.PrintFiles;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+
+using Homespool.Host.Certificates;
+using Homespool.Host.PrintFiles;
 
 namespace Homespool.Host.E2ETest;
 

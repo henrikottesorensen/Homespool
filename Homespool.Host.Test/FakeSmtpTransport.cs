@@ -2,9 +2,10 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Homespool.Host.Services;
 using MailKit.Security;
 using MimeKit;
+
+using Homespool.Host.Services;
 
 namespace Homespool.Host.Test;
 

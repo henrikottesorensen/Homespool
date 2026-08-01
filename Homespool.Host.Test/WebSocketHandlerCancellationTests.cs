@@ -7,9 +7,10 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-using Homespool.Host.PrusaConnect;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+
+using Homespool.Host.PrusaConnect;
 
 namespace Homespool.Host.Test;
 

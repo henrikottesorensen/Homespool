@@ -4,12 +4,6 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-using Homespool.Data;
-using Homespool.Host.Pages.Printers;
-using Homespool.Host.PrusaConnect;
-using Homespool.Host.Services;
-using Homespool.Model;
-using Homespool.Model.Entities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -18,6 +12,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+
+using Homespool.Data;
+using Homespool.Host.Pages.Printers;
+using Homespool.Host.PrusaConnect;
+using Homespool.Host.Services;
+using Homespool.Model;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test.Printers;
 

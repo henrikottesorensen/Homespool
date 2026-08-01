@@ -7,18 +7,19 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-using Homespool.Data;
-using Homespool.Host.PrusaConnect;
-using Homespool.Host.PrusaConnect.DTO.EventMessages;
-using Homespool.Host.PrusaConnect.DTO.Telemetry;
-using Homespool.Model;
-using Homespool.Model.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
+
+using Homespool.Data;
+using Homespool.Host.PrusaConnect;
+using Homespool.Host.PrusaConnect.DTO.EventMessages;
+using Homespool.Host.PrusaConnect.DTO.Telemetry;
+using Homespool.Model;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
 

@@ -3,11 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-using Homespool.Data;
-using Homespool.Host.Controllers;
-using Homespool.Host.Listeners;
-using Homespool.Host.PrintFiles;
-using Homespool.Host.PrusaConnect;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -17,6 +12,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Serilog.Core;
+
+using Homespool.Data;
+using Homespool.Host.Controllers;
+using Homespool.Host.Listeners;
+using Homespool.Host.PrintFiles;
+using Homespool.Host.PrusaConnect;
 
 namespace Homespool.Host.E2ETest;
 

@@ -7,12 +7,11 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
-
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 namespace Homespool.Host.Test;
 

@@ -5,10 +5,11 @@ using System.Linq;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-using Homespool.Data;
-using Homespool.Model.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+
+using Homespool.Data;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
 

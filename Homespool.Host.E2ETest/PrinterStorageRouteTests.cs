@@ -5,11 +5,10 @@ using System.Net.Http;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-
-using Homespool.Host.Services;
-
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+
+using Homespool.Host.Services;
 
 namespace Homespool.Host.E2ETest;
 

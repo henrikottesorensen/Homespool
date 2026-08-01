@@ -6,13 +6,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Homespool.Host.Exceptions;
-using Homespool.Host.PrintFiles;
-using Homespool.Host.PrusaConnect;
-using Homespool.Host.Services;
-using Homespool.Model;
-using Homespool.Model.Entities;
-
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -20,6 +13,13 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+
+using Homespool.Host.Exceptions;
+using Homespool.Host.PrintFiles;
+using Homespool.Host.PrusaConnect;
+using Homespool.Host.Services;
+using Homespool.Model;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Files;
 

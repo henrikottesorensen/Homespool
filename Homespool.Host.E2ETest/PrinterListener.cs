@@ -1,11 +1,12 @@
 using System;
 using System.Net.Http;
 
-using Homespool.Host.Controllers;
-using Homespool.Host.Listeners;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+
+using Homespool.Host.Controllers;
+using Homespool.Host.Listeners;
 
 namespace Homespool.Host.E2ETest;
 

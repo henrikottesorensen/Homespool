@@ -3,11 +3,12 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-using Homespool.Data;
-using Homespool.Host.PrusaConnect;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+
+using Homespool.Data;
+using Homespool.Host.PrusaConnect;
 
 namespace Homespool.Host.Test;
 

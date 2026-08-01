@@ -98,6 +98,66 @@ public class CaptureReplayTests
     }
 
     /// <summary>
+    /// Both <c>FILE_INFO</c> payloads deserialize into <see cref="FileInfoEventDataDTO"/> - one of
+    /// each shape, from a real Core One - which is what <c>SEND_FILE_INFO</c> will be reading.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The capture turns out to contain the <b>directory</b> variant as well as the file one: 69
+    /// entries with their short/long name pairs, which is the listing mechanism
+    /// <c>protocol-reference.md</c> derives from render.cpp, observed rather than inferred. Every one
+    /// of the 69 is aliased.
+    /// </para>
+    /// <para>
+    /// The file variant is the enormous one - 29 top-level keys here, most of them the gcode's own
+    /// metadata headers, plus a preview. That it parses while ignoring all of them is the point:
+    /// <see cref="FileInfoEventDataDTO"/> deliberately has no extension-data property to collect
+    /// them into.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void BothCapturedFileInfoEventsDeserializeWithThePrintersOwnNames()
+    {
+        // Arrange
+        CaptureReplayResult result = ReplayCapture();
+
+        // Assert
+        result.FileInfoData.Should().HaveCount(2);
+
+        // The file: path is the 8.3 alias and display_name the long name, which is the pair no
+        // transfer's own events can supply.
+        FileInfoEventDataDTO file = result.FileInfoData[0];
+
+        file.Type.Should().Be("PRINT_FILE");
+        file.Path.Should().Be("/usb/LAMPEN~1.BGC");
+        file.DisplayName.Should().Be("lampenfuss-rund_0.4n_0.2mm_PLA_COREONE_3h58m.bgcode");
+        file.Size.Should().Be(6632292);
+        file.ModifiedTimestamp.Should().Be(1766393771);
+        file.Children.Should().BeNull("a file renders metadata where a directory renders children");
+
+        // The directory.
+        FileInfoEventDataDTO folder = result.FileInfoData[1];
+
+        folder.Type.Should().Be("FOLDER");
+        folder.Path.Should().Be("/usb");
+        folder.FileCount.Should().Be(69);
+        folder.Children.Should().HaveCount(69);
+
+        folder.Children![0].Name.Should().Be("BARREL~4.BGC");
+        folder.Children[0].DisplayName.Should().Be("Barrel 2_0.25n_0.07mm_PLA_COREONE_8h47m.bgcode");
+        folder.Children[0].Size.Should().Be(17479245);
+        folder.Children[0].Type.Should().Be("PRINT_FILE");
+
+        folder.Children.Should().OnlyContain(child => child.Name != child.DisplayName,
+            "every entry in a real listing is aliased - the 8.3 name is what makes this event worth asking for");
+
+        // Firmware's type vocabulary is wider than the two values this listing is mostly made of:
+        // prusa_printer_settings.ini comes back as a plain FILE. That is why Type is a string and not
+        // an enum - an enum would have thrown on this capture.
+        folder.Children.Should().Contain(child => child.Type == "FILE");
+    }
+
+    /// <summary>
     /// Parses the capture the same way <c>WebSocketHandler</c> has to: documents may be
     /// concatenated with no separator, and the interleaved server-&gt;printer command frames
     /// (single type char + 8 hex digits + JSON, e.g. <c>J00000140{...}</c>) are not valid JSON on
@@ -124,6 +184,7 @@ public class CaptureReplayTests
         List<string> telemetryFailures = [];
         List<string> eventFailures = [];
         List<Events> eventTypesSeen = [];
+        List<FileInfoEventDataDTO> fileInfoData = [];
         int telemetryCount = 0;
         int eventCount = 0;
         int chamberLedSeen = 0;
@@ -169,6 +230,12 @@ public class CaptureReplayTests
                             {
                                 infoData = eventDto.Data.Value.Deserialize<InfoEventDataDTO>();
                             }
+
+                            if (eventDto.EventType == Events.FileInfo && eventDto.Data is not null
+                                && eventDto.Data.Value.Deserialize<FileInfoEventDataDTO>() is { } fileInfo)
+                            {
+                                fileInfoData.Add(fileInfo);
+                            }
                         }
                     }
                     catch (JsonException e)
@@ -204,7 +271,7 @@ public class CaptureReplayTests
         }
 
         return new CaptureReplayResult(telemetryCount, eventCount, telemetryFailures, chamberLedSeen,
-                                        eventFailures, eventTypesSeen, infoData);
+                                        eventFailures, eventTypesSeen, infoData, fileInfoData);
     }
 
     private sealed record CaptureReplayResult(
@@ -214,7 +281,8 @@ public class CaptureReplayTests
         int ChamberLedSeen,
         List<string> EventFailures,
         List<Events> EventTypesSeen,
-        InfoEventDataDTO? InfoData);
+        InfoEventDataDTO? InfoData,
+        List<FileInfoEventDataDTO> FileInfoData);
 
     private static bool IsCommandFrame(string line)
     {

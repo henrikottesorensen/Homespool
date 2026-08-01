@@ -152,4 +152,24 @@ public class CommandWireEncoderTests
         payload.RootElement.TryGetProperty("args", out _).Should().BeFalse();
         payload.RootElement.TryGetProperty("kwargs", out _).Should().BeFalse();
     }
+
+    /// <summary>
+    /// <c>SEND_FILE_INFO</c> carries the path it asks about, and nothing else - the one kwarg
+    /// firmware reads (planner.cpp:751-759). A directory path is what makes it a listing.
+    /// </summary>
+    [Fact]
+    public void EncodeWritesSendFileInfosPathAsItsOnlyKwarg()
+    {
+        // Act
+        byte[] frame = CommandWireEncoder.Encode(7, new SendFileInfo { Path = "/usb" });
+        using JsonDocument payload = JsonDocument.Parse(frame.AsSpan(9).ToArray());
+
+        // Assert
+        JsonElement root = payload.RootElement;
+        root.GetProperty("command").GetString().Should().Be("SEND_FILE_INFO");
+
+        JsonElement kwargs = root.GetProperty("kwargs");
+        kwargs.GetProperty("path").GetString().Should().Be("/usb");
+        kwargs.EnumerateObject().Should().ContainSingle();
+    }
 }

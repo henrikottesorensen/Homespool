@@ -284,6 +284,12 @@ public static class Program
             builder.Services.AddScoped<Services.InvitationService>();
             builder.Services.AddScoped<Services.PrinterQueryService>();
             builder.Services.AddScoped<Services.PrintQueueService>();
+
+            // The producer loop and the poke that saves it waiting out a tick. Singletons: the signal
+            // is process-wide by nature, and the advancer opens its own scope per pass because a
+            // DbContext must not outlive one.
+            builder.Services.AddSingleton<Services.QueueSignal>();
+            builder.Services.AddHostedService<Services.QueueAdvancer>();
             builder.Services.AddScoped<Services.ApiTokenService>();
 
             WebApplication app = builder.Build();

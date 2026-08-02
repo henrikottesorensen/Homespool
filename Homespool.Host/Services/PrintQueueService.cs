@@ -42,14 +42,16 @@ public class PrintQueueService
     private readonly TeamService _teamService;
     private readonly PrintFileCatalog _files;
     private readonly TimeProvider _timeProvider;
+    private readonly QueueSignal _signal;
 
     public PrintQueueService(HSDbContext dbContext, TeamService teamService, PrintFileCatalog files,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider, QueueSignal signal)
     {
         _dbContext = dbContext;
         _teamService = teamService;
         _files = files;
         _timeProvider = timeProvider;
+        _signal = signal;
     }
 
     /// <summary>
@@ -111,6 +113,11 @@ public class PrintQueueService
 
         _dbContext.QueuedPrints.Add(queued);
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // After the save, so the loop cannot wake and read a queue this row is not in yet. Somebody
+        // pressed Queue and is watching; the poke is what makes it happen now rather than within a
+        // poll interval.
+        _signal.Poke();
 
         return queued;
     }

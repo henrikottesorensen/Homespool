@@ -32,6 +32,9 @@ namespace Homespool.Host.Test.Printers;
 /// </summary>
 public sealed class DetailModelTests : IDisposable
 {
+    /// <summary>Shared and never poked here - the page only needs the service to construct.</summary>
+    private static readonly QueueSignal QueueSignal = new();
+
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-printers-detail-{Guid.NewGuid():N}.db");
 
     private HSDbContext NewContext()
@@ -88,7 +91,8 @@ public sealed class DetailModelTests : IDisposable
 
         TeamService teamService = new(context);
         PrintQueueService queueService = new(context, teamService,
-            new PrintFileCatalog(store, context, NullLogger<PrintFileCatalog>.Instance), TimeProvider.System);
+            new PrintFileCatalog(store, context, NullLogger<PrintFileCatalog>.Instance), TimeProvider.System,
+            QueueSignal);
 
         DetailModel model = new(new PrinterQueryService(context, TimeProvider.System), queueService, teamService,
             connectionRegistry, users)

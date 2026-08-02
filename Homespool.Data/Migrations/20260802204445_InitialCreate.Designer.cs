@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HSDbContext))]
-    [Migration("20260802191851_InitialCreate")]
+    [Migration("20260802204445_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -194,6 +194,37 @@ namespace Homespool.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("PrintFiles");
+                });
+
+            modelBuilder.Entity("Homespool.Model.Entities.PrintFileOnPrinter", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("ArrivedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("PrintFileId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PrinterId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PrinterPath")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("TransferStartedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PrintFileId");
+
+                    b.HasIndex("PrinterId", "PrintFileId")
+                        .IsUnique();
+
+                    b.ToTable("PrintFilesOnPrinters");
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.Printer", b =>
@@ -937,6 +968,25 @@ namespace Homespool.Data.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Homespool.Model.Entities.PrintFileOnPrinter", b =>
+                {
+                    b.HasOne("Homespool.Model.Entities.PrintFile", "PrintFile")
+                        .WithMany()
+                        .HasForeignKey("PrintFileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Homespool.Model.Entities.Printer", "Printer")
+                        .WithMany()
+                        .HasForeignKey("PrinterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PrintFile");
+
+                    b.Navigation("Printer");
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.Printer", b =>

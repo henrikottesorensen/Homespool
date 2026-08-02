@@ -395,6 +395,35 @@ namespace Homespool.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "PrintFilesOnPrinters",
+                columns: table => new
+                {
+                    Id = table.Column<long>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
+                    PrintFileId = table.Column<long>(type: "INTEGER", nullable: false),
+                    TransferStartedAt = table.Column<long>(type: "INTEGER", nullable: true),
+                    ArrivedAt = table.Column<long>(type: "INTEGER", nullable: true),
+                    PrinterPath = table.Column<string>(type: "TEXT", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PrintFilesOnPrinters", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_PrintFilesOnPrinters_PrintFiles_PrintFileId",
+                        column: x => x.PrintFileId,
+                        principalTable: "PrintFiles",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_PrintFilesOnPrinters_Printers_PrinterId",
+                        column: x => x.PrinterId,
+                        principalTable: "Printers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "PrusaConnectAuthentication",
                 columns: table => new
                 {
@@ -678,6 +707,17 @@ namespace Homespool.Data.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_PrintFilesOnPrinters_PrinterId_PrintFileId",
+                table: "PrintFilesOnPrinters",
+                columns: new[] { "PrinterId", "PrintFileId" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PrintFilesOnPrinters_PrintFileId",
+                table: "PrintFilesOnPrinters",
+                column: "PrintFileId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_PrusaConnectAuthentication_FingerPrintKey",
                 table: "PrusaConnectAuthentication",
                 column: "FingerPrintKey",
@@ -771,6 +811,9 @@ namespace Homespool.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "PrinterLiveSlotStates");
+
+            migrationBuilder.DropTable(
+                name: "PrintFilesOnPrinters");
 
             migrationBuilder.DropTable(
                 name: "PrusaConnectAuthentication");

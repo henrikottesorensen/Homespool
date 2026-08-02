@@ -72,6 +72,10 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
     /// <summary>Per-printer print queues. One row per queued print; cancelling is deleting it.</summary>
     public DbSet<QueuedPrint> QueuedPrints { get; set; }
 
+    /// <summary>What the loop believes each printer's drive holds of ours, and what the printer calls
+    /// it. Keyed on (file, printer), so one file queued twice transfers once.</summary>
+    public DbSet<PrintFileOnPrinter> PrintFilesOnPrinters { get; set; }
+
     public HSDbContext(DbContextOptions<HSDbContext> options)
         : base(options)
     {
@@ -374,6 +378,29 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
             // "a record, not a pointer" treatment file-storage.md gives history rows - and an FK here
             // would add a second cascade path into a table PrintFile already cascades from, for no
             // reader that needs the join.
+        });
+
+        builder.Entity<PrintFileOnPrinter>(entity =>
+        {
+            // One row per (file, printer): the whole point is that a file queued twice on one printer
+            // transfers once, which a second row would defeat.
+            entity.HasIndex(e => new { e.PrinterId, e.PrintFileId })
+                  .IsUnique();
+
+            entity.HasOne(e => e.Printer)
+                  .WithMany()
+                  .HasForeignKey(e => e.PrinterId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            // Cascade, unlike QueuedPrint's Restrict on the same table. This row is knowledge about
+            // somebody else's drive rather than an intention of ours, so there is nothing here to
+            // protect a person from losing - and the bytes it describes are findable again through
+            // the printer's own storage listing, which is what notes/print-queue.md relies on for
+            // exactly this.
+            entity.HasOne(e => e.PrintFile)
+                  .WithMany()
+                  .HasForeignKey(e => e.PrintFileId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

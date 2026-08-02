@@ -196,14 +196,28 @@ services:
     networks:
       - homespool
 
-    # service_healthy, not just "started". The app writes the printer leaf on its startup path, and
-    # this container reads it at start to decide whether to serve the printer listener at all - so
-    # starting them together would race, and the loser is a proxy that came up without printers and
-    # says nothing about it until one fails to connect. The hook has its own short wait as well; this
-    # is what makes that wait almost never elapse.
+    # service_started, not service_healthy - changed 2026-08-02, and the reasoning it replaces is
+    # worth keeping because it was correct about the risk.
+    #
+    # It used to wait for health, because the app writes the printer leaf on its startup path and
+    # 20-printer-listener.sh reads it at start to decide whether to serve the printer listener at
+    # all: start them together and the loser is a proxy that came up without printers and says
+    # nothing about it until one fails to connect.
+    #
+    # What that cost was a closed port for the whole of startup. On a Raspberry Pi the first boot
+    # migrates a database before it reports healthy, so `http://homespool.local` refused connections
+    # for minutes and read as a broken deployment - it was reported as one.
+    #
+    # The race is now handled where it actually lives rather than by delaying the whole proxy:
+    # 20-printer-listener.sh keeps its short wait for the ordinary restart, and otherwise watches for
+    # the leaf in the background and reloads nginx when it appears. So the printer listener still
+    # never comes up without a certificate; it just no longer holds the pages hostage while it waits.
+    #
+    # Note what this gives up: "nginx is running" no longer implies "the application was healthy at
+    # least once". Anything that reasons that way needs to stop.
     depends_on:
       printerservice:
-        condition: service_healthy
+        condition: service_started
 
     restart: unless-stopped
 

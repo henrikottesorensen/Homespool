@@ -37,6 +37,11 @@ USER 101
 COPY --chown=101:101 --chmod=755 docker-entrypoint.d/20-printer-listener.sh /docker-entrypoint.d/
 COPY --chown=101:101 --chmod=755 docker-entrypoint.d/25-self-signed-certificate.sh /docker-entrypoint.d/
 
+# Baked in rather than mounted from ./nginx like the configuration files, because this one is served
+# precisely when things are going wrong. A bind mount is one more thing that can be absent, and its
+# absence would turn "the application is still starting" into a bare 404 from the proxy.
+COPY --chown=101:101 --chmod=644 starting.html /usr/share/nginx/html/homespool-starting.html
+
 EXPOSE 8080
 EXPOSE 8443
 EXPOSE 15443

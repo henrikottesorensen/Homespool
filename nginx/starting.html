@@ -1,0 +1,50 @@
+<!doctype html>
+<!--
+  Served by the proxy when the application is not answering yet - see homespool.conf's @starting.
+
+  Self-contained on purpose: no fonts, no scripts, no images. This page is shown at the exact moment
+  nothing else on the deployment works, so anything it fetched would be a second thing to fail.
+
+  The refresh is a meta tag rather than JavaScript for the same reason, and because the whole page is
+  eleven lines of markup that a browser can render before the stylesheet is parsed.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="5">
+<title>Homespool is starting</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; margin: 0; padding: 1.5rem;
+    background: Canvas; color: CanvasText;
+  }
+  main { max-width: 30rem; text-align: center; }
+  h1 { font-size: 1.5rem; font-weight: 600; margin: 0 0 0.75rem; }
+  p { margin: 0 0 0.5rem; line-height: 1.5; opacity: 0.85; }
+  .quiet { font-size: 0.875rem; opacity: 0.6; }
+  .bar {
+    height: 3px; border-radius: 3px; margin: 1.5rem auto 0; max-width: 12rem;
+    background: linear-gradient(90deg, transparent, currentColor, transparent);
+    background-size: 200% 100%; opacity: 0.5;
+    animation: sweep 1.8s linear infinite;
+  }
+  @keyframes sweep { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+  @media (prefers-reduced-motion: reduce) { .bar { animation: none; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Homespool is starting</h1>
+  <p>The server is coming up. This page refreshes itself every few seconds.</p>
+  <p class="quiet">
+    First start takes longer &mdash; the database is being prepared. On a Raspberry&nbsp;Pi that can
+    take a few minutes.
+  </p>
+  <div class="bar"></div>
+</main>
+</body>
+</html>

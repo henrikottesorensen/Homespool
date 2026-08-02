@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;

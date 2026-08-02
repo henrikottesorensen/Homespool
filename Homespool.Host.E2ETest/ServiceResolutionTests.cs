@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Homespool.Host.E2ETest;

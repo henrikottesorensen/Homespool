@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 

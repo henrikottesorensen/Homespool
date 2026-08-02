@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+
 using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Host.Services;

@@ -514,7 +514,13 @@ dotnet_diagnostic.CA5405.severity = warning
 dotnet_diagnostic.CS0649.severity = warning
 dotnet_diagnostic.CS1574.severity = warning
 dotnet_diagnostic.CS1591.severity = none
+# Does nothing, and is kept only so the next person does not add it again expecting it to. CS8019 is
+# emitted hidden by the compiler, and a severity set here does not raise it: with this line and
+# nothing else, a file with an unused using builds clean. Measured, not assumed - and forty-five
+# unused directives had collected behind it. IDE0005 is the rule that actually reports, and it needs
+# GenerateDocumentationFile, which Directory.Build.props sets for the same class of reason.
 dotnet_diagnostic.CS8019.severity = warning
+dotnet_diagnostic.IDE0005.severity = warning
 dotnet_diagnostic.IDE0008.severity = error
 dotnet_diagnostic.IDE0016.severity = none
 dotnet_diagnostic.IDE0016WithoutSuggestion.severity = none

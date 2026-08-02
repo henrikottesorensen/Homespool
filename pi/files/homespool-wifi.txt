@@ -19,3 +19,50 @@ psk=
 # usable at all - so if the network is visible from a laptop and not from the Pi,
 # set this first.
 country=
+
+# ---------------------------------------------------------------------------
+# IF IT WILL NOT CONNECT: check whether your network uses WPA3
+# ---------------------------------------------------------------------------
+#
+# WPA3 does not work with the wi-fi firmware and software this image ships, and
+# has been unreliable on Raspberry Pi built-in wi-fi for years. The chip has
+# been sold to two other companies since it was designed, and its firmware is
+# not something Raspberry Pi control.
+#
+# What that means in practice, and it depends on which Pi you have:
+#
+#                                 Pi 4              Pi 3B
+#   WPA2 network                  works             works
+#   WPA2/WPA3 "mixed" or
+#     "transition" mode           works             WILL NOT CONNECT
+#   WPA3-only network             will not          WILL NOT CONNECT
+#
+# On a Pi 4, look at your router's wireless settings. If that network is set to
+# WPA3-only, change it to WPA2/WPA3 mixed and the Pi will join. Every other
+# device you own carries on using WPA3; only the Pi drops to WPA2.
+#
+# On a Pi 3B that is not enough. Mixed mode fails there too, because that
+# board's wi-fi firmware is older and cannot finish joining a network that
+# offers WPA3 at all - even when the Pi is only trying to use the WPA2 part of
+# it. A Pi 3B needs a network offering WPA2 and nothing else.
+#
+# (If you are unsure which board you have: a Pi 3B takes micro-USB power and
+# has one full-size HDMI socket. A Pi 4 takes USB-C power and has two smaller
+# micro-HDMI sockets.)
+#
+# So, two alternatives - and on a Pi 3B one of them is usually necessary:
+#
+#   - Give the Pi a wired connection. It is going to sit next to a printer
+#     forever, so this is often the easiest answer.
+#   - Add a second, WPA2-only network on your router for older devices. Most
+#     routers can broadcast several. Put the Pi on that one.
+#
+# This image is configured to stop trying WPA3 rather than fail slowly, because
+# attempting it produces no useful error - just a connection that never
+# completes.
+#
+# It is reportedly possible to get WPA3 working on a Pi 4 by installing newer
+# firmware directly from Infineon, which no distribution packages. We have not
+# done that: a hand-fetched binary that no one updates is a poor thing to build
+# an appliance on. If you want the detail, see the "Wi-Fi" section of
+# pi/README.md in the Homespool repository.

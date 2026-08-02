@@ -23,15 +23,38 @@ ssh_key=""
 password=""
 device_user="pi"
 
+# The board. Everything in this build is board-agnostic except the device layer, so retargeting is
+# genuinely one word - rpi-image-gen ships pi3, pi4, pi5, cm4, cm5 and zero2w, all on the same
+# rpi-generic64 base. The config file names pi3; this overrides it, and names the image to match so
+# two boards' images can sit in the same directory without one quietly overwriting the other.
+board="pi3"
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --ssh-key)   ssh_key="$2"; shift 2 ;;
         --password)  password="$2"; shift 2 ;;
         --user)      device_user="$2"; shift 2 ;;
+        --device)    board="$2"; shift 2 ;;
         -h|--help)   sed -n '2,12p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
+
+# Spelled out rather than derived, because rpi-image-gen's layer names do not follow from its
+# directory names and there is no rule to infer: device/pi4 declares "rpi4", but device/cm4 declares
+# "rpi-cm4" and device/zero2w declares "rpizero2w". Guessing "r$board" works for three of the six and
+# fails the rest several minutes into a build, saying only that a layer was not found.
+case "$board" in
+    pi3)    device_layer=rpi3 ;;
+    pi4)    device_layer=rpi4 ;;
+    pi5)    device_layer=rpi5 ;;
+    cm4)    device_layer=rpi-cm4 ;;
+    cm5)    device_layer=rpi-cm5 ;;
+    zero2w) device_layer=rpizero2w ;;
+    *) echo "unknown --device: $board (pi3, pi4, pi5, cm4, cm5, zero2w)" >&2; exit 2 ;;
+esac
+
+image_name="homespool-$board"
 
 # Checked here rather than where it is used, which is on the far side of a ~550 MB image save and a
 # container build. A typo in a path should cost a second, not the whole build.
@@ -119,6 +142,8 @@ overrides=(
     "IGconf_homespool_payload=/repo/pi/work/payload"
     "IGconf_homespool_assetdir=/repo/pi/files"
     "IGconf_device_user1=$device_user"
+    "IGconf_device_layer=$device_layer"
+    "IGconf_image_name=$image_name"
 )
 # A hash rather than the plain variable, because rpi-image-gen validates plain passwords against a
 # regex demanding upper, lower, digit and punctuation - which "homespool" is not, and which is the
@@ -221,26 +246,25 @@ docker run --rm \
     -v homespool-ig-work:/work \
     -v "$work_dir/out:/out" \
     homespool-imagegen \
-    sh -c 'cp -v /work/deploy-*/homespool-pi3.img.zst /out/ 2>/dev/null || cp -v /work/deploy-*/*.img.zst /out/'
+    sh -c "cp -v /work/deploy-*/${image_name}.img.zst /out/"
 
-# Decompressed here rather than left to whoever flashes it, because the compressed form does not
-# survive the trip. Raspberry Pi Imager accepts .zst - its source lists the extension and dispatches
-# to a zstd decompressor - but a card written from ours came out with no partition table at all,
-# three times, while the identical image written uncompressed booted. Imager reported "Write
-# Successful" every time, and would: it verifies that the card matches what it decided to write,
-# which stays true when the decompression ahead of that produced the wrong bytes.
+# Decompressed here rather than left to whoever flashes it, because Raspberry Pi Imager's "Use
+# custom" option accepts a .img and nothing else - the dialog says so in as many words. Its source
+# does list .zst, but on the *download* path, where it fetches an OS from its own list; the
+# local-file picker does not decompress.
 #
-# So the .img is what you flash and the .zst is what you keep. Root cause in the compressed stream
-# is unidentified - if it is ever chased, start by comparing `zstd -d` output against what Imager
-# writes, since our own zstd round-trips correctly.
+# Handing it a .zst produced a card with no partition table at all, three times, while the identical
+# image written uncompressed booted. Imager reported "Write Successful" each time, and was telling
+# the truth: it verifies the card against what it decided to write, which stays correct when what it
+# read was compressed bytes.
 echo "==> Decompressing (the .img is the artefact to flash - see the comment above)"
 docker run --rm -v "$work_dir/out:/out" homespool-imagegen \
-    sh -c 'zstd -d -f /out/homespool-pi3.img.zst -o /out/homespool-pi3.img' >/dev/null 2>&1
+    sh -c "zstd -d -f /out/${image_name}.img.zst -o /out/${image_name}.img" >/dev/null 2>&1
 
 echo
 echo "Done. Written to pi/work/out:"
 ls -lh "$work_dir/out"
 echo
-echo "Flash homespool-pi3.img with Raspberry Pi Imager (Use Custom)."
+echo "Flash ${image_name}.img with Raspberry Pi Imager (Use Custom)."
 echo "Do NOT flash the .zst - it verifies clean and produces an unreadable card."
 echo "Then browse to http://homespool.local once the first boot settles."

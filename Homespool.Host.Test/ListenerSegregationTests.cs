@@ -1,6 +1,7 @@
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;

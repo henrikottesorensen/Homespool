@@ -5,10 +5,12 @@ using System.Linq;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+
 using Serilog;
 using Serilog.Core;
 using Serilog.Events;

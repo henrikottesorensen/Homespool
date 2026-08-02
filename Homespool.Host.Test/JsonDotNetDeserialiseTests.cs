@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 
 using AwesomeAssertions;
+
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 

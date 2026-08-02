@@ -3,8 +3,10 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
+
 using NSubstitute;
 
 using Homespool.Host.PrusaConnect;

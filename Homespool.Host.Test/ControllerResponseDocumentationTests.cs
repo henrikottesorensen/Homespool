@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+
 using Microsoft.AspNetCore.Mvc;
 
 using Homespool.Host.Controllers;

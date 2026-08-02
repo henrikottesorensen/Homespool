@@ -6,7 +6,9 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+
 using Microsoft.Extensions.Logging.Abstractions;
+
 using NSubstitute;
 
 using Homespool.Host.PrusaConnect;

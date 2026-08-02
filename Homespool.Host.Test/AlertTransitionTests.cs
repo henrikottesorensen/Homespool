@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 using Homespool.Host.Services;

@@ -11,7 +11,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 using Homespool.Host.Certificates;
-using Homespool.Host.PrusaConnect.Transfers;
 
 namespace Homespool.Host.Test;
 

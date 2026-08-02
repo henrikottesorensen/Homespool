@@ -59,13 +59,26 @@ settings are written and then **silently ignored**, which looks exactly like a w
 With neither, the account is locked: the stack still comes up and serves pages, but there is no way
 in. That is `rpi-image-gen`'s default and `build.sh` warns about it.
 
-## The root filesystem does not grow
+## The root filesystem grows to fill the card
 
-Whatever `root_part_size` produced is what the board lives with, on a 16 GB card or a 256 GB one.
-`raspberrypi-sys-mods` is not installed, so there is no `init_resize` and no `resize_early`; `fstab`
-is unconfigured, so `systemd-growfs-root` never fires; and the table is MBR, so GPT auto-discovery
-does not apply. Nothing here is broken — it is simply absent, and it is the first thing to add if
-these images ever go to anyone else.
+On first boot, in two halves — both of which come from `raspberrypi-sys-mods`:
+
+1. An initramfs script grows the root **partition** to the end of the device, **before root is
+   mounted**. It is gated on the word `resize` on the kernel command line, which the layer appends
+   to `cmdline.txt`, and it refuses unless root is partition 2 — which it is.
+2. `rpi-resize.service` then pulls in `systemd-growfs-root.service`, which grows the **filesystem**
+   into the enlarged partition. `ConditionFirstBoot=yes`, so it runs once.
+
+So `root_part_size` in the config only decides the size of the *image file*, not the size the board
+ends up with. Keep it modest; the card decides.
+
+`rpi-image-gen` deliberately provides none of this — its intended flow is `rpi-sb-provisioner` or
+fastboot writing to a board you have in your hand, where you already know the size. That reasoning
+does not survive contact with a downloadable image, which is the one case where you cannot know.
+
+Done with the Raspberry Pi package rather than a `growpart` unit of our own for one reason worth
+repeating: it resizes **offline, in the initramfs**. A hand-rolled version would be rewriting the
+partition table of a mounted root filesystem on someone else's SD card.
 
 ## First login
 

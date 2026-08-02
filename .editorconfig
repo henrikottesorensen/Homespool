@@ -1,3 +1,11 @@
+# Stop here. Without this, resolution keeps walking up past the repository root and merges whatever
+# it finds - a developer's ~/.editorconfig, a CI image's, or, the way this actually bit: a worktree
+# under .claude/worktrees walks up into the main checkout and picks up *its* .editorconfig, from
+# whatever branch that happens to be on. Every key the branch's own file does not set is then quietly
+# supplied by another branch's. Style here is enforced at error severity, so that is not a difference
+# in formatting, it is a build that succeeds or fails depending on where the checkout sits.
+root = true
+
 # Unix-style newlines with a newline ending every file
 [*]
 end_of_line = lf

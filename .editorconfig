@@ -601,8 +601,32 @@ dotnet_diagnostic.SX1101.severity = warning
 dotnet_diagnostic.SX1309.severity = warning
 
 dotnet_diagnostic.VSTHRD002.severity = suggestion
+
+# The reason the threading analyser is installed at all. async void swallows exceptions into a crash
+# with no stack worth reading, and it has cost real time here.
 dotnet_diagnostic.VSTHRD100.severity = error
+
 dotnet_diagnostic.VSTHRD200.severity = suggestion
+
+# The rest of the analyser's rules are off, and each was measured before switching it off rather than
+# waved away. Installing it reported 166 diagnostics, none of them VSTHRD100.
+#
+# VSTHRD103 (156 of them) is almost entirely "Add synchronously blocks, await AddAsync instead" on EF
+# Core. That advice is wrong here: EF's own documentation says AddAsync exists only so the HiLo value
+# generator can reach the database, that it is never configured by default, and that the vast
+# majority of applications should use Add. This is SQLite with no HiLo, so acting on these would make
+# the code worse.
+dotnet_diagnostic.VSTHRD103.severity = none
+
+# VSTHRD003 fires 8 times, once outside tests: TelemetryWriter's StartAsync awaits
+# Task.WhenAny(_executeEntered.Task, ExecuteTask) to wait for its own background execution to begin.
+# That is the handshake working as designed, not a foreign task being awaited into a deadlock.
+dotnet_diagnostic.VSTHRD003.severity = none
+
+# VSTHRD110 fires on an NSubstitute call specification - c.SendAsync(...) inside WhenForAnyArgs,
+# which specifies a call rather than making one, so there is no awaitable to observe. The same line
+# already carries a SuppressMessage for CA2012 saying exactly that.
+dotnet_diagnostic.VSTHRD110.severity = none
 
 # The Pages folder is named by ASP.NET's conventions, not StyleCop's: a page model lives in
 # X.cshtml.cs beside its X.cshtml, which is how the framework pairs them and how the IDE nests

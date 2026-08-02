@@ -42,6 +42,11 @@
             blocks separated by a blank line. SA1210 has to be off for it, which .editorconfig says
             more about. Everywhere for the same reason StyleCop is everywhere.
         -->
+        <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" Version="18.7.23">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+
         <PackageReference Include="UsingLayoutAnalyser" Version="0.2.0">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

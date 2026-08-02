@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Identity;
@@ -33,6 +34,8 @@ public static class AdminBootstrap
     /// request can reach <c>/setup</c>. A hosted service runs after the server starts accepting
     /// connections and would open exactly that window.
     /// </remarks>
+    [SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits",
+                     Justification = "Deliberately synchronous: the setup flag and bootstrap token must be settled before the first request can reach /setup, which a hosted service would not guarantee.")]
     public static void SeedAdminBootstrap(this IServiceProvider services)
     {
         ArgumentNullException.ThrowIfNull(services);

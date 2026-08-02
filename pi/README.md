@@ -59,6 +59,66 @@ settings are written and then **silently ignored**, which looks exactly like a w
 With neither, the account is locked: the stack still comes up and serves pages, but there is no way
 in. That is `rpi-image-gen`'s default and `build.sh` warns about it.
 
+## Wi-Fi, and why WPA3 does not work
+
+Put your SSID and passphrase in `homespool-wifi.txt` on the card's FAT32 partition — the only
+partition a desktop machine can read — and the Pi joins on first boot. The passphrase line is blanked
+once applied, because FAT32 has no file permissions and anyone who later reads the card would
+otherwise have your wi-fi password.
+
+**WPA3 does not work with the firmware and software this image ships**, and has been unreliable on
+Raspberry Pi built-in wi-fi for years. Tested here on a Pi 3B and a Pi 4:
+
+| your network | result |
+|---|---|
+| WPA2 | works |
+| WPA2/WPA3 mixed ("transition mode") | works — the Pi uses the WPA2 half |
+| WPA3-only | **will not connect with this image** |
+
+If the Pi will not join, check your router. Setting that network to **WPA2/WPA3 mixed** fixes it, and
+costs nothing for your other devices — they carry on using WPA3, only the Pi drops to WPA2.
+Alternatives are a wired connection, or a second WPA2 SSID for older devices.
+
+### Why
+
+The wi-fi chip (BCM43455 on a Pi 3B+/4/5, BCM43430 on a Pi 3B) has been sold twice since it was
+designed — Broadcom to Cypress in 2016, Cypress to Infineon in 2020 — and its firmware is maintained
+by a company for whom it is a minor line. WPA3's SAE handshake has never worked reliably on it.
+
+Measured here on a Pi 4, against both a 2.4 GHz mixed AP and a 5 GHz WPA3-only one:
+
+- the SAE exchange itself **completes**
+- the association immediately afterwards is **rejected**, status 16
+- identically under `iwd` and `wpa_supplicant`, on both bands
+
+The specific fault is documented in [raspberrypi/linux#4718](https://github.com/raspberrypi/linux/issues/4718):
+Raspberry Pi's driver work for SAE was done against `wpa_supplicant`, and iwd — which this image uses,
+because the base OS layer provides it — drives the handshake in a way that breaks against APs
+advertising H2E, which most modern ones do. The fix is an iwd patch still under review upstream.
+
+So the image sets `SaeDisable` in `/etc/iwd/main.conf`, which tells iwd not to attempt SAE at all.
+Without it you get no error worth reading — just a connection that never completes. With it, mixed
+networks work immediately. **A Pi 3B is a harder case**: its firmware carries no SAE support at all,
+dated 2021.
+
+### What would make WPA3 work
+
+Not "nothing" — the honest answer is "not with anything a distribution ships".
+
+Per the same issue, WPA3-Personal with CCMP does work on a 43455 given **Infineon's newer firmware
+(7.45.286, released 2024-10-28)** plus a recent `wpa_supplicant`, or `iwd` with the pending patch.
+That firmware is in Infineon's own release packages and is not in Debian, Raspberry Pi's archive, or
+anywhere else with a maintainer.
+
+We have not taken it. Building an appliance on a hand-fetched binary that nothing updates is a worse
+problem than the one it solves, and it would have to be re-fetched by hand on every rebuild. When the
+iwd patch merges and newer firmware reaches the archives, `SaeDisable` is one line to delete.
+
+Worth knowing regardless: **WPA3 with GCMP-256 will never work on this chip.** Infineon have said the
+MAC has no GCMP engine and they will not add it, and `brcmfmac` is FullMAC so there is no software
+fallback. That rules out WPA3-Enterprise 192-bit permanently, which is irrelevant to a home print
+server but occasionally matters to somebody.
+
 ## The root filesystem grows to fill the card
 
 On first boot, in two halves — both of which come from `raspberrypi-sys-mods`:

@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+
 using Microsoft.Extensions.Options;
 
 using Homespool.Host.Services;

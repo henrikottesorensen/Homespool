@@ -3,6 +3,7 @@ using System.IO;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 

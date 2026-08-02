@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 
 using AwesomeAssertions;
+
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;

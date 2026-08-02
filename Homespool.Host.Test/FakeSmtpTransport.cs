@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using MailKit.Security;
+
 using MimeKit;
 
 using Homespool.Host.Services;

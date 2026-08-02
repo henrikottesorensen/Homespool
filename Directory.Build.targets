@@ -1,0 +1,87 @@
+<Project>
+
+    <!--
+        Fails the build on a source file that is not valid UTF-8.
+
+        Nothing else catches this. A file saved as Windows-1252 - which is what an editor on a Danish
+        Windows machine will happily produce - compiles with no warning and no error, and the compiler
+        writes U+FFFD replacement characters into the assembly. Measured, not assumed. Forty-seven
+        files here contain non-ASCII text, so this is not a hypothetical exposure: it is most of the
+        user-facing strings.
+
+        It cannot be an analyser. By the time an analyser runs, Roslyn has already decoded the text
+        and the original bytes are gone, so the evidence no longer exists. It has to happen here,
+        before CoreCompile.
+
+        Only @(Compile) is read. Widening it to every file would mean reading binaries - favicon.ico
+        is not valid UTF-8 and never will be - and the .cs files are where the non-ASCII text lives.
+
+        What this cannot catch: a wrong encoding that happens to produce valid UTF-8, the classic
+        "â€œ" mojibake, which is indistinguishable from someone typing those characters deliberately.
+        What it does catch is any file containing a byte sequence that is not legal UTF-8, which is
+        every ordinary case of a Danish string saved in the wrong encoding.
+
+        Set HomespoolValidateSourceEncoding to false to switch it off.
+    -->
+
+    <PropertyGroup>
+        <HomespoolValidateSourceEncoding Condition="'$(HomespoolValidateSourceEncoding)' == ''">true</HomespoolValidateSourceEncoding>
+    </PropertyGroup>
+
+    <UsingTask TaskName="HomespoolValidateUtf8" TaskFactory="RoslynCodeTaskFactory"
+               AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll"
+               Condition="'$(HomespoolValidateSourceEncoding)' == 'true'">
+        <ParameterGroup>
+            <Files ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+        </ParameterGroup>
+        <Task>
+            <Code Type="Fragment" Language="cs"><![CDATA[
+                foreach (var item in Files)
+                {
+                    var path = item.GetMetadata("FullPath");
+
+                    if (!System.IO.File.Exists(path))
+                    {
+                        continue;
+                    }
+
+                    var bytes = System.IO.File.ReadAllBytes(path);
+
+                    // UTF-16 carrying a byte order mark is fine - the compiler reads it correctly, and
+                    // a generator may have written it. Such a file must keep that mark: it is the only
+                    // record of the encoding, and stripping it destroys the file.
+                    if (bytes.Length >= 2
+                        && ((bytes[0] == 0xFF && bytes[1] == 0xFE) || (bytes[0] == 0xFE && bytes[1] == 0xFF)))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        new System.Text.UTF8Encoding(false, true).GetString(bytes);
+                    }
+                    catch (System.Text.DecoderFallbackException)
+                    {
+                        Log.LogError(
+                            null,
+                            "HS0001",
+                            null,
+                            path,
+                            1,
+                            1,
+                            0,
+                            0,
+                            "File is not valid UTF-8. It will compile without complaint and reach the assembly as U+FFFD replacement characters. Re-save it as UTF-8, and check the tool or editor that last wrote it.");
+                    }
+                }
+            ]]></Code>
+        </Task>
+    </UsingTask>
+
+    <Target Name="HomespoolValidateSourceEncoding"
+            BeforeTargets="CoreCompile"
+            Condition="'$(HomespoolValidateSourceEncoding)' == 'true' AND '@(Compile)' != ''">
+        <HomespoolValidateUtf8 Files="@(Compile)" />
+    </Target>
+
+</Project>

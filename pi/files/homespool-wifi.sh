@@ -15,6 +15,25 @@ set -eu
 CONF=/boot/firmware/homespool-wifi.txt
 IWD_DIR=/var/lib/iwd
 
+# Lift the rfkill soft block before anything else, and unconditionally - it is not related to whether
+# a credential was configured, and a blocked radio is worth clearing even on an ethernet deployment.
+#
+# raspberrypi-sys-mods ships /etc/modprobe.d/rfkill_default.conf with `options rfkill
+# default_state=0`, so wireless comes up **blocked**. We install that package for its root-resize
+# scripts and inherit its wi-fi policy as a side effect, without any of the Raspberry Pi OS tooling
+# that normally lifts the block once an operator has chosen a country.
+#
+# The symptom is thoroughly misleading: `iwd` logs "Error bringing interface up: Operation not
+# possible due to RF-kill" once at boot, then `iwctl station list` reports no station at all, which
+# reads as a driver or firmware problem rather than a policy switch.
+#
+# The regulatory reason for the block is real, so this does not ignore it: the kernel takes a
+# regulatory domain from /etc/modprobe.d/cfg80211_regdomain.conf, and the country= line below sets
+# iwd's too.
+if command -v rfkill >/dev/null 2>&1; then
+    rfkill unblock wifi || true
+fi
+
 [ -f "$CONF" ] || exit 0
 
 # Deliberately not `. "$CONF"`. Sourcing would execute whatever is in a file that any machine with
@@ -55,9 +74,44 @@ printf '[Security]\nPassphrase=%s\n' "$psk" > "$IWD_DIR/$name.psk"
 chmod 600 "$IWD_DIR/$name.psk"
 echo "homespool-wifi: configured '$ssid'"
 
+# iwd's own configuration, written whole rather than appended to - and it must stay whole, because
+# an earlier version of this script wrote only the country here and silently discarded
+# EnableNetworkConfiguration along with it.
+#
+# SaeDisable is the substantive line, and it is the conclusion of a long morning on real hardware.
+# Measured on a Pi 4 (BCM43455, firmware 7.45.265, which does advertise extsae) against both a
+# 2.4 GHz sae-mixed AP and a 5 GHz WPA3-only one:
+#
+#   - default iwd            no suitable BSS at all; it never transmits. wiphy_can_connect_sae()
+#                            returns true because the driver advertises NL80211_FEATURE_SAE without
+#                            auth/assoc commands, so iwd commits to SAE and rejects every BSS.
+#   - DisablePMKSA=true      a genuine improvement - the SAE exchange completes, H2E and all - but
+#                            the association is then rejected with status 16. Both bands.
+#   - wpa_supplicant, SAE    identical: PMKSA cached, then ASSOC-REJECT status_code=16.
+#   - wpa_supplicant default connects, because its default key_mgmt excludes SAE entirely.
+#
+# So SAE reaches association and is refused, whatever drives it. SaeDisable makes iwd take the
+# WPA2 half of a mixed network, which is what wpa_supplicant does by default and what actually
+# works. Its cost is stated plainly in iwd's own header: "This will prevent IWD from connecting to
+# WPA3-only networks" - which on this silicon it could not do anyway.
+#
+# raspberrypi/linux#4718 has Raspberry Pi's own engineer saying the SAE_EXT work was done "using
+# wpa_supplicant", and a reply the same day (2024-02-07) that it "just doesn't work with iwd".
+# Revisit if that changes; the fix is deleting one line.
+mkdir -p /etc/iwd
+{
+    printf '[General]\n'
+    printf 'EnableNetworkConfiguration=false\n'
+    if [ -n "$country" ]; then
+        printf 'Country=%s\n' "$country"
+    fi
+    printf '\n[DriverQuirks]\nSaeDisable=brcmfmac\n'
+} > /etc/iwd/main.conf
+
+# if, not `[ -n "$country" ] && echo ...`. That form is the last command in this block, so under
+# `set -e` an empty country would exit non-zero - and homespool-firstboot's Restart=on-failure would
+# then retry a script that had in fact done its job, forever.
 if [ -n "$country" ]; then
-    mkdir -p /etc/iwd
-    printf '[General]\nCountry=%s\n' "$country" > /etc/iwd/main.conf
     echo "homespool-wifi: regulatory country set to $country"
 fi
 

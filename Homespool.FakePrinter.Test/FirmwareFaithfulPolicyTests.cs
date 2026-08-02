@@ -204,6 +204,160 @@ public class FirmwareFaithfulPolicyTests
         policy.Answer(debug, _device).Should().BeEmpty();
     }
 
+    // ---------- START_PRINT (planner.cpp:704-728, marlin_printer.cpp:525-545) ----------
+
+    /// <summary>
+    /// Success answers <c>JOB_INFO</c> - not <c>FINISHED</c>, which is what every other command here
+    /// answers and what a server naturally checks for (planner.cpp:728).
+    /// </summary>
+    [Fact]
+    public void StartPrintAnswersJobInfoWithANewJobId()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        _device.Storage.AddFile("/usb/BENCHY~1.BGC", 1024, 0);
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(StartPrintCommand(40, "/usb/BENCHY~1.BGC"), _device);
+
+        replies.Should().HaveCount(1);
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("event").GetString().Should().Be("JOB_INFO");
+        reply.RootElement.GetProperty("command_id").GetUInt32().Should().Be(40);
+        reply.RootElement.GetProperty("job_id").GetInt32().Should().Be(1);
+        reply.RootElement.GetProperty("state").GetString().Should().Be("PRINTING");
+        _device.State.Should().Be(DeviceState.Printing);
+    }
+
+    /// <summary>
+    /// <b>The one that matters most.</b> Firmware's <c>remote_print_ready</c> allows a print to start
+    /// from <c>Finished</c> - the previous part still on the bed - and so must this
+    /// (printer_state.cpp:530-547).
+    /// </summary>
+    /// <remarks>
+    /// It looks like a bug and is the opposite. The queue's rule that a finished printer is not
+    /// available is the <i>server's</i> discipline with nothing underneath it, so a fake that refused
+    /// here would fail a loop that advanced on <c>Finished</c> and pass the same loop against
+    /// hardware - teaching that the printer protects us when it does not. See
+    /// <c>notes/print-queue.md</c>, "Firmware will start a print onto a finished part".
+    /// </remarks>
+    [Theory]
+    [InlineData(DeviceState.Idle)]
+    [InlineData(DeviceState.Ready)]
+    [InlineData(DeviceState.Stopped)]
+    [InlineData(DeviceState.Finished)]
+    public void StartPrintIsAcceptedFromEveryStateFirmwareAllows(DeviceState state)
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        _device.Storage.AddFile("/usb/A.BGC", 1024, 0);
+        _device.ForceState(state);
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(StartPrintCommand(41, "/usb/A.BGC"), _device);
+
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("event").GetString().Should().Be("JOB_INFO");
+    }
+
+    /// <summary>The states that are genuinely busy answer the one retryable reason there is.</summary>
+    [Theory]
+    [InlineData(DeviceState.Printing)]
+    [InlineData(DeviceState.Paused)]
+    [InlineData(DeviceState.Attention)]
+    [InlineData(DeviceState.Busy)]
+    [InlineData(DeviceState.Error)]
+    public void StartPrintWhileBusyIsRejectedWithCantPrintNow(DeviceState state)
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        _device.Storage.AddFile("/usb/A.BGC", 1024, 0);
+        _device.ForceState(state);
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(StartPrintCommand(42, "/usb/A.BGC"), _device);
+
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("event").GetString().Should().Be("REJECTED");
+        reply.RootElement.GetProperty("reason").GetString().Should().Be("Can't print now");
+    }
+
+    /// <summary>
+    /// The path is checked before the machine is, which is the planner's order - so a bad path is
+    /// refused even on a printer that could not have printed anyway.
+    /// </summary>
+    [Theory]
+    [InlineData("/sdcard/A.BGC", "Forbidden path")]
+    [InlineData("/usb/../etc/passwd", "Forbidden path")]
+    [InlineData("/usb", "Forbidden path")]
+    [InlineData("/usb/MISSING.BGC", "File not found")]
+    public void StartPrintRefusesAPathBeforeItLooksAtTheMachine(string path, string expected)
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        _device.ForceState(DeviceState.Printing);
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(StartPrintCommand(43, path), _device);
+
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("event").GetString().Should().Be("REJECTED");
+        reply.RootElement.GetProperty("reason").GetString().Should().Be(expected,
+            "the path is rejected on its own terms, not as \"Can't print now\"");
+    }
+
+    /// <summary>
+    /// A file still arriving is <b>not</b> a distinct refusal: <c>is_valid_file_or_transfer</c>
+    /// accepts a partial transfer, so this starts.
+    /// </summary>
+    /// <remarks>
+    /// Pinned because the design's retry table said otherwise until 2026-08-02 - it listed
+    /// <c>File is being transferred</c> as a <c>START_PRINT</c> answer, when that string belongs to
+    /// <c>delete_file</c> and cannot reach here.
+    /// </remarks>
+    [Fact]
+    public void StartPrintOnAFileStillTransferringIsAccepted()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        _device.Storage.AddFile("/usb/ARRIVING.BGC", 4096, 0);
+        _device.TryBeginTransfer("hash", 1, "/usb/ARRIVING.BGC", 4096, startCommandId: 1);
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(StartPrintCommand(44, "/usb/ARRIVING.BGC"), _device);
+
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("event").GetString().Should().Be("JOB_INFO");
+    }
+
+    /// <summary>A directory is not a file, and answers so rather than being started.</summary>
+    [Fact]
+    public void StartPrintOnAFolderIsFileNotFound()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        _device.Storage.AddFolder("/usb/models");
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(StartPrintCommand(45, "/usb/models"), _device);
+
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("reason").GetString().Should().Be("File not found");
+    }
+
+    /// <summary>
+    /// <c>SEND_INFO</c> reports the device's free space, so a loop that checks before pushing a file
+    /// can be given a full drive to check against.
+    /// </summary>
+    [Fact]
+    public void SendInfoReportsTheDevicesFreeSpace()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        _device.FreeSpace = 4096;
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(JsonCommand(46, "SEND_INFO"), _device);
+
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("data").GetProperty("storages")[0]
+             .GetProperty("free_space").GetInt64().Should().Be(4096);
+    }
+
+    private static ServerCommandFrame StartPrintCommand(uint id, string path)
+    {
+        // The wire shape CommandWireEncoder actually produces: an empty "args" array beside the
+        // keyword arguments, which is where firmware reads "path" from.
+        return RawJsonFrame(id,
+            $$$"""{"command": "START_PRINT", "args": [], "kwargs": {"path": "{{{path}}}"}}""");
+    }
+
     private static ServerCommandFrame JsonCommand(uint id, string name)
     {
         return RawJsonFrame(id, $$"""{"command": "{{name}}"}""");

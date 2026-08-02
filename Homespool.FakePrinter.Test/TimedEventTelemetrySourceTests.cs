@@ -2,6 +2,7 @@ using System;
 using System.Text.Json;
 
 using AwesomeAssertions;
+
 using Microsoft.Extensions.Time.Testing;
 
 namespace Homespool.FakePrinter.Test;

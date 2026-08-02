@@ -23,6 +23,11 @@ dotnet_sort_system_directives_first = true
 dotnet_separate_import_directive_groups = false
 usinglayout.first_party_prefixes = Homespool
 
+# And one vendor per block inside third party, so Microsoft's dozen do not bleed into NSubstitute's
+# two. This is the part dotnet_separate_import_directive_groups would have done, except it would
+# have done it instead of the System/third-party/Homespool split rather than underneath it.
+usinglayout.separate_roots = true
+
 ## naming rules
 stylecop.naming.tupleElementNameCasing = camelCase
 

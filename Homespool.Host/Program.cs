@@ -18,7 +18,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+
 using Scalar.AspNetCore;
+
 using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Compact;

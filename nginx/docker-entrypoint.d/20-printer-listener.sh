@@ -20,30 +20,75 @@ KEY="$CERT_DIR/printer-leaf.key.pem"
 SOURCE=/etc/nginx/homespool-printer.conf
 TARGET=/etc/nginx/conf.d/homespool-printer.conf
 
-# The application writes the leaf on its startup path, before it reports healthy, and compose.yaml
-# holds this container back until it does - so by the time this runs the file is either there or was
-# never going to be. The wait is for the case that ordering does not cover: `docker compose up proxy`
-# on its own, or a stack where somebody has removed the depends_on. Short, because when printer TLS
-# is off this is pure delay on a configuration that is a capture tool rather than a deployment.
+# How long the background watcher below keeps looking. Generous: it is covering a first boot on a
+# Raspberry Pi, where the application migrates its database before it mints anything, and the cost of
+# waiting too long is a log line nobody reads.
+WATCH_SECONDS=600
+
+# ---------------------------------------------------------------------------------------------
+# The fast path, and the only path this script had until the proxy stopped waiting for health.
+#
+# This container no longer has `condition: service_healthy` on the application (compose.yaml), so
+# that it can serve a holding page during startup instead of refusing connections. The consequence
+# lands here: "no leaf" used to mean "printer TLS is off", because the application had already
+# reported healthy and would therefore have written one. It no longer means that - it may equally
+# mean the application is three minutes into its first migration.
+#
+# So the short wait stays for the common case of a restart, where the leaf is already in the volume
+# and this returns immediately; and everything else moves to a background watcher.
+# ---------------------------------------------------------------------------------------------
 WAITED=0
 while [ ! -s "$LEAF" ] && [ "$WAITED" -lt 10 ]; do
     sleep 1
     WAITED=$((WAITED + 1))
 done
 
-if [ ! -s "$LEAF" ] || [ ! -s "$KEY" ]; then
-    # Not an error. It is what PrusaConnect:PrinterTls=false looks like from in here, and in that
-    # deployment printers dial the application's own port directly and this proxy is not in the path
-    # at all. Said out loud anyway, because the other way to reach this line is an application that
-    # failed to mint - and then printers would fail to connect with nothing pointing here.
-    echo "$0: no printer leaf in $CERT_DIR, so the printer listener is NOT being served."
-    echo "$0: that is expected when PrusaConnect:PrinterTls is false - printers then dial the"
-    echo "$0: application's own published port and this proxy stays out of their path."
-    echo "$0: if printer TLS IS meant to be on, the application did not write a leaf; check its log"
-    echo "$0: for the certificate it issues at startup, then restart this container."
+if [ -s "$LEAF" ] && [ -s "$KEY" ]; then
+    cp "$SOURCE" "$TARGET"
+    echo "$0: serving the printer listener on 15443 with the leaf from $CERT_DIR."
     exit 0
 fi
 
-cp "$SOURCE" "$TARGET"
+# ---------------------------------------------------------------------------------------------
+# No leaf yet. Do not block the entrypoint - nginx has to start now, or there is no holding page and
+# the whole point of ungating is lost. Watch in the background and reload when it appears.
+#
+# Backgrounded from a hook rather than run as a sidecar because it needs to be the *same* nginx it
+# reloads. The entrypoint execs nginx after the hooks run, so this subshell outlives this script and
+# keeps running alongside the server.
+# ---------------------------------------------------------------------------------------------
+echo "$0: no printer leaf yet; nginx starts now and will pick one up if it appears."
 
-echo "$0: serving the printer listener on 15443 with the leaf from $CERT_DIR."
+(
+    ELAPSED=0
+    while [ ! -s "$LEAF" ] || [ ! -s "$KEY" ]; do
+        if [ "$ELAPSED" -ge "$WATCH_SECONDS" ]; then
+            # Reached only after ten minutes of no certificate, which is the honest moment to say
+            # the things this script used to say immediately.
+            echo "$0: still no printer leaf in $CERT_DIR after ${WATCH_SECONDS}s."
+            echo "$0: the printer listener is NOT being served."
+            echo "$0: that is expected when PrusaConnect:PrinterTls is false - printers then dial"
+            echo "$0: the application's own published port and this proxy stays out of their path."
+            echo "$0: if printer TLS IS meant to be on, the application did not write a leaf; check"
+            echo "$0: its log for the certificate it issues at startup, then restart this container."
+            exit 0
+        fi
+        sleep 5
+        ELAPSED=$((ELAPSED + 5))
+    done
+
+    cp "$SOURCE" "$TARGET"
+
+    # -t first. A reload with a broken configuration leaves the running server on its old one and
+    # logs a failure, so the site would keep working while printers silently never got a listener -
+    # the exact class of quiet failure this file's header is about.
+    if nginx -t 2>/dev/null; then
+        nginx -s reload
+        echo "$0: printer leaf appeared after ${ELAPSED}s; printer listener now served on 15443."
+    else
+        echo "$0: printer leaf appeared but the configuration does not validate; NOT reloading."
+        nginx -t || true
+    fi
+) &
+
+exit 0

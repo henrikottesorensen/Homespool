@@ -67,8 +67,20 @@ COPY --from=publish /app/publish .
 #
 # Deliberately no --location: the app excludes /health from HTTPS redirection, because curl --fail
 # treats a 307 as success and would otherwise report healthy without ever reaching the endpoint.
-# start-period covers migrations on first boot.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+#
+# --start-interval is what makes the proxy appear promptly. compose gates it on service_healthy, so
+# nothing answers port 80 until this check passes - and with only --interval, a container that became
+# ready one second after a poll waited another 30 s to be noticed. On a Raspberry Pi, where the first
+# migration already takes minutes, that trailing half-minute of refused connections reads as a broken
+# deployment; it was reported as one. Polling every 5 s until the first success costs nothing
+# afterwards, because the fast interval applies only during the start period.
+#
+# --start-period is 120 s rather than 30 s for the same class of machine. It is not a delay: a check
+# that succeeds during the start period ends it immediately, so this is free on hardware that boots
+# quickly. What it buys is that failures before then do not count towards --retries - and on an SD
+# card, 30 s + 3x30 s could expire *during* the first EF migration and have an orchestrator restart
+# the container in the middle of it.
+HEALTHCHECK --interval=30s --start-interval=5s --timeout=5s --start-period=120s --retries=3 \
     CMD curl --fail --silent --show-error --max-time 4 http://localhost:8080/health/live || exit 1
 
 ENTRYPOINT ["dotnet", "Homespool.Host.dll"]

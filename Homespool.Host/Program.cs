@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -717,6 +718,8 @@ public static class Program
     /// seeing when a human inspects the certificate.
     /// </para>
     /// </remarks>
+    [SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits",
+                     Justification = "Runs during startup, before the server accepts connections, so there is nothing to deadlock against and no asynchronous caller to yield to.")]
     private static IReadOnlyList<string> PrinterCertificateNames(IServiceProvider services)
     {
         PrusaConnect.PrusaConnectOptions connect = services

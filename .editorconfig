@@ -600,7 +600,7 @@ dotnet_diagnostic.SA1652.severity = none
 dotnet_diagnostic.SX1101.severity = warning
 dotnet_diagnostic.SX1309.severity = warning
 
-dotnet_diagnostic.VSTHRD002.severity = suggestion
+dotnet_diagnostic.VSTHRD002.severity = warning
 
 # The reason the threading analyser is installed at all. async void swallows exceptions into a crash
 # with no stack worth reading, and it has cost real time here.

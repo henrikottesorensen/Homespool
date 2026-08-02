@@ -37,6 +37,19 @@ services:
       # running outside a container still works.
       ConnectionStrings__HomespoolDb: "Data Source=/app/data/Homespool.Sqlite"
 
+      # Floor on how often a printer's telemetry is stored, in seconds. 0 keeps every sample, which
+      # is the default and the right answer on a machine with a real disk.
+      #
+      # Exposed because the deployment that most wants to change it is the one least able to reach
+      # appsettings.json: SQLite on an SD card, where telemetry is the dominant write and cards die
+      # of writes. At roughly one sample per second per printer, a floor of 10 removes about 90% of
+      # them. Retention is not an alternative - deleting rows is writing too.
+      #
+      # Named here rather than left to .env, because compose reads .env only for ${...}
+      # substitution: a variable not mapped in this block never reaches the container at all.
+      # Setting Storage__MinimumSampleIntervalSeconds directly in .env does nothing, silently.
+      Storage__MinimumSampleIntervalSeconds: "${TELEMETRY_MIN_SAMPLE_INTERVAL_SECONDS:-0}"
+
       # What a printer is told to dial for enrolment. PrinterHost is required for USB-key
       # provisioning (Printers -> Add printer): the page cannot produce a usable ini snippet - and
       # refuses to - until it is set. It should also be one of the names in the certificate, which

@@ -1,0 +1,127 @@
+# METABEGIN
+# X-Env-Layer-Name: homespool
+# X-Env-Layer-Category: app
+# X-Env-Layer-Desc: The Homespool compose stack, with its container images baked in and loaded on
+#  first boot.
+#  .
+#  Note on the requires below: docker-debian-trixie is named directly rather than its "docker"
+#  provides token, because the bookworm layer provides that same token and which one you get should
+#  not depend on resolution order when the suite here is trixie. trixie-minbase brings apt, systemd
+#  networking and sshd - without it there is no way onto the box to see what went wrong.
+# X-Env-Layer-Version: 1.0.0
+# X-Env-Layer-Requires: trixie-minbase,docker-debian-trixie,device-user-admin
+#
+# X-Env-VarPrefix: homespool
+#
+# X-Env-Var-payload:
+# X-Env-Var-payload-Desc: Directory holding the saved container images and the compose stack that
+#  runs them. Built by pi/build.sh - it is generated rather than committed, because it is most of a
+#  gigabyte of container layers.
+# X-Env-Var-payload-Required: y
+# X-Env-Var-payload-Valid: dir
+# X-Env-Var-payload-Set: y
+#
+# X-Env-Var-assetdir:
+# X-Env-Var-assetdir-Desc: Directory holding the first-boot script and its systemd unit (pi/files).
+# X-Env-Var-assetdir-Required: y
+# X-Env-Var-assetdir-Valid: dir
+# X-Env-Var-assetdir-Set: y
+#
+# X-Env-Var-sshkey:
+# X-Env-Var-sshkey-Desc: Path to a public key authorised for the device user. Optional, but with no
+#  key and no password the account is locked and the only way in is a keyboard and monitor.
+#  .
+#  Set is n rather than y deliberately. With y the empty default is *set*, as an empty string, which
+#  then fails this variable's own "string cannot be empty" validation - so declaring an optional
+#  variable the obvious way makes every build that does not use it fail. Unset is what optional
+#  means here.
+# X-Env-Var-sshkey-Required: n
+# X-Env-Var-sshkey-Valid: string
+# X-Env-Var-sshkey-Set: n
+# METAEND
+---
+mmdebstrap:
+  packages:
+    # The Pi's address is what a printer has to dial and what the certificate has to cover, and on a
+    # home LAN it is handed out by DHCP. mDNS means there is a name that survives the lease changing,
+    # which is the difference between "it moved" and "it is gone".
+    - avahi-daemon
+    - libnss-mdns
+
+    - ca-certificates
+
+    # iproute2 is NOT in trixie-minbase - there is no `ip` binary at all, because systemd-networkd
+    # does its own netlink work and nothing else in the base needs one. homespool-firstboot.sh used
+    # `ip route get` to find this machine's address, got "command not found" into a suppressed
+    # stderr, and retried forever on every card built. Also the first thing anyone reaches for when
+    # a board is not on the network, which is exactly when it is missing.
+    - iproute2
+
+    # For working out why the radio is not on the network. The base image ships iwctl and nothing
+    # else, which is enough to connect and not enough to find out why connecting failed: iw shows
+    # what the kernel thinks the regulatory domain and channel list are, and rfkill shows a soft
+    # block, which is invisible from iwctl and looks identical to "no networks found".
+    - iw
+    - rfkill
+
+  customize-hooks:
+    # The stack itself: compose file, the nginx configuration it bind-mounts, and the saved images.
+    # /opt rather than /home, because this is not the device user's to lose.
+    - mkdir -p $1/opt/homespool
+    - cp -a ${IGconf_homespool_payload}/. $1/opt/homespool/
+
+    - install -m 0755 ${IGconf_homespool_assetdir}/homespool-firstboot.sh $1/usr/local/sbin/homespool-firstboot
+    - install -m 0644 ${IGconf_homespool_assetdir}/homespool-firstboot.service $1/etc/systemd/system/homespool-firstboot.service
+
+    - install -m 0755 ${IGconf_homespool_assetdir}/homespool-wifi.sh $1/usr/local/sbin/homespool-wifi
+    - install -m 0644 ${IGconf_homespool_assetdir}/homespool-wifi.service $1/etc/systemd/system/homespool-wifi.service
+    # Onto the boot partition, which is the one a desktop machine can see. Everything under
+    # /boot/firmware here is what genimage copies into the FAT32 partition.
+    - install -m 0644 ${IGconf_homespool_assetdir}/homespool-wifi.txt $1/boot/firmware/homespool-wifi.txt
+
+    # No fstab hook here, and the reason is worth keeping. /etc/fstab inside the chroot reads
+    # "UNCONFIGURED FSTAB FOR BASE SYSTEM", which looks exactly like nothing mounts /boot/firmware -
+    # and a hook appending an entry for it was written on that basis. It was dead code: the real
+    # fstab is generated during *image* generation, complete with both the root and /boot/firmware
+    # entries on by-slot names, and it overwrites anything a customize-hook put there.
+    #
+    # Same shape as the hostname mistake below: the chroot is not the finished filesystem, so
+    # "nothing does X" observed in there is not evidence that nothing does X. Check the built image.
+
+    - |-
+      #
+      # Expire the password so the first login has to change it - the OctoPi arrangement. A shipped
+      # image has, by definition, a password that everybody knows; the mitigation is that it stops
+      # working the moment somebody uses it.
+      #
+      # Only when a password was actually set. Expiring the password of a *locked* account would
+      # leave a board reachable by neither key nor password.
+      set -eu
+      if [ -n "${IGconf_device_user1pass:-}" ] || [ -n "${IGconf_device_user1passhash:-}" ] ; then
+         chroot $1 chage -d 0 "$IGconf_device_user1"
+      fi
+
+    # No hostname hook here on purpose. device-base already owns /etc/hostname, defaulting it to
+    # "${device_class}-<six random letters>" - so a hook that writes the name we want runs *before*
+    # that and is silently overwritten, which is how the first build shipped a board called
+    # "pi3-pjgxel" with a README promising homespool.local. It is set as device.hostname in
+    # config/homespool-pi3.yaml instead, which is the variable that layer actually reads.
+
+    - |-
+      #
+      # An authorised key for the device user, when one was supplied. Without this and without
+      # device_user1pass the account is locked - rpi-image-gen's default, and a deliberate one, but
+      # it means a headless board you cannot reach.
+      set -eu
+      if [ -n "${IGconf_homespool_sshkey:-}" ] ; then
+         home=$1/home/$IGconf_device_user1
+         mkdir -p $home/.ssh
+         cp "$IGconf_homespool_sshkey" $home/.ssh/authorized_keys
+         chmod 700 $home/.ssh
+         chmod 600 $home/.ssh/authorized_keys
+         chroot $1 chown -R $IGconf_device_user1:$IGconf_device_user1 /home/$IGconf_device_user1/.ssh
+      fi
+
+    # Enabled, not started - there is no running systemd in a chroot. They run on the real board.
+    - chroot $1 systemctl enable homespool-firstboot.service
+    - chroot $1 systemctl enable homespool-wifi.service

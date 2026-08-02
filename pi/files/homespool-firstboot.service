@@ -1,0 +1,40 @@
+# Runs the Homespool stack up on every boot, and does the one-time setup on the first one.
+#
+# Not a "firstboot" unit in the run-once-and-disable sense despite the name: the script is idempotent
+# and reconciling the stack every boot is what makes a power-cut recover by itself.
+[Unit]
+Description=Homespool first-boot setup and stack start
+# docker.service, not docker.socket: this calls the CLI, and socket activation would have it race the
+# daemon's own startup on a Pi 3, where that is slow enough to lose.
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+# In [Unit], not [Service] - systemd moved these long ago, and in [Service] they are an unknown
+# lvalue: warned about once in the journal and then ignored, leaving the default limit in force.
+# Zero disables it, because the retry below may need to run for hours while nobody is looking.
+StartLimitIntervalSec=0
+StartLimitBurst=0
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/homespool-firstboot
+WorkingDirectory=/opt/homespool
+
+# Keep trying rather than retiring on the first attempt. The script now fails, instead of succeeding
+# quietly, when there is no address yet - which covers the case that actually happened on hardware:
+# a board whose wi-fi never associated, logging "no LAN address yet", being marked *Finished*, and
+# then ignoring the ethernet cable plugged in five minutes later. It needed a power cycle to notice.
+#
+# The rate limit that would otherwise stop this after five attempts is disabled in [Unit] above.
+Restart=on-failure
+RestartSec=30s
+
+# The database migration on a Pi 3 is the slow part - the container images are already unpacked in
+# /var/lib/docker at build time, so nothing is loaded here. Still generous: a timeout part-way
+# through a migration is worse than waiting.
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=multi-user.target

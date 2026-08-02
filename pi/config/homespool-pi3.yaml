@@ -1,0 +1,41 @@
+# A Raspberry Pi 3 SD-card image with the Homespool stack baked in.
+#
+# Pi 3 rather than 4/5 because that is the board this was first tested on. The device layer is the
+# only thing that ties it there: rpi-image-gen ships pi4, pi5, cm4, cm5 and zero2w beside pi3, so
+# retargeting is a one-word change here. Everything below is board-agnostic.
+#
+# Trixie, matching the deployment the compose stack is developed against.
+device:
+  layer: rpi3
+
+  # device-base would otherwise generate "pi3-<six random letters>", which is sensible for a fleet
+  # and wrong for one appliance you want to find again. This is the name avahi advertises, so it is
+  # also what makes http://homespool.local work - the only address anyone is given, since the Pi's
+  # IP is a DHCP lease nobody wants to memorise.
+  hostname: homespool
+
+layer:
+  custom: homespool
+
+# Lets the device user drive the stack - docker compose logs, ps, restart - without sudo in front of
+# every command. It is effectively root on this box (the docker group always is), which is a real
+# security statement and the right one here: this is a single-purpose appliance whose entire job is
+# running those containers, and the alternative is an operator who types sudo reflexively.
+docker:
+  trust_user1: y
+
+image:
+  layer: image-rpios
+  name: homespool-pi3
+  compression: zstd
+
+  # 200% of the boot content, which is small and fixed.
+  boot_part_size: 200%
+
+  # Generous on purpose, and this is the *final* size: nothing grows the root filesystem on first
+  # boot. raspberrypi-sys-mods is not installed, so there is no init_resize and no resize_early;
+  # fstab is unconfigured, so systemd-growfs-root never triggers; and the table is MBR, so GPT
+  # auto-discovery does not apply either. Whatever is set here is what the board lives with, however
+  # large the card - so it has to cover the database, uploaded gcode and telemetry, not merely the
+  # ~550 MB of container layers now baked into /var/lib/docker.
+  root_part_size: 250%

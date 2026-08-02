@@ -1,0 +1,21 @@
+# Homespool Wi-Fi setup
+#
+# Fill in ssid and psk below, save this file, eject the card and boot the Pi.
+# This partition is FAT32, so you can edit it on Windows, macOS or Linux - it is
+# the only partition that appears when you plug the card into a desktop machine.
+#
+# On the first boot after editing, the Pi copies these details into its own
+# configuration and then BLANKS the psk line here, because this partition has no
+# file permissions - anyone who later reads the card could otherwise read your
+# Wi-Fi password. The ssid line is left alone so you can see what it joined.
+#
+# Leave both blank to use a wired connection instead; nothing here is required.
+
+ssid=
+psk=
+
+# Two-letter country code (DK, GB, DE, US ...). Optional, and only a hint to the
+# kernel, but on some hardware the regulatory domain decides which channels are
+# usable at all - so if the network is visible from a laptop and not from the Pi,
+# set this first.
+country=

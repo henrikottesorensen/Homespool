@@ -74,6 +74,23 @@ mmdebstrap:
     # want to own the user account this layer creates.
     - raspberrypi-sys-mods
 
+    # Not optional, and the reason is a single missing binary.
+    #
+    # initramfs-tools ships BUSYBOX=auto, which silently falls back to klibc-utils when busybox is
+    # absent - and klibc provides no grep. Every Raspberry Pi initramfs script begins by grepping
+    # /proc/cmdline, so all four die on their first statement:
+    #
+    #   /scripts/local-premount/resize_early: 11: grep: not found
+    #   /scripts/local-bottom/set_partuuid:   14: grep: not found
+    #   /scripts/local-bottom/imager_fixup:   13: grep: not found
+    #   /scripts/init-top/rpi_wd:             14: grep: not found
+    #
+    # That is why the root partition never grew: resize_early was installed, listed in ORDER, and
+    # invoked correctly - it just could not run its first line. The failure is invisible without a
+    # serial console, because `debug` on the kernel command line does not print the trace, it
+    # redirects it into /run/initramfs/initramfs.debug.
+    - busybox
+
     # For working out why the radio is not on the network. The base image ships iwctl and nothing
     # else, which is enough to connect and not enough to find out why connecting failed: iw shows
     # what the kernel thinks the regulatory domain and channel list are, and rfkill shows a soft

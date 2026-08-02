@@ -32,10 +32,17 @@ image:
   # 200% of the boot content, which is small and fixed.
   boot_part_size: 200%
 
-  # Generous on purpose, and this is the *final* size: nothing grows the root filesystem on first
-  # boot. raspberrypi-sys-mods is not installed, so there is no init_resize and no resize_early;
-  # fstab is unconfigured, so systemd-growfs-root never triggers; and the table is MBR, so GPT
-  # auto-discovery does not apply either. Whatever is set here is what the board lives with, however
-  # large the card - so it has to cover the database, uploaded gcode and telemetry, not merely the
-  # ~550 MB of container layers now baked into /var/lib/docker.
-  root_part_size: 250%
+  # Modest on purpose. This is no longer the size the board lives with - the layer installs
+  # raspberrypi-sys-mods, so the partition grows to fill the card in the initramfs on first boot and
+  # the filesystem follows. All this decides is the size of the *image file*, and every megabyte of
+  # it is written across a card reader at ~20 MB/s by whoever flashes it.
+  #
+  # It was 250% while the size was final, which shipped ~2 GB of zeros to be overwritten by the
+  # resize on the first boot.
+  #
+  # Not lower than this, though, and the reason is the failure case rather than the normal one: at
+  # 120% a board whose resize did not happen - flashed to a card the same size, or a future change
+  # that quietly stops resize_early running - would come up with a couple of hundred megabytes free,
+  # which is not enough to migrate a database into. 150% leaves it degraded but usable, and still
+  # nearly halves the image.
+  root_part_size: 150%

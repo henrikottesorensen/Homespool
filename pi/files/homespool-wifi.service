@@ -1,0 +1,19 @@
+# Reads Wi-Fi details off the boot partition before the supplicant starts.
+[Unit]
+Description=Apply Homespool Wi-Fi settings from the boot partition
+# local-fs.target, because it reads /boot/firmware, which the fstab entry mounts.
+After=local-fs.target
+# Before iwd, so a first boot needs no restart of anything: the credential is simply in place by
+# the time the supplicant looks for it.
+Before=iwd.service
+ConditionPathExists=/boot/firmware/homespool-wifi.txt
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/homespool-wifi
+
+[Install]
+# Both: multi-user.target so it runs on an ordinary boot, and iwd.service so it is pulled in
+# whenever the supplicant is started, whichever of the two systemd decides to reach first.
+WantedBy=multi-user.target iwd.service

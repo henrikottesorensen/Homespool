@@ -98,6 +98,18 @@ echo "homespool-wifi: configured '$ssid'"
 # raspberrypi/linux#4718 has Raspberry Pi's own engineer saying the SAE_EXT work was done "using
 # wpa_supplicant", and a reply the same day (2024-02-07) that it "just doesn't work with iwd".
 # Revisit if that changes; the fix is deleting one line.
+#
+# Note the limit of what this buys, established by moving a working card from a Pi 4 into a Pi 3B:
+# it is a Pi 4 remedy and it does not rescue a Pi 3B. Same image, same credential, same network,
+# same 2.4 GHz channel - the Pi 3B refused association once a minute with `connect-failed,
+# status: 16`, while joining a plain WPA2 network immediately. That network advertises
+# `PSK PSK/SHA-256 SAE` with `MFP-capable`, and SAE was already disabled here, so SAE was not the
+# obstacle: the BCM43430's 2021 firmware cannot complete association against a transition BSS at
+# all, most likely over PSK/SHA-256 and PMF, neither of which a WPA2-only network asks for. No iwd
+# setting helps - a Pi 3B needs a WPA2-only network or a cable, and the user-facing files say so.
+#
+# Worth carrying forward: `status: 16` appeared both with SAE (Pi 4) and without it (Pi 3B), so it
+# means the AP stopped answering mid-handshake and nothing more specific. It is not an SAE marker.
 mkdir -p /etc/iwd
 {
     printf '[General]\n'

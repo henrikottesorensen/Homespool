@@ -67,17 +67,24 @@ once applied, because FAT32 has no file permissions and anyone who later reads t
 otherwise have your wi-fi password.
 
 **WPA3 does not work with the firmware and software this image ships**, and has been unreliable on
-Raspberry Pi built-in wi-fi for years. Tested here on a Pi 3B and a Pi 4:
+Raspberry Pi built-in wi-fi for years. **How much it costs you depends on the board**, which took two
+days on real hardware to establish:
 
-| your network | result |
-|---|---|
-| WPA2 | works |
-| WPA2/WPA3 mixed ("transition mode") | works — the Pi uses the WPA2 half |
-| WPA3-only | **will not connect with this image** |
+| your network | Pi 4 | Pi 3B |
+|---|---|---|
+| WPA2 | works | works |
+| WPA2/WPA3 mixed ("transition mode") | works — the Pi uses the WPA2 half | **will not connect** |
+| WPA3-only | **will not connect** | **will not connect** |
 
-If the Pi will not join, check your router. Setting that network to **WPA2/WPA3 mixed** fixes it, and
-costs nothing for your other devices — they carry on using WPA3, only the Pi drops to WPA2.
-Alternatives are a wired connection, or a second WPA2 SSID for older devices.
+**On a Pi 4**, setting your router's network to **WPA2/WPA3 mixed** fixes it and costs nothing for
+your other devices — they carry on using WPA3, only the Pi drops to WPA2.
+
+**On a Pi 3B, mixed mode is not enough.** That board needs a network offering **WPA2 and nothing
+else**, or a wired connection. Mixed mode fails there even though the Pi is only trying to use the
+WPA2 half — see "Why" below.
+
+Either way, the alternatives are the same: plug it in, or add a second WPA2-only SSID for older
+devices. Most routers can broadcast several, and the Pi is going to sit next to a printer forever.
 
 ### Why
 
@@ -98,8 +105,34 @@ advertising H2E, which most modern ones do. The fix is an iwd patch still under 
 
 So the image sets `SaeDisable` in `/etc/iwd/main.conf`, which tells iwd not to attempt SAE at all.
 Without it you get no error worth reading — just a connection that never completes. With it, mixed
-networks work immediately. **A Pi 3B is a harder case**: its firmware carries no SAE support at all,
-dated 2021.
+networks work immediately **on a Pi 4**.
+
+### Why a Pi 3B is worse, and `SaeDisable` does not rescue it
+
+Measured after moving a working card from a Pi 4 into a Pi 3B — same image, same credential, same
+network, same 2.4 GHz channel. The Pi 3B refused it, once a minute, forever:
+
+```
+event: connect-info, ssid: example-network, bss: 00:00:5e:00:53:af, signal: -64
+event: connect-failed, status: 16
+```
+
+The same board joined a plain WPA2 network immediately. So it is not the radio, the firmware load,
+the regulatory domain, the credential or the band. What the failing network advertises is:
+
+```
+Authentication suites: PSK PSK/SHA-256 SAE
+Capabilities: ... MFP-capable
+```
+
+That is a transition BSS: SAE *and* PSK, with management frame protection offered. **SAE was never
+the obstacle here** — `SaeDisable` was already active and the client had stopped attempting it. The
+BCM43430's firmware, dated 2021, cannot complete association against such a BSS at all, most likely
+over `PSK/SHA-256` and PMF, neither of which a plain WPA2 network ever asks for.
+
+Which is why the table above splits by board, and why **`status 16` should not be read as "SAE was
+refused"** — it appears here with no SAE in play. It means the access point stopped answering
+part-way through the handshake, and the reason has to be established each time rather than assumed.
 
 ### What would make WPA3 work
 

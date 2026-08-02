@@ -34,9 +34,11 @@ namespace Homespool.Host.Pages.Files;
 /// (<c>notes/file-storage.md</c>).
 /// </para>
 /// <para>
-/// Talks to <see cref="UserFileStore"/> directly rather than to its own API over HTTP, as every
-/// other page here talks to a service. The store is scoped by user id on every call, so the
-/// ownership rule is the same one the API gets and is not restated here.
+/// Talks to <see cref="PrintFileCatalog"/> directly rather than to its own API over HTTP, as every
+/// other page here talks to a service. Every call is scoped by user id, so the ownership rule is the
+/// same one the API gets and is not restated here. (It went through <see cref="UserFileStore"/> until
+/// the file index arrived; the catalog is that store plus the row, so that nothing on this page can
+/// change a file without the two staying in step.)
 /// </para>
 /// </remarks>
 [Authorize]
@@ -44,18 +46,20 @@ namespace Homespool.Host.Pages.Files;
 [RequestSizeLimit(long.MaxValue)]
 public class IndexModel : PageModel
 {
-    private readonly UserFileStore _files;
+    private readonly PrintFileCatalog _files;
     private readonly UserManager<HSUser> _userManager;
     private readonly PrintFileStorageOptions _options;
     private readonly PrinterQueryService _printers;
     private readonly PrintFileSender _sender;
+    private readonly PrintQueueService _queue;
     private readonly ILogger<IndexModel> _logger;
 
-    public IndexModel(UserFileStore files,
+    public IndexModel(PrintFileCatalog files,
                       UserManager<HSUser> userManager,
                       IOptions<PrintFileStorageOptions> options,
                       PrinterQueryService printers,
                       PrintFileSender sender,
+                      PrintQueueService queue,
                       ILogger<IndexModel> logger)
     {
         _files = files;
@@ -63,6 +67,7 @@ public class IndexModel : PageModel
         _options = options.Value;
         _printers = printers;
         _sender = sender;
+        _queue = queue;
         _logger = logger;
     }
 
@@ -236,7 +241,8 @@ public class IndexModel : PageModel
 
         try
         {
-            StoredFile? stored = _files.Publish(userId.Value, staged.Token, overwrite: false, DisplayName());
+            StoredFile? stored = await _files.PublishAsync(userId.Value, staged.Token, overwrite: false,
+                cancellationToken, DisplayName());
 
             (StatusMessage, StatusSuccess) = ($"Uploaded {stored!.FileName}.", true);
         }
@@ -251,7 +257,8 @@ public class IndexModel : PageModel
     }
 
     /// <summary>Answers the replace question with yes, using bytes already on disk.</summary>
-    public IActionResult OnPostReplace(string token, string? sort, bool desc)
+    public async Task<IActionResult> OnPostReplaceAsync(string token, string? sort, bool desc,
+        CancellationToken cancellationToken)
     {
         long? userId = UserId();
 
@@ -260,7 +267,8 @@ public class IndexModel : PageModel
             return Forbid();
         }
 
-        StoredFile? stored = _files.Publish(userId.Value, token, overwrite: true, DisplayName());
+        StoredFile? stored = await _files.PublishAsync(userId.Value, token, overwrite: true, cancellationToken,
+            DisplayName());
 
         (StatusMessage, StatusSuccess) = stored is null
             ? ("That upload is no longer waiting - it may have been cleared up. Try again.", false)
@@ -300,6 +308,55 @@ public class IndexModel : PageModel
     /// no way to show progress yet (<c>notes/file-storage.md</c>).
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Adds a file to a printer's queue, which is the other thing to do with a printer and a file.
+    /// </summary>
+    /// <remarks>
+    /// <b>Queueing is not sending.</b> Send moves the bytes now and the printer starts nothing;
+    /// queue writes a row and moves nothing, leaving the printer's producer loop to transfer and
+    /// print it when the printer is actually free. Two buttons rather than one because they answer
+    /// different questions - "put this on the printer" and "print this next" - and collapsing them
+    /// would mean guessing which was meant.
+    /// </remarks>
+    public async Task<IActionResult> OnPostQueueAsync(string name, int printerId, string? sort, bool desc,
+        CancellationToken cancellationToken)
+    {
+        long? userId = UserId();
+
+        if (userId is null)
+        {
+            return Forbid();
+        }
+
+        // Same ownership rule as Send: the printer has to be one of the caller's own, found in the
+        // list already scoped to them rather than fetched by the id the form supplied.
+        await LoadPrintersAsync(cancellationToken);
+
+        if (!Printers.Any(candidate => candidate.Id == printerId))
+        {
+            (StatusMessage, StatusSuccess) = ("That printer is not one of yours.", false);
+
+            return RedirectToSelf(sort, desc);
+        }
+
+        try
+        {
+            await _queue.EnqueueAsync(printerId, userId.Value, name, cancellationToken);
+
+            (StatusMessage, StatusSuccess) = ($"Queued {name}.", true);
+        }
+        catch (PrintFileNotFoundException e)
+        {
+            (StatusMessage, StatusSuccess) = (e.Message, false);
+        }
+        catch (TeamAccessDeniedException)
+        {
+            (StatusMessage, StatusSuccess) = ("You may read that printer but not use it.", false);
+        }
+
+        return RedirectToSelf(sort, desc);
+    }
+
     public async Task<IActionResult> OnPostSendAsync(string name, int printerId, string? sort, bool desc,
         CancellationToken cancellationToken)
     {
@@ -382,7 +439,8 @@ public class IndexModel : PageModel
         return RedirectToSelf(sort, desc);
     }
 
-    public IActionResult OnPostRename(string name, string newName, string? sort, bool desc)
+    public async Task<IActionResult> OnPostRenameAsync(string name, string newName, string? sort, bool desc,
+        CancellationToken cancellationToken)
     {
         long? userId = UserId();
 
@@ -394,7 +452,8 @@ public class IndexModel : PageModel
 
         try
         {
-            StoredFile? renamed = _files.Rename(userId.Value, name, newName ?? string.Empty);
+            StoredFile? renamed =
+                await _files.RenameAsync(userId.Value, name, newName ?? string.Empty, cancellationToken);
 
             (StatusMessage, StatusSuccess) = renamed is null
                 ? ($"There is no file named {name}.", false)
@@ -412,7 +471,16 @@ public class IndexModel : PageModel
         return RedirectToSelf(sort, desc);
     }
 
-    public IActionResult OnPostDelete(string name, string? sort, bool desc)
+    /// <summary>
+    /// Deletes a file, unless a queued print still wants it.
+    /// </summary>
+    /// <remarks>
+    /// The refusal is not an obstacle to route around: a printer's queue is shared, so the print this
+    /// would cancel may not be the deleter's own. Cancelling the queued print is the deliberate act that
+    /// unblocks it - see <see cref="PrintFileCatalog.DeleteAsync"/>.
+    /// </remarks>
+    public async Task<IActionResult> OnPostDeleteAsync(string name, string? sort, bool desc,
+        CancellationToken cancellationToken)
     {
         long? userId = UserId();
 
@@ -421,9 +489,12 @@ public class IndexModel : PageModel
             return Forbid();
         }
 
-        (StatusMessage, StatusSuccess) = _files.Delete(userId.Value, name)
-            ? ($"Deleted {name}.", true)
-            : ($"There is no file named {name}.", false);
+        (StatusMessage, StatusSuccess) = await _files.DeleteAsync(userId.Value, name, cancellationToken) switch
+        {
+            PrintFileDeletion.Deleted => ($"Deleted {name}.", true),
+            PrintFileDeletion.Queued => ($"{name} is queued to print. Cancel the queued print first.", false),
+            _ => ($"There is no file named {name}.", false),
+        };
 
         return RedirectToSelf(sort, desc);
     }

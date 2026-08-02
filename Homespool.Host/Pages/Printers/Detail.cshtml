@@ -21,6 +21,11 @@
 
 <p><a asp-page="Index">&larr; Back to printers</a></p>
 
+@if (Model.StatusMessage is not null)
+{
+    <div class="alert @(Model.StatusSuccess ? "alert-success" : "alert-danger")" role="alert">@Model.StatusMessage</div>
+}
+
 <h2>Current status</h2>
 
 @{
@@ -52,6 +57,78 @@ else
             <tr><th>Speed</th><td>@(liveState.Speed is { } speed ? $"{speed}%" : "-")</td></tr>
             <tr><th>Flow</th><td>@(liveState.Flow is { } flow ? $"{flow}%" : "-")</td></tr>
             <tr><th>Last seen</th><td>@liveState.LastSeenAt</td></tr>
+        </tbody>
+    </table>
+}
+
+<h2>Queue</h2>
+
+@* Reordering and cancelling are edits to a list - nothing here reaches the printer. The producer
+   loop is what turns the head of this queue into a transfer and a print, and it advances only when
+   the printer is Ready, which only a person sets. *@
+@if (Model.Queue.Count == 0)
+{
+    <p>Nothing queued. Send a file to this printer's queue from <a asp-page="/Files/Index">Files</a>.</p>
+}
+else
+{
+    <table class="table table-sm w-auto align-middle">
+        <thead>
+            <tr>
+                <th scope="col">#</th>
+                <th scope="col">File</th>
+                <th scope="col" class="text-end">Size</th>
+                <th scope="col">Queued</th>
+                @if (Model.CanUse)
+                {
+                    <th scope="col"><span class="visually-hidden">Actions</span></th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @for (int index = 0; index < Model.Queue.Count; index++)
+            {
+                var job = Model.Queue[index];
+
+                <tr>
+                    @* The row's place in the list, not its stored Position - cancelling leaves gaps in
+                       those, deliberately, and a gap shown to a person reads as a bug. *@
+                    <td>@(index + 1)</td>
+                    <td>@(job.PrintFile?.Name ?? "(missing)")</td>
+                    <td class="text-end">@($"{(job.PrintFile?.Size ?? 0) / 1024.0:N0} KiB")</td>
+
+                    @* Fixed format rather than a culture-dependent one, matching the Files table. *@
+                    <td>@job.QueuedAt.ToString("yyyy-MM-dd HH:mm")</td>
+
+                    @if (Model.CanUse)
+                    {
+                        <td class="text-nowrap">
+                            <form method="post" asp-page-handler="Move" asp-route-uuid="@Model.Statistics.Printer.Uuid"
+                                  class="d-inline">
+                                <input type="hidden" name="id" value="@job.Id" />
+                                <input type="hidden" name="position" value="@(index - 1)" />
+                                <button type="submit" class="btn btn-sm btn-outline-secondary"
+                                        title="Move up" aria-label="Move @(job.PrintFile?.Name) up"
+                                        @(index == 0 ? "disabled" : string.Empty)>&uarr;</button>
+                            </form>
+                            <form method="post" asp-page-handler="Move" asp-route-uuid="@Model.Statistics.Printer.Uuid"
+                                  class="d-inline">
+                                <input type="hidden" name="id" value="@job.Id" />
+                                <input type="hidden" name="position" value="@(index + 1)" />
+                                <button type="submit" class="btn btn-sm btn-outline-secondary"
+                                        title="Move down" aria-label="Move @(job.PrintFile?.Name) down"
+                                        @(index == Model.Queue.Count - 1 ? "disabled" : string.Empty)>&darr;</button>
+                            </form>
+                            <form method="post" asp-page-handler="Cancel" asp-route-uuid="@Model.Statistics.Printer.Uuid"
+                                  class="d-inline">
+                                <input type="hidden" name="id" value="@job.Id" />
+                                <button type="submit" class="btn btn-sm btn-outline-danger"
+                                        aria-label="Remove @(job.PrintFile?.Name) from the queue">Remove</button>
+                            </form>
+                        </td>
+                    }
+                </tr>
+            }
         </tbody>
     </table>
 }

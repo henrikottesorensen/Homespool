@@ -202,6 +202,14 @@ public static class Program
                 sp => new HostEnvironmentAccessor(sp.GetRequiredService<IWebHostEnvironment>().ContentRootPath));
             builder.Services.AddSingleton<PrintFiles.UserFileStore>();
 
+            // Scoped, because it holds a DbContext - which is exactly why the index lives here rather
+            // than inside the singleton store. Everything that changes a file goes through this so the
+            // disk and the table cannot drift; reads pass straight through.
+            builder.Services.AddScoped<PrintFiles.PrintFileCatalog>();
+
+            // Runs once at startup, after MigrateHomespoolData below has made the tables exist.
+            builder.Services.AddHostedService<PrintFiles.PrintFileReconciler>();
+
             // Scoped, following the command service it wraps. Shared by the API endpoint and the
             // Files page so that "a send that did not take leaves no offer" has one implementation.
             builder.Services.AddScoped<Services.PrintFileSender>();
@@ -275,6 +283,7 @@ public static class Program
             builder.Services.AddScoped<Services.UnitOfWork>();
             builder.Services.AddScoped<Services.InvitationService>();
             builder.Services.AddScoped<Services.PrinterQueryService>();
+            builder.Services.AddScoped<Services.PrintQueueService>();
             builder.Services.AddScoped<Services.ApiTokenService>();
 
             WebApplication app = builder.Build();

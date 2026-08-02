@@ -162,6 +162,37 @@ namespace Homespool.Data.Migrations
                     b.ToTable("Invitations");
                 });
 
+            modelBuilder.Entity("Homespool.Model.Entities.PrintFile", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Digest")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .UseCollation("NOCASE");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("UploadedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("PrintFiles");
+                });
+
             modelBuilder.Entity("Homespool.Model.Entities.Printer", b =>
                 {
                     b.Property<int>("Id")
@@ -500,6 +531,36 @@ namespace Homespool.Data.Migrations
                     b.HasIndex("TemporaryCode");
 
                     b.ToTable("PrusaConnectRegistrations");
+                });
+
+            modelBuilder.Entity("Homespool.Model.Entities.QueuedPrint", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("PrintFileId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PrinterId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("QueuedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("QueuedByUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PrintFileId");
+
+                    b.HasIndex("PrinterId", "Position");
+
+                    b.ToTable("QueuedPrints");
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.Team", b =>
@@ -866,6 +927,15 @@ namespace Homespool.Data.Migrations
                     b.Navigation("Team");
                 });
 
+            modelBuilder.Entity("Homespool.Model.Entities.PrintFile", b =>
+                {
+                    b.HasOne("Homespool.Model.Entities.HSUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Homespool.Model.Entities.Printer", b =>
                 {
                     b.HasOne("Homespool.Model.Entities.Team", "Team")
@@ -879,13 +949,11 @@ namespace Homespool.Data.Migrations
 
             modelBuilder.Entity("Homespool.Model.Entities.PrinterEvent", b =>
                 {
-                    b.HasOne("Homespool.Model.Entities.Printer", "Printer")
+                    b.HasOne("Homespool.Model.Entities.Printer", null)
                         .WithMany()
                         .HasForeignKey("PrinterId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Printer");
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.PrinterLiveSlotState", b =>
@@ -901,13 +969,11 @@ namespace Homespool.Data.Migrations
 
             modelBuilder.Entity("Homespool.Model.Entities.PrinterLiveState", b =>
                 {
-                    b.HasOne("Homespool.Model.Entities.Printer", "Printer")
+                    b.HasOne("Homespool.Model.Entities.Printer", null)
                         .WithOne()
                         .HasForeignKey("Homespool.Model.Entities.PrinterLiveState", "PrinterId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Printer");
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.PrusaConnectAuthenticationData", b =>
@@ -942,6 +1008,25 @@ namespace Homespool.Data.Migrations
                     b.Navigation("Printer");
                 });
 
+            modelBuilder.Entity("Homespool.Model.Entities.QueuedPrint", b =>
+                {
+                    b.HasOne("Homespool.Model.Entities.PrintFile", "PrintFile")
+                        .WithMany("QueuedPrints")
+                        .HasForeignKey("PrintFileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Homespool.Model.Entities.Printer", "Printer")
+                        .WithMany()
+                        .HasForeignKey("PrinterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PrintFile");
+
+                    b.Navigation("Printer");
+                });
+
             modelBuilder.Entity("Homespool.Model.Entities.TeamMember", b =>
                 {
                     b.HasOne("Homespool.Model.Entities.Team", "Team")
@@ -955,13 +1040,11 @@ namespace Homespool.Data.Migrations
 
             modelBuilder.Entity("Homespool.Model.Entities.TelemetrySample", b =>
                 {
-                    b.HasOne("Homespool.Model.Entities.Printer", "Printer")
+                    b.HasOne("Homespool.Model.Entities.Printer", null)
                         .WithMany()
                         .HasForeignKey("PrinterId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Printer");
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.TelemetrySlotSample", b =>
@@ -1024,6 +1107,11 @@ namespace Homespool.Data.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Homespool.Model.Entities.PrintFile", b =>
+                {
+                    b.Navigation("QueuedPrints");
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.PrinterLiveState", b =>

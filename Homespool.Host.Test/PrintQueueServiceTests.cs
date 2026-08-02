@@ -32,11 +32,14 @@ public sealed class PrintQueueServiceTests : IDisposable
     private const long Alice = 1;
     private const long Bob = 2;
 
+    private readonly QueueSignal _signal = new();
     private readonly string _root = Path.Combine(Path.GetTempPath(), "homespool-queue-" + Guid.NewGuid().ToString("N"));
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-queue-{Guid.NewGuid():N}.db");
 
     public void Dispose()
     {
+        _signal.Dispose();
+
         if (Directory.Exists(_root))
         {
             Directory.Delete(_root, recursive: true);
@@ -332,7 +335,7 @@ public sealed class PrintQueueServiceTests : IDisposable
 
     private PrintQueueService NewQueue(HSDbContext context)
     {
-        return new(context, new TeamService(context), NewCatalog(context), TimeProvider.System);
+        return new(context, new TeamService(context), NewCatalog(context), TimeProvider.System, _signal);
     }
 
     private HSDbContext NewContext()

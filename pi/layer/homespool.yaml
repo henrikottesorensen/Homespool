@@ -57,6 +57,49 @@ mmdebstrap:
     # a board is not on the network, which is exactly when it is missing.
     - iproute2
 
+    # systemd's pager. Without it journalctl dumps raw to the terminal and every invocation wants
+    # --no-pager to be readable, which is a small tax paid on every single debugging session.
+    - less
+
+    # curl is baked into the application container for its healthcheck, which makes its absence out
+    # here especially confusing: the stack is demonstrably probing itself over HTTP while `curl
+    # localhost` from the operator's own shell reports command not found.
+    - curl
+
+    # Grows the root partition to fill whatever card the image was flashed onto. A distributed image
+    # cannot know that size, which is the one case rpi-image-gen deliberately does not cover: its
+    # answer is to build the image at the size of a known target and rely on sparseness, because its
+    # envisaged flow is rpi-sb-provisioner or fastboot writing to a board you have in your hand.
+    #
+    # This package rather than a growpart unit of our own, and the reason is *where* it resizes:
+    # its initramfs script grows the partition before root is mounted, where ours would be
+    # operating on a live mounted filesystem. For code that rewrites a partition table on a
+    # stranger's SD card, the version Raspberry Pi ships to millions - running at the safe moment -
+    # wins on both counts.
+    #
+    # It brings raspi-config, parted, fdisk, whiptail and uuid with it, and its Imager helpers come
+    # along doing nothing (see the README on why Imager customisation cannot work here). That is the
+    # price. Recommends are off in this tree, which matters: userconf-pi would otherwise arrive and
+    # want to own the user account this layer creates.
+    - raspberrypi-sys-mods
+
+    # Not optional, and the reason is a single missing binary.
+    #
+    # initramfs-tools ships BUSYBOX=auto, which silently falls back to klibc-utils when busybox is
+    # absent - and klibc provides no grep. Every Raspberry Pi initramfs script begins by grepping
+    # /proc/cmdline, so all four die on their first statement:
+    #
+    #   /scripts/local-premount/resize_early: 11: grep: not found
+    #   /scripts/local-bottom/set_partuuid:   14: grep: not found
+    #   /scripts/local-bottom/imager_fixup:   13: grep: not found
+    #   /scripts/init-top/rpi_wd:             14: grep: not found
+    #
+    # That is why the root partition never grew: resize_early was installed, listed in ORDER, and
+    # invoked correctly - it just could not run its first line. The failure is invisible without a
+    # serial console, because `debug` on the kernel command line does not print the trace, it
+    # redirects it into /run/initramfs/initramfs.debug.
+    - busybox
+
     # For working out why the radio is not on the network. The base image ships iwctl and nothing
     # else, which is enough to connect and not enough to find out why connecting failed: iw shows
     # what the kernel thinks the regulatory domain and channel list are, and rfkill shows a soft
@@ -87,6 +130,48 @@ mmdebstrap:
     #
     # Same shape as the hostname mistake below: the chroot is not the finished filesystem, so
     # "nothing does X" observed in there is not evidence that nothing does X. Check the built image.
+
+    - |-
+      #
+      # Undo raspberrypi-sys-mods' rfkill policy. It ships `options rfkill default_state=0`, so the
+      # radio comes up blocked - correct for Raspberry Pi OS, where their own first-boot tooling
+      # lifts it after an operator picks a country, and wrong here, where none of that exists and
+      # the block simply never lifts.
+      #
+      # zz- so it sorts after rfkill_default.conf: modprobe reads /etc/modprobe.d in order and the
+      # last setting of a parameter wins. Belt and braces with the explicit `rfkill unblock` in
+      # homespool-wifi.sh, because relying on filename ordering alone to defeat another package's
+      # policy is the sort of thing that quietly stops working.
+      set -eu
+      printf '%s\n' 'options rfkill default_state=1' > $1/etc/modprobe.d/zz-homespool-rfkill.conf
+
+    - |-
+      #
+      # Turn the root-partition resize on. raspberrypi-sys-mods' initramfs script is gated on the
+      # word "resize" being on the kernel command line, and does nothing without it.
+      #
+      # Appending to cmdline.txt is safe *here specifically*, unlike the hostname and fstab hooks
+      # this file used to carry, which a later stage silently regenerated. Image generation edits
+      # this file rather than rewriting it - image/mbr/simple_dual/setup.sh replaces only the root=
+      # token with a sed - so everything else on the line survives. Verified in the built image, not
+      # assumed, because this project has now been caught by that exact difference twice.
+      #
+      # sed on line 1 rather than >>, because cmdline.txt is a single line and an appended line is
+      # ignored in silence: the kernel reads the first line and nothing reports the rest.
+      set -eu
+      CMDLINE=$1/boot/firmware/cmdline.txt
+      if ! grep -qw resize "$CMDLINE" ; then
+         sed -i '1 s/$/ resize/' "$CMDLINE"
+      fi
+
+    - |-
+      #
+      # Regenerate the initramfs so it carries resize_early, plus the lsblk and parted the package's
+      # own hook copies in for it. Explicit rather than relying on the package's triggers firing in
+      # the right order relative to the rest of the build - it is idempotent, and a missing script
+      # here fails by quietly never resizing.
+      set -eu
+      chroot $1 update-initramfs -u
 
     - |-
       #
@@ -125,3 +210,14 @@ mmdebstrap:
     # Enabled, not started - there is no running systemd in a chroot. They run on the real board.
     - chroot $1 systemctl enable homespool-firstboot.service
     - chroot $1 systemctl enable homespool-wifi.service
+
+    # The filesystem half of the resize, and it does NOT come enabled with the package - checked in
+    # a built image, where the initramfs had grown the partition and nothing then grew the ext4
+    # inside it.
+    #
+    # Enabling rpi-resize rather than systemd-growfs-root.service, which is what actually does the
+    # work: growfs has no [Install] section at all and cannot be enabled directly. rpi-resize exists
+    # to be the installable wrapper - its ExecStart is /usr/bin/true and its whole purpose is the
+    # Wants= that pulls growfs in. It is ConditionFirstBoot=yes, which holds here because mmdebstrap
+    # leaves /etc/machine-id empty, and it disables itself after one run.
+    - chroot $1 systemctl enable rpi-resize.service

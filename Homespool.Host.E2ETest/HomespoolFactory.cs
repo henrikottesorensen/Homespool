@@ -17,7 +17,6 @@ using Serilog.Core;
 using Homespool.Data;
 using Homespool.Host.Controllers;
 using Homespool.Host.Listeners;
-using Homespool.Host.PrintFiles;
 using Homespool.Host.PrusaConnect;
 
 namespace Homespool.Host.E2ETest;

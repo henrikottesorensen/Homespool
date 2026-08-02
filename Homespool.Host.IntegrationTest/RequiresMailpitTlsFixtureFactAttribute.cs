@@ -1,9 +1,6 @@
 using System.IO;
 using System.Runtime.CompilerServices;
 
-using Xunit;
-using Xunit.Sdk;
-
 namespace Homespool.Host.IntegrationTest;
 
 /// <summary>

@@ -213,6 +213,29 @@ namespace Homespool.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "PrintFiles",
+                columns: table => new
+                {
+                    Id = table.Column<long>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    UserId = table.Column<long>(type: "INTEGER", nullable: false),
+                    Name = table.Column<string>(type: "TEXT", nullable: false, collation: "NOCASE"),
+                    Size = table.Column<long>(type: "INTEGER", nullable: false),
+                    Digest = table.Column<string>(type: "TEXT", nullable: true),
+                    UploadedAt = table.Column<long>(type: "INTEGER", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PrintFiles", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_PrintFiles_AspNetUsers_UserId",
+                        column: x => x.UserId,
+                        principalTable: "AspNetUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Invitations",
                 columns: table => new
                 {
@@ -440,6 +463,35 @@ namespace Homespool.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "QueuedPrints",
+                columns: table => new
+                {
+                    Id = table.Column<long>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
+                    PrintFileId = table.Column<long>(type: "INTEGER", nullable: false),
+                    Position = table.Column<int>(type: "INTEGER", nullable: false),
+                    QueuedByUserId = table.Column<long>(type: "INTEGER", nullable: false),
+                    QueuedAt = table.Column<long>(type: "INTEGER", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_QueuedPrints", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_QueuedPrints_PrintFiles_PrintFileId",
+                        column: x => x.PrintFileId,
+                        principalTable: "PrintFiles",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_QueuedPrints_Printers_PrinterId",
+                        column: x => x.PrinterId,
+                        principalTable: "Printers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "TelemetrySamples",
                 columns: table => new
                 {
@@ -620,6 +672,12 @@ namespace Homespool.Data.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_PrintFiles_UserId_Name",
+                table: "PrintFiles",
+                columns: new[] { "UserId", "Name" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_PrusaConnectAuthentication_FingerPrintKey",
                 table: "PrusaConnectAuthentication",
                 column: "FingerPrintKey",
@@ -651,6 +709,16 @@ namespace Homespool.Data.Migrations
                 name: "IX_PrusaConnectRegistrations_TemporaryCode",
                 table: "PrusaConnectRegistrations",
                 column: "TemporaryCode");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_QueuedPrints_PrinterId_Position",
+                table: "QueuedPrints",
+                columns: new[] { "PrinterId", "Position" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_QueuedPrints_PrintFileId",
+                table: "QueuedPrints",
+                column: "PrintFileId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_TeamMembers_UserId",
@@ -714,6 +782,9 @@ namespace Homespool.Data.Migrations
                 name: "PrusaConnectRegistrations");
 
             migrationBuilder.DropTable(
+                name: "QueuedPrints");
+
+            migrationBuilder.DropTable(
                 name: "TeamMembers");
 
             migrationBuilder.DropTable(
@@ -723,13 +794,16 @@ namespace Homespool.Data.Migrations
                 name: "AspNetRoles");
 
             migrationBuilder.DropTable(
-                name: "AspNetUsers");
-
-            migrationBuilder.DropTable(
                 name: "PrinterLiveStates");
 
             migrationBuilder.DropTable(
+                name: "PrintFiles");
+
+            migrationBuilder.DropTable(
                 name: "TelemetrySamples");
+
+            migrationBuilder.DropTable(
+                name: "AspNetUsers");
 
             migrationBuilder.DropTable(
                 name: "Printers");

@@ -17,6 +17,7 @@ using NSubstitute;
 
 using Homespool.Data;
 using Homespool.Host.Pages.Printers;
+using Homespool.Host.PrintFiles;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Services;
 using Homespool.Model;
@@ -76,7 +77,21 @@ public sealed class DetailModelTests : IDisposable
 
         PrinterConnectionRegistry connectionRegistry = new(NullLogger<PrinterConnectionRegistry>.Instance);
 
-        DetailModel model = new(new PrinterQueryService(context, TimeProvider.System), connectionRegistry, users)
+        // The page reads its printer's queue, so it needs the real service - and that needs a file
+        // store. Rooted in a temp directory that no test here ever writes to: these cases are about
+        // the 404 rule and connection state, and an empty queue is the right backdrop for both.
+        string storeRoot = Path.Combine(Path.GetTempPath(), "homespool-detail-" + Guid.NewGuid().ToString("N"));
+        UserFileStore store = new(Options.Create(new PrintFileStorageOptions { Directory = storeRoot }),
+            new HostEnvironmentAccessor(storeRoot),
+            TimeProvider.System,
+            NullLogger<UserFileStore>.Instance);
+
+        TeamService teamService = new(context);
+        PrintQueueService queueService = new(context, teamService,
+            new PrintFileCatalog(store, context, NullLogger<PrintFileCatalog>.Instance), TimeProvider.System);
+
+        DetailModel model = new(new PrinterQueryService(context, TimeProvider.System), queueService, teamService,
+            connectionRegistry, users)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };

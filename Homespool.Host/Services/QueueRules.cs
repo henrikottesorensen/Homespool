@@ -86,6 +86,13 @@ public static class QueueRules
             return QueueAction.Wait(QueueWaitReason.AwaitingPrinterPath);
         }
 
+        if (situation.PrintInFlight)
+        {
+            // Commanded already; the printer just has not caught up. See PrintInFlight - this is the
+            // window where it still says READY.
+            return QueueAction.Wait(QueueWaitReason.PrintStarting);
+        }
+
         if (!IsAvailable(situation.Status))
         {
             // Includes Finished and Stopped, where the printer would accept the command. Paused and
@@ -108,7 +115,17 @@ public static class QueueRules
 /// <param name="Status">Its last-known state, from <c>PrinterLiveState</c>.</param>
 /// <param name="Head">The queue's first entry, or null when the queue is empty.</param>
 /// <param name="TransferInFlight">Whether this printer is already pulling a file from us.</param>
-public sealed record QueueSnapshot(bool Connected, PrinterStatus Status, QueueHead? Head, bool TransferInFlight);
+/// <param name="PrintInFlight">
+/// Whether a print of ours is open on this printer - commanded and not yet ended.
+/// <para>
+/// <b>Load-bearing for about three seconds, which is exactly long enough to matter.</b> A printer
+/// accepts <c>START_PRINT</c> and keeps reporting <c>READY</c> until it has finished preview-init
+/// and heating - measured at 3.1 s in the Core One capture. Without this the loop would see a ready
+/// printer with a queue and command a second print into that gap.
+/// </para>
+/// </param>
+public sealed record QueueSnapshot(bool Connected, PrinterStatus Status, QueueHead? Head, bool TransferInFlight,
+    bool PrintInFlight = false);
 
 /// <summary>The entry at the front of a printer's queue, with what is known about its file.</summary>
 /// <param name="QueuedPrintId">The queue entry.</param>
@@ -185,4 +202,10 @@ public enum QueueWaitReason
     /// case with no backstop under it.
     /// </summary>
     PrinterNotAvailable,
+
+    /// <summary>
+    /// A print has been commanded and the printer has not reported itself printing yet - the few
+    /// seconds in which it still says <c>READY</c>.
+    /// </summary>
+    PrintStarting,
 }

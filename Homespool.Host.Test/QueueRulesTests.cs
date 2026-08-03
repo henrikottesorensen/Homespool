@@ -163,6 +163,50 @@ public class QueueRulesTests
         AllStates().Should().HaveCount(Enum.GetValues<PrinterStatus>().Length).And.NotBeEmpty();
     }
 
+    /// <summary>
+    /// A commanded print holds the loop even while the printer still says <c>Ready</c> - the few
+    /// seconds between accepting <c>START_PRINT</c> and reporting <c>PRINTING</c>.
+    /// </summary>
+    /// <remarks>
+    /// Measured at 3.1 s on a Core One (<c>START_PRINT</c> +83.7 s, <c>READY -> PRINTING</c> +86.8 s).
+    /// Without this the loop sees a ready printer with a queue and commands a second print into the
+    /// gap; the partial unique index on the history row would refuse it, but a failed insert is a
+    /// worse way to discover it than not doing it.
+    /// </remarks>
+    [Fact]
+    public void APrintAlreadyCommandedStopsAnotherBeingStarted()
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(PrinterStatus.Ready, arrived: true, path: "/usb/A~1.BGC") with { PrintInFlight = true });
+
+        action.Kind.Should().Be(QueueActionKind.Wait);
+        action.Reason.Should().Be(QueueWaitReason.PrintStarting);
+    }
+
+    /// <summary>And it holds whatever the printer is reporting, not only while it still says Ready.</summary>
+    [Theory]
+    [MemberData(nameof(AllStates))]
+    public void NothingIsStartedWhileAPrintIsOpen(PrinterStatus status)
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(status, arrived: true, path: "/usb/A~1.BGC") with { PrintInFlight = true });
+
+        action.Kind.Should().NotBe(QueueActionKind.Print);
+    }
+
+    /// <summary>
+    /// A transfer is still allowed while a print is open - that is pipelining, and the guard above is
+    /// about starting a second <i>print</i>, not about moving the next file.
+    /// </summary>
+    [Fact]
+    public void TheNextFileStillTransfersWhileAPrintIsOpen()
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(PrinterStatus.Printing, arrived: false, path: null) with { PrintInFlight = true });
+
+        action.Kind.Should().Be(QueueActionKind.Transfer);
+    }
+
     private static QueueSnapshot Situation(PrinterStatus status, bool arrived, string? path)
     {
         return new QueueSnapshot(

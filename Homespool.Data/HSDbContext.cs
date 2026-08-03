@@ -76,6 +76,10 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
     /// it. Keyed on (file, printer), so one file queued twice transfers once.</summary>
     public DbSet<PrintFileOnPrinter> PrintFilesOnPrinters { get; set; }
 
+    /// <summary>Every print, running and finished - "print history" is the feature this backs. A row
+    /// with no <c>EndedAt</c> is the print happening now.</summary>
+    public DbSet<PrintJob> PrintJobs { get; set; }
+
     public HSDbContext(DbContextOptions<HSDbContext> options)
         : base(options)
     {
@@ -401,6 +405,39 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
                   .WithMany()
                   .HasForeignKey(e => e.PrintFileId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<PrintJob>(entity =>
+        {
+            // "What did this printer print, most recently first" is the only question history asks.
+            entity.HasIndex(e => new { e.PrinterId, e.StartedAt });
+
+            // At most one active print per printer, enforced in the database because application code
+            // cannot make it atomic - the same partial-index trick TeamMember uses for "exactly one
+            // default team per user". Worth having for a reason this branch demonstrated: the
+            // overlapping-pass defect was found by a unique index doing precisely this job, so two
+            // prints started on one printer should be a failed insert rather than two rows nobody
+            // notices.
+            //
+            // The filter is raw SQL, so the column name is the database's rather than the CLR
+            // property path.
+            entity.HasIndex(e => e.PrinterId)
+                  .IsUnique()
+                  .HasFilter("\"EndedAt\" IS NULL");
+
+            // Navigation-less, like PrinterEvent and TelemetrySample: see PrintJob.PrinterId.
+            entity.HasOne<Printer>()
+                  .WithMany()
+                  .HasForeignKey(e => e.PrinterId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            // Stored as text, like PrinterEvent.EventType: readable in a raw SQLite session and immune
+            // to the enum being reordered. History is low-volume, so the bytes saved do not matter.
+            entity.Property(e => e.Outcome)
+                  .HasConversion<string>();
+
+            // No foreign key to PrintFile, deliberately: this records a name and a digest rather than
+            // pointing at a row, so a renamed or deleted file leaves history intact. See PrintJob.
         });
     }
 }

@@ -224,6 +224,58 @@ namespace Homespool.Data.Migrations
                     b.ToTable("PrintFilesOnPrinters");
                 });
 
+            modelBuilder.Entity("Homespool.Model.Entities.PrintJob", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Digest")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("EndedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("FirmwareJobId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PrinterId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PrinterPath")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("QueuedByUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("StartedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("StoppedByUs")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PrinterId")
+                        .IsUnique()
+                        .HasFilter("\"EndedAt\" IS NULL");
+
+                    b.HasIndex("PrinterId", "StartedAt");
+
+                    b.ToTable("PrintJobs");
+                });
+
             modelBuilder.Entity("Homespool.Model.Entities.Printer", b =>
                 {
                     b.Property<int>("Id")
@@ -984,6 +1036,15 @@ namespace Homespool.Data.Migrations
                     b.Navigation("PrintFile");
 
                     b.Navigation("Printer");
+                });
+
+            modelBuilder.Entity("Homespool.Model.Entities.PrintJob", b =>
+                {
+                    b.HasOne("Homespool.Model.Entities.Printer", null)
+                        .WithMany()
+                        .HasForeignKey("PrinterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.Printer", b =>

@@ -350,6 +350,10 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         await AdvanceAsync(printerId);
         (await JobCountAsync(printerId)).Should().Be(1, "the failure is recorded on the transition, not per tick");
 
+        // Assert - and the hold is *visible*, which is the point. A held queue whose reason only
+        // reaches a log is the silent stall the design rejected twice.
+        (await HoldReasonAsync(printerId, userId)).Should().Contain("Not enough space");
+
         // Act - somebody frees space. The block is re-checked on its own timer, so this drives the
         // recheck directly rather than waiting a minute for it.
         fake.Device.FreeSpace = 64L * 1024 * 1024;
@@ -435,6 +439,15 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         return await scope.ServiceProvider.GetRequiredService<HSDbContext>()
                           .PrintJobs.SingleAsync(job => job.PrinterId == printerId,
                               TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>What a person looking at the printer would be told about the hold.</summary>
+    private async Task<string?> HoldReasonAsync(int printerId, long userId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        return await scope.ServiceProvider.GetRequiredService<PrintHistoryService>()
+                          .GetHoldReasonAsync(printerId, userId, TestContext.Current.CancellationToken);
     }
 
     private async Task<int> JobCountAsync(int printerId)

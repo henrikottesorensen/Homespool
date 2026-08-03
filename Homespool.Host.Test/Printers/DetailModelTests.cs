@@ -94,8 +94,8 @@ public sealed class DetailModelTests : IDisposable
             new PrintFileCatalog(store, context, NullLogger<PrintFileCatalog>.Instance), TimeProvider.System,
             QueueSignal);
 
-        DetailModel model = new(new PrinterQueryService(context, TimeProvider.System), queueService, teamService,
-            connectionRegistry, users)
+        DetailModel model = new(new PrinterQueryService(context, TimeProvider.System), queueService,
+            new PrintHistoryService(context, teamService), teamService, connectionRegistry, users)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };

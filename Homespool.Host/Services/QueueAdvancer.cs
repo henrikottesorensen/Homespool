@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -78,6 +79,30 @@ public sealed class QueueAdvancer : BackgroundService
     /// <summary>Last <c>PrinterEvent</c> id examined per printer - see the class remarks.</summary>
     private readonly Dictionary<int, long> _watermarks = [];
 
+    /// <summary>
+    /// One pass at a time per printer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Found by a unique-index violation, not by reasoning</b> (2026-08-03). An earlier comment
+    /// here claimed passes could not overlap; nothing made that true. The timer and an explicit call
+    /// overlapped in a test, and in production the same happens whenever a pass outlives the poll
+    /// interval - a slow command, a printer taking its time to answer.
+    /// </para>
+    /// <para>
+    /// The duplicate row was the symptom and the cheap half. The real fault is that both passes read
+    /// "not arrived, nothing in flight" and both offer the file, so the printer is sent the same
+    /// transfer twice - which firmware's single transfer slot then refuses, leaving a queue that looks
+    /// stuck for a reason no log line explains.
+    /// </para>
+    /// <para>
+    /// <b>Skip rather than queue.</b> A pass that cannot get the gate has nothing to add: the pass
+    /// already running reads the same state and will act on it. Waiting would only stack ticks up
+    /// behind a slow printer.
+    /// </para>
+    /// </remarks>
+    private readonly ConcurrentDictionary<int, SemaphoreSlim> _perPrinter = new();
+
     public QueueAdvancer(IServiceScopeFactory scopeFactory,
                          PrinterConnectionRegistry registry,
                          QueueSignal signal,
@@ -111,8 +136,12 @@ public sealed class QueueAdvancer : BackgroundService
     /// <remarks>
     /// Sequential rather than concurrent, deliberately. This is one-to-tens of printers, each pass is
     /// a handful of queries and at most one command, and a command returns as soon as the printer
-    /// accepts it - a transfer's bytes move afterwards, on the actor's own loop, not here. Concurrency
-    /// would buy nothing and would need a story about two passes overlapping on one printer.
+    /// accepts it - a transfer's bytes move afterwards, on the actor's own loop, not here.
+    /// <para>
+    /// Sequential here does <b>not</b> mean passes cannot overlap - a caller outside this loop can
+    /// start one, and a slow pass outlives its own tick. That is what <see cref="_perPrinter"/> is
+    /// for, and assuming otherwise was a real defect.
+    /// </para>
     /// </remarks>
     public async Task AdvanceAllAsync(CancellationToken cancellationToken)
     {
@@ -146,6 +175,27 @@ public sealed class QueueAdvancer : BackgroundService
 
     /// <summary>Works out what one printer needs and does it.</summary>
     public async Task AdvanceAsync(int printerId, CancellationToken cancellationToken)
+    {
+        SemaphoreSlim gate = _perPrinter.GetOrAdd(printerId, _ => new SemaphoreSlim(1, 1));
+
+        if (!await gate.WaitAsync(0, cancellationToken))
+        {
+            _logger.LogDebug("[{PrinterId}] a pass is already running; leaving it to that one", printerId);
+
+            return;
+        }
+
+        try
+        {
+            await AdvanceOnceAsync(printerId, cancellationToken);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private async Task AdvanceOnceAsync(int printerId, CancellationToken cancellationToken)
     {
         await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
         HSDbContext dbContext = scope.ServiceProvider.GetRequiredService<HSDbContext>();

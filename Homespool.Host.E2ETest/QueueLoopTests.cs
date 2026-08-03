@@ -1,0 +1,320 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Net.WebSockets;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+
+using AwesomeAssertions;
+
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+
+using Homespool.Data;
+using Homespool.FakePrinter;
+using Homespool.Host.Controllers;
+using Homespool.Host.PrintFiles;
+using Homespool.Host.Services;
+using Homespool.Model;
+using Homespool.Model.Entities;
+
+namespace Homespool.Host.E2ETest;
+
+/// <summary>
+/// The producer loop, driven against a real connected printer: queue a file, watch it move, make the
+/// printer available, watch it print.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>This is the only place the loop is demonstrated rather than argued for.</b> Its parts each have
+/// unit coverage - <c>QueueRules</c> exhaustively - but nothing else joins queue to transfer to
+/// <c>START_PRINT</c> across a real WebSocket, a real command path and a fake that answers from
+/// firmware source.
+/// </para>
+/// <para>
+/// The advancer is driven a pass at a time rather than left to its timer. Waiting out poll intervals
+/// would make this slow and, worse, flaky in the direction that hides bugs: a test that eventually
+/// passes cannot tell "the loop advanced" from "the loop advanced for some other reason".
+/// </para>
+/// <para>
+/// Two waits are unavoidable and are real: telemetry has to reach <c>PrinterLiveState</c> and the
+/// printer's <c>FILE_INFO</c> has to reach <c>PrinterEvents</c>, both through
+/// <c>TelemetryWriter</c>'s batching. Those are polled on the database, which is the same thing the
+/// loop itself reads.
+/// </para>
+/// </remarks>
+[Collection("WebApplicationFactory")]
+public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
+{
+    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-queueloop-{Guid.NewGuid():N}.db");
+    private HomespoolFactory _root = null!;
+    private WebApplicationFactory<PrinterAppController> _factory = null!;
+
+    public ValueTask InitializeAsync()
+    {
+        _root = new HomespoolFactory($"Data Source={_databasePath}");
+        _factory = _root.WithWebHostBuilder(_ => { });
+
+        _ = _factory.Server;
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+        scope.ServiceProvider.GetRequiredService<SetupState>().MarkComplete();
+
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+
+        return ValueTask.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        _factory.Dispose();
+        _root.Dispose();
+
+        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    /// <summary>
+    /// A printer that reports itself often. The synthetic source idles at 15 s, which is a fair
+    /// imitation of hardware and far too slow here - the loop reads <c>PrinterLiveState</c>, so
+    /// nothing it does can be observed faster than the printer says what it is doing.
+    /// </summary>
+    private static FakePrinterOptions FastTelemetry()
+    {
+        return new FakePrinterOptions
+        {
+            TelemetrySource = new SyntheticTelemetrySource
+            {
+                IdleInterval = TimeSpan.FromMilliseconds(200),
+                PrintingInterval = TimeSpan.FromMilliseconds(200),
+            },
+        };
+    }
+
+    private static async Task<bool> WaitUntilAsync(Func<Task<bool>> predicate, TimeSpan timeout)
+    {
+        DateTime deadline = DateTime.UtcNow + timeout;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            if (await predicate())
+            {
+                return true;
+            }
+
+            await Task.Delay(100);
+        }
+
+        return false;
+    }
+
+    private static async Task EndRunAsync(FakePrinterClient fake, Task run)
+    {
+        await fake.DisposeAsync();
+
+        try
+        {
+            await run;
+        }
+        catch (Exception)
+        {
+            // The run loop ends however the socket ended; the assertions above are what matter.
+        }
+    }
+
+    /// <summary>
+    /// The whole loop: a queued file reaches the drive on its own, and prints once - and only once -
+    /// somebody makes the printer available.
+    /// </summary>
+    [Fact]
+    public async Task AQueuedFileTransfersItselfAndPrintsWhenThePrinterIsMadeReady()
+    {
+        // Arrange - an enrolled, connected printer with one file queued on it
+        (PrinterIdentity identity, string token, int printerId, long userId) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        await using FakePrinterClient fake = new(identity, TimeProvider.System, FastTelemetry()) { Token = token };
+        await fake.ConnectAsync(ConnectAsync, TestContext.Current.CancellationToken);
+        Task run = fake.RunAsync(TestContext.Current.CancellationToken);
+
+        (await WaitUntilAsync(() => Task.FromResult(Registry.IsConnected(printerId)), TimeSpan.FromSeconds(10))).Should().BeTrue();
+
+        await UploadAsync(userId, "benchy.bgcode");
+        await EnqueueAsync(printerId, userId, "benchy.bgcode");
+
+        // Act 1 - the loop offers the file without anyone making the printer ready. Pipelining: a
+        // transfer is not gated on availability.
+        await AdvanceAsync(printerId);
+
+        bool transferred = await WaitUntilAsync(
+            () => Task.FromResult(fake.Device.Storage.Find("/usb/benchy.bgcode") is not null),
+            TimeSpan.FromSeconds(30));
+
+        transferred.Should().BeTrue("the loop should send a queued file to a connected printer whatever it is doing");
+
+        // The printer's FILE_INFO has to be persisted before the loop can know what to print with.
+        (await WaitUntilAsync(async () => await ArrivedAsync(printerId), TimeSpan.FromSeconds(30))).Should().BeTrue();
+
+        // Act 2 - still Idle, so nothing should print however many passes run.
+        await AdvanceAsync(printerId);
+        await AdvanceAsync(printerId);
+
+        // Assert - the gate with nothing underneath it
+        fake.Device.State.Should().Be(DeviceState.Idle,
+            "Idle means nobody has offered the printer up for work, and firmware would have accepted the print");
+        (await QueueDepthAsync(printerId)).Should().Be(1, "the entry is still waiting, not consumed");
+
+        // Act 3 - a person makes it ready, and telemetry carries that to the live state the loop reads
+        fake.Device.TrySetReady().Should().BeTrue();
+
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Ready), TimeSpan.FromSeconds(30))).Should().BeTrue();
+
+        await AdvanceAsync(printerId);
+
+        // Assert - it printed, and the queue is empty
+        (await WaitUntilAsync(() => Task.FromResult(fake.Device.State == DeviceState.Printing),
+            TimeSpan.FromSeconds(10))).Should().BeTrue();
+
+        (await QueueDepthAsync(printerId)).Should().Be(0, "the entry is consumed once the printer takes the print");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// A file queued twice moves once - the transfer belongs to <i>(file, printer)</i> rather than to
+    /// the queue entry, which is what stops a queue of five copies sending five times.
+    /// </summary>
+    [Fact]
+    public async Task AFileQueuedTwiceIsOnlyTransferredOnce()
+    {
+        // Arrange
+        (PrinterIdentity identity, string token, int printerId, long userId) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        await using FakePrinterClient fake = new(identity, TimeProvider.System, FastTelemetry()) { Token = token };
+        await fake.ConnectAsync(ConnectAsync, TestContext.Current.CancellationToken);
+        Task run = fake.RunAsync(TestContext.Current.CancellationToken);
+
+        (await WaitUntilAsync(() => Task.FromResult(Registry.IsConnected(printerId)), TimeSpan.FromSeconds(10))).Should().BeTrue();
+
+        await UploadAsync(userId, "twice.bgcode");
+        await EnqueueAsync(printerId, userId, "twice.bgcode");
+        await EnqueueAsync(printerId, userId, "twice.bgcode");
+
+        // Act
+        await AdvanceAsync(printerId);
+        (await WaitUntilAsync(async () => await ArrivedAsync(printerId), TimeSpan.FromSeconds(30))).Should().BeTrue();
+
+        int afterFirst = fake.Device.LastTransfer is null ? 0 : 1;
+
+        // A second pass with the file already arrived must not offer it again.
+        await AdvanceAsync(printerId);
+        await AdvanceAsync(printerId);
+
+        // Assert
+        afterFirst.Should().Be(1);
+        (await ReplicaCountAsync(printerId)).Should().Be(1, "one row per (file, printer), however deep the queue");
+        (await QueueDepthAsync(printerId)).Should().Be(2, "nothing printed - the printer was never made ready");
+
+        await EndRunAsync(fake, run);
+    }
+
+    private PrusaConnect.PrinterConnectionRegistry Registry =>
+        _factory.Services.GetRequiredService<PrusaConnect.PrinterConnectionRegistry>();
+
+    /// <summary>The fake's socket, over the test server's printer listener - where /p/ws lives.</summary>
+    private async Task<WebSocket> ConnectAsync(FakePrinterConnectRequest request,
+        CancellationToken cancellationToken)
+    {
+        WebSocketClient client = _factory.Server.CreateWebSocketClient();
+        client.SubProtocols.Add(request.SubProtocol);
+        client.ConfigureRequest = httpRequest =>
+        {
+            foreach (System.Collections.Generic.KeyValuePair<string, string> header in request.Headers)
+            {
+                httpRequest.Headers[header.Key] = header.Value;
+            }
+        };
+
+        return await client.ConnectAsync(PrinterListener.WebSocketUri(_factory), cancellationToken);
+    }
+
+    /// <summary>Drives exactly one pass, rather than waiting out the advancer's poll interval.</summary>
+    private async Task AdvanceAsync(int printerId)
+    {
+        await _factory.Services.GetRequiredService<QueueAdvancer>()
+                      .AdvanceAsync(printerId, TestContext.Current.CancellationToken);
+    }
+
+    private async Task UploadAsync(long userId, string name)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        PrintFileCatalog catalog = scope.ServiceProvider.GetRequiredService<PrintFileCatalog>();
+
+        await catalog.SaveAsync(userId, name, new MemoryStream(Encoding.UTF8.GetBytes("G28 ; home\nG1 X10\n")),
+            overwrite: false, TestContext.Current.CancellationToken);
+    }
+
+    private async Task EnqueueAsync(int printerId, long userId, string name)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        await scope.ServiceProvider.GetRequiredService<PrintQueueService>()
+                   .EnqueueAsync(printerId, userId, name, TestContext.Current.CancellationToken);
+    }
+
+    private async Task<int> QueueDepthAsync(int printerId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        return await scope.ServiceProvider.GetRequiredService<HSDbContext>()
+                          .QueuedPrints.CountAsync(queued => queued.PrinterId == printerId,
+                              TestContext.Current.CancellationToken);
+    }
+
+    private async Task<int> ReplicaCountAsync(int printerId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        return await scope.ServiceProvider.GetRequiredService<HSDbContext>()
+                          .PrintFilesOnPrinters.CountAsync(row => row.PrinterId == printerId,
+                              TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>Whether the loop has seen the printer's own <c>FILE_INFO</c> and recorded its path.</summary>
+    private async Task<bool> ArrivedAsync(int printerId)
+    {
+        // A pass is what turns persisted events into arrival, so this drives one before looking.
+        await AdvanceAsync(printerId);
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        return await scope.ServiceProvider.GetRequiredService<HSDbContext>()
+                          .PrintFilesOnPrinters.AnyAsync(
+                              row => row.PrinterId == printerId && row.PrinterPath != null,
+                              TestContext.Current.CancellationToken);
+    }
+
+    private async Task<bool> StatusIsAsync(int printerId, PrinterStatus status)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        return await scope.ServiceProvider.GetRequiredService<HSDbContext>()
+                          .PrinterLiveStates.AnyAsync(
+                              state => state.PrinterId == printerId && state.Status == status,
+                              TestContext.Current.CancellationToken);
+    }
+}

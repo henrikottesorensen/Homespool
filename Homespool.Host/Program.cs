@@ -289,7 +289,11 @@ public static class Program
             // is process-wide by nature, and the advancer opens its own scope per pass because a
             // DbContext must not outlive one.
             builder.Services.AddSingleton<Services.QueueSignal>();
-            builder.Services.AddHostedService<Services.QueueAdvancer>();
+
+            // Resolvable as itself as well as a hosted service, following TelemetryWriter: a test
+            // needs to drive one pass deterministically rather than wait out a poll interval.
+            builder.Services.AddSingleton<Services.QueueAdvancer>();
+            builder.Services.AddHostedService(sp => sp.GetRequiredService<Services.QueueAdvancer>());
             builder.Services.AddScoped<Services.ApiTokenService>();
 
             WebApplication app = builder.Build();

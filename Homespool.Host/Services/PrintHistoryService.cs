@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
-using Homespool.Host.Exceptions;
+using Homespool.Host.Authorisation;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Services;
@@ -45,12 +45,12 @@ public class PrintHistoryService
     private const int RecentCount = 20;
 
     private readonly HSDbContext _dbContext;
-    private readonly TeamService _teamService;
+    private readonly PrinterAccessService _access;
 
-    public PrintHistoryService(HSDbContext dbContext, TeamService teamService)
+    public PrintHistoryService(HSDbContext dbContext, PrinterAccessService access)
     {
         _dbContext = dbContext;
-        _teamService = teamService;
+        _access = access;
     }
 
     /// <summary>
@@ -63,7 +63,7 @@ public class PrintHistoryService
     /// </remarks>
     public async Task<PrintJob?> GetActiveAsync(int printerId, long userId, CancellationToken cancellationToken)
     {
-        await AuthoriseAsync(printerId, userId, cancellationToken);
+        await _access.RequireAsync(printerId, userId, PrinterOperation.ViewHistory, cancellationToken);
 
         return await _dbContext.PrintJobs
                                .AsNoTracking()
@@ -75,7 +75,7 @@ public class PrintHistoryService
     public async Task<IReadOnlyList<PrintJob>> ListAsync(int printerId, long userId,
         CancellationToken cancellationToken)
     {
-        await AuthoriseAsync(printerId, userId, cancellationToken);
+        await _access.RequireAsync(printerId, userId, PrinterOperation.ViewHistory, cancellationToken);
 
         return await _dbContext.PrintJobs
                                .AsNoTracking()
@@ -138,7 +138,7 @@ public class PrintHistoryService
     /// </remarks>
     public async Task<string?> GetHoldReasonAsync(int printerId, long userId, CancellationToken cancellationToken)
     {
-        await AuthoriseAsync(printerId, userId, cancellationToken);
+        await _access.RequireAsync(printerId, userId, PrinterOperation.ViewQueue, cancellationToken);
 
         QueuedPrint? head = await _dbContext.QueuedPrints
                                             .AsNoTracking()
@@ -157,25 +157,5 @@ public class PrintHistoryService
                                .Where(row => row.PrinterId == printerId && row.PrintFileId == head.PrintFileId)
                                .Select(row => row.BlockedReason)
                                .SingleOrDefaultAsync(cancellationToken);
-    }
-
-    private async Task AuthoriseAsync(int printerId, long userId, CancellationToken cancellationToken)
-    {
-        Printer? printer = await _dbContext.Printers
-                                           .AsNoTracking()
-                                           .SingleOrDefaultAsync(candidate => candidate.Id == printerId,
-                                               cancellationToken);
-
-        if (printer is null)
-        {
-            throw PrinterNotFoundException.ForId(printerId);
-        }
-
-        TeamMember? membership = await _teamService.GetMemberAsync(printer.TeamId, userId, cancellationToken);
-
-        if (membership is null || !membership.CanRead)
-        {
-            throw new TeamAccessDeniedException();
-        }
     }
 }

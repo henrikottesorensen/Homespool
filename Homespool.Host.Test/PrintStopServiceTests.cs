@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
 using Homespool.Data;
+using Homespool.Host.Authorisation;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.Services;
@@ -189,7 +190,7 @@ public sealed class PrintStopServiceTests : IDisposable
     private PrintStopService NewService(HSDbContext context)
     {
         return new PrintStopService(context,
-            new PrinterCommandService(context, new TeamService(context), _registry),
+            new PrinterCommandService(new PrinterAccessService(context), _registry),
             NullLogger<PrintStopService>.Instance);
     }
 

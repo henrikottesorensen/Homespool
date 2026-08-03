@@ -47,9 +47,11 @@ namespace Homespool.Host.Controllers;
 /// <para>
 /// Cookie- or token-authenticated like <see cref="PrinterAppController"/>, so it is exercisable with
 /// curl or a browser session - a personal access token is what makes the curl half pleasant
-/// (notes/api-tokens.md). Permission is not checked here: <see cref="PrinterCommandService"/> is the one
-/// place that consults <c>TeamMember.CanUse</c>, and going around it would be a second answer to the
-/// same question.
+/// (notes/api-tokens.md). Permission is not checked here: the services this calls ask
+/// <see cref="Authorisation.PrinterAccessService"/>, which is the one place that decides what an
+/// account may do to a printer, and going around it would be a second answer to the same question.
+/// That claim used to name <see cref="PrinterCommandService"/> and had quietly stopped being true -
+/// six places were answering it by 2026-08-03.
 /// </para>
 /// </remarks>
 [ApiController]

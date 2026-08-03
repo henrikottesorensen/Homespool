@@ -13,6 +13,7 @@ using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 
 using Homespool.Data;
+using Homespool.Host.Authorisation;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
@@ -344,7 +345,7 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         ServiceCollection services = new();
         services.AddDbContext<HSDbContext>(options => options.UseSqlite($"Data Source={_databasePath}"));
-        services.AddScoped<TeamService>();
+        services.AddScoped<PrinterAccessService>();
         services.AddSingleton(_registry);
         services.AddScoped<PrinterCommandService>();
 

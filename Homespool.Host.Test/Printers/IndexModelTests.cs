@@ -17,6 +17,7 @@ using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 
 using Homespool.Data;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Certificates;
 using Homespool.Host.Pages.Printers;
 using Homespool.Host.PrusaConnect;
@@ -118,7 +119,7 @@ public sealed class IndexModelTests : IDisposable
         authority.EnsureLeaf([options.PrinterHost]);
 
         IndexModel model = new(
-            new PrinterQueryService(context, TimeProvider.System),
+            new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System),
             new PrusaConnectService(context, new CodeGenerator(), new TokenService(), new TeamService(context),
                 TimeProvider.System, NullLogger<PrusaConnectService>.Instance, Options.Create(options)),
             new ProvisioningBundleBuilder(Options.Create(options), Options.Create(new CertificateOptions()), authority, new DnsHostAddressResolver()),
@@ -126,8 +127,8 @@ public sealed class IndexModelTests : IDisposable
             users,
             Options.Create(options),
             connectionRegistry,
-            new PrinterCommandService(context, new TeamService(context), connectionRegistry),
-            new PrintStopService(context, new PrinterCommandService(context, new TeamService(context), connectionRegistry),
+            new PrinterCommandService(new PrinterAccessService(context), connectionRegistry),
+            new PrintStopService(context, new PrinterCommandService(new PrinterAccessService(context), connectionRegistry),
                 NullLogger<PrintStopService>.Instance))
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),

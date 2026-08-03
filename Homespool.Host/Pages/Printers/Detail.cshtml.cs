@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
+using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Queue;
@@ -34,7 +35,7 @@ public class DetailModel : PageModel
     private readonly PrintQueueService _queueService;
     private readonly PrintHistoryService _historyService;
     private readonly QueueSnapshotReader _snapshots;
-    private readonly TeamService _teamService;
+    private readonly PrinterAccessService _access;
     private readonly PrinterConnectionRegistry _connectionRegistry;
     private readonly UserManager<HSUser> _userManager;
 
@@ -42,7 +43,7 @@ public class DetailModel : PageModel
                        PrintQueueService queueService,
                        PrintHistoryService historyService,
                        QueueSnapshotReader snapshots,
-                       TeamService teamService,
+                       PrinterAccessService access,
                        PrinterConnectionRegistry connectionRegistry,
                        UserManager<HSUser> userManager)
     {
@@ -50,7 +51,7 @@ public class DetailModel : PageModel
         _queueService = queueService;
         _historyService = historyService;
         _snapshots = snapshots;
-        _teamService = teamService;
+        _access = access;
         _connectionRegistry = connectionRegistry;
         _userManager = userManager;
     }
@@ -146,8 +147,8 @@ public class DetailModel : PageModel
         Statistics = statistics;
         Connected = _connectionRegistry.IsConnected(statistics.Printer.Id);
 
-        TeamMember? membership = await _teamService.GetMemberAsync(statistics.Printer.TeamId, user.Id, cancellationToken);
-        CanUse = membership?.CanUse ?? false;
+        CanUse = await _access.AllowsAsync(statistics.Printer.Id, user.Id, PrinterOperation.ChangeQueue,
+            cancellationToken);
 
         Queue = await _queueService.ListAsync(statistics.Printer.Id, user.Id, cancellationToken);
         ActivePrint = await _historyService.GetActiveAsync(statistics.Printer.Id, user.Id, cancellationToken);

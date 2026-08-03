@@ -16,6 +16,7 @@ using Microsoft.Extensions.Options;
 using NSubstitute;
 
 using Homespool.Data;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Pages.Printers;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.PrusaConnect;
@@ -90,15 +91,15 @@ public sealed class DetailModelTests : IDisposable
             TimeProvider.System,
             NullLogger<UserFileStore>.Instance);
 
-        TeamService teamService = new(context);
-        PrintQueueService queueService = new(context, teamService,
+        PrinterAccessService access = new(context);
+        PrintQueueService queueService = new(context, access,
             new PrintFileCatalog(store, context, NullLogger<PrintFileCatalog>.Instance), TimeProvider.System,
             QueueSignal);
 
-        DetailModel model = new(new PrinterQueryService(context, TimeProvider.System), queueService,
-            new PrintHistoryService(context, teamService),
+        DetailModel model = new(new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System), queueService,
+            new PrintHistoryService(context, access),
             new QueueSnapshotReader(context, connectionRegistry, TimeProvider.System),
-            teamService, connectionRegistry, users)
+            access, connectionRegistry, users)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };

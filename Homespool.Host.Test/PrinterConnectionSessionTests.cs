@@ -17,6 +17,7 @@ using NSubstitute;
 
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Transfers;
+using Homespool.Host.Queue;
 
 namespace Homespool.Host.Test;
 
@@ -44,6 +45,13 @@ public class PrinterConnectionSessionTests
     private const int PrinterId = 7;
 
     /// <summary>
+    /// Shared and never observed: the session pokes it when a printer registers, and nothing here
+    /// cares. Static because it is a process-wide singleton in production too, which also keeps four
+    /// test classes from growing disposal ceremony for a semaphore that outlives them all.
+    /// </summary>
+    private static readonly QueueSignal QueueSignal = new();
+
+    /// <summary>
     /// Short, because two of the cases below deliberately wait it out. The production default (5s)
     /// is generous for a mailbox holding seconds of traffic; nothing here depends on the value.
     /// </summary>
@@ -65,7 +73,10 @@ public class PrinterConnectionSessionTests
 
     private PrinterConnectionSession NewSession(WebSocketHandler handler, IPrinterConnectionActor actor)
     {
-        return new(handler, _registry, new StubActorFactory(actor), _logger)
+        // The signal is poked when a printer registers. Nothing here observes it - these cases are
+        // about the teardown sequence - so it is a live instance rather than a substitute, which is
+        // also what makes the poke itself unable to affect the results.
+        return new(handler, _registry, new StubActorFactory(actor), QueueSignal, _logger)
         {
             ActorDrainTimeout = DrainTimeout,
         };

@@ -130,7 +130,17 @@ else
                                     <option value="@printer.Id">@(printer.Name ?? printer.Model ?? printer.Uuid.ToString())</option>
                                 }
                             </select>
-                            <button type="submit" class="btn btn-sm btn-outline-primary">Send</button>
+                            <button type="submit" class="btn btn-sm btn-outline-primary"
+                                    title="Transfer the file to the printer now">Send</button>
+                            @* Second submit on the same form so the two verbs share one printer
+                               picker. asp-page-handler on a button emits formaction, which overrides
+                               the form's - so the route values have to be repeated here. *@
+                            <button type="submit" class="btn btn-sm btn-outline-primary"
+                                    asp-page-handler="Queue"
+                                    asp-route-name="@file.FileName"
+                                    asp-route-sort="@Model.Sort"
+                                    asp-route-desc="@Model.Descending"
+                                    title="Add to the printer's queue to print when it is free">Queue</button>
                         </form>
                     }
                     <a asp-page="./Index"

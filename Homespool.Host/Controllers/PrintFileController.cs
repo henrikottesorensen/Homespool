@@ -49,11 +49,11 @@ namespace Homespool.Host.Controllers;
 [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
 public class PrintFileController : ControllerBase
 {
-    private readonly UserFileStore _files;
+    private readonly PrintFileCatalog _files;
     private readonly UserManager<HSUser> _userManager;
     private readonly PrintFileStorageOptions _options;
 
-    public PrintFileController(UserFileStore files, UserManager<HSUser> userManager, IOptions<PrintFileStorageOptions> options)
+    public PrintFileController(PrintFileCatalog files, UserManager<HSUser> userManager, IOptions<PrintFileStorageOptions> options)
     {
         _files = files;
         _userManager = userManager;
@@ -198,7 +198,8 @@ public class PrintFileController : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public async Task<ActionResult<PrintFileReadDTO>> Rename(string fileName, [FromBody] PrintFileRenameRequest body)
+    public async Task<ActionResult<PrintFileReadDTO>> Rename(string fileName, [FromBody] PrintFileRenameRequest body,
+                                                             CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
@@ -209,7 +210,7 @@ public class PrintFileController : ControllerBase
 
         try
         {
-            StoredFile? renamed = _files.Rename(user.Id, fileName, body.Name);
+            StoredFile? renamed = await _files.RenameAsync(user.Id, fileName, body.Name, cancellationToken);
 
             return renamed is null ? NotFound() : Ok(PrintFileReadDTO.FromStored(renamed));
         }
@@ -227,13 +228,19 @@ public class PrintFileController : ControllerBase
     /// <remarks>
     /// The lifecycle's third verb. A transfer already reading these bytes finishes unharmed - its
     /// handle outlives the name.
+    /// <para>
+    /// <b>409 when a queued print still wants the file.</b> Deleting it would silently cancel that
+    /// print - possibly somebody else's, since a printer's queue is shared - so the queue entry has to
+    /// go first. See <see cref="PrintFileCatalog.DeleteAsync"/>.
+    /// </para>
     /// </remarks>
     [HttpDelete]
     [Route("{fileName}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult> Delete(string fileName)
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult> Delete(string fileName, CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
@@ -242,7 +249,13 @@ public class PrintFileController : ControllerBase
             return Forbid();
         }
 
-        return _files.Delete(user.Id, fileName) ? NoContent() : NotFound();
+        return await _files.DeleteAsync(user.Id, fileName, cancellationToken) switch
+        {
+            PrintFileDeletion.Deleted => NoContent(),
+            PrintFileDeletion.Queued => this.Failure(StatusCodes.Status409Conflict,
+                $"{fileName} is queued to print. Cancel the queued print first."),
+            _ => NotFound(),
+        };
     }
 }
 

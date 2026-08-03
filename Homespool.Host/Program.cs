@@ -27,6 +27,7 @@ using Serilog.Formatting.Compact;
 using Homespool.Data;
 using Homespool.Host.Authentication;
 using Homespool.Host.Listeners;
+using Homespool.Host.Queue;
 
 namespace Homespool.Host;
 
@@ -201,6 +202,14 @@ public static class Program
                 sp => new HostEnvironmentAccessor(sp.GetRequiredService<IWebHostEnvironment>().ContentRootPath));
             builder.Services.AddSingleton<PrintFiles.UserFileStore>();
 
+            // Scoped, because it holds a DbContext - which is exactly why the index lives here rather
+            // than inside the singleton store. Everything that changes a file goes through this so the
+            // disk and the table cannot drift; reads pass straight through.
+            builder.Services.AddScoped<PrintFiles.PrintFileCatalog>();
+
+            // Runs once at startup, after MigrateHomespoolData below has made the tables exist.
+            builder.Services.AddHostedService<PrintFiles.PrintFileReconciler>();
+
             // Scoped, following the command service it wraps. Shared by the API endpoint and the
             // Files page so that "a send that did not take leaves no offer" has one implementation.
             builder.Services.AddScoped<Services.PrintFileSender>();
@@ -274,6 +283,19 @@ public static class Program
             builder.Services.AddScoped<Services.UnitOfWork>();
             builder.Services.AddScoped<Services.InvitationService>();
             builder.Services.AddScoped<Services.PrinterQueryService>();
+            builder.Services.AddScoped<PrintQueueService>();
+            builder.Services.AddScoped<Services.PrintHistoryService>();
+            builder.Services.AddScoped<Queue.QueueSnapshotReader>();
+
+            // The producer loop and the poke that saves it waiting out a tick. Singletons: the signal
+            // is process-wide by nature, and the advancer opens its own scope per pass because a
+            // DbContext must not outlive one.
+            builder.Services.AddSingleton<QueueSignal>();
+
+            // Resolvable as itself as well as a hosted service, following TelemetryWriter: a test
+            // needs to drive one pass deterministically rather than wait out a poll interval.
+            builder.Services.AddSingleton<QueueAdvancer>();
+            builder.Services.AddHostedService(sp => sp.GetRequiredService<QueueAdvancer>());
             builder.Services.AddScoped<Services.ApiTokenService>();
 
             WebApplication app = builder.Build();

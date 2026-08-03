@@ -1,7 +1,7 @@
 namespace Homespool.Host.PrintFiles;
 
 /// <summary>
-/// Where uploaded gcode lives and what is allowed in, bound from the <c>FileStorage</c>
+/// Where uploaded gcode lives and what is allowed in, bound from the <c>PrintFiles</c>
 /// configuration section.
 /// </summary>
 public class PrintFileStorageOptions

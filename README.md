@@ -1,6 +1,6 @@
 # Homespool
 
-A self-hosted alternative to Prusa Connect. Your models stay on your own server.
+A self-hosted 3D printer spooler. Your models stay on your own server.
 
 Homespool speaks the Prusa Connect protocol, so a Prusa printer can be pointed at your
 own machine instead of `connect.prusa3d.com` — no cloud account, and nothing about what you
@@ -8,12 +8,14 @@ print leaves your network.
 
 ---
 
-## Status: early, and not ready to rely on
+## Status: early, but it does the job now
 
-This is a work in progress. Enrolment and authentication are built and tested; **telemetry
-is received and parsed but not yet stored anywhere**, so there is no history, no dashboard,
-and no statistics. If you are looking for something to actually monitor your printers with
-today, this is not it yet.
+A work in progress. A printer enrols, connects, and streams telemetry that is **stored** and
+shown back to you; Pause, Resume and Stop are sent from the web UI and answered by the printer
+itself.
+
+What it is not is finished. The per-printer view is plain tables rather than charts, and most of
+the protocol's commands are unimplemented.
 
 **What works**
 
@@ -22,16 +24,30 @@ today, this is not it yet.
 - User accounts: invite-only signup, admin bootstrap, 2FA, teams, and per-team permissions.
 - A WebSocket endpoint that accepts printer connections and correctly parses the telemetry
   and event stream.
-- A small app-facing JSON API for listing and editing printers.
+- **Telemetry persistence** — live state, history samples and events, batched into SQLite,
+  with a retention sweep that ages samples out and a shutdown path that drains rather than
+  drops what it is holding.
+- **A per-printer page** — live state, the queue, print history, and the most recent samples
+  and events.
+- **A print queue** — one shared queue per printer, advanced by a loop that sends the next file,
+  waits for the printer to take it, and starts the print. When it cannot proceed it **holds and
+  says why** rather than skipping ahead.
+- **Print history** — every print recorded, including the ones that never started.
+- **Commands** — Pause, Resume and Stop, correlated back to the printer's own answer, so a
+  refusal surfaces the printer's reason rather than a guess.
+- **Print files** — upload, rename, delete, queue, or send straight to a printer; plus a view of
+  what is already on the printer's own drive and USB stick.
+- **A JSON API** at `/api/v1`, authenticated by sign-in cookie **or** personal access token.
+- **Health checks and alerting** — `/health`, an administrator banner, and email when a check
+  starts failing.
 
 **What does not work yet**
 
-- **Telemetry is not persisted.** Messages are parsed and logged, then discarded. The
-  database tables for history and live state exist, but nothing writes to them.
-- **No commands.** Nothing can be sent *to* a printer — no start/stop/pause, no file
-  transfer. The command classes are empty placeholders and there is no send path.
-- **No dashboard or statistics.** The web UI covers accounts, teams, invitations and a
-  printer list; there is nothing that shows what a printer is doing.
+- **Most commands are not wired.** Six of the roughly thirty command types can actually be sent
+  — all six over the API, three of them as buttons. The rest are markers, and nothing maps
+  arbitrary *incoming* JSON to a command type, so there is no `GCode` and no dialog handling.
+- **No charts, and nothing updates itself.** The per-printer page renders on load and stays
+  as it is until you reload it.
 - **No password reset without SMTP.** With no mail server configured, a forgotten password
   needs manual intervention, and there is no admin-side reset yet.
 
@@ -79,14 +95,33 @@ believing. Routes are segregated the same way inside the app: `/p/*` exists on t
 alone, and every other route exists everywhere else, so a request on the wrong one is answered `404`
 — a boundary that is a socket rather than a line of proxy configuration.
 
-> **Why printers go through the proxy, given that they are the fussy client here.** Because .NET
-> cannot serve them correctly. A Prusa printer holds one kilobyte of TLS plaintext at a time and says
-> so by negotiating RFC 6066 `max_fragment_length`; `SslStream` ignores that and sends records
-> sixteen times larger, which breaks every file transfer. OpenSSL honours it. So the proxy is what
-> makes the printer path work rather than a layer it has to survive. If you substitute your own proxy
-> for this one, read `nginx/homespool-printer.conf` first — that half needs exactly one certificate
-> presented with no chain, one ciphersuite, no response buffering, and OpenSSL rather than Go's
-> `crypto/tls`.
+> **Why printers go through the proxy, given that they are the fussy client here.** A Prusa printer
+> takes about a kilobyte of TLS plaintext per record — its mbedtls input buffer — and **it never says
+> so.** Its ClientHello offers `server_name`, `signature_algorithms`, `supported_groups`,
+> `ec_point_formats` and a single ciphersuite, and nothing else: there is no RFC 6066
+> `max_fragment_length` to honour. The cap is not negotiated, so whatever terminates TLS has to
+> impose it.
+>
+> nginx can be configured to. `SslStream` cannot be — .NET offers no way to bound record size — so it
+> emits records sixteen times too large and every file transfer dies. **The proxy is therefore
+> structural, not a deployment convenience.** The application never terminates printer TLS at all:
+> its printer listener is plain HTTP whichever way the deployment is configured, and
+> `PrusaConnect:PrinterTls` decides whether a leaf is minted *for the proxy to present*, not whether
+> this process binds TLS.
+>
+> **This is the half that is easy to get wrong, so replace it carefully.** Substituting your own
+> terminator means configuring it properly, not merely using OpenSSL — being OpenSSL-based buys
+> nothing on its own, and Go's `crypto/tls` cannot do this at all. Read
+> `nginx/homespool-printer.conf` first: exactly one certificate presented with no chain, one
+> ciphersuite, no response buffering, and **two** record caps rather than one. `ssl_buffer_size`
+> covers ordinary responses; `proxy_buffer_size` on `location = /p/ws` covers the WebSocket, because
+> once nginx upgrades a connection it tunnels — one upstream read becomes one TLS record and
+> `ssl_buffer_size` stops applying. Missing that second one is the trap: ordinary responses look
+> correct while every transfer fails.
+>
+> **The failure signature, since nothing logs an error:** the printer drops the connection and
+> reconnects into the same failure, so the log fills with `/p/ws responded 101` over and over while
+> the printer's screen sits at 0%. `nginx -t` passes. Only a capture shows it.
 
 > **The browser will warn on first use, and that is honest.** The certificate the proxy generates
 > is signed by nobody. Serving your credentials in clear while you go and obtain a real certificate
@@ -97,7 +132,7 @@ alone, and every other route exists everywhere else, so a request on the wrong o
 
 > **Already run Traefik, Caddy or your own nginx?** Delete the `proxy` service, publish the app's
 > `8080` yourself, and point `XForwarded__KnownNetworks` at your proxy's network. The application is
-> built to sit behind one; it just no longer *requires* you to have built that yourself.
+> built to sit behind a proxy; the one it ships is a default, not a requirement.
 
 > **Do not put a reverse proxy in front of the printer port.** The printer firmware trusts a
 > single anchor, requires exactly one certificate to be presented, and pushes 256 KiB transfer
@@ -134,6 +169,15 @@ Visual Studio and the Docker build do this automatically; only the CLI-from-repo
 needs the `cd`.
 
 The database is created and migrated automatically on first start.
+
+> **This serves people, not printers.** Run from source, the printer listener is plain HTTP on
+> `15443` with nothing in front of it, so a printer configured with `tls = true` dials it and
+> fails — and no setting fixes that, because the record size the firmware needs is not something
+> .NET can be made to emit (see the proxy note above). For printer work from source you
+> need either the Compose stack in front of it, or `PrusaConnect__PrinterTls=false` and printers
+> told the same, which is the testing path described under
+> [`PrinterTls`](#turning-printertls-off-and-when-that-is-legitimate). The fake printer under
+> [Testing without a printer](#testing-without-a-printer) needs neither.
 
 ---
 
@@ -188,11 +232,10 @@ README.Bundle.md               these instructions, for whoever opens the zip
 The README travels *in* the zip on purpose: the person unpacking it onto a stick is often not the
 person who downloaded it, and by then this page is nowhere in sight.
 
-**Nothing is transcribed, and that is the point.** Every failure of the afternoon this was first
-done by hand was an assembly failure rather than a protocol one: a `;` comment (this parser treats
-it as an error, not a comment), an omitted key (silently reset to a default, and `token`'s default
-de-enrols the printer), a PEM renamed `.der`, a mistyped code. A generated file cannot make any of
-them.
+**Nothing is transcribed, and that is the point.** Assembling this file by hand fails in ways
+that look like protocol bugs: a `;` comment (this parser treats it as an error, not a comment),
+an omitted key (silently reset to a default, and `token`'s default de-enrols the printer), a PEM
+renamed `.der`, a mistyped code. A generated file cannot make any of them.
 
 Only `[service::connect]` is written. Wi-Fi credentials are yours and this server neither has them
 nor wants them, so the rest of the file stays your business — add your `[network]` section to the
@@ -248,8 +291,110 @@ team up front; this only needs someone willing to write four lines to a stick.
 > part you want.
 
 **Printers → Claim printer**, enter the code, give it a name and location. The printer polls
-until you do this, then receives its token automatically. Codes expire after an hour by
+until you do this, then receives its token automatically. Codes expire after **30 minutes** by
 default.
+
+Repeatedly submitting codes that match nothing backs your account off, doubling from 30
+seconds up to an hour. It is the ordinary lockout shape, and it self-heals — the person
+hitting it is almost always someone who mistyped, and a code expires inside the window anyway.
+
+---
+
+## Print files
+
+**Files** in the navigation is a per-user store: upload a sliced model — `.gcode`, `.bgcode`,
+`.gco` or `.bgc` — then rename it, delete it, or send it to a printer you have `CanUse` on.
+
+Ownership is *where a file lives* — the store is a tree per user — rather than a permission
+checked on the way past, so there is no id that hands someone else's file to whoever holds it.
+Names are unique per user, which means your files are yours to name without colliding with
+anyone else's.
+
+The same store is reachable over the API by name:
+
+```
+GET    /api/v1/files                 everything you have uploaded
+PUT    /api/v1/files/{fileName}      upload
+GET    /api/v1/files/{fileName}      download it back
+PATCH  /api/v1/files/{fileName}      rename
+DELETE /api/v1/files/{fileName}      delete
+```
+
+Deliberately missing, rather than forgotten: no deduplication, no expiry — a file stays until
+you delete it — and no transfer progress on the page, which would need per-file telemetry and
+polling that does not exist anywhere in this app yet.
+
+Sending a file to a printer and printing it are **separate calls**, because a file can be on a
+printer without this server having put it there:
+
+```
+POST /api/v1/printers/{uuid}/files                 send one of your files to the printer
+GET  /api/v1/printers/{uuid}/storage/usb/{path}    browse the printer's USB stick
+POST /api/v1/printers/{uuid}/print                 print a path already on the printer
+```
+
+The send answers as soon as the printer *accepts* the transfer, not when it finishes — the
+printer then pulls the bytes at its own pace, and a full-size model takes minutes. Watch
+`TRANSFER_FINISHED` or the transfer fields in telemetry. Browsing the stick is gated on `CanUse`
+rather than `CanRead`, since reading it means making the printer go and do work.
+
+---
+
+## Print queue
+
+Each printer has **one queue, shared by everyone** who can use it — not a queue per person. A
+background loop watches the front of it and does the obvious thing: send the file, wait for the
+printer to confirm it has it, start the print, move on.
+
+`CanUse` on the printer's team lets you add, reorder and cancel entries; `CanRead` lets you watch
+one. The queue is on the printer's page, on the Files page, and at:
+
+```
+GET    /api/v1/printers/{uuid}/queue                    the queue, in order
+POST   /api/v1/printers/{uuid}/queue                    add a file to the back
+PATCH  /api/v1/printers/{uuid}/queue/{id}               move it
+DELETE /api/v1/printers/{uuid}/queue/{id}               take it out
+```
+
+**When the loop cannot proceed it holds and says why**, rather than skipping to something that
+would work. That is the spooler behaviour rather than a limitation: a queue that quietly reorders
+itself around an obstacle is a queue you cannot reason about. The reasons it will give you:
+
+| it says | what is happening |
+|---|---|
+| Sending *file* to the printer | a transfer is in flight — firmware allows only one at a time |
+| Waiting for the printer to confirm the file | the bytes arrived, but no `FILE_INFO` has named a path to print |
+| Waiting for the printer to be made ready | the printer is not `Ready` — **including a finished print nobody has cleared** |
+| *(insufficient space)* | the file at the front will not fit on the drive; the queue waits for someone to free space |
+
+The middle two are transient and clear themselves. The other two want a human: someone to take
+the print off the bed, or to delete something.
+
+**Print history** sits beside the queue on the same page. Every print is recorded, including the
+ones that never started, with the file's name as it was at the time rather than a pointer to a
+file that may since have been renamed or deleted.
+
+---
+
+## API access
+
+`/api/v1` is this application's own API. Only `/p/*` owes Prusa's protocol anything; everything
+under `/api` is shaped the way suits it.
+
+It accepts either the sign-in cookie or a **personal access token**, so a script does not have
+to reproduce the sign-in and antiforgery dance in bash. Mint one under **Account → API tokens**.
+Tokens are shown **once**, at the moment they are created, and are revocable in one click from
+the same page.
+
+```bash
+curl -H "Authorization: Bearer hs_..." https://homespool.example.com/api/v1/printers
+```
+
+The `hs_` prefix is deliberate: it makes a leaked token greppable, in a `.env` or a shell
+history, and lets a wrong-shaped credential be rejected before anything is hashed.
+
+An unauthenticated `/api` request is answered `401`/`403` rather than redirected to the login
+page, which is the difference between a script that fails and a script that silently parses HTML.
 
 ---
 
@@ -265,7 +410,11 @@ In Docker, use the `__` (double underscore) form, e.g. `PrusaConnect__PrinterHos
 | `PrinterHost` | *(empty)* | The hostname printers use to reach this server. **Required for USB-key provisioning** — there is no way to infer it from inside the process. |
 | `PrinterPort` | `15443` | Port for the generated snippet — the host side of the printer port mapping, not the port inside the container. Not 443: that belongs to the people-facing proxy. |
 | `PrinterTls` | `true` | Whether printers reach this deployment over TLS — the `tls` line in the ini **and** whether a certificate is issued for the proxy to present, so the two cannot disagree. See below. |
-| `RegistrationCodeLifetimeMinutes` | `60` | How long a registration code stays claimable. Prusa uses 24 h; one hour is a deliberately tighter default, since the code is a credential for adopting a printer. |
+| `RegistrationCodeLifetimeMinutes` | `30` | How long a registration code stays claimable. Prusa's own servers use 24 h; 30 minutes is a deliberately tighter default, since the code is a credential for adopting a printer — and claiming is done standing at the printer, so the short window costs nothing real. |
+| `MaxFailedClaimAttempts` | `5` | Unrecognised codes an account may submit before it is backed off. The figure Identity's own login lockout uses, for the same reason. |
+| `ClaimLockoutBaseSeconds` | `30` | First backoff once that is passed. Doubles per further failure. |
+| `ClaimLockoutMaxSeconds` | `3600` | Ceiling on the doubling, so the lockout always self-heals. |
+| `CommandResponseTimeoutSeconds` | `10` | How long to wait for the printer's `Finished`/`Rejected`/`StateChanged` answer to a command before giving up on it. |
 
 #### Turning `PrinterTls` off, and when that is legitimate
 
@@ -358,14 +507,45 @@ Use `.env` (gitignored), an environment variable, or user secrets.
 
 | Setting | Default | Purpose |
 |---|---|---|
-| `Storage:AutoMigrate` | `true` | Apply EF migrations at startup. |
-| `Storage:TelemetryRetentionDays` | `14` | Reserved — the retention sweep is not built yet. |
+| `Storage:AutoMigrate` | `true` | Apply EF migrations at startup. Safe only because exactly one process owns the database. |
+| `Storage:TelemetryRetentionDays` | `14` | How long telemetry samples are kept. **`0` disables the sweep entirely.** Events are never swept. |
+| `Storage:MinimumSampleIntervalSeconds` | `0` | Minimum seconds between stored samples per printer; `0` stores every message. An escape hatch, not an expectation — at 1 Hz a printer is roughly 86k rows a day, which SQLite does not mind. |
+| `Storage:WriteBatchSize` | `500` | Rows buffered before the writer flushes a batch. |
+| `Storage:WriteFlushIntervalSeconds` | `2` | Longest a buffered row waits before being flushed. |
 | `Storage:BusyTimeoutMilliseconds` | `5000` | SQLite busy timeout. |
 | `Invitations:LifetimeHours` | `48` | How long an invitation stays acceptable. |
 
-`Storage` also carries `MinimumSampleIntervalSeconds`, `WriteBatchSize` and
-`WriteFlushIntervalSeconds`, declared now so the config shape does not churn later. They are
-inert until telemetry persistence lands.
+### `PrintFiles`
+
+Where uploaded gcode lives.
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `Directory` | `data/printfiles` | Relative paths resolve against the content root. Under `data/` on purpose: that is what `compose.yaml` mounts as a volume, and uploads landing anywhere else vanish when the container is replaced. |
+| `MaxUploadBytes` | `536870912` (512 MiB) | Largest upload accepted. The firmware's own ceiling is 4 GiB — `orig_size` is a `uint32` on the wire — but an unbounded upload endpoint is a disk-exhaustion primitive, and a sliced model in the hundreds of megabytes is already unusual. |
+
+The same warning as the database applies: do not put this directory on NFS, CIFS or a NAS
+share. Files are read on the printer connection's own loop.
+
+### `XForwarded`
+
+Which proxy this deployment trusts, and what it is allowed to say about the client. The shipped
+`compose.yaml` configures this for its own nginx; you need it only if you replace that proxy.
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `KnownProxies` | *(empty)* | Proxy addresses whose forwarded headers are honoured. |
+| `KnownNetworks` | *(empty)* | Same, as CIDR ranges. |
+| `ClientAddressHeader` | `X-Real-IP` | Header carrying the real client address. |
+| `ForwardLimit` | `1` | How many proxies deep to trust. |
+
+> **Configure neither and the middleware is not registered at all**, which is deliberate rather
+> than merely tidy. ASP.NET performs its peer check only when at least one proxy or network is
+> known; with both lists empty it skips the check and honours forwarded headers from *anyone*.
+> "Trust nothing" and "trust everything" are the same configuration as far as the framework is
+> concerned, so the difference has to be made by leaving the middleware out. The server warns
+> when it looks like you are behind a proxy and have configured neither — the visible symptom
+> otherwise is confirmation and password-reset mail that says `http://`.
 
 ---
 
@@ -381,15 +561,16 @@ In Development the OpenAPI document is served at `/openapi/v1.json` with a
 
 ### Test projects
 
-Three, split by what they need to run:
+Four, split by what they need to run:
 
 | Project | What it covers | Needs |
 |---|---|---|
 | `Homespool.Host.Test` | Fast, self-contained unit and service tests. | nothing |
 | `Homespool.Host.E2ETest` | Drives the real ASP.NET Core pipeline via `WebApplicationFactory` — routing, authentication, middleware. | nothing |
+| `Homespool.FakePrinter.Test` | The fake printer client itself — that it behaves like Buddy firmware does. | nothing |
 | `Homespool.Host.IntegrationTest` | Real SMTP delivery against a live mail server. | a running Mailpit container |
 
-The first two need nothing beyond `dotnet test`. The third assumes Mailpit is already
+The first three need nothing beyond `dotnet test`. The fourth assumes Mailpit is already
 running and **will fail if it is not** — that is what makes it an integration test rather
 than a unit test with a fake:
 
@@ -403,13 +584,31 @@ The STARTTLS tests are the exception: they **skip** rather than fail when that s
 been run, since the certificate it generates cannot be assumed. A clean clone therefore runs
 green, and CI runs the script first so they execute there for real.
 
+### Testing without a printer
+
+`Homespool.FakePrinter` is a Buddy-shaped client library — it references neither `Host` nor
+`Model`, so it cannot accidentally agree with the server about a wire format both got wrong.
+`Homespool.FakePrinter.Cli` drives it against a genuinely running server, which is the mode that
+reaches Kestrel, real TCP and real SIGTERM:
+
+```bash
+dotnet run --project Homespool.FakePrinter.Cli -- enrol
+dotnet run --project Homespool.FakePrinter.Cli -- run
+dotnet run --project Homespool.FakePrinter.Cli -- blast
+```
+
+`enrol` registers, prints the claim code and polls for the token; `run` behaves like a printer
+until Ctrl-C; `blast` floods telemetry with no delays, for backpressure work.
+
+`rig/` and `tools/slow-db/` drive the printer endpoints with curl for the same purpose. Both
+expect the plaintext path — see `PrinterTls` above.
+
 ### Continuous integration
 
 `.github/workflows/build-and-test.yml` runs the suite and then **builds the container images**,
 which is the part a laptop cannot check for itself: a warm layer cache keeps succeeding past the
-point a clean machine fails. The Dockerfile's restore layer was broken for weeks — through a
-project rename and several features — while every local build and the whole suite stayed green,
-because nothing built the image.
+point a clean machine fails, so a broken Dockerfile can sit behind a green local build and a
+green suite indefinitely.
 
 ### Database
 
@@ -417,6 +616,22 @@ SQLite via EF Core, one migration. The schema is regenerated in place rather tha
 while the project is pre-release, so **a local development database may not match after a
 pull** — delete `Homespool.Host/Homespool.Sqlite` and let it be recreated. Do not
 do this to a database with data you care about.
+
+---
+
+## A Raspberry Pi image
+
+`pi/` builds an SD-card image with the whole stack already on it — Debian trixie, arm64, Docker,
+and the container images baked into the card's Docker store rather than pulled on first boot.
+Flash it, boot it, browse to `http://homespool.local`.
+
+```bash
+pi/build.sh --ssh-key ~/.ssh/id_ed25519.pub
+```
+
+It needs an **Apple Silicon Mac or an arm64 Linux box** with Docker; `build.sh` refuses to run
+on x86 rather than quietly spending an afternoon in qemu. [`pi/README.md`](pi/README.md) covers
+how it fits together, and what a Pi 3B's radio will and will not do.
 
 ---
 

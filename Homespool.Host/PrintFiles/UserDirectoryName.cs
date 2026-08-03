@@ -56,6 +56,25 @@ public static class UserDirectoryName
         return suffix.Length == 0 ? id : $"{id}-{suffix}";
     }
 
+    /// <summary>
+    /// Reads the id back out of a directory name, or false if that name is not one of ours.
+    /// </summary>
+    /// <remarks>
+    /// The inverse of <see cref="For"/>, and it reads only the identifying half - everything from the
+    /// first hyphen on is decoration and is not even looked at, which is the same rule
+    /// <see cref="PatternFor"/> encodes for lookup. Anything else in the storage root - the incoming
+    /// directory, or something a person put there - fails to parse and is thereby left alone.
+    /// </remarks>
+    public static bool TryParseUserId(string directoryName, out long userId)
+    {
+        ArgumentNullException.ThrowIfNull(directoryName);
+
+        int hyphen = directoryName.IndexOf('-', StringComparison.Ordinal);
+        ReadOnlySpan<char> identifying = hyphen < 0 ? directoryName : directoryName.AsSpan(0, hyphen);
+
+        return long.TryParse(identifying, NumberStyles.None, CultureInfo.InvariantCulture, out userId);
+    }
+
     /// <summary>The glob that finds a user's directory whatever its name half says.</summary>
     /// <remarks>
     /// Unambiguous across ids because the hyphen is required: <c>12-*</c> does not match

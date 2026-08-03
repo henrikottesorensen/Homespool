@@ -9,8 +9,6 @@ using AwesomeAssertions;
 
 using Microsoft.AspNetCore.Mvc.Testing;
 
-using Homespool.Host.E2ETest;
-
 namespace Homespool.Host.E2ETest;
 
 /// <summary>

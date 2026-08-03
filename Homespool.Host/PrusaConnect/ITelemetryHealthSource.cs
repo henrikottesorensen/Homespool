@@ -1,5 +1,3 @@
-using System;
-
 namespace Homespool.Host.PrusaConnect;
 
 /// <summary>

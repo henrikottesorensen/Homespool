@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 
@@ -17,7 +18,6 @@ using Serilog.Core;
 using Homespool.Data;
 using Homespool.Host.Controllers;
 using Homespool.Host.Listeners;
-using Homespool.Host.PrintFiles;
 using Homespool.Host.PrusaConnect;
 
 namespace Homespool.Host.E2ETest;
@@ -121,6 +121,8 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
     /// offer, and the certificate health check called a freshly started host degraded. Doing it here
     /// makes a test host resemble a started server, which is what these tests are for.
     /// </remarks>
+    [SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits",
+                     Justification = "CreateHost is a synchronous override of the test host factory; there is no asynchronous form to call.")]
     protected override IHost CreateHost(IHostBuilder builder)
     {
         IHost host = base.CreateHost(builder);

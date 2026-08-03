@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -146,6 +147,8 @@ public sealed class TelemetryWriterTests : IDisposable
         return string.Join('\n', LogRecords.Select(r => $"{r.Level}: {r.Message}"));
     }
 
+    [SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits",
+                     Justification = "IDisposable.Dispose cannot be asynchronous, and the service must be stopped before the test's resources are torn down.")]
     public void Dispose()
     {
         if (_writer is not null)

@@ -11,10 +11,8 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
-using Homespool.Host.Certificates;
 using Homespool.Host.PrusaConnect;
 using Homespool.Model.Entities;
 

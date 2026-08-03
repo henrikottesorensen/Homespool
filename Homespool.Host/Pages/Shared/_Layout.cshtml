@@ -9,6 +9,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - Homespool</title>
 
+    @* Browsers that understand an SVG icon prefer it and scale it cleanly; the .ico is the
+       fallback, and carries a simplified cut of the mark because the full one turns to mush
+       below about 24px. *@
+    <link rel="icon" href="~/img/homespool-icon.svg" type="image/svg+xml" />
+    <link rel="icon" href="~/favicon.ico" sizes="48x48" />
+    <link rel="apple-touch-icon" href="~/img/apple-touch-icon.png" />
+
     <script>
         // Follow the browser/OS colour-scheme preference using Bootstrap 5.3 colour modes. Inline and
         // early so the theme is set before first paint (no flash), and updated live if the OS switches.

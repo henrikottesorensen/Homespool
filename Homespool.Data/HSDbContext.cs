@@ -376,7 +376,10 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
 
             // A deleted printer takes its queue with it. There is no meaning left in an entry whose
             // printer is gone, and unlike telemetry it is not history worth keeping.
-            entity.HasOne(e => e.Printer)
+            //
+            // Navigation-less, like PrintJob and for the same reason - see QueuedPrint.PrinterId. The
+            // relationship is unchanged; only the slot fix-up used to write into is gone.
+            entity.HasOne<Printer>()
                   .WithMany()
                   .HasForeignKey(e => e.PrinterId)
                   .OnDelete(DeleteBehavior.Cascade);
@@ -404,7 +407,8 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
             entity.HasIndex(e => new { e.PrinterId, e.PrintFileId })
                   .IsUnique();
 
-            entity.HasOne(e => e.Printer)
+            // Navigation-less, as QueuedPrint above.
+            entity.HasOne<Printer>()
                   .WithMany()
                   .HasForeignKey(e => e.PrinterId)
                   .OnDelete(DeleteBehavior.Cascade);

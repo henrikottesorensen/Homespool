@@ -17,6 +17,7 @@ using Microsoft.Extensions.Options;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.PrusaConnect;
+using Homespool.Host.Queue;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;

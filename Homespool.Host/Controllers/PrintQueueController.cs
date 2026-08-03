@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 
 using Homespool.Host.DTO;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Queue;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 

@@ -18,6 +18,7 @@ using NSubstitute;
 
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Transfers;
+using Homespool.Host.Queue;
 
 namespace Homespool.Host.Test;
 
@@ -49,7 +50,7 @@ public class PrinterConnectionSessionTests
     /// cares. Static because it is a process-wide singleton in production too, which also keeps four
     /// test classes from growing disposal ceremony for a semaphore that outlives them all.
     /// </summary>
-    private static readonly Homespool.Host.Services.QueueSignal QueueSignal = new();
+    private static readonly QueueSignal QueueSignal = new();
 
     /// <summary>
     /// Short, because two of the cases below deliberately wait it out. The production default (5s)

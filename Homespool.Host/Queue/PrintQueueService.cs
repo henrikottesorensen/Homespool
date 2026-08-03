@@ -9,9 +9,10 @@ using Microsoft.EntityFrameworkCore;
 using Homespool.Data;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
+using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Queue;
 
 /// <summary>
 /// A printer's queue: what is waiting, and the three things a person can do to it - add, reorder,

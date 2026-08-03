@@ -14,6 +14,7 @@ using Microsoft.Extensions.Options;
 using Homespool.Data;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
+using Homespool.Host.Queue;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 

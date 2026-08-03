@@ -28,6 +28,7 @@ using Serilog.Formatting.Compact;
 using Homespool.Data;
 using Homespool.Host.Authentication;
 using Homespool.Host.Listeners;
+using Homespool.Host.Queue;
 
 namespace Homespool.Host;
 
@@ -283,18 +284,18 @@ public static class Program
             builder.Services.AddScoped<Services.UnitOfWork>();
             builder.Services.AddScoped<Services.InvitationService>();
             builder.Services.AddScoped<Services.PrinterQueryService>();
-            builder.Services.AddScoped<Services.PrintQueueService>();
+            builder.Services.AddScoped<PrintQueueService>();
             builder.Services.AddScoped<Services.PrintHistoryService>();
 
             // The producer loop and the poke that saves it waiting out a tick. Singletons: the signal
             // is process-wide by nature, and the advancer opens its own scope per pass because a
             // DbContext must not outlive one.
-            builder.Services.AddSingleton<Services.QueueSignal>();
+            builder.Services.AddSingleton<QueueSignal>();
 
             // Resolvable as itself as well as a hosted service, following TelemetryWriter: a test
             // needs to drive one pass deterministically rather than wait out a poll interval.
-            builder.Services.AddSingleton<Services.QueueAdvancer>();
-            builder.Services.AddHostedService(sp => sp.GetRequiredService<Services.QueueAdvancer>());
+            builder.Services.AddSingleton<QueueAdvancer>();
+            builder.Services.AddHostedService(sp => sp.GetRequiredService<QueueAdvancer>());
             builder.Services.AddScoped<Services.ApiTokenService>();
 
             WebApplication app = builder.Build();

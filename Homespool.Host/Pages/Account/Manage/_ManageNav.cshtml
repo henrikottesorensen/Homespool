@@ -12,5 +12,8 @@
     }
     <li class="nav-item"><a class="nav-link @ManageNavPages.TwoFactorAuthenticationNavClass(ViewContext)" id="two-factor" asp-page="./TwoFactorAuthentication">Two-factor authentication</a></li>
     <li class="nav-item"><a class="nav-link @ManageNavPages.ApiTokensNavClass(ViewContext)" id="api-tokens" asp-page="./ApiTokens">API tokens</a></li>
-    <li class="nav-item"><a class="nav-link @ManageNavPages.PersonalDataNavClass(ViewContext)" id="personal-data" asp-page="./PersonalData">Personal data</a></li>
+@*  No "Personal data" item. Identity.UI's version offers to export and delete what the service holds
+    about you, which is a question that only makes sense when somebody else is holding it - and this
+    application exists so that nobody is. The data is on the operator's own disk, in a directory named
+    after them. See notes/user-identity.md. *@
 </ul>

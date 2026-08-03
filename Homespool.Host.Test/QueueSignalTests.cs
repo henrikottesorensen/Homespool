@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Homespool.Host.Queue;
 using Homespool.Host.Services;
 
 namespace Homespool.Host.Test;

@@ -18,10 +18,11 @@ using Homespool.Host.PrintFiles;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
+using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Queue;
 
 /// <summary>
 /// The producer loop: for each printer, work out what its queue needs next and do it.

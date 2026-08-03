@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.Queue;
+
 namespace Homespool.Host.PrusaConnect;
 
 /// <summary>
@@ -34,7 +36,7 @@ public sealed class PrinterConnectionSession
     private readonly WebSocketHandler _webSocketHandler;
     private readonly PrinterConnectionRegistry _connectionRegistry;
     private readonly PrinterConnectionActorFactory _actorFactory;
-    private readonly Services.QueueSignal _queueSignal;
+    private readonly QueueSignal _queueSignal;
     private readonly ILogger<PrinterConnectionSession> _logger;
 
     /// <summary>
@@ -55,7 +57,7 @@ public sealed class PrinterConnectionSession
     public PrinterConnectionSession(WebSocketHandler webSocketHandler,
                                     PrinterConnectionRegistry connectionRegistry,
                                     PrinterConnectionActorFactory actorFactory,
-                                    Services.QueueSignal queueSignal,
+                                    QueueSignal queueSignal,
                                     ILogger<PrinterConnectionSession> logger)
     {
         _webSocketHandler = webSocketHandler;

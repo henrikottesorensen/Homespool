@@ -17,6 +17,7 @@ using Homespool.Data;
 using Homespool.FakePrinter;
 using Homespool.Host.Controllers;
 using Homespool.Host.PrintFiles;
+using Homespool.Host.Queue;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;

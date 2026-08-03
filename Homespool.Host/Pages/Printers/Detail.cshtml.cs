@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;
+using Homespool.Host.Queue;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 

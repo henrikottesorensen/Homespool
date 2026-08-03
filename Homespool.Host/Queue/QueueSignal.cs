@@ -2,7 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Queue;
 
 /// <summary>
 /// A poke telling the queue advancer that something changed and it need not wait for its timer.

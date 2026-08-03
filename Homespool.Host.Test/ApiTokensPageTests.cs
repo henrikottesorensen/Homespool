@@ -58,7 +58,7 @@ public sealed class ApiTokensPageTests : IDisposable
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) =
             IdentityTestHarness.BuildIdentityServices(context);
 
-        HSUser user = new("owner@example.com") { Email = "owner@example.com" };
+        HSUser user = new("owner") { Email = "owner@example.com" };
         (await users.CreateAsync(user)).Succeeded.Should().BeTrue();
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 

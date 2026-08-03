@@ -83,6 +83,19 @@ public class RegisterModel : PageModel
 
     public class InputModel
     {
+        /// <summary>
+        /// The sign-in name, and what the interface calls this person.
+        /// </summary>
+        /// <remarks>
+        /// The one thing on this form the invitee chooses about their identity - the address is the
+        /// invite's and is never taken from what they typed (§15 dec. 3). Only the length is checked
+        /// here; the character set and uniqueness belong to Identity's <c>UserValidator</c>.
+        /// </remarks>
+        [Required]
+        [StringLength(HSUser.UsernameMaxLength)]
+        [Display(Name = "Username")]
+        public string Username { get; set; }
+
         [Required]
         [StringLength(100, ErrorMessage = "The {0} must be at least {2} and at max {1} characters long.", MinimumLength = 6)]
         [DataType(DataType.Password)]
@@ -138,12 +151,12 @@ public class RegisterModel : PageModel
 
         try
         {
-            // The account is bound to the invite's email, never anything the invitee typed (§15 dec. 3).
-            await _userStore.SetUserNameAsync(user, invitation.Email, cancellationToken);
+            // The address is bound to the invite, never anything the invitee typed (§15 dec. 3). The
+            // username is theirs to pick: it is not an identity the invite confers, and it cannot be
+            // used to reach anything the invite did not already grant.
+            await _userStore.SetUserNameAsync(user, Input.Username, cancellationToken);
             await _emailStore.SetEmailAsync(user, invitation.Email, cancellationToken);
 
-            // The sign-in name stays the invite's email; this is only what the interface calls them.
-            user.DisplayName = HSUser.DefaultDisplayNameFor(invitation.Email);
             _accountConfirmationPolicy.Apply(user);
 
             IdentityResult createResult = await _userManager.CreateAsync(user, Input.Password);

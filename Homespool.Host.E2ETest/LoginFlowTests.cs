@@ -32,12 +32,16 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-login-{Guid.NewGuid():N}.db");
     private HomespoolFactory _factory = null!;
 
-    private static FormUrlEncodedContent LoginBody(string antiforgeryToken, string email, string password)
+    /// <summary>
+    /// A post to the login form. <paramref name="login"/> is whichever identifier the test is
+    /// exercising - the form takes an address or a username in the one field.
+    /// </summary>
+    private static FormUrlEncodedContent LoginBody(string antiforgeryToken, string login, string password)
     {
         return new(new Dictionary<string, string>
         {
             ["__RequestVerificationToken"] = antiforgeryToken,
-            ["Input.Email"] = email,
+            ["Input.Login"] = login,
             ["Input.Password"] = password,
         });
     }
@@ -95,7 +99,7 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
         UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
 
         HSUser user = new();
-        await userStore.SetUserNameAsync(user, email, CancellationToken.None);
+        await userStore.SetUserNameAsync(user, EnrolmentFlowHelper.UsernameFor(email), CancellationToken.None);
         await emailStore.SetEmailAsync(user, email, CancellationToken.None);
         user.EmailConfirmed = confirmed;
 
@@ -125,6 +129,65 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
         postResponse.StatusCode.Should().Be(HttpStatusCode.Redirect, "a successful login redirects to the return URL");
         postResponse.Headers.Location!.OriginalString.Should().Be("/");
         IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, postResponse).Should().BeTrue("signing in issues the Identity application cookie");
+    }
+
+    /// <summary>
+    /// The same account, signed in by its username instead of its address.
+    /// </summary>
+    /// <remarks>
+    /// The point of decoupling the two: <c>UserName</c> used to be the address, so "sign in with your
+    /// username" and "sign in with your email" were the same request and neither was evidence about
+    /// the other. This one only passes because <c>LoginModel</c> resolves both.
+    /// </remarks>
+    [Fact]
+    public async Task PostingAUsernameInsteadOfAnAddressSignsTheUserIn()
+    {
+        // Arrange
+        await CreateUserAsync("user@example.com", confirmed: true);
+
+        using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        HttpResponseMessage getResponse = await client.GetAsync("/Account/Login", TestContext.Current.CancellationToken);
+        string antiforgeryToken = AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+
+        // "user", not "user@example.com" - the account's own name rather than its address.
+        using FormUrlEncodedContent body = LoginBody(antiforgeryToken, EnrolmentFlowHelper.UsernameFor("user@example.com"), Password);
+
+        // Act
+        HttpResponseMessage postResponse = await client.PostAsync("/Account/Login", body, TestContext.Current.CancellationToken);
+
+        // Assert
+        postResponse.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        postResponse.Headers.Location!.OriginalString.Should().Be("/");
+        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, postResponse).Should().BeTrue("a username is a sign-in identifier, not decoration");
+    }
+
+    /// <summary>
+    /// An identifier belonging to no account is refused exactly like a wrong password - same status,
+    /// same message - so the form cannot be used to find out which addresses and usernames exist.
+    /// </summary>
+    [Fact]
+    public async Task PostingAnIdentifierNobodyHoldsIsRejectedTheSameWayAsAWrongPassword()
+    {
+        // Arrange
+        await CreateUserAsync("user@example.com", confirmed: true);
+
+        using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        HttpResponseMessage getResponse = await client.GetAsync("/Account/Login", TestContext.Current.CancellationToken);
+        string antiforgeryToken = AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+
+        using FormUrlEncodedContent body = LoginBody(antiforgeryToken, "nobody", Password);
+
+        // Act
+        HttpResponseMessage postResponse = await client.PostAsync("/Account/Login", body, TestContext.Current.CancellationToken);
+
+        // Assert
+        postResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, postResponse).Should().BeFalse();
+
+        string html = await postResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        html.Should().Contain("Invalid login attempt");
     }
 
     /// <summary>A wrong password is rejected without signing anyone in.</summary>
@@ -200,7 +263,7 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
 
         using FormUrlEncodedContent body = new(new Dictionary<string, string>
         {
-            ["Input.Email"] = "user@example.com",
+            ["Input.Login"] = "user@example.com",
             ["Input.Password"] = Password,
         });
 

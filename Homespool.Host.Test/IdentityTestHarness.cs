@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Data;
+using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -42,7 +43,10 @@ internal static class IdentityTestHarness
         // AddIdentity already wires up authentication and the Identity.Application cookie scheme that
         // SignInManager.SignInAsync writes to - an explicit AddAuthentication().AddCookie() here would
         // collide with it ("Scheme already exists").
-        services.AddIdentity<HSUser, IdentityRole<long>>(o => o.SignIn.RequireConfirmedAccount = true)
+        //
+        // The options come from the application's own configuration rather than being restated here,
+        // so a test cannot create an account the real thing would refuse - see IdentityConfiguration.
+        services.AddIdentity<HSUser, IdentityRole<long>>(IdentityConfiguration.Configure)
                 .AddEntityFrameworkStores<HSDbContext>()
                 .AddDefaultTokenProviders();
 
@@ -53,6 +57,26 @@ internal static class IdentityTestHarness
                 provider.GetRequiredService<SignInManager<HSUser>>(),
                 httpContext,
                 provider);
+    }
+
+    /// <summary>
+    /// A username for a fixture that identifies its account by an address: the address's local part,
+    /// with anything Identity would refuse replaced by a hyphen.
+    /// </summary>
+    /// <remarks>
+    /// <b>A test convenience, not a rule the application has.</b> A username is chosen by the person
+    /// and has nothing to do with their address - <see cref="HSUser.AllowedUsernameCharacters"/>
+    /// forbids the <c>@</c> that would let one be the other. This exists so a fixture that wants two
+    /// distinct accounts can go on saying so with one string each.
+    /// </remarks>
+    public static string UsernameFor(string email)
+    {
+        ArgumentNullException.ThrowIfNull(email);
+
+        int at = email.IndexOf('@', StringComparison.Ordinal);
+        string local = at < 0 ? email : email[..at];
+
+        return string.Concat(local.Select(c => HSUser.AllowedUsernameCharacters.Contains(c, StringComparison.Ordinal) ? c : '-'));
     }
 
     /// <summary>

@@ -64,7 +64,7 @@ public sealed class DetailModelTests : IDisposable
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 
-        HSUser user = new() { UserName = "owner@example.com", Email = "owner@example.com", EmailConfirmed = true };
+        HSUser user = new("owner") { Email = "owner@example.com", EmailConfirmed = true };
         IdentityResult createResult = await users.CreateAsync(user, "Sup3rSecret!23");
         createResult.Succeeded.Should().BeTrue();
 

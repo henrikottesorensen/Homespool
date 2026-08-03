@@ -92,6 +92,15 @@ public class ExternalLoginModel : PageModel
         [Required]
         [EmailAddress]
         public string Email { get; set; }
+
+        /// <summary>
+        /// The sign-in name, asked for here for the same reason <c>Setup</c> and <c>Register</c> ask:
+        /// an account's username is chosen, and an address is not a username.
+        /// </summary>
+        [Required]
+        [StringLength(HSUser.UsernameMaxLength)]
+        [Display(Name = "Username")]
+        public string Username { get; set; }
     }
 
     public IActionResult OnGet()
@@ -168,7 +177,7 @@ public class ExternalLoginModel : PageModel
         {
             HSUser user = CreateUser();
 
-            await _userStore.SetUserNameAsync(user, Input.Email, CancellationToken.None);
+            await _userStore.SetUserNameAsync(user, Input.Username, CancellationToken.None);
             await _emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None);
 
             _accountConfirmationPolicy.Apply(user);

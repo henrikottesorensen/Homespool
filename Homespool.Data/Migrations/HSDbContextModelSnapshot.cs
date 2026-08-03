@@ -64,10 +64,6 @@ namespace Homespool.Data.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("DisplayName")
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("Email")
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
@@ -89,17 +85,11 @@ namespace Homespool.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("NormalizedUserName")
-                        .HasMaxLength(256)
+                        .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("PasswordHash")
                         .HasColumnType("TEXT");
-
-                    b.Property<string>("PhoneNumber")
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("PhoneNumberConfirmed")
-                        .HasColumnType("INTEGER");
 
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("TEXT");
@@ -108,7 +98,7 @@ namespace Homespool.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("UserName")
-                        .HasMaxLength(256)
+                        .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -879,13 +869,11 @@ namespace Homespool.Data.Migrations
 
             modelBuilder.Entity("Homespool.Model.Entities.PrinterEvent", b =>
                 {
-                    b.HasOne("Homespool.Model.Entities.Printer", "Printer")
+                    b.HasOne("Homespool.Model.Entities.Printer", null)
                         .WithMany()
                         .HasForeignKey("PrinterId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Printer");
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.PrinterLiveSlotState", b =>
@@ -901,13 +889,11 @@ namespace Homespool.Data.Migrations
 
             modelBuilder.Entity("Homespool.Model.Entities.PrinterLiveState", b =>
                 {
-                    b.HasOne("Homespool.Model.Entities.Printer", "Printer")
+                    b.HasOne("Homespool.Model.Entities.Printer", null)
                         .WithOne()
                         .HasForeignKey("Homespool.Model.Entities.PrinterLiveState", "PrinterId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Printer");
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.PrusaConnectAuthenticationData", b =>
@@ -955,13 +941,11 @@ namespace Homespool.Data.Migrations
 
             modelBuilder.Entity("Homespool.Model.Entities.TelemetrySample", b =>
                 {
-                    b.HasOne("Homespool.Model.Entities.Printer", "Printer")
+                    b.HasOne("Homespool.Model.Entities.Printer", null)
                         .WithMany()
                         .HasForeignKey("PrinterId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Printer");
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.TelemetrySlotSample", b =>

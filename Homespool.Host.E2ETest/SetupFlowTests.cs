@@ -111,6 +111,7 @@ public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
         {
             ["__RequestVerificationToken"] = antiforgeryToken,
             ["Input.Email"] = "admin@example.com",
+            ["Input.Username"] = "admin",
             ["Input.Password"] = "Correct-Horse-Battery-Staple-1!",
             ["Input.ConfirmPassword"] = "Correct-Horse-Battery-Staple-1!",
             ["Input.Token"] = token,
@@ -148,6 +149,7 @@ public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
         {
             ["__RequestVerificationToken"] = antiforgeryToken,
             ["Input.Email"] = "admin@example.com",
+            ["Input.Username"] = "admin",
             ["Input.Password"] = "Correct-Horse-Battery-Staple-1!",
             ["Input.ConfirmPassword"] = "Correct-Horse-Battery-Staple-1!",
             ["Input.Token"] = "not-the-real-token",
@@ -181,6 +183,7 @@ public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
         using FormUrlEncodedContent body = new(new Dictionary<string, string>
         {
             ["Input.Email"] = "admin@example.com",
+            ["Input.Username"] = "admin",
             ["Input.Password"] = "Correct-Horse-Battery-Staple-1!",
             ["Input.ConfirmPassword"] = "Correct-Horse-Battery-Staple-1!",
             ["Input.Token"] = token,

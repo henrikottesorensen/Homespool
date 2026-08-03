@@ -64,6 +64,19 @@ public class SetupModel : PageModel
         [Display(Name = "Email")]
         public string Email { get; set; }
 
+        /// <summary>
+        /// The sign-in name, and what the interface calls this person.
+        /// </summary>
+        /// <remarks>
+        /// Only the length is checked here. The character set and uniqueness are Identity's
+        /// <c>UserValidator</c>'s job, which runs on <c>CreateAsync</c> below and on every later change
+        /// alike - restating either here would be a second copy of a rule to keep in step.
+        /// </remarks>
+        [Required]
+        [StringLength(HSUser.UsernameMaxLength)]
+        [Display(Name = "Username")]
+        public string Username { get; set; }
+
         [Required]
         [StringLength(100, ErrorMessage = "The {0} must be at least {2} and at max {1} characters long.", MinimumLength = 6)]
         [DataType(DataType.Password)]
@@ -123,12 +136,8 @@ public class SetupModel : PageModel
 
         try
         {
-            await _userStore.SetUserNameAsync(user, Input.Email, CancellationToken.None);
+            await _userStore.SetUserNameAsync(user, Input.Username, CancellationToken.None);
             await _emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None);
-
-            // The sign-in name stays the email; this is only what the interface calls them, and it
-            // is editable afterwards on Account/Manage.
-            user.DisplayName = HSUser.DefaultDisplayNameFor(Input.Email);
 
             _accountConfirmationPolicy.Apply(user);
 

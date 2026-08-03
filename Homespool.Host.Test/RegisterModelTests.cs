@@ -114,9 +114,18 @@ public sealed class RegisterModelTests : IDisposable
         model.Code = EncodeCode(plaintextToken);
     }
 
-    private static void SetValidPassword(RegisterModel model, string password = "Sup3rSecret!23")
+    /// <summary>
+    /// Fills in everything the form asks the invitee for. The username is theirs to pick - the invite
+    /// binds only the address - so it is part of a valid post rather than something derived here.
+    /// </summary>
+    private static void SetValidInput(RegisterModel model, string password = "Sup3rSecret!23", string username = "invitee")
     {
-        model.Input = new RegisterModel.InputModel { Password = password, ConfirmPassword = password };
+        model.Input = new RegisterModel.InputModel
+        {
+            Username = username,
+            Password = password,
+            ConfirmPassword = password,
+        };
     }
 
     // ---------- OnGetAsync ----------
@@ -203,7 +212,7 @@ public sealed class RegisterModelTests : IDisposable
 
         (RegisterModel model, DefaultHttpContext httpContext, _) = NewModel(context, invitationService, smtpConfigured: false);
         SetInvite(model, invitation.Id, plaintext);
-        SetValidPassword(model);
+        SetValidInput(model);
 
         // Act
         IActionResult result = await model.OnPostAsync("/dashboard", CancellationToken.None);
@@ -234,7 +243,7 @@ public sealed class RegisterModelTests : IDisposable
 
         (RegisterModel model, _, CapturingEmailSender emailSender) = NewModel(context, invitationService, smtpConfigured: true);
         SetInvite(model, invitation.Id, plaintext);
-        SetValidPassword(model);
+        SetValidInput(model);
 
         // Act
         IActionResult result = await model.OnPostAsync("/dashboard", CancellationToken.None);
@@ -270,7 +279,7 @@ public sealed class RegisterModelTests : IDisposable
 
         (RegisterModel model, _, _) = NewModel(context, invitationService, smtpConfigured: false);
         SetInvite(model, invitation.Id, plaintext);
-        SetValidPassword(model);
+        SetValidInput(model);
 
         // Act
         await model.OnPostAsync("/dashboard", CancellationToken.None);
@@ -296,7 +305,7 @@ public sealed class RegisterModelTests : IDisposable
 
         (RegisterModel model, _, _) = NewModel(context, invitationService, smtpConfigured: false);
         SetInvite(model, invitation.Id, plaintext);
-        SetValidPassword(model);
+        SetValidInput(model);
 
         // Act
         await model.OnPostAsync("/dashboard", CancellationToken.None);
@@ -326,7 +335,7 @@ public sealed class RegisterModelTests : IDisposable
 
         (RegisterModel model, _, _) = NewModel(context, invitationService, smtpConfigured: false);
         SetInvite(model, invitation.Id, plaintext);
-        SetValidPassword(model);
+        SetValidInput(model);
 
         await model.OnGetAsync(null, CancellationToken.None);
         model.InviteValid.Should().BeTrue("sanity check: the invite was good at GET time");
@@ -356,7 +365,7 @@ public sealed class RegisterModelTests : IDisposable
 
         (RegisterModel model, _, _) = NewModel(context, invitationService, smtpConfigured: false);
         SetInvite(model, invitation.Id, plaintext);
-        SetValidPassword(model);
+        SetValidInput(model);
         model.ModelState.AddModelError(nameof(RegisterModel.InputModel.ConfirmPassword), "The password and confirmation password do not match.");
 
         // Act
@@ -381,7 +390,7 @@ public sealed class RegisterModelTests : IDisposable
         await using HSDbContext context = await MigratedContextAsync();
 
         (UserManager<HSUser> preexistingUsers, _, _, _) = IdentityTestHarness.BuildIdentityServices(context);
-        HSUser existing = new() { UserName = "invitee@example.com", Email = "invitee@example.com", EmailConfirmed = true };
+        HSUser existing = new("existing") { Email = "invitee@example.com", EmailConfirmed = true };
         (await preexistingUsers.CreateAsync(existing, "Sup3rSecret!23")).Succeeded.Should().BeTrue("test setup");
 
         InvitationService invitationService = NewInvitationService(context);
@@ -390,7 +399,7 @@ public sealed class RegisterModelTests : IDisposable
 
         (RegisterModel model, _, _) = NewModel(context, invitationService, smtpConfigured: false);
         SetInvite(model, invitation.Id, plaintext);
-        SetValidPassword(model);
+        SetValidInput(model);
 
         // Act
         IActionResult result = await model.OnPostAsync("/dashboard", CancellationToken.None);
@@ -416,7 +425,7 @@ public sealed class RegisterModelTests : IDisposable
         await using HSDbContext context = await MigratedContextAsync();
 
         (UserManager<HSUser> placeholderUsers, _, _, _) = IdentityTestHarness.BuildIdentityServices(context);
-        HSUser placeholder = new() { UserName = "placeholder@example.com", Email = "placeholder@example.com", EmailConfirmed = true };
+        HSUser placeholder = new("placeholder") { Email = "placeholder@example.com", EmailConfirmed = true };
         (await placeholderUsers.CreateAsync(placeholder, "Sup3rSecret!23")).Succeeded.Should().BeTrue("test setup");
 
         // The next user Identity creates will get this id (SQLite rowids are sequential), so
@@ -445,7 +454,7 @@ public sealed class RegisterModelTests : IDisposable
 
         (RegisterModel model, _, _) = NewModel(context, invitationService, smtpConfigured: false);
         SetInvite(model, invitation.Id, plaintext);
-        SetValidPassword(model);
+        SetValidInput(model);
 
         // Act
         IActionResult result = await model.OnPostAsync("/dashboard", CancellationToken.None);

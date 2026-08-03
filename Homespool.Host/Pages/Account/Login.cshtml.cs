@@ -20,11 +20,13 @@ namespace Homespool.Host.Pages.Account;
 public class LoginModel : PageModel
 {
     private readonly SignInManager<HSUser> _signInManager;
+    private readonly UserManager<HSUser> _userManager;
     private readonly ILogger<LoginModel> _logger;
 
-    public LoginModel(SignInManager<HSUser> signInManager, ILogger<LoginModel> logger)
+    public LoginModel(SignInManager<HSUser> signInManager, UserManager<HSUser> userManager, ILogger<LoginModel> logger)
     {
         _signInManager = signInManager;
+        _userManager = userManager;
         _logger = logger;
     }
 
@@ -40,9 +42,16 @@ public class LoginModel : PageModel
 
     public class InputModel
     {
+        /// <summary>
+        /// Either identifier the account has: its username or its email address.
+        /// </summary>
+        /// <remarks>
+        /// One field rather than two, and no <c>[EmailAddress]</c> on it - the attribute was what made
+        /// this field mean "address", and it would now reject every username typed into it.
+        /// </remarks>
         [Required]
-        [EmailAddress]
-        public string Email { get; set; }
+        [Display(Name = "Email or username")]
+        public string Login { get; set; }
 
         [Required]
         [DataType(DataType.Password)]
@@ -89,7 +98,24 @@ public class LoginModel : PageModel
             // deliberately is that someone who knows an account's email can keep it locked out; a
             // self-healing five-minute lockout is much the lesser evil, and it is the same tradeoff
             // already live on the 2FA path, which has always counted toward lockout.
-            Microsoft.AspNetCore.Identity.SignInResult result = await _signInManager.PasswordSignInAsync(Input.Email,
+            // Resolved by hand because sign-in accepts either identifier, and PasswordSignInAsync's
+            // string overload only ever looks at the username. The two namespaces cannot overlap - a
+            // username may not contain '@' (HSUser.AllowedUsernameCharacters) - so this order settles
+            // nothing that could be ambiguous; it is just the cheaper lookup first.
+            HSUser user = await _userManager.FindByNameAsync(Input.Login)
+                       ?? await _userManager.FindByEmailAsync(Input.Login);
+
+            if (user is null)
+            {
+                // Deliberately the same message and the same page as a wrong password: telling an
+                // anonymous caller which addresses and usernames exist is the enumeration this form is
+                // exposed enough to care about (notes/internet-exposure.md).
+                ModelState.AddModelError(string.Empty, "Invalid login attempt.");
+
+                return Page();
+            }
+
+            Microsoft.AspNetCore.Identity.SignInResult result = await _signInManager.PasswordSignInAsync(user,
                                                                            Input.Password,
                                                                            Input.RememberMe,
                                                                            lockoutOnFailure: true);

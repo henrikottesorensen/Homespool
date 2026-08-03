@@ -133,7 +133,7 @@ public class PrintFileController : ControllerBase
         {
             await using LengthLimitingStream limited = new(Request.Body, _options.MaxUploadBytes);
             stored = await _files.SaveAsync(user.Id, fileName, limited, overwrite, cancellationToken,
-                user.DisplayName);
+                user.UserName);
         }
         catch (UploadTooLargeException)
         {

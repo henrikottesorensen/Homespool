@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Security.Claims;
@@ -98,6 +99,26 @@ public static class EnrolmentFlowHelper
     }
 
     /// <summary>
+    /// A username for a fixture that identifies its account by an address: the address's local part,
+    /// with anything Identity would refuse replaced by a hyphen.
+    /// </summary>
+    /// <remarks>
+    /// <b>A test convenience, not a rule the application has.</b> A username is chosen by the person
+    /// and has nothing to do with their address - <see cref="HSUser.AllowedUsernameCharacters"/>
+    /// forbids the <c>@</c> that would let one be the other. This exists so a fixture that wants two
+    /// distinct accounts can go on saying so with one string each.
+    /// </remarks>
+    public static string UsernameFor(string email)
+    {
+        ArgumentNullException.ThrowIfNull(email);
+
+        int at = email.IndexOf('@', StringComparison.Ordinal);
+        string local = at < 0 ? email : email[..at];
+
+        return string.Concat(local.Select(c => HSUser.AllowedUsernameCharacters.Contains(c, StringComparison.Ordinal) ? c : '-'));
+    }
+
+    /// <summary>
     /// Seeds an ordinary account with its default team - the same creation dance
     /// <c>Setup.cshtml.cs</c>/<c>Register.cshtml.cs</c> perform - and mints a cookie for it via the
     /// exact <see cref="CookieAuthenticationOptions.TicketDataFormat"/> real sign-in would use, so the
@@ -105,7 +126,7 @@ public static class EnrolmentFlowHelper
     /// antiforgery-protected form, which isn't what these suites are testing.
     /// </summary>
     /// <param name="factory">The application under test.</param>
-    /// <param name="email">The account to create; also its user name.</param>
+    /// <param name="email">The account to create. Its username is <see cref="UsernameFor"/> this.</param>
     /// <param name="role">
     /// A role to grant <em>before</em> the cookie is minted. It has to be before: the principal is
     /// built from the user as it stands, so a role added afterwards is absent from the ticket the
@@ -124,7 +145,7 @@ public static class EnrolmentFlowHelper
         TeamService teamService = scope.ServiceProvider.GetRequiredService<TeamService>();
 
         HSUser user = new();
-        await userStore.SetUserNameAsync(user, email, CancellationToken.None);
+        await userStore.SetUserNameAsync(user, UsernameFor(email), CancellationToken.None);
         await emailStore.SetEmailAsync(user, email, CancellationToken.None);
         confirmationPolicy.Apply(user);
 

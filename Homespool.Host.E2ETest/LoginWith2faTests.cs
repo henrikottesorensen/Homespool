@@ -106,7 +106,7 @@ public sealed class LoginWith2faTests : IAsyncLifetime, IDisposable
         UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
 
         HSUser user = new();
-        await userStore.SetUserNameAsync(user, Email, CancellationToken.None);
+        await userStore.SetUserNameAsync(user, EnrolmentFlowHelper.UsernameFor(Email), CancellationToken.None);
         await emailStore.SetEmailAsync(user, Email, CancellationToken.None);
         user.EmailConfirmed = true;
 
@@ -165,7 +165,7 @@ public sealed class LoginWith2faTests : IAsyncLifetime, IDisposable
         using FormUrlEncodedContent loginBody = new(new Dictionary<string, string>
         {
             ["__RequestVerificationToken"] = loginAntiforgeryToken,
-            ["Input.Email"] = Email,
+            ["Input.Login"] = Email,
             ["Input.Password"] = Password,
         });
 

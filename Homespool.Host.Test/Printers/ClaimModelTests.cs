@@ -83,7 +83,7 @@ public sealed class ClaimModelTests : IDisposable
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 
-        HSUser user = new() { UserName = email, Email = email, EmailConfirmed = true };
+        HSUser user = new(IdentityTestHarness.UsernameFor(email)) { Email = email, EmailConfirmed = true };
         IdentityResult createResult = await users.CreateAsync(user, "Sup3rSecret!23");
         createResult.Succeeded.Should().BeTrue();
 

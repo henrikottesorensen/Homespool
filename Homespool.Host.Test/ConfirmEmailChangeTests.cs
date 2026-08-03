@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -22,24 +21,25 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// Confirming an email change moves the address and the sign-in name together, or moves neither.
+/// Confirming an email change moves the address, and moves nothing else.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The two are separate round trips through <c>UserManager</c> - <c>ChangeEmailAsync</c> then
-/// <c>SetUserNameAsync</c> - and in this project the username <em>is</em> the sign-in identifier
-/// (<c>HSUser.DisplayName</c>'s remarks). Landing only the first leaves an account that displays the
-/// new address and signs in under the old one.
+/// <b>Was <c>ConfirmEmailChangeAtomicityTests</c>.</b> The page used to set the username alongside the
+/// address, because the two were the same value and sign-in used the username - two round trips
+/// through <c>UserManager</c> that could half-land, which is what the transaction was for. The
+/// username is now the person's own and an address change does not touch it, so there is one round
+/// trip and nothing to keep in step. What is left to prove is that the surviving call still lands, and
+/// that the clash it can still hit changes nothing.
 /// </para>
 /// <para>
-/// <b>The failure is reachable, which is why this is tested rather than assumed:</b> another account
-/// may already hold the target address as its username. <c>SetUserNameAsync</c> refuses that;
-/// <c>ChangeEmailAsync</c> never checks it, because <c>RequireUniqueEmail</c> is off. So the second
-/// call fails after the first has succeeded, which is exactly the split the transaction exists to
-/// prevent.
+/// The clash is now caught a layer earlier: <c>RequireUniqueEmail</c> is on (sign-in resolves an
+/// address to an account), so <c>ChangeEmailAsync</c>'s own validation refuses a second account on one
+/// address. That is a rejected save rather than a rolled-back one, which is why no transaction
+/// replaces the deleted one.
 /// </para>
 /// </remarks>
-public sealed class ConfirmEmailChangeAtomicityTests : IDisposable
+public sealed class ConfirmEmailChangeTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-emailchange-{Guid.NewGuid():N}.db");
 
@@ -71,9 +71,9 @@ public sealed class ConfirmEmailChangeAtomicityTests : IDisposable
         }
     }
 
-    private static async Task<HSUser> AddUserAsync(UserManager<HSUser> users, string email)
+    private static async Task<HSUser> AddUserAsync(UserManager<HSUser> users, string userName, string email)
     {
-        HSUser user = new(email)
+        HSUser user = new(userName)
         {
             Email = email,
             EmailConfirmed = true,
@@ -84,13 +84,11 @@ public sealed class ConfirmEmailChangeAtomicityTests : IDisposable
         return user;
     }
 
-    private static ConfirmEmailChangeModel NewModel(HSDbContext context,
-                                                    UserManager<HSUser> users,
+    private static ConfirmEmailChangeModel NewModel(UserManager<HSUser> users,
                                                     SignInManager<HSUser> signIn,
                                                     DefaultHttpContext httpContext)
     {
-        return new ConfirmEmailChangeModel(users, signIn, new UnitOfWork(context),
-            Options.Create(new SmtpOptions()))
+        return new ConfirmEmailChangeModel(users, signIn, Options.Create(new SmtpOptions()))
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };
@@ -103,65 +101,69 @@ public sealed class ConfirmEmailChangeAtomicityTests : IDisposable
         return WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
     }
 
-    /// <summary>The ordinary case: both the address and the sign-in name move.</summary>
+    /// <summary>The ordinary case: the address moves and the username is left alone.</summary>
     [Fact]
-    public async Task ConfirmingAChangeMovesTheEmailAndTheUsernameTogether()
+    public async Task ConfirmingAChangeMovesTheEmailAndLeavesTheUsernameAlone()
     {
         // Arrange
         await using HSDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, SignInManager<HSUser> signIn, DefaultHttpContext httpContext, _) =
             IdentityTestHarness.BuildIdentityServices(context);
 
-        HSUser user = await AddUserAsync(users, "before@example.com");
+        HSUser user = await AddUserAsync(users, "henrik", "before@example.com");
         string code = await ChangeEmailCodeAsync(users, user, "after@example.com");
 
-        ConfirmEmailChangeModel model = NewModel(context, users, signIn, httpContext);
+        ConfirmEmailChangeModel model = NewModel(users, signIn, httpContext);
 
         // Act
-        await model.OnGetAsync(user.Id.ToString(), "after@example.com", code, CancellationToken.None);
+        await model.OnGetAsync(user.Id.ToString(), "after@example.com", code);
 
         // Assert
         HSUser reloaded = await context.Users.AsNoTracking().SingleAsync(u => u.Id == user.Id, TestContext.Current.CancellationToken);
 
         reloaded.Email.Should().Be("after@example.com");
-        reloaded.UserName.Should().Be("after@example.com", "the username is the sign-in identifier here");
+        reloaded.UserName.Should().Be("henrik", "an address change is not a rename");
         model.StatusMessage.Should().StartWith("Thank you");
     }
 
     /// <summary>
-    /// <b>The rollback case.</b> When the target address is already somebody's username the second
-    /// call fails, and the first must not survive it - the account keeps both of its old values.
-    /// Remove the transaction and the email moves while the username does not.
+    /// <b>The clash case.</b> Another account already holds the target address, so the change is
+    /// refused and the row keeps every value it had.
     /// </summary>
+    /// <remarks>
+    /// Turn <c>RequireUniqueEmail</c> off and this test fails by letting the change through - two
+    /// accounts on one address, which is precisely what would make <c>LoginModel</c>'s
+    /// <c>FindByEmailAsync</c> pick one of them arbitrarily.
+    /// </remarks>
     [Fact]
-    public async Task AUsernameClashLeavesTheAccountCompletelyUnchanged()
+    public async Task AnAddressAnotherAccountHoldsLeavesTheAccountUnchanged()
     {
         // Arrange
         await using HSDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, SignInManager<HSUser> signIn, DefaultHttpContext httpContext, _) =
             IdentityTestHarness.BuildIdentityServices(context);
 
-        await AddUserAsync(users, "taken@example.com");
-        HSUser mover = await AddUserAsync(users, "mover@example.com");
+        await AddUserAsync(users, "taken", "taken@example.com");
+        HSUser mover = await AddUserAsync(users, "mover", "mover@example.com");
 
         string code = await ChangeEmailCodeAsync(users, mover, "taken@example.com");
 
-        ConfirmEmailChangeModel model = NewModel(context, users, signIn, httpContext);
+        ConfirmEmailChangeModel model = NewModel(users, signIn, httpContext);
 
         // Act
-        IActionResult result = await model.OnGetAsync(mover.Id.ToString(), "taken@example.com", code, CancellationToken.None);
+        IActionResult result = await model.OnGetAsync(mover.Id.ToString(), "taken@example.com", code);
 
         // Assert
         result.Should().BeOfType<PageResult>();
 
-        // AsNoTracking, and a fresh read: the tracked instance still carries the values the rolled-back
-        // calls set on it in memory, so asserting against it would pass whether or not anything was
+        // AsNoTracking, and a fresh read: the tracked instance still carries the values the refused
+        // call set on it in memory, so asserting against it would pass whether or not anything was
         // written. What matters is the row.
         HSUser reloaded = await context.Users.AsNoTracking().SingleAsync(u => u.Id == mover.Id, TestContext.Current.CancellationToken);
 
-        reloaded.Email.Should().Be("mover@example.com", "the email change must have rolled back with the username");
-        reloaded.UserName.Should().Be("mover@example.com");
+        reloaded.Email.Should().Be("mover@example.com", "a refused change must leave the address where it was");
+        reloaded.UserName.Should().Be("mover");
 
-        model.StatusMessage.Should().Contain("not available");
+        model.StatusMessage.Should().Be("Error changing email.");
     }
 }

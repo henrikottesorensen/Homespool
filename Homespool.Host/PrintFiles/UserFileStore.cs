@@ -220,13 +220,13 @@ public sealed class UserFileStore
     /// authoritative, because two uploads of the same name can race between them.
     /// </para>
     /// </remarks>
-    /// <param name="displayName">
-    /// Decorates the directory this user's files live in, e.g. <c>12-Sørensen</c>. Used only when
+    /// <param name="userName">
+    /// Decorates the directory this user's files live in, e.g. <c>12-henrik</c>. Used only when
     /// there is no directory yet - an existing one is found by its id prefix and kept whatever its
     /// name says, so this going stale is cosmetic. Null means the folder is the bare id.
     /// </param>
     public async Task<StoredFile> SaveAsync(long userId, string fileName, Stream content, bool overwrite,
-        CancellationToken cancellationToken, string? displayName = null)
+        CancellationToken cancellationToken, string? userName = null)
     {
         // Fails a doomed request before hundreds of megabytes cross the wire. The check inside
         // Publish is the authoritative one; this is the courtesy.
@@ -239,7 +239,7 @@ public sealed class UserFileStore
 
         try
         {
-            return Publish(userId, pending.Token, overwrite, displayName)!;
+            return Publish(userId, pending.Token, overwrite, userName)!;
         }
         catch
         {
@@ -319,7 +319,7 @@ public sealed class UserFileStore
     /// transfer already in flight keep serving the bytes it announced
     /// (<see cref="PrusaConnect.Transfers.FileTransferContent"/>).
     /// </remarks>
-    public StoredFile? Publish(long userId, string token, bool overwrite, string? displayName = null)
+    public StoredFile? Publish(long userId, string token, bool overwrite, string? userName = null)
     {
         if (!_pending.TryGetValue(token, out Pending? pending) || pending.UserId != userId)
         {
@@ -336,9 +336,9 @@ public sealed class UserFileStore
         }
 
         // Resolved before it is created, and that order is load-bearing: building the name from the
-        // *current* display name each time would give a renamed user a second directory and split
+        // *current* username each time would give a renamed user a second directory and split
         // their files across both, with listings showing whichever the glob happened to hit.
-        string directory = DirectoryFor(userId, displayName);
+        string directory = DirectoryFor(userId, userName);
 
         Directory.CreateDirectory(directory);
 
@@ -490,13 +490,13 @@ public sealed class UserFileStore
     }
 
     /// <summary>
-    /// A user's directory, found by its <c>{userId}-</c> prefix - so a display name that has changed
+    /// A user's directory, found by its <c>{userId}-</c> prefix - so a username that has changed
     /// since the directory was made still resolves.
     /// </summary>
     /// <remarks>
     /// <para>
     /// Returns the path whether or not it exists; callers check. When nothing matches, the name is
-    /// built from <paramref name="displayName"/>, which is why only the write path passes one - a
+    /// built from <paramref name="userName"/>, which is why only the write path passes one - a
     /// read has nothing to create and no reason to care what the folder would have been called.
     /// </para>
     /// <para>
@@ -506,7 +506,7 @@ public sealed class UserFileStore
     /// disappear between calls on an unchanged disk.
     /// </para>
     /// </remarks>
-    private string DirectoryFor(long userId, string? displayName = null)
+    private string DirectoryFor(long userId, string? userName = null)
     {
         if (Directory.Exists(_root))
         {
@@ -528,7 +528,7 @@ public sealed class UserFileStore
             }
         }
 
-        return Path.Combine(_root, UserDirectoryName.For(userId, displayName));
+        return Path.Combine(_root, UserDirectoryName.For(userId, userName));
     }
 
     /// <summary>

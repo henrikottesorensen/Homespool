@@ -96,10 +96,23 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
 
         builder.Entity<HSUser>(entity =>
         {
-            // Bounded because it is rendered into every page header. Not unique and not indexed:
-            // it identifies nobody - UserName still does that - so two people may share one.
-            entity.Property(e => e.DisplayName)
-                  .HasMaxLength(HSUser.DisplayNameMaxLength);
+            // Bounded well below Identity's own 256 because it is rendered into every page header,
+            // and because it is what a person types at a sign-in prompt. Uniqueness is not configured
+            // here: Identity already indexes NormalizedUserName uniquely, which is the constraint that
+            // matters, and duplicating it would be a second index over the same values.
+            entity.Property(e => e.UserName)
+                  .HasMaxLength(HSUser.UsernameMaxLength);
+
+            entity.Property(e => e.NormalizedUserName)
+                  .HasMaxLength(HSUser.UsernameMaxLength);
+
+            // Homespool has no use for a phone number and no channel that would send to one: there is
+            // no SMS two-factor provider registered, and the notification design rejected even email
+            // as a channel (notes/filament-change-notification.md). The properties themselves are
+            // IdentityUser's and cannot be removed short of not deriving from it; ignoring them keeps
+            // the columns off the table, so the application never stores a number it cannot use.
+            entity.Ignore(e => e.PhoneNumber);
+            entity.Ignore(e => e.PhoneNumberConfirmed);
         });
 
         builder.Entity<Printer>(entity =>

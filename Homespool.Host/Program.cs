@@ -62,9 +62,9 @@ public static class Program
                             .AddPrusaConnectPrinterAuthentication()
                             .AddApiTokenAuthentication();
 
-            builder.Services.AddIdentity<Model.Entities.HSUser, IdentityRole<long>>(options => options.SignIn.RequireConfirmedAccount = true)
+            builder.Services.AddIdentity<Model.Entities.HSUser, IdentityRole<long>>(Services.IdentityConfiguration.Configure)
                             .AddEntityFrameworkStores<HSDbContext>()
-                            .AddClaimsPrincipalFactory<Services.HSUserClaimsPrincipalFactory>()
+                            .AddErrorDescriber<Services.HSIdentityErrorDescriber>()
                             .AddDefaultTokenProviders();
 
             builder.Services.ConfigureApplicationCookie(options =>

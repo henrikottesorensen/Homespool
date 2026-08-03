@@ -8,6 +8,12 @@ public enum QueueWaitReason
     /// <summary>A file is being pulled from us; firmware allows only one transfer at a time.</summary>
     Transferring,
 
+    /// <summary>
+    /// The head will not fit on the printer's drive, so nothing can be sent until somebody frees
+    /// space. The queue holds behind it rather than skipping past - spooler behaviour.
+    /// </summary>
+    InsufficientSpace,
+
     /// <summary>The bytes arrived but no <c>FILE_INFO</c> has named the path to print.</summary>
     AwaitingPrinterPath,
 

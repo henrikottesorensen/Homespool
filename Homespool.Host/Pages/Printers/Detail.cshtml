@@ -93,6 +93,13 @@ else
 
 <h2>Queue</h2>
 
+@* Not a stall to worry about - it is the loop explaining itself. Absent when another part of this
+   page already says it, which is why there is no message while a print is starting. *@
+@if (Model.WaitingOn is { } waiting)
+{
+    <p class="text-muted">@waiting</p>
+}
+
 @* Reordering and cancelling are edits to a list - nothing here reaches the printer. The producer
    loop is what turns the head of this queue into a transfer and a print, and it advances only when
    the printer is Ready, which only a person sets. *@

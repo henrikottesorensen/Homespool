@@ -96,7 +96,9 @@ public sealed class DetailModelTests : IDisposable
             QueueSignal);
 
         DetailModel model = new(new PrinterQueryService(context, TimeProvider.System), queueService,
-            new PrintHistoryService(context, teamService), teamService, connectionRegistry, users)
+            new PrintHistoryService(context, teamService),
+            new QueueSnapshotReader(context, connectionRegistry, TimeProvider.System),
+            teamService, connectionRegistry, users)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };

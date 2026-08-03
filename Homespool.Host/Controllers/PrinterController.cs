@@ -114,8 +114,8 @@ public class PrinterController : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public async Task<ActionResult> SendFile(Guid uuid,
-                                              [FromBody] SendFileRequest body,
-                                              CancellationToken cancellationToken)
+                                             [FromBody] SendFileRequest body,
+                                             CancellationToken cancellationToken)
     {
         HSUser? caller = await _userManager.GetUserAsync(User);
 
@@ -423,8 +423,8 @@ public class PrinterController : ControllerBase
 
     /// <summary>Resolves the printer, then sends - the whole body of every job-control verb above.</summary>
     private async Task<ActionResult> SendJobControlAsync(Guid uuid,
-                                                          ISendableCommand command,
-                                                          CancellationToken cancellationToken)
+                                                         ISendableCommand command,
+                                                         CancellationToken cancellationToken)
     {
         (Printer? printer, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
 
@@ -450,9 +450,9 @@ public class PrinterController : ControllerBase
     }
 
     private async Task<ActionResult> SendAsync(Printer printer,
-                                                ISendableCommand command,
-                                                CancellationToken cancellationToken,
-                                                Action? onFailure = null)
+                                               ISendableCommand command,
+                                               CancellationToken cancellationToken,
+                                               Action? onFailure = null)
     {
         HSUser user = (await _userManager.GetUserAsync(User))!;
 

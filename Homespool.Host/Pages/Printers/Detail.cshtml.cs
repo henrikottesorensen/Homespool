@@ -33,6 +33,7 @@ public class DetailModel : PageModel
     private readonly PrinterQueryService _printerQueryService;
     private readonly PrintQueueService _queueService;
     private readonly PrintHistoryService _historyService;
+    private readonly QueueSnapshotReader _snapshots;
     private readonly TeamService _teamService;
     private readonly PrinterConnectionRegistry _connectionRegistry;
     private readonly UserManager<HSUser> _userManager;
@@ -40,6 +41,7 @@ public class DetailModel : PageModel
     public DetailModel(PrinterQueryService printerQueryService,
                        PrintQueueService queueService,
                        PrintHistoryService historyService,
+                       QueueSnapshotReader snapshots,
                        TeamService teamService,
                        PrinterConnectionRegistry connectionRegistry,
                        UserManager<HSUser> userManager)
@@ -47,6 +49,7 @@ public class DetailModel : PageModel
         _printerQueryService = printerQueryService;
         _queueService = queueService;
         _historyService = historyService;
+        _snapshots = snapshots;
         _teamService = teamService;
         _connectionRegistry = connectionRegistry;
         _userManager = userManager;
@@ -71,6 +74,16 @@ public class DetailModel : PageModel
     /// indistinguishable from a queue that had stopped for no reason.
     /// </summary>
     public string? HoldReason { get; private set; }
+
+    /// <summary>
+    /// What the queue is waiting on, or null when nothing needs saying.
+    /// </summary>
+    /// <remarks>
+    /// Computed rather than stored: the same snapshot the loop reads, put through the same rules, so
+    /// the page cannot state something the loop does not believe. Null where another part of the page
+    /// already covers it - see <see cref="QueueWaitDescription"/>.
+    /// </remarks>
+    public string? WaitingOn { get; private set; }
 
     /// <summary>
     /// Whether the caller may change the queue, which decides whether the controls render at all.
@@ -118,6 +131,9 @@ public class DetailModel : PageModel
         ActivePrint = await _historyService.GetActiveAsync(statistics.Printer.Id, user.Id, cancellationToken);
         History = await _historyService.ListAsync(statistics.Printer.Id, user.Id, cancellationToken);
         HoldReason = await _historyService.GetHoldReasonAsync(statistics.Printer.Id, user.Id, cancellationToken);
+
+        QueueSnapshot snapshot = await _snapshots.ReadAsync(statistics.Printer.Id, cancellationToken);
+        WaitingOn = QueueWaitDescription.For(QueueRules.Decide(snapshot), snapshot.Head?.FileName);
 
         return Page();
     }

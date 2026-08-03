@@ -100,9 +100,14 @@ public sealed class PrintQueueEndpointTests : IAsyncLifetime, IDisposable
         using JsonDocument payload =
             JsonDocument.Parse(await listed.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
-        payload.RootElement.GetArrayLength().Should().Be(1);
-        payload.RootElement[0].GetProperty("fileName").GetString().Should().Be("benchy.bgcode");
-        payload.RootElement[0].GetProperty("position").GetInt32().Should().Be(0);
+        JsonElement prints = payload.RootElement.GetProperty("prints");
+        prints.GetArrayLength().Should().Be(1);
+        prints[0].GetProperty("fileName").GetString().Should().Be("benchy.bgcode");
+        prints[0].GetProperty("position").GetInt32().Should().Be(0);
+
+        // The endpoint answers an object rather than a bare array so it can carry this: a client
+        // watching a queue that is not moving has the same problem a person does.
+        payload.RootElement.TryGetProperty("waiting", out _).Should().BeTrue();
 
         client.Dispose();
     }
@@ -131,8 +136,9 @@ public sealed class PrintQueueEndpointTests : IAsyncLifetime, IDisposable
 
         using JsonDocument payload = await ListAsync(client, uuid);
 
-        payload.RootElement[0].GetProperty("fileName").GetString().Should().Be("second.bgcode");
-        payload.RootElement[1].GetProperty("fileName").GetString().Should().Be("first.bgcode");
+        JsonElement reordered = payload.RootElement.GetProperty("prints");
+        reordered[0].GetProperty("fileName").GetString().Should().Be("second.bgcode");
+        reordered[1].GetProperty("fileName").GetString().Should().Be("first.bgcode");
 
         client.Dispose();
     }
@@ -156,7 +162,7 @@ public sealed class PrintQueueEndpointTests : IAsyncLifetime, IDisposable
         cancelled.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
         using JsonDocument payload = await ListAsync(client, uuid);
-        payload.RootElement.GetArrayLength().Should().Be(0);
+        payload.RootElement.GetProperty("prints").GetArrayLength().Should().Be(0);
 
         client.Dispose();
     }

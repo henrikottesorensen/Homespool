@@ -71,6 +71,14 @@ public static class QueueRules
             return QueueAction.Wait(QueueWaitReason.Transferring);
         }
 
+        if (situation.BlockedReason is not null)
+        {
+            // Ahead of the transfer branch, because a blocked file is precisely one that would
+            // otherwise be reported as about to be sent. The advancer discovers the block and records
+            // it; this is what makes everybody reading a decision agree with the banner.
+            return QueueAction.Wait(QueueWaitReason.InsufficientSpace);
+        }
+
         if (!head.FileHasArrived)
         {
             // Deliberately not gated on the printer being available: a transfer runs alongside a

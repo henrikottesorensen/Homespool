@@ -70,6 +70,19 @@ public sealed class QueueAdvancer : BackgroundService
     /// </remarks>
     public static readonly TimeSpan TransferStaleAfter = TimeSpan.FromMinutes(30);
 
+    /// <summary>
+    /// How long a print may sit commanded-but-not-printing before the loop stops believing in it.
+    /// </summary>
+    /// <remarks>
+    /// The bound the <see cref="PrintOutcome.Starting"/> phase needs. Ordinarily this is seconds -
+    /// 3.1 s measured on a Core One - but a print that is accepted and then never begins (a heat-up
+    /// that fails, a dialog nobody answers) would otherwise leave the row open forever, and the
+    /// partial unique index would then block every later print on that printer. Generous, because a
+    /// cold chamber and a large bed legitimately take minutes; closing it as
+    /// <see cref="PrintOutcome.Unknown"/> is honest, since nothing here can say what happened.
+    /// </remarks>
+    public static readonly TimeSpan StartingStaleAfter = TimeSpan.FromMinutes(15);
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly PrinterConnectionRegistry _registry;
     private readonly QueueSignal _signal;
@@ -195,6 +208,13 @@ public sealed class QueueAdvancer : BackgroundService
         }
     }
 
+    /// <summary>Ends a print row: the outcome and the moment, together so neither is set alone.</summary>
+    private static void Close(PrintJob job, PrintOutcome outcome, DateTimeOffset at)
+    {
+        job.Outcome = outcome;
+        job.EndedAt = at;
+    }
+
     private async Task AdvanceOnceAsync(int printerId, CancellationToken cancellationToken)
     {
         await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
@@ -203,6 +223,13 @@ public sealed class QueueAdvancer : BackgroundService
         // Read the printer's own reports first, so a transfer that finished since the last pass is
         // known before anything is decided on the assumption that it has not.
         await ReconcileArrivalsAsync(dbContext, printerId, cancellationToken);
+
+        PrinterLiveState? live = await dbContext.PrinterLiveStates
+                                                .AsNoTracking()
+                                                .SingleOrDefaultAsync(state => state.PrinterId == printerId,
+                                                    cancellationToken);
+
+        PrintJob? active = await ReconcilePrintAsync(dbContext, printerId, live, cancellationToken);
 
         QueuedPrint? head = await dbContext.QueuedPrints
                                            .Include(queued => queued.PrintFile)
@@ -220,17 +247,13 @@ public sealed class QueueAdvancer : BackgroundService
             .SingleOrDefaultAsync(row => row.PrinterId == printerId && row.PrintFileId == head.PrintFileId,
                 cancellationToken);
 
-        PrinterLiveState? liveState = await dbContext.PrinterLiveStates
-                                                     .AsNoTracking()
-                                                     .SingleOrDefaultAsync(state => state.PrinterId == printerId,
-                                                         cancellationToken);
-
         QueueSnapshot snapshot = new(
             Connected: _registry.IsConnected(printerId),
-            liveState?.Status ?? PrinterStatus.Unknown,
+            live?.Status ?? PrinterStatus.Unknown,
             new QueueHead(head.Id, head.PrintFileId, head.PrintFile.Name,
                 onPrinter?.Arrived ?? false, onPrinter?.PrinterPath),
-            TransferInFlight: IsTransferInFlight(onPrinter));
+            TransferInFlight: IsTransferInFlight(onPrinter),
+            PrintInFlight: active is not null);
 
         QueueAction action = QueueRules.Decide(snapshot);
 
@@ -358,6 +381,99 @@ public sealed class QueueAdvancer : BackgroundService
         _watermarks[printerId] = highest;
     }
 
+    /// <summary>
+    /// Moves this printer's open print through its two phases, and closes it when the printer stops.
+    /// </summary>
+    /// <returns>The still-open print, or null if there is none.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>Two phases, because a print does not begin when it is commanded.</b> A row is opened
+    /// <see cref="PrintOutcome.Starting"/> and only reaches <see cref="PrintOutcome.Printing"/> when
+    /// telemetry actually says so - measured at 3.1 s on a Core One, which still reports <c>READY</c>
+    /// throughout. Closing on "no longer printing" without that distinction would close every print
+    /// moments after starting it, and the FakePrinter would never have shown it: the fake transitions
+    /// instantly, where firmware passes through preview-init and heating.
+    /// </para>
+    /// <para>
+    /// <b>The firmware job id is taken from telemetry rather than the ack.</b> <c>START_PRINT</c>
+    /// answers <c>JOB_INFO</c> carrying it, but <c>SendCommandAsync</c> returns a verdict rather than
+    /// a payload - and telemetry repeats <c>job_id</c> for the whole print, so reading it here needs
+    /// no second command and survives a restart, which is the point of keeping the mapping at all.
+    /// </para>
+    /// <para>
+    /// <b>Paused and Attention are not endings.</b> They are stalls inside a print, and the loop waits
+    /// them out rather than deciding anything - "don't cancel prints on people".
+    /// </para>
+    /// </remarks>
+    private async Task<PrintJob?> ReconcilePrintAsync(HSDbContext dbContext, int printerId,
+        PrinterLiveState? live, CancellationToken cancellationToken)
+    {
+        PrintJob? active = await dbContext.PrintJobs
+            .SingleOrDefaultAsync(job => job.PrinterId == printerId && job.EndedAt == null, cancellationToken);
+
+        if (active is null)
+        {
+            return null;
+        }
+
+        PrinterStatus status = live?.Status ?? PrinterStatus.Unknown;
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+
+        if (active.Outcome == PrintOutcome.Starting)
+        {
+            if (status == PrinterStatus.Printing)
+            {
+                active.Outcome = PrintOutcome.Printing;
+                active.FirmwareJobId = live?.JobId;
+                await dbContext.SaveChangesAsync(cancellationToken);
+
+                _logger.LogInformation("[{PrinterId}] {FileName} is printing (firmware job {JobId})",
+                    printerId, active.FileName, active.FirmwareJobId);
+
+                return active;
+            }
+
+            if (now - active.StartedAt < StartingStaleAfter)
+            {
+                return active;
+            }
+
+            // Accepted and never begun. Closing it as Unknown is honest - nothing here can say why -
+            // and it is what stops the partial unique index blocking this printer forever.
+            _logger.LogWarning(
+                "[{PrinterId}] {FileName} was accepted {Elapsed:F0} minutes ago and never started printing; "
+                + "closing it as Unknown so the queue is not wedged.",
+                printerId, active.FileName, (now - active.StartedAt).TotalMinutes);
+
+            Close(active, PrintOutcome.Unknown, now);
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            return null;
+        }
+
+        if (status is PrinterStatus.Printing or PrinterStatus.Paused or PrinterStatus.Attention)
+        {
+            return active;
+        }
+
+        PrintOutcome outcome = status switch
+        {
+            PrinterStatus.Finished => PrintOutcome.Finished,
+            PrinterStatus.Stopped => PrintOutcome.Stopped,
+
+            // Idle, Ready, Error, or the printer having gone quiet. It stopped printing and did not
+            // say how, which is what Unknown is for rather than a guess at Finished.
+            _ => PrintOutcome.Unknown,
+        };
+
+        Close(active, outcome, now);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("[{PrinterId}] {FileName} ended: {Outcome}", printerId, active.FileName, outcome);
+
+        return null;
+    }
+
     /// <summary>Offers the head's file to the printer, and records that it did.</summary>
     private async Task TransferAsync(AsyncServiceScope scope, HSDbContext dbContext, int printerId,
         QueuedPrint head, PrintFileOnPrinter? onPrinter, CancellationToken cancellationToken)
@@ -456,8 +572,21 @@ public sealed class QueueAdvancer : BackgroundService
 
             _logger.LogInformation("[{PrinterId}] started printing {Path}", printerId, printerPath);
 
-            // The entry has done its job. Print history, when it exists, is what will remember this
-            // happened - notes/print-queue.md, "Print history, not jobs".
+            // Opened Starting rather than Printing: the printer has accepted the command and will keep
+            // reporting READY for a few seconds yet. ReconcilePrintAsync promotes it when telemetry
+            // says otherwise, and that is also where the firmware job id is picked up.
+            dbContext.PrintJobs.Add(new PrintJob
+            {
+                PrinterId = printerId,
+                FileName = head.PrintFile!.Name,
+                Digest = head.PrintFile.Digest,
+                QueuedByUserId = head.QueuedByUserId,
+                PrinterPath = printerPath,
+                StartedAt = _timeProvider.GetUtcNow(),
+                Outcome = PrintOutcome.Starting,
+            });
+
+            // The entry has done its job; the history row carries it from here.
             dbContext.QueuedPrints.Remove(head);
             await dbContext.SaveChangesAsync(cancellationToken);
         }
@@ -505,6 +634,23 @@ public sealed class QueueAdvancer : BackgroundService
                     "[{PrinterId}] refused {FileName} with \"{Reason}\", which will not change by retrying; "
                     + "removing it from the queue.",
                     printerId, head.PrintFile?.Name, reason);
+
+                // Recorded as a failed print rather than only logged. Dropping the entry with nothing
+                // to show for it is how a queued print used to vanish with no way for its owner to
+                // find out why. Opened and closed in the same moment, which is honest: nothing printed.
+                DateTimeOffset refusedAt = _timeProvider.GetUtcNow();
+
+                dbContext.PrintJobs.Add(new PrintJob
+                {
+                    PrinterId = printerId,
+                    FileName = head.PrintFile?.Name ?? string.Empty,
+                    Digest = head.PrintFile?.Digest,
+                    QueuedByUserId = head.QueuedByUserId,
+                    StartedAt = refusedAt,
+                    EndedAt = refusedAt,
+                    Outcome = PrintOutcome.Failed,
+                    Reason = reason,
+                });
 
                 dbContext.QueuedPrints.Remove(head);
                 break;

@@ -232,6 +232,71 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         await EndRunAsync(fake, run);
     }
 
+    /// <summary>
+    /// The history row: opened when the printer takes the print, promoted to <c>Printing</c> once
+    /// telemetry says so, and closed <c>Finished</c> when the print ends.
+    /// </summary>
+    /// <remarks>
+    /// The two phases exist because a real printer keeps reporting <c>READY</c> for a few seconds
+    /// after accepting <c>START_PRINT</c> - 3.1 s on a Core One - so closing on "no longer printing"
+    /// without them would close every print moments after starting it. <b>This test cannot show that
+    /// gap</b>: the fake transitions instantly. What it does show is that the phases are traversed in
+    /// order and that the row ends with the right outcome.
+    /// </remarks>
+    [Fact]
+    public async Task APrintIsRecordedFromStartingThroughToFinished()
+    {
+        // Arrange
+        (PrinterIdentity identity, string token, int printerId, long userId) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        await using FakePrinterClient fake = new(identity, TimeProvider.System, FastTelemetry()) { Token = token };
+        await fake.ConnectAsync(ConnectAsync, TestContext.Current.CancellationToken);
+        Task run = fake.RunAsync(TestContext.Current.CancellationToken);
+
+        (await WaitUntilAsync(() => Task.FromResult(Registry.IsConnected(printerId)), TimeSpan.FromSeconds(10)))
+            .Should().BeTrue();
+
+        await UploadAsync(userId, "history.bgcode");
+        await EnqueueAsync(printerId, userId, "history.bgcode");
+
+        await AdvanceAsync(printerId);
+        (await WaitUntilAsync(async () => await ArrivedAsync(printerId), TimeSpan.FromSeconds(30))).Should().BeTrue();
+
+        fake.Device.TrySetReady().Should().BeTrue();
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Ready), TimeSpan.FromSeconds(30)))
+            .Should().BeTrue();
+
+        // Act - the print starts
+        await AdvanceAsync(printerId);
+
+        // Assert - a row exists, and it reaches Printing once telemetry reports it
+        (await WaitUntilAsync(async () => await OutcomeIsAsync(printerId, PrintOutcome.Printing),
+            TimeSpan.FromSeconds(30))).Should().BeTrue("the row is promoted once the printer reports PRINTING");
+
+        PrintJob printing = await ActiveAsync(printerId);
+        printing.FileName.Should().Be("history.bgcode");
+        printing.QueuedByUserId.Should().Be(userId);
+        printing.PrinterPath.Should().StartWith("/usb/");
+        printing.FirmwareJobId.Should().NotBeNull("telemetry carries job_id for the whole print");
+        printing.EndedAt.Should().BeNull("an open row is the active print");
+
+        // Act - the print ends the way a print ends
+        fake.Device.FinishPrint().Should().BeTrue();
+
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Finished), TimeSpan.FromSeconds(30)))
+            .Should().BeTrue();
+
+        await AdvanceAsync(printerId);
+
+        // Assert - closed, and no longer the active print
+        PrintJob finished = await SingleJobAsync(printerId);
+        finished.Outcome.Should().Be(PrintOutcome.Finished);
+        finished.EndedAt.Should().NotBeNull();
+
+        await EndRunAsync(fake, run);
+    }
+
     private PrusaConnect.PrinterConnectionRegistry Registry =>
         _factory.Services.GetRequiredService<PrusaConnect.PrinterConnectionRegistry>();
 
@@ -274,6 +339,35 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
 
         await scope.ServiceProvider.GetRequiredService<PrintQueueService>()
                    .EnqueueAsync(printerId, userId, name, TestContext.Current.CancellationToken);
+    }
+
+    private async Task<bool> OutcomeIsAsync(int printerId, PrintOutcome outcome)
+    {
+        await AdvanceAsync(printerId);
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        return await scope.ServiceProvider.GetRequiredService<HSDbContext>()
+                          .PrintJobs.AnyAsync(job => job.PrinterId == printerId && job.Outcome == outcome,
+                              TestContext.Current.CancellationToken);
+    }
+
+    private async Task<PrintJob> ActiveAsync(int printerId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        return await scope.ServiceProvider.GetRequiredService<HSDbContext>()
+                          .PrintJobs.SingleAsync(job => job.PrinterId == printerId && job.EndedAt == null,
+                              TestContext.Current.CancellationToken);
+    }
+
+    private async Task<PrintJob> SingleJobAsync(int printerId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        return await scope.ServiceProvider.GetRequiredService<HSDbContext>()
+                          .PrintJobs.SingleAsync(job => job.PrinterId == printerId,
+                              TestContext.Current.CancellationToken);
     }
 
     private async Task<int> QueueDepthAsync(int printerId)

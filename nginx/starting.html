@@ -5,8 +5,13 @@
   Self-contained on purpose: no fonts, no scripts, no images. This page is shown at the exact moment
   nothing else on the deployment works, so anything it fetched would be a second thing to fail.
 
+  That is why the mark below is inline SVG rather than <img src="/img/homespool-mark.svg">. The
+  application serves that file, and the application is precisely what is not answering yet - the
+  logo would be a broken image on the one page whose job is to look calm. Inline costs a few
+  hundred bytes and cannot fail on its own.
+
   The refresh is a meta tag rather than JavaScript for the same reason, and because the whole page is
-  eleven lines of markup that a browser can render before the stylesheet is parsed.
+  a dozen lines of markup that a browser can render before the stylesheet is parsed.
 -->
 <html lang="en">
 <head>
@@ -23,6 +28,7 @@
     background: Canvas; color: CanvasText;
   }
   main { max-width: 30rem; text-align: center; }
+  .mark { display: block; width: 4.5rem; height: 4.5rem; margin: 0 auto 1.25rem; }
   h1 { font-size: 1.5rem; font-weight: 600; margin: 0 0 0.75rem; }
   p { margin: 0 0 0.5rem; line-height: 1.5; opacity: 0.85; }
   .quiet { font-size: 0.875rem; opacity: 0.6; }
@@ -38,6 +44,20 @@
 </head>
 <body>
 <main>
+  <svg class="mark" viewBox="0 0 96 96" role="img" aria-label="Homespool">
+    <rect width="96" height="96" rx="20" fill="#278ED3"/>
+    <path d="M48 6 86 28V74H10V28Z" fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round"/>
+    <g fill="#278ED3" stroke="#278ED3" stroke-width="9" stroke-linejoin="round">
+      <ellipse cx="40.5" cy="52.45" rx="23" ry="29"/>
+      <ellipse cx="55.5" cy="55.55" rx="23" ry="29"/>
+    </g>
+    <ellipse cx="40.5" cy="52.45" rx="23" ry="29" fill="none" stroke="#fff" stroke-width="4"/>
+    <ellipse cx="55.5" cy="55.55" rx="23" ry="29" fill="#278ED3"/>
+    <g fill="none" stroke="#fff" stroke-width="4">
+      <ellipse cx="55.5" cy="55.55" rx="23" ry="29"/>
+      <ellipse cx="55.5" cy="55.55" rx="6.5" ry="8.2"/>
+    </g>
+  </svg>
   <h1>Homespool is starting</h1>
   <p>The server is coming up. This page refreshes itself every few seconds.</p>
   <p class="quiet">

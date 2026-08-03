@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -27,11 +28,13 @@ public class PrinterQueryService
     private const int RecentEventCount = 20;
 
     private readonly HSDbContext _dbContext;
+    private readonly PrinterAccessService _access;
     private readonly TimeProvider _timeProvider;
 
-    public PrinterQueryService(HSDbContext dbContext, TimeProvider timeProvider)
+    public PrinterQueryService(HSDbContext dbContext, PrinterAccessService access, TimeProvider timeProvider)
     {
         _dbContext = dbContext;
+        _access = access;
         _timeProvider = timeProvider;
     }
 
@@ -104,11 +107,7 @@ public class PrinterQueryService
     /// </remarks>
     public Task<Printer?> GetPrinterForUserAsync(Guid uuid, long userId, CancellationToken cancellationToken)
     {
-        return _dbContext.Printers
-                         .AsNoTracking()
-                         .SingleOrDefaultAsync(p => p.Uuid == uuid &&
-                                                    _dbContext.TeamMembers.Any(m => m.TeamId == p.TeamId && m.UserId == userId && m.CanRead),
-                                               cancellationToken);
+        return _access.FindAsync(uuid, userId, PrinterOperation.ViewPrinter, cancellationToken);
     }
 
     /// <summary>
@@ -125,25 +124,18 @@ public class PrinterQueryService
     /// </remarks>
     public async Task<PrinterWithState?> UpdatePrinterAsync(Guid uuid, long userId, string? name, string? location, CancellationToken cancellationToken)
     {
-        Printer? printer = await _dbContext.Printers.SingleOrDefaultAsync(p => p.Uuid == uuid, cancellationToken);
-
-        if (printer is null)
+        // Two questions, two refusal shapes, and the order matters: a caller who cannot even read
+        // this printer gets null, because saying "forbidden" would confirm the UUID exists. One who
+        // can read but not manage has already been shown it, so naming the refusal is safe.
+        if (await _access.FindAsync(uuid, userId, PrinterOperation.ViewPrinter, cancellationToken) is null)
         {
             return null;
         }
 
-        TeamMember? membership = await _dbContext.TeamMembers
-            .SingleOrDefaultAsync(m => m.TeamId == printer.TeamId && m.UserId == userId, cancellationToken);
+        // Tracked, unlike the gate's copy - this one is about to be edited and saved.
+        Printer printer = await _dbContext.Printers.SingleAsync(p => p.Uuid == uuid, cancellationToken);
 
-        if (membership is null || !membership.CanRead)
-        {
-            return null;
-        }
-
-        if (!membership.CanManage)
-        {
-            throw new TeamAccessDeniedException();
-        }
+        await _access.RequireAsync(printer.Id, userId, PrinterOperation.ManagePrinter, cancellationToken);
 
         printer.Name = name;
         printer.Location = location;
@@ -158,6 +150,12 @@ public class PrinterQueryService
         Team? team = await _dbContext.Teams
             .AsNoTracking()
             .SingleOrDefaultAsync(t => t.Id == printer.TeamId, cancellationToken);
+
+        // The DTO carries the caller's own permissions, so the membership is data here rather than a
+        // check - the checks above have already run.
+        TeamMember? membership = await _dbContext.TeamMembers
+            .AsNoTracking()
+            .SingleOrDefaultAsync(m => m.TeamId == printer.TeamId && m.UserId == userId, cancellationToken);
 
         return new PrinterWithState(printer, liveState, membership, team);
     }

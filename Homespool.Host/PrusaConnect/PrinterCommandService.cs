@@ -2,32 +2,32 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Microsoft.EntityFrameworkCore;
-
-using Homespool.Data;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect.Commands;
-using Homespool.Host.Services;
-using Homespool.Model.Entities;
 
 namespace Homespool.Host.PrusaConnect;
 
 /// <summary>
-/// Team-permission-checked entry point for sending a command to a printer - the first real
-/// consumer of <see cref="TeamMember.CanUse"/>. Kept separate from
+/// Permission-checked entry point for sending a command to a printer. Kept separate from
 /// <see cref="PrinterConnectionActor"/>, which owns the wire send/correlation and has no database
 /// access: permission checks stay off the actor's loop.
 /// </summary>
+/// <remarks>
+/// <b>It asks <see cref="PrinterAccessService"/> rather than reading the membership itself</b>
+/// (2026-08-03). It used to be described as the first, and then the one, consumer of
+/// <c>TeamMember.CanUse</c> - which had stopped being true: five other places were resolving a
+/// printer and checking a flag on its team by then, in three different refusal shapes. The check is
+/// unchanged; only its address is.
+/// </remarks>
 public class PrinterCommandService
 {
-    private readonly HSDbContext _dbContext;
-    private readonly TeamService _teamService;
+    private readonly PrinterAccessService _access;
     private readonly PrinterConnectionRegistry _registry;
 
-    public PrinterCommandService(HSDbContext dbContext, TeamService teamService, PrinterConnectionRegistry registry)
+    public PrinterCommandService(PrinterAccessService access, PrinterConnectionRegistry registry)
     {
-        _dbContext = dbContext;
-        _teamService = teamService;
+        _access = access;
         _registry = registry;
     }
 
@@ -132,19 +132,7 @@ public class PrinterCommandService
     private async Task<CommandSendResult> SendAndCheckAsync(int printerId, ISendableCommand commandData, long userId,
         CancellationToken cancellationToken)
     {
-        Printer? printer = await _dbContext.Printers.AsNoTracking().SingleOrDefaultAsync(p => p.Id == printerId, cancellationToken);
-
-        if (printer is null)
-        {
-            throw PrinterNotFoundException.ForId(printerId);
-        }
-
-        TeamMember? membership = await _teamService.GetMemberAsync(printer.TeamId, userId, cancellationToken);
-
-        if (membership is null || !membership.CanUse)
-        {
-            throw new TeamAccessDeniedException();
-        }
+        await _access.RequireAsync(printerId, userId, PrinterOperation.ControlPrinter, cancellationToken);
 
         if (!_registry.TryGet(printerId, out IPrinterConnectionActor? actor) || actor is null)
         {

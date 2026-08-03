@@ -7,9 +7,9 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
-using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Queue;
@@ -40,19 +40,19 @@ namespace Homespool.Host.Queue;
 public class PrintQueueService
 {
     private readonly HSDbContext _dbContext;
-    private readonly TeamService _teamService;
+    private readonly PrinterAccessService _access;
     private readonly PrintFileCatalog _files;
     private readonly TimeProvider _timeProvider;
     private readonly QueueSignal _signal;
 
     public PrintQueueService(HSDbContext dbContext,
-                             TeamService teamService,
+                             PrinterAccessService access,
                              PrintFileCatalog files,
                              TimeProvider timeProvider,
                              QueueSignal signal)
     {
         _dbContext = dbContext;
-        _teamService = teamService;
+        _access = access;
         _files = files;
         _timeProvider = timeProvider;
         _signal = signal;
@@ -67,7 +67,7 @@ public class PrintQueueService
                                                             long userId,
                                                             CancellationToken cancellationToken)
     {
-        await AuthoriseAsync(printerId, userId, requireUse: false, cancellationToken);
+        await _access.RequireAsync(printerId, userId, PrinterOperation.ViewQueue, cancellationToken);
 
         return await _dbContext.QueuedPrints
                                .AsNoTracking()
@@ -94,7 +94,7 @@ public class PrintQueueService
                                                 string fileName,
                                                 CancellationToken cancellationToken)
     {
-        await AuthoriseAsync(printerId, userId, requireUse: true, cancellationToken);
+        await _access.RequireAsync(printerId, userId, PrinterOperation.ChangeQueue, cancellationToken);
 
         PrintFile? file = await _files.ResolveAsync(userId, fileName, cancellationToken);
 
@@ -162,7 +162,7 @@ public class PrintQueueService
             return false;
         }
 
-        await AuthoriseAsync(job.PrinterId, userId, requireUse: true, cancellationToken);
+        await _access.RequireAsync(job.PrinterId, userId, PrinterOperation.ChangeQueue, cancellationToken);
 
         List<QueuedPrint> queue = await _dbContext.QueuedPrints
                                                 .Where(candidate => candidate.PrinterId == job.PrinterId)
@@ -204,41 +204,11 @@ public class PrintQueueService
             return false;
         }
 
-        await AuthoriseAsync(job.PrinterId, userId, requireUse: true, cancellationToken);
+        await _access.RequireAsync(job.PrinterId, userId, PrinterOperation.ChangeQueue, cancellationToken);
 
         _dbContext.QueuedPrints.Remove(job);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return true;
-    }
-
-    /// <summary>
-    /// The one place this service decides whether a caller may touch a printer's queue.
-    /// </summary>
-    /// <remarks>
-    /// Reads the printer to find its team, exactly as <c>PrinterCommandService</c> does - permission
-    /// belongs to the printer's team rather than to the queue, so there is nothing new to grant.
-    /// </remarks>
-    private async Task AuthoriseAsync(int printerId,
-                                      long userId,
-                                      bool requireUse,
-                                      CancellationToken cancellationToken)
-    {
-        Printer? printer = await _dbContext.Printers
-                                           .AsNoTracking()
-                                           .SingleOrDefaultAsync(candidate => candidate.Id == printerId,
-                                               cancellationToken);
-
-        if (printer is null)
-        {
-            throw PrinterNotFoundException.ForId(printerId);
-        }
-
-        TeamMember? membership = await _teamService.GetMemberAsync(printer.TeamId, userId, cancellationToken);
-
-        if (membership is null || (requireUse ? !membership.CanUse : !membership.CanRead))
-        {
-            throw new TeamAccessDeniedException();
-        }
     }
 }

@@ -278,6 +278,10 @@ public static class Program
             // registration needed, unlike TelemetryWriter above - nothing else ever needs to reach it.
             builder.Services.AddHostedService<Services.TelemetryRetentionService>();
 
+            // Scoped so its per-request memo of "may this account touch this printer" is bounded by
+            // the request, which is the only window in which the answer cannot change.
+            builder.Services.AddScoped<Authorisation.PrinterAccessService>();
+
             // Scoped, unlike their singleton neighbors above, because they hold the scoped HSDbContext.
             builder.Services.AddScoped<Services.TeamService>();
             builder.Services.AddScoped<Services.UnitOfWork>();

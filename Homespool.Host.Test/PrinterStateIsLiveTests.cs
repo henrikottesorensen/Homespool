@@ -9,6 +9,7 @@ using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
+using Homespool.Host.Authorisation;
 using Homespool.Host.PrusaConnect.DTO.App;
 using Homespool.Host.Services;
 using Homespool.Model;
@@ -126,7 +127,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         await AddPrinterAsync(context, userId: 1, liveStatus: PrinterStatus.Printing);
 
         // Act
-        IReadOnlyList<PrinterWithState> listed = await new PrinterQueryService(context, TimeProvider.System)
+        IReadOnlyList<PrinterWithState> listed = await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
             .ListPrintersWithStateForUserAsync(1, CancellationToken.None);
 
         // Assert
@@ -148,7 +149,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         Printer printer = await AddPrinterAsync(context, userId: 1, liveStatus: PrinterStatus.Paused);
 
         // Act
-        PrinterWithState? found = await new PrinterQueryService(context, TimeProvider.System)
+        PrinterWithState? found = await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
             .GetPrinterWithStateForUserAsync(printer.Uuid, 1, CancellationToken.None);
 
         // Assert
@@ -168,7 +169,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         await AddPrinterAsync(context, userId: 1, liveStatus: null);
 
         // Act
-        IReadOnlyList<PrinterWithState> listed = await new PrinterQueryService(context, TimeProvider.System)
+        IReadOnlyList<PrinterWithState> listed = await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
             .ListPrintersWithStateForUserAsync(1, CancellationToken.None);
 
         // Assert
@@ -200,7 +201,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
-        PrinterWithState? found = await new PrinterQueryService(context, TimeProvider.System)
+        PrinterWithState? found = await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
             .GetPrinterWithStateForUserAsync(printer.Uuid, 1, CancellationToken.None);
 
         // Assert
@@ -230,7 +231,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         await AddPrinterAsync(context, userId: 1, liveStatus: PrinterStatus.Idle, canUse: false, canManage: false);
 
         // Act
-        IReadOnlyList<PrinterWithState> listed = await new PrinterQueryService(context, TimeProvider.System)
+        IReadOnlyList<PrinterWithState> listed = await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
             .ListPrintersWithStateForUserAsync(1, CancellationToken.None);
 
         // Assert
@@ -254,7 +255,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         Printer printer = await AddPrinterAsync(context, userId: 1, liveStatus: PrinterStatus.Printing);
 
         // Act
-        PrinterWithState? updated = await new PrinterQueryService(context, TimeProvider.System)
+        PrinterWithState? updated = await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
             .UpdatePrinterAsync(printer.Uuid, 1, "Renamed", "Garage", CancellationToken.None);
 
         // Assert

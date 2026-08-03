@@ -15,10 +15,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
 using Homespool.Data;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
-using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -169,7 +169,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
 
         (PrinterConnectionRegistry registry, _) =
             RegistryWithActor(printer.Id, Answered("""{"file_count":3,"path":"/usb","type":"FOLDER"}"""));
-        PrinterCommandService service = new(context, new TeamService(context), registry);
+        PrinterCommandService service = new(new PrinterAccessService(context), registry);
 
         // Act
         CommandOutcome<AskSomethingAnswer>? outcome =
@@ -197,7 +197,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
 
         (PrinterConnectionRegistry registry, _) =
             RegistryWithActor(printer.Id, Answered(null, Events.Rejected, "Won't execute the same command multiple times"));
-        PrinterCommandService service = new(context, new TeamService(context), registry);
+        PrinterCommandService service = new(new PrinterAccessService(context), registry);
 
         // Act
         CommandOutcome<AskSomethingAnswer>? outcome =
@@ -224,7 +224,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
 
         (PrinterConnectionRegistry registry, _) =
             RegistryWithActor(printer.Id, Answered("""{"file_count":"three","path":"/usb"}"""));
-        PrinterCommandService service = new(context, new TeamService(context), registry);
+        PrinterCommandService service = new(new PrinterAccessService(context), registry);
 
         // Act
         Func<Task> ask = () => service.AskAsync(printer.Id, new AskSomething(), 1, CancellationToken.None);
@@ -249,7 +249,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
         (PrinterConnectionRegistry registry, _) = RegistryWithActor(printer.Id, Answered("""{"file_count":1}"""));
-        PrinterCommandService service = new(context, new TeamService(context), registry);
+        PrinterCommandService service = new(new PrinterAccessService(context), registry);
 
         // Act
         Func<Task> ask = () => service.AskAsync(printer.Id, new AskSomething(), 1, CancellationToken.None);
@@ -269,7 +269,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
 
         (PrinterConnectionRegistry registry, IPrinterConnectionActor actor) =
             RegistryWithActor(printer.Id, new CommandSendResult(CommandSendOutcome.Completed, new CommandOutcome(Events.Finished, null)));
-        PrinterCommandService service = new(context, new TeamService(context), registry);
+        PrinterCommandService service = new(new PrinterAccessService(context), registry);
         PausePrint command = new();
 
         // Act
@@ -290,7 +290,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: false, canManage: true);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
-        PrinterCommandService service = new(context, new TeamService(context), RegistryWithActor(printer.Id, CommandSendOutcome.Completed).registry);
+        PrinterCommandService service = new(new PrinterAccessService(context), RegistryWithActor(printer.Id, CommandSendOutcome.Completed).registry);
 
         // Act
         Func<Task> act = () => service.SendCommandAsync(printer.Id, new PausePrint(), 1, CancellationToken.None);
@@ -308,7 +308,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         TeamMember someoneElses = await AddTeamAsync(context, userId: 2, canRead: true, canUse: true, canManage: true);
         Printer printer = await AddPrinterAsync(context, someoneElses.TeamId);
 
-        PrinterCommandService service = new(context, new TeamService(context), RegistryWithActor(printer.Id, CommandSendOutcome.Completed).registry);
+        PrinterCommandService service = new(new PrinterAccessService(context), RegistryWithActor(printer.Id, CommandSendOutcome.Completed).registry);
 
         // Act
         Func<Task> act = () => service.SendCommandAsync(printer.Id, new PausePrint(), 1, CancellationToken.None);
@@ -323,7 +323,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         // Arrange
         await using HSDbContext context = await MigratedContextAsync();
 
-        PrinterCommandService service = new(context, new TeamService(context), new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance));
+        PrinterCommandService service = new(new PrinterAccessService(context), new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance));
 
         // Act
         Func<Task> act = () => service.SendCommandAsync(999, new PausePrint(), 1, CancellationToken.None);
@@ -342,7 +342,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
         // An empty registry: the printer has no live connection at all.
-        PrinterCommandService service = new(context, new TeamService(context), new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance));
+        PrinterCommandService service = new(new PrinterAccessService(context), new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance));
 
         // Act
         Func<Task> act = () => service.SendCommandAsync(printer.Id, new PausePrint(), 1, CancellationToken.None);
@@ -362,7 +362,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
 
         // The other path to the same exception: an actor exists but its connection is gone (or went
         // mid-send) - the actor reports it as an outcome rather than throwing.
-        PrinterCommandService service = new(context, new TeamService(context), RegistryWithActor(printer.Id, CommandSendOutcome.NotConnected).registry);
+        PrinterCommandService service = new(new PrinterAccessService(context), RegistryWithActor(printer.Id, CommandSendOutcome.NotConnected).registry);
 
         // Act
         Func<Task> act = () => service.SendCommandAsync(printer.Id, new PausePrint(), 1, CancellationToken.None);
@@ -380,7 +380,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: true);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
-        PrinterCommandService service = new(context, new TeamService(context), RegistryWithActor(printer.Id, CommandSendOutcome.AlreadyInFlight).registry);
+        PrinterCommandService service = new(new PrinterAccessService(context), RegistryWithActor(printer.Id, CommandSendOutcome.AlreadyInFlight).registry);
 
         // Act
         Func<Task> act = () => service.SendCommandAsync(printer.Id, new PausePrint(), 1, CancellationToken.None);
@@ -398,7 +398,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: true);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
-        PrinterCommandService service = new(context, new TeamService(context), RegistryWithActor(printer.Id, CommandSendOutcome.ResponseTimedOut).registry);
+        PrinterCommandService service = new(new PrinterAccessService(context), RegistryWithActor(printer.Id, CommandSendOutcome.ResponseTimedOut).registry);
 
         // Act
         Func<Task> act = () => service.SendCommandAsync(printer.Id, new PausePrint(), 1, CancellationToken.None);

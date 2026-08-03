@@ -11,10 +11,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 using Homespool.Data;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Queue;
-using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -335,7 +335,7 @@ public sealed class PrintQueueServiceTests : IDisposable
 
     private PrintQueueService NewQueue(HSDbContext context)
     {
-        return new(context, new TeamService(context), NewCatalog(context), TimeProvider.System, _signal);
+        return new(context, new PrinterAccessService(context), NewCatalog(context), TimeProvider.System, _signal);
     }
 
     private HSDbContext NewContext()

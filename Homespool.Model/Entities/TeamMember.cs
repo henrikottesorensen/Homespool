@@ -1,5 +1,3 @@
-using System;
-
 namespace Homespool.Model.Entities;
 
 /// <summary>

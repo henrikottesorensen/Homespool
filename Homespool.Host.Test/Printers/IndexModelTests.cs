@@ -21,7 +21,6 @@ using Homespool.Host.Certificates;
 using Homespool.Host.Pages.Printers;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
-using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;

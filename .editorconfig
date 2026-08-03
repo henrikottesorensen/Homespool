@@ -1,3 +1,11 @@
+# Stop here. Without this, resolution keeps walking up past the repository root and merges whatever
+# it finds - a developer's ~/.editorconfig, a CI image's, or, the way this actually bit: a worktree
+# under .claude/worktrees walks up into the main checkout and picks up *its* .editorconfig, from
+# whatever branch that happens to be on. Every key the branch's own file does not set is then quietly
+# supplied by another branch's. Style here is enforced at error severity, so that is not a difference
+# in formatting, it is a build that succeeds or fails depending on where the checkout sits.
+root = true
+
 # Unix-style newlines with a newline ending every file
 [*]
 end_of_line = lf
@@ -514,7 +522,13 @@ dotnet_diagnostic.CA5405.severity = warning
 dotnet_diagnostic.CS0649.severity = warning
 dotnet_diagnostic.CS1574.severity = warning
 dotnet_diagnostic.CS1591.severity = none
+# Does nothing, and is kept only so the next person does not add it again expecting it to. CS8019 is
+# emitted hidden by the compiler, and a severity set here does not raise it: with this line and
+# nothing else, a file with an unused using builds clean. Measured, not assumed - and forty-five
+# unused directives had collected behind it. IDE0005 is the rule that actually reports, and it needs
+# GenerateDocumentationFile, which Directory.Build.props sets for the same class of reason.
 dotnet_diagnostic.CS8019.severity = warning
+dotnet_diagnostic.IDE0005.severity = warning
 dotnet_diagnostic.IDE0008.severity = error
 dotnet_diagnostic.IDE0016.severity = none
 dotnet_diagnostic.IDE0016WithoutSuggestion.severity = none
@@ -586,9 +600,33 @@ dotnet_diagnostic.SA1652.severity = none
 dotnet_diagnostic.SX1101.severity = warning
 dotnet_diagnostic.SX1309.severity = warning
 
-dotnet_diagnostic.VSTHRD002.severity = suggestion
+dotnet_diagnostic.VSTHRD002.severity = warning
+
+# The reason the threading analyser is installed at all. async void swallows exceptions into a crash
+# with no stack worth reading, and it has cost real time here.
 dotnet_diagnostic.VSTHRD100.severity = error
+
 dotnet_diagnostic.VSTHRD200.severity = suggestion
+
+# The rest of the analyser's rules are off, and each was measured before switching it off rather than
+# waved away. Installing it reported 166 diagnostics, none of them VSTHRD100.
+#
+# VSTHRD103 (156 of them) is almost entirely "Add synchronously blocks, await AddAsync instead" on EF
+# Core. That advice is wrong here: EF's own documentation says AddAsync exists only so the HiLo value
+# generator can reach the database, that it is never configured by default, and that the vast
+# majority of applications should use Add. This is SQLite with no HiLo, so acting on these would make
+# the code worse.
+dotnet_diagnostic.VSTHRD103.severity = none
+
+# VSTHRD003 fires 8 times, once outside tests: TelemetryWriter's StartAsync awaits
+# Task.WhenAny(_executeEntered.Task, ExecuteTask) to wait for its own background execution to begin.
+# That is the handshake working as designed, not a foreign task being awaited into a deadlock.
+dotnet_diagnostic.VSTHRD003.severity = none
+
+# VSTHRD110 fires on an NSubstitute call specification - c.SendAsync(...) inside WhenForAnyArgs,
+# which specifies a call rather than making one, so there is no awaitable to observe. The same line
+# already carries a SuppressMessage for CA2012 saying exactly that.
+dotnet_diagnostic.VSTHRD110.severity = none
 
 # The Pages folder is named by ASP.NET's conventions, not StyleCop's: a page model lives in
 # X.cshtml.cs beside its X.cshtml, which is how the framework pairs them and how the IDE nests

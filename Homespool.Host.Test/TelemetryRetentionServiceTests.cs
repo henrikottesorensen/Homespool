@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -68,6 +69,8 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
         return false;
     }
 
+    [SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits",
+                     Justification = "IDisposable.Dispose cannot be asynchronous, and the service must be stopped before the test's resources are torn down.")]
     public void Dispose()
     {
         if (_service is not null)

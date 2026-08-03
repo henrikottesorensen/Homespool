@@ -18,7 +18,6 @@ using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.DTO;
 using Homespool.Host.Services;
-using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;

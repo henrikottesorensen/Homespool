@@ -80,8 +80,18 @@
         <div class="container">
 @*  A range, not a single year, and not DateTime.Now.Year: it says when the work was done rather
     than what today's date is. Started over the 2025 holidays; nearly all of it is 2026. Bump the
-    second year when a year sees work. *@
-        &copy; 2025-2026 Homespool
+    second year when a year sees work.
+
+    The name links to the source, which is the AGPL's own suggestion for a program that talks to
+    people over a network: section 13 obliges an operator to offer their users the source of what
+    they are running, and the licence text proposes exactly this - "its interface could display a
+    'Source' link that leads users to an archive of the code".
+
+    It points upstream, which is right for a deployment running this code unmodified and wrong for
+    one running a fork - section 13 is about *the running version*. Hardcoded rather than
+    configurable because every deployment today is unmodified; the day someone ships a fork, this
+    becomes a setting. *@
+        &copy; 2025-2026 <a href="https://github.com/henrikottesorensen/Homespool" target="_blank" rel="noopener" title="Homespool on GitHub">Homespool</a>
             @{
                 var foundPrivacy = Url.Page("/Privacy", new { area = "" });
             }

@@ -31,18 +31,21 @@ public class DetailModel : PageModel
 {
     private readonly PrinterQueryService _printerQueryService;
     private readonly PrintQueueService _queueService;
+    private readonly PrintHistoryService _historyService;
     private readonly TeamService _teamService;
     private readonly PrinterConnectionRegistry _connectionRegistry;
     private readonly UserManager<HSUser> _userManager;
 
     public DetailModel(PrinterQueryService printerQueryService,
                        PrintQueueService queueService,
+                       PrintHistoryService historyService,
                        TeamService teamService,
                        PrinterConnectionRegistry connectionRegistry,
                        UserManager<HSUser> userManager)
     {
         _printerQueryService = printerQueryService;
         _queueService = queueService;
+        _historyService = historyService;
         _teamService = teamService;
         _connectionRegistry = connectionRegistry;
         _userManager = userManager;
@@ -54,6 +57,19 @@ public class DetailModel : PageModel
 
     /// <summary>What this printer will print, in order. Empty until somebody queues something.</summary>
     public IReadOnlyList<QueuedPrint> Queue { get; private set; } = [];
+
+    /// <summary>The print running now, or null. A row still <c>Starting</c> counts - it has begun.</summary>
+    public PrintJob? ActivePrint { get; private set; }
+
+    /// <summary>Finished prints, newest first.</summary>
+    public IReadOnlyList<PrintJob> History { get; private set; } = [];
+
+    /// <summary>
+    /// Why the queue is held, or null. <b>The reason this page needed history at all</b> - the loop
+    /// can hold indefinitely on a full drive, and until something showed this, a hold was
+    /// indistinguishable from a queue that had stopped for no reason.
+    /// </summary>
+    public string? HoldReason { get; private set; }
 
     /// <summary>
     /// Whether the caller may change the queue, which decides whether the controls render at all.
@@ -98,6 +114,9 @@ public class DetailModel : PageModel
         CanUse = membership?.CanUse ?? false;
 
         Queue = await _queueService.ListAsync(statistics.Printer.Id, user.Id, cancellationToken);
+        ActivePrint = await _historyService.GetActiveAsync(statistics.Printer.Id, user.Id, cancellationToken);
+        History = await _historyService.ListAsync(statistics.Printer.Id, user.Id, cancellationToken);
+        HoldReason = await _historyService.GetHoldReasonAsync(statistics.Printer.Id, user.Id, cancellationToken);
 
         return Page();
     }

@@ -61,6 +61,36 @@ else
     </table>
 }
 
+@if (Model.ActivePrint is { } active)
+{
+    <h2>Printing now</h2>
+    <p>
+        <strong>@active.FileName</strong>
+        @* Starting is not yet printing - the printer has accepted the command and is heating. Saying
+           "printing" through that window would be a small lie the page tells every single time. *@
+        @if (active.Outcome == Homespool.Model.PrintOutcome.Starting)
+        {
+            <span class="badge text-bg-secondary">starting</span>
+        }
+        <br />
+        <span class="text-muted">
+            started @active.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm",
+                System.Globalization.CultureInfo.InvariantCulture)
+        </span>
+    </p>
+}
+
+@* The queue holds behind a file it cannot send, like a spooler - so the reason has to be here, or a
+   held queue is indistinguishable from one that stopped for no reason. *@
+@if (Model.HoldReason is { } hold)
+{
+    <div class="alert alert-warning" role="alert">
+        <strong>The queue is held.</strong> @hold
+        <br />
+        Free some space on the printer and it will carry on by itself.
+    </div>
+}
+
 <h2>Queue</h2>
 
 @* Reordering and cancelling are edits to a list - nothing here reaches the printer. The producer
@@ -127,6 +157,46 @@ else
                             </form>
                         </td>
                     }
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<h2>Print history</h2>
+
+@if (Model.History.Count == 0)
+{
+    <p>Nothing has finished printing yet.</p>
+}
+else
+{
+    <table class="table table-sm w-auto">
+        <thead>
+            <tr>
+                <th scope="col">File</th>
+                <th scope="col">Started</th>
+                <th scope="col">Outcome</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var job in Model.History)
+            {
+                <tr>
+                    <td>@job.FileName</td>
+                    <td>@job.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm",
+                        System.Globalization.CultureInfo.InvariantCulture)</td>
+                    <td>
+                        @job.Outcome
+                        @* Firmware's own words, and the only place a refused print explains itself.
+                           Without this a queued print that never ran left nothing a person could read. *@
+                        @if (job.Reason is { } reason)
+                        {
+                            <br />
+
+                            <span class="text-muted">@reason</span>
+                        }
+                    </td>
                 </tr>
             }
         </tbody>

@@ -118,7 +118,7 @@ public sealed class TelemetryAlertMailpitTests : IAsyncLifetime, IDisposable
             await roles.CreateAsync(new IdentityRole<long>(AdminBootstrap.AdminRole));
 
             UserManager<HSUser> users = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
-            HSUser admin = new() { UserName = AdminAddress, Email = AdminAddress, EmailConfirmed = true };
+            HSUser admin = new("operator") { Email = AdminAddress, EmailConfirmed = true };
 
             (await users.CreateAsync(admin, "Correct-Horse-Battery-1!")).Succeeded.Should().BeTrue();
             (await users.AddToRoleAsync(admin, AdminBootstrap.AdminRole)).Succeeded.Should().BeTrue();

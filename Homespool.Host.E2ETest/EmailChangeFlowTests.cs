@@ -146,7 +146,7 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime, IDisposable
             HSUser reloaded = (await users.FindByIdAsync(user.Id.ToString()))!;
 
             reloaded.Email.Should().Be("after@example.com", "confirming the link is what makes the change real");
-            reloaded.UserName.Should().Be("after@example.com", "the username tracks the email, or the user cannot sign in afterwards");
+            reloaded.UserName.Should().Be("before", "the username is the person's own - changing an address is not a rename");
         }
     }
 

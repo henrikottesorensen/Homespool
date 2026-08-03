@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 #nullable disable
 
+using System;
 using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
 
@@ -29,12 +30,6 @@ public class IndexModel : PageModel
     ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
     ///     directly from your code. This API may change or be removed in future releases.
     /// </summary>
-    public string Username { get; set; }
-
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
     [TempData]
     public string StatusMessage { get; set; }
 
@@ -52,32 +47,19 @@ public class IndexModel : PageModel
     public class InputModel
     {
         /// <summary>
-        ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        /// What the interface calls you, and one of the two things you can sign in with.
         /// </summary>
-        [Phone]
-        [Display(Name = "Phone number")]
-        public string PhoneNumber { get; set; }
-
-        /// <summary>
-        /// What the interface calls you. Not how you sign in - that stays your email address.
-        /// </summary>
-        [StringLength(HSUser.DisplayNameMaxLength)]
-        [Display(Name = "Display name")]
-        public string DisplayName { get; set; }
+        [Required]
+        [StringLength(HSUser.UsernameMaxLength)]
+        [Display(Name = "Username")]
+        public string Username { get; set; }
     }
 
     private async Task LoadAsync(HSUser user)
     {
-        string userName = await _userManager.GetUserNameAsync(user);
-        string phoneNumber = await _userManager.GetPhoneNumberAsync(user);
-
-        Username = userName;
-
         Input = new InputModel
         {
-            PhoneNumber = phoneNumber,
-            DisplayName = user.DisplayName,
+            Username = await _userManager.GetUserNameAsync(user),
         };
     }
 
@@ -107,39 +89,33 @@ public class IndexModel : PageModel
             return Page();
         }
 
-        string phoneNumber = await _userManager.GetPhoneNumberAsync(user);
-        if (Input.PhoneNumber != phoneNumber)
+        string userName = await _userManager.GetUserNameAsync(user);
+        string requested = Input.Username.Trim();
+
+        // Ordinal rather than case-insensitive: 'henrik' to 'Henrik' normalises to the same name, so
+        // Identity would accept it silently, but it changes what every page renders - which makes it
+        // a change the person asked for and should see happen.
+        if (!string.Equals(requested, userName, StringComparison.Ordinal))
         {
-            IdentityResult setPhoneResult = await _userManager.SetPhoneNumberAsync(user, Input.PhoneNumber);
-            if (!setPhoneResult.Succeeded)
+            IdentityResult setUserName = await _userManager.SetUserNameAsync(user, requested);
+
+            if (!setUserName.Succeeded)
             {
-                StatusMessage = "Unexpected error when trying to set phone number.";
-                return RedirectToPage();
+                // Shown rather than swallowed into a status message: "that username is already taken"
+                // is the one thing that can go wrong here, and it is entirely actionable. The typed
+                // value is deliberately left in the form so it can be edited rather than retyped.
+                foreach (IdentityError error in setUserName.Errors)
+                {
+                    ModelState.AddModelError(string.Empty, error.Description);
+                }
+
+                return Page();
             }
         }
 
-        // Blank means "go back to being called by your sign-in name" rather than an empty greeting,
-        // so it is stored as null and the fallback chain takes over.
-        // string, not string?: this file is a scaffolded Identity page and runs with nullable
-        // annotations disabled, so the annotation is a compile error here rather than a hint.
-        string displayName = string.IsNullOrWhiteSpace(Input.DisplayName) ? null : Input.DisplayName.Trim();
-
-        if (displayName != user.DisplayName)
-        {
-            user.DisplayName = displayName;
-
-            IdentityResult setDisplayName = await _userManager.UpdateAsync(user);
-
-            if (!setDisplayName.Succeeded)
-            {
-                StatusMessage = "Unexpected error when trying to set display name.";
-                return RedirectToPage();
-            }
-        }
-
-        // Re-issues the cookie, which is where the display name lives for rendering
-        // (HSUserClaimsPrincipalFactory). Without this the header keeps the old name until the next
-        // sign-in. Already here for the phone-number path; the display name depends on it.
+        // Re-issues the cookie, which is where the username lives for rendering. Without this the
+        // header - and every other reader of the sign-in identity - keeps the old name until the next
+        // sign-in.
         await _signInManager.RefreshSignInAsync(user);
         StatusMessage = "Your profile has been updated";
         return RedirectToPage();

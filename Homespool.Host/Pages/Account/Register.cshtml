@@ -28,8 +28,14 @@ else
                 <input type="hidden" asp-for="InviteId" />
                 <input type="hidden" asp-for="Code" />
                 <div class="form-floating mb-3">
-                    <input class="form-control" value="@Model.Email" readonly autocomplete="username" aria-label="Email" />
+                    <input class="form-control" value="@Model.Email" readonly autocomplete="email" aria-label="Email" />
                     <label class="form-label">Email</label>
+                </div>
+                <div class="form-floating mb-3">
+                    <input asp-for="Input.Username" class="form-control" autocomplete="username" aria-required="true" placeholder="username" />
+                    <label asp-for="Input.Username">Username</label>
+                    <span asp-validation-for="Input.Username" class="text-danger"></span>
+                    <div class="form-text">Letters, digits, and <code>-</code> <code>.</code> <code>_</code>. You sign in with this or your email address.</div>
                 </div>
                 <div class="form-floating mb-3">
                     <input asp-for="Input.Password" class="form-control" autocomplete="new-password" aria-required="true" placeholder="password" />

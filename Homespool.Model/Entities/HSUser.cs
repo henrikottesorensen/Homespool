@@ -7,32 +7,37 @@ namespace Homespool.Model.Entities;
 public class HSUser : IdentityUser<long>
 {
     /// <summary>
-    /// The maximum length of a <see cref="DisplayName"/>. Long enough for a real name, short enough
-    /// that a header greeting cannot be used to deface a page.
+    /// The maximum length of a <c>UserName</c>. Long enough for a real name, short enough that a
+    /// header greeting cannot be used to deface a page.
     /// </summary>
-    public const int DisplayNameMaxLength = 64;
+    public const int UsernameMaxLength = 64;
+
+    /// <summary>
+    /// Every character a <c>UserName</c> may contain: Identity's own default set, less <c>@</c> and
+    /// <c>+</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b><c>@</c> is excluded because sign-in accepts an email address or a username in one field</b>
+    /// (<c>Account/Login</c>). Allowing an address-shaped username would let one account occupy
+    /// another's address in the sign-in namespace, and the resolution order - username first - is what
+    /// would decide who gets the password attempt. Excluding the character makes the two namespaces
+    /// disjoint by construction rather than by lookup order. <c>+</c> goes with it: it only ever
+    /// appeared here as part of an address.
+    /// </para>
+    /// <para>
+    /// Applied by <c>IdentityOptions.User.AllowedUserNameCharacters</c>, so Identity's own
+    /// <c>UserValidator</c> is the single place it is enforced - on creation and on every later change
+    /// alike. Nothing re-implements the check at the page layer.
+    /// </para>
+    /// </remarks>
+    public const string AllowedUsernameCharacters =
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._";
 
     public HSUser()
     {
         SecurityStamp = Guid.NewGuid().ToString();
     }
-
-    /// <summary>
-    /// What the interface calls this person, as opposed to how they sign in.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <c>UserName</c> remains the email address and remains the sign-in identifier - that is
-    /// deliberate and unchanged. This exists only so the UI stops greeting people by their email
-    /// address, and so <c>UserReadDTO.Name</c> has something better to return.
-    /// </para>
-    /// <para>
-    /// Seeded at account creation from the email's local part, so it is useful before anyone edits
-    /// it, and nullable because accounts predating it have none. Read
-    /// <c>DisplayName ?? UserName ?? Email</c> wherever it is shown.
-    /// </para>
-    /// </remarks>
-    public string? DisplayName { get; set; }
 
     /// <summary>
     /// Consecutive registration codes this account has submitted that matched no pending
@@ -67,32 +72,6 @@ public class HSUser : IdentityUser<long>
     /// and the person is standing at the printer, where a fresh code is one menu press away.
     /// </remarks>
     public DateTimeOffset? ClaimLockoutEnd { get; set; }
-
-    /// <summary>
-    /// What a new account's <see cref="DisplayName"/> starts as: the email's local part.
-    /// </summary>
-    /// <remarks>
-    /// Seeded rather than left null so the interface stops showing addresses immediately, instead of
-    /// only for people who go and set one. Returns null for an address with no local part, which
-    /// leaves the fallback chain to do its job rather than storing an empty string.
-    /// </remarks>
-    public static string? DefaultDisplayNameFor(string? email)
-    {
-        if (string.IsNullOrWhiteSpace(email))
-        {
-            return null;
-        }
-
-        int at = email.IndexOf('@');
-        string local = at < 0 ? email : email[..at];
-
-        if (string.IsNullOrWhiteSpace(local))
-        {
-            return null;
-        }
-
-        return local.Length > DisplayNameMaxLength ? local[..DisplayNameMaxLength] : local;
-    }
 
     public HSUser(string userName)
         : this()

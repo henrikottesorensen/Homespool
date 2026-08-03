@@ -74,7 +74,7 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
 
     private static async Task<HSUser> AddUserWithPasswordAsync(UserManager<HSUser> users, string email)
     {
-        HSUser user = new(email)
+        HSUser user = new(IdentityTestHarness.UsernameFor(email))
         {
             Email = email,
             EmailConfirmed = true,

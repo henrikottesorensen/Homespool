@@ -6,12 +6,15 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.PrusaConnect.DTO.App;
 
 /// <summary>
-/// The app-facing user read shape (Connect's <c>User</c>). <see cref="Name"/> is
-/// <see cref="HSUser.DisplayName"/>, falling back to <c>UserName</c> and then the email.
-/// <c>UserName</c> is still always the email address - it remains the sign-in identifier - which is
-/// exactly why this prefers the display name: an API called <c>Name</c> should not hand out an
-/// address just because that is what people sign in with.
+/// The app-facing user read shape (Connect's <c>User</c>). <see cref="Name"/> is the account's
+/// username, which is a name the person chose rather than their address - the email is its own field
+/// here, and a client that wants one asks for it.
 /// </summary>
+/// <remarks>
+/// The fallback to the email exists only because <c>UserName</c> is nullable on
+/// <c>IdentityUser{TKey}</c>. Nothing this application creates leaves it unset: every account gets a
+/// username at creation, and Identity's own validator refuses an empty one.
+/// </remarks>
 public class UserReadDTO
 {
     public required long Id { get; set; }
@@ -27,7 +30,7 @@ public class UserReadDTO
         return new()
         {
             Id = user.Id,
-            Name = user.DisplayName ?? user.UserName ?? user.Email ?? string.Empty,
+            Name = user.UserName ?? user.Email ?? string.Empty,
             Email = user.Email,
             Teams = memberships.Select(TeamMembershipDTO.FromEntity).ToList(),
         };

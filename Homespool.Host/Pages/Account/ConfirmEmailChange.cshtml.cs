@@ -1,17 +1,14 @@
 #nullable disable
 
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 
-using Homespool.Host.Services;
 using Homespool.Model.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
-using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Options;
 
 namespace Homespool.Host.Pages.Account;
@@ -37,17 +34,14 @@ public class ConfirmEmailChangeModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly SignInManager<HSUser> _signInManager;
-    private readonly UnitOfWork _unitOfWork;
     private readonly IOptions<Services.SmtpOptions> _smtp;
 
     public ConfirmEmailChangeModel(UserManager<HSUser> userManager,
                                    SignInManager<HSUser> signInManager,
-                                   UnitOfWork unitOfWork,
                                    IOptions<Services.SmtpOptions> smtp)
     {
         _userManager = userManager;
         _signInManager = signInManager;
-        _unitOfWork = unitOfWork;
         _smtp = smtp;
     }
 
@@ -71,7 +65,7 @@ public class ConfirmEmailChangeModel : PageModel
             : string.Empty;
     }
 
-    public async Task<IActionResult> OnGetAsync(string userId, string email, string code, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnGetAsync(string userId, string email, string code)
     {
         if (userId == null || email == null || code == null)
         {
@@ -86,42 +80,22 @@ public class ConfirmEmailChangeModel : PageModel
 
         code = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(code));
 
-        // The email and the username move together or not at all. They are two round trips through
-        // UserManager, so without this the first can land and the second fail - leaving the account
-        // signing in under the old address while displaying the new one, which is a split identity
-        // rather than a failed change. The failure is reachable rather than theoretical: another
-        // account may already hold that username, which SetUserNameAsync rejects and
-        // ChangeEmailAsync never checks for.
-        await using (IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken))
+        // One round trip, so no transaction: SaveChangesAsync is already transactional
+        // (notes/transactions.md). It used to need one because the username was the email and had to
+        // move with it - two UserManager calls that could half-land, leaving an account signing in
+        // under the old address while displaying the new one. The username is now the person's own and
+        // an address change does not touch it, so the pairing that needed the transaction is gone
+        // rather than the guarantee it bought.
+        IdentityResult result = await _userManager.ChangeEmailAsync(user, email, code);
+
+        if (!result.Succeeded)
         {
-            IdentityResult result = await _userManager.ChangeEmailAsync(user, email, code);
+            StatusMessage = "Error changing email.";
 
-            if (!result.Succeeded)
-            {
-                StatusMessage = "Error changing email.";
-
-                return Page();
-            }
-
-            // The username is set alongside the email deliberately. Accounts here are created with
-            // the two identical (see Register and Setup), and sign-in is by username - so changing
-            // only the email would leave the account signing in under the old address, which reads
-            // as the change silently not having worked.
-            IdentityResult setUserName = await _userManager.SetUserNameAsync(user, email);
-
-            if (!setUserName.Succeeded)
-            {
-                // Rolled back on the way out, so this really is "nothing changed" - it used to say
-                // the email had changed anyway, because it had.
-                StatusMessage = "Error changing email: that address is not available.";
-
-                return Page();
-            }
-
-            await transaction.CommitAsync(cancellationToken);
+            return Page();
         }
 
-        // Refreshes the cookie so the session reflects the new name rather than going stale
+        // Refreshes the cookie so the session reflects the new address rather than going stale
         // against a principal that no longer matches the user.
         await _signInManager.RefreshSignInAsync(user);
 

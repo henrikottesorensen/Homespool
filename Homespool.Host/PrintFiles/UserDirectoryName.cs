@@ -5,22 +5,27 @@ using System.Text;
 namespace Homespool.Host.PrintFiles;
 
 /// <summary>
-/// The name of a user's directory on disk: <c>{userId}-{displayName}</c>, e.g. <c>12-Sørensen</c>.
+/// The name of a user's directory on disk: <c>{userId}-{userName}</c>, e.g. <c>12-henrik</c>.
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>The id is the identity and the name is decoration.</b> Lookup matches on the
 /// <c>{userId}-</c> prefix alone and never reads what follows, which is what lets the suffix go stale
-/// when somebody changes their display name, and what lets it be as Unicode as it likes. The whole
-/// point is that a person poking around in the data directory can see whose files are whose.
+/// when somebody changes their username, and what lets it be whatever it likes. The whole point is
+/// that a person poking around in the data directory can see whose files are whose.
 /// </para>
 /// <para>
-/// <b>A denylist, not an allowlist</b> - unusual, and deliberate. An allowlist here would have to be
-/// ASCII to be simple, and mangling <c>Sørensen</c> into <c>S-rensen</c> buys nothing: the
-/// normalisation and case-folding hazards that argue for ASCII paths are all <i>lookup</i> hazards,
-/// and nothing ever looks a directory up by this part. So the suffix has no correctness job, only a
-/// legibility one, and what is excluded is the short list of things that would break a filesystem, a
+/// <b>A denylist, not an allowlist</b> - unusual, and deliberate. The suffix has no correctness job,
+/// only a legibility one, and nothing ever looks a directory up by it - so the normalisation and
+/// case-folding hazards that argue for allowlisted ASCII paths are all <i>lookup</i> hazards that do
+/// not apply here. What is excluded is the short list of things that would break a filesystem, a
 /// shell, or a reader's eyes.
+/// </para>
+/// <para>
+/// Its one caller passes a username, whose own character set
+/// (<c>HSUser.AllowedUsernameCharacters</c>) is already narrower than anything below rejects. That
+/// makes this a guard rather than a working sanitiser, and it stays because the guarantee belongs to
+/// the path, not to the current caller.
 /// </para>
 /// </remarks>
 public static class UserDirectoryName
@@ -40,18 +45,18 @@ public static class UserDirectoryName
     ];
 
     /// <summary>
-    /// The directory name for a user, or a bare id when the display name survives sanitising as
+    /// The directory name for a user, or a bare id when the username survives sanitising as
     /// nothing at all.
     /// </summary>
-    public static string For(long userId, string? displayName)
+    public static string For(long userId, string? userName)
     {
         string id = userId.ToString(CultureInfo.InvariantCulture);
-        string suffix = Sanitise(displayName);
+        string suffix = Sanitise(userName);
 
         return suffix.Length == 0 ? id : $"{id}-{suffix}";
     }
 
-    /// <summary>The glob that finds a user's directory whatever its display half says.</summary>
+    /// <summary>The glob that finds a user's directory whatever its name half says.</summary>
     /// <remarks>
     /// Unambiguous across ids because the hyphen is required: <c>12-*</c> does not match
     /// <c>120-bob</c>. Only the <i>first</i> hyphen is significant, so a sanitised name containing
@@ -63,12 +68,12 @@ public static class UserDirectoryName
     }
 
     /// <summary>
-    /// Reduces a display name to something safe to put in a path, keeping everything that is merely
+    /// Reduces a username to something safe to put in a path, keeping everything that is merely
     /// non-English.
     /// </summary>
-    private static string Sanitise(string? displayName)
+    private static string Sanitise(string? userName)
     {
-        if (string.IsNullOrWhiteSpace(displayName))
+        if (string.IsNullOrWhiteSpace(userName))
         {
             return string.Empty;
         }
@@ -77,7 +82,7 @@ public static class UserDirectoryName
         // the rest of this, but it is what makes a listing look consistent across machines.
         StringBuilder builder = new();
 
-        foreach (char character in displayName.Normalize(NormalizationForm.FormC))
+        foreach (char character in userName.Normalize(NormalizationForm.FormC))
         {
             builder.Append(IsUnsafe(character) ? '-' : character);
         }
@@ -101,7 +106,7 @@ public static class UserDirectoryName
 
     /// <summary>
     /// Path separators, control characters, and the bidi and zero-width marks that would let a
-    /// display name render a directory listing deceptively - the one exclusion here that is about a
+    /// username render a directory listing deceptively - the one exclusion here that is about a
     /// reader rather than a filesystem.
     /// </summary>
     private static bool IsUnsafe(char character)

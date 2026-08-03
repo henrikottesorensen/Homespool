@@ -70,7 +70,7 @@ public sealed class CreateModelTests : IDisposable
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 
-        HSUser admin = new() { UserName = "admin@example.com", Email = "admin@example.com", EmailConfirmed = true };
+        HSUser admin = new("admin") { Email = "admin@example.com", EmailConfirmed = true };
         IdentityResult createResult = await users.CreateAsync(admin, "Sup3rSecret!23");
         createResult.Succeeded.Should().BeTrue("test setup must succeed: {0}", string.Join(", ", createResult.Errors.Select(e => e.Description)));
 

@@ -236,7 +236,7 @@ public class IndexModel : PageModel
 
         try
         {
-            StoredFile? stored = _files.Publish(userId.Value, staged.Token, overwrite: false, DisplayName());
+            StoredFile? stored = _files.Publish(userId.Value, staged.Token, overwrite: false, UserName());
 
             (StatusMessage, StatusSuccess) = ($"Uploaded {stored!.FileName}.", true);
         }
@@ -260,7 +260,7 @@ public class IndexModel : PageModel
             return Forbid();
         }
 
-        StoredFile? stored = _files.Publish(userId.Value, token, overwrite: true, DisplayName());
+        StoredFile? stored = _files.Publish(userId.Value, token, overwrite: true, UserName());
 
         (StatusMessage, StatusSuccess) = stored is null
             ? ("That upload is no longer waiting - it may have been cleared up. Try again.", false)
@@ -466,13 +466,13 @@ public class IndexModel : PageModel
     }
 
     /// <summary>
-    /// The display name that decorates this user's storage directory, read from the sign-in cookie
-    /// rather than the database - <c>HSUserClaimsPrincipalFactory</c> puts it there so the header
-    /// costs no query, and an upload has no more reason to pay for one.
+    /// The username that decorates this user's storage directory, read from the sign-in cookie rather
+    /// than the database - Identity puts it there, and an upload has no reason to pay for a query to
+    /// learn something the request already carries.
     /// </summary>
-    private string? DisplayName()
+    private string? UserName()
     {
-        return User.FindFirst(HSUserClaimsPrincipalFactory.DisplayNameClaim)?.Value;
+        return _userManager.GetUserName(User);
     }
 
     private void Load(string? sort, bool desc)

@@ -78,7 +78,10 @@
     </div>
     <footer class="footer border-top pl-3 text-muted">
         <div class="container">
-        &copy; 2025 - Homespool
+@*  A range, not a single year, and not DateTime.Now.Year: it says when the work was done rather
+    than what today's date is. Started over the 2025 holidays; nearly all of it is 2026. Bump the
+    second year when a year sees work. *@
+        &copy; 2025-2026 Homespool
             @{
                 var foundPrivacy = Url.Page("/Privacy", new { area = "" });
             }

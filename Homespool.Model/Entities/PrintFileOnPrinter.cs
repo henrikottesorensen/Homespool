@@ -34,10 +34,13 @@ public class PrintFileOnPrinter
 {
     public long Id { get; set; }
 
+    /// <summary>The printer whose drive this describes.</summary>
+    /// <remarks>
+    /// <b>The key alone, with no navigation</b> (2026-08-04) - see
+    /// <see cref="QueuedPrint.PrinterId"/>, which lost the same slot for the same reason and on the
+    /// same evidence: nothing ever requested it, so fix-up was its only writer.
+    /// </remarks>
     public int PrinterId { get; set; }
-
-    [ForeignKey(nameof(PrinterId))]
-    public virtual Printer? Printer { get; set; }
 
     public long PrintFileId { get; set; }
 

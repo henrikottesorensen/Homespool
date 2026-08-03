@@ -31,10 +31,18 @@ public class QueuedPrint
     public long Id { get; set; }
 
     /// <summary>The printer whose queue this sits in.</summary>
+    /// <remarks>
+    /// <b>The key alone, with no navigation</b> (2026-08-04), for the reason
+    /// <see cref="PrintJob.PrinterId"/> gives: a navigation is a slot EF's relationship fix-up writes
+    /// each context's tracked <see cref="Printer"/> into, which poisons any instance outliving the
+    /// context that loaded it - and the queue's loop holds these rows across scoped work.
+    /// <para>
+    /// Nothing lost, because <b>nothing ever asked for it</b>. Unlike <see cref="PrintFile"/>, which is
+    /// explicitly <c>Include</c>d where it is read, this slot was only ever populated by fix-up: no
+    /// query requested it and no code read it. It was exposure with no corresponding use.
+    /// </para>
+    /// </remarks>
     public int PrinterId { get; set; }
-
-    [ForeignKey(nameof(PrinterId))]
-    public virtual Printer? Printer { get; set; }
 
     /// <summary>
     /// What to print, by surrogate id rather than by name - which is the whole reason

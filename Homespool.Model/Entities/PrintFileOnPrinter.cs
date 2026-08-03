@@ -57,6 +57,38 @@ public class PrintFileOnPrinter
     /// </remarks>
     public DateTimeOffset? TransferStartedAt { get; set; }
 
+    /// <summary>
+    /// Why this file cannot be sent to this printer, or null when nothing is in the way.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Here rather than on the queue entry, because <see cref="QueuedPrint"/> is property-less by
+    /// design.</b> A block is not the intention changing - somebody still wants this printed - it is
+    /// the loop's own bookkeeping about a <i>(file, printer)</i> pair, which is exactly what this row
+    /// is for. The entry stays in the queue untouched.
+    /// </para>
+    /// <para>
+    /// <b>And the queue holds behind it, like a spooler</b> (Henrik, 2026-08-03: *"Holds, like a
+    /// traditional printer spooler"*) - which is what lpd and CUPS have always done with a job that
+    /// cannot proceed. The alternative, skipping past it, keeps the printer busy but makes the queue
+    /// stop being the order people can see, and a shared queue that silently rearranges is worse than
+    /// one that visibly stops with a reason attached.
+    /// </para>
+    /// <para>
+    /// The reason is a sentence for a person, not a code: today the only writer is the free-space
+    /// check, which puts the two numbers in it.
+    /// </para>
+    /// </remarks>
+    public string? BlockedReason { get; set; }
+
+    /// <summary>When the block was last confirmed - so a held queue need not re-ask every tick.</summary>
+    /// <remarks>
+    /// Blocks clear by themselves: the loop re-checks, and a person who frees space sees the queue
+    /// resume without pressing anything. This timestamp only stops that costing one command every few
+    /// seconds for as long as the block lasts.
+    /// </remarks>
+    public DateTimeOffset? BlockedAt { get; set; }
+
     /// <summary>When the printer reported the transfer finished. Null until it has.</summary>
     public DateTimeOffset? ArrivedAt { get; set; }
 

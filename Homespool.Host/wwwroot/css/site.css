@@ -39,6 +39,27 @@ a {
   color: #75b9e6;
 }
 
+/* The navbar carries the brand colour rather than Bootstrap's greys, so the nav and the footer
+   link agree instead of the footer being the only coloured thing on the page.
+
+   Set through the navbar's own --bs-navbar-* variables rather than by colouring .nav-link
+   directly, so hover and the active page follow along - the same lesson as the buttons below. */
+.navbar {
+  --bs-navbar-color: var(--homespool-blue-text);
+  --bs-navbar-hover-color: var(--homespool-blue-border);
+  --bs-navbar-active-color: var(--homespool-blue-border);
+  --bs-navbar-brand-color: var(--homespool-blue-text);
+  --bs-navbar-brand-hover-color: var(--homespool-blue-border);
+}
+
+:where([data-bs-theme="dark"]) .navbar {
+  --bs-navbar-color: #75b9e6;
+  --bs-navbar-hover-color: #a3d1f0;
+  --bs-navbar-active-color: #a3d1f0;
+  --bs-navbar-brand-color: #75b9e6;
+  --bs-navbar-brand-hover-color: #a3d1f0;
+}
+
 .form-control:focus {
     border-color: var(--homespool-blue);
     box-shadow: 0 0 0 0.2rem var(--homespool-blue);

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" role="img" aria-label="Homespool">
+  <circle cx="48" cy="48" r="48" fill="#278ED3"/>
+  <path d="M48 10 80 30V70H16V30Z" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round"/>
+  <g fill="#278ED3" stroke="#278ED3" stroke-width="9" stroke-linejoin="round">
+    <ellipse cx="43.23" cy="51.025" rx="19.06" ry="24"/>
+    <ellipse cx="52.77" cy="52.975" rx="19.06" ry="24"/>
+  </g>
+  <ellipse cx="43.23" cy="51.025" rx="19.06" ry="24" fill="none" stroke="#FFFFFF" stroke-width="4"/>
+  <ellipse cx="52.77" cy="52.975" rx="19.06" ry="24" fill="#278ED3"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="4">
+    <ellipse cx="52.77" cy="52.975" rx="19.06" ry="24"/>
+    <ellipse cx="52.77" cy="52.975" rx="5.3" ry="6.7"/>
+  </g>
+</svg>

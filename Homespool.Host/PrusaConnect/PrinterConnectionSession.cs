@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.Queue;
+
 namespace Homespool.Host.PrusaConnect;
 
 /// <summary>
@@ -34,6 +36,7 @@ public sealed class PrinterConnectionSession
     private readonly WebSocketHandler _webSocketHandler;
     private readonly PrinterConnectionRegistry _connectionRegistry;
     private readonly PrinterConnectionActorFactory _actorFactory;
+    private readonly QueueSignal _queueSignal;
     private readonly ILogger<PrinterConnectionSession> _logger;
 
     /// <summary>
@@ -54,11 +57,13 @@ public sealed class PrinterConnectionSession
     public PrinterConnectionSession(WebSocketHandler webSocketHandler,
                                     PrinterConnectionRegistry connectionRegistry,
                                     PrinterConnectionActorFactory actorFactory,
+                                    QueueSignal queueSignal,
                                     ILogger<PrinterConnectionSession> logger)
     {
         _webSocketHandler = webSocketHandler;
         _connectionRegistry = connectionRegistry;
         _actorFactory = actorFactory;
+        _queueSignal = queueSignal;
         _logger = logger;
     }
 
@@ -111,6 +116,11 @@ public sealed class PrinterConnectionSession
 
         IPrinterConnectionActor actor = _actorFactory.Create(printerId, connection);
         _connectionRegistry.Register(printerId, actor);
+
+        // A printer arriving may have had work waiting since before the last restart. The signal
+        // carries nothing and cannot fail - the advancer re-reads everything - so this stays a plain
+        // call rather than anything the connection has to depend on.
+        _queueSignal.Poke();
 
         // Which status the close frame carries. Recorded rather than sent inline, so every
         // exit closes in one place - after the connection has left the registry.

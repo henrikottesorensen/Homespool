@@ -420,7 +420,14 @@ public sealed class UserFileStoreTests : IDisposable
         UserFileStore.IsAllowedExtension(name).Should().Be(allowed);
     }
 
-    private static Task<StoredFile> SaveAsync(UserFileStore store, long userId, string fileName, byte[] content,
+    private static async Task<StoredFile> SaveAsync(UserFileStore store, long userId, string fileName, byte[] content,
+        bool overwrite = false)
+    {
+        return (await PublishAsync(store, userId, fileName, content, overwrite)).File;
+    }
+
+    /// <summary>The same save, keeping the digest - for the tests that are about the digest.</summary>
+    private static Task<PublishedFile> PublishAsync(UserFileStore store, long userId, string fileName, byte[] content,
         bool overwrite = false)
     {
         return store.SaveAsync(userId, fileName, new MemoryStream(content), overwrite, CancellationToken.None);

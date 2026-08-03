@@ -84,8 +84,19 @@ public class PrusaConnectOptions
     /// </remarks>
     public string PrinterHost { get; set; } = string.Empty;
 
-    /// <summary>The port for the provisioning snippet. Prusa firmware defaults <c>connect_port</c> to 443.</summary>
-    public int PrinterPort { get; set; } = 443;
+    /// <summary>
+    /// The port a <b>printer</b> is told to dial — the <c>port</c> line in a provisioning snippet's
+    /// <c>[service::connect]</c> section.
+    /// </summary>
+    /// <remarks>
+    /// Prusa's firmware defaults <c>connect_port</c> to 443, and this deployment deliberately does
+    /// not: 443 belongs to the people-facing proxy, and the two audiences are kept on separate ports
+    /// with separate certificates. This is the host side of the printer port mapping — what a printer
+    /// dials from outside — not <see cref="Listeners.ListenerOptions.PrinterPort"/>, which is the
+    /// plaintext port nginx forwards to inside the deployment. The two happen to share a number in
+    /// <c>compose.yaml</c>; nothing requires them to.
+    /// </remarks>
+    public int PrinterPort { get; set; } = 15443;
 
     /// <summary>
     /// Whether printers reach this server over TLS. On by default, as the firmware is.
@@ -93,10 +104,17 @@ public class PrusaConnectOptions
     /// <remarks>
     /// <para>
     /// <b>One setting, both ends.</b> It is the <c>tls</c> key written into a printer's ini
-    /// (<see cref="ConnectIni"/>) <i>and</i> whether the printer listener binds TLS at all
-    /// (<c>Program.ConfigureListeners</c>). Those were separate questions while a reverse proxy could
-    /// terminate TLS in front of this process; the listener split ended that — nothing may sit in front
-    /// of the printer port — so they are one fact with one switch, and cannot disagree.
+    /// (<see cref="ConnectIni"/>) <i>and</i> whether a leaf is minted for nginx to present
+    /// (<c>Program.EnsurePrinterCertificate</c>), so the two cannot disagree about whether the
+    /// printer path is encrypted.
+    /// </para>
+    /// <para>
+    /// <b>It does not decide what this process binds.</b> <c>Program.ConfigureListeners</c> listens on
+    /// <c>Listeners:PrinterPort</c> as plain HTTP unconditionally, with no branch on this flag: nginx
+    /// terminates the printer's TLS in front of it, because the record size the firmware needs is not
+    /// something <c>SslStream</c> can be made to emit. What this switches is therefore what sits in
+    /// front of that port — the proxy with a certificate, or nothing — which is
+    /// <c>compose.yaml</c>'s business rather than this process's.
     /// </para>
     /// <para>
     /// <b>Turning it off is a testing tool, not a deployment option.</b> The printer's token then

@@ -7,6 +7,8 @@ namespace Homespool.FakePrinter;
 /// </summary>
 public enum ServerCommandKind
 {
+    Undefined = 0,
+
     /// <summary><c>J</c> - a JSON command, <c>{"command": "..."}</c>.</summary>
     Json = 'J',
 

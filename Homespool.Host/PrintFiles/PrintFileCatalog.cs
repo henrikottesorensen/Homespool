@@ -287,16 +287,3 @@ public sealed class PrintFileCatalog
                          .SingleOrDefaultAsync(f => f.UserId == userId && f.Name == fileName, cancellationToken);
     }
 }
-
-/// <summary>What became of a delete.</summary>
-public enum PrintFileDeletion
-{
-    /// <summary>There was no such file.</summary>
-    NotFound = 0,
-
-    /// <summary>The file and its row are gone.</summary>
-    Deleted,
-
-    /// <summary>Refused: a queued print still wants this file.</summary>
-    Queued,
-}

@@ -11,6 +11,8 @@ namespace Homespool.Host.Listeners;
 /// </remarks>
 public enum ListenerClass
 {
+    Undefined = 0,
+
     /// <summary>Cookies and personal access tokens: pages, <c>/api</c>, <c>/health</c>.</summary>
     User,
 

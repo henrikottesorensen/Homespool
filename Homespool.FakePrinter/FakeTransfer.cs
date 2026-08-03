@@ -4,43 +4,6 @@ using System.Security.Cryptography;
 namespace Homespool.FakePrinter;
 
 /// <summary>
-/// What a chunk did to the transfer.
-/// </summary>
-public enum ChunkOutcome
-{
-    /// <summary>Written; the transfer continues and wants another range.</summary>
-    Accepted,
-
-    /// <summary>The last byte arrived - the transfer succeeded.</summary>
-    Completed,
-
-    /// <summary>
-    /// The transfer is dead. Firmware's inline engine has no retry for this
-    /// (<c>DownloadStep::FailedRemote</c> goes straight to <c>State::Failed</c>,
-    /// transfer.cpp:389-391), so neither does this.
-    /// </summary>
-    Failed,
-}
-
-/// <summary>
-/// Which byte ranges a transfer asks for, and in what order
-/// (<c>Transfer::init_download_order_if_needed</c>, transfer.cpp:225-236 at the pinned ref).
-/// </summary>
-public enum FakeDownloadOrder
-{
-    /// <summary>Straight through from byte 0. Everything except large plain gcode.</summary>
-    Generic,
-
-    /// <summary>
-    /// The last <see cref="FakeTransfer.TailSize"/> bytes first, then the body from 0 - because plain
-    /// gcode keeps its thumbnail and metadata at the end and <c>GcodeInfo</c> has to scan them before
-    /// a preview or a print can start. Reaching the body costs a <b>RangeJump</b>, a full
-    /// renegotiation with a fresh <c>file_id</c>.
-    /// </summary>
-    PlainGcodeTailFirst,
-}
-
-/// <summary>
 /// The printer's side of one Connect-initiated inline download: which range to ask for next, and
 /// what to do with the bytes that come back.
 /// </summary>

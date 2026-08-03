@@ -10,6 +10,8 @@ namespace Homespool.Host.Services;
 /// </remarks>
 public enum EmailSendResult
 {
+    Undefined = 0,
+
     /// <summary>The message was handed to the mail server.</summary>
     Sent,
 

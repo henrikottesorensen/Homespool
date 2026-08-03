@@ -8,21 +8,6 @@ using System.Net.Sockets;
 namespace Homespool.Host.Certificates;
 
 /// <summary>
-/// How confident we are that a suggested address will keep working.
-/// </summary>
-public enum AddressDurability
-{
-    /// <summary>Works now and needs no DNS, but is tied to a DHCP lease.</summary>
-    UntilTheLeaseMoves,
-
-    /// <summary>Survives a lease change, provided the router registers DHCP names in its own DNS.</summary>
-    SurvivesALeaseChange,
-
-    /// <summary>Almost certainly wrong: a container's own address rather than the host's.</summary>
-    ProbablyTheContainersOwn,
-}
-
-/// <summary>
 /// One candidate address to offer the operator at first-run setup, with what it will cost them.
 /// </summary>
 /// <param name="Value">The literal to put in the printer's <c>hostname</c> and the certificate's SAN.</param>

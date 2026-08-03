@@ -1,9 +1,12 @@
 using System;
+using System.Buffers;
+using System.Buffers.Text;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -225,7 +228,7 @@ public sealed class UserFileStore
     /// there is no directory yet - an existing one is found by its id prefix and kept whatever its
     /// name says, so this going stale is cosmetic. Null means the folder is the bare id.
     /// </param>
-    public async Task<StoredFile> SaveAsync(long userId, string fileName, Stream content, bool overwrite,
+    public async Task<PublishedFile> SaveAsync(long userId, string fileName, Stream content, bool overwrite,
         CancellationToken cancellationToken, string? displayName = null)
     {
         // Fails a doomed request before hundreds of megabytes cross the wire. The check inside
@@ -287,12 +290,14 @@ public sealed class UserFileStore
         string token = Guid.NewGuid().ToString("N");
         string temporary = Path.Combine(incoming, token);
 
+        string digest;
+
         try
         {
             await using FileStream file = new(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
                 bufferSize: 64 * 1024, useAsync: true);
 
-            await content.CopyToAsync(file, cancellationToken);
+            digest = await CopyAndHashAsync(content, file, cancellationToken);
         }
         catch
         {
@@ -303,7 +308,7 @@ public sealed class UserFileStore
 
         long length = new FileInfo(temporary).Length;
 
-        _pending[token] = new Pending(userId, safeName, temporary, _timeProvider.GetUtcNow());
+        _pending[token] = new Pending(userId, safeName, temporary, _timeProvider.GetUtcNow(), digest);
 
         return new PendingUpload(token, safeName, length);
     }
@@ -319,7 +324,7 @@ public sealed class UserFileStore
     /// transfer already in flight keep serving the bytes it announced
     /// (<see cref="PrusaConnect.Transfers.FileTransferContent"/>).
     /// </remarks>
-    public StoredFile? Publish(long userId, string token, bool overwrite, string? displayName = null)
+    public PublishedFile? Publish(long userId, string token, bool overwrite, string? displayName = null)
     {
         if (!_pending.TryGetValue(token, out Pending? pending) || pending.UserId != userId)
         {
@@ -359,7 +364,7 @@ public sealed class UserFileStore
         _logger.LogInformation("Stored {FileName} for user {UserId} ({Length} bytes){Replaced}",
             stored.FileName, userId, stored.Length, existing is null ? string.Empty : ", replacing");
 
-        return stored;
+        return new PublishedFile(stored, pending.Digest);
     }
 
     /// <summary>Throws a staged upload away, and reports whether there was one to throw.</summary>
@@ -447,6 +452,48 @@ public sealed class UserFileStore
         FileInfo info = new(path);
 
         return new StoredFile(info.Name, path, info.Length, info.LastWriteTimeUtc);
+    }
+
+    /// <summary>
+    /// Streams <paramref name="content"/> into <paramref name="destination"/> and returns the
+    /// base64url SHA-384 of what went past, computed on the same pass.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The same pass is the whole point.</b> The bytes are already being read and written here, so
+    /// hashing them costs one CPU sweep over data in cache and no second read of the file - which is
+    /// what makes a digest on every upload affordable on the hardware this has to run on. Hashing
+    /// later, from disk, would cost a full re-read per file and is exactly what the startup reconcile
+    /// declines to do.
+    /// </para>
+    /// <para>
+    /// Replaces a plain <c>CopyToAsync</c>. SHA-384 rather than SHA-256 - see
+    /// <see cref="Model.Entities.PrintFile.Digest"/> for why, including why interop did not decide it.
+    /// </para>
+    /// </remarks>
+    private static async Task<string> CopyAndHashAsync(Stream content, Stream destination,
+        CancellationToken cancellationToken)
+    {
+        using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA384);
+
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
+
+        try
+        {
+            int read;
+
+            while ((read = await content.ReadAsync(buffer.AsMemory(), cancellationToken)) > 0)
+            {
+                await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                hash.AppendData(buffer.AsSpan(0, read));
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+
+        return Base64Url.EncodeToString(hash.GetHashAndReset());
     }
 
     /// <summary>
@@ -574,8 +621,27 @@ public sealed class UserFileStore
     /// <param name="FileName">The name it will take when published.</param>
     /// <param name="Path">Where the bytes are, under the incoming directory.</param>
     /// <param name="StagedAt">When it arrived, so an abandoned one can be told from a fresh one.</param>
-    private sealed record Pending(long UserId, string FileName, string Path, DateTimeOffset StagedAt);
+    /// <param name="Digest">
+    /// Computed while the bytes streamed in, and carried here because publishing happens in a
+    /// <i>different request</i>: the Files page stages, asks "replace it?", and publishes on the
+    /// answer. Recomputing at publish time would mean re-reading the whole file to learn something
+    /// already known.
+    /// </param>
+    private sealed record Pending(long UserId, string FileName, string Path, DateTimeOffset StagedAt, string Digest);
 }
+
+/// <summary>
+/// A file that has just been given its name, and the digest of the bytes that were written.
+/// </summary>
+/// <remarks>
+/// <b>A pair rather than a field on <see cref="StoredFile"/>, deliberately.</b> Publishing is the one
+/// moment the content hash is known without reading the file - every other <see cref="StoredFile"/>
+/// is described from a directory entry, which cannot know it. Hanging a nullable digest on that type
+/// would make "we have not computed it" and "this file has none" the same value at every call site.
+/// </remarks>
+/// <param name="File">The file as it now exists on disk.</param>
+/// <param name="Digest">Base64url SHA-384 of the content - see <see cref="Model.Entities.PrintFile.Digest"/>.</param>
+public sealed record PublishedFile(StoredFile File, string Digest);
 
 /// <summary>An upload that has arrived but has not been given its name yet.</summary>
 /// <param name="Token">Handle for publishing or discarding it. Meaningless to anyone else.</param>

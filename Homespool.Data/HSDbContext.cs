@@ -65,6 +65,21 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
     /// authenticated request; revoking one is deleting its row.</summary>
     public DbSet<ApiToken> ApiTokens { get; set; }
 
+    /// <summary>Index over the uploaded print files on disk. The filesystem is the truth; this exists
+    /// so a queue entry can point at something a rename does not move.</summary>
+    public DbSet<PrintFile> PrintFiles { get; set; }
+
+    /// <summary>Per-printer print queues. One row per queued print; cancelling is deleting it.</summary>
+    public DbSet<QueuedPrint> QueuedPrints { get; set; }
+
+    /// <summary>What the loop believes each printer's drive holds of ours, and what the printer calls
+    /// it. Keyed on (file, printer), so one file queued twice transfers once.</summary>
+    public DbSet<PrintFileOnPrinter> PrintFilesOnPrinters { get; set; }
+
+    /// <summary>Every print, running and finished - "print history" is the feature this backs. A row
+    /// with no <c>EndedAt</c> is the print happening now.</summary>
+    public DbSet<PrintJob> PrintJobs { get; set; }
+
     public HSDbContext(DbContextOptions<HSDbContext> options)
         : base(options)
     {
@@ -311,6 +326,118 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
                   .WithMany()
                   .HasForeignKey(e => e.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<PrintFile>(entity =>
+        {
+            // The natural key: a user's files are unique by name, which is what makes the name the
+            // identity and rename a first-class verb.
+            entity.HasIndex(e => new { e.UserId, e.Name })
+                  .IsUnique();
+
+            // NOCASE so the uniqueness matches how UserFileStore resolves a name - it compares
+            // case-insensitively on purpose, because macOS folds case, Linux does not, and the
+            // printer's FAT32 would collide the two at /usb/ regardless.
+            //
+            // Note SQLite's NOCASE folds ASCII only, while the store uses full OrdinalIgnoreCase - so
+            // this index is a slightly weaker backstop than the rule it backs, not an equal one. That
+            // is acceptable precisely because it IS a backstop: the store is the gate, and the only
+            // way to reach a pair it would have refused is meddling with the tree by hand.
+            entity.Property(e => e.Name)
+                  .UseCollation("NOCASE");
+
+            // A deleted account takes its file index with it. The bytes on disk are a separate
+            // question and nothing here deletes them - which is why the startup reconcile skips a
+            // directory whose user no longer exists rather than re-inserting rows that cannot satisfy
+            // this constraint.
+            entity.HasOne<HSUser>()
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<QueuedPrint>(entity =>
+        {
+            // The queue read, and the only one there is: this printer's entries, in order.
+            entity.HasIndex(e => new { e.PrinterId, e.Position });
+
+            // A deleted printer takes its queue with it. There is no meaning left in an entry whose
+            // printer is gone, and unlike telemetry it is not history worth keeping.
+            entity.HasOne(e => e.Printer)
+                  .WithMany()
+                  .HasForeignKey(e => e.PrinterId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            // Restrict, deliberately, and this is the one delete rule worth arguing for: cascading
+            // here would let deleting a file silently cancel a print somebody else had queued.
+            // print-queue.md reaches the same conclusion about the printer's own copy of a file -
+            // "delete only when no queued print still wants it" - and the same instinct applies to ours.
+            // PrintFileCatalog turns the resulting failure into a sentence rather than an exception.
+            entity.HasOne(e => e.PrintFile)
+                  .WithMany(e => e.QueuedPrints)
+                  .HasForeignKey(e => e.PrintFileId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            // QueuedByUserId deliberately has no foreign key. It records who asked - the same
+            // "a record, not a pointer" treatment file-storage.md gives history rows - and an FK here
+            // would add a second cascade path into a table PrintFile already cascades from, for no
+            // reader that needs the join.
+        });
+
+        builder.Entity<PrintFileOnPrinter>(entity =>
+        {
+            // One row per (file, printer): the whole point is that a file queued twice on one printer
+            // transfers once, which a second row would defeat.
+            entity.HasIndex(e => new { e.PrinterId, e.PrintFileId })
+                  .IsUnique();
+
+            entity.HasOne(e => e.Printer)
+                  .WithMany()
+                  .HasForeignKey(e => e.PrinterId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            // Cascade, unlike QueuedPrint's Restrict on the same table. This row is knowledge about
+            // somebody else's drive rather than an intention of ours, so there is nothing here to
+            // protect a person from losing - and the bytes it describes are findable again through
+            // the printer's own storage listing, which is what notes/print-queue.md relies on for
+            // exactly this.
+            entity.HasOne(e => e.PrintFile)
+                  .WithMany()
+                  .HasForeignKey(e => e.PrintFileId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<PrintJob>(entity =>
+        {
+            // "What did this printer print, most recently first" is the only question history asks.
+            entity.HasIndex(e => new { e.PrinterId, e.StartedAt });
+
+            // At most one active print per printer, enforced in the database because application code
+            // cannot make it atomic - the same partial-index trick TeamMember uses for "exactly one
+            // default team per user". Worth having for a reason this branch demonstrated: the
+            // overlapping-pass defect was found by a unique index doing precisely this job, so two
+            // prints started on one printer should be a failed insert rather than two rows nobody
+            // notices.
+            //
+            // The filter is raw SQL, so the column name is the database's rather than the CLR
+            // property path.
+            entity.HasIndex(e => e.PrinterId)
+                  .IsUnique()
+                  .HasFilter("\"EndedAt\" IS NULL");
+
+            // Navigation-less, like PrinterEvent and TelemetrySample: see PrintJob.PrinterId.
+            entity.HasOne<Printer>()
+                  .WithMany()
+                  .HasForeignKey(e => e.PrinterId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            // Stored as text, like PrinterEvent.EventType: readable in a raw SQLite session and immune
+            // to the enum being reordered. History is low-volume, so the bytes saved do not matter.
+            entity.Property(e => e.Outcome)
+                  .HasConversion<string>();
+
+            // No foreign key to PrintFile, deliberately: this records a name and a digest rather than
+            // pointing at a row, so a renamed or deleted file leaves history intact. See PrintJob.
         });
     }
 }

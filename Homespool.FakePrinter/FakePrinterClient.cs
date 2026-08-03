@@ -194,7 +194,7 @@ public sealed class FakePrinterClient : IAsyncDisposable
     {
         WebSocket socket = _socket ?? throw new InvalidOperationException("Not connected - call ConnectAsync first.");
 
-        await SendMessageAsync(EventMessageBuilder.BuildInfo(Identity, Device.WireState, null, Device.JobId), cancellationToken);
+        await SendMessageAsync(EventMessageBuilder.BuildInfo(Identity, Device.WireState, null, Device.JobId, Device.FreeSpace), cancellationToken);
 
         Task read = ReadLoopAsync(socket, cancellationToken);
         Task telemetry = TelemetryLoopAsync(socket, cancellationToken);

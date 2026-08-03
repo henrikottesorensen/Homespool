@@ -323,6 +323,17 @@ public static class EventMessageBuilder
     }
 
     /// <summary>
+    /// What <c>INFO</c> reports as free space on <c>/usb</c> when nobody says otherwise - the figure a
+    /// real Core One reported, 63.7 GB.
+    /// </summary>
+    /// <remarks>
+    /// A default rather than a constant, because the queue's loop is meant to consult this before
+    /// pushing a file ahead of a print, and a value nothing can change makes that check untestable.
+    /// See <see cref="FakeDevice.FreeSpace"/>.
+    /// </remarks>
+    public const long DefaultFreeSpace = 63729893376;
+
+    /// <summary>
     /// The <c>INFO</c> event. The firmware guarantees one on every connection -
     /// <c>Planner::reset()</c> marks the info dirty and runs on init and on every reconnect
     /// (planner.cpp:347) - so <see cref="FakePrinterClient"/> sends this first, always.
@@ -334,7 +345,8 @@ public static class EventMessageBuilder
     /// it carries the <b>full 50-character</b> fingerprint and the serial - the one place either
     /// appears on <c>/p/ws</c> (see <c>notes/cross-channel-identity-bug.md</c>).
     /// </remarks>
-    public static byte[] BuildInfo(PrinterIdentity identity, string state, uint? commandId = null, int? jobId = null)
+    public static byte[] BuildInfo(PrinterIdentity identity, string state, uint? commandId = null, int? jobId = null,
+        long freeSpace = DefaultFreeSpace)
     {
         ArrayBufferWriter<byte> buffer = new();
 
@@ -361,7 +373,7 @@ public static class EventMessageBuilder
             writer.WriteString("mountpoint", "/usb");
             writer.WriteString("type", "USB");
             writer.WriteBoolean("read_only", false);
-            writer.WriteNumber("free_space", 63729893376);
+            writer.WriteNumber("free_space", freeSpace);
             writer.WriteBoolean("is_sfn", true);
             writer.WriteEndObject();
             writer.WriteEndArray();

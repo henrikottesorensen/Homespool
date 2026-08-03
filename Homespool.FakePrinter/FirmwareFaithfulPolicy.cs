@@ -252,7 +252,11 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
 
             case "SEND_INFO":
                 // planner.cpp:735-740 - the INFO event, carrying the command id.
-                return [Reply(EventMessageBuilder.BuildInfo(_identity, device.WireState, frame.CommandId, device.JobId))];
+                return [Reply(EventMessageBuilder.BuildInfo(_identity, device.WireState, frame.CommandId, device.JobId,
+                    device.FreeSpace))];
+
+            case "START_PRINT":
+                return StartPrint(frame, device);
 
             case "SEND_FILE_INFO":
                 // planner.cpp:751-759 - the path is checked before anything is rendered, and a path
@@ -290,6 +294,69 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
     /// same treatment here: firmware would fail inside the renderer instead, but a refusal is the
     /// honest answer a fake can give without inventing a second failure shape.
     /// </remarks>
+    /// <summary>
+    /// Answers a <c>START_PRINT</c>: the path is checked, then the machine, and success is reported as
+    /// <c>JOB_INFO</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The order is the planner's</b> (planner.cpp:704-728): <c>path_allowed</c> first, then
+    /// <c>is_valid_file_or_transfer</c>, and only then <c>MarlinPrinter::start_print</c>. It matters,
+    /// because a bad path is refused whatever the machine is doing - the same shape as
+    /// <see cref="StartDownload"/>, where the path is checked before the transfer slot is taken.
+    /// </para>
+    /// <para>
+    /// <b>Success answers <c>JOB_INFO</c>, not <c>FINISHED</c></b> (planner.cpp:728), which makes this
+    /// the one command here whose success is neither of the two usual acks. Worth knowing on the
+    /// server side, where "did it work?" naturally tests for <c>FINISHED</c> and would read a print
+    /// that started as an answer it did not recognise.
+    /// </para>
+    /// <para>
+    /// <b>Only four reasons are reachable</b> - <c>Forbidden path</c>, <c>File not found</c>,
+    /// <c>Can't print now</c> and <c>Tools mapping not enabled</c>. <c>File is busy</c> and
+    /// <c>File is being transferred</c> belong to <c>delete_file</c> and are deliberately not sent
+    /// here; a server waiting on either as a busy signal would wait for something firmware cannot
+    /// produce (<c>notes/print-queue.md</c>, corrected 2026-08-02).
+    /// </para>
+    /// <para>
+    /// A file still arriving is <b>not</b> refused: <c>is_valid_file_or_transfer</c> accepts a partial
+    /// transfer, so this looks the file up in storage exactly as <c>SEND_FILE_INFO</c> does and lets
+    /// the state gate decide. That is why the fake starts a print on a file whose transfer is still
+    /// running, which is what hardware does.
+    /// </para>
+    /// </remarks>
+    private IReadOnlyList<PlannedReply> StartPrint(ServerCommandFrame frame, FakeDevice device)
+    {
+        string? path = PathArgument.TryParse(frame.Payload);
+
+        if (path is null)
+        {
+            return [Reject(frame.CommandId, device, "Missing or broken parameters")];
+        }
+
+        if (!path.StartsWith(FakeStorage.Root + "/", StringComparison.Ordinal)
+            || path.Contains("/../", StringComparison.Ordinal))
+        {
+            // Stricter than SEND_FILE_INFO's check by exactly one case: /usb itself is a directory,
+            // and printing a directory is not a path this command has any meaning for.
+            return [Reject(frame.CommandId, device, "Forbidden path")];
+        }
+
+        FakeStorageEntry? entry = device.Storage.Find(path);
+
+        if (entry is null || entry.IsFolder)
+        {
+            return [Reject(frame.CommandId, device, "File not found")];
+        }
+
+        if (device.TryStartPrint() is not { } jobId)
+        {
+            return [Reject(frame.CommandId, device, "Can't print now")];
+        }
+
+        return [Reply(EventMessageBuilder.Build("JOB_INFO", device.WireState, frame.CommandId, jobId: jobId))];
+    }
+
     private IReadOnlyList<PlannedReply> SendFileInfo(ServerCommandFrame frame, FakeDevice device)
     {
         string? path = PathArgument.TryParse(frame.Payload);

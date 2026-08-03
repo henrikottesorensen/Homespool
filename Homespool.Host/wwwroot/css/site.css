@@ -1,6 +1,22 @@
 /* Please see documentation at https://docs.microsoft.com/aspnet/core/client-side/bundling-and-minification\
 for details on configuring this project to bundle and minify static web assets. */
 
+/* The brand colour, and the two variants it needs to be usable.
+   Two tokens rather than one because a logo and a piece of text have different jobs: the mark
+   only has to be seen, whereas a link or a button label has to be read. White on the brand blue
+   is 3.6:1 — fine for a graphic, short of the 4.5:1 WCAG AA asks of text — so anything carrying
+   text uses the deeper variant, which clears it. */
+:root {
+  --homespool-blue: #278ED3;
+  --homespool-blue-text: #227DB9;
+  --homespool-blue-border: #1B6A9E;
+
+  /* Point Bootstrap's own primary at the text-safe variant, so components we do not restyle
+     here (and --bs-primary users such as .upload-dropzone-active) follow the brand too. */
+  --bs-primary: var(--homespool-blue-text);
+  --bs-primary-rgb: 34, 125, 185;
+}
+
 a.navbar-brand {
   white-space: normal;
   text-align: center;
@@ -8,29 +24,65 @@ a.navbar-brand {
 }
 
 a {
-  color: #0077cc;
+  color: var(--homespool-blue-text);
 }
 
-/* Lighter link colour under Bootstrap's dark colour mode, for contrast on a dark background. */
+/* Lighter link colour under Bootstrap's dark colour mode, for contrast on a dark background.
+   Same hue as the brand, lifted until it is legible on a dark ground. */
 [data-bs-theme="dark"] a {
-  color: #4dabf7;
+  color: #75b9e6;
 }
 
 .form-control:focus {
-    border-color: #0077cc;
-    box-shadow: 0 0 0 0.2rem #0077cc;
+    border-color: var(--homespool-blue);
+    box-shadow: 0 0 0 0.2rem var(--homespool-blue);
 }
 
+/* Bootstrap 5.3 bakes literal hex into each button's own --bs-btn-* variables when its Sass is
+   compiled; they never read --bs-primary. Overriding that alone leaves the resting state looking
+   right while hover and active snap back to Bootstrap's blue, so restyle through the button
+   variables instead of setting background-color directly. */
 .btn-primary {
-  color: #fff;
-  background-color: #1b6ec2;
-  border-color: #1861ac;
+  --bs-btn-bg: var(--homespool-blue-text);
+  --bs-btn-border-color: var(--homespool-blue-border);
+  --bs-btn-hover-bg: var(--homespool-blue-border);
+  --bs-btn-hover-border-color: var(--homespool-blue-border);
+  --bs-btn-active-bg: var(--homespool-blue-border);
+  --bs-btn-active-border-color: var(--homespool-blue-border);
+  --bs-btn-disabled-bg: var(--homespool-blue-text);
+  --bs-btn-disabled-border-color: var(--homespool-blue-border);
 }
 
-.nav-pills .nav-link.active, .nav-pills .show > .nav-link {
-  color: #fff;
-  background-color: #1b6ec2;
-  border-color: #1861ac;
+.btn-outline-primary {
+  --bs-btn-color: var(--homespool-blue-text);
+  --bs-btn-border-color: var(--homespool-blue-text);
+  --bs-btn-hover-bg: var(--homespool-blue-text);
+  --bs-btn-hover-border-color: var(--homespool-blue-text);
+  --bs-btn-active-bg: var(--homespool-blue-border);
+  --bs-btn-active-border-color: var(--homespool-blue-border);
+  --bs-btn-disabled-color: var(--homespool-blue-text);
+  --bs-btn-disabled-border-color: var(--homespool-blue-text);
+}
+
+.nav-pills {
+  --bs-nav-pills-link-active-bg: var(--homespool-blue-text);
+}
+
+/* Bootstrap sets <code> in pink (#d63384). On pages that are mostly addresses, hostnames and
+   shell commands that reads as a warning rather than as data, and it is an unrelated hue next
+   to the brand blue. Body ink on a faint tint instead: legible, quiet, and it says "this is a
+   literal value" by shape rather than by colour. Follows the colour mode on its own. */
+code {
+  color: var(--bs-emphasis-color);
+  background-color: var(--bs-secondary-bg);
+  padding: 0.1em 0.35em;
+  border-radius: 0.25rem;
+}
+
+/* Not inside a <pre> block, though — there the tint would band across the whole listing. */
+pre code {
+  background-color: transparent;
+  padding: 0;
 }
 
 .btn-link.nav-link:focus {

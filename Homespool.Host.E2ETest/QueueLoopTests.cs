@@ -297,6 +297,73 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         await EndRunAsync(fake, run);
     }
 
+    /// <summary>
+    /// A file that does not fit holds the queue rather than being skipped or cancelled - spooler
+    /// behaviour - and the hold clears by itself once there is room.
+    /// </summary>
+    /// <remarks>
+    /// The failed attempt is written to print history once, carrying both numbers, so a held queue has
+    /// something to read rather than merely having stopped. The entry itself stays put: somebody still
+    /// wants this printed, and the condition is one a person fixes by deleting files.
+    /// </remarks>
+    [Fact]
+    public async Task AFileThatDoesNotFitHoldsTheQueueUntilThereIsRoom()
+    {
+        // Arrange - a printer with almost no space left
+        (PrinterIdentity identity, string token, int printerId, long userId) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        await using FakePrinterClient fake = new(identity, TimeProvider.System, FastTelemetry()) { Token = token };
+        fake.Device.FreeSpace = 4;
+        await fake.ConnectAsync(ConnectAsync, TestContext.Current.CancellationToken);
+        Task run = fake.RunAsync(TestContext.Current.CancellationToken);
+
+        (await WaitUntilAsync(() => Task.FromResult(Registry.IsConnected(printerId)), TimeSpan.FromSeconds(10)))
+            .Should().BeTrue();
+
+        await UploadAsync(userId, "toobig.bgcode");
+        await EnqueueAsync(printerId, userId, "toobig.bgcode");
+
+        // Act - the loop asks, is told there is no room, and holds.
+        //
+        // Polled rather than asserted after one call: a pass skips when the hosted timer already holds
+        // this printer's gate, which is deliberate - the running pass reads the same state. So an
+        // explicit AdvanceAsync is a request for a pass, not a guarantee of one.
+        (await WaitUntilAsync(async () =>
+        {
+            await AdvanceAsync(printerId);
+
+            return await JobCountAsync(printerId) > 0;
+        }, TimeSpan.FromSeconds(30))).Should().BeTrue("the block is recorded once the pass runs");
+
+        // Assert - nothing transferred, the entry is still queued, and history says why
+        fake.Device.Storage.Find("/usb/toobig.bgcode").Should().BeNull("a file that does not fit is not sent");
+        (await QueueDepthAsync(printerId)).Should().Be(1, "the queue holds rather than dropping the entry");
+
+        PrintJob failure = await SingleJobAsync(printerId);
+        failure.Outcome.Should().Be(PrintOutcome.Failed);
+        failure.Reason.Should().Contain("Not enough space");
+        failure.EndedAt.Should().NotBeNull("nothing printed, so it is opened and closed together");
+
+        // Several more passes must not write more rows - a held queue is not a log.
+        await AdvanceAsync(printerId);
+        await AdvanceAsync(printerId);
+        (await JobCountAsync(printerId)).Should().Be(1, "the failure is recorded on the transition, not per tick");
+
+        // Act - somebody frees space. The block is re-checked on its own timer, so this drives the
+        // recheck directly rather than waiting a minute for it.
+        fake.Device.FreeSpace = 64L * 1024 * 1024;
+        await ClearBlockClockAsync(printerId);
+        await AdvanceAsync(printerId);
+
+        // Assert - it resumes without anyone pressing anything
+        (await WaitUntilAsync(
+            () => Task.FromResult(fake.Device.Storage.Find("/usb/toobig.bgcode") is not null),
+            TimeSpan.FromSeconds(30))).Should().BeTrue("the hold clears itself once there is room");
+
+        await EndRunAsync(fake, run);
+    }
+
     private PrusaConnect.PrinterConnectionRegistry Registry =>
         _factory.Services.GetRequiredService<PrusaConnect.PrinterConnectionRegistry>();
 
@@ -368,6 +435,34 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         return await scope.ServiceProvider.GetRequiredService<HSDbContext>()
                           .PrintJobs.SingleAsync(job => job.PrinterId == printerId,
                               TestContext.Current.CancellationToken);
+    }
+
+    private async Task<int> JobCountAsync(int printerId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        return await scope.ServiceProvider.GetRequiredService<HSDbContext>()
+                          .PrintJobs.CountAsync(job => job.PrinterId == printerId,
+                              TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// Ages the block so the next pass re-checks, instead of the test waiting out
+    /// <see cref="QueueAdvancer.BlockRecheckAfter"/>.
+    /// </summary>
+    private async Task ClearBlockClockAsync(int printerId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+
+        foreach (PrintFileOnPrinter row in await context.PrintFilesOnPrinters
+                     .Where(candidate => candidate.PrinterId == printerId)
+                     .ToListAsync(TestContext.Current.CancellationToken))
+        {
+            row.BlockedAt = DateTimeOffset.UnixEpoch;
+        }
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
     private async Task<int> QueueDepthAsync(int printerId)

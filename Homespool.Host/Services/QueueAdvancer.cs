@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -82,6 +83,16 @@ public sealed class QueueAdvancer : BackgroundService
     /// <see cref="PrintOutcome.Unknown"/> is honest, since nothing here can say what happened.
     /// </remarks>
     public static readonly TimeSpan StartingStaleAfter = TimeSpan.FromMinutes(15);
+
+    /// <summary>
+    /// How often a held queue re-asks whether there is room now.
+    /// </summary>
+    /// <remarks>
+    /// A block clears by itself - somebody deletes files at the panel and the queue resumes without
+    /// anyone pressing anything - so the loop has to keep looking. This only stops that costing a
+    /// command every tick for as long as the block lasts.
+    /// </remarks>
+    public static readonly TimeSpan BlockRecheckAfter = TimeSpan.FromSeconds(60);
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly PrinterConnectionRegistry _registry;
@@ -497,19 +508,24 @@ public sealed class QueueAdvancer : BackgroundService
         Printer printer = await dbContext.Printers.SingleAsync(candidate => candidate.Id == printerId,
             cancellationToken);
 
-        PrintFileSender sender = scope.ServiceProvider.GetRequiredService<PrintFileSender>();
-
-        // Recorded before the send rather than after: the printer can begin asking for chunks the
-        // instant it accepts, and a row written afterwards would leave a window in which the next tick
-        // saw no transfer and offered the file again.
         onPrinter ??= new PrintFileOnPrinter { PrinterId = printerId, PrintFileId = head.PrintFileId };
-        onPrinter.TransferStartedAt = _timeProvider.GetUtcNow();
 
         if (onPrinter.Id == 0)
         {
             dbContext.PrintFilesOnPrinters.Add(onPrinter);
         }
 
+        if (!await HasRoomForAsync(scope, dbContext, printerId, head, file.Length, onPrinter, cancellationToken))
+        {
+            return;
+        }
+
+        PrintFileSender sender = scope.ServiceProvider.GetRequiredService<PrintFileSender>();
+
+        // Recorded before the send rather than after: the printer can begin asking for chunks the
+        // instant it accepts, and a row written afterwards would leave a window in which the next tick
+        // saw no transfer and offered the file again.
+        onPrinter.TransferStartedAt = _timeProvider.GetUtcNow();
         await dbContext.SaveChangesAsync(cancellationToken);
 
         try
@@ -544,6 +560,115 @@ public sealed class QueueAdvancer : BackgroundService
             onPrinter.TransferStartedAt = null;
             await dbContext.SaveChangesAsync(cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// Asks the printer whether the file will fit, and holds the queue if it will not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Asked rather than remembered.</b> Free space is only on the wire in <c>INFO</c>'s storage
+    /// block, and an unsolicited <c>INFO</c> arrives on connect and when <c>info_fingerprint()</c>
+    /// changes - which free space is not part of. A figure kept from connect time therefore goes stale
+    /// exactly as a queue fills the drive, which is the one situation it exists to catch. So the loop
+    /// asks, and a held queue re-asks at <see cref="BlockRecheckAfter"/> rather than every tick.
+    /// </para>
+    /// <para>
+    /// <b>The queue holds behind a file that does not fit</b> (Henrik: *"Holds, like a traditional
+    /// printer spooler"*). Not skipped - a shared queue whose order silently rearranges is worse than
+    /// one that visibly stops - and not cancelled, because the condition is recoverable by a person
+    /// deleting files, and it clears itself when they do. The failed attempt is written to print
+    /// history <b>once</b>, carrying both numbers, so there is something to read rather than a queue
+    /// that merely stopped.
+    /// </para>
+    /// <para>
+    /// <b>Unknown space is treated as room.</b> A printer that reports no <c>storages</c> block tells
+    /// us nothing, and refusing to print on a measurement we do not have would be worse than trying:
+    /// a genuinely full drive fails the transfer loudly, where a wrong refusal is silent.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> HasRoomForAsync(AsyncServiceScope scope, HSDbContext dbContext, int printerId,
+        QueuedPrint head, long length, PrintFileOnPrinter onPrinter, CancellationToken cancellationToken)
+    {
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+
+        if (onPrinter.BlockedReason is not null
+            && onPrinter.BlockedAt is { } blockedAt
+            && now - blockedAt < BlockRecheckAfter)
+        {
+            // Still held, and asked recently enough. Saying nothing here is deliberate: a held queue
+            // that logged every tick would bury the one line that explains it.
+            return false;
+        }
+
+        PrinterCommandService commands = scope.ServiceProvider.GetRequiredService<PrinterCommandService>();
+        long? free;
+
+        try
+        {
+            CommandOutcome<InfoEventDataDTO>? answer =
+                await commands.AskAsync(printerId, new SendInfo(), head.QueuedByUserId, cancellationToken);
+
+            free = answer?.Answer?.Storages?
+                         .FirstOrDefault(storage => storage.MountPoint == "/usb")?
+                         .FreeSpace;
+        }
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
+            or CommandResponseTimedOutException or CommandSendTimedOutException or TeamAccessDeniedException
+            or CommandAnswerUnreadableException)
+        {
+            // Could not ask. Not a block - the next pass asks again, and treating an unanswered
+            // question as "no room" would hold a queue on a printer that was merely busy.
+            _logger.LogDebug(e, "[{PrinterId}] could not ask about free space", printerId);
+
+            return false;
+        }
+
+        if (free is null || free >= length)
+        {
+            if (onPrinter.BlockedReason is not null)
+            {
+                _logger.LogInformation("[{PrinterId}] there is room for {FileName} now; the queue resumes",
+                    printerId, head.PrintFile!.Name);
+
+                onPrinter.BlockedReason = null;
+                onPrinter.BlockedAt = null;
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            return true;
+        }
+
+        string reason = string.Create(CultureInfo.InvariantCulture,
+            $"Not enough space on the printer: {head.PrintFile!.Name} needs {length} bytes, {free} free.");
+
+        bool newlyBlocked = onPrinter.BlockedReason is null;
+
+        onPrinter.BlockedReason = reason;
+        onPrinter.BlockedAt = now;
+
+        if (newlyBlocked)
+        {
+            // Written once, on the transition. A row per tick would turn history into a log, and the
+            // queue entry itself stays put - somebody still wants this printed.
+            dbContext.PrintJobs.Add(new PrintJob
+            {
+                PrinterId = printerId,
+                FileName = head.PrintFile.Name,
+                Digest = head.PrintFile.Digest,
+                QueuedByUserId = head.QueuedByUserId,
+                StartedAt = now,
+                EndedAt = now,
+                Outcome = PrintOutcome.Failed,
+                Reason = reason,
+            });
+
+            _logger.LogWarning("[{PrinterId}] {Reason} The queue holds until space is freed.", printerId, reason);
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return false;
     }
 
     /// <summary>Starts the print, and removes the entry once the printer has taken it.</summary>

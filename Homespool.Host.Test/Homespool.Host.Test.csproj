@@ -20,6 +20,7 @@
              the formatted text, and the structured properties the writer actually logs (PrinterId,
              SampleCount, Kind) were discarded before a test could see them. -->
         <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" Version="10.8.0" />
+        <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.8.0" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
         <!-- Used only for pure interface stubs with no behaviour of their own. Doubles that actually
              simulate something - the parsing tests' raw System.IO.Pipelines.Pipe (so a test can

@@ -15,6 +15,7 @@ using NSubstitute;
 
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Transfers;
+using Homespool.Host.Queue;
 
 namespace Homespool.Host.Test;
 
@@ -34,7 +35,15 @@ public sealed class PrinterConnectionCorrelationTests : IDisposable
 {
     private const int PrinterId = 7;
 
+    /// <summary>
+    /// Shared and never observed: the session pokes it when a printer registers, and nothing here
+    /// cares. Static because it is a process-wide singleton in production too, which also keeps four
+    /// test classes from growing disposal ceremony for a semaphore that outlives them all.
+    /// </summary>
+    private static readonly QueueSignal QueueSignal = new();
+
     private readonly FakeLogCollector _collector = new();
+
     private readonly ILoggerFactory _factory;
 
     public PrinterConnectionCorrelationTests()
@@ -77,6 +86,7 @@ public sealed class PrinterConnectionCorrelationTests : IDisposable
             new StubHandler(_factory.CreateLogger<WebSocketHandler>()),
             new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance),
             actorFactory,
+            QueueSignal,
             _factory.CreateLogger<PrinterConnectionSession>())
         {
             ActorDrainTimeout = TimeSpan.FromMilliseconds(150),

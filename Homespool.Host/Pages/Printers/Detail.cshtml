@@ -21,6 +21,11 @@
 
 <p><a asp-page="Index">&larr; Back to printers</a></p>
 
+@if (Model.StatusMessage is not null)
+{
+    <div class="alert @(Model.StatusSuccess ? "alert-success" : "alert-danger")" role="alert">@Model.StatusMessage</div>
+}
+
 <h2>Current status</h2>
 
 @{
@@ -52,6 +57,155 @@ else
             <tr><th>Speed</th><td>@(liveState.Speed is { } speed ? $"{speed}%" : "-")</td></tr>
             <tr><th>Flow</th><td>@(liveState.Flow is { } flow ? $"{flow}%" : "-")</td></tr>
             <tr><th>Last seen</th><td>@liveState.LastSeenAt</td></tr>
+        </tbody>
+    </table>
+}
+
+@if (Model.ActivePrint is { } active)
+{
+    <h2>Printing now</h2>
+    <p>
+        <strong>@active.FileName</strong>
+        @* Starting is not yet printing - the printer has accepted the command and is heating. Saying
+           "printing" through that window would be a small lie the page tells every single time. *@
+        @if (active.Outcome == Homespool.Model.PrintOutcome.Starting)
+        {
+            <span class="badge text-bg-secondary">starting</span>
+        }
+        <br />
+        <span class="text-muted">
+            started @active.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm",
+                System.Globalization.CultureInfo.InvariantCulture)
+        </span>
+    </p>
+}
+
+@* The queue holds behind a file it cannot send, like a spooler - so the reason has to be here, or a
+   held queue is indistinguishable from one that stopped for no reason. *@
+@if (Model.HoldReason is { } hold)
+{
+    <div class="alert alert-warning" role="alert">
+        <strong>The queue is held.</strong> @hold
+        <br />
+        Free some space on the printer and it will carry on by itself.
+    </div>
+}
+
+<h2>Queue</h2>
+
+@* Not a stall to worry about - it is the loop explaining itself. Absent when another part of this
+   page already says it, which is why there is no message while a print is starting. *@
+@if (Model.WaitingOn is { } waiting)
+{
+    <p class="text-muted">@waiting</p>
+}
+
+@* Reordering and cancelling are edits to a list - nothing here reaches the printer. The producer
+   loop is what turns the head of this queue into a transfer and a print, and it advances only when
+   the printer is Ready, which only a person sets. *@
+@if (Model.Queue.Count == 0)
+{
+    <p>Nothing queued. Send a file to this printer's queue from <a asp-page="/Files/Index">Files</a>.</p>
+}
+else
+{
+    <table class="table table-sm w-auto align-middle">
+        <thead>
+            <tr>
+                <th scope="col">#</th>
+                <th scope="col">File</th>
+                <th scope="col" class="text-end">Size</th>
+                <th scope="col">Queued</th>
+                @if (Model.CanUse)
+                {
+                    <th scope="col"><span class="visually-hidden">Actions</span></th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @for (int index = 0; index < Model.Queue.Count; index++)
+            {
+                var job = Model.Queue[index];
+
+                <tr>
+                    @* The row's place in the list, not its stored Position - cancelling leaves gaps in
+                       those, deliberately, and a gap shown to a person reads as a bug. *@
+                    <td>@(index + 1)</td>
+                    <td>@(job.PrintFile?.Name ?? "(missing)")</td>
+                    <td class="text-end">@($"{(job.PrintFile?.Size ?? 0) / 1024.0:N0} KiB")</td>
+
+                    @* Fixed format rather than a culture-dependent one, matching the Files table. *@
+                    <td>@job.QueuedAt.ToString("yyyy-MM-dd HH:mm")</td>
+
+                    @if (Model.CanUse)
+                    {
+                        <td class="text-nowrap">
+                            <form method="post" asp-page-handler="Move" asp-route-uuid="@Model.Statistics.Printer.Uuid"
+                                  class="d-inline">
+                                <input type="hidden" name="id" value="@job.Id" />
+                                <input type="hidden" name="position" value="@(index - 1)" />
+                                <button type="submit" class="btn btn-sm btn-outline-secondary"
+                                        title="Move up" aria-label="Move @(job.PrintFile?.Name) up"
+                                        @(index == 0 ? "disabled" : string.Empty)>&uarr;</button>
+                            </form>
+                            <form method="post" asp-page-handler="Move" asp-route-uuid="@Model.Statistics.Printer.Uuid"
+                                  class="d-inline">
+                                <input type="hidden" name="id" value="@job.Id" />
+                                <input type="hidden" name="position" value="@(index + 1)" />
+                                <button type="submit" class="btn btn-sm btn-outline-secondary"
+                                        title="Move down" aria-label="Move @(job.PrintFile?.Name) down"
+                                        @(index == Model.Queue.Count - 1 ? "disabled" : string.Empty)>&darr;</button>
+                            </form>
+                            <form method="post" asp-page-handler="Cancel" asp-route-uuid="@Model.Statistics.Printer.Uuid"
+                                  class="d-inline">
+                                <input type="hidden" name="id" value="@job.Id" />
+                                <button type="submit" class="btn btn-sm btn-outline-danger"
+                                        aria-label="Remove @(job.PrintFile?.Name) from the queue">Remove</button>
+                            </form>
+                        </td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<h2>Print history</h2>
+
+@if (Model.History.Count == 0)
+{
+    <p>Nothing has finished printing yet.</p>
+}
+else
+{
+    <table class="table table-sm w-auto">
+        <thead>
+            <tr>
+                <th scope="col">File</th>
+                <th scope="col">Started</th>
+                <th scope="col">Outcome</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var job in Model.History)
+            {
+                <tr>
+                    <td>@job.FileName</td>
+                    <td>@job.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm",
+                        System.Globalization.CultureInfo.InvariantCulture)</td>
+                    <td>
+                        @job.Outcome
+                        @* Firmware's own words, and the only place a refused print explains itself.
+                           Without this a queued print that never ran left nothing a person could read. *@
+                        @if (job.Reason is { } reason)
+                        {
+                            <br />
+
+                            <span class="text-muted">@reason</span>
+                        }
+                    </td>
+                </tr>
+            }
         </tbody>
     </table>
 }

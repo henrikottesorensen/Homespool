@@ -168,9 +168,14 @@ public class PrintQueueController : ControllerBase
 
         try
         {
-            return await _queue.MoveAsync(queuedPrintId, userId, body.Position, cancellationToken)
-                ? NoContent()
-                : NotFound();
+            bool found = await _queue.MoveAsync(queuedPrintId, userId, body.Position, cancellationToken);
+
+            if (!found)
+            {
+                return NotFound();
+            }
+
+            return NoContent();
         }
         catch (TeamAccessDeniedException)
         {
@@ -202,7 +207,14 @@ public class PrintQueueController : ControllerBase
 
         try
         {
-            return await _queue.CancelAsync(queuedPrintId, userId, cancellationToken) ? NoContent() : NotFound();
+            bool found = await _queue.CancelAsync(queuedPrintId, userId, cancellationToken);
+
+            if (!found)
+            {
+                return NotFound();
+            }
+
+            return NoContent();
         }
         catch (TeamAccessDeniedException)
         {
@@ -231,7 +243,12 @@ public class PrintQueueController : ControllerBase
 
         Printer? printer = await _printers.GetPrinterForUserAsync(uuid, user.Id, cancellationToken);
 
-        return printer is null ? (null, user.Id, NotFound()) : (printer, user.Id, null);
+        if (printer is null)
+        {
+            return (null, user.Id, NotFound());
+        }
+
+        return (printer, user.Id, null);
     }
 
     /// <summary>Body of an enqueue: which of the caller's files to add.</summary>

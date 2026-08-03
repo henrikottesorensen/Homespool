@@ -87,6 +87,47 @@ public class PrintHistoryService
     }
 
     /// <summary>
+    /// Usernames for whoever stopped any of <paramref name="jobs"/>, keyed by user id.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A lookup rather than a join, because history does not point at users.</b>
+    /// <see cref="PrintJob.StoppedByUserId"/> has no foreign key and no navigation - see the entity
+    /// for why - so the name is fetched for the handful of ids a page is showing rather than included
+    /// per row.
+    /// </para>
+    /// <para>
+    /// Takes rows the caller already holds, so it authorises nothing itself: reaching a
+    /// <see cref="PrintJob"/> at all has been through <see cref="ListAsync"/> or
+    /// <see cref="GetActiveAsync"/> already, and this adds no way to ask about a printer you could
+    /// not already read.
+    /// </para>
+    /// <para>
+    /// An id with no row comes back absent rather than blank, so a caller can tell "stopped by
+    /// somebody we can no longer name" from "stopped at the panel" - which is
+    /// <see cref="PrintJob.StoppedByUserId"/> being null, and a different fact.
+    /// </para>
+    /// </remarks>
+    public async Task<IReadOnlyDictionary<long, string>> GetStopperNamesAsync(IEnumerable<PrintJob> jobs,
+                                                                              CancellationToken cancellationToken)
+    {
+        long[] ids = jobs.Where(job => job.StoppedByUserId is not null)
+                         .Select(job => job.StoppedByUserId!.Value)
+                         .Distinct()
+                         .ToArray();
+
+        if (ids.Length == 0)
+        {
+            return new Dictionary<long, string>();
+        }
+
+        return await _dbContext.Users
+                               .AsNoTracking()
+                               .Where(user => ids.Contains(user.Id) && user.UserName != null)
+                               .ToDictionaryAsync(user => user.Id, user => user.UserName!, cancellationToken);
+    }
+
+    /// <summary>
     /// Why this printer's queue is held, or null when nothing is in the way.
     /// </summary>
     /// <remarks>

@@ -35,6 +35,7 @@ public class IndexModel : PageModel
     private readonly PrusaConnectOptions _options;
     private readonly PrinterConnectionRegistry _connectionRegistry;
     private readonly PrinterCommandService _printerCommandService;
+    private readonly PrintStopService _printStopService;
 
     public IndexModel(PrinterQueryService printerQueryService,
                       PrusaConnectService prusaConnectService,
@@ -43,7 +44,8 @@ public class IndexModel : PageModel
                       UserManager<HSUser> userManager,
                       IOptions<PrusaConnectOptions> options,
                       PrinterConnectionRegistry connectionRegistry,
-                      PrinterCommandService printerCommandService)
+                      PrinterCommandService printerCommandService,
+                      PrintStopService printStopService)
     {
         _printerQueryService = printerQueryService;
         _prusaConnectService = prusaConnectService;
@@ -53,6 +55,7 @@ public class IndexModel : PageModel
         _options = options.Value;
         _connectionRegistry = connectionRegistry;
         _printerCommandService = printerCommandService;
+        _printStopService = printStopService;
     }
 
     public IReadOnlyList<PrinterRow> Printers { get; private set; } = [];
@@ -147,12 +150,29 @@ public class IndexModel : PageModel
         return SendCommandAsync(printerId, new ResumePrint(), cancellationToken);
     }
 
+    /// <summary>Stops whatever this printer is running.</summary>
+    /// <remarks>
+    /// Through <see cref="PrintStopService"/> rather than straight to
+    /// <see cref="PrinterCommandService"/>, unlike the two buttons above it: a stop is the one whose
+    /// cause the printer cannot report afterwards, so who pressed it is noted as it is sent.
+    /// </remarks>
     public Task<IActionResult> OnPostStopAsync(int printerId, CancellationToken cancellationToken)
     {
-        return SendCommandAsync(printerId, new StopPrint(), cancellationToken);
+        return SendCommandAsync(printerId, new StopPrint(), cancellationToken, _printStopService.StopAsync);
     }
 
-    private async Task<IActionResult> SendCommandAsync(int printerId, ISendableCommand command, CancellationToken cancellationToken)
+    /// <summary>
+    /// Sends a command on behalf of the signed-in user and reports how it went in
+    /// <see cref="StatusMessage"/>.
+    /// </summary>
+    /// <remarks>
+    /// <b><c>send</c> is how it goes out</b>, for the one button needing more than
+    /// <see cref="PrinterCommandService"/> alone. Null is the ordinary path. A replacement throws the
+    /// same exceptions and returns the same <see cref="CommandOutcome"/>, so the reporting below is
+    /// unchanged either way.
+    /// </remarks>
+    private async Task<IActionResult> SendCommandAsync(int printerId, ISendableCommand command,
+        CancellationToken cancellationToken, Func<int, long, CancellationToken, Task<CommandOutcome?>>? send = null)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
@@ -164,7 +184,16 @@ public class IndexModel : PageModel
 
         try
         {
-            CommandOutcome? outcome = await _printerCommandService.SendCommandAsync(printerId, command, user.Id, cancellationToken);
+            CommandOutcome? outcome;
+
+            if (send is null)
+            {
+                outcome = await _printerCommandService.SendCommandAsync(printerId, command, user.Id, cancellationToken);
+            }
+            else
+            {
+                outcome = await send(printerId, user.Id, cancellationToken);
+            }
 
             // Null means the command was written and no answer is expected of it - success. Only the
             // three buttons on this page reach here, and all of them are answered, so this is a

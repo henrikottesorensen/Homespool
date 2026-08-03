@@ -258,7 +258,7 @@ namespace Homespool.Data.Migrations
                     b.Property<long>("StartedAt")
                         .HasColumnType("INTEGER");
 
-                    b.Property<bool>("StoppedByUs")
+                    b.Property<long?>("StoppedByUserId")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");

@@ -451,6 +451,17 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
 
             // No foreign key to PrintFile, deliberately: this records a name and a digest rather than
             // pointing at a row, so a renamed or deleted file leaves history intact. See PrintJob.
+
+            // Nor to HSUser, for QueuedByUserId or StoppedByUserId - but for a different reason than
+            // the one above, and the difference is worth keeping straight. Those two are genuinely
+            // pointers rather than copied values, so "a record, not a pointer" does not carry here.
+            // What carries is that an account is never hard deleted (Henrik, 2026-08-03: deactivate,
+            // do not delete, or history starts losing its subjects), so neither column can dangle.
+            //
+            // And no delete behaviour would be right if one ever were: cascade erases the history,
+            // restrict blocks the deletion, and set-null is the worst of the three on StoppedByUserId,
+            // where null already means "stopped at the panel" and nulling it would rewrite what
+            // happened rather than admit the account is gone.
         });
     }
 }

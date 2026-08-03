@@ -68,6 +68,28 @@ public class DetailModel : PageModel
     /// <summary>Finished prints, newest first.</summary>
     public IReadOnlyList<PrintJob> History { get; private set; } = [];
 
+    /// <summary>Usernames for whoever stopped any of <see cref="History"/>, keyed by user id.</summary>
+    public IReadOnlyDictionary<long, string> StopperNames { get; private set; } = new Dictionary<long, string>();
+
+    /// <summary>
+    /// How a stopped print says who stopped it - the qualifier after the outcome, never on its own.
+    /// </summary>
+    /// <remarks>
+    /// <b>Three cases, and the middle one is why this is not a boolean.</b> A null
+    /// <see cref="PrintJob.StoppedByUserId"/> means the panel; an id we can name means a person here;
+    /// an id we cannot means a person here whose account is no longer readable, which is worth saying
+    /// out loud rather than quietly rendering as the panel.
+    /// </remarks>
+    public string StoppedByDescription(PrintJob job)
+    {
+        if (job.StoppedByUserId is not { } stopper)
+        {
+            return "at the printer";
+        }
+
+        return StopperNames.TryGetValue(stopper, out string? name) ? $"by {name}" : "from here";
+    }
+
     /// <summary>
     /// Why the queue is held, or null. <b>The reason this page needed history at all</b> - the loop
     /// can hold indefinitely on a full drive, and until something showed this, a hold was
@@ -130,6 +152,7 @@ public class DetailModel : PageModel
         Queue = await _queueService.ListAsync(statistics.Printer.Id, user.Id, cancellationToken);
         ActivePrint = await _historyService.GetActiveAsync(statistics.Printer.Id, user.Id, cancellationToken);
         History = await _historyService.ListAsync(statistics.Printer.Id, user.Id, cancellationToken);
+        StopperNames = await _historyService.GetStopperNamesAsync(History, cancellationToken);
         HoldReason = await _historyService.GetHoldReasonAsync(statistics.Printer.Id, user.Id, cancellationToken);
 
         QueueSnapshot snapshot = await _snapshots.ReadAsync(statistics.Printer.Id, cancellationToken);

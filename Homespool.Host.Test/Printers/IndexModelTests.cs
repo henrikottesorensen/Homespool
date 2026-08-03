@@ -126,7 +126,9 @@ public sealed class IndexModelTests : IDisposable
             users,
             Options.Create(options),
             connectionRegistry,
-            new PrinterCommandService(context, new TeamService(context), connectionRegistry))
+            new PrinterCommandService(context, new TeamService(context), connectionRegistry),
+            new PrintStopService(context, new PrinterCommandService(context, new TeamService(context), connectionRegistry),
+                NullLogger<PrintStopService>.Instance))
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };

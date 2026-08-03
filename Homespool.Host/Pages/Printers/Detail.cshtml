@@ -195,6 +195,14 @@ else
                         System.Globalization.CultureInfo.InvariantCulture)</td>
                     <td>
                         @job.Outcome
+                        @* A stop says who, because the printer cannot: it reports the same state
+                           change whether somebody pressed stop here or on the panel. *@
+                        @if (job.Outcome == Homespool.Model.PrintOutcome.Stopped)
+                        {
+                            <br />
+
+                            <span class="text-muted">@Model.StoppedByDescription(job)</span>
+                        }
                         @* Firmware's own words, and the only place a refused print explains itself.
                            Without this a queued print that never ran left nothing a person could read. *@
                         @if (job.Reason is { } reason)

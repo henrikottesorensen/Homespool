@@ -28,8 +28,14 @@ a {
 }
 
 /* Lighter link colour under Bootstrap's dark colour mode, for contrast on a dark background.
-   Same hue as the brand, lifted until it is legible on a dark ground. */
-[data-bs-theme="dark"] a {
+   Same hue as the brand, lifted until it is legible on a dark ground.
+
+   :where() so the theme selector adds no specificity. Written plainly as
+   [data-bs-theme="dark"] a this outranks Bootstrap's own .nav-link and .navbar-brand, and the
+   navbar turns blue in dark mode while staying Bootstrap's grey in light - the two modes
+   disagreeing about chrome that is not ours to colour. Matching the bare `a` rule above keeps
+   both modes behaving the same way. */
+:where([data-bs-theme="dark"]) a {
   color: #75b9e6;
 }
 

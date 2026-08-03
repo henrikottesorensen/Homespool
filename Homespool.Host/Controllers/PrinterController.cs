@@ -63,6 +63,7 @@ public class PrinterController : ControllerBase
     private readonly UserFileStore _files;
     private readonly PrintFileSender _sender;
     private readonly PrinterCommandService _commands;
+    private readonly PrintStopService _stops;
     private readonly PrinterQueryService _printers;
     private readonly UserManager<HSUser> _userManager;
     private readonly ILogger<PrinterController> _logger;
@@ -70,6 +71,7 @@ public class PrinterController : ControllerBase
     public PrinterController(UserFileStore files,
                              PrintFileSender sender,
                              PrinterCommandService commands,
+                             PrintStopService stops,
                              PrinterQueryService printers,
                              UserManager<HSUser> userManager,
                              ILogger<PrinterController> logger)
@@ -77,6 +79,7 @@ public class PrinterController : ControllerBase
         _files = files;
         _sender = sender;
         _commands = commands;
+        _stops = stops;
         _printers = printers;
         _userManager = userManager;
         _logger = logger;
@@ -360,15 +363,32 @@ public class PrinterController : ControllerBase
     }
 
     /// <summary>Stops a running print. <c>PUT /api/v1/printers/{uuid}/command/stop</c>.</summary>
+    /// <remarks>
+    /// <b>The one job-control verb that does not go straight to <see cref="PrinterCommandService"/>.</b>
+    /// A stop is the only one of the six whose cause cannot be recovered afterwards - the printer
+    /// reports the same state change whoever asked - so it goes through
+    /// <see cref="PrintStopService"/>, which notes who did before the answer comes back. Everything
+    /// else about the call is unchanged, refusals included.
+    /// </remarks>
     [HttpPut]
     [Route("printers/{uuid:guid}/command/stop")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public Task<ActionResult> Stop(Guid uuid, CancellationToken cancellationToken)
+    public async Task<ActionResult> Stop(Guid uuid, CancellationToken cancellationToken)
     {
-        return SendJobControlAsync(uuid, new StopPrint(), cancellationToken);
+        // Which printer, and whether this caller may be told it exists.
+        (Printer? printer, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+
+        if (printer is null)
+        {
+            return failure!;
+        }
+
+        // The one difference from the other five verbs: PrintStopService sends the same command
+        // through the same permission gate, and notes who asked on the way past.
+        return await SendAsync(printer, new StopPrint(), cancellationToken, send: _stops.StopAsync);
     }
 
     /// <summary>
@@ -446,19 +466,43 @@ public class PrinterController : ControllerBase
 
         // Null covers both "no such printer" and "not visible to this user", deliberately - telling
         // them apart would confirm the existence of other people's printers.
-        return printer is null ? (null, NotFound()) : (printer, null);
+        if (printer is null)
+        {
+            return (null, NotFound());
+        }
+
+        return (printer, null);
     }
 
+    /// <summary>
+    /// Sends a command and turns the printer's answer into a status code.
+    /// </summary>
+    /// <remarks>
+    /// <b><c>send</c> is how it goes out</b>, for the one verb needing more than
+    /// <see cref="PrinterCommandService"/> alone - see <see cref="Stop"/>. Null is the ordinary path,
+    /// which is every other caller. A replacement throws the same exceptions and returns the same
+    /// <see cref="CommandOutcome"/>, so nothing below that line has to know which one ran.
+    /// </remarks>
     private async Task<ActionResult> SendAsync(Printer printer,
                                                ISendableCommand command,
                                                CancellationToken cancellationToken,
-                                               Action? onFailure = null)
+                                               Action? onFailure = null,
+                                               Func<int, long, CancellationToken, Task<CommandOutcome?>>? send = null)
     {
         HSUser user = (await _userManager.GetUserAsync(User))!;
 
         try
         {
-            CommandOutcome? outcome = await _commands.SendCommandAsync(printer.Id, command, user.Id, cancellationToken);
+            CommandOutcome? outcome;
+
+            if (send is null)
+            {
+                outcome = await _commands.SendCommandAsync(printer.Id, command, user.Id, cancellationToken);
+            }
+            else
+            {
+                outcome = await send(printer.Id, user.Id, cancellationToken);
+            }
 
             // A null outcome is a command the printer cannot answer, written successfully - nothing
             // to inspect, and 204 is the honest result. None of this controller's commands are of

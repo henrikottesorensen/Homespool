@@ -36,9 +36,7 @@ namespace Homespool.Host.Controllers;
 [ApiController]
 [Route("/api/v1")]
 [Authorize(Policy = Authorisation.Policies.Api)]
-
-// 401 is the auth policy's, not any action's - an unauthenticated caller never reaches one.
-[ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+[ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)] // 401 is the auth policy's, not any action's - an unauthenticated caller never reaches one.
 public class PrinterAppController : ControllerBase
 {
     private readonly PrusaConnectService _prusaConnectService;

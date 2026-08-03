@@ -46,7 +46,10 @@ public enum PrintOutcome
     /// <summary>The printer reached its finished screen.</summary>
     Finished,
 
-    /// <summary>Cancelled - by us or at the panel, which <c>PrintJob.StoppedByUs</c> tells apart.</summary>
+    /// <summary>
+    /// Cancelled - here or at the panel, which <c>PrintJob.StoppedByUserId</c> tells apart, naming
+    /// the person when it was here.
+    /// </summary>
     Stopped,
 
     /// <summary>Refused, or ended somewhere nothing else explains. <c>PrintJob.Reason</c> says what.</summary>

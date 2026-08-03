@@ -45,8 +45,11 @@ public class PrintQueueService
     private readonly TimeProvider _timeProvider;
     private readonly QueueSignal _signal;
 
-    public PrintQueueService(HSDbContext dbContext, TeamService teamService, PrintFileCatalog files,
-        TimeProvider timeProvider, QueueSignal signal)
+    public PrintQueueService(HSDbContext dbContext,
+                             TeamService teamService,
+                             PrintFileCatalog files,
+                             TimeProvider timeProvider,
+                             QueueSignal signal)
     {
         _dbContext = dbContext;
         _teamService = teamService;
@@ -60,8 +63,9 @@ public class PrintQueueService
     /// </summary>
     /// <exception cref="PrinterNotFoundException">No printer has that id.</exception>
     /// <exception cref="TeamAccessDeniedException">Caller lacks <c>CanRead</c> on the printer's team.</exception>
-    public async Task<IReadOnlyList<QueuedPrint>> ListAsync(int printerId, long userId,
-        CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<QueuedPrint>> ListAsync(int printerId,
+                                                            long userId,
+                                                            CancellationToken cancellationToken)
     {
         await AuthoriseAsync(printerId, userId, requireUse: false, cancellationToken);
 
@@ -85,8 +89,10 @@ public class PrintQueueService
     /// ordinary thing to want, and the loop transfers the bytes once regardless because the transfer
     /// belongs to <i>(file, printer)</i> rather than to the entry.
     /// </remarks>
-    public async Task<QueuedPrint> EnqueueAsync(int printerId, long userId, string fileName,
-        CancellationToken cancellationToken)
+    public async Task<QueuedPrint> EnqueueAsync(int printerId,
+                                                long userId,
+                                                string fileName,
+                                                CancellationToken cancellationToken)
     {
         await AuthoriseAsync(printerId, userId, requireUse: true, cancellationToken);
 
@@ -142,8 +148,10 @@ public class PrintQueueService
     /// </para>
     /// </remarks>
     /// <returns>False if there is no such queued print.</returns>
-    public async Task<bool> MoveAsync(long queuedPrintId, long userId, int targetIndex,
-        CancellationToken cancellationToken)
+    public async Task<bool> MoveAsync(long queuedPrintId,
+                                      long userId,
+                                      int targetIndex,
+                                      CancellationToken cancellationToken)
     {
         QueuedPrint? job = await _dbContext.QueuedPrints
                                          .SingleOrDefaultAsync(candidate => candidate.Id == queuedPrintId,
@@ -211,8 +219,10 @@ public class PrintQueueService
     /// Reads the printer to find its team, exactly as <c>PrinterCommandService</c> does - permission
     /// belongs to the printer's team rather than to the queue, so there is nothing new to grant.
     /// </remarks>
-    private async Task AuthoriseAsync(int printerId, long userId, bool requireUse,
-        CancellationToken cancellationToken)
+    private async Task AuthoriseAsync(int printerId,
+                                      long userId,
+                                      bool requireUse,
+                                      CancellationToken cancellationToken)
     {
         Printer? printer = await _dbContext.Printers
                                            .AsNoTracking()

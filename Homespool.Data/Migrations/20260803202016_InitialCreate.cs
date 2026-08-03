@@ -437,7 +437,7 @@ namespace Homespool.Data.Migrations
                     EndedAt = table.Column<long>(type: "INTEGER", nullable: true),
                     FirmwareJobId = table.Column<int>(type: "INTEGER", nullable: true),
                     Outcome = table.Column<string>(type: "TEXT", nullable: false),
-                    StoppedByUs = table.Column<bool>(type: "INTEGER", nullable: false),
+                    StoppedByUserId = table.Column<long>(type: "INTEGER", nullable: true),
                     Reason = table.Column<string>(type: "TEXT", nullable: true)
                 },
                 constraints: table =>

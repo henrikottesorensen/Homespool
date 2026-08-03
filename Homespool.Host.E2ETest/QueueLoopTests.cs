@@ -1,6 +1,9 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
@@ -379,6 +382,100 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         _factory.Services.GetRequiredService<PrusaConnect.PrinterConnectionRegistry>();
 
     /// <summary>The fake's socket, over the test server's printer listener - where /p/ws lives.</summary>
+    /// <summary>
+    /// A stop made through Homespool is recorded as ours, with the account that asked.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Driven over HTTP rather than through the service</b>, because the endpoint is where the
+    /// defect was: <c>PrintJob.StoppedByUserId</c> had no writer while this route could already send
+    /// <c>STOP_PRINT</c>, so every stop made here was recorded as one made at the panel. Calling
+    /// <c>PrintStopService</c> directly would prove the writing rule and miss the wiring, which was
+    /// the whole bug.
+    /// </para>
+    /// <para>
+    /// The stop and the close are deliberately separate steps here, as they are on hardware:
+    /// <c>STOP_PRINT</c> is answered the moment the abort is accepted, and the row is closed later
+    /// from telemetry - so the attribution has to survive the gap rather than be written into the
+    /// close.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AStopMadeHereIsRecordedAgainstWhoeverAskedForIt()
+    {
+        // Arrange - a printer part-way through a print
+        (PrinterIdentity identity, string token, int printerId, long userId) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        await using FakePrinterClient fake = new(identity, TimeProvider.System, FastTelemetry()) { Token = token };
+        await fake.ConnectAsync(ConnectAsync, TestContext.Current.CancellationToken);
+        Task run = fake.RunAsync(TestContext.Current.CancellationToken);
+
+        (await WaitUntilAsync(() => Task.FromResult(Registry.IsConnected(printerId)), TimeSpan.FromSeconds(10)))
+            .Should().BeTrue();
+
+        await UploadAsync(userId, "abandoned.bgcode");
+        await EnqueueAsync(printerId, userId, "abandoned.bgcode");
+
+        await AdvanceAsync(printerId);
+        (await WaitUntilAsync(async () => await ArrivedAsync(printerId), TimeSpan.FromSeconds(30))).Should().BeTrue();
+
+        fake.Device.TrySetReady().Should().BeTrue();
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Ready), TimeSpan.FromSeconds(30)))
+            .Should().BeTrue();
+
+        await AdvanceAsync(printerId);
+        (await WaitUntilAsync(async () => await OutcomeIsAsync(printerId, PrintOutcome.Printing),
+            TimeSpan.FromSeconds(30))).Should().BeTrue();
+
+        // Act - stop it the way a person would, over the API
+        using HttpClient client = _factory.CreateClient(
+            new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer",
+            await IssueTokenAsync(userId));
+
+        using HttpResponseMessage response = await client.PutAsync(
+            $"/api/v1/printers/{await UuidAsync(printerId)}/command/stop", content: null,
+            TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        // Assert - the printer really stopped, the row closed as Stopped, and it names who asked
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Stopped), TimeSpan.FromSeconds(30)))
+            .Should().BeTrue();
+
+        await AdvanceAsync(printerId);
+
+        PrintJob stopped = await SingleJobAsync(printerId);
+        stopped.Outcome.Should().Be(PrintOutcome.Stopped);
+        stopped.EndedAt.Should().NotBeNull();
+        stopped.StoppedByUserId.Should().Be(userId,
+            "a stop made here and one made at the panel are the same state change, so this is the only record of which it was");
+
+        await EndRunAsync(fake, run);
+    }
+
+    private async Task<string> IssueTokenAsync(long userId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        (_, string plaintext) = await scope.ServiceProvider.GetRequiredService<ApiTokenService>()
+                                           .CreateAsync(userId, "e2e", TestContext.Current.CancellationToken);
+
+        return plaintext;
+    }
+
+    private async Task<Guid> UuidAsync(int printerId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        return await scope.ServiceProvider.GetRequiredService<HSDbContext>()
+                          .Printers.Where(printer => printer.Id == printerId)
+                          .Select(printer => printer.Uuid)
+                          .SingleAsync(TestContext.Current.CancellationToken);
+    }
+
     private async Task<WebSocket> ConnectAsync(FakePrinterConnectRequest request,
         CancellationToken cancellationToken)
     {

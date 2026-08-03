@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HSDbContext))]
-    [Migration("20260803181703_InitialCreate")]
+    [Migration("20260803202016_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -261,7 +261,7 @@ namespace Homespool.Data.Migrations
                     b.Property<long>("StartedAt")
                         .HasColumnType("INTEGER");
 
-                    b.Property<bool>("StoppedByUs")
+                    b.Property<long?>("StoppedByUserId")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");

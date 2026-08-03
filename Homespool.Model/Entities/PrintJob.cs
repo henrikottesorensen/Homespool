@@ -87,14 +87,38 @@ public class PrintJob
     public PrintOutcome Outcome { get; set; }
 
     /// <summary>
-    /// Whether <i>we</i> asked for the stop, as opposed to somebody pressing stop at the printer.
+    /// Who asked for the stop. <b>Null means nobody here did</b> - somebody pressed stop at the
+    /// printer, or the print ended some other way entirely.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Recorded at the time because it cannot be recovered afterwards: a stop we sent and a stop made
     /// at the panel produce an identical state change, and <c>notes/print-queue.md</c> makes the same
     /// point about causation not being inferable from state. Same shape as the id mapping above.
+    /// </para>
+    /// <para>
+    /// <b>Was a <c>bool StoppedByUs</c></b> until 2026-08-03. The id costs the same column and answers
+    /// the question the bool could not - history could say who <i>queued</i> a print
+    /// (<see cref="QueuedByUserId"/>) and not who ended it, which is the more interesting half on a
+    /// printer several people share.
+    /// </para>
+    /// <para>
+    /// <b>And it is written when the command is sent, not when the print closes.</b>
+    /// <c>STOP_PRINT</c>'s ack means <i>queued</i> rather than <i>stopped</i> - firmware posts it to
+    /// Marlin and answers <c>FINISHED</c> immediately - so by the time telemetry reports the print
+    /// over, seconds later, nothing is left to say who caused it.
+    /// </para>
+    /// <para>
+    /// <b>No foreign key, like <see cref="QueuedByUserId"/> beside it.</b> An account is never hard
+    /// deleted (Henrik, 2026-08-03: deactivate, do not delete, or history starts losing its subjects),
+    /// so nothing here can dangle and an FK would guard against an operation that does not exist. It
+    /// would also have nothing safe to do if one ever did: cascade erases history, restrict blocks the
+    /// deletion outright, and set-null is worse than either here - null is not "unknown" on this
+    /// column, it means <i>stopped at the panel</i>, so nulling it would quietly turn somebody's stop
+    /// into a different account of what happened.
+    /// </para>
     /// </remarks>
-    public bool StoppedByUs { get; set; }
+    public long? StoppedByUserId { get; set; }
 
     /// <summary>
     /// Firmware's own words, when a print ended badly or never began - e.g. <c>Forbidden path</c>.

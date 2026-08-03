@@ -355,6 +355,12 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         // reaches a log is the silent stall the design rejected twice.
         (await HoldReasonAsync(printerId, userId)).Should().Contain("Not enough space");
 
+        // And the loop's own decision agrees with the banner rather than reporting a transfer that
+        // cannot happen - the contradiction that putting the block in the snapshot removed.
+        QueueAction blocked = await DecideAsync(printerId);
+        blocked.Kind.Should().Be(QueueActionKind.Wait);
+        blocked.Reason.Should().Be(QueueWaitReason.InsufficientSpace);
+
         // Act - somebody frees space. The block is re-checked on its own timer, so this drives the
         // recheck directly rather than waiting a minute for it.
         fake.Device.FreeSpace = 64L * 1024 * 1024;
@@ -449,6 +455,17 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
 
         return await scope.ServiceProvider.GetRequiredService<PrintHistoryService>()
                           .GetHoldReasonAsync(printerId, userId, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>What the loop would do right now - the same question the page and the API ask.</summary>
+    private async Task<QueueAction> DecideAsync(int printerId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        QueueSnapshot snapshot = await scope.ServiceProvider.GetRequiredService<QueueSnapshotReader>()
+                                            .ReadAsync(printerId, TestContext.Current.CancellationToken);
+
+        return QueueRules.Decide(snapshot);
     }
 
     private async Task<int> JobCountAsync(int printerId)

@@ -286,6 +286,7 @@ public static class Program
             builder.Services.AddScoped<Services.PrinterQueryService>();
             builder.Services.AddScoped<PrintQueueService>();
             builder.Services.AddScoped<Services.PrintHistoryService>();
+            builder.Services.AddScoped<Queue.QueueSnapshotReader>();
 
             // The producer loop and the poke that saves it waiting out a tick. Singletons: the signal
             // is process-wide by nature, and the advancer opens its own scope per pass because a

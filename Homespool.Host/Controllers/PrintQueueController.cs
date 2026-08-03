@@ -45,13 +45,15 @@ namespace Homespool.Host.Controllers;
 public class PrintQueueController : ControllerBase
 {
     private readonly PrintQueueService _queue;
+    private readonly QueueSnapshotReader _snapshots;
     private readonly PrinterQueryService _printers;
     private readonly UserManager<HSUser> _userManager;
 
-    public PrintQueueController(PrintQueueService queue, PrinterQueryService printers,
-        UserManager<HSUser> userManager)
+    public PrintQueueController(PrintQueueService queue, QueueSnapshotReader snapshots,
+        PrinterQueryService printers, UserManager<HSUser> userManager)
     {
         _queue = queue;
+        _snapshots = snapshots;
         _printers = printers;
         _userManager = userManager;
     }
@@ -61,7 +63,7 @@ public class PrintQueueController : ControllerBase
     /// </summary>
     [HttpGet]
     [Route("printers/{uuid:guid}/queue")]
-    [ProducesResponseType<IReadOnlyList<QueuedPrintReadDTO>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<PrintQueueReadDTO>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<IReadOnlyList<QueuedPrintReadDTO>>> List(Guid uuid,
@@ -78,7 +80,15 @@ public class PrintQueueController : ControllerBase
         {
             IReadOnlyList<QueuedPrint> jobs = await _queue.ListAsync(printer.Id, userId, cancellationToken);
 
-            return Ok(jobs.Select(QueuedPrintReadDTO.FromQueuedPrint).ToList());
+            // The same snapshot the loop reads, through the same rules - so a client is told what the
+            // loop actually believes rather than a second opinion computed here.
+            QueueSnapshot snapshot = await _snapshots.ReadAsync(printer.Id, cancellationToken);
+
+            return Ok(new PrintQueueReadDTO
+            {
+                Waiting = QueueWaitDescription.For(QueueRules.Decide(snapshot), snapshot.Head?.FileName),
+                Prints = jobs.Select(QueuedPrintReadDTO.FromQueuedPrint).ToList(),
+            });
         }
         catch (TeamAccessDeniedException)
         {

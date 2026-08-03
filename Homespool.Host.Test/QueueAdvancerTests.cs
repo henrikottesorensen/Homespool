@@ -353,11 +353,16 @@ public sealed class QueueAdvancerTests : IDisposable
         // timestamp, and the file merely has to exist for the loop to get that far.
         services.Configure<PrintFileStorageOptions>(options => options.Directory = _storeRoot);
         services.AddSingleton<IHostEnvironmentAccessor>(new HostEnvironmentAccessor(_storeRoot));
-        services.AddSingleton(TimeProvider.System);
+
+        // The fake clock, not the real one: QueueSnapshotReader resolves TimeProvider from here and
+        // decides transfer staleness with it, so registering TimeProvider.System would quietly make
+        // the staleness cases measure wall-clock time and pass for the wrong reason.
+        services.AddSingleton<TimeProvider>(_clock);
+        services.AddScoped<QueueSnapshotReader>();
         services.AddSingleton<UserFileStore>();
         services.AddScoped<PrintFileCatalog>();
         services.AddSingleton<ITransferOffers>(
-            new TransferOfferStore(TimeProvider.System, NullLogger<TransferOfferStore>.Instance));
+            new TransferOfferStore(_clock, NullLogger<TransferOfferStore>.Instance));
         services.AddScoped<PrintFileSender>();
         services.AddLogging();
 

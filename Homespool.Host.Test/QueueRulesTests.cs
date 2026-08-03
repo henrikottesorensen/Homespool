@@ -208,6 +208,67 @@ public class QueueRulesTests
         action.Kind.Should().Be(QueueActionKind.Transfer);
     }
 
+    /// <summary>
+    /// A blocked file beats the transfer branch, which is the whole reason the block is in the
+    /// snapshot at all.
+    /// </summary>
+    /// <remarks>
+    /// The block is enforced in the advancer's transfer path, so the rules used to answer
+    /// <c>Transfer</c> for a file that could not fit. Harmless while nothing read the decision - and
+    /// the moment a page did, it would have said "sending" directly above a banner saying it could not
+    /// be sent.
+    /// </remarks>
+    [Fact]
+    public void ABlockedFileIsNotReportedAsAboutToBeSent()
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(PrinterStatus.Ready, arrived: false, path: null) with
+            {
+                BlockedReason = "Not enough space on the printer: needs 4096 bytes, 12 free.",
+            });
+
+        action.Kind.Should().Be(QueueActionKind.Wait);
+        action.Reason.Should().Be(QueueWaitReason.InsufficientSpace);
+    }
+
+    /// <summary>And it holds whatever the printer is doing - the drive is full either way.</summary>
+    [Theory]
+    [MemberData(nameof(AllStates))]
+    public void ABlockedFileHoldsInEveryState(PrinterStatus status)
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(status, arrived: false, path: null) with { BlockedReason = "no room" });
+
+        action.Kind.Should().Be(QueueActionKind.Wait);
+        action.Reason.Should().Be(QueueWaitReason.InsufficientSpace);
+    }
+
+    /// <summary>
+    /// The page stays quiet where something else already speaks: an active print announces itself, and
+    /// the space banner carries its own numbers.
+    /// </summary>
+    [Theory]
+    [InlineData(QueueWaitReason.Transferring, true)]
+    [InlineData(QueueWaitReason.AwaitingPrinterPath, true)]
+    [InlineData(QueueWaitReason.PrinterNotAvailable, true)]
+    [InlineData(QueueWaitReason.InsufficientSpace, false)]
+    [InlineData(QueueWaitReason.PrintStarting, false)]
+    public void OnlyTheReasonsNothingElseCoversGetASentence(QueueWaitReason reason, bool expected)
+    {
+        string? sentence = QueueWaitDescription.For(QueueAction.Wait(reason), "benchy.bgcode");
+
+        (sentence is not null).Should().Be(expected);
+    }
+
+    /// <summary>A queue that is moving needs no explanation at all.</summary>
+    [Fact]
+    public void AnActionThatIsNotAWaitSaysNothing()
+    {
+        QueueWaitDescription.For(QueueAction.Nothing, "benchy.bgcode").Should().BeNull();
+        QueueWaitDescription.For(QueueAction.Print(new QueueHead(1, 2, "a.bgcode", true, "/usb/A~1.BGC")), "a.bgcode")
+                            .Should().BeNull();
+    }
+
     private static QueueSnapshot Situation(PrinterStatus status, bool arrived, string? path)
     {
         return new QueueSnapshot(

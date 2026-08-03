@@ -241,31 +241,29 @@ public sealed class QueueAdvancer : BackgroundService
                                                 .SingleOrDefaultAsync(state => state.PrinterId == printerId,
                                                     cancellationToken);
 
-        PrintJob? active = await ReconcilePrintAsync(dbContext, printerId, live, cancellationToken);
+        await ReconcilePrintAsync(dbContext, printerId, live, cancellationToken);
 
-        QueuedPrint? head = await dbContext.QueuedPrints
-                                           .Include(queued => queued.PrintFile)
-                                           .Where(queued => queued.PrinterId == printerId)
-                                           .OrderBy(queued => queued.Position)
-                                           .ThenBy(queued => queued.Id)
-                                           .FirstOrDefaultAsync(cancellationToken);
+        // Asked of the shared reader rather than assembled here, so that anything explaining the loop
+        // to a person is answering the same question the loop asked. Two builders would agree on the
+        // day they were written and drift afterwards.
+        QueueSnapshot snapshot = await scope.ServiceProvider
+                                            .GetRequiredService<QueueSnapshotReader>()
+                                            .ReadAsync(printerId, cancellationToken);
 
-        if (head?.PrintFile is null)
+        if (snapshot.Head is null)
         {
             return;
         }
 
+        // Tracked, unlike the reader's copy, because this one may be removed or have its file sent.
+        QueuedPrint head = await dbContext.QueuedPrints
+                                          .Include(queued => queued.PrintFile)
+                                          .SingleAsync(queued => queued.Id == snapshot.Head.QueuedPrintId,
+                                              cancellationToken);
+
         PrintFileOnPrinter? onPrinter = await dbContext.PrintFilesOnPrinters
             .SingleOrDefaultAsync(row => row.PrinterId == printerId && row.PrintFileId == head.PrintFileId,
                 cancellationToken);
-
-        QueueSnapshot snapshot = new(
-            Connected: _registry.IsConnected(printerId),
-            live?.Status ?? PrinterStatus.Unknown,
-            new QueueHead(head.Id, head.PrintFileId, head.PrintFile.Name,
-                onPrinter?.Arrived ?? false, onPrinter?.PrinterPath),
-            TransferInFlight: IsTransferInFlight(onPrinter),
-            PrintInFlight: active is not null);
 
         QueueAction action = QueueRules.Decide(snapshot);
 
@@ -279,6 +277,16 @@ public sealed class QueueAdvancer : BackgroundService
                 await PrintAsync(scope, dbContext, printerId, head, action.Head!.PrinterPath!, cancellationToken);
                 break;
 
+            case QueueActionKind.Wait when action.Reason == QueueWaitReason.InsufficientSpace:
+                // Routed into the transfer path rather than merely logged, because that path is what
+                // *re-checks* the drive and clears the block - it begins by asking, and only then
+                // sends. Teaching the rules about the block (so a page could not report a transfer
+                // that cannot happen) made this necessary: without it the block is self-perpetuating,
+                // the rules refusing to transfer and nothing left able to discover there is room now.
+                // Caught by the end-to-end test that frees space and expects the queue to resume.
+                await TransferAsync(scope, dbContext, printerId, head, onPrinter, cancellationToken);
+                break;
+
             case QueueActionKind.Wait:
                 _logger.LogDebug("[{PrinterId}] queue holding: {Reason}", printerId, action.Reason);
                 break;
@@ -286,21 +294,6 @@ public sealed class QueueAdvancer : BackgroundService
             default:
                 break;
         }
-    }
-
-    /// <summary>
-    /// Whether a transfer this printer is pulling is still worth waiting for.
-    /// </summary>
-    /// <remarks>
-    /// A stale timestamp reads as "no transfer" rather than "a transfer": the alternative is a queue
-    /// that never advances again after a restart caught one mid-flight, and offering the file a second
-    /// time is harmless - the printer either takes it or answers that its transfer slot is busy, which
-    /// is the same waiting the loop was doing anyway.
-    /// </remarks>
-    private bool IsTransferInFlight(PrintFileOnPrinter? onPrinter)
-    {
-        return onPrinter?.TransferStartedAt is { } startedAt
-            && _timeProvider.GetUtcNow() - startedAt < TransferStaleAfter;
     }
 
     /// <summary>

@@ -9,6 +9,8 @@ namespace Homespool.FakePrinter;
 /// </summary>
 public enum DeviceState
 {
+    Undefined = 0,
+
     /// <summary>Powered on, nothing happening.</summary>
     Idle,
 

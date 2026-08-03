@@ -3,6 +3,8 @@ namespace Homespool.Host.Services;
 /// <summary>What is wrong with how this deployment is reachable, if anything.</summary>
 public enum ExposureState
 {
+    Undefined = 0,
+
     /// <summary>Nothing to report.</summary>
     Ok,
 

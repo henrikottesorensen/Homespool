@@ -2,6 +2,7 @@ namespace Homespool.Host.PrusaConnect.Commands;
 
 public enum PropertyName
 {
+    Undefined = 0,
     HostName,
     EnclosureEnabled,
     EnclosurePrintingFiltration,

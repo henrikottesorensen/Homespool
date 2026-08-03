@@ -5,6 +5,8 @@ namespace Homespool.Host.Services;
 /// <summary>What, if anything, to send about the current health status.</summary>
 public enum AlertAction
 {
+    Undefined = 0,
+
     /// <summary>Nothing has changed that an administrator needs told.</summary>
     None,
 

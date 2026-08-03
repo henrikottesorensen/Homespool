@@ -5,6 +5,8 @@ namespace Homespool.Host.Certificates;
 /// </summary>
 public enum PrinterCertificateState
 {
+    Undefined = 0,
+
     /// <summary>The certificate covers what printers are told to dial, and is not near expiry.</summary>
     Ok,
 

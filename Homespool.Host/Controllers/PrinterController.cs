@@ -114,8 +114,8 @@ public class PrinterController : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public async Task<ActionResult> SendFile(Guid uuid,
-                                              [FromBody] SendFileRequest body,
-                                              CancellationToken cancellationToken)
+                                             [FromBody] SendFileRequest body,
+                                             CancellationToken cancellationToken)
     {
         HSUser? caller = await _userManager.GetUserAsync(User);
 

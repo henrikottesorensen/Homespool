@@ -637,5 +637,12 @@ how it fits together, and what a Pi 3B's radio will and will not do.
 
 ## License
 
+Copyright (C) 2025-2026 Henrik O. Sørensen
+
 [GNU Affero General Public License v3.0](LICENSE.md). If you run a modified version as a
 network service, the AGPL requires you to offer that version's source to its users.
+
+The notice lives here rather than in `LICENSE.md`, which is the licence text itself and is kept
+verbatim — editing it would make it something other than the AGPL it claims to be. The AGPL's own
+"how to apply these terms" asks for a copyright line and a pointer to the full notice, which is
+what this section is.

@@ -1,6 +1,6 @@
 # Homespool
 
-A self-hosted alternative to Prusa Connect. Your models stay on your own server.
+A self-hosted 3D printer spooler. Your models stay on your own server.
 
 Homespool speaks the Prusa Connect protocol, so a Prusa printer can be pointed at your
 own machine instead of `connect.prusa3d.com` — no cloud account, and nothing about what you
@@ -14,8 +14,8 @@ A work in progress. A printer enrols, connects, and streams telemetry that is **
 shown back to you; Pause, Resume and Stop are sent from the web UI and answered by the printer
 itself.
 
-What it is not is finished. The per-printer view is plain tables rather than charts, most of
-the protocol's commands are unimplemented, and there is no queue.
+What it is not is finished. The per-printer view is plain tables rather than charts, and most of
+the protocol's commands are unimplemented.
 
 **What works**
 
@@ -27,21 +27,25 @@ the protocol's commands are unimplemented, and there is no queue.
 - **Telemetry persistence** — live state, history samples and events, batched into SQLite,
   with a retention sweep that ages samples out and a shutdown path that drains rather than
   drops what it is holding.
-- **A per-printer page** — live state, the most recent samples and the most recent events.
+- **A per-printer page** — live state, the queue, print history, and the most recent samples
+  and events.
+- **A print queue** — one shared queue per printer, advanced by a loop that sends the next file,
+  waits for the printer to take it, and starts the print. When it cannot proceed it **holds and
+  says why** rather than skipping ahead.
+- **Print history** — every print recorded, including the ones that never started.
 - **Commands** — Pause, Resume and Stop, correlated back to the printer's own answer, so a
   refusal surfaces the printer's reason rather than a guess.
-- **Print files** — upload, rename, delete, and send to a printer.
+- **Print files** — upload, rename, delete, queue, or send straight to a printer; plus a view of
+  what is already on the printer's own drive and USB stick.
 - **A JSON API** at `/api/v1`, authenticated by sign-in cookie **or** personal access token.
 - **Health checks and alerting** — `/health`, an administrator banner, and email when a check
   starts failing.
 
 **What does not work yet**
 
-- **No print queue.** A file is sent to a printer one at a time, by hand; nothing lines jobs
-  up or starts the next one.
-- **Most commands are not wired.** Six of the roughly thirty command types can actually be
-  sent, and three of those have buttons. The rest are markers, and nothing maps arbitrary
-  *incoming* JSON to a command type — no file transfer, no `GCode`, no remote start.
+- **Most commands are not wired.** Six of the roughly thirty command types can actually be sent
+  — all six over the API, three of them as buttons. The rest are markers, and nothing maps
+  arbitrary *incoming* JSON to a command type, so there is no `GCode` and no dialog handling.
 - **No charts, and nothing updates itself.** The per-printer page renders on load and stays
   as it is until you reload it.
 - **No password reset without SMTP.** With no mail server configured, a forgotten password
@@ -319,6 +323,56 @@ DELETE /api/v1/files/{fileName}      delete
 Deliberately missing, rather than forgotten: no deduplication, no expiry — a file stays until
 you delete it — and no transfer progress on the page, which would need per-file telemetry and
 polling that does not exist anywhere in this app yet.
+
+Sending a file to a printer and printing it are **separate calls**, because a file can be on a
+printer without this server having put it there:
+
+```
+POST /api/v1/printers/{uuid}/files                 send one of your files to the printer
+GET  /api/v1/printers/{uuid}/storage/usb/{path}    browse the printer's USB stick
+POST /api/v1/printers/{uuid}/print                 print a path already on the printer
+```
+
+The send answers as soon as the printer *accepts* the transfer, not when it finishes — the
+printer then pulls the bytes at its own pace, and a full-size model takes minutes. Watch
+`TRANSFER_FINISHED` or the transfer fields in telemetry. Browsing the stick is gated on `CanUse`
+rather than `CanRead`, since reading it means making the printer go and do work.
+
+---
+
+## Print queue
+
+Each printer has **one queue, shared by everyone** who can use it — not a queue per person. A
+background loop watches the front of it and does the obvious thing: send the file, wait for the
+printer to confirm it has it, start the print, move on.
+
+`CanUse` on the printer's team lets you add, reorder and cancel entries; `CanRead` lets you watch
+one. The queue is on the printer's page, on the Files page, and at:
+
+```
+GET    /api/v1/printers/{uuid}/queue                    the queue, in order
+POST   /api/v1/printers/{uuid}/queue                    add a file to the back
+PATCH  /api/v1/printers/{uuid}/queue/{id}               move it
+DELETE /api/v1/printers/{uuid}/queue/{id}               take it out
+```
+
+**When the loop cannot proceed it holds and says why**, rather than skipping to something that
+would work. That is the spooler behaviour rather than a limitation: a queue that quietly reorders
+itself around an obstacle is a queue you cannot reason about. The reasons it will give you:
+
+| it says | what is happening |
+|---|---|
+| Sending *file* to the printer | a transfer is in flight — firmware allows only one at a time |
+| Waiting for the printer to confirm the file | the bytes arrived, but no `FILE_INFO` has named a path to print |
+| Waiting for the printer to be made ready | the printer is not `Ready` — **including a finished print nobody has cleared** |
+| *(insufficient space)* | the file at the front will not fit on the drive; the queue waits for someone to free space |
+
+The middle two are transient and clear themselves. The other two want a human: someone to take
+the print off the bed, or to delete something.
+
+**Print history** sits beside the queue on the same page. Every print is recorded, including the
+ones that never started, with the file's name as it was at the time rather than a pointer to a
+file that may since have been renamed or deleted.
 
 ---
 

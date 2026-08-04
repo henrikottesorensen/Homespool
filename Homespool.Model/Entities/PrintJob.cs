@@ -103,7 +103,19 @@ public class PrintJob
     /// </remarks>
     public int? FirmwareJobId { get; set; }
 
-    public PrintOutcome Outcome { get; set; }
+    /// <summary>
+    /// Where this print has got to, or how it ended - the two being the same field, because a row
+    /// exists throughout.
+    /// </summary>
+    /// <remarks>
+    /// <b>Was <c>Outcome</c> until 2026-08-04</b>, renamed with its type: a property called
+    /// <c>Outcome</c> holding <see cref="PrintState.Starting"/> promised an ending it did not have,
+    /// and <c>active.Outcome == Starting</c> is the sentence that gave it away. Paired with
+    /// <see cref="EndedAt"/>, which is the authority on whether this print is over -
+    /// <see cref="PrintState.Starting"/> and <see cref="PrintState.Printing"/> only ever appear on a
+    /// row whose <see cref="EndedAt"/> is null.
+    /// </remarks>
+    public PrintState State { get; set; }
 
     /// <summary>
     /// Who asked for the stop. <b>Null means nobody here did</b> - somebody pressed stop at the

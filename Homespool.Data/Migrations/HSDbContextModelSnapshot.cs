@@ -239,10 +239,6 @@ namespace Homespool.Data.Migrations
                     b.Property<int?>("FirmwareJobId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("Outcome")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
                     b.Property<int>("PrinterId")
                         .HasColumnType("INTEGER");
 
@@ -257,6 +253,10 @@ namespace Homespool.Data.Migrations
 
                     b.Property<long>("StartedAt")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<long?>("StoppedByUserId")
                         .HasColumnType("INTEGER");

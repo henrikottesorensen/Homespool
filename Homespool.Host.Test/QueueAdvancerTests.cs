@@ -94,7 +94,7 @@ public sealed class QueueAdvancerTests : IDisposable
             FileName = "stuck.bgcode",
             QueuedByUserId = 1,
             StartedAt = _clock.GetUtcNow(),
-            Outcome = PrintOutcome.Starting,
+            State = PrintState.Starting,
         });
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -109,7 +109,7 @@ public sealed class QueueAdvancerTests : IDisposable
         context.ChangeTracker.Clear();
         PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
 
-        job.Outcome.Should().Be(PrintOutcome.Unknown);
+        job.State.Should().Be(PrintState.Unknown);
         job.EndedAt.Should().NotBeNull("an open row would block this printer for good");
     }
 
@@ -126,7 +126,7 @@ public sealed class QueueAdvancerTests : IDisposable
             FileName = "heating.bgcode",
             QueuedByUserId = 1,
             StartedAt = _clock.GetUtcNow(),
-            Outcome = PrintOutcome.Starting,
+            State = PrintState.Starting,
         });
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -141,7 +141,7 @@ public sealed class QueueAdvancerTests : IDisposable
         context.ChangeTracker.Clear();
         PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
 
-        job.Outcome.Should().Be(PrintOutcome.Starting);
+        job.State.Should().Be(PrintState.Starting);
         job.EndedAt.Should().BeNull("a cold chamber legitimately takes minutes");
     }
 
@@ -166,7 +166,7 @@ public sealed class QueueAdvancerTests : IDisposable
             "retrying a forbidden path would hide a misconfiguration behind a queue that looks slow");
 
         PrintJob failure = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
-        failure.Outcome.Should().Be(PrintOutcome.Failed);
+        failure.State.Should().Be(PrintState.Failed);
         failure.Reason.Should().Be("Forbidden path");
         failure.EndedAt.Should().NotBeNull("nothing printed, so it opens and closes together");
         failure.TrackingId.Should().Be(QueuedTrackingId,
@@ -199,7 +199,7 @@ public sealed class QueueAdvancerTests : IDisposable
             FileName = "last.bgcode",
             QueuedByUserId = 1,
             StartedAt = _clock.GetUtcNow(),
-            Outcome = PrintOutcome.Printing,
+            State = PrintState.Printing,
         });
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -213,7 +213,7 @@ public sealed class QueueAdvancerTests : IDisposable
         PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
 
         job.EndedAt.Should().NotBeNull("the pass must reach a printer no queue entry names any more");
-        job.Outcome.Should().Be(PrintOutcome.Stopped);
+        job.State.Should().Be(PrintState.Stopped);
     }
 
     /// <summary>

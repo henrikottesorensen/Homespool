@@ -61,7 +61,7 @@ public sealed class PrintStopServiceTests : IDisposable
     {
         // Arrange
         await using HSDbContext context = await SeedAsync();
-        await AddPrintAsync(context, PrintOutcome.Printing, ended: false);
+        await AddPrintAsync(context, PrintState.Printing, ended: false);
         Connect(Events.Finished);
 
         // Act
@@ -83,7 +83,7 @@ public sealed class PrintStopServiceTests : IDisposable
     {
         // Arrange
         await using HSDbContext context = await SeedAsync();
-        await AddPrintAsync(context, PrintOutcome.Printing, ended: false);
+        await AddPrintAsync(context, PrintState.Printing, ended: false);
         Connect(Events.Rejected, "No print to stop");
 
         // Act
@@ -105,8 +105,8 @@ public sealed class PrintStopServiceTests : IDisposable
     {
         // Arrange - closed as Stopped while the command was in flight
         await using HSDbContext context = await SeedAsync();
-        await AddPrintAsync(context, PrintOutcome.Printing, ended: false);
-        ConnectClosingTheRowMidFlight(PrintOutcome.Stopped);
+        await AddPrintAsync(context, PrintState.Printing, ended: false);
+        ConnectClosingTheRowMidFlight(PrintState.Stopped);
 
         // Act
         await NewService(context).StopAsync(PrinterId, Stopper, TestContext.Current.CancellationToken);
@@ -128,8 +128,8 @@ public sealed class PrintStopServiceTests : IDisposable
     {
         // Arrange
         await using HSDbContext context = await SeedAsync();
-        await AddPrintAsync(context, PrintOutcome.Printing, ended: false);
-        ConnectClosingTheRowMidFlight(PrintOutcome.Finished);
+        await AddPrintAsync(context, PrintState.Printing, ended: false);
+        ConnectClosingTheRowMidFlight(PrintState.Finished);
 
         // Act
         await NewService(context).StopAsync(PrinterId, Stopper, TestContext.Current.CancellationToken);
@@ -149,7 +149,7 @@ public sealed class PrintStopServiceTests : IDisposable
     {
         // Arrange - already attributed
         await using HSDbContext context = await SeedAsync();
-        await AddPrintAsync(context, PrintOutcome.Printing, ended: false, stoppedBy: Stopper);
+        await AddPrintAsync(context, PrintState.Printing, ended: false, stoppedBy: Stopper);
         Connect(Events.Finished);
 
         // Act
@@ -171,7 +171,7 @@ public sealed class PrintStopServiceTests : IDisposable
     {
         // Arrange - history, but nothing running
         await using HSDbContext context = await SeedAsync();
-        await AddPrintAsync(context, PrintOutcome.Finished, ended: true);
+        await AddPrintAsync(context, PrintState.Finished, ended: true);
         Connect(Events.Finished);
 
         // Act
@@ -209,7 +209,7 @@ public sealed class PrintStopServiceTests : IDisposable
     /// An actor that closes the open print as part of answering, standing in for the queue's loop
     /// getting there first. Its own context, because that is what the loop has.
     /// </summary>
-    private void ConnectClosingTheRowMidFlight(PrintOutcome outcome)
+    private void ConnectClosingTheRowMidFlight(PrintState outcome)
     {
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
@@ -220,7 +220,7 @@ public sealed class PrintStopServiceTests : IDisposable
                  PrintJob open = await loopContext.PrintJobs.SingleAsync(job => job.EndedAt == null,
                      TestContext.Current.CancellationToken);
 
-                 open.Outcome = outcome;
+                 open.State = outcome;
                  open.EndedAt = DateTimeOffset.UnixEpoch.AddYears(56);
                  await loopContext.SaveChangesAsync(TestContext.Current.CancellationToken);
 
@@ -238,7 +238,7 @@ public sealed class PrintStopServiceTests : IDisposable
                                .Options);
     }
 
-    private async Task AddPrintAsync(HSDbContext context, PrintOutcome outcome, bool ended, long? stoppedBy = null)
+    private async Task AddPrintAsync(HSDbContext context, PrintState outcome, bool ended, long? stoppedBy = null)
     {
         context.PrintJobs.Add(new PrintJob
         {
@@ -247,7 +247,7 @@ public sealed class PrintStopServiceTests : IDisposable
             QueuedByUserId = Stopper,
             StartedAt = DateTimeOffset.UnixEpoch.AddYears(56),
             EndedAt = ended ? DateTimeOffset.UnixEpoch.AddYears(56) : null,
-            Outcome = outcome,
+            State = outcome,
             StoppedByUserId = stoppedBy,
         });
 

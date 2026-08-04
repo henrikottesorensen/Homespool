@@ -5,9 +5,17 @@ namespace Homespool.Model;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>A state machine rather than only an outcome</b>, despite the name: a row exists while the print
-/// runs (<see cref="Entities.PrintJob"/> is opened at <c>START_PRINT</c>), so the enum has to describe
-/// the middle as well as the end.
+/// <b>Was <c>PrintOutcome</c> until 2026-08-04, and the rename is the whole of the fix.</b> A row
+/// exists while the print runs (<see cref="Entities.PrintJob"/> is opened at <c>START_PRINT</c>), so
+/// the enum describes the middle as well as the end - which the old name denied, forcing a paragraph
+/// here conceding it was "a state machine rather than only an outcome, despite the name".
+/// </para>
+/// <para>
+/// <b>The shape was never the problem</b> (<c>notes/print-queue.md</c>, 2026-08-04). Every spooler in
+/// the lineage puts active states in the job's own state enum: PrusaLink's vendored <c>Job</c>
+/// schema is <c>PRINTING, PAUSED, FINISHED, STOPPED, ERROR</c>, and IPP/CUPS spans <c>pending</c>
+/// through <c>completed</c> in one attribute. Only the name here promised an ending it did not
+/// deliver.
 /// </para>
 /// <para>
 /// In this project's root beside <see cref="PrinterStatus"/> and <see cref="PrinterType"/> rather than
@@ -16,7 +24,7 @@ namespace Homespool.Model;
 /// <b>ours</b>, not Prusa's vocabulary, which is the company <see cref="PrinterType"/> keeps.
 /// </para>
 /// </remarks>
-public enum PrintOutcome
+public enum PrintState
 {
     /// <summary>Never set. The zero value every enum here reserves for "nobody wrote this".</summary>
     Undefined = 0,

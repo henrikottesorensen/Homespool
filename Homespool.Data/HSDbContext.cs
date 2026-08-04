@@ -461,7 +461,7 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
 
             // Stored as text, like PrinterEvent.EventType: readable in a raw SQLite session and immune
             // to the enum being reordered. History is low-volume, so the bytes saved do not matter.
-            entity.Property(e => e.Outcome)
+            entity.Property(e => e.State)
                   .HasConversion<string>();
 
             // No foreign key to PrintFile, deliberately: this records a name and a digest rather than

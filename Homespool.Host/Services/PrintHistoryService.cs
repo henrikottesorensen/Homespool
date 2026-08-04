@@ -58,7 +58,7 @@ public class PrintHistoryService
     /// </summary>
     /// <remarks>
     /// "Running" here means <see cref="PrintJob.EndedAt"/> is null, which includes the seconds a print
-    /// spends <see cref="Model.PrintOutcome.Starting"/> before the printer reports itself printing.
+    /// spends <see cref="Model.PrintState.Starting"/> before the printer reports itself printing.
     /// A page showing this should say so rather than claiming the machine is printing already.
     /// </remarks>
     public async Task<PrintJob?> GetActiveAsync(int printerId, long userId, CancellationToken cancellationToken)

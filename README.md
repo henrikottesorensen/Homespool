@@ -358,17 +358,26 @@ DELETE /api/v1/printers/{uuid}/queue/{id}               take it out
 
 **When the loop cannot proceed it holds and says why**, rather than skipping to something that
 would work. That is the spooler behaviour rather than a limitation: a queue that quietly reorders
-itself around an obstacle is a queue you cannot reason about. The reasons it will give you:
+itself around an obstacle is a queue you cannot reason about.
+
+Three of the five reasons clear themselves, and want nothing from you:
 
 | it says | what is happening |
 |---|---|
 | Sending *file* to the printer | a transfer is in flight — firmware allows only one at a time |
 | Waiting for the printer to confirm the file | the bytes arrived, but no `FILE_INFO` has named a path to print |
-| Waiting for the printer to be made ready | the printer is not `Ready` — **including a finished print nobody has cleared** |
-| *(insufficient space)* | the file at the front will not fit on the drive; the queue waits for someone to free space |
+| *(nothing)* | a print has been commanded and the printer still says `READY` for a few seconds — the active print already says this, so the queue keeps quiet |
 
-The middle two are transient and clear themselves. The other two want a human: someone to take
-the print off the bed, or to delete something.
+The other two are waiting for a person:
+
+| it says | what is happening |
+|---|---|
+| Waiting for the printer to be made ready | the printer is not `Ready`, **most often a finished print nobody has cleared** |
+| *(its own banner, with the space needed and free)* | the file at the front will not fit on the drive |
+
+That last pair is worth knowing before you meet it, because a correctly working queue holding
+behind an uncleared print bed looks exactly like a broken one. Nothing else on the page states
+the rule that only a person offers a printer up for work.
 
 **Print history** sits beside the queue on the same page. Every print is recorded, including the
 ones that never started, with the file's name as it was at the time rather than a pointer to a

@@ -374,6 +374,13 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
             // The queue read, and the only one there is: this printer's entries, in order.
             entity.HasIndex(e => new { e.PrinterId, e.Position });
 
+            // The public handle, looked up on every move/cancel - the Printer.Uuid arrangement.
+            // Unique here and deliberately NOT on PrintJobs: an entry is one intention, but one
+            // intention can leave several history rows (a full-drive hold writes a Failed row while
+            // the entry stays queued), so uniqueness holds only on this side of the handoff.
+            entity.HasIndex(e => e.TrackingId)
+                  .IsUnique();
+
             // A deleted printer takes its queue with it. There is no meaning left in an entry whose
             // printer is gone, and unlike telemetry it is not history worth keeping.
             //
@@ -428,6 +435,10 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
         {
             // "What did this printer print, most recently first" is the only question history asks.
             entity.HasIndex(e => new { e.PrinterId, e.StartedAt });
+
+            // Non-unique on purpose - see QueuedPrint's TrackingId index for why one handle may find
+            // several rows here. "What became of my enqueue" is the lookup this serves.
+            entity.HasIndex(e => e.TrackingId);
 
             // At most one active print per printer, enforced in the database because application code
             // cannot make it atomic - the same partial-index trick TeamMember uses for "exactly one

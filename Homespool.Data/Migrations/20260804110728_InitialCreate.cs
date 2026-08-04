@@ -428,6 +428,7 @@ namespace Homespool.Data.Migrations
                 {
                     Id = table.Column<long>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
+                    TrackingId = table.Column<Guid>(type: "TEXT", nullable: false),
                     PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
                     FileName = table.Column<string>(type: "TEXT", nullable: false),
                     Digest = table.Column<string>(type: "TEXT", nullable: true),
@@ -525,6 +526,7 @@ namespace Homespool.Data.Migrations
                 {
                     Id = table.Column<long>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
+                    TrackingId = table.Column<Guid>(type: "TEXT", nullable: false),
                     PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
                     PrintFileId = table.Column<long>(type: "INTEGER", nullable: false),
                     Position = table.Column<int>(type: "INTEGER", nullable: false),
@@ -758,6 +760,11 @@ namespace Homespool.Data.Migrations
                 columns: new[] { "PrinterId", "StartedAt" });
 
             migrationBuilder.CreateIndex(
+                name: "IX_PrintJobs_TrackingId",
+                table: "PrintJobs",
+                column: "TrackingId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_PrusaConnectAuthentication_FingerPrintKey",
                 table: "PrusaConnectAuthentication",
                 column: "FingerPrintKey",
@@ -799,6 +806,12 @@ namespace Homespool.Data.Migrations
                 name: "IX_QueuedPrints_PrintFileId",
                 table: "QueuedPrints",
                 column: "PrintFileId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_QueuedPrints_TrackingId",
+                table: "QueuedPrints",
+                column: "TrackingId",
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_TeamMembers_UserId",

@@ -45,6 +45,9 @@ public sealed class QueueAdvancerTests : IDisposable
 {
     private const int PrinterId = 1;
 
+    /// <summary>The handle the seeded entry is enqueued under - fixed, so assertions can name it.</summary>
+    private static readonly Guid QueuedTrackingId = new("11111111-2222-3333-4444-555555555555");
+
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-advancer-{Guid.NewGuid():N}.db");
     private readonly FakeTimeProvider _clock = new(DateTimeOffset.UnixEpoch.AddYears(56));
     private readonly PrinterConnectionRegistry _registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
@@ -166,6 +169,51 @@ public sealed class QueueAdvancerTests : IDisposable
         failure.Outcome.Should().Be(PrintOutcome.Failed);
         failure.Reason.Should().Be("Forbidden path");
         failure.EndedAt.Should().NotBeNull("nothing printed, so it opens and closes together");
+        failure.TrackingId.Should().Be(QueuedTrackingId,
+            "the refusal is findable by the handle the enqueue returned - the row used to exist and be unreachable");
+    }
+
+    /// <summary>
+    /// A printer whose queue is empty but whose print is still open gets a pass - through
+    /// <see cref="QueueAdvancer.AdvanceAllAsync"/>, which is the point.
+    /// </summary>
+    /// <remarks>
+    /// <b>The regression test for the 2026-08-04 blind spot, and it must go through
+    /// <c>AdvanceAllAsync</c>.</b> Every other test hand-picks its printer via
+    /// <c>AdvanceAsync(printerId)</c>, which is why none of them could see the defect: the selection
+    /// query had zero coverage, and the shipped app showed "Printing now" forever once the last queue
+    /// entry was consumed. Against the old predicate this fails exactly here - <c>AdvanceAllAsync</c>
+    /// finds nothing to visit.
+    /// </remarks>
+    [Fact]
+    public async Task APrinterWithAnOpenPrintAndAnEmptyQueueStillGetsAPass()
+    {
+        // Arrange - the moment after START_PRINT consumed the last entry: no queue, one open row,
+        // and the printer has since stopped.
+        await using HSDbContext context = await SeedAsync(status: PrinterStatus.Stopped);
+
+        context.QueuedPrints.RemoveRange(context.QueuedPrints);
+        context.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = PrinterId,
+            FileName = "last.bgcode",
+            QueuedByUserId = 1,
+            StartedAt = _clock.GetUtcNow(),
+            Outcome = PrintOutcome.Printing,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act - the whole loop, not a hand-picked printer
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAllAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+
+        job.EndedAt.Should().NotBeNull("the pass must reach a printer no queue entry names any more");
+        job.Outcome.Should().Be(PrintOutcome.Stopped);
     }
 
     /// <summary>
@@ -422,6 +470,7 @@ public sealed class QueueAdvancerTests : IDisposable
         {
             PrinterId = PrinterId,
             PrintFileId = file.Id,
+            TrackingId = QueuedTrackingId,
             Position = 0,
             QueuedByUserId = 1,
             QueuedAt = _clock.GetUtcNow(),

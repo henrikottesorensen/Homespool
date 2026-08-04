@@ -142,7 +142,7 @@ else
                         <td class="text-nowrap">
                             <form method="post" asp-page-handler="Move" asp-route-uuid="@Model.Statistics.Printer.Uuid"
                                   class="d-inline">
-                                <input type="hidden" name="id" value="@job.Id" />
+                                <input type="hidden" name="id" value="@job.TrackingId" />
                                 <input type="hidden" name="position" value="@(index - 1)" />
                                 <button type="submit" class="btn btn-sm btn-outline-secondary"
                                         title="Move up" aria-label="Move @(job.PrintFile?.Name) up"
@@ -150,7 +150,7 @@ else
                             </form>
                             <form method="post" asp-page-handler="Move" asp-route-uuid="@Model.Statistics.Printer.Uuid"
                                   class="d-inline">
-                                <input type="hidden" name="id" value="@job.Id" />
+                                <input type="hidden" name="id" value="@job.TrackingId" />
                                 <input type="hidden" name="position" value="@(index + 1)" />
                                 <button type="submit" class="btn btn-sm btn-outline-secondary"
                                         title="Move down" aria-label="Move @(job.PrintFile?.Name) down"
@@ -158,7 +158,7 @@ else
                             </form>
                             <form method="post" asp-page-handler="Cancel" asp-route-uuid="@Model.Statistics.Printer.Uuid"
                                   class="d-inline">
-                                <input type="hidden" name="id" value="@job.Id" />
+                                <input type="hidden" name="id" value="@job.TrackingId" />
                                 <button type="submit" class="btn btn-sm btn-outline-danger"
                                         aria-label="Remove @(job.PrintFile?.Name) from the queue">Remove</button>
                             </form>

@@ -157,7 +157,7 @@ public sealed class QueueAdvancer : BackgroundService
         }
     }
 
-    /// <summary>One pass over every printer with something queued. Public so a test can drive it.</summary>
+    /// <summary>One pass over every printer that needs one. Public so a test can drive it.</summary>
     /// <remarks>
     /// Sequential rather than concurrent, deliberately. This is one-to-tens of printers, each pass is
     /// a handful of queries and at most one command, and a command returns as soon as the printer
@@ -176,10 +176,7 @@ public sealed class QueueAdvancer : BackgroundService
         {
             HSDbContext dbContext = scope.ServiceProvider.GetRequiredService<HSDbContext>();
 
-            printerIds = await dbContext.QueuedPrints
-                                        .Select(queued => queued.PrinterId)
-                                        .Distinct()
-                                        .ToListAsync(cancellationToken);
+            printerIds = await PrintersNeedingAPassAsync(dbContext, cancellationToken);
         }
 
         foreach (int printerId in printerIds)
@@ -196,6 +193,34 @@ public sealed class QueueAdvancer : BackgroundService
                 _logger.LogError(e, "Advancing the queue for printer {PrinterId} failed.", printerId);
             }
         }
+    }
+
+    /// <summary>
+    /// Every printer that needs a pass - one with work waiting, or one with a print in flight.
+    /// </summary>
+    /// <remarks>
+    /// <b>Two conditions because the pass does two jobs.</b> It advances the queue and it reconciles
+    /// the open print, and until 2026-08-04 it was scheduled by only the first - so a printer went
+    /// unvisited from the moment its last queue entry was consumed at <c>START_PRINT</c>, which is
+    /// exactly when its print row still needed closing. The last print of a session never closed, and
+    /// a row stuck <see cref="PrintOutcome.Starting"/> blocked the next print for
+    /// <see cref="StartingStaleAfter"/>. The predicate predated print history by a day and nobody
+    /// revisited it when <see cref="ReconcilePrintAsync"/> moved in.
+    /// <para>
+    /// <c>Union</c> dedupes in SQL, and the second arm is served by the same partial unique index
+    /// (<c>PrinterId WHERE EndedAt IS NULL</c>) that enforces one active print per printer. Still
+    /// self-limiting: the row closes, the queue is empty, the printer drops off the list.
+    /// </para>
+    /// </remarks>
+    private static Task<List<int>> PrintersNeedingAPassAsync(HSDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        return dbContext.QueuedPrints
+                        .Select(queued => queued.PrinterId)
+                        .Union(dbContext.PrintJobs
+                                        .Where(job => job.EndedAt == null)
+                                        .Select(job => job.PrinterId))
+                        .ToListAsync(cancellationToken);
     }
 
     /// <summary>Works out what one printer needs and does it.</summary>
@@ -648,6 +673,7 @@ public sealed class QueueAdvancer : BackgroundService
             dbContext.PrintJobs.Add(new PrintJob
             {
                 PrinterId = printerId,
+                TrackingId = head.TrackingId,
                 FileName = head.PrintFile.Name,
                 Digest = head.PrintFile.Digest,
                 QueuedByUserId = head.QueuedByUserId,
@@ -697,6 +723,7 @@ public sealed class QueueAdvancer : BackgroundService
             dbContext.PrintJobs.Add(new PrintJob
             {
                 PrinterId = printerId,
+                TrackingId = head.TrackingId,
                 FileName = head.PrintFile!.Name,
                 Digest = head.PrintFile.Digest,
                 QueuedByUserId = head.QueuedByUserId,
@@ -762,6 +789,7 @@ public sealed class QueueAdvancer : BackgroundService
                 dbContext.PrintJobs.Add(new PrintJob
                 {
                     PrinterId = printerId,
+                    TrackingId = head.TrackingId,
                     FileName = head.PrintFile?.Name ?? string.Empty,
                     Digest = head.PrintFile?.Digest,
                     QueuedByUserId = head.QueuedByUserId,

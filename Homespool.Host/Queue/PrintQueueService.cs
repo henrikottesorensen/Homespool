@@ -113,6 +113,10 @@ public class PrintQueueService
         {
             PrinterId = printerId,
             PrintFileId = file.Id,
+
+            // The caller's handle for the whole lifecycle - minted here because enqueue is where the
+            // intention begins, and everything that becomes of it carries this forward.
+            TrackingId = Guid.NewGuid(),
             Position = (last ?? -1) + 1,
             QueuedByUserId = userId,
             QueuedAt = _timeProvider.GetUtcNow(),
@@ -146,15 +150,20 @@ public class PrintQueueService
     /// bytes simply sit on the drive unused. That is the pipelining trade
     /// (<c>notes/print-queue.md</c>), and the printer's storage listing is what can find them again.
     /// </para>
+    /// <para>
+    /// <b>By <see cref="QueuedPrint.TrackingId"/>, not the primary key</b> - the handle is the only
+    /// identifier a caller ever holds, exactly as printers are reached by <c>Printer.Uuid</c> and
+    /// never by <c>Printer.Id</c>. <see cref="CancelAsync"/> resolves the same way.
+    /// </para>
     /// </remarks>
     /// <returns>False if there is no such queued print.</returns>
-    public async Task<bool> MoveAsync(long queuedPrintId,
+    public async Task<bool> MoveAsync(Guid trackingId,
                                       long userId,
                                       int targetIndex,
                                       CancellationToken cancellationToken)
     {
         QueuedPrint? job = await _dbContext.QueuedPrints
-                                         .SingleOrDefaultAsync(candidate => candidate.Id == queuedPrintId,
+                                         .SingleOrDefaultAsync(candidate => candidate.TrackingId == trackingId,
                                              cancellationToken);
 
         if (job is null)
@@ -193,10 +202,10 @@ public class PrintQueueService
     /// entry, and stopping it is a separate deliberate act - "don't cancel prints on people" (Henrik).
     /// </remarks>
     /// <returns>False if there is no such queued print.</returns>
-    public async Task<bool> CancelAsync(long queuedPrintId, long userId, CancellationToken cancellationToken)
+    public async Task<bool> CancelAsync(Guid trackingId, long userId, CancellationToken cancellationToken)
     {
         QueuedPrint? job = await _dbContext.QueuedPrints
-                                         .SingleOrDefaultAsync(candidate => candidate.Id == queuedPrintId,
+                                         .SingleOrDefaultAsync(candidate => candidate.TrackingId == trackingId,
                                              cancellationToken);
 
         if (job is null)

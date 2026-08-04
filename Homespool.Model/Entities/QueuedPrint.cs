@@ -30,6 +30,26 @@ public class QueuedPrint
 {
     public long Id { get; set; }
 
+    /// <summary>
+    /// The handle a caller follows this print by, from enqueue into history - <see cref="Id"/> dies
+    /// at <c>START_PRINT</c>, and this is what survives the handoff.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The <see cref="Printer.Uuid"/> pattern applied to the lifecycle</b> (Henrik, 2026-08-04): a
+    /// public random identifier for anything that leaves the app, a private surrogate key for
+    /// machinery. Minted at enqueue, copied onto every <see cref="PrintJob"/> row this entry
+    /// produces - the started print, a terminal refusal, a full-drive hold - in the same
+    /// <c>SaveChanges</c> that consumes or records against the entry, so it cannot dangle.
+    /// </para>
+    /// <para>
+    /// <b>It names the intention, not the print.</b> One entry can produce several history rows - the
+    /// hold writes a <c>Failed</c> row while the entry stays queued - and the handle finds them all,
+    /// which is the point: "what became of the thing I enqueued" is a history, possibly plural.
+    /// </para>
+    /// </remarks>
+    public Guid TrackingId { get; set; }
+
     /// <summary>The printer whose queue this sits in.</summary>
     /// <remarks>
     /// <b>The key alone, with no navigation</b> (2026-08-04), for the reason

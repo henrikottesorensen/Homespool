@@ -145,15 +145,15 @@ public class PrintQueueController : ControllerBase
 
     /// <summary>
     /// Moves a queued print to a new position, counting from zero. An index past either end is clamped.
-    /// <c>PATCH /api/v1/printers/{uuid}/queue/{queuedPrintId}</c>.
+    /// <c>PATCH /api/v1/printers/{uuid}/queue/{trackingId}</c>.
     /// </summary>
     [HttpPatch]
-    [Route("printers/{uuid:guid}/queue/{queuedPrintId:long}")]
+    [Route("printers/{uuid:guid}/queue/{trackingId:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     public async Task<ActionResult> Move(Guid uuid,
-                                         long queuedPrintId,
+                                         Guid trackingId,
                                          [FromBody] MoveRequest body,
                                          CancellationToken cancellationToken)
     {
@@ -168,7 +168,7 @@ public class PrintQueueController : ControllerBase
 
         try
         {
-            bool found = await _queue.MoveAsync(queuedPrintId, userId, body.Position, cancellationToken);
+            bool found = await _queue.MoveAsync(trackingId, userId, body.Position, cancellationToken);
 
             if (!found)
             {
@@ -184,7 +184,7 @@ public class PrintQueueController : ControllerBase
     }
 
     /// <summary>
-    /// Cancels a queued print. <c>DELETE /api/v1/printers/{uuid}/queue/{queuedPrintId}</c>.
+    /// Cancels a queued print. <c>DELETE /api/v1/printers/{uuid}/queue/{trackingId}</c>.
     /// </summary>
     /// <remarks>
     /// <b>This never stops a print that has already started.</b> Once the loop has taken an entry it
@@ -192,11 +192,11 @@ public class PrintQueueController : ControllerBase
     /// people" (Henrik, <c>notes/print-queue.md</c>).
     /// </remarks>
     [HttpDelete]
-    [Route("printers/{uuid:guid}/queue/{queuedPrintId:long}")]
+    [Route("printers/{uuid:guid}/queue/{trackingId:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult> Cancel(Guid uuid, long queuedPrintId, CancellationToken cancellationToken)
+    public async Task<ActionResult> Cancel(Guid uuid, Guid trackingId, CancellationToken cancellationToken)
     {
         (Printer? printer, long userId, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
 
@@ -207,7 +207,7 @@ public class PrintQueueController : ControllerBase
 
         try
         {
-            bool found = await _queue.CancelAsync(queuedPrintId, userId, cancellationToken);
+            bool found = await _queue.CancelAsync(trackingId, userId, cancellationToken);
 
             if (!found)
             {

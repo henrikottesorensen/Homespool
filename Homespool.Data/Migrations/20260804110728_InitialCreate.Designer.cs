@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HSDbContext))]
-    [Migration("20260803202016_InitialCreate")]
+    [Migration("20260804110728_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -264,11 +264,16 @@ namespace Homespool.Data.Migrations
                     b.Property<long?>("StoppedByUserId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<Guid>("TrackingId")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("PrinterId")
                         .IsUnique()
                         .HasFilter("\"EndedAt\" IS NULL");
+
+                    b.HasIndex("TrackingId");
 
                     b.HasIndex("PrinterId", "StartedAt");
 
@@ -636,9 +641,15 @@ namespace Homespool.Data.Migrations
                     b.Property<long>("QueuedByUserId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<Guid>("TrackingId")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("PrintFileId");
+
+                    b.HasIndex("TrackingId")
+                        .IsUnique();
 
                     b.HasIndex("PrinterId", "Position");
 
@@ -1026,15 +1037,13 @@ namespace Homespool.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Homespool.Model.Entities.Printer", "Printer")
+                    b.HasOne("Homespool.Model.Entities.Printer", null)
                         .WithMany()
                         .HasForeignKey("PrinterId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("PrintFile");
-
-                    b.Navigation("Printer");
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.PrintJob", b =>
@@ -1126,15 +1135,13 @@ namespace Homespool.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Homespool.Model.Entities.Printer", "Printer")
+                    b.HasOne("Homespool.Model.Entities.Printer", null)
                         .WithMany()
                         .HasForeignKey("PrinterId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("PrintFile");
-
-                    b.Navigation("Printer");
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.TeamMember", b =>

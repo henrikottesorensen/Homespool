@@ -262,7 +262,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
             .Should().BeTrue();
 
         await UploadAsync(userId, "history.bgcode");
-        await EnqueueAsync(printerId, userId, "history.bgcode");
+        Guid handle = await EnqueueAsync(printerId, userId, "history.bgcode");
 
         await AdvanceAsync(printerId);
         (await WaitUntilAsync(async () => await ArrivedAsync(printerId), TimeSpan.FromSeconds(30))).Should().BeTrue();
@@ -280,6 +280,8 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
 
         PrintJob printing = await ActiveAsync(printerId);
         printing.FileName.Should().Be("history.bgcode");
+        printing.TrackingId.Should().Be(handle,
+            "the handle the enqueue returned is the one identifier that survives the start of the print");
         printing.QueuedByUserId.Should().Be(userId);
         printing.PrinterPath.Should().StartWith("/usb/");
         printing.FirmwareJobId.Should().NotBeNull("telemetry carries job_id for the whole print");
@@ -508,12 +510,14 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
             overwrite: false, TestContext.Current.CancellationToken);
     }
 
-    private async Task EnqueueAsync(int printerId, long userId, string name)
+    private async Task<Guid> EnqueueAsync(int printerId, long userId, string name)
     {
         using IServiceScope scope = _factory.Services.CreateScope();
 
-        await scope.ServiceProvider.GetRequiredService<PrintQueueService>()
+        QueuedPrint queued = await scope.ServiceProvider.GetRequiredService<PrintQueueService>()
                    .EnqueueAsync(printerId, userId, name, TestContext.Current.CancellationToken);
+
+        return queued.TrackingId;
     }
 
     private async Task<bool> OutcomeIsAsync(int printerId, PrintOutcome outcome)

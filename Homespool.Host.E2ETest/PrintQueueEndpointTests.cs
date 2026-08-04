@@ -123,7 +123,7 @@ public sealed class PrintQueueEndpointTests : IAsyncLifetime, IDisposable
         await UploadAsync(client, "second.bgcode");
 
         await EnqueueAsync(client, uuid, "first.bgcode");
-        long secondId = await EnqueueAsync(client, uuid, "second.bgcode");
+        Guid secondId = await EnqueueAsync(client, uuid, "second.bgcode");
 
         // Act
         using HttpResponseMessage moved = await client.PatchAsJsonAsync(
@@ -151,7 +151,7 @@ public sealed class PrintQueueEndpointTests : IAsyncLifetime, IDisposable
 
         Guid uuid = await AddPrinterAsync(user.Id);
         await UploadAsync(client, "doomed.bgcode");
-        long id = await EnqueueAsync(client, uuid, "doomed.bgcode");
+        Guid id = await EnqueueAsync(client, uuid, "doomed.bgcode");
 
         // Act
         using HttpResponseMessage cancelled = await client.DeleteAsync($"/api/v1/printers/{uuid}/queue/{id}",
@@ -179,7 +179,7 @@ public sealed class PrintQueueEndpointTests : IAsyncLifetime, IDisposable
 
         Guid uuid = await AddPrinterAsync(user.Id);
         await UploadAsync(client, "wanted.bgcode");
-        long id = await EnqueueAsync(client, uuid, "wanted.bgcode");
+        Guid id = await EnqueueAsync(client, uuid, "wanted.bgcode");
 
         // Act
         using HttpResponseMessage refused = await client.DeleteAsync("/api/v1/files/wanted.bgcode",
@@ -280,7 +280,7 @@ public sealed class PrintQueueEndpointTests : IAsyncLifetime, IDisposable
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
-    private static async Task<long> EnqueueAsync(HttpClient client, Guid uuid, string name)
+    private static async Task<Guid> EnqueueAsync(HttpClient client, Guid uuid, string name)
     {
         using HttpResponseMessage response = await client.PostAsJsonAsync($"/api/v1/printers/{uuid}/queue",
             new { name }, TestContext.Current.CancellationToken);
@@ -290,7 +290,9 @@ public sealed class PrintQueueEndpointTests : IAsyncLifetime, IDisposable
         using JsonDocument payload =
             JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
-        return payload.RootElement.GetProperty("id").GetInt64();
+        // trackingId, not id: the row's own key never leaves the app, and this handle is the one
+        // that survives START_PRINT into history. See QueuedPrint.TrackingId.
+        return payload.RootElement.GetProperty("trackingId").GetGuid();
     }
 
     private static async Task<JsonDocument> ListAsync(HttpClient client, Guid uuid)

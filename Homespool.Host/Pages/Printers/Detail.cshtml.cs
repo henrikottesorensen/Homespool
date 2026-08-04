@@ -167,7 +167,7 @@ public class DetailModel : PageModel
     /// Takes the target index rather than a direction, because that is what the service takes and
     /// where the clamping lives - the page only does the arithmetic its two buttons imply.
     /// </remarks>
-    public Task<IActionResult> OnPostMoveAsync(Guid uuid, long id, int position,
+    public Task<IActionResult> OnPostMoveAsync(Guid uuid, Guid id, int position,
         CancellationToken cancellationToken)
     {
         return ActAsync(uuid, async userId =>
@@ -184,7 +184,7 @@ public class DetailModel : PageModel
     /// Cancels a queued print. Never stops a print that has already started - see
     /// <see cref="PrintQueueService.CancelAsync"/>.
     /// </summary>
-    public Task<IActionResult> OnPostCancelAsync(Guid uuid, long id, CancellationToken cancellationToken)
+    public Task<IActionResult> OnPostCancelAsync(Guid uuid, Guid id, CancellationToken cancellationToken)
     {
         return ActAsync(uuid, async userId =>
         {

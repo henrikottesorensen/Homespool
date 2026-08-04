@@ -95,7 +95,7 @@ public sealed class PrintQueueServiceTests : IDisposable
             TestContext.Current.CancellationToken);
 
         // Act
-        bool moved = await queue.MoveAsync(third.Id, Alice, 0, TestContext.Current.CancellationToken);
+        bool moved = await queue.MoveAsync(third.TrackingId, Alice, 0, TestContext.Current.CancellationToken);
 
         // Assert
         moved.Should().BeTrue();
@@ -121,7 +121,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         await queue.EnqueueAsync(printer.Id, Alice, "two.gcode", TestContext.Current.CancellationToken);
 
         // Act
-        await queue.MoveAsync(first.Id, Alice, 99, TestContext.Current.CancellationToken);
+        await queue.MoveAsync(first.TrackingId, Alice, 99, TestContext.Current.CancellationToken);
 
         // Assert
         IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Alice, TestContext.Current.CancellationToken);
@@ -147,7 +147,7 @@ public sealed class PrintQueueServiceTests : IDisposable
             TestContext.Current.CancellationToken);
 
         // Act
-        await queue.CancelAsync(second.Id, Alice, TestContext.Current.CancellationToken);
+        await queue.CancelAsync(second.TrackingId, Alice, TestContext.Current.CancellationToken);
         await queue.EnqueueAsync(printer.Id, Alice, "three.gcode", TestContext.Current.CancellationToken);
 
         // Assert
@@ -249,7 +249,7 @@ public sealed class PrintQueueServiceTests : IDisposable
             TestContext.Current.CancellationToken);
 
         // Act
-        bool cancelled = await queue.CancelAsync(job.Id, Bob, TestContext.Current.CancellationToken);
+        bool cancelled = await queue.CancelAsync(job.TrackingId, Bob, TestContext.Current.CancellationToken);
 
         // Assert
         cancelled.Should().BeTrue();
@@ -265,7 +265,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         PrintQueueService queue = NewQueue(context);
 
         // Act
-        bool cancelled = await queue.CancelAsync(4242, Alice, TestContext.Current.CancellationToken);
+        bool cancelled = await queue.CancelAsync(Guid.NewGuid(), Alice, TestContext.Current.CancellationToken);
 
         // Assert
         cancelled.Should().BeFalse();

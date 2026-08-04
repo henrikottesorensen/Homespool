@@ -31,6 +31,25 @@ public class PrintJob
 {
     public long Id { get; set; }
 
+    /// <summary>
+    /// The handle this print was enqueued under - carried across from the
+    /// <see cref="QueuedPrint"/>, which is gone by the time anyone asks.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The third id space on this row, and each has its own audience</b>: <see cref="Id"/> is the
+    /// database's, <see cref="FirmwareJobId"/> is the printer's, and this one is the API caller's -
+    /// the same map-don't-reconcile treatment the first two already get. A record, not a pointer,
+    /// like <see cref="QueuedByUserId"/> beside it.
+    /// </para>
+    /// <para>
+    /// <b>Deliberately not unique.</b> One intention can produce several rows - a full-drive hold
+    /// writes a <c>Failed</c> row while the entry stays queued and later prints - so the handle maps
+    /// to everything that became of the enqueue, newest last. See <see cref="QueuedPrint.TrackingId"/>.
+    /// </para>
+    /// </remarks>
+    public Guid TrackingId { get; set; }
+
     /// <summary>Which printer ran it.</summary>
     /// <remarks>
     /// <b>The key alone, with no navigation</b> - the same choice <see cref="PrinterEvent"/> and

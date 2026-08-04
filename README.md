@@ -106,33 +106,12 @@ believing. Routes are segregated the same way inside the app: `/p/*` exists on t
 alone, and every other route exists everywhere else, so a request on the wrong one is answered `404`
 — a boundary that is a socket rather than a line of proxy configuration.
 
-> **Why printers go through the proxy, given that they are the fussy client here.** A Prusa printer
-> takes about a kilobyte of TLS plaintext per record — its mbedtls input buffer — and **it never says
-> so.** Its ClientHello offers `server_name`, `signature_algorithms`, `supported_groups`,
-> `ec_point_formats` and a single ciphersuite, and nothing else: there is no RFC 6066
-> `max_fragment_length` to honour. The cap is not negotiated, so whatever terminates TLS has to
-> impose it.
->
-> nginx can be configured to. `SslStream` cannot be — .NET offers no way to bound record size — so it
-> emits records sixteen times too large and every file transfer dies. **The proxy is therefore
-> structural, not a deployment convenience.** The application never terminates printer TLS at all:
-> its printer listener is plain HTTP whichever way the deployment is configured, and
-> `PrusaConnect:PrinterTls` decides whether a leaf is minted *for the proxy to present*, not whether
-> this process binds TLS.
->
-> **This is the half that is easy to get wrong, so replace it carefully.** Substituting your own
-> terminator means configuring it properly, not merely using OpenSSL — being OpenSSL-based buys
-> nothing on its own, and Go's `crypto/tls` cannot do this at all. Read
-> `nginx/homespool-printer.conf` first: exactly one certificate presented with no chain, one
-> ciphersuite, no response buffering, and **two** record caps rather than one. `ssl_buffer_size`
-> covers ordinary responses; `proxy_buffer_size` on `location = /p/ws` covers the WebSocket, because
-> once nginx upgrades a connection it tunnels — one upstream read becomes one TLS record and
-> `ssl_buffer_size` stops applying. Missing that second one is the trap: ordinary responses look
-> correct while every transfer fails.
->
-> **The failure signature, since nothing logs an error:** the printer drops the connection and
-> reconnects into the same failure, so the log fills with `/p/ws responded 101` over and over while
-> the printer's screen sits at 0%. `nginx -t` passes. Only a capture shows it.
+> **The proxy is not optional on the printer side.** Prusa firmware can only hold very small TLS
+> records, and .NET cannot produce them, so nginx terminates the printer's TLS rather than the
+> application doing it. Nothing to configure — the shipped stack handles it. If you plan to
+> **replace the proxy**, read [Printer TLS](docs/printer-tls.md) first: that half has requirements
+> a general-purpose proxy will not meet by default, and getting them wrong breaks file transfers
+> while everything else looks healthy.
 
 > **The browser will warn on first use, and that is honest.** The certificate the proxy generates
 > is signed by nobody. Serving your credentials in clear while you go and obtain a real certificate
@@ -141,14 +120,15 @@ alone, and every other route exists everywhere else, so a request on the wrong o
 > from, which is exactly why the stack ships nginx rather than something that insists on fetching
 > one. `nginx/homespool.conf` has a commented HSTS line to uncomment once you have one.
 
-> **Already run Traefik, Caddy or your own nginx?** Delete the `proxy` service, publish the app's
-> `8080` yourself, and point `XForwarded__KnownNetworks` at your proxy's network. The application is
-> built to sit behind a proxy; the one it ships is a default, not a requirement.
+> **Already run Traefik, Caddy or your own nginx?** Put it in front of the app's `8080` and point
+> `XForwarded__KnownNetworks` at its network. The application is built to sit behind a proxy; the
+> one it ships is a default, not a requirement — **on the people-facing side.** Keep the shipped
+> proxy for the printer port, or read [Printer TLS](docs/printer-tls.md) before replacing it;
+> Traefik and Caddy in particular cannot serve that port at all.
 
-> **Do not put a reverse proxy in front of the printer port.** The printer firmware trusts a
-> single anchor, requires exactly one certificate to be presented, and pushes 256 KiB transfer
-> chunks that a proxy will buffer. Each of those fails in a way that looks like a protocol bug.
-> The shipped proxy answers `404` to `/p/` for the same reason.
+> **Do not chain another reverse proxy in front of the printer port.** One more hop that buffers
+> responses or presents a certificate chain breaks transfers in ways that read as protocol bugs.
+> The shipped proxy answers `404` to `/p/` on the people-facing port for the same reason.
 
 > **Do not put that volume on NFS, CIFS or a NAS share.** SQLite's WAL locking is unreliable
 > over network filesystems and will eventually corrupt the database. Use a local Docker
@@ -183,10 +163,9 @@ The database is created and migrated automatically on first start.
 
 > **This serves people, not printers.** Run from source, the printer listener is plain HTTP on
 > `15443` with nothing in front of it, so a printer configured with `tls = true` dials it and
-> fails — and no setting fixes that, because the record size the firmware needs is not something
-> .NET can be made to emit (see the proxy note above). For printer work from source you
-> need either the Compose stack in front of it, or `PrusaConnect__PrinterTls=false` and printers
-> told the same, which is the testing path described under
+> fails. No setting fixes that — see [Printer TLS](docs/printer-tls.md). For printer work from
+> source you need either the Compose stack in front of it, or `PrusaConnect__PrinterTls=false`
+> with printers told the same, which is the testing path described under
 > [`PrinterTls`](#turning-printertls-off-and-when-that-is-legitimate). The fake printer under
 > [Testing without a printer](#testing-without-a-printer) needs neither.
 

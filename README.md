@@ -8,14 +8,16 @@ print leaves your network.
 
 ---
 
-## Status: early, but it does the job now
+## Status: early, and uneven
 
 A work in progress. A printer enrols, connects, and streams telemetry that is **stored** and
 shown back to you; Pause, Resume and Stop are sent from the web UI and answered by the printer
-itself.
+itself. Those parts have been run against a real MK3.5.
 
-What it is not is finished. The per-printer view is plain tables rather than charts, and most of
-the protocol's commands are unimplemented.
+**Maturity varies a lot by feature, so read the second list as carefully as the first.** The queue
+is the newest part and has now run unattended on real hardware — but on two prints, once. The
+per-printer view is plain tables rather than charts, and most of the protocol's commands are
+unimplemented.
 
 **What works**
 
@@ -31,7 +33,8 @@ the protocol's commands are unimplemented.
   and events.
 - **A print queue** — one shared queue per printer, advanced by a loop that sends the next file,
   waits for the printer to take it, and starts the print. When it cannot proceed it **holds and
-  says why** rather than skipping ahead.
+  says why** rather than skipping ahead. It has run unattended on an MK3.5: a person set the
+  printer ready and nothing else, and the next queued print started on its own.
 - **Print history** — every print recorded, including the ones that never started.
 - **Commands** — Pause, Resume and Stop, correlated back to the printer's own answer, so a
   refusal surfaces the printer's reason rather than a guess.
@@ -43,6 +46,14 @@ the protocol's commands are unimplemented.
 
 **What does not work yet**
 
+- **There is no Ready button.** A printer only takes the next queued job once someone declares the
+  bed clear, and **clearing the finished print at the panel does not do it** — firmware then
+  reports `Idle`, not `Ready`. Today that declaration is API-only
+  (`PUT /api/v1/printers/{uuid}/command/ready`), so between prints you are at the machine or at a
+  terminal. A button is deliberately deferred until there is a camera feed: asserting from another
+  room that a bed you cannot see is empty is not something this should make easy.
+- **The queue is new.** It has produced real prints, but a handful rather than a season's worth.
+  Treat a long unattended run as something to watch the first few times.
 - **Most commands are not wired.** Six of the roughly thirty command types can actually be sent
   — all six over the API, three of them as buttons. The rest are markers, and nothing maps
   arbitrary *incoming* JSON to a command type, so there is no `GCode` and no dialog handling.
@@ -342,6 +353,10 @@ rather than `CanRead`, since reading it means making the printer go and do work.
 
 ## Print queue
 
+> **The newest part of this project.** The loop has done its job on real hardware — two prints on
+> an MK3.5, the second chosen and started by Homespool after a person did nothing but set the
+> printer ready. That is the thing working, on a handful of prints rather than a season of them.
+
 Each printer has **one queue, shared by everyone** who can use it — not a queue per person. A
 background loop watches the front of it and does the obvious thing: send the file, wait for the
 printer to confirm it has it, start the print, move on.
@@ -375,9 +390,14 @@ The other two are waiting for a person:
 | Waiting for the printer to be made ready | the printer is not `Ready`, **most often a finished print nobody has cleared** |
 | *(its own banner, with the space needed and free)* | the file at the front will not fit on the drive |
 
-That last pair is worth knowing before you meet it, because a correctly working queue holding
-behind an uncleared print bed looks exactly like a broken one. Nothing else on the page states
-the rule that only a person offers a printer up for work.
+The first of those is the one to understand before you meet it, because a correctly working queue
+sitting behind a finished print looks exactly like a broken one.
+
+**Taking the print off the bed is not enough, and neither is dismissing the screen** — do that and
+firmware reports `Idle`, not `Ready`. Readiness is a separate, deliberate declaration that the bed
+is clear, and only a person can make it: `PUT /api/v1/printers/{uuid}/command/ready`, or *Set
+Ready* at the panel. The loop will never decide this for you, because the failure mode is printing
+onto a finished part, which the firmware will happily do.
 
 **Print history** sits beside the queue on the same page. Every print is recorded, including the
 ones that never started, with the file's name as it was at the time rather than a pointer to a

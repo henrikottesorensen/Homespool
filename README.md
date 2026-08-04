@@ -8,14 +8,16 @@ print leaves your network.
 
 ---
 
-## Status: early, but it does the job now
+## Status: early, and uneven
 
 A work in progress. A printer enrols, connects, and streams telemetry that is **stored** and
 shown back to you; Pause, Resume and Stop are sent from the web UI and answered by the printer
-itself.
+itself. Those parts have been run against a real MK3.5.
 
-What it is not is finished. The per-printer view is plain tables rather than charts, and most of
-the protocol's commands are unimplemented.
+**Maturity varies a lot by feature, so read the second list as carefully as the first.** The queue
+is the newest part and has now run unattended on real hardware — but on two prints, once. The
+per-printer view is plain tables rather than charts, and most of the protocol's commands are
+unimplemented.
 
 **What works**
 
@@ -31,7 +33,8 @@ the protocol's commands are unimplemented.
   and events.
 - **A print queue** — one shared queue per printer, advanced by a loop that sends the next file,
   waits for the printer to take it, and starts the print. When it cannot proceed it **holds and
-  says why** rather than skipping ahead.
+  says why** rather than skipping ahead. It has run unattended on an MK3.5: a person set the
+  printer ready and nothing else, and the next queued print started on its own.
 - **Print history** — every print recorded, including the ones that never started.
 - **Commands** — Pause, Resume and Stop, correlated back to the printer's own answer, so a
   refusal surfaces the printer's reason rather than a guess.
@@ -43,6 +46,14 @@ the protocol's commands are unimplemented.
 
 **What does not work yet**
 
+- **There is no Ready button.** A printer only takes the next queued job once someone declares the
+  bed clear, and **clearing the finished print at the panel does not do it** — firmware then
+  reports `Idle`, not `Ready`. Today that declaration is API-only
+  (`PUT /api/v1/printers/{uuid}/command/ready`), so between prints you are at the machine or at a
+  terminal. A button is deliberately deferred until there is a camera feed: asserting from another
+  room that a bed you cannot see is empty is not something this should make easy.
+- **The queue is new.** It has produced real prints, but a handful rather than a season's worth.
+  Treat a long unattended run as something to watch the first few times.
 - **Most commands are not wired.** Six of the roughly thirty command types can actually be sent
   — all six over the API, three of them as buttons. The rest are markers, and nothing maps
   arbitrary *incoming* JSON to a command type, so there is no `GCode` and no dialog handling.
@@ -95,33 +106,12 @@ believing. Routes are segregated the same way inside the app: `/p/*` exists on t
 alone, and every other route exists everywhere else, so a request on the wrong one is answered `404`
 — a boundary that is a socket rather than a line of proxy configuration.
 
-> **Why printers go through the proxy, given that they are the fussy client here.** A Prusa printer
-> takes about a kilobyte of TLS plaintext per record — its mbedtls input buffer — and **it never says
-> so.** Its ClientHello offers `server_name`, `signature_algorithms`, `supported_groups`,
-> `ec_point_formats` and a single ciphersuite, and nothing else: there is no RFC 6066
-> `max_fragment_length` to honour. The cap is not negotiated, so whatever terminates TLS has to
-> impose it.
->
-> nginx can be configured to. `SslStream` cannot be — .NET offers no way to bound record size — so it
-> emits records sixteen times too large and every file transfer dies. **The proxy is therefore
-> structural, not a deployment convenience.** The application never terminates printer TLS at all:
-> its printer listener is plain HTTP whichever way the deployment is configured, and
-> `PrusaConnect:PrinterTls` decides whether a leaf is minted *for the proxy to present*, not whether
-> this process binds TLS.
->
-> **This is the half that is easy to get wrong, so replace it carefully.** Substituting your own
-> terminator means configuring it properly, not merely using OpenSSL — being OpenSSL-based buys
-> nothing on its own, and Go's `crypto/tls` cannot do this at all. Read
-> `nginx/homespool-printer.conf` first: exactly one certificate presented with no chain, one
-> ciphersuite, no response buffering, and **two** record caps rather than one. `ssl_buffer_size`
-> covers ordinary responses; `proxy_buffer_size` on `location = /p/ws` covers the WebSocket, because
-> once nginx upgrades a connection it tunnels — one upstream read becomes one TLS record and
-> `ssl_buffer_size` stops applying. Missing that second one is the trap: ordinary responses look
-> correct while every transfer fails.
->
-> **The failure signature, since nothing logs an error:** the printer drops the connection and
-> reconnects into the same failure, so the log fills with `/p/ws responded 101` over and over while
-> the printer's screen sits at 0%. `nginx -t` passes. Only a capture shows it.
+> **The proxy is not optional on the printer side.** Prusa firmware can only hold very small TLS
+> records, and .NET cannot produce them, so nginx terminates the printer's TLS rather than the
+> application doing it. Nothing to configure — the shipped stack handles it. If you plan to
+> **replace the proxy**, read [Printer TLS](docs/printer-tls.md) first: that half has requirements
+> a general-purpose proxy will not meet by default, and getting them wrong breaks file transfers
+> while everything else looks healthy.
 
 > **The browser will warn on first use, and that is honest.** The certificate the proxy generates
 > is signed by nobody. Serving your credentials in clear while you go and obtain a real certificate
@@ -130,14 +120,15 @@ alone, and every other route exists everywhere else, so a request on the wrong o
 > from, which is exactly why the stack ships nginx rather than something that insists on fetching
 > one. `nginx/homespool.conf.template` has a commented HSTS line to uncomment once you have one.
 
-> **Already run Traefik, Caddy or your own nginx?** Delete the `proxy` service, publish the app's
-> `8080` yourself, and point `XForwarded__KnownNetworks` at your proxy's network. The application is
-> built to sit behind a proxy; the one it ships is a default, not a requirement.
+> **Already run Traefik, Caddy or your own nginx?** Put it in front of the app's `8080` and point
+> `XForwarded__KnownNetworks` at its network. The application is built to sit behind a proxy; the
+> one it ships is a default, not a requirement — **on the people-facing side.** Keep the shipped
+> proxy for the printer port, or read [Printer TLS](docs/printer-tls.md) before replacing it;
+> Traefik and Caddy in particular cannot serve that port at all.
 
-> **Do not put a reverse proxy in front of the printer port.** The printer firmware trusts a
-> single anchor, requires exactly one certificate to be presented, and pushes 256 KiB transfer
-> chunks that a proxy will buffer. Each of those fails in a way that looks like a protocol bug.
-> The shipped proxy answers `404` to `/p/` for the same reason.
+> **Do not chain another reverse proxy in front of the printer port.** One more hop that buffers
+> responses or presents a certificate chain breaks transfers in ways that read as protocol bugs.
+> The shipped proxy answers `404` to `/p/` on the people-facing port for the same reason.
 
 > **Do not put that volume on NFS, CIFS or a NAS share.** SQLite's WAL locking is unreliable
 > over network filesystems and will eventually corrupt the database. Use a local Docker
@@ -172,10 +163,9 @@ The database is created and migrated automatically on first start.
 
 > **This serves people, not printers.** Run from source, the printer listener is plain HTTP on
 > `15443` with nothing in front of it, so a printer configured with `tls = true` dials it and
-> fails — and no setting fixes that, because the record size the firmware needs is not something
-> .NET can be made to emit (see the proxy note above). For printer work from source you
-> need either the Compose stack in front of it, or `PrusaConnect__PrinterTls=false` and printers
-> told the same, which is the testing path described under
+> fails. No setting fixes that — see [Printer TLS](docs/printer-tls.md). For printer work from
+> source you need either the Compose stack in front of it, or `PrusaConnect__PrinterTls=false`
+> with printers told the same, which is the testing path described under
 > [`PrinterTls`](#turning-printertls-off-and-when-that-is-legitimate). The fake printer under
 > [Testing without a printer](#testing-without-a-printer) needs neither.
 
@@ -342,6 +332,10 @@ rather than `CanRead`, since reading it means making the printer go and do work.
 
 ## Print queue
 
+> **The newest part of this project.** The loop has done its job on real hardware — two prints on
+> an MK3.5, the second chosen and started by Homespool after a person did nothing but set the
+> printer ready. That is the thing working, on a handful of prints rather than a season of them.
+
 Each printer has **one queue, shared by everyone** who can use it — not a queue per person. A
 background loop watches the front of it and does the obvious thing: send the file, wait for the
 printer to confirm it has it, start the print, move on.
@@ -358,17 +352,31 @@ DELETE /api/v1/printers/{uuid}/queue/{id}               take it out
 
 **When the loop cannot proceed it holds and says why**, rather than skipping to something that
 would work. That is the spooler behaviour rather than a limitation: a queue that quietly reorders
-itself around an obstacle is a queue you cannot reason about. The reasons it will give you:
+itself around an obstacle is a queue you cannot reason about.
+
+Three of the five reasons clear themselves, and want nothing from you:
 
 | it says | what is happening |
 |---|---|
 | Sending *file* to the printer | a transfer is in flight — firmware allows only one at a time |
 | Waiting for the printer to confirm the file | the bytes arrived, but no `FILE_INFO` has named a path to print |
-| Waiting for the printer to be made ready | the printer is not `Ready` — **including a finished print nobody has cleared** |
-| *(insufficient space)* | the file at the front will not fit on the drive; the queue waits for someone to free space |
+| *(nothing)* | a print has been commanded and the printer still says `READY` for a few seconds — the active print already says this, so the queue keeps quiet |
 
-The middle two are transient and clear themselves. The other two want a human: someone to take
-the print off the bed, or to delete something.
+The other two are waiting for a person:
+
+| it says | what is happening |
+|---|---|
+| Waiting for the printer to be made ready | the printer is not `Ready`, **most often a finished print nobody has cleared** |
+| *(its own banner, with the space needed and free)* | the file at the front will not fit on the drive |
+
+The first of those is the one to understand before you meet it, because a correctly working queue
+sitting behind a finished print looks exactly like a broken one.
+
+**Taking the print off the bed is not enough, and neither is dismissing the screen** — do that and
+firmware reports `Idle`, not `Ready`. Readiness is a separate, deliberate declaration that the bed
+is clear, and only a person can make it: `PUT /api/v1/printers/{uuid}/command/ready`, or *Set
+Ready* at the panel. The loop will never decide this for you, because the failure mode is printing
+onto a finished part, which the firmware will happily do.
 
 **Print history** sits beside the queue on the same page. Every print is recorded, including the
 ones that never started, with the file's name as it was at the time rather than a pointer to a

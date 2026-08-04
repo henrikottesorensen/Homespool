@@ -68,7 +68,7 @@ else
         <strong>@active.FileName</strong>
         @* Starting is not yet printing - the printer has accepted the command and is heating. Saying
            "printing" through that window would be a small lie the page tells every single time. *@
-        @if (active.Outcome == Homespool.Model.PrintOutcome.Starting)
+        @if (active.State == Homespool.Model.PrintState.Starting)
         {
             <span class="badge text-bg-secondary">starting</span>
         }
@@ -194,10 +194,10 @@ else
                     <td>@job.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm",
                         System.Globalization.CultureInfo.InvariantCulture)</td>
                     <td>
-                        @job.Outcome
+                        @job.State
                         @* A stop says who, because the printer cannot: it reports the same state
                            change whether somebody pressed stop here or on the panel. *@
-                        @if (job.Outcome == Homespool.Model.PrintOutcome.Stopped)
+                        @if (job.State == Homespool.Model.PrintState.Stopped)
                         {
                             <br />
 

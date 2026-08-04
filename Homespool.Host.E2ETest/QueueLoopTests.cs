@@ -275,7 +275,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         await AdvanceAsync(printerId);
 
         // Assert - a row exists, and it reaches Printing once telemetry reports it
-        (await WaitUntilAsync(async () => await OutcomeIsAsync(printerId, PrintOutcome.Printing),
+        (await WaitUntilAsync(async () => await OutcomeIsAsync(printerId, PrintState.Printing),
             TimeSpan.FromSeconds(30))).Should().BeTrue("the row is promoted once the printer reports PRINTING");
 
         PrintJob printing = await ActiveAsync(printerId);
@@ -297,7 +297,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
 
         // Assert - closed, and no longer the active print
         PrintJob finished = await SingleJobAsync(printerId);
-        finished.Outcome.Should().Be(PrintOutcome.Finished);
+        finished.State.Should().Be(PrintState.Finished);
         finished.EndedAt.Should().NotBeNull();
 
         await EndRunAsync(fake, run);
@@ -347,7 +347,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         (await QueueDepthAsync(printerId)).Should().Be(1, "the queue holds rather than dropping the entry");
 
         PrintJob failure = await SingleJobAsync(printerId);
-        failure.Outcome.Should().Be(PrintOutcome.Failed);
+        failure.State.Should().Be(PrintState.Failed);
         failure.Reason.Should().Contain("Not enough space");
         failure.EndedAt.Should().NotBeNull("nothing printed, so it is opened and closed together");
 
@@ -427,7 +427,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
             .Should().BeTrue();
 
         await AdvanceAsync(printerId);
-        (await WaitUntilAsync(async () => await OutcomeIsAsync(printerId, PrintOutcome.Printing),
+        (await WaitUntilAsync(async () => await OutcomeIsAsync(printerId, PrintState.Printing),
             TimeSpan.FromSeconds(30))).Should().BeTrue();
 
         // Act - stop it the way a person would, over the API
@@ -450,7 +450,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         await AdvanceAsync(printerId);
 
         PrintJob stopped = await SingleJobAsync(printerId);
-        stopped.Outcome.Should().Be(PrintOutcome.Stopped);
+        stopped.State.Should().Be(PrintState.Stopped);
         stopped.EndedAt.Should().NotBeNull();
         stopped.StoppedByUserId.Should().Be(userId,
             "a stop made here and one made at the panel are the same state change, so this is the only record of which it was");
@@ -520,14 +520,14 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         return queued.TrackingId;
     }
 
-    private async Task<bool> OutcomeIsAsync(int printerId, PrintOutcome outcome)
+    private async Task<bool> OutcomeIsAsync(int printerId, PrintState outcome)
     {
         await AdvanceAsync(printerId);
 
         using IServiceScope scope = _factory.Services.CreateScope();
 
         return await scope.ServiceProvider.GetRequiredService<HSDbContext>()
-                          .PrintJobs.AnyAsync(job => job.PrinterId == printerId && job.Outcome == outcome,
+                          .PrintJobs.AnyAsync(job => job.PrinterId == printerId && job.State == outcome,
                               TestContext.Current.CancellationToken);
     }
 

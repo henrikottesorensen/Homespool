@@ -76,12 +76,12 @@ public sealed class QueueAdvancer : BackgroundService
     /// How long a print may sit commanded-but-not-printing before the loop stops believing in it.
     /// </summary>
     /// <remarks>
-    /// The bound the <see cref="PrintOutcome.Starting"/> phase needs. Ordinarily this is seconds -
+    /// The bound the <see cref="PrintState.Starting"/> phase needs. Ordinarily this is seconds -
     /// 3.1 s measured on a Core One - but a print that is accepted and then never begins (a heat-up
     /// that fails, a dialog nobody answers) would otherwise leave the row open forever, and the
     /// partial unique index would then block every later print on that printer. Generous, because a
     /// cold chamber and a large bed legitimately take minutes; closing it as
-    /// <see cref="PrintOutcome.Unknown"/> is honest, since nothing here can say what happened.
+    /// <see cref="PrintState.Unknown"/> is honest, since nothing here can say what happened.
     /// </remarks>
     public static readonly TimeSpan StartingStaleAfter = TimeSpan.FromMinutes(15);
 
@@ -203,7 +203,7 @@ public sealed class QueueAdvancer : BackgroundService
     /// the open print, and until 2026-08-04 it was scheduled by only the first - so a printer went
     /// unvisited from the moment its last queue entry was consumed at <c>START_PRINT</c>, which is
     /// exactly when its print row still needed closing. The last print of a session never closed, and
-    /// a row stuck <see cref="PrintOutcome.Starting"/> blocked the next print for
+    /// a row stuck <see cref="PrintState.Starting"/> blocked the next print for
     /// <see cref="StartingStaleAfter"/>. The predicate predated print history by a day and nobody
     /// revisited it when <see cref="ReconcilePrintAsync"/> moved in.
     /// <para>
@@ -246,9 +246,9 @@ public sealed class QueueAdvancer : BackgroundService
     }
 
     /// <summary>Ends a print row: the outcome and the moment, together so neither is set alone.</summary>
-    private static void Close(PrintJob job, PrintOutcome outcome, DateTimeOffset at)
+    private static void Close(PrintJob job, PrintState outcome, DateTimeOffset at)
     {
-        job.Outcome = outcome;
+        job.State = outcome;
         job.EndedAt = at;
     }
 
@@ -418,7 +418,7 @@ public sealed class QueueAdvancer : BackgroundService
     /// <remarks>
     /// <para>
     /// <b>Two phases, because a print does not begin when it is commanded.</b> A row is opened
-    /// <see cref="PrintOutcome.Starting"/> and only reaches <see cref="PrintOutcome.Printing"/> when
+    /// <see cref="PrintState.Starting"/> and only reaches <see cref="PrintState.Printing"/> when
     /// telemetry actually says so - measured at 3.1 s on a Core One, which still reports <c>READY</c>
     /// throughout. Closing on "no longer printing" without that distinction would close every print
     /// moments after starting it, and the FakePrinter would never have shown it: the fake transitions
@@ -449,11 +449,11 @@ public sealed class QueueAdvancer : BackgroundService
         PrinterStatus status = live?.Status ?? PrinterStatus.Unknown;
         DateTimeOffset now = _timeProvider.GetUtcNow();
 
-        if (active.Outcome == PrintOutcome.Starting)
+        if (active.State == PrintState.Starting)
         {
             if (status == PrinterStatus.Printing)
             {
-                active.Outcome = PrintOutcome.Printing;
+                active.State = PrintState.Printing;
                 active.FirmwareJobId = live?.JobId;
                 await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -475,7 +475,7 @@ public sealed class QueueAdvancer : BackgroundService
                 + "closing it as Unknown so the queue is not wedged.",
                 printerId, active.FileName, (now - active.StartedAt).TotalMinutes);
 
-            Close(active, PrintOutcome.Unknown, now);
+            Close(active, PrintState.Unknown, now);
             await dbContext.SaveChangesAsync(cancellationToken);
 
             return null;
@@ -486,14 +486,14 @@ public sealed class QueueAdvancer : BackgroundService
             return active;
         }
 
-        PrintOutcome outcome = status switch
+        PrintState outcome = status switch
         {
-            PrinterStatus.Finished => PrintOutcome.Finished,
-            PrinterStatus.Stopped => PrintOutcome.Stopped,
+            PrinterStatus.Finished => PrintState.Finished,
+            PrinterStatus.Stopped => PrintState.Stopped,
 
             // Idle, Ready, Error, or the printer having gone quiet. It stopped printing and did not
             // say how, which is what Unknown is for rather than a guess at Finished.
-            _ => PrintOutcome.Unknown,
+            _ => PrintState.Unknown,
         };
 
         Close(active, outcome, now);
@@ -679,7 +679,7 @@ public sealed class QueueAdvancer : BackgroundService
                 QueuedByUserId = head.QueuedByUserId,
                 StartedAt = now,
                 EndedAt = now,
-                Outcome = PrintOutcome.Failed,
+                State = PrintState.Failed,
                 Reason = reason,
             });
 
@@ -729,7 +729,7 @@ public sealed class QueueAdvancer : BackgroundService
                 QueuedByUserId = head.QueuedByUserId,
                 PrinterPath = printerPath,
                 StartedAt = _timeProvider.GetUtcNow(),
-                Outcome = PrintOutcome.Starting,
+                State = PrintState.Starting,
             });
 
             // The entry has done its job; the history row carries it from here.
@@ -795,7 +795,7 @@ public sealed class QueueAdvancer : BackgroundService
                     QueuedByUserId = head.QueuedByUserId,
                     StartedAt = refusedAt,
                     EndedAt = refusedAt,
-                    Outcome = PrintOutcome.Failed,
+                    State = PrintState.Failed,
                     Reason = reason,
                 });
 

@@ -109,7 +109,7 @@ public class PrintStopService
         int marked = await _dbContext.PrintJobs
                                      .Where(job => job.Id == id
                                                    && job.StoppedByUserId == null
-                                                   && (job.EndedAt == null || job.Outcome == PrintOutcome.Stopped))
+                                                   && (job.EndedAt == null || job.State == PrintState.Stopped))
                                      .ExecuteUpdateAsync(
                                           set => set.SetProperty(job => job.StoppedByUserId, userId),
                                           cancellationToken);

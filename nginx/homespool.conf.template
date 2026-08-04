@@ -2,6 +2,17 @@
 # user listener. Mounted read-only from ./nginx, so editing it is editing a file in the repository -
 # no rebuild, just `docker compose restart proxy`.
 #
+# A TEMPLATE, and named one since 2026-08-05. It is mounted to /etc/nginx/templates and rendered into
+# conf.d at start by the base image's 20-envsubst-on-templates.sh, which substitutes
+# ${HTTPS_PORT_SUFFIX} into the redirect below. That is not optional decoration: dropped straight into
+# conf.d as it used to be, nginx starts perfectly happily and redirects every plain-HTTP visitor to a
+# literal "https://$host${HTTPS_PORT_SUFFIX}/..." - a URL no browser can resolve, from a proxy that
+# reports itself healthy. The extension is the warning.
+#
+# Only ${HTTPS_PORT_SUFFIX} is substituted; NGINX_ENVSUBST_FILTER in compose.yaml restricts it. Add a
+# variable of your own here and you must add it there too, or it stays a literal - and conversely,
+# widening that filter would blank every $host and $request_uri below.
+#
 # Printers use this proxy but not this file. They have their own port, server block and certificate
 # in homespool-printer.conf, installed alongside this one when the deployment has a printer leaf to
 # serve. The two stay separate all the way down, which is why /p/* does not exist on the listener
@@ -31,9 +42,16 @@ server {
         proxy_send_timeout 300s;
     }
 
-    # Everything else goes to TLS. $host carries no port, so this assumes the standard 443. If you
-    # publish HTTPS on some other host port, change the port here to match or browsers will be sent
-    # to a closed door.
+    # Everything else goes to TLS. $host carries no port, so this needs telling which one HTTPS is
+    # published on - ${HTTPS_PORT_SUFFIX} is substituted at container start from HTTPS_PORT, and is
+    # empty for the standard 443 so ordinary deployments get a clean URL. It used to assume 443 with
+    # a comment telling you to edit this line; the first person to publish HTTPS elsewhere read that
+    # comment only after being redirected into a closed port.
+    #
+    # This file is a TEMPLATE - envsubst renders it into conf.d at start. Only the variables named in
+    # NGINX_ENVSUBST_FILTER are touched, which is what keeps $host and $request_uri below from being
+    # blanked: unfiltered envsubst would replace every one of them with nothing and the failure would
+    # look like nginx misbehaving rather than like a substitution.
     #
     # 308, not 301: a 301 permits the client to replay the request as a GET, and enough of them do
     # that it is the documented behaviour rather than a bug. A form POST that arrives over http -
@@ -41,7 +59,7 @@ server {
     # reaches the application as a GET with its body dropped, which looks like the request silently
     # doing nothing rather than like a redirect problem. 308 preserves the method and the body.
     location / {
-        return 308 https://$host$request_uri;
+        return 308 https://$host${HTTPS_PORT_SUFFIX}$request_uri;
     }
 }
 

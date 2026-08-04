@@ -128,7 +128,7 @@ alone, and every other route exists everywhere else, so a request on the wrong o
 > would be the worse default. To replace it, put `homespool.crt` and `homespool.key` into the
 > `homespool-proxy-certs` volume and restart the proxy — nginx does not ask where a certificate came
 > from, which is exactly why the stack ships nginx rather than something that insists on fetching
-> one. `nginx/homespool.conf` has a commented HSTS line to uncomment once you have one.
+> one. `nginx/homespool.conf.template` has a commented HSTS line to uncomment once you have one.
 
 > **Already run Traefik, Caddy or your own nginx?** Delete the `proxy` service, publish the app's
 > `8080` yourself, and point `XForwarded__KnownNetworks` at your proxy's network. The application is

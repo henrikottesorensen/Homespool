@@ -116,7 +116,7 @@ mkdir -p "$payload_dir/nginx"
 cp "$repo_root/compose.yaml" "$payload_dir/"
 cp "$repo_root/.env.example"  "$payload_dir/"
 # Only the three files compose bind-mounts. The rest of nginx/ is baked into the proxy image already.
-cp "$repo_root/nginx/homespool.conf"         "$payload_dir/nginx/"
+cp "$repo_root/nginx/homespool.conf.template" "$payload_dir/nginx/"
 cp "$repo_root/nginx/homespool-proxy.conf"   "$payload_dir/nginx/"
 cp "$repo_root/nginx/homespool-printer.conf" "$payload_dir/nginx/"
 

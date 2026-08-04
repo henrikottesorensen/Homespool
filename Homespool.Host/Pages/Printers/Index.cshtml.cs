@@ -77,7 +77,52 @@ public class IndexModel : PageModel
     /// <summary>The bundle a reissue just made available, shown once and then gone.</summary>
     public BundleOffer? Offer { get; private set; }
 
-    public record PrinterRow(Printer Printer, string TeamName, bool Enrolled, bool AwaitingUsbProvisioning, bool Connected);
+    /// <summary>One row of the listing.</summary>
+    /// <remarks>
+    /// <b><paramref name="LiveStatus"/> is the printer's own, and null until it has ever reported.</b>
+    /// Deliberately not <c>Printer.Status</c>, which is written once as <c>Unknown</c> when the row is
+    /// created and never updated again - see <see cref="PrinterQueryService"/>.
+    /// </remarks>
+    public record PrinterRow(Printer Printer, string TeamName, bool Enrolled, bool AwaitingUsbProvisioning,
+        bool Connected, PrinterStatus? LiveStatus);
+
+    /// <summary>
+    /// What a connected printer's status says, in a person's words rather than the enum's.
+    /// </summary>
+    /// <remarks>
+    /// <b>Null means connected but not yet heard from</b> - the socket is up and no telemetry has
+    /// landed, which is a real few seconds after a printer connects, not an error.
+    /// <see cref="PrinterStatus.Undefined"/> is the same thing from the other side: a stored value
+    /// nobody wrote.
+    /// </remarks>
+    public static string StatusText(PrinterStatus? status)
+    {
+        return status switch
+        {
+            null or PrinterStatus.Undefined or PrinterStatus.Unknown => "Connected",
+            PrinterStatus.Attention => "Needs attention",
+            _ => status.Value.ToString(),
+        };
+    }
+
+    /// <summary>
+    /// The badge colour for a status - semantic, so what needs a person reads at a glance.
+    /// </summary>
+    /// <remarks>
+    /// Three tiers and a default: <b>danger</b> for the two that need somebody now,
+    /// <b>success</b> for a printer doing what it was asked, and <b>secondary</b> for every resting
+    /// state, so a listing of idle printers stays quiet instead of glowing green.
+    /// </remarks>
+    public static string StatusBadgeClass(PrinterStatus? status)
+    {
+        return status switch
+        {
+            PrinterStatus.Error or PrinterStatus.Attention => "text-bg-danger",
+            PrinterStatus.Paused => "text-bg-warning",
+            PrinterStatus.Printing or PrinterStatus.Ready => "text-bg-success",
+            _ => "text-bg-secondary",
+        };
+    }
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
@@ -248,7 +293,10 @@ public class IndexModel : PageModel
             return;
         }
 
-        IReadOnlyList<Printer> printers = await _printerQueryService.ListPrintersForUserAsync(user.Id, cancellationToken);
+        // With state, because the Status column reports what a connected printer is doing rather than
+        // only that it is enrolled. Same query shape, one join.
+        IReadOnlyList<PrinterWithState> printers =
+            await _printerQueryService.ListPrintersWithStateForUserAsync(user.Id, cancellationToken);
 
         if (printers.Count == 0)
         {
@@ -262,15 +310,16 @@ public class IndexModel : PageModel
             .ToDictionary(m => m.TeamId, m => m.Team!.Name ?? $"Team #{m.TeamId}");
 
         PrinterEnrolmentStatus status = await _prusaConnectService.GetEnrolmentStatusAsync(
-            printers.Select(p => p.Id).ToList(), cancellationToken);
+            printers.Select(row => row.Printer.Id).ToList(), cancellationToken);
 
         Printers = printers
-            .Select(p => new PrinterRow(
-                p,
-                teamNames.TryGetValue(p.TeamId, out string? name) ? name : $"Team #{p.TeamId}",
-                status.Enrolled.Contains(p.Id),
-                status.AwaitingUsbProvisioning.Contains(p.Id),
-                _connectionRegistry.IsConnected(p.Id)))
+            .Select(row => new PrinterRow(
+                row.Printer,
+                teamNames.TryGetValue(row.Printer.TeamId, out string? name) ? name : $"Team #{row.Printer.TeamId}",
+                status.Enrolled.Contains(row.Printer.Id),
+                status.AwaitingUsbProvisioning.Contains(row.Printer.Id),
+                _connectionRegistry.IsConnected(row.Printer.Id),
+                row.LiveState?.Status))
             .ToList();
     }
 }

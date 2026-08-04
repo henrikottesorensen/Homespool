@@ -45,18 +45,30 @@ else
                 <td><a asp-page="Detail" asp-route-uuid="@row.Printer.Uuid">@(row.Printer.Name ?? row.Printer.Model ?? row.Printer.Uuid.ToString())</a></td>
                 <td>@row.Printer.Location</td>
                 <td>@row.TeamName</td>
+                @* What the printer is doing beats how it was set up, whenever we can know it. A
+                   connected printer used to read "Enrolled", which is true, unchanging, and answers a
+                   question nobody has once the thing is working. Enrolment still shows when it is the
+                   most useful fact - which is when the printer is not there. *@
                 <td>
-                    @if (row.Enrolled)
+                    @if (row.Connected)
                     {
-                        <span class="badge text-bg-success">Enrolled</span>
+                        <span class="badge @IndexModel.StatusBadgeClass(row.LiveStatus)">@IndexModel.StatusText(row.LiveStatus)</span>
+                    }
+                    else if (row.Enrolled)
+                    {
+                        @* Enrolled and absent. "Offline" is the actionable half; the reissue button
+                           beside it already says the credential is in place. *@
+                        <span class="badge border border-secondary text-body-secondary">Offline</span>
                     }
                     else if (row.AwaitingUsbProvisioning)
                     {
+                        @* Filled, unlike its two neighbours, because this one is the only absence with
+                           something for a person to do: put the key in the printer. *@
                         <span class="badge text-bg-warning">Awaiting USB connection</span>
                     }
                     else
                     {
-                        <span class="badge text-bg-secondary">Awaiting connection</span>
+                        <span class="badge border border-secondary text-body-secondary">Awaiting connection</span>
                     }
                 </td>
                 <td>

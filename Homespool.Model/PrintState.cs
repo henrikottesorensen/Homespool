@@ -38,6 +38,19 @@ public enum PrintState
     /// through preview-init and heating first; only the FakePrinter transitions instantly. Without
     /// this value, "has not started printing" and "has stopped printing" are the same observation, and
     /// a loop closing rows on "no longer printing" would close every print moments after starting it.
+    /// <para>
+    /// <b>Those three seconds are one machine's number, not a guarantee</b> (hardware, 2026-08-04):
+    /// an MK3.5 at <c>6.5.7+12836</c> reports <c>PRINTING</c> in the <i>first</i> sample after
+    /// <c>START_PRINT</c>, nozzle still cold, so this phase can be zero samples wide. What earns the
+    /// two phases is the guard - a row must never close before it was seen printing - and not the
+    /// width of the gap.
+    /// </para>
+    /// <para>
+    /// <b>And <c>Printing</c> here does not mean extruding.</b> On that same run, plastic began
+    /// 168 s after <c>START_PRINT</c> - homing, mesh probing and heating first - which is why
+    /// <c>notes/print-queue.md</c> records <c>FilamentUsed</c> increasing, never a state change, as
+    /// the signal for when a print actually begins.
+    /// </para>
     /// </remarks>
     Starting,
 

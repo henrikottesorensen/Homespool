@@ -77,7 +77,8 @@ public sealed class QueueAdvancer : BackgroundService
     /// </summary>
     /// <remarks>
     /// The bound the <see cref="PrintState.Starting"/> phase needs. Ordinarily this is seconds -
-    /// 3.1 s measured on a Core One - but a print that is accepted and then never begins (a heat-up
+    /// 3.1 s measured on a Core One, and *zero* on an MK3.5, which reports PRINTING in the first
+    /// sample after START_PRINT - but a print that is accepted and then never begins (a heat-up
     /// that fails, a dialog nobody answers) would otherwise leave the row open forever, and the
     /// partial unique index would then block every later print on that printer. Generous, because a
     /// cold chamber and a large bed legitimately take minutes; closing it as
@@ -420,6 +421,9 @@ public sealed class QueueAdvancer : BackgroundService
     /// <b>Two phases, because a print does not begin when it is commanded.</b> A row is opened
     /// <see cref="PrintState.Starting"/> and only reaches <see cref="PrintState.Printing"/> when
     /// telemetry actually says so - measured at 3.1 s on a Core One, which still reports <c>READY</c>
+    /// throughout, and at <b>zero</b> on an MK3.5, whose very first sample already says <c>PRINTING</c>
+    /// with the nozzle cold (hardware, 2026-08-04). The window is not something every printer offers;
+    /// the guard is what earns the two phases, not the gap
     /// throughout. Closing on "no longer printing" without that distinction would close every print
     /// moments after starting it, and the FakePrinter would never have shown it: the fake transitions
     /// instantly, where firmware passes through preview-init and heating.

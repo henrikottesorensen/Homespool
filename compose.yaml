@@ -182,11 +182,25 @@ services:
       # replace the certificate with one of your own.
       USER_HOST: "${USER_HOST:-localhost}"
 
+      # The redirect from the HTTP listener has to name the port HTTPS is actually published on -
+      # $host carries none, so without this it means 443 and sends browsers to a closed door on any
+      # stack that publishes elsewhere. Empty for 443 so the common case keeps a clean URL.
+      HTTPS_PORT_SUFFIX: "${HTTPS_PORT_SUFFIX-}"
+
+      # Restricts envsubst to that one variable. WITHOUT THIS the template's own $host, $request_uri
+      # and $homespool_upstream are all substituted with nothing, nginx starts on a configuration
+      # that parses and redirects everyone to "https://", and the cause looks nothing like the
+      # symptom. The filter is the whole safety of this arrangement.
+      NGINX_ENVSUBST_FILTER: "HTTPS_PORT_SUFFIX"
+
     volumes:
       # Read-only, and from the repository rather than baked into the image: this is the file an
       # operator is most likely to want to change (HSTS, a hostname, an extra header), and a mount
       # makes that an edit and a restart instead of a rebuild.
-      - ./nginx/homespool.conf:/etc/nginx/conf.d/default.conf:ro
+      # A template rather than straight into conf.d: the entrypoint renders it there, substituting
+      # the HTTPS port into the redirect. Still the file an operator edits, still a mount so that is
+      # an edit and a restart rather than a rebuild - only the path it lands on has moved.
+      - ./nginx/homespool.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./nginx/homespool-proxy.conf:/etc/nginx/homespool-proxy.conf:ro
 
       # NOT into conf.d, deliberately. The entrypoint hook copies it there only when this deployment

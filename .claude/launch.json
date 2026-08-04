@@ -2,7 +2,7 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "printerservice-host",
+      "name": "homespool-host",
       "runtimeExecutable": "dotnet",
       "runtimeArgs": ["run", "--project", "Homespool.Host", "--launch-profile", "http"],
       "port": 5052

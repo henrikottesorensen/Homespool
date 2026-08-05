@@ -52,7 +52,7 @@ public class XApiKeyAuthenticationHandler : ApiTokenAuthenticationHandlerBase
     /// <remarks>
     /// Nothing. There is no registered challenge scheme meaning "put it in a header of my own", and
     /// naming <c>Bearer</c> would advertise a credential this scheme does not read.
-    /// <c>Policies.PrintHost</c> still answers with a complete challenge, because the bearer scheme
+    /// <c>Policies.Compat</c> still answers with a complete challenge, because the bearer scheme
     /// paired with it supplies one.
     /// </remarks>
     protected override string? ChallengeScheme => null;

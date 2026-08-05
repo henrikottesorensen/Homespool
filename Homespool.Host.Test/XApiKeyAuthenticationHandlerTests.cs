@@ -29,7 +29,7 @@ namespace Homespool.Host.Test;
 /// </summary>
 /// <remarks>
 /// <b>The two tests that matter are the boundaries</b>, not the happy path. That this scheme refuses a
-/// bearer credential is what keeps <c>Policies.Api</c> and <c>Policies.PrintHost</c> genuinely
+/// bearer credential is what keeps <c>Policies.Api</c> and <c>Policies.Compat</c> genuinely
 /// different surfaces, and that it authenticates as the plain owner is what stops it becoming a
 /// second, weaker kind of credential. Both were checked by mutation: reading the other header, or
 /// dropping the <c>hs_</c> prefix check, makes exactly the matching test go red.

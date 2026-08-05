@@ -106,42 +106,43 @@ believing. Routes are segregated the same way inside the app: `/p/*` exists on t
 alone, and every other route exists everywhere else, so a request on the wrong one is answered `404`
 — a boundary that is a socket rather than a line of proxy configuration.
 
-> **The proxy is not optional on the printer side.** Prusa firmware can only hold very small TLS
-> records, and .NET cannot produce them, so nginx terminates the printer's TLS rather than the
-> application doing it. Nothing to configure — the shipped stack handles it. If you plan to
-> **replace the proxy**, read [Printer TLS](docs/printer-tls.md) first: that half has requirements
-> a general-purpose proxy will not meet by default, and getting them wrong breaks file transfers
-> while everything else looks healthy.
+**Set `PRINTER_HOST` in `.env` before the first start.** There is no way to infer your server's
+externally-reachable address from inside the container, so USB-key provisioning (below) won't
+produce a usable snippet until it's set — and the printer certificate is issued **once, on the
+first run**, covering every address the machine can see at that moment plus whatever
+`PRINTER_HOST` says. Setting it first means it is covered by construction. Setting it later is
+fine too, as long as it is one of the addresses that were detected; if it is not, delete
+`data/certificates/printer.pfx` and restart to have a new certificate issued. See
+[Configuration](#configuration).
 
-> **The browser will warn on first use, and that is honest.** The certificate the proxy generates
-> is signed by nobody. Serving your credentials in clear while you go and obtain a real certificate
-> would be the worse default. To replace it, put `homespool.crt` and `homespool.key` into the
-> `homespool-proxy-certs` volume and restart the proxy — nginx does not ask where a certificate came
-> from, which is exactly why the stack ships nginx rather than something that insists on fetching
-> one. `nginx/homespool.conf.template` has a commented HSTS line to uncomment once you have one.
+**The proxy is not optional on the printer side.** Prusa firmware can only hold very small TLS
+records, and .NET cannot produce them, so nginx terminates the printer's TLS rather than the
+application doing it. Nothing to configure — the shipped stack handles it. If you plan to
+**replace the proxy**, read [Printer TLS](docs/printer-tls.md) first: that half has requirements a
+general-purpose proxy will not meet by default, and getting them wrong breaks file transfers while
+everything else looks healthy.
 
-> **Already run Traefik, Caddy or your own nginx?** Put it in front of the app's `8080` and point
-> `XForwarded__KnownNetworks` at its network. The application is built to sit behind a proxy; the
-> one it ships is a default, not a requirement — **on the people-facing side.** Keep the shipped
-> proxy for the printer port, or read [Printer TLS](docs/printer-tls.md) before replacing it;
-> Traefik and Caddy in particular cannot serve that port at all.
+**The browser will warn on first use, and that is honest.** The certificate the proxy generates is
+signed by nobody. Serving your credentials in clear while you go and obtain a real certificate
+would be the worse default. To replace it, put `homespool.crt` and `homespool.key` into the
+`homespool-proxy-certs` volume and restart the proxy — nginx does not ask where a certificate came
+from, which is exactly why the stack ships nginx rather than something that insists on fetching
+one. `nginx/homespool.conf.template` has a commented HSTS line to uncomment once you have one.
 
-> **Do not chain another reverse proxy in front of the printer port.** One more hop that buffers
-> responses or presents a certificate chain breaks transfers in ways that read as protocol bugs.
-> The shipped proxy answers `404` to `/p/` on the people-facing port for the same reason.
+**Already run Traefik, Caddy or your own nginx?** Put it in front of the app's `8080` and point
+`XForwarded__KnownNetworks` at its network. The application is built to sit behind a proxy; the one
+it ships is a default, not a requirement — **on the people-facing side.** Keep the shipped proxy for
+the printer port, or read [Printer TLS](docs/printer-tls.md) before replacing it; Traefik and Caddy
+in particular cannot serve that port at all.
 
-> **Do not put that volume on NFS, CIFS or a NAS share.** SQLite's WAL locking is unreliable
-> over network filesystems and will eventually corrupt the database. Use a local Docker
-> volume or a bind-mount to local disk.
-
-> **Set `PRINTER_HOST` in `.env` before the first start.** There is no way to infer your
-> server's externally-reachable address from inside the container, so USB-key provisioning
-> (below) won't produce a usable snippet until it's set — and the printer certificate is issued
-> **once, on the first run**, covering every address the machine can see at that moment plus
-> whatever `PRINTER_HOST` says. Setting it first means it is covered by construction. Setting it
-> later is fine too, as long as it is one of the addresses that were detected; if it is not, delete
-> `data/certificates/printer.pfx` and restart to have a new certificate issued. See
-> [Configuration](#configuration).
+> **Two things will break a deployment quietly, so get them right first:**
+>
+> - **Do not chain another reverse proxy in front of the printer port.** One more hop that buffers
+>   responses or presents a certificate chain breaks transfers in ways that read as protocol bugs.
+>   The shipped proxy answers `404` to `/p/` on the people-facing port for the same reason.
+> - **Do not put the data volume on NFS, CIFS or a NAS share.** SQLite's WAL locking is unreliable
+>   over network filesystems and will eventually corrupt the database. Use a local Docker volume or
+>   a bind-mount to local disk.
 
 ### From source
 

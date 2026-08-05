@@ -8,6 +8,13 @@
     <File Path="README.md" />
     <File Path="compose.yaml" />
   </Folder>
+  <Folder Name="/docs/">
+    <File Path="docs/printer-tls.md" />
+    <File Path="docs/prusa-connect-cameras.md" />
+    <File Path="docs/prusa-connect-mobile-app.jsonopenapi" />
+    <File Path="docs/prusa-link-openapi.yaml" />
+    <File Path="docs/prusa-slicer-integration.md" />
+  </Folder>
   <Project Path="Homespool.Data/Homespool.Data.csproj" />
   <Project Path="Homespool.FakePrinter.Cli/Homespool.FakePrinter.Cli.csproj" />
   <Project Path="Homespool.FakePrinter.Test/Homespool.FakePrinter.Test.csproj" />

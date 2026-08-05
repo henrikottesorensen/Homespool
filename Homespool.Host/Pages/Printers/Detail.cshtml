@@ -183,6 +183,16 @@ else
             <tr>
                 <th scope="col">File</th>
                 <th scope="col">Started</th>
+
+                @* "Outcome", though the property is PrintState.State - and deliberately, not left
+                   over from the rename. This table is filtered to EndedAt != null, and Close() sets
+                   EndedAt and State together, so the only values reachable here are Finished,
+                   Stopped, Failed and Unknown: all of them outcomes. "State" would be the worse
+                   word, inviting "is it printing?" about a table where everything has ended.
+
+                   Same reason Close(PrintJob, PrintState outcome, ...) keeps "outcome" for its
+                   parameter. The type is named for the whole lifecycle because it spans it; this
+                   column only ever sees the end of it. *@
                 <th scope="col">Outcome</th>
             </tr>
         </thead>

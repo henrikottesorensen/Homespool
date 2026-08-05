@@ -7,8 +7,15 @@ public static class Schemes
     /// headers their firmware sends on every request and on the WebSocket upgrade. See
     /// <see cref="PrusaConnectPrinterAuthenticationHandler"/>.
     /// </summary>
-    public const string PrusaConnectPrinter = "prusaConnect";
+    public const string PrusaConnectPrinter = "PrusaConnect";
 
     /// <summary>Personal access tokens on the app API. See <see cref="ApiTokenAuthenticationHandler"/>.</summary>
-    public const string ApiToken = "apiToken";
+    public const string ApiToken = "ApiToken";
+
+    /// <summary>
+    /// The same personal access tokens, presented in <c>X-Api-Key</c> instead. See
+    /// <see cref="XApiKeyAuthenticationHandler"/> for why that is a scheme of its own rather than a
+    /// second header on <see cref="ApiToken"/>.
+    /// </summary>
+    public const string XApiKey = "X-Api-Key";
 }

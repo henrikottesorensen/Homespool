@@ -14,4 +14,12 @@ public static class Policies
     /// the bare cookie default — there is no case for a bearer credential on an HTML form.
     /// </summary>
     public const string Api = nameof(Api);
+
+    /// <summary>
+    /// The print-host compatibility shell under <c>/print-host</c>: a personal access token in either
+    /// header, and <b>never</b> the sign-in cookie. Its reasoning is in
+    /// <see cref="Authentication.XApiKeyAuthenticationHandler"/> and in
+    /// <see cref="Builder"/>, where the schemes are named.
+    /// </summary>
+    public const string PrintHost = nameof(PrintHost);
 }

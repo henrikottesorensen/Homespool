@@ -61,7 +61,8 @@ public static class Program
 
             builder.Services.AddAuthentication()
                             .AddPrusaConnectPrinterAuthentication()
-                            .AddApiTokenAuthentication();
+                            .AddApiTokenAuthentication()
+                            .AddXApiKeyAuthentication();
 
             builder.Services.AddIdentity<Model.Entities.HSUser, IdentityRole<long>>(Services.IdentityConfiguration.Configure)
                             .AddEntityFrameworkStores<HSDbContext>()

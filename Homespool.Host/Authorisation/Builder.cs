@@ -27,5 +27,14 @@ public static class Builder
              policy => policy.RequireAuthenticatedUser()
                                           .AddAuthenticationSchemes(IdentityConstants.ApplicationScheme,
                                                                     Authentication.Schemes.ApiToken));
+
+        // A token in either header, and deliberately no cookie. Multipart POST is a CORS-simple
+        // request - a plain HTML form on any site can send one cross-origin - and an [ApiController]
+        // carries no antiforgery token, so a cookie here would make the upload endpoint a CSRF sink.
+        // Requiring a token removes that by construction rather than by remembering to defend it.
+        options.AddPolicy(Policies.PrintHost,
+             policy => policy.RequireAuthenticatedUser()
+                                          .AddAuthenticationSchemes(Authentication.Schemes.ApiToken,
+                                                                    Authentication.Schemes.XApiKey));
     }
 }

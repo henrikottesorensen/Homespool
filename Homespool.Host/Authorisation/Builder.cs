@@ -32,7 +32,7 @@ public static class Builder
         // request - a plain HTML form on any site can send one cross-origin - and an [ApiController]
         // carries no antiforgery token, so a cookie here would make the upload endpoint a CSRF sink.
         // Requiring a token removes that by construction rather than by remembering to defend it.
-        options.AddPolicy(Policies.PrintHost,
+        options.AddPolicy(Policies.Compat,
              policy => policy.RequireAuthenticatedUser()
                                           .AddAuthenticationSchemes(Authentication.Schemes.ApiToken,
                                                                     Authentication.Schemes.XApiKey));

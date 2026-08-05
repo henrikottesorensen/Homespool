@@ -33,7 +33,7 @@ public static class AuthenticationBuilderExtensions
     /// <summary>
     /// Registers the <c>X-Api-Key</c> scheme: the same personal access tokens, in the header
     /// PrusaSlicer's print-host client sends. Reaching an endpoint takes a policy naming it — see
-    /// <c>Authorisation.Policies.PrintHost</c>, which is the only one that does.
+    /// <c>Authorisation.Policies.Compat</c>, which is the only one that does.
     /// </summary>
     public static AuthenticationBuilder AddXApiKeyAuthentication(this AuthenticationBuilder builder)
     {

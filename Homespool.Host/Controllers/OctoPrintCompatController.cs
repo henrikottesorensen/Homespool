@@ -156,7 +156,7 @@ public class OctoPrintCompatController : ControllerBase
 
         if (!IsMultipart(Request.ContentType, out string? boundary))
         {
-            return this.Failure(StatusCodes.Status400BadRequest,
+            return Explain(StatusCodes.Status400BadRequest,
                 "Expected a multipart/form-data body, as a print host receives.");
         }
 
@@ -164,14 +164,16 @@ public class OctoPrintCompatController : ControllerBase
         bool print = false;
         StoredFile? stored = null;
 
+        // Held outside the loop so a failure can name the file it was reading.
+        ContentDispositionHeaderValue? disposition = null;
+
         try
         {
             MultipartSection? section;
 
             while ((section = await reader.ReadNextSectionAsync(cancellationToken)) is not null)
             {
-                if (!ContentDispositionHeaderValue.TryParse(section.ContentDisposition,
-                                                            out ContentDispositionHeaderValue? disposition))
+                if (!ContentDispositionHeaderValue.TryParse(section.ContentDisposition, out disposition))
                 {
                     continue;
                 }
@@ -192,23 +194,26 @@ public class OctoPrintCompatController : ControllerBase
         }
         catch (UploadTooLargeException)
         {
-            return this.Failure(StatusCodes.Status413PayloadTooLarge,
-                $"Larger than the {_options.MaxUploadBytes}-byte limit.");
+            return Explain(StatusCodes.Status413PayloadTooLarge,
+                $"That file is larger than this server's {_options.MaxUploadBytes}-byte upload limit.");
         }
-        catch (PrintFileNameConflictException e)
+        catch (PrintFileNameConflictException)
         {
-            // The slicer surfaces this verbatim as "HTTP 409: <body>", and its send dialog lets the
-            // user rename without leaving the slicer.
-            return this.Failure(StatusCodes.Status409Conflict, e.Message);
+            // Deliberately not the store's own message, which advises asking to overwrite - correct
+            // for /api/v1, where the caller holds that flag, and useless here, where the caller is a
+            // slicer that has none. Name the action this caller actually has instead.
+            return Explain(StatusCodes.Status409Conflict,
+                $"A file named '{Path.GetFileName(disposition?.FileName.Value ?? string.Empty)}' already exists. "
+                + "Rename it in the send dialog, or delete the existing file in Homespool.");
         }
         catch (ArgumentException e)
         {
-            return this.Failure(StatusCodes.Status400BadRequest, e.Message);
+            return Explain(StatusCodes.Status400BadRequest, e.Message);
         }
 
         if (stored is null)
         {
-            return this.Failure(StatusCodes.Status400BadRequest, "The request carried no file part.");
+            return Explain(StatusCodes.Status400BadRequest, "The request carried no file part.");
         }
 
         if (print)
@@ -221,12 +226,39 @@ public class OctoPrintCompatController : ControllerBase
             {
                 // The file is already stored, so this is a partial success: say what happened rather
                 // than implying nothing did.
-                return this.Failure(StatusCodes.Status403Forbidden,
+                return Explain(StatusCodes.Status403Forbidden,
                     $"'{stored.FileName}' was uploaded, but you may not change this printer's queue.");
             }
         }
 
         return Created();
+    }
+
+    /// <summary>
+    /// A failure the slicer can put in front of a person: status plus one plain sentence.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Deliberately not <c>ProblemDetails</c>, which every other controller here answers with.</b>
+    /// <c>PrintHost::format_error</c> composes <c>"HTTP &lt;status&gt;: &lt;body&gt;"</c> and shows it
+    /// verbatim in a dialog, so a JSON document arrives at a human with the one useful sentence buried
+    /// between a spec URL and a trace id - observed on a live send, 2026-08-06. A machine-readable
+    /// body is the right convention for <c>/api/v1</c>, whose callers parse it; this surface's only
+    /// client renders it.
+    /// </para>
+    /// <para>
+    /// It also keeps the <c>traceId</c> out of a stranger's error dialog, which is small but not
+    /// nothing.
+    /// </para>
+    /// </remarks>
+    private static ContentResult Explain(int status, string message)
+    {
+        return new ContentResult
+        {
+            StatusCode = status,
+            ContentType = "text/plain; charset=utf-8",
+            Content = message,
+        };
     }
 
     /// <summary>

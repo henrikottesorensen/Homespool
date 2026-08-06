@@ -374,6 +374,51 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime, IDisposable
         // Assert
         second.StatusCode.Should().Be(HttpStatusCode.Conflict);
 
+        // The body is read by a person, not parsed by a program - see the next test.
+        string body = await second.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        body.Should().Contain("same.bgcode").And.Contain("Rename it in the send dialog");
+
+        client.Dispose();
+    }
+
+    /// <summary>
+    /// A failure body on this surface is <b>plain prose, not <c>ProblemDetails</c></b>, because the
+    /// slicer shows it to a person verbatim.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>PrintHost::format_error</c> composes <c>"HTTP &lt;status&gt;: &lt;body&gt;"</c> and puts the
+    /// result in a dialog. Answering `ProblemDetails` here - correct everywhere else in this
+    /// application - showed a real user a JSON document with the one useful sentence between a spec
+    /// URL and a trace id. Observed on a live send, 2026-08-06, which is the only way it could have
+    /// been: every assertion up to then checked the status code.
+    /// </para>
+    /// <para>
+    /// The brace check is the whole point rather than a proxy for it: no <c>{</c> means no serialised
+    /// object of any shape reached a human.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AFailureBodyIsProseRatherThanProblemDetails()
+    {
+        // Arrange
+        (Guid uuid, string _, HttpClient client) = await SetUpAsync("reader@example.com");
+
+        using MultipartFormDataContent body = SlicerUpload("notes.txt", print: false);
+
+        // Act
+        using HttpResponseMessage response = await client.PostAsync(
+            $"/compat/octoprint/{uuid}/api/files/local", body, TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.Content.Headers.ContentType!.MediaType.Should().Be("text/plain");
+
+        string text = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        text.Should().NotContain("{", "a serialised object in an error dialog is the defect this guards");
+        text.Should().NotContain("traceId", "and a trace id is noise to the person reading it");
+        text.Should().Contain(".gcode", "the sentence still has to say what is wrong");
+
         client.Dispose();
     }
 

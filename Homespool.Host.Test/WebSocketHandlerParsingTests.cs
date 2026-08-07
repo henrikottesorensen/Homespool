@@ -9,9 +9,11 @@ using System.Threading.Tasks;
 using AwesomeAssertions;
 
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 using NSubstitute;
 
+using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;
 
 namespace Homespool.Host.Test;
@@ -54,6 +56,10 @@ public class WebSocketHandlerParsingTests
     /// </summary>
     private const string EventWithNonAsciiPath =
         """{"event":"FILE_INFO","command_id":42,"state":"PRINTING","data":{"path":"/usb/målestok-90°.bgcode","display_name":"Målestok 90° — udkast"}}""";
+
+    /// <summary>The shipped defaults - a 1 MiB message cap, which nothing here approaches.</summary>
+    private static readonly IOptions<PrusaConnectOptions> DefaultOptions =
+        Options.Create(new PrusaConnectOptions());
 
     /// <summary>
     /// One JSON message split across reads at 1, 2, 7, 64 and 4096 bytes arrives as one message.
@@ -185,6 +191,87 @@ public class WebSocketHandlerParsingTests
     }
 
     /// <summary>
+    /// A document that never finishes is disconnected once it passes the configured limit.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The gap this closes: an incomplete document is buffered, correctly, because real messages
+    /// arrive across many frames - the largest measured took 184. But nothing declared one absurd,
+    /// and <c>PipeReader.Create</c> over a stream is a <c>StreamPipeReader</c>, which has no
+    /// <c>PauseWriterThreshold</c> to fall back on. A value opened and never closed grew the buffer
+    /// until the process died, taking every other printer with it.
+    /// </para>
+    /// <para>
+    /// A small cap is used here rather than the shipped 1 MiB so the test stays fast; the number is
+    /// the configuration's business, and <c>PrusaConnectOptions</c> carries the reasoning for it.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ADocumentThatNeverEndsIsCutOffAtTheLimit()
+    {
+        // Arrange
+        Pipe wire = new();
+
+        WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance,
+            new RecordingMessageDispatcher(),
+            Options.Create(new PrusaConnectOptions { MaxIncomingMessageBytes = 4096 }));
+
+        // Act
+        Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 7,
+            Substitute.For<IPrinterConnectionActor>(), CancellationToken.None);
+
+        // Valid JSON as far as it goes, and never closed - the shape that used to buffer for ever.
+        await WriteInChunksAsync(wire.Writer,
+            Encoding.UTF8.GetBytes("{\"a\":\"" + new string('x', 8192)), chunkSize: 1024);
+
+        // Assert
+        PrinterMessageTooLargeException thrown = await Assert.ThrowsAsync<PrinterMessageTooLargeException>(() => run);
+
+        thrown.PrinterId.Should().Be(7);
+        thrown.LimitBytes.Should().Be(4096);
+        thrown.BufferedBytes.Should().BeGreaterThan(4096, "the limit is what was passed, not what was aimed at");
+    }
+
+    /// <summary>
+    /// A message that is merely large still gets through - the cap must not fire on real traffic.
+    /// </summary>
+    /// <remarks>
+    /// Sized just under the limit and split across frames, because the failure this guards against is
+    /// a cap that counts the wrong thing: bytes held <em>while waiting</em>, reset every time a
+    /// document completes, not a running total across the connection. Counting cumulatively would
+    /// disconnect a healthy printer after enough ordinary telemetry, which is far worse than the
+    /// problem being solved.
+    /// </remarks>
+    [Fact]
+    public async Task ALargeButCompleteMessageIsNotCutOff()
+    {
+        // Arrange
+        Pipe wire = new();
+        RecordingMessageDispatcher dispatcher = new();
+
+        WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, dispatcher,
+            Options.Create(new PrusaConnectOptions { MaxIncomingMessageBytes = 4096 }));
+
+        // Act
+        Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 7,
+            Substitute.For<IPrinterConnectionActor>(), CancellationToken.None);
+
+        // Three complete messages, each close to the cap: over 4096 bytes in total, under it each.
+        for (int i = 0; i < 3; i++)
+        {
+            await WriteInChunksAsync(wire.Writer,
+                Encoding.UTF8.GetBytes($$"""{"job_id":{{i}},"pad":"{{new string('x', 3000)}}"}""" + "\n"),
+                chunkSize: 512);
+        }
+
+        await wire.Writer.CompleteAsync();
+        await run;
+
+        // Assert
+        dispatcher.Received.Should().HaveCount(3, "the counter resets when a document completes");
+    }
+
+    /// <summary>
     /// Genuinely broken input throws <see cref="JsonException"/> out of the handler - the signal
     /// the controller closes the socket (with <c>PolicyViolation</c>) on.
     /// </summary>
@@ -201,7 +288,7 @@ public class WebSocketHandlerParsingTests
         // broken input. A printer sending garbage should still be disconnected.
         Pipe wire = new();
 
-        WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, new RecordingMessageDispatcher());
+        WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, new RecordingMessageDispatcher(), DefaultOptions);
 
         // Act
         Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(), CancellationToken.None);
@@ -233,7 +320,7 @@ public class WebSocketHandlerParsingTests
         Pipe wire = new();
 
         RecordingMessageDispatcher dispatcher = new();
-        WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, dispatcher);
+        WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, dispatcher, DefaultOptions);
 
         Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(), CancellationToken.None);
 

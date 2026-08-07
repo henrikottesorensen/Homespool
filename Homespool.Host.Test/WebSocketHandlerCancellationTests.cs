@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using AwesomeAssertions;
 
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 using NSubstitute;
 
@@ -39,9 +40,13 @@ namespace Homespool.Host.Test;
 /// </remarks>
 public class WebSocketHandlerCancellationTests
 {
+    /// <summary>The shipped defaults - a 1 MiB message cap, which nothing here approaches.</summary>
+    private static readonly IOptions<PrusaConnectOptions> DefaultOptions =
+        Options.Create(new PrusaConnectOptions());
+
     private static WebSocketHandler NewHandler(RecordingMessageDispatcher dispatcher)
     {
-        return new(NullLogger<WebSocketHandler>.Instance, dispatcher);
+        return new(NullLogger<WebSocketHandler>.Instance, dispatcher, DefaultOptions);
     }
 
     /// <summary>

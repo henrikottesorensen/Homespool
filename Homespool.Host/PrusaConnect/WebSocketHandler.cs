@@ -6,6 +6,9 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+
+using Homespool.Host.Exceptions;
 
 namespace Homespool.Host.PrusaConnect;
 
@@ -13,11 +16,15 @@ public class WebSocketHandler
 {
     private readonly ILogger<WebSocketHandler> _logger;
     private readonly MessageDispatcher _dispatcher;
+    private readonly PrusaConnectOptions _options;
 
-    public WebSocketHandler(ILogger<WebSocketHandler> logger, MessageDispatcher dispatcher)
+    public WebSocketHandler(ILogger<WebSocketHandler> logger,
+                            MessageDispatcher dispatcher,
+                            IOptions<PrusaConnectOptions> options)
     {
         _logger = logger;
         _dispatcher = dispatcher;
+        _options = options.Value;
     }
 
     private static readonly JsonReaderOptions ReaderOptions = new()
@@ -36,6 +43,9 @@ public class WebSocketHandler
     /// </summary>
     /// <exception cref="JsonException">The printer sent malformed JSON - a protocol violation, not
     /// to be confused with a merely incomplete document, which is buffered instead.</exception>
+    /// <exception cref="PrinterMessageTooLargeException">A document stayed incomplete past
+    /// <see cref="PrusaConnectOptions.MaxIncomingMessageBytes"/>. Also a protocol violation: an
+    /// incomplete document is buffered, but not for ever.</exception>
     /// <remarks>
     /// <c>virtual</c> only so tests can substitute an end for the read loop - throwing, or returning
     /// - without a socket to produce one. Same seam as <c>RecordingMessageDispatcher</c>'s.
@@ -119,6 +129,28 @@ public class WebSocketHandler
                 // Bad data from printer. Rethrow so the caller closes the connection on it.
                 _logger.LogError(e, "Bad JSON input received from Printer: ");
                 throw;
+            }
+
+            // Whatever is left is a document that has not finished arriving. Buffering it is the
+            // point - the largest real message measured took 184 frames - but only up to a limit,
+            // because nothing else bounds this: a value that is opened and never closed would grow
+            // the reader's buffer until the process died.
+            //
+            // Measured here rather than as a running total, because this is exactly the quantity at
+            // risk: bytes held while waiting, reset to zero every time a document completes.
+            if (buffer.Length > _options.MaxIncomingMessageBytes)
+            {
+                // Warning with both numbers, because the symptom is a dropped connection and that is
+                // indistinguishable from bad wifi without this line. If a real printer trips it, this
+                // is what says so and what says which knob to turn.
+                _logger.LogWarning(
+                    "Printer {PrinterId} buffered {BufferedBytes} bytes without completing a message; "
+                    + "the limit is {LimitBytes}. Closing the connection.",
+                    printerId,
+                    buffer.Length,
+                    _options.MaxIncomingMessageBytes);
+
+                throw new PrinterMessageTooLargeException(printerId, buffer.Length, _options.MaxIncomingMessageBytes);
             }
 
             // Consumed up to the end of the last complete document; examined everything. The reader

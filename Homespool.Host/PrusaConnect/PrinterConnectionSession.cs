@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.Exceptions;
 using Homespool.Host.Queue;
 
 namespace Homespool.Host.PrusaConnect;
@@ -93,6 +94,8 @@ public sealed class PrinterConnectionSession
     /// drains by completion instead; see the comments in the <c>finally</c>.
     /// </param>
     /// <exception cref="JsonException">The printer sent malformed JSON. Closed on, then rethrown.</exception>
+    /// <exception cref="PrinterMessageTooLargeException">The printer never finished a message. Closed
+    /// on with <c>MessageTooBig</c>, then rethrown.</exception>
     public async Task RunAsync(int printerId,
                                IClosablePrinterConnection connection,
                                PipeReader input,
@@ -142,6 +145,14 @@ public sealed class PrinterConnectionSession
             // The handler's contract: malformed JSON is a protocol violation. Close on it,
             // then let it surface - same as when the handler owned the close itself.
             closeStatus = WebSocketCloseStatus.PolicyViolation;
+            throw;
+        }
+        catch (PrinterMessageTooLargeException)
+        {
+            // The same class of fault as malformed JSON, and closed on the same way - but with the
+            // status that names it. A printer reading its own logs learns more from MessageTooBig
+            // than from PolicyViolation, and the handler has already logged the numbers.
+            closeStatus = WebSocketCloseStatus.MessageTooBig;
             throw;
         }
         catch (WebSocketException e)

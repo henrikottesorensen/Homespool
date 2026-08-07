@@ -170,6 +170,33 @@ else
     </table>
 }
 
+@* Only for someone who may change this printer's queue: a CanRead visitor given this URL would get
+   an upload that succeeds and then a 403 from the queue, which is a worse answer than not offering
+   it. *@
+@if (Model.CanUse)
+{
+    <h2>Send from a slicer</h2>
+
+    <p>
+        PrusaSlicer can send straight to this printer. Under
+        <em>Printer Settings &rarr; Physical Printer</em>, set <strong>Host Type</strong> to
+        <strong>OctoPrint</strong>, paste this as the hostname, and use a
+        <a asp-page="/Account/Manage/ApiTokens">personal access token</a> as the API key.
+        <strong>Upload and Print</strong> adds the file to the queue above rather than starting it.
+    </p>
+
+    <div class="input-group mb-3" data-copy>
+        <input type="text" class="form-control font-monospace" readonly
+               value="@Model.SlicerUrl" aria-label="Print host address for this printer"
+               data-copy-source />
+        <button type="button" class="btn btn-outline-secondary" data-copy-button>Copy</button>
+    </div>
+
+    @* Announced politely rather than shouted, and empty until something happens, so a screen reader
+       hears the outcome without the control describing itself twice. *@
+    <p class="visually-hidden" role="status" aria-live="polite" data-copy-status></p>
+}
+
 <h2>Print history</h2>
 
 @if (Model.History.Count == 0)

@@ -464,6 +464,73 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime, IDisposable
         client.Dispose();
     }
 
+    // ---------- the address on the printer's page ----------
+
+    /// <summary>
+    /// The printer's page hands over the address to paste into a slicer, ready to use.
+    /// </summary>
+    /// <remarks>
+    /// It is built from the live request rather than from configuration, which is what makes it right
+    /// behind a proxy and on a non-standard port. The trailing slash is asserted because the slicer
+    /// appends <c>api/version</c> to whatever it is given.
+    /// </remarks>
+    [Fact]
+    public async Task ThePrinterPageOffersTheAddressToPasteIntoASlicer()
+    {
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "pastes@example.com");
+        Guid uuid = await AddPrinterAsync(user.Id);
+
+        // Act
+        string page = await (await client.GetAsync($"/Printers/Detail/{uuid}", TestContext.Current.CancellationToken))
+            .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        page.Should().Contain($"/compat/octoprint/{uuid}/",
+            "the whole point is that nobody has to assemble this by hand");
+        page.Should().Contain("OctoPrint", "the host type has to be named or the address is unusable");
+        page.Should().Contain("data-copy-button", "and it is copyable, which is why it is here at all");
+
+        client.Dispose();
+    }
+
+    /// <summary>
+    /// Someone who may read a printer but not change its queue is <b>not</b> offered the address.
+    /// </summary>
+    /// <remarks>
+    /// Not a security boundary - the surface checks for itself, and a determined reader could compose
+    /// the URL from the one in their address bar. It is an honesty one: uploading would succeed and
+    /// the queue would then refuse, so offering it would be promising something that half works.
+    /// </remarks>
+    [Fact]
+    public async Task AReaderWhoCannotQueueIsNotOfferedTheAddress()
+    {
+        // Arrange
+        (HSUser owner, HttpClient ownerClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "owns@example.com");
+        ownerClient.Dispose();
+
+        Guid uuid = await AddPrinterAsync(owner.Id);
+
+        (HSUser reader, HttpClient readerClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "reads@example.com");
+
+        await GrantReadOnlyAsync(owner.Id, reader.Id);
+
+        // Act
+        string page = await (await readerClient.GetAsync($"/Printers/Detail/{uuid}", TestContext.Current.CancellationToken))
+            .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        page.Should().Contain("Print history",
+            "the negative below is worthless unless the page actually rendered for this reader");
+        page.Should().NotContain("/compat/octoprint/",
+            "an address that uploads and then refuses to queue is worse than none");
+
+        readerClient.Dispose();
+    }
+
     // ---------- helpers ----------
 
     /// <summary>
@@ -525,6 +592,28 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime, IDisposable
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         return client;
+    }
+
+    /// <summary>Puts <paramref name="readerId"/> in the owner's default team with reading only.</summary>
+    private async Task GrantReadOnlyAsync(long ownerId, long readerId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+
+        TeamMember owner = await context.TeamMembers
+            .SingleAsync(member => member.UserId == ownerId && member.IsDefault, TestContext.Current.CancellationToken);
+
+        context.TeamMembers.Add(new TeamMember
+        {
+            TeamId = owner.TeamId,
+            UserId = readerId,
+            CanRead = true,
+            CanUse = false,
+            CanManage = false,
+            IsDefault = false,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
     private async Task<Guid> AddPrinterAsync(long userId)

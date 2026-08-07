@@ -41,6 +41,7 @@ unimplemented.
 - **Print files** — upload, rename, delete, queue, or send straight to a printer; plus a view of
   what is already on the printer's own drive and USB stick.
 - **A JSON API** at `/api/v1`, authenticated by sign-in cookie **or** personal access token.
+- **Sending from PrusaSlicer** — its OctoPrint host type uploads straight into a printer's queue.
 - **Health checks and alerting** — `/health`, an administrator banner, and email when a check
   starts failing.
 
@@ -404,6 +405,21 @@ history, and lets a wrong-shaped credential be rejected before anything is hashe
 
 An unauthenticated `/api` request is answered `401`/`403` rather than redirected to the login
 page, which is the difference between a script that fails and a script that silently parses HTML.
+
+---
+
+## Sending from PrusaSlicer
+
+Homespool answers enough of OctoPrint's upload protocol for **Send G-code** to work.
+
+A printer's page carries a **Send from a slicer** box with the address to paste, and a button to
+copy it. In PrusaSlicer, under *Printer Settings → Physical Printer*, set **Host Type** to
+**OctoPrint**, paste that as the hostname, and use a [personal access token](#api-access) as the
+API key.
+
+**Upload and Print adds the file to the queue rather than starting it** — only a person marks a
+printer ready, which the [print queue](#print-queue) explains. A name that already exists is
+refused rather than overwritten; rename it in the send dialog.
 
 ---
 

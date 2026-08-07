@@ -117,6 +117,24 @@ public class DetailModel : PageModel
     /// </remarks>
     public bool CanUse { get; private set; }
 
+    /// <summary>
+    /// The address to paste into a slicer's print-host field for this printer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Built from the live request rather than from configuration, so it is right behind a reverse
+    /// proxy and on a non-standard port with nothing to keep in step. <c>Request.Host</c> carries the
+    /// port because the proxy forwards <c>$http_host</c> rather than <c>$host</c> - which strips it,
+    /// and which cost a session once already (<c>notes/tls-by-default.md</c>).
+    /// </para>
+    /// <para>
+    /// The trailing slash is deliberate: the slicer appends <c>api/version</c> to whatever it is
+    /// given, and a value pasted without one still works only because <c>make_url</c> repairs it.
+    /// Handing over the repaired form means never depending on that.
+    /// </para>
+    /// </remarks>
+    public string SlicerUrl { get; private set; } = string.Empty;
+
     [TempData]
     public string? StatusMessage { get; set; }
 
@@ -149,6 +167,8 @@ public class DetailModel : PageModel
 
         CanUse = await _access.AllowsAsync(statistics.Printer.Id, user.Id, PrinterOperation.ChangeQueue,
             cancellationToken);
+
+        SlicerUrl = $"{Request.Scheme}://{Request.Host}/compat/octoprint/{statistics.Printer.Uuid}/";
 
         Queue = await _queueService.ListAsync(statistics.Printer.Id, user.Id, cancellationToken);
         ActivePrint = await _historyService.GetActiveAsync(statistics.Printer.Id, user.Id, cancellationToken);

@@ -33,6 +33,42 @@ public class PrusaConnectOptions
     public int RegistrationCodeLifetimeMinutes { get; set; } = 30;
 
     /// <summary>
+    /// How many bytes a printer may accumulate without completing a JSON message before the
+    /// connection is closed. Default 1 MiB.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Without a limit the receive buffer has no ceiling.</b> The read loop keeps a partial
+    /// document and waits for the rest, which is correct - real messages arrive across many frames -
+    /// but nothing ever declares a document absurd. A client that opens a value and never closes it
+    /// grows that buffer until the process dies, taking every other printer and the web UI with it.
+    /// <c>PipeReader.Create</c> over a stream is a <c>StreamPipeReader</c>, so there is no
+    /// <c>PauseWriterThreshold</c> to fall back on.
+    /// </para>
+    /// <para>
+    /// <b>It takes a valid fingerprint and token to reach this code</b>, so this is not a drive-by.
+    /// It is a blast-radius limit: one leaked printer credential should not be able to stop the
+    /// server for everyone (<c>notes/duplicate-connection-identity.md</c> treats a compromised
+    /// credential as a thing that happens).
+    /// </para>
+    /// <para>
+    /// <b>1 MiB is roughly eleven times the largest message ever measured</b> - 92 831 bytes, a
+    /// <c>FILE_INFO</c> carrying an 89 KB base64 preview and 21 KB of <c>objects_info</c>
+    /// (<c>notes/protocol-reference.md</c>). That figure is a <em>sample, not a ceiling</em>, which is
+    /// why the headroom is generous and why this is configurable at all: the preview is the thumbnail
+    /// embedded in the gcode and its size is a slicer setting, while <c>SEND_FILE_INFO</c> on a
+    /// directory enumerates it, so that response grows with the number of files on the drive. Neither
+    /// is bounded by the protocol, and both are things a user may legitimately make larger.
+    /// </para>
+    /// <para>
+    /// <b>Set it well clear of real traffic.</b> Anything near the measured maximum breaks working
+    /// printers, and the symptom - a dropped connection - looks exactly like bad wifi. That is why
+    /// tripping it logs the printer and the byte count at warning level rather than closing quietly.
+    /// </para>
+    /// </remarks>
+    public long MaxIncomingMessageBytes { get; set; } = 1024 * 1024;
+
+    /// <summary>
     /// How many consecutive unrecognised registration codes an account may submit before it is
     /// backed off. Default 5.
     /// </summary>

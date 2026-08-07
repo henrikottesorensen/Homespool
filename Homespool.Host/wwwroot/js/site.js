@@ -62,3 +62,84 @@
         input.dispatchEvent(new Event("change", { bubbles: true }));
     });
 })();
+
+// Copy-to-clipboard for a value that exists to be pasted somewhere else - the print host address on
+// a printer's page, which goes into a slicer's settings and nowhere else.
+//
+// The button is rendered unconditionally rather than revealed by this file. A control that appears
+// only once script has run is a worse experience for everyone in exchange for tidiness towards
+// nobody: the fallback below means the button does something useful even where the clipboard API is
+// missing, which is not a hypothetical - navigator.clipboard is undefined outside a secure context,
+// and a deployment reached over plain HTTP on anything but localhost is exactly that.
+(function () {
+    "use strict";
+
+    var groups = document.querySelectorAll("[data-copy]");
+
+    if (!groups.length) {
+        return;
+    }
+
+    Array.prototype.forEach.call(groups, function (group) {
+        var source = group.querySelector("[data-copy-source]");
+        var button = group.querySelector("[data-copy-button]");
+
+        if (!source || !button) {
+            return;
+        }
+
+        // The status line lives outside the group so the layout does not move when it fills.
+        var status = group.parentNode.querySelector("[data-copy-status]");
+        var original = button.textContent;
+        var revert;
+
+        function say(message, copied) {
+            button.textContent = copied ? "Copied" : original;
+
+            if (status) {
+                status.textContent = message;
+            }
+
+            window.clearTimeout(revert);
+
+            revert = window.setTimeout(function () {
+                button.textContent = original;
+
+                if (status) {
+                    status.textContent = "";
+                }
+            }, 2000);
+        }
+
+        // Selecting first is not decoration: it is the fallback. Where the clipboard API is absent
+        // the text is left selected and ready for the keyboard, so the button still advances the
+        // user rather than failing silently.
+        function select() {
+            source.focus();
+            source.setSelectionRange(0, source.value.length);
+        }
+
+        button.addEventListener("click", function () {
+            select();
+
+            if (!navigator.clipboard) {
+                say("Selected - press Ctrl+C or Cmd+C to copy.", false);
+
+                return;
+            }
+
+            navigator.clipboard.writeText(source.value).then(
+                function () {
+                    say("Address copied to the clipboard.", true);
+                },
+                function () {
+                    // Permission refused, or a browser that has the API and will not use it here.
+                    say("Selected - press Ctrl+C or Cmd+C to copy.", false);
+                });
+        });
+
+        // Clicking the field itself selects the whole address, which is what anyone reaching for it
+        // is about to do by hand.
+        source.addEventListener("focus", select);
+    });
+}());

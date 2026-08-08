@@ -29,6 +29,19 @@ namespace Homespool.Host.PrusaConnect.Commands;
 /// checked, so <c>M104 S215</c> passes and <c>M104 S215 M997</c>, <c>M1040</c> and
 /// <c>N1 M104 S215*42</c> do not. Prefix matching is how allowlists like this usually fail.
 /// </para>
+/// <para>
+/// <b>A frame may carry several lines, and every one of them is checked.</b> Firmware walks a gcode
+/// body line by line - <c>memchr</c> for the newline, execute, advance, repeat
+/// (<c>src/connect/background.cpp:21-87</c>) - so one command can set both heaters, which is the
+/// only way to do it atomically: two commands race, because gcode is answered <c>Accepted</c> when
+/// it is queued and the second arrives while the first is still running.
+/// </para>
+/// <para>
+/// So the rule is <b>every line must be permitted</b>, not <b>there must be one line</b>. The
+/// guarantee is unchanged - <c>M997</c> is on no line - and this states the actual intent, which was
+/// never that newlines are dangerous but that an unvetted second command is. A separator is only a
+/// smuggling vector when what follows it goes unchecked.
+/// </para>
 /// </remarks>
 public static class GcodeAllowList
 {
@@ -40,6 +53,13 @@ public static class GcodeAllowList
 
     /// <summary>Hottest bed target that may be sent. Firmware's presets top out at 100.</summary>
     public const int MaxBedTemperature = 120;
+
+    /// <summary>
+    /// Most lines one frame may carry. Two is what setting both heaters needs; the cap exists so a
+    /// composer cannot batch, and so a body stays far below the size at which firmware answers
+    /// <c>GcodeTooLarge</c>.
+    /// </summary>
+    public const int MaxLines = 4;
 
     /// <summary>
     /// <c>M997</c>, named rather than merely absent.
@@ -58,37 +78,53 @@ public static class GcodeAllowList
         new(@"^M140 S(?<temperature>0|[1-9][0-9]{0,2})$", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
 
     /// <summary>
-    /// Whether <paramref name="line"/> is a line this application is permitted to send.
+    /// Whether <paramref name="body"/> is a gcode body this application is permitted to send.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Deliberately strict about what it will even consider. A line carrying a comment, a checksum, a
-    /// line number, or more than one command is <b>refused rather than normalised</b>: every one of
-    /// those is a way to smuggle a second command past a matcher, and none of them is something this
-    /// application has any reason to send.
+    /// A body may hold up to <see cref="MaxLines"/> newline-separated lines, and <b>every one</b>
+    /// must be permitted. One rejected line rejects the whole body: a frame is executed as a unit,
+    /// so admitting it partly would mean admitting it entirely.
     /// </para>
     /// <para>
-    /// The only normalisation is trimming surrounding whitespace, because a trailing newline is an
-    /// ordinary thing for a composer to leave behind and cannot hide anything.
+    /// Comments, checksums and line numbers are <b>refused rather than normalised</b>. Unlike a
+    /// newline they have no legitimate use here, so there is nothing to weigh against the fact that
+    /// each is a way to hide a second command from a matcher.
     /// </para>
     /// </remarks>
-    public static bool IsAllowed(string? line)
+    public static bool IsAllowed(string? body)
     {
-        if (string.IsNullOrWhiteSpace(line))
+        if (string.IsNullOrWhiteSpace(body))
         {
             return false;
         }
 
-        string candidate = line.Trim();
-
-        // Anything that could carry a second command, or hide one. Checked before matching rather
-        // than after, so no pattern below has to be defensive about them.
-        if (candidate.IndexOfAny([';', '(', '*', '\n', '\r']) >= 0)
+        // \r is not a separator firmware recognises - it walks on \n alone - so a stray one would
+        // ride along inside a line and break the match. Refused rather than stripped.
+        if (body.IndexOfAny([';', '(', '*', '\r']) >= 0)
         {
             return false;
         }
 
-        return Matches(NozzleTarget, candidate, MaxNozzleTemperature) || Matches(BedTarget, candidate, MaxBedTemperature);
+        string[] lines = body.Trim().Split('\n');
+
+        if (lines.Length > MaxLines)
+        {
+            return false;
+        }
+
+        foreach (string line in lines)
+        {
+            string candidate = line.Trim();
+
+            if (!Matches(NozzleTarget, candidate, MaxNozzleTemperature)
+                && !Matches(BedTarget, candidate, MaxBedTemperature))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>Every line the application may send, for tests and for a reader wanting the whole list.</summary>

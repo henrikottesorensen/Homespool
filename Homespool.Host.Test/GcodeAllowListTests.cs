@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 
 using AwesomeAssertions;
 
@@ -68,6 +69,11 @@ public class GcodeAllowListTests
     /// A second command hidden on a permitted line. Each of these is how a prefix match or a
     /// normalising parser gets walked past.
     /// </summary>
+    /// <remarks>
+    /// The newline cases are the interesting ones now that a body may legitimately carry several
+    /// lines: what makes these refusals is that <c>M997</c> is not permitted <em>on any line</em>,
+    /// not that a separator is present.
+    /// </remarks>
     [Theory]
     [InlineData("M104 S215 M997")]
     [InlineData("M104 S215\nM997")]
@@ -79,6 +85,41 @@ public class GcodeAllowListTests
     public void ASecondCommandOnThePermittedLineIsRefused(string line)
     {
         GcodeAllowList.IsAllowed(line).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Several permitted lines in one body are permitted - which is how both heaters get set by one
+    /// command, and therefore atomically.
+    /// </summary>
+    [Theory]
+    [InlineData("M140 S85\nM104 S230")]
+    [InlineData("M140 S0\nM104 S0")]
+    [InlineData("M104 S215\nM140 S60")]
+    public void SeveralPermittedLinesInOneBodyArePermitted(string body)
+    {
+        GcodeAllowList.IsAllowed(body).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// One bad line rejects the whole body. A frame is executed as a unit, so admitting it partly
+    /// would mean admitting it entirely.
+    /// </summary>
+    [Theory]
+    [InlineData("M140 S85\nM997")]
+    [InlineData("M997\nM140 S85")]
+    [InlineData("M140 S85\nM104 S999")]
+    public void OneRefusedLineRefusesTheWholeBody(string body)
+    {
+        GcodeAllowList.IsAllowed(body).Should().BeFalse();
+    }
+
+    /// <summary>A body may not be a batch: more lines than the pair this exists for is refused.</summary>
+    [Fact]
+    public void MoreLinesThanTheCapIsRefused()
+    {
+        string body = string.Join("\n", Enumerable.Repeat("M104 S215", GcodeAllowList.MaxLines + 1));
+
+        GcodeAllowList.IsAllowed(body).Should().BeFalse();
     }
 
     /// <summary>

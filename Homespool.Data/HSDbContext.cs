@@ -80,6 +80,10 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
     /// with no <c>EndedAt</c> is the print happening now.</summary>
     public DbSet<PrintJob> PrintJobs { get; set; }
 
+    /// <summary>Cameras a still can be fetched from, optionally bound to a printer. Configuration
+    /// only - no image is ever stored, here or anywhere.</summary>
+    public DbSet<Camera> Cameras { get; set; }
+
     public HSDbContext(DbContextOptions<HSDbContext> options)
         : base(options)
     {
@@ -148,6 +152,44 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
                   .WithMany()
                   .HasForeignKey(e => e.TeamId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<Camera>(entity =>
+        {
+            // The public identifier used in URLs, as on Printer, and looked up on every frame
+            // request.
+            entity.HasIndex(e => e.Uuid)
+                  .IsUnique();
+
+            // Listing cameras is scoped to their owning team, and a printer's page asks for the
+            // cameras bound to it.
+            entity.HasIndex(e => e.TeamId);
+            entity.HasIndex(e => e.PrinterId);
+
+            entity.Property(e => e.Name)
+                  .HasMaxLength(Camera.NameMaxLength);
+
+            entity.Property(e => e.SnapshotUrl)
+                  .IsRequired()
+                  .HasMaxLength(Camera.SnapshotUrlMaxLength);
+
+            // Same reasoning as Printer: deleting a team that still owns cameras should fail
+            // loudly rather than quietly take them.
+            entity.HasOne(e => e.Team)
+                  .WithMany()
+                  .HasForeignKey(e => e.TeamId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            // Cascade, and deliberately not SetNull. Null on PrinterId already means "not bound to
+            // a printer", so setting it null on delete would make a camera orphaned by a deletion
+            // indistinguishable from one left unbound on purpose - which is exactly the trap
+            // user-identity.md records against StoppedByUserId, where null already meant "stopped
+            // at the panel". Restrict was the other candidate and is worse here: it would block
+            // deleting a printer because a camera watches it.
+            entity.HasOne(e => e.Printer)
+                  .WithMany()
+                  .HasForeignKey(e => e.PrinterId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<PrusaConnectAuthenticationData>(entity =>

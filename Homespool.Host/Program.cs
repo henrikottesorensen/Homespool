@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 
@@ -27,6 +26,7 @@ using Serilog.Formatting.Compact;
 
 using Homespool.Data;
 using Homespool.Host.Authentication;
+using Homespool.Host.Cameras;
 using Homespool.Host.Listeners;
 using Homespool.Host.Queue;
 
@@ -212,77 +212,10 @@ public static class Program
             // Runs once at startup, after MigrateHomespoolData below has made the tables exist.
             builder.Services.AddHostedService<PrintFiles.PrintFileReconciler>();
 
-            // Cameras. This is the first outbound HTTP the application has ever made, which is why
-            // the client is named rather than default: its handler carries an address policy that
-            // should not apply to anything else, and there is nothing else yet to be surprised by it.
-            builder.Services.Configure<Cameras.CameraOptions>(
-                builder.Configuration.GetSection(Cameras.CameraOptions.SectionName));
-
-            builder.Services.AddHttpClient(Cameras.CameraSnapshotFetcher.HttpClientName)
-                   .ConfigurePrimaryHttpMessageHandler(sp =>
-                   {
-                       Microsoft.Extensions.Options.IOptions<Cameras.CameraOptions> cameraOptions =
-                           sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Cameras.CameraOptions>>();
-
-                       SocketsHttpHandler handler = new()
-                       {
-                           // A camera address is operator-supplied and fetched by the server, so it
-                           // reaches whatever the server can. A redirect would otherwise walk past
-                           // the address check below to somewhere never approved.
-                           AllowAutoRedirect = false,
-                       };
-
-                       if (!cameraOptions.Value.RefuseLoopbackAndLinkLocal)
-                       {
-                           return handler;
-                       }
-
-                       // Checked here, against the endpoint actually being dialled, because this is
-                       // the only place the resolved address is known. A check on the typed string
-                       // cannot see what a hostname resolves to.
-                       handler.ConnectCallback = async (context, cancellationToken) =>
-                       {
-                           System.Net.IPAddress[] addresses = await System.Net.Dns
-                               .GetHostAddressesAsync(context.DnsEndPoint.Host, cancellationToken)
-                               .ConfigureAwait(false);
-
-                           foreach (System.Net.IPAddress address in addresses)
-                           {
-                               if (!Cameras.CameraAddressPolicy.IsReachableAddress(address))
-                               {
-                                   throw new HttpRequestException(
-                                       $"Refusing to fetch a camera from {address}: loopback and "
-                                       + "link-local addresses are not reachable camera locations.");
-                               }
-                           }
-
-                           System.Net.Sockets.Socket socket = new(
-                               System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp)
-                           {
-                               NoDelay = true,
-                           };
-
-                           try
-                           {
-                               await socket.ConnectAsync(addresses, context.DnsEndPoint.Port, cancellationToken)
-                                           .ConfigureAwait(false);
-                               return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
-                           }
-                           catch
-                           {
-                               socket.Dispose();
-                               throw;
-                           }
-                       };
-
-                       return handler;
-                   });
-
-            builder.Services.AddSingleton<Cameras.ICameraSnapshotFetcher, Cameras.CameraSnapshotFetcher>();
-
-            // Singleton because it is the cache: the frames it holds are the whole point, and a
-            // scoped one would hold nothing between two requests of the same page.
-            builder.Services.AddSingleton<Cameras.CameraFrameCache>();
+            // Cameras: options, the guarded HTTP client, the fetcher and the frame cache. The
+            // handler carries the address policy, which reads as networking plumbing here and lives
+            // in Cameras/Registration.cs instead.
+            builder.Services.AddCameras(builder.Configuration);
 
             // Scoped, following the command service it wraps. Shared by the API endpoint and the
             // Files page so that "a send that did not take leaves no offer" has one implementation.

@@ -202,16 +202,14 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
             await preheat.PreheatAsync(printerId, userId, petg, CancellationToken.None);
 
-            fake.ReceivedCommands.Should().HaveCount(2);
-            fake.ReceivedCommands.Should().AllSatisfy(
-                frame => frame.Kind.Should().Be(ServerCommandKind.Gcode, "gcode is not a JSON command"));
+            // One command, not two. Two were sent originally and the printer refused the second
+            // with "Processing other command", because gcode is answered Accepted when it is queued
+            // rather than when it has run - so the count is the assertion that matters most here.
+            fake.ReceivedCommands.Should().ContainSingle()
+                .Which.Kind.Should().Be(ServerCommandKind.Gcode, "gcode is not a JSON command");
 
-            string[] lines = fake.ReceivedCommands
-                                 .Select(frame => Encoding.ASCII.GetString(frame.Payload.Span))
-                                 .ToArray();
-
-            // Bed first: it is slower to reach temperature, so it is started earlier.
-            lines.Should().Equal("M140 S85", "M104 S230");
+            Encoding.ASCII.GetString(fake.ReceivedCommands[0].Payload.Span)
+                    .Should().Be("M140 S85\nM104 S230", "bed first, both in one body");
 
             await EndRunAsync(fake, run);
         }
@@ -232,11 +230,15 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             using IServiceScope scope = _factory.Services.CreateScope();
             PrinterPreheatService preheat = scope.ServiceProvider.GetRequiredService<PrinterPreheatService>();
 
-            await preheat.CooldownAsync(printerId, userId, CancellationToken.None);
+            PreheatOutcome outcome = await preheat.CooldownAsync(printerId, userId, CancellationToken.None);
 
-            fake.ReceivedCommands
-                .Select(frame => Encoding.ASCII.GetString(frame.Payload.Span))
-                .Should().Equal("M140 S0", "M104 S0");
+            fake.ReceivedCommands.Should().ContainSingle();
+            Encoding.ASCII.GetString(fake.ReceivedCommands[0].Payload.Span)
+                    .Should().Be("M140 S0\nM104 S0");
+
+            // What the printer answered, not merely that a frame arrived. Asserting receipt alone is
+            // what let a refused command pass for a successful one.
+            outcome.Answer!.EventType.Should().NotBe(Events.Rejected);
 
             await EndRunAsync(fake, run);
         }

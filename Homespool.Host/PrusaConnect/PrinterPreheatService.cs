@@ -126,34 +126,27 @@ public class PrinterPreheatService
             throw new PrinterBusyException(snapshot.Status);
         }
 
-        // Bed first: it is the slower of the two to reach temperature, so starting it earlier is free.
-        // Sequential rather than concurrent because the command channel allows one in flight at a
-        // time - two at once would make the second fail as already-in-flight rather than queue.
-        CommandOutcome? bed = await _commands.SendCommandAsync(
-            printerId, new SetBedTemperature(bedTemperature), userId, cancellationToken);
+        // One command carrying both lines. Two commands cannot work: gcode is answered Accepted when
+        // it is queued rather than when it has run, so the second arrives while the first is still
+        // executing and is refused with "Processing other command" - observed on a live stack before
+        // this was one command.
+        CommandOutcome? answer = await _commands.SendCommandAsync(
+            printerId, new SetTemperatures(nozzleTemperature, bedTemperature), userId, cancellationToken);
 
-        try
+        // The printer's own answer decides, not the fact that a frame was written. Reporting success
+        // here regardless is what let a refusal be shown to a user as "both heaters switched off".
+        if (answer is not null && answer.EventType is Events.Rejected or Events.Failed)
         {
-            CommandOutcome? nozzle = await _commands.SendCommandAsync(
-                printerId, new SetNozzleTemperature(nozzleTemperature), userId, cancellationToken);
+            throw new PrinterRefusedException(answer.EventType, answer.Reason);
+        }
 
-            return new PreheatOutcome(bed, nozzle, BedSucceeded: true);
-        }
-        catch (Exception e) when (e is PrinterNotConnectedException
-                                      or CommandAlreadyInFlightException
-                                      or CommandResponseTimedOutException
-                                      or CommandSendTimedOutException)
-        {
-            // The bed's target is already set. Saying "it failed" would be a lie a user then acts on
-            // by walking away from a heating printer, so the partial state is reported rather than
-            // collapsed into the exception.
-            throw new PreheatPartiallyAppliedException(bedTemperature, e);
-        }
+        return new PreheatOutcome(answer);
     }
 }
 
-/// <summary>What the printer answered for each heater.</summary>
-/// <param name="Bed">The bed's answer, or null when the command expects no reply.</param>
-/// <param name="Nozzle">The nozzle's answer, same.</param>
-/// <param name="BedSucceeded">Whether the bed was set - false only if nothing was.</param>
-public sealed record PreheatOutcome(CommandOutcome? Bed, CommandOutcome? Nozzle, bool BedSucceeded);
+/// <summary>What the printer answered.</summary>
+/// <param name="Answer">
+/// The printer's own answer, or null for a command expecting no reply. One answer rather than two,
+/// because both heaters are set by one command.
+/// </param>
+public sealed record PreheatOutcome(CommandOutcome? Answer);

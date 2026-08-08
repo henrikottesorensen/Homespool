@@ -21,8 +21,58 @@ public class CommandWireEncoderTests
         byte[] frame = CommandWireEncoder.Encode(1, new PausePrint());
 
         // Assert
-        // Only J (JSON command) is modeled by ISendableCommand this pass - G/F/D/T are out of scope.
         frame[0].Should().Be((byte)'J');
+    }
+
+    // ---------- the gcode frame ----------
+
+    /// <summary>
+    /// A gcode command is a <c>G</c> frame: the same nine-byte header, and the line itself as the
+    /// body rather than a JSON document.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Asserted byte for byte because nothing else checks it.</b> The J shape was confirmed
+    /// against the live MK3.5 (<c>AGENT-NOTES.md</c> §3); this one is read from
+    /// <c>connect.cpp:469-508</c> and has never been sent to a printer. A malformed header would be
+    /// refused by firmware as an unknown frame type and surface as a command that silently does
+    /// nothing, so the test is the only thing standing in for hardware until it is run against some.
+    /// </para>
+    /// <para>
+    /// <c>G</c> rather than <c>F</c>: firmware understands both, <c>F</c> being "forced" and meant to
+    /// be the one accepted mid-print. It does not implement the distinction - so this asserts the
+    /// intent, not a behaviour the printer currently honours.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AGcodeCommandIsAGFrameCarryingTheLineItself()
+    {
+        // Act
+        byte[] frame = CommandWireEncoder.Encode(0x2B, new SetNozzleTemperature(215));
+
+        // Assert
+        frame[0].Should().Be((byte)'G', "a gcode frame is not a JSON one");
+        Encoding.ASCII.GetString(frame, 1, 8).Should().Be("0000002B");
+        Encoding.ASCII.GetString(frame, 9, frame.Length - 9).Should().Be("M104 S215");
+        frame.Length.Should().Be(9 + "M104 S215".Length, "there is no terminator and no JSON wrapper");
+    }
+
+    /// <summary>The bed's command is the same shape, with the code firmware uses for the heatbed.</summary>
+    [Fact]
+    public void TheBedCommandCarriesM140()
+    {
+        byte[] frame = CommandWireEncoder.Encode(1, new SetBedTemperature(60));
+
+        Encoding.ASCII.GetString(frame, 9, frame.Length - 9).Should().Be("M140 S60");
+    }
+
+    /// <summary>Zero is off, and has to survive as a literal <c>S0</c> rather than being elided.</summary>
+    [Fact]
+    public void CoolingDownSendsAnExplicitZero()
+    {
+        byte[] frame = CommandWireEncoder.Encode(1, new SetNozzleTemperature(0));
+
+        Encoding.ASCII.GetString(frame, 9, frame.Length - 9).Should().Be("M104 S0");
     }
 
     [Fact]

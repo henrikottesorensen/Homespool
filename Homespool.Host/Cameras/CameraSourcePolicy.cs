@@ -42,6 +42,21 @@ public sealed class CameraSourcePolicy
     private const string DevicePrefix = "ffmpeg:device?";
 
     /// <summary>
+    /// Whether a source reads hardware attached to this machine rather than something on the
+    /// network.
+    /// </summary>
+    /// <remarks>
+    /// The distinction is not cosmetic: a networked camera belongs to whoever can already reach it,
+    /// while one plugged into the server is a property of the machine - which is why the two are
+    /// permissioned differently. See <c>CameraOperation</c>.
+    /// </remarks>
+    public static bool IsLocalDevice(string? source)
+    {
+        return source is not null
+            && source.TrimStart().StartsWith(DevicePrefix, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Schemes a camera source may use. Everything else is refused.
     /// </summary>
     private static readonly HashSet<string> AllowedSchemes =

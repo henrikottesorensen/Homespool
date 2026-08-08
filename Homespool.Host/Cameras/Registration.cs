@@ -44,6 +44,10 @@ public static class Registration
         // Reads a bind-mounted directory; nothing per-request about it.
         services.AddSingleton<LocalCameraDevices>();
 
+        // Scoped: both hold a DbContext, and the access gate memoises within a request.
+        services.AddScoped<Authorisation.CameraAccessService>();
+        services.AddScoped<CameraService>();
+
         // Runs once at startup, after MigrateHomespoolData has made the tables exist.
         services.AddHostedService<CameraStreamReconciler>();
 

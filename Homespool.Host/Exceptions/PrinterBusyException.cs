@@ -37,27 +37,18 @@ public class PrinterBusyException : Exception
     public PrinterStatus Status { get; }
 
     /// <summary>
-    /// The sentence for a state, which is not one sentence.
+    /// The sentence for a state - two of them, because the states mean different things to a reader.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Not knowing is a different answer from being busy</b> (Henrik, 2026-08-08). A freshly
-    /// connected printer reports <c>Unknown</c> until its first telemetry has been merged, so the
-    /// refusal there is temporary and resolves on its own - where every other state in this list is
-    /// the printer actually doing something the caller should not interrupt. Telling someone their
-    /// printer "is Unknown" describes our own gap as if it were the machine's condition, and invites
-    /// them to go and look at a printer that is perfectly fine.
+    /// <c>Unknown</c> is not the printer being busy: it is this application not having merged the
+    /// printer's first telemetry yet, which resolves on its own within seconds of connecting. It
+    /// therefore says <em>wait</em>, where every other state says <em>stop</em> - naming it as a
+    /// printer condition would send someone to look at a machine that is fine.
     /// </para>
     /// <para>
-    /// <b>The busy sentence states the rule rather than listing the states</b> (Henrik, 2026-08-08).
-    /// It used to end "when it is idle, ready, finished or stopped", which spelled four
-    /// <see cref="PrinterStatus"/> members into a sentence a person reads - longer, and leaking an
-    /// internal vocabulary to say something they already understand.
-    /// </para>
-    /// <para>
-    /// <b>"Not busy" rather than "not working"</b>, which was the first attempt: *not working* also
-    /// means *broken*, so the sentence could be read for a beat as "only while the printer is
-    /// faulty". <em>Busy</em> carries no second meaning, and it is the word the class is named for.
+    /// The busy sentence states the rule rather than listing <see cref="PrinterStatus"/> members,
+    /// and says <b>busy</b> rather than <b>working</b>, since "not working" also means broken.
     /// </para>
     /// </remarks>
     private static string BuildMessage(PrinterStatus status)

@@ -52,7 +52,7 @@ services:
 
       # Cameras. The sidecar is addressed by service name on this network; nothing about a camera
       # itself is configured here, because Homespool registers cameras with the sidecar itself.
-      Cameras__StreamServerBaseUrl: "${CAMERA_STREAM_SERVER_BASE_URL:-http://camera:1984}"
+      Cameras__StreamServerBaseUrl: "${CAMERA_STREAM_SERVER_BASE_URL:-http://go2rtc:1984}"
       Cameras__RefreshFloorSeconds: "${CAMERA_REFRESH_FLOOR_SECONDS:-2}"
       Cameras__MaxAgeSeconds: "${CAMERA_MAX_AGE_SECONDS:-60}"
 
@@ -190,11 +190,11 @@ services:
   #
   # Its API has no authentication of its own, which is why no port is published: it is reachable
   # from inside this stack and from nowhere else. Do not publish 1984.
-  camera:
+  go2rtc:
     image: alexxit/go2rtc:latest
 
     # Named, because Cameras__StreamServerBaseUrl points at it by name rather than by address.
-    hostname: camera
+    hostname: go2rtc
 
     volumes:
       - homespool-camera-config:/config

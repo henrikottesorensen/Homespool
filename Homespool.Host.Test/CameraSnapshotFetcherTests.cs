@@ -26,7 +26,7 @@ public class CameraSnapshotFetcherTests
     private static readonly DateTimeOffset Now = new(2026, 8, 8, 12, 0, 0, TimeSpan.Zero);
 
     /// <summary>The sidecar address the application actually fetches - never a camera's own.</summary>
-    private static readonly Uri Frame = new("http://camera:1984/api/frame.jpeg?src=abc");
+    private static readonly Uri Frame = new("http://go2rtc:1984/api/frame.jpeg?src=abc");
 
     [Fact]
     public async Task AnImageIsReturnedWithTheTimeItWasFetched()

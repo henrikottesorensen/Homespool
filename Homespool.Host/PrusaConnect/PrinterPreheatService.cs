@@ -24,9 +24,17 @@ namespace Homespool.Host.PrusaConnect;
 /// <b>Reachable from the web UI only, and that is a security decision rather than a scoping
 /// accident</b> (Henrik, 2026-08-07). Personal access tokens are deliberately unscoped
 /// (<c>notes/api-tokens.md</c>: "no scopes, no expiry - that way lies a badly-implemented JWT"), so
-/// any token is full authority over everything <c>/api/v1</c> offers. **The printer's own 30-minute
-/// idle cutoff is no defence against one**, because reissuing the command every 29 minutes resets
-/// it: a leaked token would mean a nozzle held at maximum indefinitely.
+/// any token is full authority over everything <c>/api/v1</c> offers. **The printer's own idle
+/// cutoff is no defence against one**, because reissuing the command before it expires resets it: a
+/// leaked token would mean a nozzle held at maximum indefinitely.
+/// </para>
+/// <para>
+/// That cutoff is firmware's safety timer, and it is worth knowing exactly rather than
+/// approximately: <b>30 minutes on a printer with a screen, 10 without</b>
+/// (<c>src/feature/safety_timer/safety_timer.hpp:36-40</c>, on <c>HAS_HUMAN_INTERACTIONS()</c>) -
+/// and <b>settable</b>, with a 3-second floor and no ceiling
+/// (<c>safety_timer.cpp:43</c>). So it is neither a constant nor a guarantee, which is a second
+/// reason not to lean on it.
 /// </para>
 /// <para>
 /// That is a different argument from the one <c>api-tokens.md</c> settled, and worth keeping

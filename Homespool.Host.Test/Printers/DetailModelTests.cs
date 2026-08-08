@@ -96,15 +96,64 @@ public sealed class DetailModelTests : IDisposable
             new PrintFileCatalog(store, context, NullLogger<PrintFileCatalog>.Instance), TimeProvider.System,
             QueueSignal);
 
+        QueueSnapshotReader snapshots = new(context, connectionRegistry, TimeProvider.System);
+
         DetailModel model = new(new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System), queueService,
+
+            // Constructed rather than substituted: these tests are about the page, and a real one
+            // that never gets a connected printer simply refuses, which is the honest default here.
+            new PrinterPreheatService(commands: null!, snapshots),
             new PrintHistoryService(context, access),
-            new QueueSnapshotReader(context, connectionRegistry, TimeProvider.System),
+            snapshots,
             access, connectionRegistry, users)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };
 
         return (model, user, team, connectionRegistry);
+    }
+
+    /// <summary>
+    /// Preheating is refused while the printer is printing, and says so on the page.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This guard is the only one there is.</b> Firmware understands a "forced" gcode frame meant
+    /// to be the one accepted mid-print, with plain gcode refused, and does not implement the
+    /// distinction (<c>connect.cpp</c>, with a TODO). It will retarget the nozzle in the middle of a
+    /// print and ruin it without reporting anything wrong.
+    /// </para>
+    /// <para>
+    /// The preheat service here is built with a null command service on purpose: if the guard ever
+    /// stops firing, this fails loudly at the send rather than quietly heating something. The
+    /// assertion is on the message, so an accidental pass cannot look like success.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task PreheatIsRefusedWhileThePrinterIsPrinting()
+    {
+        // Arrange
+        await using HSDbContext context = await MigratedContextAsync();
+        (DetailModel model, _, Team team, _) = await NewModelAsync(context);
+
+        Printer printer = NewPrinter(team.Id);
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        context.PrinterLiveStates.Add(new PrinterLiveState
+        {
+            PrinterId = printer.Id,
+            Status = PrinterStatus.Printing,
+            LastSeenAt = DateTimeOffset.UtcNow,
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        await model.OnPostPreheatAsync(printer.Uuid, "PETG", CancellationToken.None);
+
+        // Assert
+        model.StatusSuccess.Should().BeFalse();
+        model.StatusMessage.Should().Contain("Printing", "the answer names the state that refused it");
     }
 
     private static Printer NewPrinter(int teamId, string? name = null)

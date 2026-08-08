@@ -1,0 +1,143 @@
+# METABEGIN
+# X-Env-Layer-Name: homespool-dev
+# X-Env-Layer-Category: app
+# X-Env-Layer-Desc: A development box on top of the appliance image - the .NET SDK, Claude Code and
+#  the tools you reach for when something is wrong on the board rather than on your laptop.
+#  .
+#  Requires the homespool layer rather than replacing it, so a dev board is the shipping appliance
+#  plus tooling. That is the point: it reproduces bugs where they happen, on the same trixie, the
+#  same docker, the same stack.
+#  .
+#  Pi 4 or better, and it genuinely works - measured on a 4 GB Pi 4, 2026-08-08:
+#  .
+#    full solution, cold      ~1m20
+#    full solution, no-op      23.5 s
+#    one project (Data)        13.2 s
+#    edit a file, rebuild Data 17.5 s
+#  .
+#  So the inner loop is about seventeen seconds rather than eighty, and most of that difference is
+#  building the project instead of the whole solution - worth knowing before concluding the board is
+#  too slow from a solution-wide build alone. Tedious next to a Mac, a working rhythm on its own.
+#  .
+#  Those are honest figures rather than a lucky run: 53 C under a sustained four-core compile with
+#  throttled=0x0, where a bare board commonly reaches 80 C and clamps. A board in a case with no
+#  airflow may not hold this.
+#  .
+#  A 1 GB Pi 3 is still not the place for it - nine projects, Roslyn analysers and WarningsAsErrors
+#  want memory. The appliance image stays happy on a 3; this does not.
+# X-Env-Layer-Version: 1.0.0
+# X-Env-Layer-Requires: homespool
+#
+# X-Env-VarPrefix: homespooldev
+# METAEND
+---
+mmdebstrap:
+  packages:
+    # Everything here is a trixie package. The SDK and Claude Code are NOT, and cannot be - see the
+    # customize-hooks below for why they are installed there instead.
+
+    # gnupg for the Claude Code keyring below. apt can verify an ASCII-armoured .asc without it, so
+    # this is belt and braces rather than strictly required - but the failure without it is an
+    # unsigned-repository error at apt update, several minutes into a build.
+    - gnupg
+
+    - git
+    - gh
+    - jq
+
+    # ripgrep, because grep -r over this solution on an SD card is slow enough to change how you
+    # work.
+    - ripgrep
+
+    # A build over SSH dies with the connection, and on a board you are not sitting at that is how
+    # you lose twenty minutes of compile to a sleeping laptop.
+    - screen
+
+    # emacs-nox first, vim for the heathens. nano is already here - it arrives with
+    # raspberrypi-sys-mods in the base layer, not from that layer's own package list, which is why
+    # it does not appear there.
+    - emacs-nox
+    - vim
+
+    # The application's database is SQLite, so this is the difference between reading telemetry on
+    # the board and guessing at it from log lines.
+    - sqlite3
+
+    # For moving a tree between a laptop and here without going through git.
+    - rsync
+
+    # This project's ground truth about the printer protocol is packet captures, and the Pi is on
+    # the same LAN as the printer. Since nginx terminates the printer's TLS, the readable side of
+    # that conversation is here.
+    - tcpdump
+
+    # Certificate inspection: what the printer leaf actually covers, and what the proxy presents.
+    # Both have been real questions more than once.
+    - openssl
+
+  customize-hooks:
+    # Third-party repositories, and then the packages that need them.
+    #
+    # These cannot be in the packages list above, and the reason is ordering rather than taste:
+    # mmdebstrap installs that list while bootstrapping the root filesystem, which happens before
+    # any hook here runs. At that moment neither repository exists, so dotnet-sdk-10.0 and
+    # claude-code are simply not findable. Adding the sources first and installing in a hook is the
+    # only sequence that works.
+    - |-
+      #
+      # Microsoft's feed, for the .NET SDK. Debian ships no dotnet package at all, so there is no
+      # apt-only path to this.
+      #
+      # The config .deb rather than hand-written source and key files: it carries both, it is what
+      # Microsoft documents, and it is one artefact to re-point when trixie is no longer current.
+      set -eu
+      curl -fsSL https://packages.microsoft.com/config/debian/13/packages-microsoft-prod.deb \
+           -o $1/tmp/packages-microsoft-prod.deb
+      chroot $1 dpkg -i /tmp/packages-microsoft-prod.deb
+      rm -f $1/tmp/packages-microsoft-prod.deb
+
+    - |-
+      #
+      # Anthropic's feed, for Claude Code.
+      #
+      # An apt repository rather than the install.sh one-liner, which pins nothing: two cards built
+      # a month apart would carry different versions with no record of which, and an image is
+      # exactly the artefact where that matters.
+      set -eu
+      install -d -m 0755 $1/etc/apt/keyrings
+      curl -fsSL https://downloads.claude.ai/keys/claude-code.asc \
+           -o $1/etc/apt/keyrings/claude-code.asc
+      chmod 0644 $1/etc/apt/keyrings/claude-code.asc
+      printf '%s\n' \
+        'deb [signed-by=/etc/apt/keyrings/claude-code.asc] https://downloads.claude.ai/claude-code/apt/stable stable main' \
+        > $1/etc/apt/sources.list.d/claude-code.list
+
+    - |-
+      #
+      # Now the packages those two repositories exist for.
+      #
+      # noninteractive because there is no terminal in a chroot to answer a prompt, and a build that
+      # blocks on one looks like a hang.
+      set -eu
+      chroot $1 env DEBIAN_FRONTEND=noninteractive apt-get update
+      chroot $1 env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          dotnet-sdk-10.0 \
+          claude-code
+
+    - |-
+      #
+      # Telemetry off, and the reason is that this is an image rather than a machine. A default that
+      # is a personal choice on a laptop is a decision made on behalf of everyone who flashes a card
+      # when it is baked in, so the build declines on their behalf rather than for them. Anyone who
+      # wants it back edits one line of /etc/environment.
+      set -eu
+      printf '%s\n' 'DOTNET_CLI_TELEMETRY_OPTOUT=1' >> $1/etc/environment
+
+    - |-
+      #
+      # Trim the apt cache the two installs above filled. The SDK alone is several hundred megabytes
+      # of .deb that has already been unpacked, and every one of those bytes would otherwise be
+      # written across a card reader by whoever flashes this.
+      set -eu
+      chroot $1 apt-get clean
+      rm -rf $1/var/lib/apt/lists/*

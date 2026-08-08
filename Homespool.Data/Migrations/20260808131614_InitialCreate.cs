@@ -312,6 +312,37 @@ namespace Homespool.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "Cameras",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    Uuid = table.Column<Guid>(type: "TEXT", nullable: false),
+                    Name = table.Column<string>(type: "TEXT", maxLength: 128, nullable: true),
+                    SnapshotUrl = table.Column<string>(type: "TEXT", maxLength: 2048, nullable: false),
+                    PrinterId = table.Column<int>(type: "INTEGER", nullable: true),
+                    TeamId = table.Column<int>(type: "INTEGER", nullable: false),
+                    CreatedAt = table.Column<long>(type: "INTEGER", nullable: false),
+                    UpdatedAt = table.Column<long>(type: "INTEGER", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Cameras", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Cameras_Printers_PrinterId",
+                        column: x => x.PrinterId,
+                        principalTable: "Printers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_Cameras_Teams_TeamId",
+                        column: x => x.TeamId,
+                        principalTable: "Teams",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "PrinterEvents",
                 columns: table => new
                 {
@@ -699,6 +730,22 @@ namespace Homespool.Data.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_Cameras_PrinterId",
+                table: "Cameras",
+                column: "PrinterId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Cameras_TeamId",
+                table: "Cameras",
+                column: "TeamId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Cameras_Uuid",
+                table: "Cameras",
+                column: "Uuid",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Invitations_HashedToken",
                 table: "Invitations",
                 column: "HashedToken",
@@ -852,6 +899,9 @@ namespace Homespool.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "AspNetUserTokens");
+
+            migrationBuilder.DropTable(
+                name: "Cameras");
 
             migrationBuilder.DropTable(
                 name: "DataProtectionKeys");

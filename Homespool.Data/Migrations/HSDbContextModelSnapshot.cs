@@ -48,6 +48,48 @@ namespace Homespool.Data.Migrations
                     b.ToTable("ApiTokens");
                 });
 
+            modelBuilder.Entity("Homespool.Model.Entities.Camera", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("PrinterId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SnapshotUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TeamId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("UpdatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("Uuid")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PrinterId");
+
+                    b.HasIndex("TeamId");
+
+                    b.HasIndex("Uuid")
+                        .IsUnique();
+
+                    b.ToTable("Cameras");
+                });
+
             modelBuilder.Entity("Homespool.Model.Entities.HSUser", b =>
                 {
                     b.Property<long>("Id")
@@ -1005,6 +1047,24 @@ namespace Homespool.Data.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Homespool.Model.Entities.Camera", b =>
+                {
+                    b.HasOne("Homespool.Model.Entities.Printer", "Printer")
+                        .WithMany()
+                        .HasForeignKey("PrinterId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("Homespool.Model.Entities.Team", "Team")
+                        .WithMany()
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Printer");
+
+                    b.Navigation("Team");
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.Invitation", b =>

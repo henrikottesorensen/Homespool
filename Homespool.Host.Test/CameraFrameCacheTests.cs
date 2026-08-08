@@ -29,7 +29,7 @@ public class CameraFrameCacheTests
 
     private static readonly DateTimeOffset Start = new(2026, 8, 8, 12, 0, 0, TimeSpan.Zero);
 
-    private static readonly Uri Address = new("http://camera:1984/api/frame.jpeg?src=abc");
+    private static readonly Uri Address = new("http://go2rtc:1984/api/frame.jpeg?src=abc");
 
     [Fact]
     public void ACameraNeverFetchedHasNothingToShow()

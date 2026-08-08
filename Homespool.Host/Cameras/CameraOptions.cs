@@ -9,14 +9,14 @@ public class CameraOptions
     public const string SectionName = "Cameras";
 
     /// <summary>
-    /// Base address of the go2rtc sidecar. Default <c>http://camera:1984</c>.
+    /// Base address of the go2rtc sidecar. Default <c>http://go2rtc:1984</c>.
     /// </summary>
     /// <remarks>
     /// The service name on the Compose network, not a published port - the sidecar's API has no
     /// authentication of its own, so it is reachable from inside the stack and from nowhere else.
     /// Homespool is the only thing that configures it, which is what makes that safe.
     /// </remarks>
-    public string StreamServerBaseUrl { get; set; } = "http://camera:1984";
+    public string StreamServerBaseUrl { get; set; } = "http://go2rtc:1984";
 
     /// <summary>
     /// Shortest gap between two fetches of the same camera, in seconds. Default 2.

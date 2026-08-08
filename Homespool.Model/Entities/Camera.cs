@@ -38,7 +38,7 @@ public class Camera
     /// <summary>Maximum length of <see cref="Source"/>.</summary>
     /// <remarks>
     /// Generous rather than derived: no standard bounds a URL, and the values in practice are short
-    /// LAN addresses with a query string (<c>http://camera:1984/api/frame.jpeg?src=coreone</c>).
+    /// LAN addresses with a query string (<c>http://go2rtc:1984/api/frame.jpeg?src=coreone</c>).
     /// The cap exists so a pasted mistake fails at the edge rather than becoming a column nobody
     /// sized.
     /// </remarks>

@@ -171,7 +171,8 @@ public static class Program
                             .AddScoped<PrusaConnect.CodeGenerator>()
                             .AddScoped<PrusaConnect.ClaimAttemptLimiter>()
                             .AddScoped<PrusaConnect.MessageDispatcher>()
-                            .AddScoped<PrusaConnect.PrinterCommandService>();
+                            .AddScoped<PrusaConnect.PrinterCommandService>()
+                            .AddScoped<PrusaConnect.PrinterPreheatService>();
 
             // Plain singletons, not TelemetryWriter's singleton-with-IServiceScopeFactory pattern below:
             // neither touches HSDbContext, only in-memory state (the directory of live connection

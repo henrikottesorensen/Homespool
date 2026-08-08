@@ -27,7 +27,7 @@ public class PrinterBusyExceptionTests
         string message = new PrinterBusyException(status).Message;
 
         message.Should().Contain("isn't known yet");
-        message.Should().NotContain("heaters can only be changed",
+        message.Should().NotContain("not busy",
             "that sentence describes a printer doing something, which this one is not");
     }
 
@@ -41,6 +41,6 @@ public class PrinterBusyExceptionTests
         string message = new PrinterBusyException(status).Message;
 
         message.Should().Contain(status.ToString());
-        message.Should().Contain("idle, ready, finished or stopped");
+        message.Should().Contain("not busy", "the rule is stated, not the enum spelled out");
     }
 }

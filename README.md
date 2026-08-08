@@ -42,6 +42,8 @@ unimplemented.
   what is already on the printer's own drive and USB stick.
 - **A JSON API** at `/api/v1`, authenticated by sign-in cookie **or** personal access token.
 - **Sending from PrusaSlicer** — its OctoPrint host type uploads straight into a printer's queue.
+- **Preheat and cool down** from a printer's page, per filament type, using the same temperatures the
+  printer's own preheat menu would choose.
 - **Health checks and alerting** — `/health`, an administrator banner, and email when a check
   starts failing.
 

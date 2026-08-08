@@ -25,6 +25,9 @@ public class CameraSnapshotFetcherTests
 {
     private static readonly DateTimeOffset Now = new(2026, 8, 8, 12, 0, 0, TimeSpan.Zero);
 
+    /// <summary>The sidecar address the application actually fetches - never a camera's own.</summary>
+    private static readonly Uri Frame = new("http://camera:1984/api/frame.jpeg?src=abc");
+
     [Fact]
     public async Task AnImageIsReturnedWithTheTimeItWasFetched()
     {
@@ -32,7 +35,7 @@ public class CameraSnapshotFetcherTests
         using RecordingHandler handler = Respond(HttpStatusCode.OK, "image/jpeg", jpeg);
         CameraSnapshotFetcher fetcher = Build(handler);
 
-        CameraFrame? frame = await fetcher.FetchAsync("http://camera/snapshot", CancellationToken.None);
+        CameraFrame? frame = await fetcher.FetchAsync(Frame, CancellationToken.None);
 
         frame.Should().NotBeNull();
         frame!.Bytes.Should().Equal(jpeg);
@@ -51,7 +54,7 @@ public class CameraSnapshotFetcherTests
             Respond(HttpStatusCode.OK, "text/html", Encoding.UTF8.GetBytes("<html>login</html>"));
         CameraSnapshotFetcher fetcher = Build(handler);
 
-        (await fetcher.FetchAsync("http://camera/snapshot", CancellationToken.None)).Should().BeNull();
+        (await fetcher.FetchAsync(Frame, CancellationToken.None)).Should().BeNull();
     }
 
     [Fact]
@@ -60,7 +63,7 @@ public class CameraSnapshotFetcherTests
         using RecordingHandler handler = Respond(HttpStatusCode.NotFound, "image/jpeg", [1, 2, 3]);
         CameraSnapshotFetcher fetcher = Build(handler);
 
-        (await fetcher.FetchAsync("http://camera/snapshot", CancellationToken.None)).Should().BeNull();
+        (await fetcher.FetchAsync(Frame, CancellationToken.None)).Should().BeNull();
     }
 
     [Fact]
@@ -69,7 +72,7 @@ public class CameraSnapshotFetcherTests
         using RecordingHandler handler = Respond(HttpStatusCode.OK, "image/jpeg", new byte[64]);
         CameraSnapshotFetcher fetcher = Build(handler, maxFrameBytes: 16);
 
-        (await fetcher.FetchAsync("http://camera/snapshot", CancellationToken.None)).Should().BeNull();
+        (await fetcher.FetchAsync(Frame, CancellationToken.None)).Should().BeNull();
     }
 
     /// <summary>
@@ -82,23 +85,7 @@ public class CameraSnapshotFetcherTests
         using RecordingHandler handler = RespondChunked("image/jpeg", new byte[64]);
         CameraSnapshotFetcher fetcher = Build(handler, maxFrameBytes: 16);
 
-        (await fetcher.FetchAsync("http://camera/snapshot", CancellationToken.None)).Should().BeNull();
-    }
-
-    /// <summary>
-    /// Refused before any request is made, so an unsupported scheme costs nothing and cannot reach
-    /// the network at all.
-    /// </summary>
-    [Fact]
-    public async Task AnRtspAddressIsRefusedWithoutCallingOut()
-    {
-        using RecordingHandler handler = Respond(HttpStatusCode.OK, "image/jpeg", [1]);
-        CameraSnapshotFetcher fetcher = Build(handler);
-
-        CameraFrame? frame = await fetcher.FetchAsync("rtsp://camera/live", CancellationToken.None);
-
-        frame.Should().BeNull();
-        handler.Calls.Should().Be(0, "nothing should be dialled for a scheme we do not serve");
+        (await fetcher.FetchAsync(Frame, CancellationToken.None)).Should().BeNull();
     }
 
     [Fact]
@@ -107,7 +94,7 @@ public class CameraSnapshotFetcherTests
         using ThrowingHandler handler = new();
         CameraSnapshotFetcher fetcher = Build(handler);
 
-        (await fetcher.FetchAsync("http://camera/snapshot", CancellationToken.None)).Should().BeNull();
+        (await fetcher.FetchAsync(Frame, CancellationToken.None)).Should().BeNull();
     }
 
     private static CameraSnapshotFetcher Build(HttpMessageHandler handler, long maxFrameBytes = 4L * 1024 * 1024)

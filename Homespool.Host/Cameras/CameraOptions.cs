@@ -9,6 +9,16 @@ public class CameraOptions
     public const string SectionName = "Cameras";
 
     /// <summary>
+    /// Base address of the go2rtc sidecar. Default <c>http://camera:1984</c>.
+    /// </summary>
+    /// <remarks>
+    /// The service name on the Compose network, not a published port - the sidecar's API has no
+    /// authentication of its own, so it is reachable from inside the stack and from nowhere else.
+    /// Homespool is the only thing that configures it, which is what makes that safe.
+    /// </remarks>
+    public string StreamServerBaseUrl { get; set; } = "http://camera:1984";
+
+    /// <summary>
     /// Shortest gap between two fetches of the same camera, in seconds. Default 2.
     /// </summary>
     /// <remarks>
@@ -71,15 +81,17 @@ public class CameraOptions
     public long MaxFrameBytes { get; set; } = 4L * 1024 * 1024;
 
     /// <summary>
-    /// Whether to refuse loopback and link-local addresses. Default <see langword="true"/>.
+    /// Whether to refuse camera sources pointing at loopback or link-local addresses. Default
+    /// <see langword="true"/>.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The application fetches this URL, so it reaches whatever <i>the server</i> can reach rather
-    /// than whatever the person who set it can — the application's own unpublished port, the
-    /// container beside it, a router's admin page, or a cloud metadata endpoint. Setting a camera
-    /// needs <c>ManagePrinter</c>, so the actor is an authenticated team member rather than a
-    /// stranger; the realistic case is a team member probing a network they cannot otherwise touch.
+    /// Homespool does not fetch a camera source itself - the sidecar does - but it decides what the
+    /// sidecar is asked to reach, which is the same authority wearing a different hat. Without this,
+    /// a camera address could name the application's own unpublished port, the container beside it,
+    /// a router's admin page or a cloud metadata endpoint. Setting a camera needs
+    /// <c>ManagePrinter</c>, so the actor is an authenticated team member rather than a stranger;
+    /// the realistic case is a team member probing a network they cannot otherwise touch.
     /// </para>
     /// <para>
     /// Loopback and link-local are refused because nothing a real camera serves lives there, so the
@@ -88,10 +100,10 @@ public class CameraOptions
     /// camera is the entire point.
     /// </para>
     /// <para>
-    /// <b>Known and unhandled: DNS rebinding.</b> A name that resolves past this check and then to
-    /// something else on connection defeats it. Handling that properly means resolving and pinning
-    /// the address ourselves, which is disproportionate here — but it is a limit of the check, not
-    /// an oversight in it.
+    /// <b>Known and unhandled: DNS rebinding.</b> This is checked when a camera is saved and the
+    /// sidecar connects later, so a name that resolves past the check and then elsewhere defeats it.
+    /// Closing that means pinning the resolved address for the life of the stream, and that
+    /// connection is not ours to make - it is a limit of the check, not an oversight in it.
     /// </para>
     /// </remarks>
     public bool RefuseLoopbackAndLinkLocal { get; set; } = true;

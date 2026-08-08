@@ -50,6 +50,12 @@ services:
       # Setting Storage__MinimumSampleIntervalSeconds directly in .env does nothing, silently.
       Storage__MinimumSampleIntervalSeconds: "${TELEMETRY_MIN_SAMPLE_INTERVAL_SECONDS:-0}"
 
+      # Cameras. The sidecar is addressed by service name on this network; nothing about a camera
+      # itself is configured here, because Homespool registers cameras with the sidecar itself.
+      Cameras__StreamServerBaseUrl: "${CAMERA_STREAM_SERVER_BASE_URL:-http://camera:1984}"
+      Cameras__RefreshFloorSeconds: "${CAMERA_REFRESH_FLOOR_SECONDS:-2}"
+      Cameras__MaxAgeSeconds: "${CAMERA_MAX_AGE_SECONDS:-60}"
+
       # What a printer is told to dial for enrolment. PrinterHost is required for USB-key
       # provisioning (Printers -> Add printer): the page cannot produce a usable ini snippet - and
       # refuses to - until it is set. It should also be one of the names in the certificate, which
@@ -114,6 +120,17 @@ services:
       # the network, so it gets the replaceable half and never the other one.
       - homespool-printer-leaf:/app/data/proxy-certificates
 
+      # Camera *names*, and deliberately not camera access. These directories hold udev's stable
+      # symlinks; the devices they point at are passed only to the camera service below, so inside
+      # this container the links are listable and their targets do not resolve. That is what lets
+      # the UI offer a list of attached cameras while holding no ability to open one.
+      #
+      # Safe when the host has no cameras at all: unlike `devices:`, a bind mount of a missing path
+      # is created empty rather than failing the container. The list is then simply empty, which is
+      # what "nothing attached" should look like.
+      - /dev/v4l/by-id:/dev/v4l/by-id:ro
+      - /dev/v4l/by-path:/dev/v4l/by-path:ro
+
     networks:
       - homespool
 
@@ -161,6 +178,49 @@ services:
   # fussier than a normal reverse proxy: exactly one certificate presented, no chain, one ciphersuite,
   # no response buffering, and OpenSSL rather than Go's crypto/tls. Read homespool-printer.conf before
   # substituting anything for that half.
+  # Reads cameras, so Homespool does not have to know how. go2rtc ingests RTSP, ONVIF, HTTP and
+  # V4L2 and re-serves every one of them as a plain JPEG over HTTP - which is why there is no camera
+  # protocol anywhere in the application, and why the official Prusa Buddy Camera is an ordinary
+  # entry in a list rather than a special case.
+  #
+  # Homespool owns this container's configuration: cameras are added in Homespool, which registers
+  # them here over the API. Do not edit go2rtc.yaml by hand - it is written by the sidecar itself
+  # when a stream is added, and a camera described in two places is a camera described wrongly in
+  # one of them.
+  #
+  # Its API has no authentication of its own, which is why no port is published: it is reachable
+  # from inside this stack and from nowhere else. Do not publish 1984.
+  camera:
+    image: alexxit/go2rtc:latest
+
+    # Named, because Cameras__StreamServerBaseUrl points at it by name rather than by address.
+    hostname: camera
+
+    volumes:
+      - homespool-camera-config:/config
+
+    # A USB camera attached to this machine. Commented out because an entry naming a device that
+    # does not exist stops the container from starting - so this cannot ship enabled, and every
+    # deployment without a webcam would otherwise fail at first boot.
+    #
+    # Uncomment and name yours. Use the by-id path, never /dev/video0: node numbers are handed out
+    # in enumeration order, and on this project's own test board one camera took video0 from another
+    # inside a single session. The by-id name carries the model and, where the hardware offers one,
+    # the serial. `ls /dev/v4l/by-id/` lists them; you want a *-video-index0 entry, since UVC also
+    # exposes a metadata node beside every camera.
+    #
+    # devices:
+    #   - /dev/v4l/by-id/usb-046d_0821_437242E0-video-index0
+
+    # Only needed with `devices:` above: video nodes are owned by root:video, mode 660.
+    # group_add:
+    #   - video
+
+    networks:
+      - homespool
+
+    restart: unless-stopped
+
   proxy:
     image: homespool-proxy
     build:
@@ -271,6 +331,11 @@ volumes:
   # keeps meaning something - a certificate regenerated on every start teaches people that the
   # warning is noise.
   homespool-proxy-certs:
+
+  # go2rtc's own configuration, written by go2rtc when Homespool registers a camera. Kept across
+  # container replacement so cameras survive one - the startup reconciler re-registers anything lost,
+  # but a volume means it usually has nothing to do.
+  homespool-camera-config:
 
   # The printer-facing leaf and its key, in PEM: written by the app, read by the proxy. Deliberately
   # NOT part of printerservice-data, which holds the certificate authority's private key - the one

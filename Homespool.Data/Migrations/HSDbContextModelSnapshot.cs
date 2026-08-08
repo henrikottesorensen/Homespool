@@ -64,7 +64,7 @@ namespace Homespool.Data.Migrations
                     b.Property<int?>("PrinterId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("SnapshotUrl")
+                    b.Property<string>("Source")
                         .IsRequired()
                         .HasMaxLength(2048)
                         .HasColumnType("TEXT");

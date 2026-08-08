@@ -94,8 +94,10 @@ public sealed class CameraFrameCache
     /// scheduled from the completion of the last, not on a fixed tick, so a camera taking 3 s is
     /// asked every 3 s rather than accumulating three outstanding fetches.
     /// </remarks>
-    public void RequestRefresh(int cameraId, string address)
+    public void RequestRefresh(int cameraId, Uri address)
     {
+        ArgumentNullException.ThrowIfNull(address);
+
         Entry entry = _entries.GetOrAdd(cameraId, static _ => new Entry());
 
         DateTimeOffset now = _timeProvider.GetUtcNow();
@@ -129,7 +131,7 @@ public sealed class CameraFrameCache
         _entries.TryRemove(cameraId, out _);
     }
 
-    private async Task RefreshAsync(Entry entry, int cameraId, string address)
+    private async Task RefreshAsync(Entry entry, int cameraId, Uri address)
     {
         try
         {

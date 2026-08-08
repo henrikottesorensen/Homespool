@@ -319,7 +319,7 @@ namespace Homespool.Data.Migrations
                         .Annotation("Sqlite:Autoincrement", true),
                     Uuid = table.Column<Guid>(type: "TEXT", nullable: false),
                     Name = table.Column<string>(type: "TEXT", maxLength: 128, nullable: true),
-                    SnapshotUrl = table.Column<string>(type: "TEXT", maxLength: 2048, nullable: false),
+                    Source = table.Column<string>(type: "TEXT", maxLength: 2048, nullable: false),
                     PrinterId = table.Column<int>(type: "INTEGER", nullable: true),
                     TeamId = table.Column<int>(type: "INTEGER", nullable: false),
                     CreatedAt = table.Column<long>(type: "INTEGER", nullable: false),

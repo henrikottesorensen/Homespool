@@ -2,6 +2,11 @@
 # Builds a Raspberry Pi 3 SD-card image with the Homespool stack baked in.
 #
 #   pi/build.sh --ssh-key ~/.ssh/id_ed25519.pub
+#   pi/build.sh --ssh-key ~/.ssh/id_ed25519.pub --device pi4 --dev
+#
+# --dev adds the .NET SDK, Claude Code and debugging tools on top of the appliance, and names the
+# image homespool-<board>-dev. It wants a Pi 4 or better; building this solution on a 1 GB Pi 3 is
+# not a good time.
 #
 # Two builds happen here, and the order matters. First the application's own container images, built
 # natively for arm64 on this machine - which is why an Apple Silicon Mac is the easy host and an x86
@@ -29,13 +34,21 @@ device_user="pi"
 # two boards' images can sit in the same directory without one quietly overwriting the other.
 board="pi3"
 
+# The appliance, or the appliance plus a toolchain. --dev swaps the custom layer for homespool-dev,
+# which requires homespool rather than replacing it, so a dev card is this same image with the .NET
+# SDK, Claude Code and debugging tools on top. Wants a Pi 4 or better - see that layer's header.
+custom_layer="homespool"
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --ssh-key)   ssh_key="$2"; shift 2 ;;
         --password)  password="$2"; shift 2 ;;
         --user)      device_user="$2"; shift 2 ;;
         --device)    board="$2"; shift 2 ;;
-        -h|--help)   sed -n '2,12p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        --dev)       custom_layer="homespool-dev"; shift ;;
+        # 2,9 rather than 2,12: the usage block ends at the --dev note, and a fixed range that runs
+        # past it prints half a sentence about container builds. Extend this when the header does.
+        -h|--help)   sed -n '2,9p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -54,7 +67,14 @@ case "$board" in
     *) echo "unknown --device: $board (pi3, pi4, pi5, cm4, cm5, zero2w)" >&2; exit 2 ;;
 esac
 
+# Suffixed for the same reason the board is in the name: two images that differ in what is on them
+# must not land on the same path in work/out, where the second would silently overwrite the first.
 image_name="homespool-$board"
+if [ "$custom_layer" = "homespool-dev" ]; then
+    # An if rather than a one-line [ ... ] && ..., which under set -e is a trap: the test returns 1
+    # on an appliance build and takes the whole script down with it.
+    image_name="$image_name-dev"
+fi
 
 # Checked here rather than where it is used, which is on the far side of a ~550 MB image save and a
 # container build. A typo in a path should cost a second, not the whole build.
@@ -144,6 +164,7 @@ overrides=(
     "IGconf_device_user1=$device_user"
     "IGconf_device_layer=$device_layer"
     "IGconf_image_name=$image_name"
+    "IGconf_layer_custom=$custom_layer"
 )
 # A hash rather than the plain variable, because rpi-image-gen validates plain passwords against a
 # regex demanding upper, lower, digit and punctuation - which "homespool" is not, and which is the

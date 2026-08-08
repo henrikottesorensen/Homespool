@@ -1,0 +1,45 @@
+@*
+    The house mark for the navbar: the full cut, untiled, inlined, at 32px.
+
+    Inlined rather than <img>, because that is the only way it can take its colour from the link
+    around it. currentColor resolves against .navbar-brand's --bs-navbar-brand-color, so the mark
+    follows the wordmark for free - the deeper blue in light mode, the lifted #75b9e6 in dark, and
+    the hover colour on hover. An <img> sits at one fixed blue and is wrong in half of those.
+
+    32px rather than 24, and that is a stroke-weight decision rather than a taste one. This cut is
+    stroke-width 4 on a 96 viewBox, so it draws a 1.0px line at 24 and 1.33px at 32; the mark's own
+    commit puts its legibility floor at "about 24px". At 24 the two overlapping spool discs close up
+    into one shape. The simplified cut (homespool-icon.svg, stroke-width 11) was tried here for
+    exactly that reason and rejected: it survives small sizes by dropping the house to a bare
+    chevron, which is legibility bought with the idea. 32 keeps the whole drawing.
+
+    It costs a few pixels of navbar height, since 32 exceeds the wordmark's line box.
+
+    Geometry is homespool-mark-mono.svg verbatim, minus two things: its color="#278ED3" presentation
+    attribute, which exists so an <img> of that file renders blue and which would defeat the
+    inheritance this partial is for; and its role="img"/aria-label, because the link's own text
+    already reads "Homespool" and labelling the mark too makes a screen reader say it twice.
+
+    The mask ids are document-global once inlined. One instance per page today; render this twice on
+    one page and they collide and need suffixing.
+*@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="32" height="32"
+     fill="none" stroke="currentColor" aria-hidden="true" focusable="false" class="me-2 flex-shrink-0">
+  <defs>
+    <mask id="hs-full-behind-spool">
+      <rect width="96" height="96" fill="#fff"/>
+      <g fill="#000" stroke="#000" stroke-width="9" stroke-linejoin="round">
+        <ellipse cx="40.5" cy="52.45" rx="23" ry="29"/>
+        <ellipse cx="55.5" cy="55.55" rx="23" ry="29"/>
+      </g>
+    </mask>
+    <mask id="hs-full-behind-near">
+      <rect width="96" height="96" fill="#fff"/>
+      <ellipse cx="55.5" cy="55.55" rx="23" ry="29" fill="#000"/>
+    </mask>
+  </defs>
+  <path d="M48 6 86 28V74H10V28Z" stroke-width="4" stroke-linejoin="round" mask="url(#hs-full-behind-spool)"/>
+  <ellipse cx="40.5" cy="52.45" rx="23" ry="29" stroke-width="4" mask="url(#hs-full-behind-near)"/>
+  <ellipse cx="55.5" cy="55.55" rx="23" ry="29" stroke-width="4"/>
+  <ellipse cx="55.5" cy="55.55" rx="6.5" ry="8.2" stroke-width="4"/>
+</svg>

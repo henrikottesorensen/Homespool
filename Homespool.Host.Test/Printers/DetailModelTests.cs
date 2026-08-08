@@ -114,6 +114,42 @@ public sealed class DetailModelTests : IDisposable
     }
 
     /// <summary>
+    /// The refusal a person meets on the page matches the one the service raises.
+    /// </summary>
+    /// <remarks>
+    /// Cooling is refused mid-print as well as heating, which reads as arbitrary unless the page says
+    /// so - the button looks like a safety control and is not one. This asserts the refusal itself;
+    /// the page's own wording is markup, and the two would drift apart silently if only the markup
+    /// said it.
+    /// </remarks>
+    [Fact]
+    public async Task CooldownIsRefusedWhileThePrinterIsPrinting()
+    {
+        // Arrange
+        await using HSDbContext context = await MigratedContextAsync();
+        (DetailModel model, _, Team team, _) = await NewModelAsync(context);
+
+        Printer printer = NewPrinter(team.Id);
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        context.PrinterLiveStates.Add(new PrinterLiveState
+        {
+            PrinterId = printer.Id,
+            Status = PrinterStatus.Printing,
+            LastSeenAt = DateTimeOffset.UtcNow,
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        await model.OnPostCooldownAsync(printer.Uuid, CancellationToken.None);
+
+        // Assert
+        model.StatusSuccess.Should().BeFalse("cooling a nozzle mid-print ruins the print without ending it");
+        model.StatusMessage.Should().Contain("not busy");
+    }
+
+    /// <summary>
     /// Preheating is refused while the printer is printing, and says so on the page.
     /// </summary>
     /// <remarks>

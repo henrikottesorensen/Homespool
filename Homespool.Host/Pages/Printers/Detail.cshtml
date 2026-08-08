@@ -207,8 +207,16 @@ else
 
     <p class="text-body-secondary">
         Heats the nozzle and bed together, to the same targets the printer's own preheat menu uses.
-        Refused while the printer is printing or paused &mdash; the firmware would accept it and ruin
-        the print.
+    </p>
+
+    @* Cooling is refused mid-print too, which reads as arbitrary unless it is said: the button
+       looks like a safety control and is not one. Said on the page rather than only in the refusal,
+       so nobody has to press it to find out. *@
+    <p class="text-body-secondary">
+        Both are refused while the printer is busy, <strong>cooling included</strong>: changing a
+        heater mid-print ruins the print without ending it, and the printer will not refuse it on
+        your behalf. To stop a print, use the controls on the
+        <a asp-page="Index">printers list</a>.
     </p>
 
     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">

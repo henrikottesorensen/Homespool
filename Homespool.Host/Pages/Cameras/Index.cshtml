@@ -1,0 +1,221 @@
+@page
+@model Homespool.Host.Pages.Cameras.IndexModel
+@{
+    ViewData["Title"] = "Cameras";
+}
+
+<h1>Cameras</h1>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-success" role="alert">@Model.Message</div>
+}
+@if (Model.Warning is not null)
+{
+    <div class="alert alert-warning" role="alert">@Model.Warning</div>
+}
+@if (Model.Error is not null)
+{
+    <div class="alert alert-danger" role="alert">@Model.Error</div>
+}
+
+@if (Model.Cameras.Count == 0)
+{
+    <p class="text-body-secondary">No cameras yet.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table align-middle">
+            <thead>
+                <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col">Source</th>
+                    <th scope="col">Printer</th>
+                    <th scope="col">Picture</th>
+                    <th scope="col"><span class="visually-hidden">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var camera in Model.Cameras)
+                {
+                    var age = Model.FrameAge(camera);
+                    <tr>
+                        <td>
+                            @(camera.Name ?? camera.Uuid.ToString())
+                            @if (Homespool.Host.Pages.Cameras.IndexModel.IsAttached(camera))
+                            {
+                                @* Attached cameras are the server's, not a team's - worth saying so
+                                   where somebody is deciding whether they may remove one. *@
+                                <span class="badge border border-secondary text-body-secondary ms-1">attached</span>
+                            }
+                        </td>
+                        <td><code class="small">@camera.Source</code></td>
+                        <td>@(camera.Printer?.Name ?? camera.Printer?.Model ?? "—")</td>
+                        <td>
+                            @if (age is null)
+                            {
+                                <span class="text-body-secondary">no picture yet</span>
+                            }
+                            else
+                            {
+                                <span>seen @age</span>
+                            }
+                        </td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-outline-secondary"
+                               asp-page="/Cameras/Index" asp-route-edit="@camera.Uuid">Edit</a>
+                            <form method="post" asp-page-handler="Delete" class="d-inline">
+                                <input type="hidden" name="uuid" value="@camera.Uuid" />
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (Model.Editing is not null)
+{
+    <h2 class="h5 mt-4">Edit camera</h2>
+    <form method="post" asp-page-handler="Edit" class="row g-2 align-items-end">
+        <input type="hidden" name="uuid" value="@Model.Editing.Uuid" />
+
+        <div class="col-md-3">
+            <label class="form-label" for="edit-name">Name</label>
+            <input class="form-control" id="edit-name" name="name" value="@Model.Editing.Name" />
+        </div>
+
+        <div class="col-md-5">
+            <label class="form-label" for="edit-source">Source</label>
+            <input class="form-control" id="edit-source" name="source" value="@Model.Editing.Source" required />
+        </div>
+
+        <div class="col-md-2">
+            <label class="form-label" for="edit-printer">Printer</label>
+            <select class="form-select" id="edit-printer" name="printerId">
+                <option value="">None</option>
+                @foreach (var printer in Model.Printers)
+                {
+                    <option value="@printer.Id" selected="@(printer.Id == Model.Editing.PrinterId)">
+                        @(printer.Name ?? printer.Model ?? printer.Uuid.ToString())
+                    </option>
+                }
+            </select>
+        </div>
+
+        <div class="col-md-2">
+            <button type="submit" class="btn btn-primary">Save</button>
+            <a class="btn btn-link" asp-page="/Cameras/Index">Cancel</a>
+        </div>
+    </form>
+}
+
+@if (Model.Teams.Count > 0)
+{
+    <h2 class="h5 mt-4">Add a camera on the network</h2>
+    <p class="text-body-secondary small">
+        An RTSP or HTTP address, for example <code>rtsp://192.168.1.50/live</code>. Homespool
+        registers it with the stream server for you.
+    </p>
+
+    <form method="post" asp-page-handler="AddNetwork" class="row g-2 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label" for="add-name">Name</label>
+            <input class="form-control" id="add-name" name="name" placeholder="Core One" />
+        </div>
+
+        <div class="col-md-4">
+            <label class="form-label" for="add-source">Address</label>
+            <input class="form-control" id="add-source" name="source"
+                   placeholder="rtsp://192.168.1.50/live" required />
+        </div>
+
+        <div class="col-md-2">
+            <label class="form-label" for="add-team">Team</label>
+            <select class="form-select" id="add-team" name="teamId">
+                @foreach (var team in Model.Teams)
+                {
+                    <option value="@team.Id">@(team.Name ?? $"Team {team.Id}")</option>
+                }
+            </select>
+        </div>
+
+        <div class="col-md-2">
+            <label class="form-label" for="add-printer">Printer</label>
+            <select class="form-select" id="add-printer" name="printerId">
+                <option value="">None</option>
+                @foreach (var printer in Model.Printers)
+                {
+                    <option value="@printer.Id">@(printer.Name ?? printer.Model ?? printer.Uuid.ToString())</option>
+                }
+            </select>
+        </div>
+
+        <div class="col-md-1">
+            <button type="submit" class="btn btn-primary">Add</button>
+        </div>
+    </form>
+}
+
+@* Absent entirely for anyone who could not claim one, and absent when there is nothing free to
+   claim - a control that cannot act explains nothing. *@
+@if (Model.IsAdministrator && Model.AvailableDevices.Count > 0)
+{
+    <h2 class="h5 mt-4">Add a camera plugged into this server</h2>
+    <p class="text-body-secondary small">
+        Only cameras nobody has claimed are listed. A camera attached to the server belongs to the
+        machine rather than to a team, so only an administrator can set one up.
+    </p>
+
+    <form method="post" asp-page-handler="AddAttached" class="row g-2 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label" for="attach-name">Name</label>
+            <input class="form-control" id="attach-name" name="name" placeholder="Workshop" />
+        </div>
+
+        <div class="col-md-4">
+            <label class="form-label" for="attach-device">Camera</label>
+            <select class="form-select" id="attach-device" name="device" required>
+                @foreach (var device in Model.AvailableDevices)
+                {
+                    <option value="@device.Name">@device.Description</option>
+                }
+            </select>
+        </div>
+
+        <div class="col-md-2">
+            <label class="form-label" for="attach-team">Team</label>
+            <select class="form-select" id="attach-team" name="teamId">
+                @foreach (var team in Model.Teams)
+                {
+                    <option value="@team.Id">@(team.Name ?? $"Team {team.Id}")</option>
+                }
+            </select>
+        </div>
+
+        <div class="col-md-2">
+            <label class="form-label" for="attach-printer">Printer</label>
+            <select class="form-select" id="attach-printer" name="printerId">
+                <option value="">None</option>
+                @foreach (var printer in Model.Printers)
+                {
+                    <option value="@printer.Id">@(printer.Name ?? printer.Model ?? printer.Uuid.ToString())</option>
+                }
+            </select>
+        </div>
+
+        <div class="col-md-1">
+            <button type="submit" class="btn btn-primary">Add</button>
+        </div>
+    </form>
+}
+else if (Model.IsAdministrator)
+{
+    <p class="text-body-secondary small mt-4">
+        No unclaimed cameras are attached to this server. If you have just plugged one in, it also
+        needs a <code>devices:</code> line in <code>compose.yaml</code> for the go2rtc service.
+    </p>
+}

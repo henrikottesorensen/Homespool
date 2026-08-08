@@ -17,12 +17,11 @@ namespace Homespool.Model.Entities;
 /// handling, but the response says which, at fetch time, with nothing to keep in step.
 /// </para>
 /// <para>
-/// <b><see cref="SnapshotUrl"/> is therefore constrained to HTTP(S)</b>, and protocol breadth lives
-/// in the sidecar instead. go2rtc ingests RTSP, ONVIF and V4L2 and re-serves them as an HTTP
-/// snapshot, so an RTSP camera — including the official Buddy Camera — reaches us through the same
-/// one-shaped hole as everything else, and the application needs no protocol knowledge at all. The
-/// cost of that choice is real and worth stating: an <c>rtsp://</c> address cannot be entered here
-/// directly, and is unusable until something in front of it speaks HTTP.
+/// <b>Homespool owns the stream server's configuration</b> (Henrik, 2026-08-08). A camera is
+/// described once, here, and registered with go2rtc from this row - rather than configured in
+/// go2rtc by hand and then described again in Homespool, which would be one camera in two places.
+/// go2rtc ingests RTSP, ONVIF and V4L2 and re-serves them all as an HTTP snapshot, so the
+/// application needs no protocol knowledge at all, including for the official Buddy Camera.
 /// </para>
 /// <para>
 /// <b>Nothing here holds an image.</b> Frames live in memory only, keyed by camera, and are
@@ -36,14 +35,14 @@ public class Camera
     /// <summary>Maximum length of <see cref="Name"/>.</summary>
     public const int NameMaxLength = 128;
 
-    /// <summary>Maximum length of <see cref="SnapshotUrl"/>.</summary>
+    /// <summary>Maximum length of <see cref="Source"/>.</summary>
     /// <remarks>
     /// Generous rather than derived: no standard bounds a URL, and the values in practice are short
     /// LAN addresses with a query string (<c>http://camera:1984/api/frame.jpeg?src=coreone</c>).
     /// The cap exists so a pasted mistake fails at the edge rather than becoming a column nobody
     /// sized.
     /// </remarks>
-    public const int SnapshotUrlMaxLength = 2048;
+    public const int SourceMaxLength = 2048;
 
     /// <summary>
     /// Surrogate primary key.
@@ -70,24 +69,28 @@ public class Camera
     public string? Name { get; set; }
 
     /// <summary>
-    /// The address a still image is fetched from. HTTP or HTTPS only.
+    /// Where the camera's video comes from, in the stream server's own vocabulary: an
+    /// <c>rtsp://</c> address, an <c>http://</c> snapshot address, or
+    /// <c>ffmpeg:device?video=/dev/v4l/by-id/...</c> for a camera plugged into this machine.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Validated on save, not merely on display — this address is fetched <b>by the server</b>, so
-    /// it reaches whatever the server can reach rather than whatever the person setting it can.
-    /// Loopback and link-local are refused for that reason; see the fetcher in
-    /// <c>Homespool.Host</c>, which also records that DNS rebinding defeats an address check and is
-    /// knowingly unhandled.
+    /// <b>Opaque to Homespool on purpose.</b> The stream server interprets it, which is what keeps
+    /// this schema free of a <c>Type</c> column: a camera's protocol is stated by its own address
+    /// and never restated beside it.
     /// </para>
     /// <para>
-    /// The threat is smaller than "internet-facing" suggests and is not nothing: setting this needs
-    /// <c>ManagePrinter</c>, so the actor is an authenticated team member rather than a stranger —
-    /// but teams exist, and a team member using the server to probe a network they cannot otherwise
-    /// reach is the realistic case.
+    /// <b>Not the address a frame is read from.</b> That is derived from the stream server's base
+    /// address and this camera's <see cref="Uuid"/>, and is deliberately not stored - a snapshot
+    /// address is a function of two things already here, so persisting it would only create
+    /// something able to disagree with both.
+    /// </para>
+    /// <para>
+    /// Checked before it is handed over, because Homespool decides what the sidecar is asked to
+    /// reach even though it does not make the connection itself. See <c>CameraSourcePolicy</c>.
     /// </para>
     /// </remarks>
-    public string SnapshotUrl { get; set; } = string.Empty;
+    public string Source { get; set; } = string.Empty;
 
     /// <summary>
     /// The printer this camera watches, or null if it is not bound to one.

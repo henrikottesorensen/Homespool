@@ -42,18 +42,11 @@ public sealed class CameraSnapshotFetcher : ICameraSnapshotFetcher
     }
 
     /// <inheritdoc />
-    public async Task<CameraFrame?> FetchAsync(string address, CancellationToken cancellationToken)
+    public async Task<CameraFrame?> FetchAsync(Uri uri, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(uri);
+
         CameraOptions options = _options.Value;
-
-        CameraAddressCheck check = CameraAddressPolicy.Inspect(address);
-        if (!check.IsAcceptable)
-        {
-            _logger.LogWarning("Camera address rejected: {Reason}", check.Error);
-            return null;
-        }
-
-        Uri uri = check.Uri!;
 
         using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(options.TimeoutSeconds));

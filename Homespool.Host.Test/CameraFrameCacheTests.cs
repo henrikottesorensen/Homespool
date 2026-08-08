@@ -26,9 +26,10 @@ namespace Homespool.Host.Test;
 public class CameraFrameCacheTests
 {
     private const int CameraId = 7;
-    private const string Address = "http://camera/snapshot";
 
     private static readonly DateTimeOffset Start = new(2026, 8, 8, 12, 0, 0, TimeSpan.Zero);
+
+    private static readonly Uri Address = new("http://camera:1984/api/frame.jpeg?src=abc");
 
     [Fact]
     public void ACameraNeverFetchedHasNothingToShow()
@@ -118,7 +119,7 @@ public class CameraFrameCacheTests
     public void AnUnreadableCameraLeavesNothingBehind()
     {
         (CameraFrameCache cache, ICameraSnapshotFetcher fetcher, _) = Build();
-        fetcher.FetchAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+        fetcher.FetchAsync(Arg.Any<Uri>(), Arg.Any<CancellationToken>())
                .Returns(Task.FromResult<CameraFrame?>(null));
 
         cache.RequestRefresh(CameraId, Address);
@@ -132,7 +133,7 @@ public class CameraFrameCacheTests
         FakeTimeProvider time = new(Start);
         ICameraSnapshotFetcher fetcher = Substitute.For<ICameraSnapshotFetcher>();
 
-        fetcher.FetchAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+        fetcher.FetchAsync(Arg.Any<Uri>(), Arg.Any<CancellationToken>())
                .Returns(_ => Task.FromResult<CameraFrame?>(
                    new CameraFrame([1, 2, 3], "image/jpeg", time.GetUtcNow())));
 

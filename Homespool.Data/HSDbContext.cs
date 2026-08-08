@@ -169,9 +169,9 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
             entity.Property(e => e.Name)
                   .HasMaxLength(Camera.NameMaxLength);
 
-            entity.Property(e => e.SnapshotUrl)
+            entity.Property(e => e.Source)
                   .IsRequired()
-                  .HasMaxLength(Camera.SnapshotUrlMaxLength);
+                  .HasMaxLength(Camera.SourceMaxLength);
 
             // Same reasoning as Printer: deleting a team that still owns cameras should fail
             // loudly rather than quietly take them.

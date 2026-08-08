@@ -310,9 +310,10 @@ public class DetailModel : PageModel
             // fault, and the page is where the person already is.
             (StatusMessage, StatusSuccess) = (e.Message, false);
         }
-        catch (PreheatPartiallyAppliedException e)
+        catch (PrinterRefusedException e)
         {
-            // Says what did happen. "It failed" would send someone away from a heating printer.
+            // The printer's own words. Without this the page reported success for a command the
+            // printer had declined, which is worse than reporting nothing.
             (StatusMessage, StatusSuccess) = (e.Message, false);
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException

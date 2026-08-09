@@ -101,7 +101,7 @@ public sealed class ProvisioningBundleBuilder
     /// not, loopback and link-local because they name this machine or a failed DHCP lease, and the
     /// container ranges because they exist only inside Docker.
     /// </remarks>
-    private static bool CouldReachAPrinter(IPAddress address, IReadOnlyList<IPNetwork> containerNetworks)
+    public static bool CouldReachAPrinter(IPAddress address, IReadOnlyList<IPNetwork> containerNetworks)
     {
         return address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
         && !IPAddress.IsLoopback(address)

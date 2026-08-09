@@ -120,7 +120,10 @@ public class PrinterCommandService
             throw new CommandAnswerUnreadableException(printerId, commandData.WireName, e);
         }
 
-        return new CommandOutcome<TAnswer>(result.Response!.EventType, result.Response.Reason, answer);
+        return new CommandOutcome<TAnswer>(result.Response!.EventType, result.Response.Reason, answer)
+        {
+            MachineReason = result.Response.MachineReason,
+        };
     }
 
     /// <summary>

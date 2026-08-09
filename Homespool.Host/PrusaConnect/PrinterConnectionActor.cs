@@ -440,18 +440,24 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             // is what separates a sluggish printer from a wedged one, and neither is visible from
             // the outcome alone. Reason is firmware's own rejection text (JC's macro strings), not
             // anything we compose - safe to log, and usually the only explanation of a Rejected.
-            _logger.LogDebug("command {CommandId} ({Command}) answered with {EventType} after {ElapsedMs:F0}ms{Reason}",
+            _logger.LogDebug(
+                "command {CommandId} ({Command}) answered with {EventType} after {ElapsedMs:F0}ms{Reason} [{MachineReason}]",
                 answered.CommandId,
                 answered.WireName,
                 eventDto.EventType,
                 Stopwatch.GetElapsedTime(answered.SentAt).TotalMilliseconds,
-                eventDto.Reason is null ? string.Empty : $": {eventDto.Reason}");
+                eventDto.Reason is null ? string.Empty : $": {eventDto.Reason}",
+                eventDto.MachineReason);
 
             // Data rides on the result rather than the outcome, and never reaches the log line above:
             // a payload is the one part of an answer that can carry anything, and FILE_INFO's runs to
             // ~90 KB with a preview in it. PrinterCommandService is the only thing that reads it.
             answered.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.Completed,
-                new CommandOutcome(eventDto.EventType, eventDto.Reason), eventDto.Data));
+                new CommandOutcome(eventDto.EventType, eventDto.Reason)
+                {
+                    MachineReason = eventDto.MachineReason,
+                },
+                eventDto.Data));
         }
 
         EndTransferIfTerminal(eventDto);

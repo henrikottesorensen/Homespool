@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -44,6 +45,12 @@ namespace Homespool.Host.Test;
 public sealed class QueueAdvancerTests : IDisposable
 {
     private const int PrinterId = 1;
+
+    /// <summary>
+    /// What <see cref="WriteFileOnDiskAsync"/> actually writes. The store reads the length off disk,
+    /// so this - not the seeded <c>PrintFile.Size</c> - is what a drive's copy is compared against.
+    /// </summary>
+    private const long OnDiskLength = 11;
 
     /// <summary>The handle the seeded entry is enqueued under - fixed, so assertions can name it.</summary>
     private static readonly Guid QueuedTrackingId = new("11111111-2222-3333-4444-555555555555");
@@ -387,6 +394,91 @@ public sealed class QueueAdvancerTests : IDisposable
                  new CommandOutcome(Events.Rejected, reason))));
 
         _registry.Register(PrinterId, actor);
+    }
+
+    /// <summary>
+    /// A printer that refuses the transfer with <c>FILE_EXISTS</c> and then answers
+    /// <c>SEND_FILE_INFO</c> about whatever is already sitting there.
+    /// </summary>
+    /// <param name="existingSize">What the drive says the existing file's size is, or null to answer without one.</param>
+    /// <param name="existingPath">The 8.3 alias the printer reports, which is what a print must use.</param>
+    private void ConnectRefusingTransferAsExisting(long? existingSize, string existingPath = "/usb/SHAPE-~1.BGC")
+    {
+        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+        actor.IsOpen.Returns(true);
+        actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
+             .Returns(call =>
+             {
+                 if (call.Arg<ISendableCommand>() is SendFileInfo)
+                 {
+                     string json = existingSize is { } size
+                         ? $"{{\"path\":\"{existingPath}\",\"size\":{size}}}"
+                         : $"{{\"path\":\"{existingPath}\"}}";
+
+                     return Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
+                         new CommandOutcome(Events.FileInfo, null),
+                         JsonSerializer.Deserialize<JsonElement>(json)));
+                 }
+
+                 return Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
+                     new CommandOutcome(Events.Rejected, "File already exists") { MachineReason = "FILE_EXISTS" }));
+             });
+
+        _registry.Register(PrinterId, actor);
+    }
+
+    /// <summary>
+    /// The bytes are already where we wanted them, so the transfer is not an error to retry - it is
+    /// our own bookkeeping being wrong, and the file is adopted under the name the printer uses.
+    /// </summary>
+    [Fact]
+    public async Task AFileAlreadyOnTheDriveAtTheSameSizeIsAdopted()
+    {
+        // Arrange - we do not think it has arrived; the drive disagrees, at the same size.
+        await using HSDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        ConnectRefusingTransferAsExisting(existingSize: OnDiskLength);
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.ArrivedAt.Should().NotBeNull("the file is on the drive, whoever put it there");
+        row.PrinterPath.Should().Be("/usb/SHAPE-~1.BGC",
+            "the alias the printer answered with is what START_PRINT has to use, and it is unguessable from here");
+        row.BlockedReason.Should().BeNull("nothing is in the way");
+    }
+
+    /// <summary>
+    /// A name can match while the bytes do not, and printing somebody else's model is worse than
+    /// stopping - so the queue holds with a sentence rather than adopting or retrying for ever.
+    /// </summary>
+    [Fact]
+    public async Task AFileAlreadyOnTheDriveAtADifferentSizeHoldsTheQueue()
+    {
+        // Arrange
+        await using HSDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        ConnectRefusingTransferAsExisting(existingSize: OnDiskLength + 4096);
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.ArrivedAt.Should().BeNull("a matching name is not matching content");
+        row.BlockedReason.Should().NotBeNull("the reason has to reach a person, or the queue stalls silently");
+        row.BlockedAt.Should().NotBeNull("the hold is re-checked on a clock, not every tick");
+
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
+            "somebody still wants this printed - a block is not a cancellation");
     }
 
     private QueueAdvancer NewAdvancer()

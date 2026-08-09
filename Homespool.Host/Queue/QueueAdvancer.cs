@@ -96,6 +96,29 @@ public sealed class QueueAdvancer : BackgroundService
     /// </remarks>
     public static readonly TimeSpan BlockRecheckAfter = TimeSpan.FromSeconds(60);
 
+    /// <summary>
+    /// Firmware's code for "the drive already has that name" - observed on an MK3.5 at 6.5.7+12836,
+    /// answering <c>START_CONNECT_DOWNLOAD</c> with <c>"File already exists"</c> beside it.
+    /// </summary>
+    /// <remarks>
+    /// Its own code rather than a <c>STORAGE_FAILURE</c>, which is what makes this case separable:
+    /// firmware distinguishes "it is already there" from "storage went wrong", so the loop can too.
+    /// </remarks>
+    private const string FileExistsCode = "FILE_EXISTS";
+
+    /// <summary>
+    /// How a block written by the free-space check begins, so that check can tell its own holds from
+    /// anyone else's.
+    /// </summary>
+    /// <remarks>
+    /// <b>A seam, and an honest one.</b> <see cref="PrintFileOnPrinter.BlockedReason"/> is documented
+    /// as a sentence for a person rather than a code, which was right while the space check was its
+    /// only writer. It is not any more, and matching on the opening words is the cheapest way for one
+    /// writer to avoid lifting another's hold without a column that says who set it. If a third writer
+    /// appears, add the column rather than a third prefix.
+    /// </remarks>
+    private const string SpaceBlockPrefix = "Not enough space on the printer:";
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly PrinterConnectionRegistry _registry;
     private readonly QueueSignal _signal;
@@ -557,11 +580,23 @@ public sealed class QueueAdvancer : BackgroundService
 
             if (outcome?.EventType is Events.Rejected or Events.Failed)
             {
-                // Almost always the single system-wide transfer slot being busy. Clearing the stamp
-                // makes the next tick try again rather than waiting out the staleness timeout.
-                _logger.LogInformation("[{PrinterId}] refused the transfer of {FileName}: {Reason}",
-                    printerId, file.FileName, outcome.Reason);
+                // Classified on MachineReason, not on the prose: the code is a fixed vocabulary and
+                // the wording is free to change between releases.
+                _logger.LogInformation(
+                    "[{PrinterId}] refused the transfer of {FileName}: {Reason} [{MachineReason}]",
+                    printerId, file.FileName, outcome.Reason, outcome.MachineReason);
+
+                // Cleared whatever the reason, so the next tick decides afresh rather than waiting
+                // out the staleness timeout on a transfer that never started. For everything except
+                // FILE_EXISTS that is the whole response - usually the single system-wide transfer
+                // slot being busy, where trying again is exactly right.
                 onPrinter.TransferStartedAt = null;
+
+                if (outcome.MachineReason == FileExistsCode)
+                {
+                    await ReconcileExistingFileAsync(scope, printerId, head, file, onPrinter, cancellationToken);
+                }
+
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
         }
@@ -583,6 +618,87 @@ public sealed class QueueAdvancer : BackgroundService
             onPrinter.TransferStartedAt = null;
             await dbContext.SaveChangesAsync(cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// Answers a <c>FILE_EXISTS</c> refusal by asking what is actually on the drive: adopts the file
+    /// when it is ours, and holds the queue with a sentence when it is somebody else's.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The refusal is a cache miss in our own bookkeeping, not an error.</b> The bytes we wanted to
+    /// send are already where we wanted them - put there by an earlier run, by PrusaLink, or by a
+    /// person with a USB stick - so the right answer is to record what
+    /// <see cref="PrintFileOnPrinter"/> should have said and print. That is the same conclusion
+    /// <c>File not found</c> reaches from the other direction: the drive is the truth, and a refusal is
+    /// it correcting us.
+    /// </para>
+    /// <para>
+    /// <b>A matching name is not matching content, so the size is checked.</b> It is the only
+    /// comparator firmware offers - <c>FILE_INFO</c> carries no digest - which leaves a real residue:
+    /// two different files of identical length would be adopted wrongly, and the print would be of
+    /// somebody else's model. Judged worth it because the alternative refuses every legitimate
+    /// re-queue, and because equal-length-but-different is a coincidence rather than a mechanism.
+    /// <b>Sharpening it needs a digest firmware does not send</b>, so do not reach for one here.
+    /// </para>
+    /// <para>
+    /// <b>The path recorded is the one <c>FILE_INFO</c> answers with</b>, not the one we asked about:
+    /// that is the 8.3 alias, which is what <c>START_PRINT</c> then uses, and it is unguessable from
+    /// here because the counter depends on what else is on that drive.
+    /// </para>
+    /// </remarks>
+    private async Task ReconcileExistingFileAsync(AsyncServiceScope scope, int printerId, QueuedPrint head,
+        StoredFile file, PrintFileOnPrinter onPrinter, CancellationToken cancellationToken)
+    {
+        PrinterCommandService commands = scope.ServiceProvider.GetRequiredService<PrinterCommandService>();
+        FileInfoEventDataDTO? existing;
+
+        try
+        {
+            CommandOutcome<FileInfoEventDataDTO>? answer = await commands.AskAsync(
+                printerId, new SendFileInfo { Path = file.PrinterPath }, head.QueuedByUserId, cancellationToken);
+
+            existing = answer?.Answer;
+        }
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
+            or CommandResponseTimedOutException or CommandSendTimedOutException or TeamAccessDeniedException
+            or CommandAnswerUnreadableException)
+        {
+            // Could not ask. Not a block: the next pass asks again, and holding a queue on an
+            // unanswered question would punish a printer that was merely busy.
+            _logger.LogDebug(e, "[{PrinterId}] could not ask about the existing {FileName}",
+                printerId, file.FileName);
+
+            return;
+        }
+
+        if (existing?.Size == file.Length)
+        {
+            _logger.LogInformation(
+                "[{PrinterId}] {FileName} is already on the drive as {PrinterPath} at the same size; adopting it",
+                printerId, file.FileName, existing.Path);
+
+            onPrinter.ArrivedAt = _timeProvider.GetUtcNow();
+            onPrinter.PrinterPath = existing.Path ?? file.PrinterPath;
+            onPrinter.BlockedReason = null;
+            onPrinter.BlockedAt = null;
+
+            return;
+        }
+
+        // Somebody else's file under our name. Held rather than failed, because the entry is still
+        // wanted and a person deleting it at the panel should see the queue resume by itself.
+        onPrinter.BlockedReason = existing?.Size is { } size
+            ? string.Create(CultureInfo.InvariantCulture,
+                $"The printer already has a different file called {file.FileName}: {size} bytes there, "
+                + $"{file.Length} here. Delete it at the printer, or rename this one.")
+            : string.Create(CultureInfo.InvariantCulture,
+                $"The printer already has a file called {file.FileName} and would not say how big it is, "
+                + $"so it cannot be confirmed as this one. Delete it at the printer, or rename this one.");
+
+        onPrinter.BlockedAt = _timeProvider.GetUtcNow();
+
+        _logger.LogWarning("[{PrinterId}] {Reason}", printerId, onPrinter.BlockedReason);
     }
 
     /// <summary>
@@ -649,7 +765,11 @@ public sealed class QueueAdvancer : BackgroundService
 
         if (free is null || free >= length)
         {
-            if (onPrinter.BlockedReason is not null)
+            // Only a block this check wrote is a block this check may lift. Since FILE_EXISTS started
+            // holding the queue too, "there is room now" is no longer evidence that whatever is in the
+            // way has gone - clearing indiscriminately would drop a file-conflict hold every minute
+            // and set the transfer retrying against a refusal that has not changed.
+            if (onPrinter.BlockedReason?.StartsWith(SpaceBlockPrefix, StringComparison.Ordinal) == true)
             {
                 _logger.LogInformation("[{PrinterId}] there is room for {FileName} now; the queue resumes",
                     printerId, head.PrintFile!.Name);
@@ -663,7 +783,7 @@ public sealed class QueueAdvancer : BackgroundService
         }
 
         string reason = string.Create(CultureInfo.InvariantCulture,
-            $"Not enough space on the printer: {head.PrintFile!.Name} needs {length} bytes, {free} free.");
+            $"{SpaceBlockPrefix} {head.PrintFile!.Name} needs {length} bytes, {free} free.");
 
         bool newlyBlocked = onPrinter.BlockedReason is null;
 

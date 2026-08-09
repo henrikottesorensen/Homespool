@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.WebSockets;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -161,6 +162,83 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             outcome.EventType.Should().Be(Events.Finished);
             fake.Device.State.Should().Be(DeviceState.Paused, "the command must actually have executed");
             fake.ReceivedCommands.Should().ContainSingle().Which.Kind.Should().Be(ServerCommandKind.Json);
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
+    /// Preheating reaches the printer as two <c>G</c> frames carrying real gcode lines, and both are
+    /// answered.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The first time anything sends a gcode frame to a client.</b> Every other command in this
+    /// suite is a <c>J</c> frame, whose shape was confirmed against the live MK3.5; the <c>G</c>
+    /// shape was read out of <c>connect.cpp</c> and had never been received by anything. The fake
+    /// models firmware's own behaviour here - <c>ACCEPTED</c> at once, <c>FINISHED</c> when the
+    /// background command completes (<c>planner.cpp:683-689</c>) - so this exercises the reply
+    /// correlation for gcode as well as the frame.
+    /// </para>
+    /// <para>
+    /// The payloads are asserted as strings rather than by length, because the whole safety argument
+    /// rests on the application composing exactly these lines and nothing else: what reaches the
+    /// socket is what <c>GcodeAllowList</c> permitted.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task PreheatingSendsTwoGcodeFramesTheFakeAnswers()
+    {
+        (FakePrinterClient fake, Task run, int printerId, long userId) = await StartConnectedFakeAsync();
+
+        await using (fake)
+        {
+            await MarkIdleAsync(printerId);
+
+            using IServiceScope scope = _factory.Services.CreateScope();
+            PrinterPreheatService preheat = scope.ServiceProvider.GetRequiredService<PrinterPreheatService>();
+
+            FilamentPreset petg = FilamentPreset.Find(model: null, "PETG")!;
+
+            await preheat.PreheatAsync(printerId, userId, petg, CancellationToken.None);
+
+            // One command, not two. Two were sent originally and the printer refused the second
+            // with "Processing other command", because gcode is answered Accepted when it is queued
+            // rather than when it has run - so the count is the assertion that matters most here.
+            fake.ReceivedCommands.Should().ContainSingle()
+                .Which.Kind.Should().Be(ServerCommandKind.Gcode, "gcode is not a JSON command");
+
+            Encoding.ASCII.GetString(fake.ReceivedCommands[0].Payload.Span)
+                    .Should().Be("M140 S85\nM104 S230", "bed first, both in one body");
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
+    /// Cooling down is the same path with an explicit zero, which is what turns a heater off.
+    /// </summary>
+    [Fact]
+    public async Task CoolingDownSendsExplicitZeroesToBothHeaters()
+    {
+        (FakePrinterClient fake, Task run, int printerId, long userId) = await StartConnectedFakeAsync();
+
+        await using (fake)
+        {
+            await MarkIdleAsync(printerId);
+
+            using IServiceScope scope = _factory.Services.CreateScope();
+            PrinterPreheatService preheat = scope.ServiceProvider.GetRequiredService<PrinterPreheatService>();
+
+            PreheatOutcome outcome = await preheat.CooldownAsync(printerId, userId, CancellationToken.None);
+
+            fake.ReceivedCommands.Should().ContainSingle();
+            Encoding.ASCII.GetString(fake.ReceivedCommands[0].Payload.Span)
+                    .Should().Be("M140 S0\nM104 S0");
+
+            // What the printer answered, not merely that a frame arrived. Asserting receipt alone is
+            // what let a refused command pass for a successful one.
+            outcome.Answer!.EventType.Should().NotBe(Events.Rejected);
 
             await EndRunAsync(fake, run);
         }
@@ -854,6 +932,31 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         unknown.StatusCode.Should().Be(HttpStatusCode.NotFound);
 
         await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// Records the printer as idle, which is the precondition the heater guard reads.
+    /// </summary>
+    /// <remarks>
+    /// <b>Seeded rather than waited for.</b> A freshly connected printer is <c>Unknown</c> until its
+    /// first telemetry has been merged, and waiting on that would make these tests slow and
+    /// timing-dependent for a precondition that is not what they are testing. The row <em>is</em> the
+    /// application's belief about the printer's state, so writing it directly states the precondition
+    /// exactly. That <c>Unknown</c> refuses heating is covered separately, and is deliberate.
+    /// </remarks>
+    private async Task MarkIdleAsync(int printerId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+
+        context.PrinterLiveStates.Add(new PrinterLiveState
+        {
+            PrinterId = printerId,
+            Status = PrinterStatus.Idle,
+            LastSeenAt = DateTimeOffset.UtcNow,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
     private async Task<CommandOutcome> SendCommandAsync(int printerId, long userId, ISendableCommand command)

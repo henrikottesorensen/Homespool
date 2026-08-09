@@ -1,0 +1,147 @@
+# connect_rig in a container - the real Prusa firmware Connect client, built as a host binary and
+# pointed at Homespool. See notes/buddy-rig.md and notes/connect-rig-tls-handoff.md.
+#
+#   cd rig
+#   docker compose run --rm build                     # configure if needed, then build connect_rig
+#   docker compose run --rm connect_rig --identity /identity.json \
+#       --host host.docker.internal --port 5053 --custom-cert
+#
+#   docker compose run --rm build connect_render_dump                     # some other target
+#   docker compose run --rm --entrypoint /build/tests/unit/connect/connect_render_dump connect_rig
+#
+# Arguments after the service name are passed straight to the binary, so anything connect_rig
+# accepts works without touching this file.
+#
+# rig.sh is a thin wrapper over this file and not a second way of doing the same thing: this owns the
+# mounts, the volume and the image, and rig.sh owns argument handling and the early checks. If you
+# are adding a mount, it goes here and rig.sh needs no edit.
+#
+# An earlier version of this comment claimed rig.sh had to stay separate to keep the stdout-clean
+# `run connect_render_dump > render-fixtures.json` case, because compose writes progress to stdout.
+# That is false, measured 2026-08-09: compose puts "Container ... Creating/Created" on STDERR and
+# stdout carries only the program's own output, which is what made the wrapper possible.
+#
+# ALWAYS PASS --rm. `docker compose run` keeps the container by default, and a rig that is waiting
+# on a server outlives the terminal that started it - killing the client does not stop the
+# container. Two were leaked exactly this way on 2026-08-09.
+
+# ONE STEM, `connect_rig`, with a distinct suffix per object. There were three rig-flavoured names in
+# play - buddy-rig (the notes file and the firmware branch), connect_rig (the target), and a
+# homespool-rig used here for both the project and the image - which is more names than there are
+# things. Now: project `connect_rig`, image `connect_rig-env`, volume `connect_rig-builddir`.
+#
+# The volume's suffix is not decoration. Compose derives an unset image name as <project>-<service>,
+# so with a service called `build` the obvious `connect_rig-build` is the name compose would give an
+# IMAGE - and an image by exactly that pattern did exist here on 2026-08-09, before these services
+# were given one explicitly. `-builddir` cannot collide with anything compose generates.
+name: connect_rig
+
+x-common:
+  # The firmware checkout, READ-ONLY: a Linux build must not leave artifacts that break the macOS
+  # one. Point FIRMWARE_DIR at the worktree holding the branch you want - the TLS work lives on
+  # `rig-tls`, not on the main checkout, which sits on master.
+  #
+  # A worktree's .git, .dependencies and .venv are all absolute symlinks into the main checkout and
+  # therefore dangle in here. Configure does not need any of them (verified 2026-08-09); if
+  # something ever does, mount the main checkout at its own host path as well so they resolve.
+  - &src ${FIRMWARE_DIR:-${HOME}/Prusa/Prusa-Firmware-Buddy}:/src:ro
+  # Incremental builds survive between runs, so only the first one costs a full tree.
+  - &build_dir build_dir:/build
+  # The transfer destination firmware hard-codes. Bind-mounted so you can see what landed. A relative
+  # override resolves against this file's directory, not your shell's - pass an absolute path.
+  - &usb ${USB_DIR:-./usb}:/usb
+
+services:
+  # Build any target in the connect test tree; defaults to connect_rig.
+  #
+  #   docker compose run --rm build                  # connect_rig
+  #   docker compose run --rm build connect_tests    # something else
+  build:
+    build: .
+    # One image for both services - the same Dockerfile and context, so a name per service would
+    # just store it twice. `-env` because that is what it is: the build environment, per the
+    # Dockerfile's own first line. It holds a toolchain and no rig.
+    #
+    # Note compose builds an image only when it is ABSENT, so a Dockerfile edit does not reach a
+    # machine that already has one. rig.sh runs `compose build` before every command for this
+    # reason; driving compose directly, do the same or pass --build.
+    #
+    # Prefer `compose build` over `run --build` if stdout matters: measured 2026-08-09, buildkit
+    # writes its progress to STDOUT, unlike compose's own container chatter, which goes to stderr.
+    image: connect_rig-env
+    volumes: [*src, *build_dir, *usb]
+    entrypoint:
+      - bash
+      - -c
+      # -DPython3_EXECUTABLE is not optional. Without it the tree pins Python3_FIND_VIRTUALENV=ONLY
+      # to <source>/.venv (cmake/Utilities.cmake:9-13) and finds nothing usable. BUDDY_NO_VIRTUALENV
+      # looks like the way to disable that but cannot work - it is stored as a generator expression
+      # that a configure-time if() reads as a literal string.
+      - |
+        set -eu
+        if [ ! -f /build/build.ninja ]; then
+            cmake /src -G Ninja \
+                -DBOARD=BUDDY \
+                -DDSDL_TRANSPILE=OFF \
+                -DPython3_EXECUTABLE=/usr/bin/python3
+        fi
+        # The doubled dollar escapes compose's own interpolation. Written singly, compose tries to
+        # expand the shell's argument list at config time and dies with "invalid interpolation
+        # format" before anything runs.
+        ninja "$${@:-connect_rig}"
+      - --
+    command: []
+
+  # Named for the target it runs, not for the harness: "the rig" is this whole arrangement, while
+  # connect_rig is one target among connect_tests, connect_render_dump and connect_token. Overriding
+  # the entrypoint runs any of the others in the same container, which is what rig.sh's `run` does.
+  connect_rig:
+    build: .
+    # Same image as `build` above, deliberately - see the note there.
+    image: connect_rig-env
+    volumes:
+      - *src
+      - *build_dir
+      - *usb
+      # An enrolled identity - Homespool.FakePrinter.Cli enroll writes one. Mounted at a fixed path
+      # so `--identity /identity.json` always works wherever it lives on the host.
+      #
+      # Compose has no conditional mounts, and docker answers a missing bind source by creating a
+      # DIRECTORY at it - which would leave an identity.json/ sitting where the real file belongs.
+      # rig.sh substitutes /dev/null when the file is absent, which reads as empty and makes the rig
+      # say it carries no Fingerprint/Token. Driving compose directly, point IDENTITY_FILE at a file
+      # that exists.
+      - ${IDENTITY_FILE:-./identity.json}:/identity.json:ro
+      # The custom trust anchor, for --custom-cert. tls.cpp:126 reads a DER from this exact path and
+      # it is not configurable, which is the whole reason the rig runs in a container: /internal
+      # cannot be created on a read-only APFS root.
+      #
+      # A DIRECTORY is mounted rather than the file, so that a missing anchor fails as a clean
+      # "cannot open" rather than as docker silently inventing an empty file. Put connect.der in it.
+      #
+      # MINT THIS FRESH, and expect to redo it after every database wipe. Do NOT point it at
+      # rig/tls/ - those files are internally consistent and useless at once, predating nginx
+      # terminating printer TLS, and `openssl verify` saying OK about them tells you nothing. See
+      # notes/connect-rig-tls-handoff.md, issue 2.
+      - ${CONNECT_DIR:-./lab}:/internal/connect:ro
+    # Homespool runs on the host; this is how the container reaches it.
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    entrypoint: [/build/tests/unit/connect/connect_rig]
+    # Overridden by whatever you pass; with nothing passed the binary prints its own usage.
+    command: []
+
+volumes:
+  # Named explicitly rather than left to compose's project-prefixed default, so it can be named on a
+  # docker command line without guessing.
+  #
+  # ONE VOLUME PER SOURCE TREE. What is in here was built from whatever FIRMWARE_DIR pointed at, and
+  # nothing records which - so pointing FIRMWARE_DIR at a different worktree without also setting
+  # BUILD_VOLUME gives you a stale binary that looks current. The TLS work uses
+  # BUILD_VOLUME=connect_rig-tls-builddir for exactly this reason.
+  #
+  # Not `external`, so a machine that has never built the rig creates it rather than erroring. If it
+  # warns that the volume was not created by compose, something else made it first - remove it and
+  # let this file build once.
+  build_dir:
+    name: ${BUILD_VOLUME:-connect_rig-builddir}

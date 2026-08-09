@@ -42,6 +42,8 @@ unimplemented.
   what is already on the printer's own drive and USB stick.
 - **A JSON API** at `/api/v1`, authenticated by sign-in cookie **or** personal access token.
 - **Sending from PrusaSlicer** — its OctoPrint host type uploads straight into a printer's queue.
+- **Preheat and cool down** from a printer's page, per filament type, using the same temperatures the
+  printer's own preheat menu would choose.
 - **Health checks and alerting** — `/health`, an administrator banner, and email when a check
   starts failing.
 
@@ -55,9 +57,15 @@ unimplemented.
   room that a bed you cannot see is empty is not something this should make easy.
 - **The queue is new.** It has produced real prints, but a handful rather than a season's worth.
   Treat a long unattended run as something to watch the first few times.
-- **Most commands are not wired.** Six of the roughly thirty command types can actually be sent
-  — all six over the API, three of them as buttons. The rest are markers, and nothing maps
-  arbitrary *incoming* JSON to a command type, so there is no `GCode` and no dialog handling.
+- **Most commands are implemented but out of reach.** Of thirty-nine command types, sixteen can
+  be put on the wire — but only six are exposed anywhere: `pause`, `resume`, `stop`, `ready`,
+  `unready` and `idle` over the API, three of those as buttons. The others, `GCode` and the bed
+  and nozzle temperature commands among them, have no caller yet. Nothing maps arbitrary
+  *incoming* JSON to a command type either, so there is no dialog handling.
+- **Sending gcode is deliberately narrow.** When it is reachable it will go through an allowlist
+  rather than a passthrough, because firmware's `M997` reflashes the mainboard from a file on
+  `/usb/` and validates nothing — so "upload a file" plus "send arbitrary gcode" would add up to
+  arbitrary firmware on someone's printer.
 - **No charts, and nothing updates itself.** The per-printer page renders on load and stays
   as it is until you reload it.
 - **No password reset without SMTP.** With no mail server configured, a forgotten password

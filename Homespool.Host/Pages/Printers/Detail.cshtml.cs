@@ -33,6 +33,7 @@ public class DetailModel : PageModel
 {
     private readonly PrinterQueryService _printerQueryService;
     private readonly PrintQueueService _queueService;
+    private readonly PrinterPreheatService _preheat;
     private readonly PrintHistoryService _historyService;
     private readonly QueueSnapshotReader _snapshots;
     private readonly PrinterAccessService _access;
@@ -42,6 +43,7 @@ public class DetailModel : PageModel
 
     public DetailModel(PrinterQueryService printerQueryService,
                        PrintQueueService queueService,
+                       PrinterPreheatService preheat,
                        PrintHistoryService historyService,
                        QueueSnapshotReader snapshots,
                        PrinterAccessService access,
@@ -51,6 +53,7 @@ public class DetailModel : PageModel
     {
         _printerQueryService = printerQueryService;
         _queueService = queueService;
+        _preheat = preheat;
         _historyService = historyService;
         _snapshots = snapshots;
         _access = access;
@@ -138,6 +141,15 @@ public class DetailModel : PageModel
     /// </remarks>
     public string SlicerUrl { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// The filament presets this printer offers, for the preheat control.
+    /// </summary>
+    /// <remarks>
+    /// Model-dependent, which is not cosmetic: a MINI's PA target differs because its maximum nozzle
+    /// temperature is lower, and 285 is a target it would refuse.
+    /// </remarks>
+    public IReadOnlyList<FilamentPreset> Presets { get; private set; } = [];
+
     [TempData]
     public string? StatusMessage { get; set; }
 
@@ -178,6 +190,8 @@ public class DetailModel : PageModel
 
         SlicerUrl = $"{Request.Scheme}://{Request.Host}/compat/octoprint/{statistics.Printer.Uuid}/";
 
+        Presets = FilamentPreset.For(statistics.Printer.Model);
+
         Queue = await _queueService.ListAsync(statistics.Printer.Id, user.Id, cancellationToken);
         ActivePrint = await _historyService.GetActiveAsync(statistics.Printer.Id, user.Id, cancellationToken);
         History = await _historyService.ListAsync(statistics.Printer.Id, user.Id, cancellationToken);
@@ -200,7 +214,7 @@ public class DetailModel : PageModel
     public Task<IActionResult> OnPostMoveAsync(Guid uuid, Guid id, int position,
         CancellationToken cancellationToken)
     {
-        return ActAsync(uuid, async userId =>
+        return ActAsync(uuid, async (userId, printer) =>
         {
             bool moved = await _queueService.MoveAsync(id, userId, position, cancellationToken);
 
@@ -216,13 +230,51 @@ public class DetailModel : PageModel
     /// </summary>
     public Task<IActionResult> OnPostCancelAsync(Guid uuid, Guid id, CancellationToken cancellationToken)
     {
-        return ActAsync(uuid, async userId =>
+        return ActAsync(uuid, async (userId, printer) =>
         {
             bool cancelled = await _queueService.CancelAsync(id, userId, cancellationToken);
 
             return cancelled
                 ? ("Removed from the queue.", true)
                 : ("That print is no longer in the queue.", false);
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Heats nozzle and bed to the chosen filament's preset.
+    /// </summary>
+    /// <remarks>
+    /// <b>The form posts a filament name, never a temperature.</b> The name selects a row in
+    /// <see cref="FilamentPreset"/> and the row carries the numbers - which come from firmware's own
+    /// table - so the page cannot ask for an arbitrary target even if the select is tampered with.
+    /// An unrecognised name is a refusal rather than a fallback.
+    /// </remarks>
+    public Task<IActionResult> OnPostPreheatAsync(Guid uuid, string filament, CancellationToken cancellationToken)
+    {
+        return ActAsync(uuid, async (userId, printer) =>
+        {
+            FilamentPreset? preset = FilamentPreset.Find(printer.Model, filament);
+
+            if (preset is null)
+            {
+                return ($"'{filament}' is not a filament this printer has a preset for.", false);
+            }
+
+            await _preheat.PreheatAsync(printer.Id, userId, preset, cancellationToken);
+
+            return ($"Heating to {preset.NozzleTemperature} °C nozzle and {preset.BedTemperature} °C bed for {preset.Name}.",
+                    true);
+        }, cancellationToken);
+    }
+
+    /// <summary>Turns both heaters off.</summary>
+    public Task<IActionResult> OnPostCooldownAsync(Guid uuid, CancellationToken cancellationToken)
+    {
+        return ActAsync(uuid, async (userId, printer) =>
+        {
+            await _preheat.CooldownAsync(printer.Id, userId, cancellationToken);
+
+            return ("Both heaters switched off.", true);
         }, cancellationToken);
     }
 
@@ -235,7 +287,7 @@ public class DetailModel : PageModel
     /// gets if they post anyway. The buttons are not rendered for them - but a button that is not
     /// rendered is not a permission check.
     /// </remarks>
-    private async Task<IActionResult> ActAsync(Guid uuid, Func<long, Task<(string message, bool success)>> action,
+    private async Task<IActionResult> ActAsync(Guid uuid, Func<long, Printer, Task<(string message, bool success)>> action,
         CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
@@ -256,11 +308,28 @@ public class DetailModel : PageModel
 
         try
         {
-            (StatusMessage, StatusSuccess) = await action(user.Id);
+            (StatusMessage, StatusSuccess) = await action(user.Id, printer);
         }
         catch (TeamAccessDeniedException)
         {
             return Forbid();
+        }
+        catch (PrinterBusyException e)
+        {
+            // Not an error page: the printer is doing something, which is an answer rather than a
+            // fault, and the page is where the person already is.
+            (StatusMessage, StatusSuccess) = (e.Message, false);
+        }
+        catch (PrinterRefusedException e)
+        {
+            // The printer's own words. Without this the page reported success for a command the
+            // printer had declined, which is worse than reporting nothing.
+            (StatusMessage, StatusSuccess) = (e.Message, false);
+        }
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
+                                      or CommandResponseTimedOutException or CommandSendTimedOutException)
+        {
+            (StatusMessage, StatusSuccess) = (e.Message, false);
         }
 
         return RedirectToPage(new { uuid });

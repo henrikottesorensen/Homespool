@@ -43,7 +43,14 @@
     <header>
         <nav class="navbar navbar-expand-sm navbar-toggleable-sm bg-body-tertiary border-bottom box-shadow mb-3">
             <div class="container">
-                <a class="navbar-brand" href="~/">Homespool</a>
+                @* The mark and the wordmark are one link, not two: a screen reader would otherwise
+                   announce the same destination twice and a keyboard user would tab through it
+                   twice. d-inline-flex to centre the mark against the text rather than sit it on
+                   the baseline. *@
+                <a class="navbar-brand d-inline-flex align-items-center" href="~/">
+                    <partial name="_BrandMark" />
+                    Homespool
+                </a>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
                         aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>

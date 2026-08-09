@@ -35,9 +35,15 @@ Homespool.Host.IntegrationTest/.mailpit-tls/
 **/*.Sqlite*
 *.Sqlite*
 
-# Claude Code's personal-override file (permissions, local preferences) - not shared. .claude/
-# itself stays trackable so project-wide config (e.g. launch.json) can be committed.
-.claude/settings.local.json
+# Claude Code's directory. AI tool configuration and personal instructions are not part of this
+# project and should not reach anyone who self-hosts it, so the folder is ignored wholesale
+# (Henrik, 2026-08-08) rather than named file by file - a question with no stable edge, which had
+# already produced a second file nobody decided to add.
+#
+# launch.json stays tracked, and needs no exception rule: .gitignore governs untracked files only,
+# so anything already in the index is unaffected. Deleting it from the index is what would remove
+# it, and that is deliberately not done.
+.claude/
 
 # Firmware archives left here by separate work that happens to share this directory. Large
 # binaries, and not build inputs of this project.
@@ -58,6 +64,12 @@ rig/api-token*
 # Self-signed TLS material for printer-transport testing: CA key, server key, PFX, and the .der the
 # printer trusts. Private keys - never committed. See notes/printer-transport-tls.md.
 rig/tls/
+
+# The rig container's /internal/connect mount - the trust anchor connect_rig verifies against, and
+# the private keys of whatever lab CA minted it. Deliberately separate from rig/tls/ above, which is
+# stale material kept as a worked example and never to be reused: this one is minted fresh and
+# expected to be thrown away after every database wipe. See notes/connect-rig-tls-handoff.md.
+rig/lab/
 
 # Uploaded gcode. Runtime data, and the E2E tests leave some here when they exercise the upload
 # endpoint against the real content root. See FileStorageOptions.

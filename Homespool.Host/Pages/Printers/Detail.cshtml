@@ -1,4 +1,5 @@
 @page "{uuid:guid}"
+@using Homespool.Host.PrusaConnect
 @model DetailModel
 @{
     ViewData["Title"] = Model.Statistics.Printer.Name ?? Model.Statistics.Printer.Model ?? Model.Statistics.Printer.Uuid.ToString();
@@ -230,6 +231,50 @@ else
     @* Announced politely rather than shouted, and empty until something happens, so a screen reader
        hears the outcome without the control describing itself twice. *@
     <p class="visually-hidden" role="status" aria-live="polite" data-copy-status></p>
+}
+
+@* Heaters, and only ever both together. The service can set either alone and nothing here can:
+   a page that could leave one heater on and the other off would be a way to make a mistake
+   quietly. Hidden entirely without CanUse, like every other control on this page. *@
+@if (Model.CanUse)
+{
+    <h2>Temperature</h2>
+
+    <p class="text-body-secondary">
+        Heats the nozzle and bed together, to the same targets the printer's own preheat menu uses.
+    </p>
+
+    @* Cooling is refused mid-print too, which reads as arbitrary unless it is said: the button
+       looks like a safety control and is not one. Said on the page rather than only in the refusal,
+       so nobody has to press it to find out. *@
+    <p class="text-body-secondary">
+        Both are refused while the printer is busy, <strong>cooling included</strong>: changing a
+        heater mid-print ruins the print without ending it, and the printer will not refuse it on
+        your behalf. To stop a print, use the controls on the
+        <a asp-page="Index">printers list</a>.
+    </p>
+
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <form method="post" asp-page-handler="Preheat" asp-route-uuid="@Model.Statistics.Printer.Uuid"
+              class="d-flex align-items-center gap-2">
+            <label class="form-label mb-0" for="filament">Preheat for</label>
+
+            <select class="form-select w-auto" id="filament" name="filament">
+                @foreach (FilamentPreset preset in Model.Presets)
+                {
+                    <option value="@preset.Name">
+                        @preset.Name &mdash; @preset.NozzleTemperature&deg;C / @preset.BedTemperature&deg;C
+                    </option>
+                }
+            </select>
+
+            <button type="submit" class="btn btn-outline-primary">Preheat</button>
+        </form>
+
+        <form method="post" asp-page-handler="Cooldown" asp-route-uuid="@Model.Statistics.Printer.Uuid">
+            <button type="submit" class="btn btn-outline-secondary">Cool down</button>
+        </form>
+    </div>
 }
 
 <h2>Print history</h2>

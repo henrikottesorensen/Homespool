@@ -88,7 +88,9 @@
                     // frames.
                     var previous = objectUrl;
                     image.src = next;
-                    image.hidden = false;
+                    // A class rather than the hidden attribute: Bootstrap's display utilities carry
+                    // !important and beat it, which showed as the alt text sitting in an empty panel.
+                    image.classList.remove('d-none');
                     objectUrl = next;
 
                     if (previous) {
@@ -113,7 +115,7 @@
                         if (stale) {
                             // Take the picture down. Leaving it up is the failure this whole design
                             // is about: an old photograph that looks like the present.
-                            image.hidden = true;
+                            image.classList.add('d-none');
                             image.removeAttribute('src');
                             show('Camera not answering');
                             age.textContent = '';

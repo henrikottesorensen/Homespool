@@ -6,35 +6,6 @@
 
 <h1>@ViewData["Title"]</h1>
 
-@if (Model.Cameras.Count > 0)
-{
-    @* One figure per camera. The picture is deliberately the largest thing on the page: this is what
-       somebody looks at to decide whether a bed is clear, and a status line saying "camera fine" is
-       not the same claim. *@
-    <div class="row g-3 mb-3">
-        @foreach (var camera in Model.Cameras)
-        {
-            <div class="col-md-6">
-                <figure class="mb-0">
-                    <div class="camera-view position-relative bg-body-secondary rounded overflow-hidden"
-                         data-camera-frame="@Url.Action("Frame", "Camera", new { uuid = camera.Uuid })">
-                        @* Empty until a frame arrives. An img with no src draws nothing, which is
-                           what "no picture yet" should look like - not a broken-image icon. *@
-                        <img class="camera-image w-100 d-block" alt="Live view of @(camera.Name ?? "camera")" hidden />
-                        <div class="camera-status position-absolute top-50 start-50 translate-middle text-body-secondary small">
-                            Capturing…
-                        </div>
-                    </div>
-                    <figcaption class="d-flex justify-content-between small text-body-secondary mt-1">
-                        <span>@(camera.Name ?? camera.Uuid.ToString())</span>
-                        <span class="camera-age"></span>
-                    </figcaption>
-                </figure>
-            </div>
-        }
-    </div>
-}
-
 <p>
     Team: @(Model.Statistics.Printer.Team?.Name ?? $"Team #{Model.Statistics.Printer.TeamId}")
     &nbsp;
@@ -48,7 +19,42 @@
     }
 </p>
 
-<p><a asp-page="Index">&larr; Back to printers</a></p>
+<p>@if (Model.Cameras.Count > 0)
+{
+    @* One figure per camera. The picture is deliberately the largest thing on the page: this is what
+       somebody looks at to decide whether a bed is clear, and a status line saying "camera fine" is
+       not the same claim. *@
+    <div class="row g-3 mb-3">
+        @for (int index = 0; index < Model.Cameras.Count; index++)
+        {
+            var camera = Model.Cameras[index];
+            <div class="col-md-6">
+                <figure class="mb-0">
+                    @* ratio-16x9 reserves the space before anything loads, so the panel is a box from
+                       the first paint rather than collapsing to nothing and shoving the page down when
+                       a frame arrives. The border makes that reserved space legible as "a picture goes
+                       here" rather than as an empty gap. Both cameras here are 16:9; a camera that is
+                       not will letterbox rather than distort, which object-fit-contain is for. *@
+                    <div class="camera-view ratio ratio-16x9 border rounded bg-body-tertiary overflow-hidden"
+                         data-camera-frame="@Url.Action("Frame", "Camera", new { uuid = camera.Uuid })">
+                        @* Empty until a frame arrives. An img with no src draws nothing, which is
+                           what "no picture yet" should look like - not a broken-image icon. *@
+                        <img class="camera-image w-100 h-100 object-fit-contain d-none" alt="" />
+                        <div class="camera-status d-flex align-items-center justify-content-center text-body-secondary small">
+                            Capturing…
+                        </div>
+                    </div>
+                    <figcaption class="d-flex justify-content-between small text-body-secondary mt-1">
+                        <span>@(camera.Name ?? $"Camera {index + 1}")</span>
+                        <span class="camera-age"></span>
+                    </figcaption>
+                </figure>
+            </div>
+        }
+    </div>
+}
+
+<a asp-page="Index">&larr; Back to printers</a></p>
 
 @if (Model.StatusMessage is not null)
 {

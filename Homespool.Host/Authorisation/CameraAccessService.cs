@@ -72,6 +72,28 @@ public class CameraAccessService
     }
 
     /// <summary>
+    /// The cameras watching a printer that this account may see.
+    /// </summary>
+    /// <remarks>
+    /// Scoped by the camera's own team rather than the printer's. They are expected to match, but
+    /// authority over a camera comes from the camera - inheriting it through the printer is the rule
+    /// that works for bound cameras and quietly fails for unbound ones.
+    /// </remarks>
+    public async Task<IReadOnlyList<Camera>> ListForPrinterAsync(
+        int printerId, long userId, CancellationToken cancellationToken)
+    {
+        return await _dbContext.Cameras
+            .Where(camera => camera.PrinterId == printerId)
+            .Where(camera => _dbContext.TeamMembers.Any(
+                member => member.TeamId == camera.TeamId && member.UserId == userId && member.CanRead))
+            .OrderBy(camera => camera.Name ?? string.Empty)
+            .ThenBy(camera => camera.Id)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// The camera, or <see langword="null"/> if it does not exist <i>or</i> this account may not
     /// touch it.
     /// </summary>

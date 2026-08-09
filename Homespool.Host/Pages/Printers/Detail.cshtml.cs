@@ -36,6 +36,7 @@ public class DetailModel : PageModel
     private readonly PrintHistoryService _historyService;
     private readonly QueueSnapshotReader _snapshots;
     private readonly PrinterAccessService _access;
+    private readonly CameraAccessService _cameraAccess;
     private readonly PrinterConnectionRegistry _connectionRegistry;
     private readonly UserManager<HSUser> _userManager;
 
@@ -44,6 +45,7 @@ public class DetailModel : PageModel
                        PrintHistoryService historyService,
                        QueueSnapshotReader snapshots,
                        PrinterAccessService access,
+                       CameraAccessService cameraAccess,
                        PrinterConnectionRegistry connectionRegistry,
                        UserManager<HSUser> userManager)
     {
@@ -52,6 +54,7 @@ public class DetailModel : PageModel
         _historyService = historyService;
         _snapshots = snapshots;
         _access = access;
+        _cameraAccess = cameraAccess;
         _connectionRegistry = connectionRegistry;
         _userManager = userManager;
     }
@@ -145,6 +148,11 @@ public class DetailModel : PageModel
     /// An unknown uuid and one the caller can't read both return <see cref="NotFoundResult"/> -
     /// matching <c>GetPrinterForUserAsync</c>'s "same 404 either way" rule.
     /// </summary>
+    /// <summary>
+    /// The cameras watching this printer that the caller may see. Empty is the ordinary case.
+    /// </summary>
+    public IReadOnlyList<Camera> Cameras { get; private set; } = [];
+
     public async Task<IActionResult> OnGetAsync(Guid uuid, CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
@@ -175,6 +183,8 @@ public class DetailModel : PageModel
         History = await _historyService.ListAsync(statistics.Printer.Id, user.Id, cancellationToken);
         StopperNames = await _historyService.GetStopperNamesAsync(History, cancellationToken);
         HoldReason = await _historyService.GetHoldReasonAsync(statistics.Printer.Id, user.Id, cancellationToken);
+
+        Cameras = await _cameraAccess.ListForPrinterAsync(statistics.Printer.Id, user.Id, cancellationToken);
 
         QueueSnapshot snapshot = await _snapshots.ReadAsync(statistics.Printer.Id, cancellationToken);
         WaitingOn = QueueWaitDescription.For(QueueRules.Decide(snapshot), snapshot.Head?.FileName);

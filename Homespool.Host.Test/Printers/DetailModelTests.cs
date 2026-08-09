@@ -99,7 +99,7 @@ public sealed class DetailModelTests : IDisposable
         DetailModel model = new(new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System), queueService,
             new PrintHistoryService(context, access),
             new QueueSnapshotReader(context, connectionRegistry, TimeProvider.System),
-            access, connectionRegistry, users)
+            access, new CameraAccessService(context), connectionRegistry, users)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };

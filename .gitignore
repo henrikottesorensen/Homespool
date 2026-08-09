@@ -65,6 +65,12 @@ rig/api-token*
 # printer trusts. Private keys - never committed. See notes/printer-transport-tls.md.
 rig/tls/
 
+# The rig container's /internal/connect mount - the trust anchor connect_rig verifies against, and
+# the private keys of whatever lab CA minted it. Deliberately separate from rig/tls/ above, which is
+# stale material kept as a worked example and never to be reused: this one is minted fresh and
+# expected to be thrown away after every database wipe. See notes/connect-rig-tls-handoff.md.
+rig/lab/
+
 # Uploaded gcode. Runtime data, and the E2E tests leave some here when they exercise the upload
 # endpoint against the real content root. See FileStorageOptions.
 Homespool.Host/data/

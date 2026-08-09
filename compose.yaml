@@ -56,6 +56,12 @@ services:
       Cameras__RefreshFloorSeconds: "${CAMERA_REFRESH_FLOOR_SECONDS:-2}"
       Cameras__MaxAgeSeconds: "${CAMERA_MAX_AGE_SECONDS:-60}"
 
+      # The same pair the go2rtc service is started with, from the same .env values - one source, two
+      # readers, so they cannot disagree. Empty password means the sidecar is unauthenticated, which
+      # is what a deployment that never published its port already had.
+      Cameras__ApiUsername: "${GO2RTC_USERNAME:-}"
+      Cameras__ApiPassword: "${GO2RTC_PASSWORD:-}"
+
       # What a printer is told to dial for enrolment. PrinterHost is required for USB-key
       # provisioning (Printers -> Add printer): the page cannot produce a usable ini snippet - and
       # refuses to - until it is set. It should also be one of the names in the certificate, which
@@ -192,6 +198,29 @@ services:
   # from inside this stack and from nowhere else. Do not publish 1984.
   go2rtc:
     image: alexxit/go2rtc:latest
+
+    # The credential is passed on the command line rather than written into go2rtc.yaml, and that is
+    # deliberate twice over: Homespool rewrites that file when it registers a camera, so a credential
+    # living there would have to survive every merge; and writing it there in the first place would
+    # mean authenticating to a server that is not yet configured.
+    #
+    # Its authentication is one credential for the whole API - it cannot say which streams a caller
+    # may see - so this is defence in depth and not the access control. Homespool still proxies every
+    # viewing path and applies the camera's own permission check. What it buys is that the sidecar is
+    # not open to anything else that can reach it, and a port published by accident is not
+    # immediately a camera feed.
+    #
+    # GO2RTC_PASSWORD comes from .env and is given to both containers, so the two cannot drift.
+    #
+    # An empty *username* is the off switch, and it has to be: measured 2026-08-09, a username with an
+    # empty password turns authentication ON with an empty key and answers 401 to everything,
+    # including Homespool. So the pair is set together or not at all - half of it is worse than none.
+    command:
+      - go2rtc
+      - -c
+      - /config/go2rtc.yaml
+      - -c
+      - '{"api":{"username":"${GO2RTC_USERNAME:-}","password":"${GO2RTC_PASSWORD:-}"}}'
 
     # Named, because Cameras__StreamServerBaseUrl points at it by name rather than by address.
     hostname: go2rtc

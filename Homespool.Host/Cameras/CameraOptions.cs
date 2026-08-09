@@ -19,6 +19,36 @@ public class CameraOptions
     public string StreamServerBaseUrl { get; set; } = "http://go2rtc:1984";
 
     /// <summary>
+    /// Username for the stream server's API, or empty for none. Default empty.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Defence in depth, not the access control.</b> go2rtc's authentication is a single
+    /// credential for its whole API - it has no notion of which streams a caller may see - so it
+    /// cannot express "this account may view the printer camera and not the workshop one". That
+    /// remains <c>CameraAccessService</c>'s job, and every viewing path is still proxied by
+    /// Homespool. What this buys is that the sidecar is not wide open to anything else that can
+    /// reach it, and a port published by accident is not immediately a camera feed.
+    /// </para>
+    /// <para>
+    /// <b>Passed to the sidecar on its command line, never written into its config file</b>
+    /// (<c>compose.yaml</c>). That matters twice: the config is rewritten by the stream registration
+    /// path, so a credential living there would have to survive every merge; and writing it there in
+    /// the first place would require authenticating to a server that is not yet configured.
+    /// </para>
+    /// </remarks>
+    public string ApiUsername { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Password for the stream server's API. Empty means the sidecar is unauthenticated.
+    /// </summary>
+    /// <remarks>
+    /// Both halves must be set for a header to be sent. An empty pair is the unauthenticated
+    /// arrangement, which is what a deployment that never published the sidecar's port already had.
+    /// </remarks>
+    public string ApiPassword { get; set; } = string.Empty;
+
+    /// <summary>
     /// Shortest gap between two fetches of the same camera, in seconds. Default 2.
     /// </summary>
     /// <remarks>

@@ -1,7 +1,10 @@
 using System;
+using System.Net.Http.Headers;
+using System.Text;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Homespool.Host.Cameras;
 
@@ -28,8 +31,11 @@ public static class Registration
         // address policy on the handler any more: since Homespool stopped fetching camera sources
         // itself, the only address these dial is one the operator configured, and the check that
         // matters moved to CameraSourcePolicy - which runs before a source is handed over.
-        services.AddHttpClient(CameraSnapshotFetcher.HttpClientName);
-        services.AddHttpClient(Go2RtcClient.HttpClientName);
+        //
+        // The credential is applied here rather than at each call site, so no request can be written
+        // that forgets it - the same reasoning that keeps the permission check inside the services.
+        services.AddHttpClient(CameraSnapshotFetcher.HttpClientName).ConfigureHttpClient(ApplyCredential);
+        services.AddHttpClient(Go2RtcClient.HttpClientName).ConfigureHttpClient(ApplyCredential);
 
         services.AddSingleton<ICameraSnapshotFetcher, CameraSnapshotFetcher>();
         services.AddSingleton<Go2RtcClient>();
@@ -52,5 +58,28 @@ public static class Registration
         services.AddHostedService<CameraStreamReconciler>();
 
         return services;
+    }
+
+    /// <summary>
+    /// Puts the stream server's credential on a client, if one is configured.
+    /// </summary>
+    /// <remarks>
+    /// Silently does nothing when either half is empty, which is the unauthenticated arrangement a
+    /// deployment that never published the sidecar's port already had. Sending half a credential
+    /// would fail every request for a reason nobody could see.
+    /// </remarks>
+    private static void ApplyCredential(IServiceProvider serviceProvider, System.Net.Http.HttpClient client)
+    {
+        CameraOptions options = serviceProvider.GetRequiredService<IOptions<CameraOptions>>().Value;
+
+        if (string.IsNullOrEmpty(options.ApiUsername) || string.IsNullOrEmpty(options.ApiPassword))
+        {
+            return;
+        }
+
+        string pair = $"{options.ApiUsername}:{options.ApiPassword}";
+
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes(pair)));
     }
 }

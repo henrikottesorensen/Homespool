@@ -117,9 +117,14 @@ public sealed class Go2RtcClient
     /// </summary>
     public async Task DeleteStreamAsync(Guid streamName, CancellationToken cancellationToken)
     {
+        // src, not name. Both are accepted and both answer 200; only src actually removes the
+        // stream - measured 2026-08-08, after a delete that reported success left the stream in
+        // place. For a camera attached to this machine that is worse than untidy: Homespool would
+        // consider the device free and offer it in the picker again while the stream server still
+        // held it.
         Uri request = new(
             $"{BaseAddress().TrimEnd('/')}/api/streams"
-            + $"?name={Uri.EscapeDataString(streamName.ToString("D", CultureInfo.InvariantCulture))}");
+            + $"?src={Uri.EscapeDataString(streamName.ToString("D", CultureInfo.InvariantCulture))}");
 
         try
         {

@@ -196,25 +196,31 @@ services:
     # Named, because Cameras__StreamServerBaseUrl points at it by name rather than by address.
     hostname: go2rtc
 
+    # Cameras plugged into this machine, granted as a class rather than named one at a time
+    # (Henrik, 2026-08-08: "B for Pis at least"). Major 81 is video4linux - verified on this
+    # project's own board, where it covers both USB webcams and the Pi's built-in codec nodes.
+    #
+    # Why not `devices:` naming each camera: an entry naming a device that does not exist stops the
+    # container from starting, so it could never ship enabled - and Homespool's camera picker would
+    # then list a camera it cannot actually open until somebody edits this file and restarts. A list
+    # that means "present" rather than "usable" is the thing that arrangement was supposed to avoid.
+    #
+    # What it costs, stated plainly: this container can open any video device on the machine, and
+    # sees the names of everything in /dev. The cgroup rule is what grants access; the bind mount
+    # only makes the nodes visible. If you would rather narrow it - a machine with capture hardware
+    # that has nothing to do with printing, say - delete both lines below and name each camera:
+    #
+    #   devices:
+    #     - /dev/v4l/by-id/usb-046d_0821_437242E0-video-index0
+    #
+    # using a by-id path, never /dev/video0: node numbers are handed out in enumeration order, and
+    # on this project's test board one camera took video0 from another inside a single session.
+    device_cgroup_rules:
+      - "c 81:* rmw"
+
     volumes:
-      - homespool-camera-config:/config
-
-    # A USB camera attached to this machine. Commented out because an entry naming a device that
-    # does not exist stops the container from starting - so this cannot ship enabled, and every
-    # deployment without a webcam would otherwise fail at first boot.
-    #
-    # Uncomment and name yours. Use the by-id path, never /dev/video0: node numbers are handed out
-    # in enumeration order, and on this project's own test board one camera took video0 from another
-    # inside a single session. The by-id name carries the model and, where the hardware offers one,
-    # the serial. `ls /dev/v4l/by-id/` lists them; you want a *-video-index0 entry, since UVC also
-    # exposes a metadata node beside every camera.
-    #
-    # devices:
-    #   - /dev/v4l/by-id/usb-046d_0821_437242E0-video-index0
-
-    # Only needed with `devices:` above: video nodes are owned by root:video, mode 660.
-    # group_add:
-    #   - video
+      - homespool-go2rtc-config:/config
+      - /dev:/dev
 
     networks:
       - homespool
@@ -335,7 +341,7 @@ volumes:
   # go2rtc's own configuration, written by go2rtc when Homespool registers a camera. Kept across
   # container replacement so cameras survive one - the startup reconciler re-registers anything lost,
   # but a volume means it usually has nothing to do.
-  homespool-camera-config:
+  homespool-go2rtc-config:
 
   # The printer-facing leaf and its key, in PEM: written by the app, read by the proxy. Deliberately
   # NOT part of printerservice-data, which holds the certificate authority's private key - the one

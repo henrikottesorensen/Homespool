@@ -264,11 +264,21 @@ public class CameraService
             .FetchAsync(_streamServer.FrameUrl(camera.Uuid), cancellationToken)
             .ConfigureAwait(false);
 
-        return frame is null
-            ? CameraSaveOutcome.Silent(
-                camera,
-                "Saved, but no picture came back yet. If the camera is switched on and reachable, "
-                + "try the page again in a moment - some cameras take a few seconds to answer.")
-            : CameraSaveOutcome.Working(camera);
+        if (frame is not null)
+        {
+            return CameraSaveOutcome.Working(camera);
+        }
+
+        // The two kinds fail for different reasons, and the wrong hint sends somebody looking in
+        // the wrong place: a network camera is usually off or unreachable, while an attached one is
+        // usually a device the stream server cannot open.
+        return CameraSaveOutcome.Silent(
+            camera,
+            CameraSourcePolicy.IsLocalDevice(camera.Source)
+                ? "Saved, but no picture came back. The stream server may not have access to this "
+                  + "camera: check that the go2rtc service in compose.yaml can reach video devices, "
+                  + "and that nothing else on this machine is already using it."
+                : "Saved, but no picture came back yet. If the camera is switched on and reachable, "
+                  + "try the page again in a moment - some cameras take a few seconds to answer.");
     }
 }

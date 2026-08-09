@@ -17,10 +17,11 @@ public sealed class CameraSnapshotFetcher : ICameraSnapshotFetcher
     /// Name of the <see cref="IHttpClientFactory"/> client configured for cameras.
     /// </summary>
     /// <remarks>
-    /// A named client rather than the default one because its handler carries the address policy:
-    /// <c>Program.cs</c> gives it a connect callback that refuses loopback and link-local at the
-    /// endpoint actually being dialled. Sharing the default client would apply that to every
-    /// outbound request in the application, and this is the first one there has ever been.
+    /// Named rather than default so that camera reads can be configured - timeouts, handler
+    /// lifetime - without touching every outbound request the application might grow later. It once
+    /// carried an address policy on its handler; that moved to <see cref="CameraSourcePolicy"/> when
+    /// Homespool stopped fetching camera sources itself, since the only address this now dials is
+    /// the sidecar the operator configured.
     /// </remarks>
     public const string HttpClientName = "camera";
 

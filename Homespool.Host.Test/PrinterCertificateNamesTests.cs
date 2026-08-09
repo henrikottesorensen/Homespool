@@ -78,4 +78,63 @@ public class PrinterCertificateNamesTests
 
         names.Should().Contain("172.28.0.2");
     }
+
+    /// <summary>
+    /// The configured host is covered alongside the address it points at, so neither choice of what to
+    /// write into a printer's ini is a dead end.
+    /// </summary>
+    /// <remarks>
+    /// The resolved address is deliberately one no test machine can have on an interface
+    /// (RFC 5737 TEST-NET-2). Detection reads real interfaces, so an ordinary LAN address here would
+    /// pass whether expansion worked or not.
+    /// </remarks>
+    [Fact]
+    public async Task TheConfiguredHostIsCoveredAlongsideWhatItResolvesToAsync()
+    {
+        // Arrange - a container, where the machine's LAN address is on no interface this process can
+        // see and resolving the configured name is the only route to it.
+        PrusaConnectOptions connect = new() { PrinterHost = "homespool.lan" };
+        Resolver resolver = new(new() { ["homespool.lan"] = [IPAddress.Parse("198.51.100.7")] });
+
+        // Act
+        IReadOnlyList<string> names = await PrinterCertificateNames.ForThisMachineAsync(
+            connect, [IPNetwork.Parse("172.16.0.0/12")], resolver, CancellationToken.None);
+
+        // Assert
+        names.Should().Contain("198.51.100.7",
+            "a printer whose DNS cannot answer needs the address, and nothing else can supply it in a container");
+        names[0].Should().Be("homespool.lan",
+            "expansion adds to the configured host rather than displacing it, and the first name is the subject");
+    }
+
+    /// <summary>
+    /// Expansion inherits the rule that keeps the container's own addresses out of the certificate: what
+    /// the configured host resolves to is covered only where a printer could dial it.
+    /// </summary>
+    [Fact]
+    public async Task WhatTheConfiguredHostResolvesToIsFilteredLikeAnythingElseAsync()
+    {
+        // Arrange - every category a resolver hands back that no printer on the LAN can use.
+        PrusaConnectOptions connect = new() { PrinterHost = "homespool.lan" };
+        Resolver resolver = new(new()
+        {
+            ["homespool.lan"] =
+            [
+                IPAddress.Parse("172.31.9.9"),          // a container range
+                IPAddress.Parse("127.0.0.1"),           // this machine, named from this machine
+                IPAddress.Parse("169.254.4.9"),         // a lease that never arrived
+                IPAddress.Parse("fdc2:74d8:1010::cd4"), // the firmware's stack has no IPv6
+            ],
+        });
+
+        // Act
+        IReadOnlyList<string> names = await PrinterCertificateNames.ForThisMachineAsync(
+            connect, [IPNetwork.Parse("172.16.0.0/12")], resolver, CancellationToken.None);
+
+        // Assert
+        names.Should().Contain("homespool.lan", "the configured host is kept whatever it resolves to");
+        names.Should().NotContain("172.31.9.9").And.NotContain("127.0.0.1")
+             .And.NotContain("169.254.4.9").And.NotContain("fdc2:74d8:1010::cd4",
+                 "covering an address no printer can reach hedges nothing and advertises the internal network");
+    }
 }

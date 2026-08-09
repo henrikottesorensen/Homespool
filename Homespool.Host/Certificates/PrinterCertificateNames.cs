@@ -53,10 +53,26 @@ public static class PrinterCertificateNames
     /// answer, and a name that this machine cannot resolve from where it stands is routinely the right
     /// one from the printer's side of the network - which is exactly the situation inside a container.
     /// </para>
+    /// <para>
+    /// <b>It is also expanded: what it resolves to goes in beside it.</b> Detection alone cannot supply
+    /// that in the deployment this project treats as primary - inside a container the only address on
+    /// any interface is the container's own, so the multi-name hedge this class describes covers exactly
+    /// one name and hedges nothing. Resolving the configured host is the one route to the machine's real
+    /// address from in there, and it costs the lookup that was already being made for its neighbours.
+    /// </para>
+    /// <para>
+    /// <b>Additive when it answers, and never a precondition.</b> A name that resolves to nothing keeps
+    /// its place by the paragraph above; expansion only ever adds. Inverting that - covering the name
+    /// only once it resolves - would drop precisely the LAN names a container cannot see, which is the
+    /// bug the filtering rule below was written to avoid.
+    /// </para>
     /// </remarks>
     /// <param name="connect">Supplies the configured printer address, which leads the list.</param>
     /// <param name="containerNetworks">The deployment's own internal ranges.</param>
-    /// <param name="resolver">Answers what a detected hostname points at; an address answers for itself.</param>
+    /// <param name="resolver">
+    /// Answers what a hostname points at - which decides whether a detected name is dropped, and what
+    /// the configured one is covered alongside. An address answers for itself.
+    /// </param>
     /// <param name="cancellationToken">The usual.</param>
     public static async Task<IReadOnlyList<string>> ForThisMachineAsync(PrusaConnectOptions connect,
                                                                        IReadOnlyList<IPNetwork> containerNetworks,
@@ -67,7 +83,17 @@ public static class PrinterCertificateNames
 
         if (connect?.IsPrinterAddressConfigured == true)
         {
-            names.Add(connect.PrinterHost.Trim());
+            string configured = connect.PrinterHost.Trim();
+
+            names.Add(configured);
+
+            foreach (IPAddress address in await resolver.ResolveAsync(configured, cancellationToken))
+            {
+                if (ProvisioningBundleBuilder.CouldReachAPrinter(address, containerNetworks))
+                {
+                    names.Add(address.ToString());
+                }
+            }
         }
 
         foreach (PrinterAddressSuggestion suggestion in PrinterAddressSuggestion.Gather(containerNetworks))

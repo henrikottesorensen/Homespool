@@ -132,6 +132,13 @@ public static class ProvisioningReadme
                 `{options.PrinterPort}` from where it sits — a different wifi network or a firewall
                 between the two is the usual answer.
 
+                **It worked for weeks and then stopped.** Most likely this server's address changed.
+                Your router hands it out on a lease, and a reboot or a busy network can move it. Give
+                this server a **static lease** — sometimes called a DHCP reservation, or address
+                binding — in your router's settings. It takes a minute and it is the one change that
+                stops this recurring; without it, every move means walking a stick to every printer
+                again.
+
                 **You lost the download before the printer connected.** Nothing is broken. In Homespool,
                 use **Reissue USB token** on the printer's row and download a new bundle; the old token
                 stops working the moment you do.

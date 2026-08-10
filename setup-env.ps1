@@ -135,8 +135,17 @@ try {
     # broader list below still answers. Not worth a warning.
 }
 
+# Adapters that are UP, and not a virtual switch. Both filters come from a real machine offering
+# two addresses no printer could reach: a ProtonVPN adapter that was not even connected still
+# reported 10.2.0.2, and "vEthernet (WSL)" contributed 192.168.80.1. Neither is rejectable by the
+# shape of the address - 10.2.0.0/24 is an ordinary LAN - so the adapter has to be the judge.
 try {
+    $usable = Get-NetAdapter -ErrorAction Stop |
+        Where-Object { $_.Status -eq 'Up' -and $_.Name -notlike 'vEthernet*' } |
+        Select-Object -ExpandProperty ifIndex
+
     $addresses += (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
+        Where-Object { $usable -contains $_.InterfaceIndex } |
         Select-Object -ExpandProperty IPAddress)
 } catch {
     Write-Host "Could not list this machine's addresses - you will be asked to type one." `
@@ -144,6 +153,17 @@ try {
 }
 
 $addresses = $addresses | Where-Object { $_ } | Select-Object -Unique
+
+# Degrade to "too many choices" rather than "none" if the filtering above left nothing - an unusual
+# adapter arrangement should not stop the wizard offering anything at all.
+if (-not $addresses) {
+    try {
+        $addresses = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
+            Select-Object -ExpandProperty IPAddress | Select-Object -Unique
+    } catch {
+        $addresses = @()
+    }
+}
 
 # ------------------------------------------------------------------------------------------------
 # Hand over

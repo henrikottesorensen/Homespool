@@ -309,9 +309,38 @@ is_wsl() {
 # a German or Danish install, so a parser written against an English one silently finds nothing.
 # The trailing carriage returns are Windows'; strip them or every address fails to parse as one.
 windows_addresses() {
-    powershell.exe -NoProfile -NonInteractive -Command \
-        "Get-NetIPAddress -AddressFamily IPv4 | Select-Object -ExpandProperty IPAddress" 2>/dev/null \
-        | tr -d '\r'
+    # Two filters, both learned from a real machine offering two addresses it should not have.
+    #
+    # ADAPTERS THAT ARE UP. A disconnected VPN adapter still reports the address it was configured
+    # with - a ProtonVPN tunnel that was not even running contributed 10.2.0.2 - and no rule based on
+    # the address itself could reject that, since 10.2.0.0/24 is a perfectly ordinary LAN.
+    #
+    # NOT vEthernet. Those are host-side virtual switches: "vEthernet (WSL)", "vEthernet (Default
+    # Switch)", and whatever Hyper-V adds. A printer cannot reach any of them, and the WSL one is
+    # especially galling because it exists *because* of how this script is being run.
+    #
+    # Falls back to the unfiltered list if the filtered one comes back empty, so an unusual adapter
+    # arrangement degrades to "too many choices" rather than "none".
+    local filtered
+    filtered="$(windows_query '
+        $up = Get-NetAdapter |
+            Where-Object { $_.Status -eq "Up" -and $_.Name -notlike "vEthernet*" } |
+            Select-Object -ExpandProperty ifIndex
+        Get-NetIPAddress -AddressFamily IPv4 |
+            Where-Object { $up -contains $_.InterfaceIndex } |
+            Select-Object -ExpandProperty IPAddress')"
+
+    if [ -n "$filtered" ]; then
+        echo "$filtered"
+    else
+        windows_query 'Get-NetIPAddress -AddressFamily IPv4 | Select-Object -ExpandProperty IPAddress'
+    fi
+}
+
+# One place that knows how to ask Windows a question and hand back plain lines. The carriage returns
+# are Windows'; leave them on and every address fails to parse as one.
+windows_query() {
+    powershell.exe -NoProfile -NonInteractive -Command "$1" 2>/dev/null | tr -d '\r'
 }
 
 lan_addresses() {

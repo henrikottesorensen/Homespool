@@ -778,6 +778,26 @@ if test_case "the machine name is offered only when it resolves to a listed addr
     unset -f in_container 2>/dev/null || true
 fi
 
+if test_case "the name candidate claims only what was checked"; then
+    # "survives a new DHCP lease" was the first wording and it overpromised. The resolve test uses
+    # THIS machine's resolver, which includes mDNS, and answers for right now - it says nothing
+    # about the router continuing to publish the name, or about a printer being able to resolve it.
+    sandbox_path linux docker-collision
+    HOMESPOOL_HOSTNAME=printbox
+    export HOMESPOOL_HOSTNAME
+    resolve_host() { echo "192.168.13.238"; }
+    line="$(name_candidate "$(lan_addresses)")"
+    unset -f resolve_host
+    unset HOMESPOOL_HOSTNAME
+
+    assert_contains "$line" "printbox.local" "the name, mDNS-qualified"
+    assert_contains "$line" "resolves here to 192.168.13.238" "and what it resolved to, which was checked"
+    case "$line" in
+        *survives*) fail "still promising it survives a lease change" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
+fi
+
 if test_case "smtp offers host.docker.internal instead of localhost"; then
     # localhost is the container, so a mail server on the machine is refused from in there - the
     # same mistake PRINTER_HOST is checked for, which SMTP_HOST was not.
@@ -869,6 +889,30 @@ fi
 if test_case "ask takes the default on an empty answer"; then
     assert_eq "192.168.13.238" "$(ask "Which" "192.168.13.238" 2>/dev/null <<< "")" "empty means default"
     assert_eq "typed.lan" "$(ask "Which" "192.168.13.238" 2>/dev/null <<< "typed.lan")" "an answer wins"
+fi
+
+if test_case "input ending is not an answer"; then
+    # It used to fall through to the default, so a closed stdin answered every question with its
+    # default and then said yes to "Write these" - a run nobody was present for, ending in a write.
+    # It is also the way out when Ctrl+C cannot get through the Windows launcher.
+    # ask still yields the default, because every plan_set site expects one - it reports the failure
+    # through its status instead. Exiting from ask itself was the first attempt and was worse: it is
+    # called inside a command substitution, so it ended only the subshell and ask_yes_no then spun
+    # for ever asking a stream that had nothing left to give.
+    out="$(ask "Which" "192.168.13.238" < /dev/null 2>/dev/null)"
+    status=$?
+    assert_eq "1" "$status" "the failure is reported"
+    assert_eq "192.168.13.238" "$out" "and the default still comes back for callers that want one"
+
+    # The confirmation is the caller that must not accept a default.
+    out="$( (ask_yes_no "Write these" y < /dev/null) 2>&1 )"
+    status=$?
+    assert_eq "1" "$status" "stops rather than confirming a write nobody asked for"
+    assert_contains "$out" "nothing was written" "and says so"
+    case "$out" in
+        *"Please answer y or n"*"Please answer y or n"*) fail "looping on a closed input" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
 fi
 
 if test_case "ask_yes_no re-asks rather than guessing"; then

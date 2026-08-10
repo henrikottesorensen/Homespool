@@ -178,7 +178,10 @@ if (-not $addresses) {
 # assuming otherwise.
 # ------------------------------------------------------------------------------------------------
 $dockerArgs = @(
-    'run', '--rm', '-it',
+    # --init so bash is not PID 1. The kernel ignores signals that PID 1 has no handler for, which
+    # is why Ctrl+C did nothing through the launcher: the interrupt reached a process the kernel had
+    # decided was not to be interrupted. With an init in front, bash is an ordinary child again.
+    'run', '--rm', '-it', '--init',
     '--entrypoint', 'bash',
     '-v', "$($repoRoot):/work",
     '-w', '/work',

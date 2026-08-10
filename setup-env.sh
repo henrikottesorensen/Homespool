@@ -495,7 +495,19 @@ ask() {
     else
         printf '%s: ' "$prompt" >&2
     fi
-    read -r answer || true
+
+    # END OF INPUT IS NOT AN ANSWER, and saying so needs care: ask is called from inside a command
+    # substitution, so `exit` here would end only the subshell. The first attempt did exactly that
+    # and ask_yes_no spun for ever printing "Please answer y or n" at a stream that had nothing left
+    # to give - worse than the behaviour it replaced.
+    #
+    # So it still yields the default, which is what every plan_set site expects, and reports the
+    # failure through its exit status for the one caller that must not accept a default: the
+    # confirmation. Otherwise a closed stdin answers every question and then says yes to writing.
+    if ! read -r answer; then
+        echo "$default"
+        return 1
+    fi
     echo "${answer:-$default}"
 }
 
@@ -517,7 +529,14 @@ ask_secret() {
 ask_yes_no() {
     local prompt="$1" default="$2" answer
     while :; do
-        answer="$(ask "$prompt (y/n)" "$default")"
+        # Propagated, not ignored: this is the caller for which a default is not good enough. On a
+        # closed input it stops rather than looping, and rather than confirming a write nobody asked
+        # for. It is also the way out when Ctrl+C cannot get through - Ctrl+D, or Ctrl+Z on Windows.
+        if ! answer="$(ask "$prompt (y/n)" "$default")"; then
+            echo >&2
+            echo "setup-env.sh: input ended - nothing was written." >&2
+            exit 1
+        fi
         case "$answer" in
             [Yy]|[Yy][Ee][Ss]) return 0 ;;
             [Nn]|[Nn][Oo]) return 1 ;;
@@ -571,6 +590,13 @@ $name_line"
             fi
         done <<< "$candidates"
         say "    $((n + 1))) something else - a name, or an address not listed"
+        if [ -n "$name_line" ]; then
+            say
+            say "  A name keeps working when this machine's address changes - an address does not -"
+            say "  but only while your router publishes it AND the printer can resolve it. Neither is"
+            say "  checked here, and .local names in particular are mDNS, which printer firmware may"
+            say "  not do at all. Test it from another machine before relying on it."
+        fi
         say
 
         choice="$(ask "  Which" "${current:-1}")"
@@ -732,7 +758,12 @@ name_candidate() {
     echo "$addresses" | awk -F'\t' -v want="$resolved" '$1 == want { found = 1 } END { exit found ? 0 : 1 }' \
         || return 0
 
-    printf '%s\tthis machine'"'"'s name - survives a new DHCP lease\n' "$name"
+    # States what was actually checked - that it resolves here, and to what - and nothing more.
+    # "survives a new DHCP lease" was the first wording and it overpromised: this resolver includes
+    # mDNS and answers only for right now, which says nothing about whether the router will keep
+    # publishing the name, or whether a PRINTER can resolve it at all. The caveat that matters is
+    # printed under the list rather than squeezed into the line.
+    printf '%s\ta name - resolves here to %s\n' "$name" "$resolved"
 }
 
 # An existing setting beats a detected one: somebody who has already chosen is not asking to be

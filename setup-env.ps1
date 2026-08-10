@@ -121,9 +121,9 @@ stack RUNS, not when it is built, so configuring in between still counts as befo
 # Danish install and a parser built against an English one silently finds nothing. These cmdlets
 # return objects and do not care what language Windows is in.
 #
-# Nothing is filtered here. The vEthernet addresses that WSL and Hyper-V add are exactly the sort of
-# thing that must not be offered to a printer, and the wizard already removes them by the same rule
-# it uses for Docker's own ranges - applied there, once, where it is tested.
+# Each entry carries its interface name so the wizard can show it. That is what makes a list
+# choosable when filtering runs out - two real NICs on one LAN are identical as addresses - and a
+# disconnected VPN adapter proved filtering does run out: it reports itself Up regardless.
 # ------------------------------------------------------------------------------------------------
 $addresses = @()
 
@@ -146,7 +146,7 @@ try {
 
     $addresses += (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
         Where-Object { $usable -contains $_.InterfaceIndex } |
-        Select-Object -ExpandProperty IPAddress)
+        ForEach-Object { "$($_.IPAddress)`t$($_.InterfaceAlias)" })
 } catch {
     Write-Host "Could not list this machine's addresses - you will be asked to type one." `
         -ForegroundColor Yellow
@@ -159,7 +159,7 @@ $addresses = $addresses | Where-Object { $_ } | Select-Object -Unique
 if (-not $addresses) {
     try {
         $addresses = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
-            Select-Object -ExpandProperty IPAddress | Select-Object -Unique
+            ForEach-Object { "$($_.IPAddress)`t$($_.InterfaceAlias)" } | Select-Object -Unique
     } catch {
         $addresses = @()
     }
@@ -182,7 +182,9 @@ $dockerArgs = @(
     '--entrypoint', 'bash',
     '-v', "$($repoRoot):/work",
     '-w', '/work',
-    '-e', "HOMESPOOL_ADDRESSES=$($addresses -join ' ')",
+    # Newline-separated, because each entry now carries its interface name after a tab and those
+    # names contain spaces - "vEthernet (WSL)". The shell splits on lines when it sees any.
+    '-e', "HOMESPOOL_ADDRESSES=$($addresses -join "`n")",
     $image,
     '/work/setup-env.sh'
 ) + $Arguments

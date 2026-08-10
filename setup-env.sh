@@ -358,8 +358,20 @@ lan_addresses() {
         # and validation are unchanged. This supplies a fact the script cannot obtain, and decides
         # nothing.
         if [ -n "${HOMESPOOL_ADDRESSES:-}" ]; then
-            # Supplied without names - whoever passed them knows what they are.
-            echo "$HOMESPOOL_ADDRESSES" | tr ' ,' '\n\n'
+            # Two accepted shapes, and the distinction matters because interface names contain
+            # spaces - "vEthernet (WSL)" would be shredded by the space split below.
+            #
+            # One address per LINE, optionally followed by a tab and its interface, is the rich form
+            # setup-env.ps1 sends. A single line of space- or comma-separated addresses is the plain
+            # form, kept because anything already passing this variable by hand uses it.
+            #
+            # $'\n' rather than "$(printf '\n')": command substitution strips trailing newlines, so
+            # the latter is the EMPTY string, the pattern becomes ** and matches everything - which
+            # sent every plain space-separated list down the newline branch, unsplit.
+            case "$HOMESPOOL_ADDRESSES" in
+                *$'\n'*) echo "$HOMESPOOL_ADDRESSES" ;;
+                *) echo "$HOMESPOOL_ADDRESSES" | tr ' ,' '\n\n' ;;
+            esac
         elif is_wsl; then
             windows_addresses
         elif command -v ip >/dev/null 2>&1; then

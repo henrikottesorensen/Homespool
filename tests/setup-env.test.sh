@@ -391,6 +391,26 @@ if test_case "HOMESPOOL_ADDRESSES supplies what a sandbox cannot see"; then
 192.168.13.51" "$addresses" "both, in the order given"
 fi
 
+if test_case "HOMESPOOL_ADDRESSES carries interface names too"; then
+    # setup-env.ps1 sends one entry per line, address then tab then interface. It cannot use the
+    # space-separated form, because "vEthernet (WSL)" contains a space and would be split into two
+    # bogus entries - which is precisely the name that most needs to be readable.
+    sandbox_path linux docker-collision
+    HOMESPOOL_ADDRESSES="192.168.13.50	Ethernet
+192.168.13.51	Wi-Fi
+127.0.0.1	Loopback Pseudo-Interface 1"
+    export HOMESPOOL_ADDRESSES
+    addresses="$(lan_addresses)"
+    unset HOMESPOOL_ADDRESSES
+
+    assert_contains "$addresses" "192.168.13.50	Ethernet" "the name survived the space in it"
+    assert_contains "$addresses" "192.168.13.51	Wi-Fi" "and the second entry"
+    case "$addresses" in
+        *Loopback*) fail "loopback came through with its label" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
+fi
+
 if test_case "HOMESPOOL_ADDRESSES still loses a vEthernet address with no daemon"; then
     # On Windows the supplied list contains WSL and Hyper-V vEthernet addresses in 172.x, and the
     # container has no Docker socket - so the conservative 172.16/12 fallback is what removes them.

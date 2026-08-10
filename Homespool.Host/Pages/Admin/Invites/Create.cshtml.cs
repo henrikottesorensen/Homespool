@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Threading;
@@ -113,7 +114,8 @@ public class CreateModel : PageModel
             Input.Email,
             "You're invited to Homespool",
             $"You have been invited. Accept by <a href='{HtmlEncoder.Default.Encode(AcceptLink!)}'>clicking here</a>. " +
-            $"This invitation expires {invitation.ExpiresAt.ToLocalTime():g}.");
+            $"This invitation expires {invitation.ExpiresAt.ToLocalTime()
+                .ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)}.");
 
         EmailSent = sendResult == EmailSendResult.Sent;
 

@@ -40,8 +40,11 @@ else
                 <td>@invite.Email</td>
                 <td>@Model.TargetOf(invite)</td>
                 <td>@status</td>
-                <td>@invite.CreatedAt.ToLocalTime().ToString("g")</td>
-                <td>@invite.ExpiresAt.ToLocalTime().ToString("g")</td>
+                @* Fixed big-endian format rather than "g", which is mixed-endian on an
+                   invariant-culture container: 08/12/2026 is August to it and December to most of
+                   the people reading it. Matches the Files and print-history tables. *@
+                <td>@invite.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
+                <td>@invite.ExpiresAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
                 <td>
                     @if (status == "Outstanding")
                     {

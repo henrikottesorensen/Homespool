@@ -311,6 +311,45 @@ if test_case "lan_addresses drops what a printer cannot reach"; then
     done
 fi
 
+if test_case "candidates carry the interface that owns them"; then
+    # The filtering can only remove what it can prove is unreachable. Two real NICs both up on the
+    # same subnet - Ethernet and Wi-Fi - are both genuinely reachable and identical as addresses, so
+    # nothing but the interface name lets anyone choose.
+    sandbox_path linux docker-collision
+    addresses="$(lan_addresses)"
+
+    assert_contains "$addresses" "192.168.13.238	eth0" "the wired address, named"
+    assert_contains "$addresses" "192.168.13.51	wlan0" "and the wireless one"
+    case "$addresses" in
+        *172.17.0.1*) fail "docker0 was offered" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
+    case "$addresses" in
+        *127.0.0.1*) fail "loopback was offered" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
+    # The preferred candidate leads, and arrives labelled from `route get` rather than unnamed.
+    assert_eq "192.168.13.238	eth0" "$(echo "$addresses" | head -1)" "the address traffic uses, first"
+fi
+
+if test_case "an address named twice is offered once"; then
+    # `route get` names it and `-o addr show` names it again; dedupe is on the address, not the line.
+    sandbox_path linux docker-collision
+    assert_eq "1" "$(lan_addresses | grep -c '^192\.168\.13\.238')" "not repeated"
+fi
+
+if test_case "auto_answer takes the address, not the label"; then
+    sandbox_path linux docker-collision
+    use_temp_env "PRINTER_HOST=
+USER_HOST=localhost
+TZ=UTC
+GO2RTC_USERNAME=
+GO2RTC_PASSWORD="
+    auto_answer >/dev/null 2>&1
+    assert_contains "$pending" "PRINTER_HOST=192.168.13.238
+" "no tab or interface name written into .env"
+fi
+
 if test_case "under WSL it asks Windows rather than the VM"; then
     # `ip route get` inside WSL answers about the NAT'd VM, so the address it returns is useless to
     # a printer - the same failure as inside a container. WSL can execute Windows binaries, so the

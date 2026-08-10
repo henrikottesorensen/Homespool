@@ -328,12 +328,13 @@ windows_addresses() {
             Select-Object -ExpandProperty ifIndex
         Get-NetIPAddress -AddressFamily IPv4 |
             Where-Object { $up -contains $_.InterfaceIndex } |
-            Select-Object -ExpandProperty IPAddress')"
+            ForEach-Object { "$($_.IPAddress)`t$($_.InterfaceAlias)" }')"
 
     if [ -n "$filtered" ]; then
         echo "$filtered"
     else
-        windows_query 'Get-NetIPAddress -AddressFamily IPv4 | Select-Object -ExpandProperty IPAddress'
+        windows_query 'Get-NetIPAddress -AddressFamily IPv4 |
+            ForEach-Object { "$($_.IPAddress)`t$($_.InterfaceAlias)" }'
     fi
 }
 
@@ -357,17 +358,28 @@ lan_addresses() {
         # and validation are unchanged. This supplies a fact the script cannot obtain, and decides
         # nothing.
         if [ -n "${HOMESPOOL_ADDRESSES:-}" ]; then
+            # Supplied without names - whoever passed them knows what they are.
             echo "$HOMESPOOL_ADDRESSES" | tr ' ,' '\n\n'
         elif is_wsl; then
             windows_addresses
         elif command -v ip >/dev/null 2>&1; then
-            ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.*src \([0-9.]*\).*/\1/p'
+            # `dev` and `src` from the same line, so the preferred candidate arrives already named.
+            ip -4 route get 1.1.1.1 2>/dev/null \
+                | sed -n 's/.*dev \([^ ]*\).*src \([0-9.]*\).*/\2\t\1/p'
+            # -o keeps each address on one line: "2: eth0    inet 192.168.13.238/24 brd ...".
+            ip -4 -o addr show 2>/dev/null | awk '{ split($4, a, "/"); print a[1] "\t" $2 }'
+            # No names here, and none available - this is the fallback for a machine without
+            # iproute2 at all, which is exactly where nothing else can be asked either.
             hostname -I 2>/dev/null | tr ' ' '\n'
         else
             local iface
             iface="$(route -n get default 2>/dev/null | awk '/interface:/{print $2}')"
-            [ -n "$iface" ] && ipconfig getifaddr "$iface" 2>/dev/null
-            ifconfig 2>/dev/null | awk '/inet /{print $2}'
+            [ -n "$iface" ] && printf '%s\t%s\n' "$(ipconfig getifaddr "$iface" 2>/dev/null)" "$iface"
+            # The interface name heads its own block and the addresses follow it, so the name has to
+            # be carried down rather than read off the same line.
+            ifconfig 2>/dev/null | awk '
+                /^[a-z0-9]+:/ { iface = substr($1, 1, length($1) - 1) }
+                /^[[:space:]]*inet / { print $2 "\t" iface }'
         fi
     } | grep -E '^[0-9]+\.' | filter_unusable | dedupe
 }
@@ -409,17 +421,23 @@ docker_unavailable_warned=false
 filter_unusable() {
     local subnets addr
     subnets="$(unreachable_ranges)"
-    while read -r addr; do
-        [ -n "$addr" ] || continue
+    local line
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        # Everything downstream is keyed on the address; the interface name rides along for display
+        # only, so every test here reads the first field and every echo passes the whole line.
+        addr="${line%%	*}"
         case "$addr" in
             127.*|169.254.*|0.0.0.0) continue ;;
         esac
-        overlaps_any "$addr/32" <<< "$subnets" >/dev/null || echo "$addr"
+        overlaps_any "$addr/32" <<< "$subnets" >/dev/null || echo "$line"
     done
 }
 
+# On the address, not the whole line: the same address can arrive twice with and without a name -
+# `ip route get` names it, `ip -o addr show` names it again, and a bare fallback does not.
 dedupe() {
-    awk '!seen[$0]++'
+    awk -F'\t' '!seen[$1]++'
 }
 
 detect_timezone() {
@@ -496,17 +514,26 @@ ask_printer_host() {
     say "  can see. Set it now and it is covered by construction."
     say
 
-    local current candidates choice n i addr
+    local current candidates choice n line addr iface
     current="$(env_get PRINTER_HOST)"
     candidates="$(lan_addresses)"
 
     if [ -n "$candidates" ]; then
         say "  Addresses on this machine that a printer could reach:"
         n=0
-        while read -r addr; do
-            [ -n "$addr" ] || continue
+        while IFS= read -r line; do
+            [ -n "$line" ] || continue
             n=$((n + 1))
-            say "    $n) $addr"
+            # The interface name is what makes this choosable when more than one survives the
+            # filtering - Ethernet against Wi-Fi looks identical as two RFC1918 addresses, and a
+            # rule cannot pick between them because both are genuinely reachable.
+            addr="${line%%	*}"
+            iface="${line#*	}"
+            if [ "$iface" = "$line" ]; then
+                say "    $n) $addr"
+            else
+                say "$(printf '    %d) %-16s %s' "$n" "$addr" "$iface")"
+            fi
         done <<< "$candidates"
         say "    $((n + 1))) something else - a name, or an address not listed"
         say
@@ -519,7 +546,9 @@ ask_printer_host() {
             ''|*[!0-9]*) : ;;
             *)
                 if [ "$choice" -ge 1 ] && [ "$choice" -le "$n" ]; then
+                    # The address only - the interface name was for reading, not for writing.
                     choice="$(echo "$candidates" | sed -n "${choice}p")"
+                    choice="${choice%%	*}"
                 elif [ "$choice" -eq $((n + 1)) ]; then
                     choice="$(ask "  Address or name")"
                 fi
@@ -789,7 +818,9 @@ auto_answer() {
     # successfully* and never retried - a board sat with a working network and no stack until it was
     # power-cycled, because the ethernet cable went in five minutes after the one attempt. Failing
     # is what lets Restart=on-failure turn that into the self-healing case.
+    # First field: auto_answer wants the address, not the label beside it.
     address="$(lan_addresses | head -1)"
+    address="${address%%	*}"
     if [ -z "$address" ]; then
         echo "setup-env.sh: no address found that a printer could reach - not writing anything." >&2
         echo "setup-env.sh: this is the normal state before the network is up. Exiting non-zero so" >&2

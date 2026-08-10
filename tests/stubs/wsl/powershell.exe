@@ -1,5 +1,4 @@
 #!/bin/sh
-# Recorded from `Get-NetIPAddress -AddressFamily IPv4 | Select -ExpandProperty IPAddress` on a
-# Windows host with WSL and Hyper-V installed. The trailing CRs are Windows' own, and the vEthernet
-# addresses are the ones that must not reach a printer - both are the point of the fixture.
-printf '192.168.13.50\r\n172.28.112.1\r\n172.17.240.1\r\n127.0.0.1\r\n'
+# Recorded from Get-NetIPAddress on a Windows host with WSL and Hyper-V. Tab-separated address and
+# InterfaceAlias, with Windows' own CRLF endings - all three are the point of the fixture.
+printf '192.168.13.50\tEthernet\r\n172.28.112.1\tvEthernet (WSL)\r\n172.17.240.1\tvEthernet (Default Switch)\r\n127.0.0.1\tLoopback Pseudo-Interface 1\r\n'

@@ -1,9 +1,18 @@
 #!/bin/sh
-# Recorded from a Debian host. `ip -4 route get 1.1.1.1` names the source address the kernel would
-# actually use; `ip -4 route show` is the fallback the collision check reads.
+# Recorded from a Debian host. `route get` names the interface and the source address on one line,
+# which is why the preferred candidate arrives already labelled; `-o addr show` is where the rest
+# come from, one per line, and `route show` is what the collision check reads.
 case "$*" in
     *"route get"*)
         echo "1.1.1.1 via 192.168.13.1 dev eth0 src 192.168.13.238 uid 1000"
+        ;;
+    *"addr show"*)
+        cat <<'EOF'
+1: lo    inet 127.0.0.1/8 scope host lo\       valid_lft forever preferred_lft forever
+2: eth0    inet 192.168.13.238/24 brd 192.168.13.255 scope global dynamic eth0\       valid_lft 5000sec preferred_lft 5000sec
+3: wlan0    inet 192.168.13.51/24 brd 192.168.13.255 scope global dynamic wlan0\       valid_lft 5000sec preferred_lft 5000sec
+4: docker0    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0\       valid_lft forever preferred_lft forever
+EOF
         ;;
     *"route show"*)
         cat <<'EOF'

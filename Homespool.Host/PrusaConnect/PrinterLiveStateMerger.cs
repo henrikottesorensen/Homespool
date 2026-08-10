@@ -38,11 +38,8 @@ public static class PrinterLiveStateMerger
         // unlike everything below it.
         state.Status = PrinterStatusExtensions.ParseWireState(telemetry.Status);
 
-        state.JobId = telemetry.JobId ?? state.JobId;
-        state.Progress = telemetry.Progress ?? state.Progress;
-        state.TimePrinting = telemetry.TimePrinting ?? state.TimePrinting;
-        state.TimeRemaining = telemetry.TimeRemaining ?? state.TimeRemaining;
-        state.TimeToFilamentChange = telemetry.TimeToFilamentChange ?? state.TimeToFilamentChange;
+        MergeJob(state, telemetry);
+
         state.ExtruderFan = telemetry.ExtruderFan ?? state.ExtruderFan;
         state.PrintFan = telemetry.PrintFan ?? state.PrintFan;
         state.FilamentUsed = telemetry.FilamentUsed ?? state.FilamentUsed;
@@ -98,6 +95,64 @@ public static class PrinterLiveStateMerger
     /// MMU-only - an XL sends <c>slot</c> (tool-changer, &gt;1 tool) without ever populating those
     /// two, so they still need the per-field coalesce, not a block overwrite.
     /// </summary>
+    /// <summary>
+    /// Merges the job block, which is the one part of a telemetry message where <b>absence means
+    /// something</b> - so it is cleared rather than carried when the printer stops sending it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The exception to this class's whole rule, and firmware is explicit about it.</b> Everything
+    /// else here keeps its last-known value on a null, because for a temperature "unchanged" and
+    /// "not sent" are the same thing. For a job they are opposites, and <c>render.cpp</c> guards the
+    /// entire block with <c>if (params.has_job)</c> at the pinned ref: <c>job_id</c>,
+    /// <c>time_printing</c>, <c>time_remaining</c>, <c>filament_change_in</c> and <c>progress</c>
+    /// arrive together or not at all. A print that ends therefore stops sending them, and carrying
+    /// them forward is how a finished printer went on reporting <b>99% for nine hours</b> (Henrik,
+    /// 2026-08-09) - on the Detail page, not merely in the table, since it reads this same row.
+    /// </para>
+    /// <para>
+    /// <b>Keyed on the whole block rather than on <c>job_id</c> alone</b>, which costs four extra null
+    /// checks and buys not depending on which field firmware puts first. Any one of them present means
+    /// there is a job; all absent means there is not.
+    /// </para>
+    /// <para>
+    /// <b><see cref="PrinterLiveState.FilamentUsed"/> is deliberately not here.</b> It sits outside
+    /// that guard because it is a lifetime odometer rather than a property of the print, so it is
+    /// still carried - a figure that stops rising when nothing extrudes is correct, where a progress
+    /// that stops falling is a lie.
+    /// </para>
+    /// <para>
+    /// <b>This does not weaken the dense-sample guarantee</b> (<c>notes/phase-3-persistence.md</c>),
+    /// which is that a reader never has to interpolate across gaps. A null here is not a gap: the
+    /// printer genuinely had no job, and a row saying so is complete.
+    /// </para>
+    /// </remarks>
+    private static void MergeJob(PrinterLiveState state, TelemetryDTO telemetry)
+    {
+        bool hasJob = telemetry.JobId is not null
+            || telemetry.Progress is not null
+            || telemetry.TimePrinting is not null
+            || telemetry.TimeRemaining is not null
+            || telemetry.TimeToFilamentChange is not null;
+
+        if (!hasJob)
+        {
+            state.JobId = null;
+            state.Progress = null;
+            state.TimePrinting = null;
+            state.TimeRemaining = null;
+            state.TimeToFilamentChange = null;
+
+            return;
+        }
+
+        state.JobId = telemetry.JobId ?? state.JobId;
+        state.Progress = telemetry.Progress ?? state.Progress;
+        state.TimePrinting = telemetry.TimePrinting ?? state.TimePrinting;
+        state.TimeRemaining = telemetry.TimeRemaining ?? state.TimeRemaining;
+        state.TimeToFilamentChange = telemetry.TimeToFilamentChange ?? state.TimeToFilamentChange;
+    }
+
     private static void MergeSlot(PrinterLiveState state, SlotsTelemetryDTO slot)
     {
         state.ActiveSlot = slot.Active;

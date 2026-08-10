@@ -46,6 +46,67 @@ public class PrinterLiveStateMergerTests
         state.NozzleTemperature.Should().Be(210.5f, "a Reduced message must not blank out a Full-mode field it never sent");
     }
 
+    /// <summary>
+    /// A print that ends takes its job fields with it, rather than leaving a finished printer
+    /// reporting the last percentage it ever saw.
+    /// </summary>
+    /// <remarks>
+    /// The one place absence is meaningful. Firmware guards the whole block with
+    /// <c>if (params.has_job)</c>, outside and before the Full-mode check, so it is sent in every mode
+    /// whenever a job exists - which makes "none of it arrived" a reliable statement that there is no
+    /// job, rather than a reduced message that merely left it out.
+    /// </remarks>
+    [Fact]
+    public void MergeClearsTheJobBlockWhenThePrinterStopsSendingIt()
+    {
+        // Arrange - a printer mid-print, as the last message left it
+        PrinterLiveState state = NewState();
+        state.JobId = 73;
+        state.Progress = 99;
+        state.TimePrinting = 941;
+        state.TimeRemaining = 0;
+        state.TimeToFilamentChange = 120;
+        state.FilamentUsed = 1015687.625f;
+        state.NozzleTemperature = 210.5f;
+
+        // Act - the print has ended, so the block is simply absent
+        PrinterLiveStateMerger.Merge(state, new TelemetryDTO { Status = "FINISHED" }, DateTimeOffset.UtcNow);
+
+        // Assert
+        state.JobId.Should().BeNull();
+        state.Progress.Should().BeNull("a finished printer reporting 99% is the defect this fixes");
+        state.TimePrinting.Should().BeNull();
+        state.TimeRemaining.Should().BeNull();
+        state.TimeToFilamentChange.Should().BeNull();
+
+        state.FilamentUsed.Should().Be(1015687.625f,
+            "it is a lifetime odometer outside the has_job guard - stopping rising is correct, unlike progress");
+        state.NozzleTemperature.Should().Be(210.5f, "everything outside the job block still carries forward");
+    }
+
+    /// <summary>
+    /// And the block survives while any part of it is still arriving, so a message carrying one job
+    /// field does not blank the others.
+    /// </summary>
+    [Fact]
+    public void MergeKeepsTheJobBlockWhileAnyPartOfItArrives()
+    {
+        // Arrange
+        PrinterLiveState state = NewState();
+        state.JobId = 73;
+        state.Progress = 40;
+        state.TimePrinting = 500;
+
+        // Act - only progress moved
+        PrinterLiveStateMerger.Merge(state, new TelemetryDTO { Status = "PRINTING", Progress = 41 },
+            DateTimeOffset.UtcNow);
+
+        // Assert
+        state.Progress.Should().Be(41);
+        state.JobId.Should().Be(73, "the job is still running; only this message was thin");
+        state.TimePrinting.Should().Be(500);
+    }
+
     [Fact]
     public void MergeOverwritesFieldsThatArePresentInTheMessage()
     {

@@ -148,6 +148,9 @@ reset_state() {
     # rest of the run - which is how a later test came to be handed a vEthernet address by an
     # earlier one. Cleared here rather than trusted to be scoped.
     unset HOMESPOOL_ADDRESSES
+    # The "cannot ask Docker" explanation is printed once per run, and the marker that enforces that
+    # is a file - so it has to be cleared between tests or the second test never sees it.
+    rm -f "${docker_warning_marker:-}" 2>/dev/null || true
     docker_subnets_cache=""
     docker_subnets_cached=false
     PATH="$real_path"
@@ -357,8 +360,26 @@ if test_case "lan_addresses falls back to the whole pool when Docker cannot be a
         *172.17.0.1*) fail "a Docker address was offered with no daemon to rule it out" ;;
         *) passed=$((passed + 1)) ;;
     esac
-    assert_contains "$(lan_addresses 2>&1 >/dev/null)" "Could not ask Docker" "and it says so"
+    # Cleared first: the explanation is deliberately printed once per run.
+    rm -f "$docker_warning_marker"
+    assert_says "$(lan_addresses 2>&1 >/dev/null)" "Could not ask Docker" "and it says so"
     unset -f in_container
+fi
+
+if test_case "the container explanation is printed once, not once per lookup"; then
+    # It appeared three times in one run on Windows. The flag that was meant to stop that was a
+    # variable, set inside a command substitution - so it lived in a subshell and died with it,
+    # every time.
+    sandbox_path linux
+    in_container() { return 0; }
+    rm -f "$docker_warning_marker"
+
+    first="$(lan_addresses 2>&1 >/dev/null)"
+    second="$(lan_addresses 2>&1 >/dev/null)"
+    unset -f in_container
+
+    assert_says "$first" "Running inside a container" "said once"
+    assert_eq "" "$second" "and not again"
 fi
 
 if test_case "inside a container it does not blame the daemon"; then
@@ -367,6 +388,7 @@ if test_case "inside a container it does not blame the daemon"; then
     # the very container asking.
     sandbox_path linux
     in_container() { return 0; }
+    rm -f "$docker_warning_marker"
     out="$(lan_addresses 2>&1 >/dev/null)"
     unset -f in_container
 

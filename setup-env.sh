@@ -488,7 +488,11 @@ unreachable_ranges() {
         echo "$subnets"
         return 0
     fi
-    if ! $docker_unavailable_warned; then
+    # A FILE, not a variable. unreachable_ranges is called from inside command substitutions -
+    # $(lan_addresses) and friends - so a flag set here lives in a subshell and dies with it, and the
+    # same three-line explanation was printed three times in one run.
+    if [ ! -e "$docker_warning_marker" ]; then
+        : > "$docker_warning_marker" 2>/dev/null || true
         # Two different situations, and blaming the daemon in the first one is nonsense: on the
         # Windows path this script runs INSIDE a container, which has no docker CLI and no socket,
         # so of course it cannot ask - while Docker is plainly working, since it is running this.
@@ -501,12 +505,14 @@ unreachable_ranges() {
             warn "running? Falling back to excluding 172.16.0.0/12 entirely. If your LAN"
             warn "genuinely lives there, type the address rather than picking from the list."
         fi
-        docker_unavailable_warned=true
     fi
     echo "172.16.0.0/12"
 }
 
-docker_unavailable_warned=false
+# Per-run, per-process, and cleaned up on the way out: see unreachable_ranges for why it cannot be
+# a variable.
+docker_warning_marker="${TMPDIR:-/tmp}/setup-env-docker-warned.$$"
+trap 'rm -f "$docker_warning_marker"' EXIT
 
 # Whether this is running inside a container rather than on the host. /.dockerenv is written by
 # Docker itself; the cgroup path covers runtimes that do not, and Podman.

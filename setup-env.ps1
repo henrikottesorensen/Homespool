@@ -181,13 +181,22 @@ try {
     # Leaves TZ at its UTC default, which is what every deployment had before this existed.
 }
 
+# The country, which is NOT the culture. Get-Culture is the display language - on a Danish machine
+# set to English it says en-GB or en-US, and a Dane was offered Europe/Paris because the region never
+# arrived. Windows keeps "Country or region" in the registry as an ISO two-letter code, which is
+# exactly what the conversion wants, and it is readable on Windows PowerShell 5.1.
 try {
-    $name = (Get-Culture).Name
-    if ($name -match '-([A-Za-z]{2})$') {
-        $windowsRegion = $Matches[1].ToUpperInvariant()
-    }
+    $windowsRegion = (Get-ItemProperty 'HKCU:\Control Panel\International\Geo' -ErrorAction Stop).Name
 } catch {
-    # Region is a refinement, not a requirement.
+    # Falling back to the culture's region, which is better than nothing and often right.
+    try {
+        $name = (Get-Culture).Name
+        if ($name -match '-([A-Za-z]{2})$') {
+            $windowsRegion = $Matches[1].ToUpperInvariant()
+        }
+    } catch {
+        # Region is a refinement, not a requirement.
+    }
 }
 
 # ------------------------------------------------------------------------------------------------

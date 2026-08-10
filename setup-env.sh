@@ -787,7 +787,7 @@ warn_if_already_started() {
     project="${COMPOSE_PROJECT_NAME:-$(basename "$repo_root" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')}"
     [ -n "$(docker volume ls -q \
                 --filter label=com.docker.compose.project="$project" \
-                --filter label=com.docker.compose.volume=printerservice-data 2>/dev/null)" ] || return 0
+                --filter label=com.docker.compose.volume=homespool-data 2>/dev/null)" ] || return 0
 
     say
     warn "This stack has run before, so the printer certificate has already been issued - and it is"

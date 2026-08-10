@@ -18,7 +18,7 @@
 # rig/enrol.sh already connects to the printer listener over plain http.
 
 services:
-  printerservice:
+  homespool:
     ports:
       # The app's own printer listener, published directly. It is the same port either way - what
       # changes is which container answers on it, and whether there is TLS in front.

@@ -149,7 +149,7 @@ cp "$repo_root/nginx/homespool-printer.conf" "$payload_dir/nginx/"
 # Shipping it as well would put ~200 MB on the card that exists only to be expanded and deleted.
 echo "==> Saving the container images (the slow part, ~550 MB uncompressed)"
 mkdir -p "$images_dir"
-docker save printerservice:latest homespool-proxy:latest \
+docker save homespool:latest homespool-proxy:latest \
     | gzip -1 > "$images_dir/homespool-images.tar.gz"
 echo "    $(du -h "$images_dir/homespool-images.tar.gz" | cut -f1) saved"
 

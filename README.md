@@ -96,7 +96,7 @@ docker compose up --build
 ```
 
 That brings up two containers: the application, and an nginx that terminates TLS for both of its
-audiences. The database lives in a named volume (`printerservice-data`) so it survives container
+audiences. The database lives in a named volume (`homespool-data`) so it survives container
 replacement.
 
 **Everything is served over TLS from the first start, and the two audiences are kept apart.**

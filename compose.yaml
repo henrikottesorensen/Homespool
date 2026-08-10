@@ -1,6 +1,6 @@
 services:
-  printerservice:
-    image: printerservice
+  homespool:
+    image: homespool
     build:
       context: .
       dockerfile: Homespool.Host/Dockerfile
@@ -127,7 +127,7 @@ services:
       Smtp__ProbeOnStartup: "${SMTP_PROBE_ON_STARTUP:-true}"
 
     volumes:
-      - printerservice-data:/app/data
+      - homespool-data:/app/data
 
       # The leaf the proxy presents to printers, and its key. A separate volume from the one above,
       # and that separation is the point rather than tidiness: the authority's private key lives in
@@ -354,7 +354,7 @@ services:
     # Note what this gives up: "nginx is running" no longer implies "the application was healthy at
     # least once". Anything that reasons that way needs to stop.
     depends_on:
-      printerservice:
+      homespool:
         condition: service_started
 
     restart: unless-stopped
@@ -375,7 +375,7 @@ volumes:
   # Keeps the SQLite database across container replacement. Use a local docker volume or a
   # bind-mount to local disk - do NOT put this on NFS/CIFS/a NAS share, where SQLite WAL
   # locking is unreliable and will corrupt the database.
-  printerservice-data:
+  homespool-data:
 
   # The user-facing certificate, self-signed on first start unless you put your own here. Kept
   # across container replacement so that the exception someone clicked through in their browser
@@ -389,7 +389,7 @@ volumes:
   homespool-go2rtc-config:
 
   # The printer-facing leaf and its key, in PEM: written by the app, read by the proxy. Deliberately
-  # NOT part of printerservice-data, which holds the certificate authority's private key - the one
+  # NOT part of homespool-data, which holds the certificate authority's private key - the one
   # secret here that cannot be rotated without a USB visit to every printer. This volume holds only
   # what is safe to hand the network-facing container.
   homespool-printer-leaf:

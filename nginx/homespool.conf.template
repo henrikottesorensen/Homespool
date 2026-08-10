@@ -33,7 +33,7 @@ server {
     # monitoring probe follows nothing, and `curl --fail` treats a 301 as success - so a redirected
     # /health would report a healthy service that was never actually reached.
     location /health {
-        set $homespool_upstream http://printerservice:8080;
+        set $homespool_upstream http://homespool:8080;
         include /etc/nginx/homespool-proxy.conf;
 
         # A 512 MB upload over a household's wifi takes longer than the 60s default allows. Set here
@@ -106,7 +106,7 @@ server {
     }
 
     location / {
-        set $homespool_upstream http://printerservice:8080;
+        set $homespool_upstream http://homespool:8080;
         include /etc/nginx/homespool-proxy.conf;
 
         # A 512 MB upload over a household's wifi takes longer than the 60s default allows.

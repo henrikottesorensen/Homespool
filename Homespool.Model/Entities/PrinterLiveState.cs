@@ -92,9 +92,18 @@ public class PrinterLiveState
     /// nothing extrudes is correct, where a progress that stops falling is a lie.
     /// </para>
     /// <para>
+    /// <b>But it is not monotonic, because the printer's EEPROM can be reset</b> (Henrik, 2026-08-10) -
+    /// so it goes backwards exactly once, unpredictably, and a machine that has extruded a kilometre
+    /// then reports zero with nothing anywhere flagging it as odd. <b>Anything subtracting two readings
+    /// must treat a decrease as the counter resetting rather than as negative extrusion</b>, which is a
+    /// branch to write deliberately and not an assumption to make.
+    /// </para>
+    /// <para>
     /// It is also the only honest signal that a print has actually begun - <c>PRINTING</c> arrives with
     /// a cold nozzle, and plastic followed 168 s later on a measured run
-    /// (<c>notes/print-queue.md</c>).
+    /// (<c>notes/print-queue.md</c>). <b>That use survives a reset</b> where a subtraction does not: it
+    /// waits for the value to <i>increase</i>, so a reset merely means it counts up from zero instead
+    /// of from a kilometre. The signal is a change, not a level.
     /// </para>
     /// </remarks>
     public float? FilamentUsed { get; set; }

@@ -841,7 +841,14 @@ summarise() {
         value="${line#*=}"
         before="$(env_get "$key")"
         if ! key_present "$env_file" "$key"; then
-            before="(unset, default $(display_value "$key" "$before"))"
+            # The "default" clause only when there is a default worth naming. Otherwise this said
+            # "(unset, default (empty))" - two brackets to report that a setting with no value has
+            # no value, on the line somebody reads before answering yes.
+            if [ -z "$before" ]; then
+                before="(unset)"
+            else
+                before="(unset, default $(display_value "$key" "$before"))"
+            fi
         else
             before="$(display_value "$key" "$before")"
         fi

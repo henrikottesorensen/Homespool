@@ -619,6 +619,23 @@ if test_case "no-prompt on every boot is idempotent"; then
     assert_eq "$first" "$(cat "$dir/.env")" "and changes nothing"
 fi
 
+if test_case "the summary names a default only when there is one"; then
+    # This line is what somebody reads before answering yes, so it is worth asserting on. It used to
+    # say "(unset, default (empty))" - two brackets to report that a setting with no value has none.
+    use_temp_env "PRINTER_HOST=
+USER_HOST=localhost"
+    plan_set PRINTER_HOST 192.168.13.238
+    plan_set USER_HOST box.local
+    out="$(summarise 2>&1)"
+
+    assert_contains "$out" "(unset)  ->  192.168.13.238" "no default worth naming, so none is named"
+    assert_contains "$out" "(unset, default localhost)  ->  box.local" "a real default still is"
+    case "$out" in
+        *"default (empty)"*) fail "the summary still nests brackets around nothing" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
+fi
+
 # ------------------------------------------------------------------------------------------------
 # Prompts
 #

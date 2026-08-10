@@ -48,6 +48,11 @@ jobs:
       - name: Validate the compose file
         run: docker compose config > /dev/null
 
+      # setup-env.sh, on GNU tools. The macOS job below is the half that matters more; this one is
+      # here because it costs a second and the Linux route parsing has to work somewhere real.
+      - name: Test setup-env.sh
+        run: ./tests/setup-env.test.sh
+
       # Both images: the application and the proxy that terminates TLS in front of it.
       - name: Build the container images
         run: docker compose build
@@ -57,3 +62,25 @@ jobs:
       - name: Stop Mailpit
         if: always()
         run: ./Homespool.Host.IntegrationTest/stop-mailpit-tls.sh
+
+  # setup-env.sh is the one thing here an operator runs BEFORE anything is built, on their own
+  # machine, with whatever their operating system ships - so it is the one thing that has to be
+  # tested somewhere other than Linux.
+  #
+  # Two differences make this a real job rather than duplication. Apple's /bin/bash is 3.2, from
+  # 2007, and Homebrew's 5.x hides every incompatibility on a developer's Mac. And macOS ships BSD
+  # userland: BWK awk rejects a bare ternary inside `print` that gawk accepts silently, which was a
+  # live bug in this script. The suite strips PATH to /usr/bin and /bin itself, so a runner's
+  # Homebrew cannot creep back in.
+  #
+  # No Docker on the runner and none needed - every docker call in the suite is stubbed, and the
+  # script's own behaviour when the daemon cannot be reached is one of the things under test.
+  setup-env-on-macos:
+    runs-on: macos-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Test setup-env.sh on Apple's bash 3.2
+        run: /bin/bash tests/setup-env.test.sh

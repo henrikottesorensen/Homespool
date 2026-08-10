@@ -14,7 +14,7 @@ namespace Homespool.Host.Listeners;
 /// reaches no application surface, because those routes do not exist on that listener at all.
 /// </para>
 /// <para>
-/// <b>These are the ports inside this process, not the ports anything dials.</b> A printer is told
+/// <b>These are the ports inside this process, not the ports anything connects to.</b> A printer is told
 /// what <c>PrusaConnect:PrinterHost</c>/<c>:PrinterPort</c> say — typically 443, published onto
 /// <see cref="PrinterPort"/> by Compose — and a user arrives through nginx. That indirection is
 /// exactly why the boundary is enforced on the local port rather than on the <c>Host</c> header; see

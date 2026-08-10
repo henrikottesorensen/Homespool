@@ -42,7 +42,7 @@
 ---
 mmdebstrap:
   packages:
-    # The Pi's address is what a printer has to dial and what the certificate has to cover, and on a
+    # The Pi's address is what a printer has to use and what the certificate has to cover, and on a
     # home LAN it is handed out by DHCP. mDNS means there is a name that survives the lease changing,
     # which is the difference between "it moved" and "it is gone".
     - avahi-daemon
@@ -51,10 +51,11 @@ mmdebstrap:
     - ca-certificates
 
     # iproute2 is NOT in trixie-minbase - there is no `ip` binary at all, because systemd-networkd
-    # does its own netlink work and nothing else in the base needs one. homespool-firstboot.sh used
+    # does its own netlink work and nothing else in the base needs one. The first-boot script used
     # `ip route get` to find this machine's address, got "command not found" into a suppressed
-    # stderr, and retried forever on every card built. Also the first thing anyone reaches for when
-    # a board is not on the network, which is exactly when it is missing.
+    # stderr, and retried forever on every card built. setup-env.sh does the same lookup now and
+    # falls back to `hostname -I`, but it still wants this - and it is the first thing anyone reaches
+    # for when a board is not on the network, which is exactly when it was missing.
     - iproute2
 
     # systemd's pager. Without it journalctl dumps raw to the terminal and every invocation wants
@@ -113,7 +114,9 @@ mmdebstrap:
     - mkdir -p $1/opt/homespool
     - cp -a ${IGconf_homespool_payload}/. $1/opt/homespool/
 
-    - install -m 0755 ${IGconf_homespool_assetdir}/homespool-firstboot.sh $1/usr/local/sbin/homespool-firstboot
+    # No script to install alongside it any more: the unit calls /opt/homespool/setup-env.sh, which
+    # arrives with the payload above, and then docker compose. homespool-firstboot.sh carried its own
+    # copy of the address detection and is gone.
     - install -m 0644 ${IGconf_homespool_assetdir}/homespool-firstboot.service $1/etc/systemd/system/homespool-firstboot.service
 
     - install -m 0755 ${IGconf_homespool_assetdir}/homespool-wifi.sh $1/usr/local/sbin/homespool-wifi

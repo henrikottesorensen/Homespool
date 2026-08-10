@@ -118,14 +118,14 @@ public class CertificateOptions
 
     /// <summary>
     /// CIDR ranges that exist only inside this deployment — a container network, typically. Addresses
-    /// in them are never offered as somewhere a printer could dial.
+    /// in them are never offered as somewhere a printer could reach.
     /// </summary>
     /// <remarks>
     /// <para>
     /// <b>Configuration rather than a constant, because the range is a deployment's to choose.</b>
     /// <c>compose.yaml</c> pins its own network and invites changing it if it collides with something
     /// on the host - and a hardcoded rule would then stop recognising the container's address and go
-    /// back to offering it as somewhere to dial, which is precisely the trap this closes. The shipped
+    /// back to offering it as somewhere to connect to, which is precisely the trap this closes. The shipped
     /// stack feeds this from the same <c>PROXY_NETWORK</c> that pins the network, so the two cannot
     /// disagree.
     /// </para>

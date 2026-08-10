@@ -4,7 +4,7 @@ namespace Homespool.FakePrinter;
 
 /// <summary>
 /// Knobs for one fake printer. Defaults are the firmware's own behaviour at the pinned ref; every
-/// deviation a test dials in is therefore explicit.
+/// deviation a test sets is therefore explicit.
 /// </summary>
 public sealed class FakePrinterOptions
 {

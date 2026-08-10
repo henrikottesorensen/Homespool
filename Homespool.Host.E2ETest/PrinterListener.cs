@@ -17,7 +17,7 @@ namespace Homespool.Host.E2ETest;
 /// <para>
 /// <c>/p/*</c> exists only on that listener, so a test that reaches it through an ordinary
 /// <see cref="WebApplicationFactory{TEntryPoint}.CreateClient()"/> gets a 404 - correctly, and the
-/// same 404 a real printer dialling the user's port would get. These helpers are how a test says
+/// same 404 a real printer connecting to the user's port would get. These helpers are how a test says
 /// which listener it means.
 /// </para>
 /// <para>

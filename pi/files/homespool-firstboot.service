@@ -1,7 +1,13 @@
-# Runs the Homespool stack up on every boot, and does the one-time setup on the first one.
+# Brings the Homespool stack up on every boot, and configures it on the first one.
 #
-# Not a "firstboot" unit in the run-once-and-disable sense despite the name: the script is idempotent
-# and reconciling the stack every boot is what makes a power-cut recover by itself.
+# Not a "firstboot" unit in the run-once-and-disable sense despite the name: every step here is
+# idempotent and reconciling the stack on each boot is what makes a power-cut recover by itself.
+#
+# This used to drive homespool-firstboot.sh, which carried its own copy of the address detection -
+# find this machine's address, filter out Docker's own ranges, write PRINTER_HOST. setup-env.sh does
+# that better, because it asks the Docker daemon which ranges are actually allocated instead of
+# excluding 172.16/12 wholesale, so a board on a legitimate 172.x LAN is no longer refused its own
+# address. One implementation, tested, rather than two that could drift.
 [Unit]
 Description=Homespool first-boot setup and stack start
 # docker.service, not docker.socket: this calls the CLI, and socket activation would have it race the
@@ -19,13 +25,38 @@ StartLimitBurst=0
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/local/sbin/homespool-firstboot
 WorkingDirectory=/opt/homespool
 
-# Keep trying rather than retiring on the first attempt. The script now fails, instead of succeeding
-# quietly, when there is no address yet - which covers the case that actually happened on hardware:
-# a board whose wi-fi never associated, logging "no LAN address yet", being marked *Finished*, and
-# then ignoring the ethernet cable plugged in five minutes later. It needed a power cycle to notice.
+# The container images are ALREADY in /var/lib/docker - pi/build.sh loaded them into this card's
+# Docker store while building it, so this normally does nothing. It fires only if somebody has
+# deliberately staged a tarball: a hand-built card, or a rescue after a bad bake. No tarball ships.
+#
+# Guarded on the file's own presence rather than a stamp, and it removes the tarball on success, so
+# the once-only-ness is carried by the evidence rather than by remembering.
+ExecStartPre=/bin/sh -c 'test ! -f homespool-images.tar.gz || { docker load -i homespool-images.tar.gz && rm -f homespool-images.tar.gz; }'
+
+# Both flags, and neither is optional here.
+#
+# --no-prompt answers from what the board can detect, and exits NON-ZERO when it cannot find an
+# address a printer could reach, which is what the Restart= below depends on.
+#
+# --no-overwrite is what makes this safe to run on every boot with no stamp file: it fills in
+# settings that have no value yet and never changes one that does. Without it a moved DHCP lease
+# would silently rewrite PRINTER_HOST on some later boot, under a printer certificate that was
+# minted once and cannot follow it - so every provisioning bundle would name an address the
+# certificate does not cover, and nothing would say so.
+ExecStart=/opt/homespool/setup-env.sh --no-prompt --no-overwrite
+
+# --no-build is load-bearing. compose.yaml still carries a `build:` section for developers, and its
+# context is the repository, which is not on this card. Without this a missing image sends compose
+# looking for a source tree that was never shipped, and it fails describing a build error rather
+# than the actual fault.
+ExecStart=/usr/bin/docker compose up -d --no-build
+
+# Keep trying rather than retiring on the first attempt. setup-env.sh --no-prompt fails, instead of
+# succeeding quietly, when there is no address yet - which covers the case that actually happened on
+# hardware: a board whose wi-fi never associated, being marked *Finished*, and then ignoring the
+# ethernet cable plugged in five minutes later. It needed a power cycle to notice.
 #
 # The rate limit that would otherwise stop this after five attempts is disabled in [Unit] above.
 Restart=on-failure

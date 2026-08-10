@@ -121,7 +121,7 @@ mkdir -p /etc/iwd
 } > /etc/iwd/main.conf
 
 # if, not `[ -n "$country" ] && echo ...`. That form is the last command in this block, so under
-# `set -e` an empty country would exit non-zero - and homespool-firstboot's Restart=on-failure would
+# `set -e` an empty country would exit non-zero - and homespool-firstboot.service's Restart=on-failure would
 # then retry a script that had in fact done its job, forever.
 if [ -n "$country" ]; then
     echo "homespool-wifi: regulatory country set to $country"

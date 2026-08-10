@@ -7,7 +7,7 @@ public enum PrinterCertificateState
 {
     Undefined = 0,
 
-    /// <summary>The certificate covers what printers are told to dial, and is not near expiry.</summary>
+    /// <summary>The certificate covers what printers are told to use, and is not near expiry.</summary>
     Ok,
 
     /// <summary>Printers use plain HTTP, so there is no certificate and nothing to check.</summary>
@@ -16,7 +16,7 @@ public enum PrinterCertificateState
     /// <summary>No certificate has been issued at all.</summary>
     Missing,
 
-    /// <summary>The address printers are told to dial is absent from the certificate.</summary>
+    /// <summary>The address printers are told to use is absent from the certificate.</summary>
     ConfiguredAddressUncovered,
 
     /// <summary>Every address the certificate names has gone from this machine.</summary>

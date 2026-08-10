@@ -42,7 +42,7 @@ public static class DeploymentExposure
     /// </para>
     /// </remarks>
     /// <param name="printerTls">Whether the printer transport uses TLS.</param>
-    /// <param name="printerHost">The address printers are told to dial, or null if none is set.</param>
+    /// <param name="printerHost">The address printers are told to use, or null if none is set.</param>
     /// <param name="resolvedHost">What that address resolves to; empty means the resolver had no answer.</param>
     /// <param name="containerNetworks">Ranges that exist only inside this deployment.</param>
     public static ExposureVerdict EvaluatePrinterTransport(bool printerTls,

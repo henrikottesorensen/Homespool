@@ -15,7 +15,7 @@
 
             <div class="mb-2">
                 <label for="bundle-hostname" class="form-label">
-                    Address this printer should dial
+                    Address this printer should use
                 </label>
                 <select id="bundle-hostname" name="Hostname" class="form-select">
                     @foreach (Homespool.Host.Certificates.PrinterAddressSuggestion name in Model.Names)
@@ -87,7 +87,7 @@
         <p class="mb-0">
             In a container that usually means the certificate was issued before
             <code>PrusaConnect:PrinterHost</code> was set, so it covers only addresses inside the
-            container - which work from in there and nowhere else. Set the address printers should dial,
+            container - which work from in there and nowhere else. Set the address printers should use,
             then reissue under <em>Admin &rarr; Printer certificate</em>.
         </p>
     }

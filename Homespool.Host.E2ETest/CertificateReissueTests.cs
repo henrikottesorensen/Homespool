@@ -121,7 +121,7 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
     /// <b>This is the one way the reissue button can break a printer that was working.</b> Names are
     /// filtered at issuance to what a printer could actually reach, so a name detected once and no
     /// longer resolvable is dropped — correct in itself, since it vouches for nothing. But a printer
-    /// whose ini still names it keeps dialling it, and after the reissue and the proxy reload its
+    /// whose ini still names it keeps connecting to it, and after the reissue and the proxy reload its
     /// handshake fails against a leaf that no longer covers it. mbedTLS reports that as a bare TLS
     /// error naming neither the name nor the certificate, and putting the printer back means a USB
     /// visit. The page has always shown drift in the other direction — names this machine has that the
@@ -142,7 +142,7 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
 
         // Assert
         page.Should().ContainEquivalentOf("would narrow this certificate",
-            "an operator about to drop a name their printers may be dialling has to be told before pressing, "
+            "an operator about to drop a name their printers may still be using has to be told before pressing, "
             + "not after a printer stops connecting");
         page.Should().Contain("an-old-address.lan", "and the warning has to name which names go");
         page.Should().ContainEquivalentOf("USB visit",
@@ -163,7 +163,7 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
     {
         // Arrange
         PrinterCertificateAuthority authority = _factory.Services.GetRequiredService<PrinterCertificateAuthority>();
-        authority.IssueLeaf(["a-printer-still-dials-this.lan"]).Dispose();
+        authority.IssueLeaf(["a-printer-still-uses-this.lan"]).Dispose();
 
         using HttpClient client = await AdministratorClientAsync();
         string page = await (await client.GetAsync("/Admin/Certificate", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
@@ -172,7 +172,7 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
         using FormUrlEncodedContent form = new(
         [
             new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(page)),
-            new("KeepNames", "a-printer-still-dials-this.lan"),
+            new("KeepNames", "a-printer-still-uses-this.lan"),
         ]);
 
         using HttpResponseMessage response = await client.PostAsync("/Admin/Certificate?handler=Reissue", form, TestContext.Current.CancellationToken);
@@ -182,8 +182,8 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
 
         using X509Certificate2? reissued = authority.LoadLeafIfIssued();
 
-        PrinterCertificateAuthority.NamesOf(reissued!).Should().Contain("a-printer-still-dials-this.lan",
-            "the administrator ticked it, and dropping it anyway would strand whichever printer is dialling it");
+        PrinterCertificateAuthority.NamesOf(reissued!).Should().Contain("a-printer-still-uses-this.lan",
+            "the administrator ticked it, and dropping it anyway would strand whichever printer is using it");
     }
 
     /// <summary>

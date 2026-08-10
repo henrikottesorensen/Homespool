@@ -109,7 +109,7 @@ public class PrinterCertificateNamesTests
 
     /// <summary>
     /// Expansion inherits the rule that keeps the container's own addresses out of the certificate: what
-    /// the configured host resolves to is covered only where a printer could dial it.
+    /// the configured host resolves to is covered only where a printer could reach it.
     /// </summary>
     [Fact]
     public async Task WhatTheConfiguredHostResolvesToIsFilteredLikeAnythingElseAsync()

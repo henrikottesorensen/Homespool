@@ -67,7 +67,7 @@ echo "$0: no printer leaf yet; nginx starts now and will pick one up if it appea
             # the things this script used to say immediately.
             echo "$0: still no printer leaf in $CERT_DIR after ${WATCH_SECONDS}s."
             echo "$0: the printer listener is NOT being served."
-            echo "$0: that is expected when PrusaConnect:PrinterTls is false - printers then dial"
+            echo "$0: that is expected when PrusaConnect:PrinterTls is false - printers then use"
             echo "$0: the application's own published port and this proxy stays out of their path."
             echo "$0: if printer TLS IS meant to be on, the application did not write a leaf; check"
             echo "$0: its log for the certificate it issues at startup, then restart this container."

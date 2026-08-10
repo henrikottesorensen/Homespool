@@ -121,14 +121,14 @@ public class PrusaConnectOptions
     public string PrinterHost { get; set; } = string.Empty;
 
     /// <summary>
-    /// The port a <b>printer</b> is told to dial — the <c>port</c> line in a provisioning snippet's
+    /// The port a <b>printer</b> is told to use — the <c>port</c> line in a provisioning snippet's
     /// <c>[service::connect]</c> section.
     /// </summary>
     /// <remarks>
     /// Prusa's firmware defaults <c>connect_port</c> to 443, and this deployment deliberately does
     /// not: 443 belongs to the people-facing proxy, and the two audiences are kept on separate ports
     /// with separate certificates. This is the host side of the printer port mapping — what a printer
-    /// dials from outside — not <see cref="Listeners.ListenerOptions.PrinterPort"/>, which is the
+    /// connects to from outside — not <see cref="Listeners.ListenerOptions.PrinterPort"/>, which is the
     /// plaintext port nginx forwards to inside the deployment. The two happen to share a number in
     /// <c>compose.yaml</c>; nothing requires them to.
     /// </remarks>

@@ -40,7 +40,7 @@ public static class ConnectIni
     /// they are about to do than trust a zip.
     /// </summary>
     /// <param name="options">Supplies the port and whether TLS is in use.</param>
-    /// <param name="hostname">The address this printer should dial: one of the names in the certificate.</param>
+    /// <param name="hostname">The address this printer should use: one of the names in the certificate.</param>
     /// <param name="token">The provisioning token, which is what makes this a credential.</param>
     public static string BuildSnippet(PrusaConnectOptions options, string hostname, string token)
     {

@@ -1,0 +1,4 @@
+#!/bin/sh
+# `route -n get default` - only the interface line is read.
+echo "   route to: default"
+echo "  interface: en0"

@@ -52,7 +52,7 @@ public class ForwardedHeaderScopeTests
     }
 
     /// <summary>
-    /// <b>The case this exists to refuse.</b> With <c>PrusaConnect:PrinterTls</c> off, printers dial
+    /// <b>The case this exists to refuse.</b> With <c>PrusaConnect:PrinterTls</c> off, printers connect to
     /// that port directly and the header is written by whoever connected — so honouring it would let
     /// anything holding a printer token claim any address it liked, in the logs and in anything else
     /// keyed on address.
@@ -120,7 +120,7 @@ public class ForwardedHeaderScopeTests
     [Theory]
     [InlineData(UserPort, false, "192.168.13.110", "the user listener is only reachable through the proxy")]
     [InlineData(PrinterPort, true, "192.168.13.110", "nginx terminates printer TLS, so X-Real-IP is its word")]
-    [InlineData(PrinterPort, false, "10.9.9.9", "printers dial this port directly, so the header is the caller's own")]
+    [InlineData(PrinterPort, false, "10.9.9.9", "printers connect to this port directly, so the header is the caller's own")]
     public async Task TheBranchDecidesWhetherTheStatedAddressIsBelieved(
         int arrivedOnPort, bool printerListenerIsProxied, string expectedAddress, string because)
     {

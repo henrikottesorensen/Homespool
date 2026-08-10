@@ -22,7 +22,7 @@ namespace Homespool.Host.Listeners;
 /// <b>Routing constraints on the host header were the original design, and they do not survive
 /// contact with the deployment.</b> <c>RequireHost("*:15443")</c> matches what the client wrote in
 /// the <c>Host</c> header, which is neither trustworthy nor, more mundanely, correct: Compose
-/// publishes 443 onto the printer listener, so a printer dials 443 and says so, and nginx passes the
+/// publishes 443 onto the printer listener, so a printer connects on 443 and says so, and nginx passes the
 /// user's own public hostname with no port at all. Both would be refused by a rule that reads the
 /// header, while an attacker who simply types the right port would be admitted. The header describes
 /// what the client believes it connected to; the port describes what it did.
@@ -84,7 +84,7 @@ public sealed class ListenerSegregationMiddleware : IMiddleware
             // provisioned it nothing at all. The firmware burns one of three registration retries on
             // this, so it is worth being findable in the log.
             _logger.LogWarning("A request for the printer endpoint {Path} arrived on port {Port}, which is not the "
-                               + "printer listener ({PrinterPort}). Printers must dial the port published onto "
+                               + "printer listener ({PrinterPort}). Printers must use the port published onto "
                                + "Listeners:PrinterPort; the address in their ini is PrusaConnect:PrinterHost.",
                                context.Request.Path, context.Connection.LocalPort, _listeners.PrinterPort);
         }

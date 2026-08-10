@@ -20,7 +20,7 @@ public sealed class CameraSnapshotFetcher : ICameraSnapshotFetcher
     /// Named rather than default so that camera reads can be configured - timeouts, handler
     /// lifetime - without touching every outbound request the application might grow later. It once
     /// carried an address policy on its handler; that moved to <see cref="CameraSourcePolicy"/> when
-    /// Homespool stopped fetching camera sources itself, since the only address this now dials is
+    /// Homespool stopped fetching camera sources itself, since the only address this now connects to is
     /// the sidecar the operator configured.
     /// </remarks>
     public const string HttpClientName = "camera";

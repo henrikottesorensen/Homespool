@@ -156,7 +156,7 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
             // all, so that port is 0 for every request and every printer route would be refused.
             //
             // So the test's choice of port - the one in its base address - stands in for the choice
-            // of listener, and a test dials the printer listener by dialling its port. That keeps the
+            // of listener, and a test reaches the printer listener by connecting to its port. That keeps the
             // production path free of test seams: nothing in Homespool.Host consults the Host header,
             // here or anywhere.
             services.AddSingleton<IStartupFilter>(

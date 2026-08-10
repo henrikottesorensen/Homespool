@@ -61,7 +61,7 @@ public sealed class PrinterCertificateHealthCheckTests : IDisposable
     }
 
     /// <summary>
-    /// A certificate covering the address printers are told to dial is healthy, whatever else this
+    /// A certificate covering the address printers are told to use is healthy, whatever else this
     /// machine happens to have.
     /// </summary>
     /// <remarks>

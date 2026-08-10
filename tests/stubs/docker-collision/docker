@@ -1,0 +1,22 @@
+#!/bin/sh
+# Five networks. 172.28.0.0/16 carries this stack's own compose label, so it must be excluded -
+# offering it back would have the wizard propose moving off a range only it is using. 172.16-172.19
+# are other stacks, which is what leaves 172.20 as the first genuinely free /16.
+case "$*" in
+    *"--filter label=com.docker.compose.network=homespool -q"*)
+        echo "netours"
+        ;;
+    "network ls -q")
+        echo "netours"
+        echo "net17"
+        echo "net16"
+        echo "net18"
+        echo "net19"
+        ;;
+    *"network inspect netours"*) echo "172.28.0.0/16" ;;
+    *"network inspect net17"*)   echo "172.17.0.0/16" ;;
+    *"network inspect net16"*)   echo "172.16.0.0/16" ;;
+    *"network inspect net18"*)   echo "172.18.0.0/16" ;;
+    *"network inspect net19"*)   echo "172.19.0.0/16" ;;
+    *"volume ls"*) ;;
+esac

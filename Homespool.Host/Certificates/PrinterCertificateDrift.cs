@@ -43,7 +43,7 @@ public static class PrinterCertificateDrift
     /// The verdict on a certificate described by these facts.
     /// </summary>
     /// <param name="tlsEnabled">Whether printers use TLS at all.</param>
-    /// <param name="configuredHost">The address printers are told to dial, or null if none is set.</param>
+    /// <param name="configuredHost">The address printers are told to use, or null if none is set.</param>
     /// <param name="covered">What the certificate vouches for.</param>
     /// <param name="current">What a certificate issued now would cover.</param>
     /// <param name="leafExpires">When the leaf expires, or null if there is none.</param>
@@ -79,7 +79,7 @@ public static class PrinterCertificateDrift
         {
             return new(PrinterCertificateState.ConfiguredAddressUncovered,
                 $"The printer certificate does not cover {configuredHost.Trim()}, which is the address printers are "
-                + $"told to dial. It covers {Describe(covered)}. No provisioning bundle can be produced for that "
+                + $"told to use. It covers {Describe(covered)}. No provisioning bundle can be produced for that "
                 + "address until the certificate is reissued: Admin -> Printer certificate.");
         }
 

@@ -25,7 +25,7 @@ afternoon in qemu.
 | `Dockerfile.builder` | Debian trixie + `rpi-image-gen`, pinned to a SHA. Its supported host is Debian arm64, which macOS is not — hence a container |
 | `config/homespool-pi3.yaml` | the image definition: board, partition sizes, which layers |
 | `layer/homespool.yaml` | our layer — puts the stack at `/opt/homespool` and enables the boot unit |
-| `files/homespool-firstboot.*` | what runs on the board: load images, write `.env`, `compose up` |
+| `files/homespool-firstboot.service` | what runs on the board: `setup-env.sh --no-prompt --no-overwrite`, then `compose up` |
 
 The container images are **baked into the card's Docker store**, not pulled and not loaded on the
 board. `build.sh` splits the image build in two (`-f`, then `-i`) and, in between, points a real
@@ -42,12 +42,19 @@ Nothing is published to a registry yet; when there is a tagged release the `dock
 
 ## The two things that surprise people
 
-**`PRINTER_HOST` is decided on the Pi, not here.** It is the address printers dial and the one the
+**`PRINTER_HOST` is decided on the Pi, not here.** It is the address printers use and the one the
 printer certificate covers, and it is minted once on first start and then frozen. An image cannot
-know it — but a *booted* Pi can, because it is its own address, which is what
-`homespool-firstboot.sh` writes into `.env`. The sharp edge is DHCP: if the lease moves, the
-certificate stops covering the machine and wants a reissue (Admin → Printer certificate). **Give the
-board a static lease** before enrolling a printer you care about.
+know it — but a *booted* Pi can, because it is its own address, which is what the boot unit writes
+into `.env` by running `setup-env.sh --no-prompt --no-overwrite`. The sharp edge is DHCP: if the
+lease moves, the certificate stops covering the machine and wants a reissue (Admin → Printer
+certificate). **Give the board a static lease** before enrolling a printer you care about.
+
+`--no-overwrite` is why a moved lease does not quietly make things worse: the address is written on
+the boot that finds `PRINTER_HOST` empty and never rewritten afterwards, so `.env` cannot drift away
+from the certificate on its own. A board that genuinely moved needs the reissue either way.
+
+The same script is how you change anything later — `cd /opt/homespool && ./setup-env.sh` over SSH
+walks through the settings and leaves everything it did not ask about untouched.
 
 **Raspberry Pi Imager's personalisation does not apply to this image.** Its hostname/user/SSH
 settings rely on first-boot machinery that ships in Raspberry Pi OS and not here — verified, not

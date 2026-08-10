@@ -21,7 +21,12 @@ notes
 private-captures/
 
 # Local compose secrets (SMTP password etc.) - never commit
+# .env holds SMTP_PASSWORD and GO2RTC_PASSWORD and is the one file here with no commit behind it.
+# The glob covers what setup-env.sh writes beside it (.env.backup-*) and whatever anybody moves aside
+# by hand - .env.old and .env.bak were both committable while only the bare name was listed.
 .env
+.env.*
+!.env.example
 
 # Captured server output. Verbose logging carries fingerprints and printer identifiers, so these
 # stay local even though they hold no credential outright (the registration code is deliberately

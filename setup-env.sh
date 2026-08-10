@@ -1297,6 +1297,24 @@ apply() {
         say "Created $env_file from .env.example."
     fi
 
+    # A copy before anything is written, because .env is the one file here with nothing behind it:
+    # it is gitignored, so there is no commit to go back to, and it holds SMTP_PASSWORD and
+    # GO2RTC_PASSWORD. Every other mistake in this repository is recoverable and this one is not.
+    #
+    # Timestamped rather than a single .env.bak so a second run does not eat the first backup - which
+    # is exactly when somebody is fixing a wrong answer and most wants the one before it. Taken on
+    # every run that gets this far, including one that changes nothing: a spare copy is litter, and
+    # litter is cheaper than the alternative.
+    #
+    # Created with the mode already set rather than chmod'ed afterwards, so the secrets are never on
+    # disk world-readable, even briefly.
+    if [ -f "$env_file" ]; then
+        local backup
+        backup="$env_file.backup-$(date +%Y%m%d-%H%M%S)"
+        ( umask 077 && cat "$env_file" > "$backup" ) \
+            && say "Kept a copy of your previous settings at $(basename "$backup")."
+    fi
+
     # The pending pairs, escaped, in a file of their own so awk can read them as its first input.
     # One pass over .env rather than one pass per key: the old shape rewrote the whole file once for
     # every answer, which is six rewrites of a 190-line file to change six lines.

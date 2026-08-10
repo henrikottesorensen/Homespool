@@ -115,6 +115,8 @@ reset_state() {
     pending=""
     dry_run=false
     non_interactive=false
+    no_prompt=false
+    no_overwrite=false
     docker_subnets_cache=""
     docker_subnets_cached=false
     PATH="$real_path"
@@ -123,9 +125,12 @@ reset_state() {
 # A PATH holding only this case's stubs plus the real utilities the script actually calls. Anything
 # not named here is genuinely absent, which is the point: `command -v ip` has to be able to fail.
 sandbox_path() {
-    local bin tool src stubs
+    local bin tool src stubs stub
     bin="$(mktemp -d "${TMPDIR:-/tmp}/setup-env-bin.XXXXXX")"
-    for tool in awk sed grep tr head cat seq mktemp chmod cp rm base64 stty sort uniq; do
+    # Everything the script shells out to. A missing one is not a soft failure: the script derives
+    # its own directory with dirname on line one, so an absent dirname breaks it before it starts.
+    for tool in awk sed grep tr head cat seq mktemp chmod cp rm base64 stty sort uniq \
+                dirname basename ln mkdir openssl getent hostname; do
         src="$(PATH="$system_path" command -v "$tool" 2>/dev/null)" \
             || src="$(PATH="$real_path" command -v "$tool" 2>/dev/null)" \
             || continue
@@ -133,9 +138,18 @@ sandbox_path() {
     done
     # Several stub sets can be layered - "linux docker-collision" is a Linux host whose daemon
     # answers, which is a different case from either on its own.
+    #
+    # The destination is REMOVED before each copy, and that is not tidiness: the entries above are
+    # symlinks to real binaries, and `cp` over a symlink follows it and writes to the target. A stub
+    # sharing a name with a tool in that list - hostname does - would otherwise overwrite the actual
+    # binary in /usr/bin.
     for stubs in "$@"; do
         [ -d "$tests_dir/stubs/$stubs" ] || continue
-        cp "$tests_dir/stubs/$stubs"/* "$bin/"
+        for stub in "$tests_dir/stubs/$stubs"/*; do
+            [ -f "$stub" ] || continue
+            rm -f "$bin/$(basename "$stub")"
+            cp "$stub" "$bin/"
+        done
     done
     chmod +x "$bin"/* 2>/dev/null || true
     PATH="$bin"
@@ -447,6 +461,133 @@ if test_case "apply tightens the mode on a file holding a password"; then
     # `stat -f` there means "describe the filesystem" and prints a block report rather than a mode.
     mode="$(stat -c '%a' "$env_file" 2>/dev/null || stat -f '%Lp' "$env_file")"
     assert_eq "600" "$mode" "not world-readable"
+fi
+
+# ------------------------------------------------------------------------------------------------
+# --no-prompt and --no-overwrite
+#
+# The combination a systemd unit runs on every boot with no stamp file.
+# ------------------------------------------------------------------------------------------------
+
+if test_case "no-overwrite treats empty as a blank and a value as an answer"; then
+    # PRINTER_HOST= is present and empty, and filling it in is the entire point on a board setting
+    # itself up. SMTP_HOST= is empty *deliberately* - it means "no outgoing mail". Both are empty;
+    # only one is an answer. Getting this backwards would either refuse to configure the Pi at all or
+    # silently re-enable mail somebody turned off.
+    use_temp_env "PRINTER_HOST=
+SMTP_HOST=
+USER_HOST=localhost" "PRINTER_HOST=
+SMTP_HOST=
+USER_HOST=already.chosen"
+    no_overwrite=true
+
+    plan_set PRINTER_HOST 192.168.13.238
+    plan_set SMTP_HOST mail.example.com
+    plan_set USER_HOST detected.local
+
+    assert_contains "$pending" "PRINTER_HOST=192.168.13.238" "an empty key is a blank to fill"
+    assert_contains "$pending" "SMTP_HOST=mail.example.com" "so is a deliberately empty one"
+    case "$pending" in
+        *USER_HOST*) fail "overwrote a key that already carried a value" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
+fi
+
+if test_case "no-overwrite is not fooled by .env.example's defaults"; then
+    # env_get falls back to the example, where every documented default is non-empty - so a check
+    # written against it would treat every unset key as already answered and fill in nothing at all.
+    use_temp_env "USER_HOST=localhost
+TZ=UTC" "PRINTER_HOST=192.168.13.238"
+    no_overwrite=true
+    plan_set USER_HOST detected.local
+    plan_set TZ Europe/Copenhagen
+    assert_contains "$pending" "USER_HOST=detected.local" "absent from .env, so it is a blank"
+    assert_contains "$pending" "TZ=Europe/Copenhagen" "likewise"
+fi
+
+if test_case "no-overwrite applies to --set as well"; then
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/setup-env-e2e.XXXXXX")"
+    cp "$repo_root/.env.example" "$repo_root/setup-env.sh" "$dir/"
+    "$BASH" "$dir/setup-env.sh" --set PRINTER_HOST=first.lan >/dev/null 2>&1
+    "$BASH" "$dir/setup-env.sh" --set PRINTER_HOST=second.lan --no-overwrite >/dev/null 2>&1
+    assert_contains "$(grep '^PRINTER_HOST=' "$dir/.env")" "first.lan" "the existing value stood"
+fi
+
+if test_case "no-prompt answers from detection and fills only blanks"; then
+    sandbox_path linux docker-collision
+    use_temp_env "PRINTER_HOST=
+USER_HOST=localhost
+TZ=UTC
+GO2RTC_USERNAME=
+GO2RTC_PASSWORD=" "PRINTER_HOST=
+USER_HOST=already.chosen"
+    no_overwrite=true
+    auto_answer >/dev/null 2>&1
+
+    assert_contains "$pending" "PRINTER_HOST=192.168.13.238" "took the detected address"
+    case "$pending" in
+        *USER_HOST*) fail "overwrote the name somebody had already chosen" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
+    assert_contains "$pending" "GO2RTC_PASSWORD=" "generated the camera credential"
+fi
+
+if test_case "no-prompt is fatal when no address can be found"; then
+    # The behaviour the systemd unit depends on. A run that exits 0 having done nothing is recorded
+    # by RemainAfterExit=yes as *Finished, successfully* and never retried - which is how a board
+    # ended up with a working network, no stack, and a cable plugged in five minutes too late.
+    #
+    # The bsd stubs offer no usable address once loopback and link-local are dropped.
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/setup-env-e2e.XXXXXX")"
+    cp "$repo_root/.env.example" "$repo_root/setup-env.sh" "$dir/"
+    mkdir -p "$dir/bin"
+    printf '#!/bin/sh\necho "127.0.0.1"\n' > "$dir/bin/hostname"
+    printf '#!/bin/sh\nexit 1\n' > "$dir/bin/ip"
+    chmod +x "$dir/bin"/*
+    out="$(PATH="$dir/bin:$system_path" "$BASH" "$dir/setup-env.sh" --no-prompt --no-overwrite 2>&1)"
+    status=$?
+    assert_eq "1" "$status" "exits non-zero so a supervisor retries"
+    assert_contains "$out" "no address" "and says why"
+    if [ -f "$dir/.env" ]; then
+        fail "wrote a .env despite having no address to put in it"
+    else
+        passed=$((passed + 1))
+    fi
+fi
+
+if test_case "dry-run composes with the unattended flags"; then
+    # "Show me what the board would do" before flashing a card, and the one combination where a
+    # mistake is expensive to discover later.
+    #
+    # Driven through the stubs rather than the host's real network: in a container there is no
+    # docker and the only address is inside 172.16/12, so --no-prompt correctly refuses and the
+    # test would be asserting on the wrong path.
+    sandbox_path linux docker-collision
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/setup-env-e2e.XXXXXX")"
+    cp "$repo_root/.env.example" "$repo_root/setup-env.sh" "$dir/"
+    out="$("$BASH" "$dir/setup-env.sh" --no-prompt --no-overwrite --dry-run 2>&1)"
+    assert_contains "$out" "192.168.13.238" "answered from detection"
+    assert_contains "$out" "nothing written" "and said it wrote nothing"
+    if [ -f "$dir/.env" ]; then
+        fail "a dry run created .env"
+    else
+        passed=$((passed + 1))
+    fi
+fi
+
+if test_case "no-prompt on every boot is idempotent"; then
+    # The property that lets a unit call this unconditionally with no stamp file.
+    sandbox_path linux docker-collision
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/setup-env-e2e.XXXXXX")"
+    cp "$repo_root/.env.example" "$repo_root/setup-env.sh" "$dir/"
+
+    "$BASH" "$dir/setup-env.sh" --no-prompt --no-overwrite >/dev/null 2>&1
+    assert_contains "$(cat "$dir/.env")" "PRINTER_HOST=192.168.13.238" "the first boot configured it"
+    first="$(cat "$dir/.env")"
+
+    out="$("$BASH" "$dir/setup-env.sh" --no-prompt --no-overwrite 2>&1)"
+    assert_contains "$out" "Nothing to change" "the second boot plans nothing"
+    assert_eq "$first" "$(cat "$dir/.env")" "and changes nothing"
 fi
 
 # ------------------------------------------------------------------------------------------------

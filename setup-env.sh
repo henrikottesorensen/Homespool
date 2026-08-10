@@ -4,7 +4,16 @@
 #
 #   ./setup-env.sh                          # ask, show what would change, then write
 #   ./setup-env.sh --set PRINTER_HOST=...   # set keys directly, no questions
+#   ./setup-env.sh --no-prompt              # answer from what this machine can detect
+#   ./setup-env.sh --no-overwrite           # only fill in settings that have no value yet
 #   ./setup-env.sh --dry-run                # say what would change and write nothing
+#
+# The last two are independent, and the unattended case wants BOTH:
+#
+#   ./setup-env.sh --no-prompt --no-overwrite
+#
+# --no-prompt alone re-detects and overwrites, which on every boot means a moved DHCP lease silently
+# rewriting PRINTER_HOST under a certificate that was minted once and cannot follow it.
 #
 # Every variable in compose.yaml carries its own default, so .env only ever needs to hold what
 # differs. That is what makes this safe to run on a file somebody has already edited: it patches the
@@ -24,6 +33,14 @@ env_file="$repo_root/.env"
 example_file="$repo_root/.env.example"
 
 dry_run=false
+
+# Answer from detection instead of asking, and never change a key that already carries a value.
+# Independent on purpose - all four combinations mean something, and the boot-time case wants both.
+no_prompt=false
+no_overwrite=false
+
+# KEY=VALUE pairs from --set, held until every flag has been read. See the argument loop.
+set_args=""
 # Whether any --set was given, which is what turns the questions off. Tracked separately from the
 # pending list because `--set` with a value identical to the current one leaves that list empty, and
 # that must still mean "you asked for non-interactive" rather than "ask me everything".
@@ -92,8 +109,29 @@ key_present() {
     awk -v key="$key" 'index($0, key "=") == 1 { found = 1 } END { exit found ? 0 : 1 }' "$file"
 }
 
+# Whether a key already carries a real answer, as opposed to being absent or blank.
+#
+# The distinction is the whole of --no-overwrite and it is easy to get backwards. A seeded .env has
+# `PRINTER_HOST=` - present, and empty - and filling that in is the entire point on a board setting
+# itself up. But `SMTP_HOST=` is empty *deliberately*, meaning "no outgoing mail". Both are empty;
+# only one is an answer. So: empty counts as a blank to fill, and only a non-empty value is
+# protected, which is why this reads .env directly rather than through env_get - env_get falls back
+# to .env.example, and every documented default there is non-empty.
+env_value_set() {
+    [ -n "$(file_get "$env_file" "$1")" ]
+}
+
 plan_set() {
     local key="$1" value="$2"
+
+    # Applied to every source, including --set. Naming a value explicitly is an instruction, so
+    # exempting --set is tempting - but "apply these defaults without clobbering anything" is a
+    # useful thing to be able to say, and one rule is easier to reason about than a rule with an
+    # exception. Drop the flag to force it.
+    if $no_overwrite && env_value_set "$key"; then
+        return 0
+    fi
+
     # A change to the value it already holds is not a change. Filtering here rather than at the
     # summary keeps "nothing to do" a real, reachable outcome instead of a diff full of no-ops.
     #
@@ -268,7 +306,7 @@ lan_addresses() {
 # always has at least the default bridge.
 #
 # So the fallback is the Pi's rule: exclude Docker's whole default pool, and say why. Conservative
-# and loud, on the same reasoning homespool-firstboot.sh gives for excluding the block outright -
+# and loud, on the same reasoning the Pi's first-boot path had for excluding the block outright -
 # and here the operator can still type an address by hand, so nothing is actually blocked.
 unreachable_ranges() {
     local subnets
@@ -474,16 +512,8 @@ resolve_host() {
 
 ask_user_host() {
     say
-    local current suggestion
-    current="$(env_get USER_HOST)"
-    suggestion="$current"
-    if [ "$current" = localhost ]; then
-        suggestion="$(hostname 2>/dev/null || echo localhost)"
-        case "$suggestion" in
-            *.*) : ;;
-            *) suggestion="$suggestion.local" ;;
-        esac
-    fi
+    local suggestion
+    suggestion="$(suggested_user_host)"
     say "The name people type in a browser. Cosmetic - it names the self-signed certificate, and a"
     say "browser warns about that certificate whatever name it carries."
     plan_set USER_HOST "$(ask "  Name" "$suggestion")"
@@ -494,6 +524,22 @@ ask_timezone() {
     say "The zone timestamps are shown in. The conversion happens on the server, so this decides what"
     say "print history reads and what an invitation email says its expiry is."
     plan_set TZ "$(ask "  Timezone" "$(prefer_current TZ "$(detect_timezone)")")"
+}
+
+# This machine's own name, mDNS-qualified, which is the answer on a board handed its address by
+# DHCP: the lease can move and the name still resolves. Anything already chosen wins over it.
+suggested_user_host() {
+    local current suggestion
+    current="$(env_get USER_HOST)"
+    if [ -n "$current" ] && [ "$current" != localhost ]; then
+        echo "$current"
+        return 0
+    fi
+    suggestion="$(hostname 2>/dev/null || echo localhost)"
+    case "$suggestion" in
+        *.*) echo "$suggestion" ;;
+        *) echo "$suggestion.local" ;;
+    esac
 }
 
 # An existing setting beats a detected one: somebody who has already chosen is not asking to be
@@ -615,6 +661,66 @@ random_password() {
     elif [ -r /dev/urandom ]; then
         head -c 24 /dev/urandom | base64
     fi
+}
+
+# ------------------------------------------------------------------------------------------------
+# Answering without being asked
+#
+# What a machine can work out about itself, taken as the answer. With --no-overwrite this fills in
+# blanks and touches nothing else, which is what makes it safe for a systemd unit to run on every
+# boot with no "have I done this before" stamp file.
+# ------------------------------------------------------------------------------------------------
+auto_answer() {
+    local address creating=false
+    [ -f "$env_file" ] || creating=true
+
+    # THIS MUST BE FATAL, and the reason is a bug this project shipped. The unit is
+    # RemainAfterExit=yes, so a run that exits 0 having done nothing is recorded as *Finished,
+    # successfully* and never retried - a board sat with a working network and no stack until it was
+    # power-cycled, because the ethernet cable went in five minutes after the one attempt. Failing
+    # is what lets Restart=on-failure turn that into the self-healing case.
+    address="$(lan_addresses | head -1)"
+    if [ -z "$address" ]; then
+        echo "setup-env.sh: no address found that a printer could reach - not writing anything." >&2
+        echo "setup-env.sh: this is the normal state before the network is up. Exiting non-zero so" >&2
+        echo "setup-env.sh: a supervisor retries rather than recording a success." >&2
+        exit 1
+    fi
+
+    say "Detected $address as the address printers reach this server on."
+    plan_set PRINTER_HOST "$address"
+    plan_set USER_HOST "$(suggested_user_host)"
+    plan_set TZ "$(detect_timezone)"
+    ensure_go2rtc_credential
+
+    # Only while creating the file. Moving the compose network under a stack that is already running
+    # is not something to do unattended, and after the first write the answer is somebody's - even if
+    # it was this function's.
+    $creating && auto_move_subnet
+    return 0
+}
+
+# The unattended half of check_subnet_collision: same question, but nobody to ask, so it takes the
+# first free range and says loudly which one and why.
+auto_move_subnet() {
+    local subnet colliding candidate
+    subnet="$(env_get PROXY_SUBNET)"
+    [ -n "$subnet" ] || return 0
+
+    colliding="$(overlaps_any "$subnet" <<< "$(allocated_ranges)")" || true
+    [ -n "$colliding" ] || return 0
+
+    candidate="$(free_subnet)"
+    if [ -z "$candidate" ]; then
+        warn "The compose network $subnet collides with $(echo "$colliding" | tr '\n' ' ')and every"
+        warn "/16 from 172.16 to 172.31 is taken. Set PROXY_SUBNET and PROXY_NETWORK by hand."
+        return 0
+    fi
+
+    say "The compose network $subnet collides with $(echo "$colliding" | tr '\n' ' ')- using"
+    say "$candidate instead."
+    plan_set PROXY_SUBNET "$candidate"
+    plan_set PROXY_NETWORK "$candidate"
 }
 
 # The subnet is not a question - it is right until it collides with something, and the operator has
@@ -827,18 +933,22 @@ main() {
         case "$1" in
             --set)
                 case "${2:-}" in
-                    # Through plan_set, so that --set with the value the file already holds is correctly
-                    # nothing rather than a rewrite of the same line - which is what makes this safe to
-                    # run unconditionally from another script on every boot.
-                    *=*) plan_set "${2%%=*}" "${2#*=}"; non_interactive=true; shift 2 ;;
+                    # Collected, not applied. plan_set consults --no-overwrite, so acting here would
+                    # make the answer depend on the order the flags were typed in:
+                    # `--set X=1 --no-overwrite` would overwrite and `--no-overwrite --set X=1`
+                    # would not. Every flag is read before anything is decided.
+                    *=*) set_args="$set_args$2
+"; non_interactive=true; shift 2 ;;
                     *) echo "setup-env.sh: --set wants KEY=VALUE" >&2; exit 2 ;;
                 esac
                 ;;
+            --no-prompt) no_prompt=true; shift ;;
+            --no-overwrite) no_overwrite=true; shift ;;
             --dry-run) dry_run=true; shift ;;
-            # 2,8 rather than a fixed larger range: the usage block ends at the --dry-run line, and a
-            # range that runs past it prints half a paragraph about compose defaults. Extend when the
-            # header does.
-            -h|--help) sed -n '2,8p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+            # 2,16 rather than a fixed larger range: the usage block ends at the DHCP warning, and a
+            # range past it prints half a paragraph about compose defaults while one short of it cuts
+            # a sentence in half. Extend when the header does - and check the output, not the count.
+            -h|--help) sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
             *) echo "setup-env.sh: unknown argument: $1" >&2; exit 2 ;;
         esac
     done
@@ -848,10 +958,21 @@ main() {
         exit 1
     fi
 
-    if ! $non_interactive; then
+    # Now that every flag has been read. Through plan_set, so a --set naming the value the file
+    # already holds is correctly nothing rather than a rewrite of the same line.
+    if [ -n "$set_args" ]; then
+        while IFS= read -r pair; do
+            [ -n "$pair" ] || continue
+            plan_set "${pair%%=*}" "${pair#*=}"
+        done <<< "$set_args"
+    fi
+
+    if $no_prompt; then
+        auto_answer
+    elif ! $non_interactive; then
         if [ ! -t 0 ]; then
-            echo "setup-env.sh: nothing to read answers from. Use --set KEY=VALUE to configure" >&2
-            echo "non-interactively." >&2
+            echo "setup-env.sh: nothing to read answers from. Use --no-prompt to answer from" >&2
+            echo "detection, or --set KEY=VALUE to configure explicitly." >&2
             exit 1
         fi
 
@@ -887,18 +1008,22 @@ main() {
         exit 0
     fi
 
-    if ! $non_interactive; then
+    if ! $non_interactive && ! $no_prompt; then
         say
         ask_yes_no "Write these" y || { say "Nothing written."; exit 0; }
     fi
 
     apply
 
-    say
-    say "Written. Bring the stack up with:"
-    say
-    say "    docker compose up -d"
-    say
+    # A caller that did not ask for a walkthrough does not want to be told what to type next - the
+    # unit that runs --no-prompt brings the stack up itself, on the line after this one.
+    if ! $no_prompt; then
+        say
+        say "Written. Bring the stack up with:"
+        say
+        say "    docker compose up -d"
+        say
+    fi
 
 }
 

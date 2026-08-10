@@ -108,10 +108,15 @@ If you would rather do it by hand, `cp .env.example .env` and edit — the file 
 setting, and every one of them has a default in `compose.yaml`, so `.env` only needs to hold what
 differs.
 
-**On Windows**, run `.\setup-env.ps1` instead. Windows has no bash, so it runs the same script
-inside Homespool's own image; it needs the image built first, and it will say so. Detection has to
-happen on the Windows side — neither a container nor WSL2 can see the host's LAN address — so the
+**On Windows with Docker Desktop**, run `.\setup-env.ps1` instead. Windows has no bash, so it runs
+the same script inside Homespool's own image; it needs the image built first, and it will say so.
+Detection has to happen on the Windows side — a container cannot see the host's LAN address — so the
 PowerShell script supplies that and nothing else.
+
+**On Windows without Docker Desktop** — it requires build 19045, which Windows 10 LTSC 2021 can
+never reach — install WSL2 and Docker Engine inside the distro, then run `./setup-env.sh` there
+normally. It recognises WSL and asks Windows for the addresses itself, because detection inside WSL
+would otherwise answer about the NAT'd virtual machine rather than your network.
 
 That brings up two containers: the application, and an nginx that terminates TLS for both of its
 audiences. The database lives in a named volume (`homespool-data`) so it survives container

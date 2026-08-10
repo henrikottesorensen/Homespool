@@ -279,6 +279,41 @@ host_routes() {
 # a machine with several interfaces is the one actually carrying traffic. Everything else this host
 # holds follows it, because a print server on a network with no default route is an ordinary
 # deployment and that first answer is empty there.
+# Running under WSL, where `ip route get` answers about the wrong machine.
+#
+# WSL2 sits behind its own NAT'd virtual switch, so detection there returns the VM's 172.x address
+# just as it would inside a container - and that address is useless to a printer. Windows is where
+# the LAN address lives.
+#
+# The interop file is the reliable marker: it is what lets a Linux process here execute Windows
+# binaries, which is both how WSL is recognised and how the next function does its work, so a
+# machine that has one without the other cannot arise. `microsoft` in the kernel release is the
+# fallback for WSL1 and for a kernel built without binfmt registered.
+is_wsl() {
+    [ -e /proc/sys/fs/binfmt_misc/WSLInterop ] && return 0
+    case "$(uname -r 2>/dev/null)" in
+        *[Mm]icrosoft*) return 0 ;;
+    esac
+    return 1
+}
+
+# Windows' own addresses, asked of Windows, from inside WSL.
+#
+# This is the whole reason the WSL case needs no PowerShell wrapper and no container: WSL can run
+# Windows binaries directly, so the same script that works everywhere else can simply ask. It is the
+# route that matters on a machine where Docker Desktop will not install - Windows 10 LTSC 2021 is
+# pinned to build 19044 and Docker Desktop wants 19045 - because there, Docker Engine inside WSL is
+# not a preference but the only arrangement available.
+#
+# Get-NetIPAddress rather than ipconfig, whose output is localised: "IPv4 Address" is translated on
+# a German or Danish install, so a parser written against an English one silently finds nothing.
+# The trailing carriage returns are Windows'; strip them or every address fails to parse as one.
+windows_addresses() {
+    powershell.exe -NoProfile -NonInteractive -Command \
+        "Get-NetIPAddress -AddressFamily IPv4 | Select-Object -ExpandProperty IPAddress" 2>/dev/null \
+        | tr -d '\r'
+}
+
 lan_addresses() {
     {
         # Supplied from outside, because this is running somewhere that cannot see the answer.
@@ -294,6 +329,8 @@ lan_addresses() {
         # nothing.
         if [ -n "${HOMESPOOL_ADDRESSES:-}" ]; then
             echo "$HOMESPOOL_ADDRESSES" | tr ' ,' '\n\n'
+        elif is_wsl; then
+            windows_addresses
         elif command -v ip >/dev/null 2>&1; then
             ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.*src \([0-9.]*\).*/\1/p'
             hostname -I 2>/dev/null | tr ' ' '\n'

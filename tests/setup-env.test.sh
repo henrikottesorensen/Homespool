@@ -311,6 +311,32 @@ if test_case "lan_addresses drops what a printer cannot reach"; then
     done
 fi
 
+if test_case "under WSL it asks Windows rather than the VM"; then
+    # `ip route get` inside WSL answers about the NAT'd VM, so the address it returns is useless to
+    # a printer - the same failure as inside a container. WSL can execute Windows binaries, so the
+    # script asks Windows directly and needs no wrapper. This is the only route on a machine where
+    # Docker Desktop will not install.
+    sandbox_path linux wsl
+    marker="$(mktemp -d "${TMPDIR:-/tmp}/setup-env-wsl.XXXXXX")"
+    is_wsl() { return 0; }          # the interop file cannot be faked on a Mac
+    addresses="$(lan_addresses 2>/dev/null)"
+    unset -f is_wsl
+
+    assert_contains "$addresses" "192.168.13.50" "took the Windows LAN address"
+    for unusable in 172.28.112.1 172.17.240.1 127.0.0.1; do
+        case "$addresses" in
+            *"$unusable"*) fail "$unusable was offered - vEthernet or loopback" ;;
+            *) passed=$((passed + 1)) ;;
+        esac
+    done
+    # Windows line endings would otherwise ride along and make every address unparseable.
+    case "$addresses" in
+        *$'\r'*) fail "carriage returns survived into the address list" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
+    rm -rf "$marker"
+fi
+
 if test_case "HOMESPOOL_ADDRESSES supplies what a sandbox cannot see"; then
     # The Windows path: neither a container nor WSL2 can see the Windows host's LAN address, so
     # setup-env.ps1 asks Windows and passes the list in. It is a fact, not an answer - everything

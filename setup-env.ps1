@@ -16,6 +16,13 @@
     over a list of addresses and lets the wizard filter, rank, check and write. That division is the
     point: a second implementation of any of those would drift from the one that is tested.
 
+    IF DOCKER DESKTOP WILL NOT INSTALL, you do not need this script at all. Windows 10 LTSC 2021 is
+    the case that provokes it: Docker Desktop wants build 19045 and LTSC 2021 is pinned to 19044 for
+    its whole support life, so no edition change helps. The arrangement there is WSL2 with Docker
+    Engine inside it - WSL2 only needs build 18362 - and in that world bash is already present, so
+    run `./setup-env.sh` directly in the distro. It recognises WSL and asks Windows for the
+    addresses itself, through the same Windows-binary interop, so nothing is lost by skipping this.
+
 .PARAMETER Arguments
     Passed through to setup-env.sh unchanged - --no-prompt, --no-overwrite, --dry-run, --set, --help.
 

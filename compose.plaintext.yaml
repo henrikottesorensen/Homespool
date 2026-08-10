@@ -5,9 +5,9 @@
 # Set PRINTER_TLS=false in .env as well. Both are needed and they do different halves of one thing:
 # the variable tells the app to issue no leaf and to write `tls = false` into every provisioning ini,
 # and this file moves the published printer port off the proxy and onto the app so that what a
-# printer dials is a plain socket. With the variable set and this file forgotten, the proxy publishes
-# a printer port it will not serve - the entrypoint hook finds no leaf and says so - and printers
-# reach nothing.
+# printer connects to is a plain socket. With the variable set and this file forgotten, the proxy
+# publishes a printer port it will not serve - the entrypoint hook finds no leaf and says so - and
+# printers reach nothing.
 #
 # THIS IS NOT A DEPLOYMENT SETTING. Every printer token crosses the network in clear in both
 # directions: the one on the USB stick and the one issued at claim. It exists because a capture of
@@ -15,7 +15,7 @@
 # printer protocol. Use it on a network you control, for as long as the capture takes.
 #
 # The rigs under rig/ do not need this. They run the app directly rather than through Compose, and
-# rig/enrol.sh already dials the printer listener over plain http.
+# rig/enrol.sh already connects to the printer listener over plain http.
 
 services:
   printerservice:

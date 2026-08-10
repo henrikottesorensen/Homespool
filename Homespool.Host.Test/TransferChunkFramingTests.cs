@@ -122,7 +122,7 @@ public class TransferChunkFramingTests
     }
 
     /// <summary>
-    /// Frames stay large whatever transport the printer dialled over — the WebSocket cap is the only
+    /// Frames stay large whatever transport the printer connected over — the WebSocket cap is the only
     /// limit this process answers to.
     /// </summary>
     /// <remarks>

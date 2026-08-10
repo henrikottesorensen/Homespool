@@ -42,7 +42,7 @@
 ---
 mmdebstrap:
   packages:
-    # The Pi's address is what a printer has to dial and what the certificate has to cover, and on a
+    # The Pi's address is what a printer has to use and what the certificate has to cover, and on a
     # home LAN it is handed out by DHCP. mDNS means there is a name that survives the lease changing,
     # which is the difference between "it moved" and "it is gone".
     - avahi-daemon

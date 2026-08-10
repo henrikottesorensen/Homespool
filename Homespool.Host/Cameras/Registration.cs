@@ -29,7 +29,7 @@ public static class Registration
 
         // Both clients reach only the sidecar, on the Compose network. There is deliberately no
         // address policy on the handler any more: since Homespool stopped fetching camera sources
-        // itself, the only address these dial is one the operator configured, and the check that
+        // itself, the only address these connect to is one the operator configured, and the check that
         // matters moved to CameraSourcePolicy - which runs before a source is handed over.
         //
         // The credential is applied here rather than at each call site, so no request can be written

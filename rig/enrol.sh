@@ -28,7 +28,7 @@ BASE="${BASE:-http://localhost:5052}"
 # any ini - but it is no longer what makes this line work.
 #
 # There is no TLS path to point this at any more. To exercise one, put the shipped proxy in front:
-# `docker compose up` and dial its published printer port instead.
+# `docker compose up` and connect to its published printer port instead.
 PRINTER_BASE="${PRINTER_BASE:-http://localhost:15443}"
 EMAIL="${EMAIL:-rig@example.com}"
 PASSWORD="${PASSWORD:-Correct-Horse-Battery-Staple-1!}"

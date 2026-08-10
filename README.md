@@ -172,7 +172,7 @@ needs the `cd`.
 The database is created and migrated automatically on first start.
 
 > **This serves people, not printers.** Run from source, the printer listener is plain HTTP on
-> `15443` with nothing in front of it, so a printer configured with `tls = true` dials it and
+> `15443` with nothing in front of it, so a printer configured with `tls = true` connects to it and
 > fails. No setting fixes that — see [Printer TLS](docs/printer-tls.md). For printer work from
 > source you need either the Compose stack in front of it, or `PrusaConnect__PrinterTls=false`
 > with printers told the same, which is the testing path described under
@@ -217,7 +217,7 @@ Two ways, depending on whether the printer can already reach the server.
 Best when you are setting a printer up from scratch, or it has no way to reach the server yet.
 
 1. **Printers → Add printer (USB key)**, give it a name and location.
-2. Choose the address this printer should dial — the list is the names your printer certificate
+2. Choose the address this printer should use — the list is the names your printer certificate
    covers, and it defaults to `PrinterHost`.
 3. **Download provisioning bundle.** This is the only time the token is available.
 4. Unzip it onto the **root** of a USB stick — not into a folder, or the printer will find

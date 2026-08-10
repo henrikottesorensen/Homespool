@@ -62,14 +62,14 @@ services:
       Cameras__ApiUsername: "${GO2RTC_USERNAME:-}"
       Cameras__ApiPassword: "${GO2RTC_PASSWORD:-}"
 
-      # What a printer is told to dial for enrolment. PrinterHost is required for USB-key
+      # What a printer is told to use for enrolment. PrinterHost is required for USB-key
       # provisioning (Printers -> Add printer): the page cannot produce a usable ini snippet - and
       # refuses to - until it is set. It should also be one of the names in the certificate, which
       # is minted on first run over every address this machine could see then; if it is set before
       # the first start, it is covered by construction.
       #
       # PrinterPort is the host side of the printer mapping, which now belongs to the proxy - it is
-      # the number every provisioning bundle tells a printer to dial, so it must match whatever is
+      # the number every provisioning bundle tells a printer to use, so it must match whatever is
       # published there. PrinterTls is one switch for both ends - the tls line written into every ini,
       # and whether a leaf is issued for the proxy to present - so the two cannot disagree: with it
       # off nothing is issued, and the proxy has nothing to serve even if somebody wired it up anyway.
@@ -265,10 +265,10 @@ services:
       - "${PORT:-80}:8080"
       - "${HTTPS_PORT:-443}:8443"
 
-      # What a printer dials, and it must match PrusaConnect__PrinterPort above - that is the number
-      # written into every provisioning bundle. 15443 rather than 443 on both sides: containers here
-      # run as non-root users and cannot bind 443, and 443 on the host belongs to the browser, since a
-      # URL carrying a port number is a daily papercut while a printer's port is typed by nobody.
+      # What a printer connects to, and it must match PrusaConnect__PrinterPort above - that is the
+      # number written into every provisioning bundle. 15443 rather than 443 on both sides: containers
+      # here run as non-root users and cannot bind 443, and 443 on the host belongs to the browser,
+      # since a URL carrying a port number is a daily papercut while a printer's port is typed by no one.
       - "${PRINTER_PORT:-15443}:15443"
 
     environment:

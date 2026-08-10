@@ -76,7 +76,7 @@ public sealed class WebSocketPrinterConnection : IClosablePrinterConnection
     /// <param name="webSocket">The accepted socket, already upgraded.</param>
     /// <remarks>
     /// It used to take the transport as well, to size frames for it. It no longer needs to know: the
-    /// socket is plain HTTP to the proxy whatever a printer dialled, and the only party that has to
+    /// socket is plain HTTP to the proxy however a printer connected, and the only party that has to
     /// care about TLS record sizes is the one holding the TLS session. See
     /// <see cref="MaxFramePayload"/>.
     /// </remarks>

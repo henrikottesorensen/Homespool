@@ -9,7 +9,7 @@ using Homespool.Host.Certificates;
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// What first-run setup offers as the address printers should dial.
+/// What first-run setup offers as the address printers should use.
 /// </summary>
 /// <remarks>
 /// These are suggestions rather than a decision, deliberately: detection reports what is true now,

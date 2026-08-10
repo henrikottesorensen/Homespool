@@ -9,7 +9,7 @@ using Homespool.Host.PrusaConnect;
 namespace Homespool.Host.Certificates;
 
 /// <summary>
-/// Every name a printer might be told to dial this server by — what a certificate issued right now
+/// Every name a printer might be told to reach this server by — what a certificate issued right now
 /// would cover.
 /// </summary>
 /// <remarks>

@@ -32,7 +32,7 @@ namespace Homespool.Host.Pages.Admin;
 /// <para>
 /// <b>Reissuing the leaf is a small act, and it is worth knowing why.</b> Printers trust the
 /// <i>authority</i>, not this certificate, so a new leaf needs nothing at any printer - no USB visit,
-/// no re-provisioning, not even a new bundle unless the address they were told to dial has changed.
+/// no re-provisioning, not even a new bundle unless the address they were told to use has changed.
 /// That asymmetry is the entire reason this deployment mints a CA and a leaf rather than one
 /// self-signed certificate.
 /// </para>
@@ -65,7 +65,7 @@ public class CertificateModel : PageModel
     /// <summary>Whether printers use TLS at all. With it off there is no certificate to show.</summary>
     public bool TlsEnabled => _connect.PrinterTls;
 
-    /// <summary>The address printers are told to dial, or null if none is configured.</summary>
+    /// <summary>The address printers are told to use, or null if none is configured.</summary>
     public string? ConfiguredHost => _connect.IsPrinterAddressConfigured ? _connect.PrinterHost.Trim() : null;
 
     /// <summary>What the current certificate vouches for. Empty when none has been issued.</summary>
@@ -116,7 +116,7 @@ public class CertificateModel : PageModel
     /// <b>A reissue can narrow the certificate, and that is the one way this button can break a
     /// working printer.</b> Names are filtered at issuance to what a printer could actually reach, so
     /// a name detected once and no longer resolvable is dropped — correctly, since it vouches for
-    /// nothing. But a printer provisioned with that name in its ini is still dialling it, and after
+    /// nothing. But a printer provisioned with that name in its ini is still connecting to it, and after
     /// the reissue and the proxy reload its handshake fails on a leaf that no longer covers the name
     /// it asked for. mbedTLS reports that as a bare TLS error naming neither the name nor the
     /// certificate, and the fix is a USB visit to repoint that printer.
@@ -132,7 +132,7 @@ public class CertificateModel : PageModel
         [.. Covered.Where(name => !Current.Contains(name, StringComparer.OrdinalIgnoreCase))];
 
     /// <summary>
-    /// True when the address printers are actually told to dial is absent from the certificate — the
+    /// True when the address printers are actually told to use is absent from the certificate — the
     /// drift that stops provisioning outright rather than merely one address working.
     /// </summary>
     public bool ConfiguredHostUncovered =>
@@ -201,14 +201,14 @@ public class CertificateModel : PageModel
         if (kept.Length > 0)
         {
             _logger.LogInformation("The reissued printer certificate keeps {Kept} at the administrator's request, "
-                                   + "although this machine no longer answers on those names. Printers already dialling "
+                                   + "although this machine no longer answers on those names. Printers already connected to "
                                    + "them keep working; nothing else does.", string.Join(", ", kept));
         }
 
         if (dropped.Length > 0)
         {
             _logger.LogWarning("The reissued printer certificate NO LONGER covers {Dropped}, which the previous one "
-                               + "did. Any printer whose ini tells it to dial one of those names will fail its "
+                               + "did. Any printer whose ini tells it to use one of those names will fail its "
                                + "handshake once the proxy is reloaded, reporting a bare TLS error, and needs a USB "
                                + "visit to repoint it. They were dropped because this machine no longer answers on "
                                + "them and were not ticked to keep.", string.Join(", ", dropped));

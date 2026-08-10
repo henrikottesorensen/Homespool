@@ -362,7 +362,7 @@ public static class Program
             // socket and no header changes it. It also has to be the port here, because this runs
             // before routing and there is no endpoint to ask yet.
             //
-            // The exception is PrinterTls=false, where printers dial that port directly again and the
+            // The exception is PrinterTls=false, where printers connect to that port directly again and the
             // header goes back to being written by whoever connected. One setting, both ends.
             //
             // Registered ONLY when something is actually trusted. Clearing the framework's known
@@ -714,7 +714,7 @@ public static class Program
     /// It also decides whether forwarded headers are honoured on the printer listener — see
     /// <see cref="AddForwardedHeaders"/>. With nginx in front, <c>X-Real-IP</c> on that listener comes
     /// from the proxy and nothing else can reach the port; without it, a printer connects directly and
-    /// the same header is written by whoever dialled.
+    /// the same header is written by whoever connected.
     /// </para>
     /// </remarks>
     private static bool PrinterTransportIsSecure(IServiceProvider services)
@@ -736,7 +736,7 @@ public static class Program
     }
 
     /// <summary>
-    /// Every name a printer might be told to dial this server by, for the first run's leaf.
+    /// Every name a printer might be told to reach this server by, for the first run's leaf.
     /// </summary>
     /// <remarks>
     /// <para>

@@ -40,7 +40,7 @@ public static class ForwardedHeaderScope
     /// </para>
     /// <para>
     /// <b>The printer listener only when nginx stands in front of it</b>, which reverses what decision
-    /// 3a recorded and does so because the fact under it changed. Printers used to dial Kestrel
+    /// 3a recorded and does so because the fact under it changed. Printers used to connect to Kestrel
     /// directly, so an <c>X-Real-IP</c> on that listener was written by whoever connected and honouring
     /// it would have let a printer — or anything holding a stolen printer token — claim any address it
     /// liked in the logs and in anything keyed on address. Once the proxy terminates printer TLS the

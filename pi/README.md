@@ -42,7 +42,7 @@ Nothing is published to a registry yet; when there is a tagged release the `dock
 
 ## The two things that surprise people
 
-**`PRINTER_HOST` is decided on the Pi, not here.** It is the address printers dial and the one the
+**`PRINTER_HOST` is decided on the Pi, not here.** It is the address printers use and the one the
 printer certificate covers, and it is minted once on first start and then frozen. An image cannot
 know it — but a *booted* Pi can, because it is its own address, which is what
 `homespool-firstboot.sh` writes into `.env`. The sharp edge is DHCP: if the lease moves, the

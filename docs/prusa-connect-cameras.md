@@ -347,7 +347,7 @@ server. A full TCP port scan of the camera immediately afterwards returned **all
 
 Two consequences worth knowing:
 
-- **In WebRTC mode the camera has no inbound TCP surface.** It is purely outbound: it dials the
+- **In WebRTC mode the camera has no inbound TCP surface.** It is purely outbound: it connects to the
   socket.io signalling server and negotiates ephemeral UDP via ICE. Good security posture, but it
   means nothing on the LAN can reach it, and there is no local stream to consume.
 - **Reading video off the camera locally requires RTSP mode.** `rtsp://<camera-ip>/live` — the path

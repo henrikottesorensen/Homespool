@@ -94,7 +94,7 @@ public sealed class ProvisioningBundleBuilder
     }
 
     /// <summary>
-    /// Whether an address is one a printer on the household LAN could actually dial.
+    /// Whether an address is one a printer on the household LAN could actually reach.
     /// </summary>
     /// <remarks>
     /// Everything a printer cannot use, for the same reason: IPv6 because the firmware's stack does

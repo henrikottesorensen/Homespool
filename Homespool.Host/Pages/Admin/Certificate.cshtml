@@ -91,7 +91,7 @@
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row">Printers are told to dial</th>
+                    <th scope="row">Printers are told to use</th>
                     <td>
                         @if (Model.ConfiguredHost is null)
                         {
@@ -129,15 +129,15 @@
 @if (Model.ConfiguredHostUncovered)
 {
     <div class="alert alert-danger" role="alert">
-        The address printers are told to dial is not in the certificate, so no provisioning bundle can be
-        produced for it and any printer dialling it cannot verify this server.
+        The address printers are told to use is not in the certificate, so no provisioning bundle can be
+        produced for it and any printer connecting to it cannot verify this server.
     </div>
 }
 else if (Model.Uncovered.Count > 0)
 {
     <div class="alert alert-warning" role="alert">
         This machine has addresses the certificate does not cover. That is only a problem for printers
-        told to dial one of them - the ones using a covered address are unaffected.
+        told to use one of them - the ones using a covered address are unaffected.
     </div>
 }
 
@@ -148,10 +148,10 @@ else if (Model.Uncovered.Count > 0)
             <strong>Reissuing would narrow this certificate.</strong> These names are covered today
             and this machine no longer answers on them, so they would not be carried over. That is
             usually right - a certificate should only vouch for what a printer can reach. But
-            <strong>any printer whose ini tells it to dial one of these will stop connecting</strong>
+            <strong>any printer whose ini tells it to use one of these will stop connecting</strong>
             once the new certificate is served, reporting a bare TLS error that names nothing, and
             putting it back means a USB visit to repoint it.
-            <p class="mt-2 mb-1">Tick any name a printer is still dialling and it will be kept:</p>
+            <p class="mt-2 mb-1">Tick any name a printer is still connecting to and it will be kept:</p>
             @foreach (string name in Model.Dropping)
             {
                 <div class="form-check">

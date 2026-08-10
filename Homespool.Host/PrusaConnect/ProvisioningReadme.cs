@@ -27,7 +27,7 @@ public static class ProvisioningReadme
     /// The instructions, filled in for this bundle.
     /// </summary>
     /// <param name="options">Supplies the port and whether TLS is in use.</param>
-    /// <param name="hostname">The address written into the ini — what this printer will dial.</param>
+    /// <param name="hostname">The address written into the ini — what this printer will connect to.</param>
     /// <param name="printerName">The printer this was provisioned for, or null if it was left unnamed.</param>
     public static string Build(PrusaConnectOptions options, string hostname, string? printerName)
     {

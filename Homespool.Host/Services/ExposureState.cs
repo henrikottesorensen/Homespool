@@ -8,7 +8,7 @@ public enum ExposureState
     /// <summary>Nothing to report.</summary>
     Ok,
 
-    /// <summary>Printers are told to dial an address the internet can reach, over plain HTTP.</summary>
+    /// <summary>Printers are told to use an address the internet can reach, over plain HTTP.</summary>
     PrinterTokensCrossThePublicInternet,
 
     /// <summary>An administrator is using this server over plain HTTP from somewhere that is not this machine.</summary>

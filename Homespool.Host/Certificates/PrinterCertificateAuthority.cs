@@ -247,7 +247,7 @@ public class PrinterCertificateAuthority
         // and lose whatever names the operator had deliberately covered.
         EnsureProxyPem(existing);
 
-        // At Information because it is the answer to "what must a printer dial?", and the operator
+        // At Information because it is the answer to "what must a printer connect to?", and the operator
         // needs it whenever provisioning does not work. It is also what step 6 will compare against.
         _logger.LogInformation("Serving the existing printer certificate for {Names}, valid until {NotAfter:o}. "
                                + "Delete {Path} to have a new one issued for this machine's current addresses.",
@@ -327,7 +327,7 @@ public class PrinterCertificateAuthority
     /// what has to re-read the file is the proxy, which does it without dropping the application.
     /// </remarks>
     /// <param name="names">
-    /// Every name or address a printer might be told to dial. All are written as <b>dNSName</b>
+    /// Every name or address a printer might be told to use. All are written as <b>dNSName</b>
     /// entries — see this class's remarks before changing that.
     /// </param>
     public X509Certificate2 IssueLeaf(IEnumerable<string> names)

@@ -539,7 +539,41 @@ dedupe() {
     awk -F'\t' '!seen[$1]++'
 }
 
+# The IANA name for the Windows zone the launcher passed in, or nothing.
+#
+# Windows reports "W. Europe Standard Time"; TZ takes "Europe/Berlin". The conversion is one .NET
+# call and this container is the only .NET within reach - Windows PowerShell 5.1 is .NET Framework
+# 4.8, which has no TryConvertWindowsIdToIanaId, and a machine that cannot install Docker Desktop has
+# no other runtime either. So the application answers it, as a one-shot argument.
+#
+# Shipping a mapping table here instead was the alternative, and it would be wrong the first time a
+# zone changed and maintained by hand against data ICU already has.
+#
+# HOMESPOOL_WINDOWS_REGION is passed too because it changes the answer: "Romance Standard Time" alone
+# is Europe/Paris, and with DK it is Europe/Copenhagen. Identical behaviour, and a Dane reading
+# Europe/Paris in their own .env would reasonably think it a mistake.
+windows_timezone() {
+    [ -n "${HOMESPOOL_WINDOWS_TZ:-}" ] || return 0
+    command -v dotnet >/dev/null 2>&1 || return 0
+    # Where the image puts it. Overridable so the suite can point at a stub - the path is a fact
+    # about the container, not about this script, and hard-coding it made the branch untestable.
+    local dll="${HOMESPOOL_HOST_DLL:-/app/Homespool.Host.dll}"
+    [ -f "$dll" ] || return 0
+
+    dotnet "$dll" --iana-timezone \
+        "$HOMESPOOL_WINDOWS_TZ" "${HOMESPOOL_WINDOWS_REGION:-}" 2>/dev/null || true
+}
+
 detect_timezone() {
+    # Asked first, because in a container /etc/localtime is UTC and says so confidently - it would
+    # answer, wrongly, before anything else got a chance.
+    local from_windows
+    from_windows="$(windows_timezone)"
+    if [ -n "$from_windows" ]; then
+        echo "$from_windows"
+        return 0
+    fi
+
     # The symlink is the reliable source on both platforms and needs no package: macOS points it into
     # /var/db/timezone/zoneinfo, Linux into /usr/share/zoneinfo, and the zone name is whatever
     # follows. /etc/timezone is the fallback for a Linux box where the symlink has been replaced by a

@@ -34,8 +34,67 @@ namespace Homespool.Host;
 
 public static class Program
 {
+    /// <summary>The argument that turns this into a one-shot time zone conversion rather than a server.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why the server carries this at all.</b> On Windows the wizard runs inside this image, and the
+    /// zone Windows reports - <c>W. Europe Standard Time</c> - is not an IANA name, which is what
+    /// <c>TZ</c> takes. The conversion is one framework call, and this container is the only .NET in
+    /// reach: Windows PowerShell 5.1 is .NET Framework 4.8, where
+    /// <c>TryConvertWindowsIdToIanaId</c> does not exist, and a Windows machine that cannot install
+    /// Docker Desktop has no other runtime either.
+    /// </para>
+    /// <para>
+    /// The alternative was shipping a mapping table in a shell script, which would be wrong the first
+    /// time a zone changed and would have to be maintained by hand against data ICU already has.
+    /// </para>
+    /// </remarks>
+    private const string IanaTimeZoneArgument = "--iana-timezone";
+
+    /// <summary>
+    /// Prints the IANA name for a Windows time zone, or nothing when there is no answer.
+    /// </summary>
+    /// <remarks>
+    /// The optional second argument is a two-letter region, and it earns its place: <c>Romance
+    /// Standard Time</c> alone maps to <c>Europe/Paris</c>, and with <c>DK</c> to
+    /// <c>Europe/Copenhagen</c>. The two behave identically - same offset, same rules - but a Dane
+    /// reading Europe/Paris in their own <c>.env</c> would reasonably think it was a mistake.
+    /// </remarks>
+    /// <param name="args">The argument, the Windows zone identifier, and optionally a region.</param>
+    /// <returns>Zero when a name was written, one when the zone was not recognised.</returns>
+    private static int WriteIanaTimeZone(string[] args)
+    {
+        if (args.Length < 2)
+        {
+            return 1;
+        }
+
+        string windowsId = args[1];
+        string? region = args.Length > 2 && !string.IsNullOrWhiteSpace(args[2]) ? args[2] : null;
+
+        bool converted = region is null
+            ? TimeZoneInfo.TryConvertWindowsIdToIanaId(windowsId, out string? iana)
+            : TimeZoneInfo.TryConvertWindowsIdToIanaId(windowsId, region, out iana);
+
+        if (!converted || string.IsNullOrEmpty(iana))
+        {
+            return 1;
+        }
+
+        Console.WriteLine(iana);
+        return 0;
+    }
+
     public static void Main(string[] args)
     {
+        // Answered before anything else starts, because it is not a server run at all: setup-env.sh
+        // asks this to turn a Windows time zone into an IANA one and exits.
+        if (args.Length > 0 && args[0] == IanaTimeZoneArgument)
+        {
+            Environment.ExitCode = WriteIanaTimeZone(args);
+            return;
+        }
+
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
             .Enrich.FromLogContext()

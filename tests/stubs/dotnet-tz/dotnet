@@ -1,0 +1,13 @@
+#!/bin/sh
+# Stands in for `dotnet /app/Homespool.Host.dll --iana-timezone <windows id> [region]`, which is the
+# real applet in Program.cs. The region changes the answer, which is the whole reason it is passed.
+case "$2" in
+    --iana-timezone) ;;
+    *) exit 1 ;;
+esac
+case "$3|$4" in
+    "Romance Standard Time|DK") echo "Europe/Copenhagen" ;;
+    "Romance Standard Time|")   echo "Europe/Paris" ;;
+    "W. Europe Standard Time"*) echo "Europe/Berlin" ;;
+    *) exit 1 ;;
+esac

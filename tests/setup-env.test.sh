@@ -142,7 +142,7 @@ reset_state() {
     non_interactive=false
     no_prompt=false
     no_overwrite=false
-    unset HOMESPOOL_HOSTNAME
+    unset HOMESPOOL_HOSTNAME HOMESPOOL_WINDOWS_TZ HOMESPOOL_WINDOWS_REGION HOMESPOOL_HOST_DLL
     # A VAR=value prefix only scopes to a COMMAND. `HOMESPOOL_ADDRESSES=x out="$(f)"` is an
     # assignment, not a command, so the prefix is an ordinary assignment too and stays set for the
     # rest of the run - which is how a later test came to be handed a vEthernet address by an
@@ -554,6 +554,37 @@ PROXY_NETWORK=172.17.0.0/16"
     out="$(check_subnet_collision 2>&1 <<< "n")"
     assert_contains "$out" "collides with" "said so"
     assert_contains "$out" "172.20.0.0/16" "proposed the first free range"
+fi
+
+if test_case "a Windows zone becomes an IANA one"; then
+    # Windows says "W. Europe Standard Time"; TZ takes "Europe/Berlin". The conversion needs .NET 6+,
+    # which Windows PowerShell 5.1 does not have - so the container the wizard already runs in
+    # answers it, and this is the branch that asks.
+    sandbox_path linux dotnet-tz
+    HOMESPOOL_HOST_DLL="$(mktemp "${TMPDIR:-/tmp}/hostdll.XXXXXX")"
+    export HOMESPOOL_HOST_DLL
+
+    HOMESPOOL_WINDOWS_TZ="W. Europe Standard Time"
+    export HOMESPOOL_WINDOWS_TZ
+    assert_eq "Europe/Berlin" "$(detect_timezone)" "asked the container rather than the container's clock"
+
+    # The region is not decoration: it is what makes a Dane's .env say Copenhagen rather than Paris,
+    # which behave identically and read very differently.
+    HOMESPOOL_WINDOWS_TZ="Romance Standard Time"
+    assert_eq "Europe/Paris" "$(detect_timezone)" "without a region, the zone's default"
+    HOMESPOOL_WINDOWS_REGION=DK
+    export HOMESPOOL_WINDOWS_REGION
+    assert_eq "Europe/Copenhagen" "$(detect_timezone)" "with one, the local name"
+
+    # An unrecognised zone leaves the ordinary detection to answer, rather than writing nothing.
+    HOMESPOOL_WINDOWS_TZ="Not A Zone"
+    case "$(detect_timezone)" in
+        "") fail "an unknown zone produced an empty TZ" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
+
+    rm -f "$HOMESPOOL_HOST_DLL"
+    unset HOMESPOOL_HOST_DLL HOMESPOOL_WINDOWS_TZ HOMESPOOL_WINDOWS_REGION
 fi
 
 if test_case "detect_timezone reads the zoneinfo symlink"; then

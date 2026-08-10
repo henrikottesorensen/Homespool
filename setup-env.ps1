@@ -166,6 +166,31 @@ if (-not $addresses) {
 }
 
 # ------------------------------------------------------------------------------------------------
+# The time zone
+#
+# Read here and converted there. Get-TimeZone is present on every supported Windows; the region comes
+# from the culture, falling back to nothing rather than guessing, since an absent region simply means
+# the container picks the zone's default IANA name.
+# ------------------------------------------------------------------------------------------------
+$windowsTimeZone = ''
+$windowsRegion = ''
+
+try {
+    $windowsTimeZone = (Get-TimeZone -ErrorAction Stop).Id
+} catch {
+    # Leaves TZ at its UTC default, which is what every deployment had before this existed.
+}
+
+try {
+    $name = (Get-Culture).Name
+    if ($name -match '-([A-Za-z]{2})$') {
+        $windowsRegion = $Matches[1].ToUpperInvariant()
+    }
+} catch {
+    # Region is a refinement, not a requirement.
+}
+
+# ------------------------------------------------------------------------------------------------
 # Hand over
 #
 # --entrypoint bash because the image's own entrypoint starts the application. -it so the questions
@@ -191,6 +216,13 @@ $dockerArgs = @(
     # The machine's name, for the same reason as the addresses: inside the container `hostname` is
     # the container id, and "5d44b2605478.local" is not a name anybody will type into a browser.
     '-e', "HOMESPOOL_HOSTNAME=$env:COMPUTERNAME",
+    # The zone Windows knows, for the container to turn into an IANA name. Windows says "W. Europe
+    # Standard Time" and TZ wants "Europe/Berlin"; the conversion needs .NET 6+, and Windows
+    # PowerShell 5.1 is .NET Framework 4.8, so it cannot be done here. The region goes with it
+    # because it changes the answer - Romance Standard Time is Europe/Paris, or Europe/Copenhagen
+    # with DK.
+    '-e', "HOMESPOOL_WINDOWS_TZ=$windowsTimeZone",
+    '-e', "HOMESPOOL_WINDOWS_REGION=$windowsRegion",
     $image,
     '/work/setup-env.sh'
 ) + $Arguments

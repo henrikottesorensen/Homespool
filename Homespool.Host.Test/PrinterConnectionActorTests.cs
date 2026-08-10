@@ -145,7 +145,7 @@ public class PrinterConnectionActorTests
     }
 
     private static InboundEventMessage EventAnswering(uint commandId, Events eventType = Events.Finished, string? reason = null,
-        string? dataJson = null)
+        string? dataJson = null, string? machineReason = null)
     {
         return new(DateTimeOffset.UtcNow, new EventDTO
         {
@@ -153,6 +153,7 @@ public class PrinterConnectionActorTests
             EventType = eventType,
             CommandId = commandId,
             Reason = reason,
+            MachineReason = machineReason,
 
             // Deserialised rather than JsonDocument.Parse'd: that is what the real path produces, and
             // it hands back an element backed by its own document rather than one holding a pooled
@@ -232,6 +233,59 @@ public class PrinterConnectionActorTests
         result.Response!.EventType.Should().Be(Events.Rejected);
         result.Response.Reason.Should().Be("Can't set idle now");
         result.Data.Should().BeNull("an event that carried no data must not invent one");
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// Firmware's machine-readable rejection code reaches the caller beside the prose, because that
+    /// is what a refusal should be classified on - the wording is free to change between releases.
+    /// </summary>
+    [Fact]
+    public async Task MachineReasonComesBackBesideTheProse()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames));
+
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new SetPrinterIdle(), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+
+        // Act - a transfer refusal's shape: the busy-slot case, which is the one that is transient.
+        await actor.PostAsync(
+            EventAnswering(CommandIdOf(sentFrames[0]), Events.Rejected, "Another transfer in progress",
+                machineReason: "TRANSFER_IN_PROGRESS"),
+            CancellationToken.None);
+        CommandSendResult result = await Eventually(sendTask);
+
+        // Assert
+        result.Response!.MachineReason.Should().Be("TRANSFER_IN_PROGRESS",
+            "the code is the part a classifier can rely on across firmware releases");
+        result.Response.Reason.Should().Be("Another transfer in progress",
+            "the prose stays, because it is what a person reads");
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// An event carrying no code leaves it null rather than inventing one - most events carry none.
+    /// </summary>
+    [Fact]
+    public async Task AnEventWithoutAMachineReasonLeavesItNull()
+    {
+        List<byte[]> sentFrames = [];
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames));
+
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new SetPrinterIdle(), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), Events.Rejected, "Can't set idle now"),
+            CancellationToken.None);
+        CommandSendResult result = await Eventually(sendTask);
+
+        result.Response!.MachineReason.Should().BeNull();
 
         actor.Complete();
         await Eventually(actor.Completion);

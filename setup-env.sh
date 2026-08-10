@@ -765,7 +765,23 @@ resolves_in_dns() {
 
 resolve_host() {
     if command -v getent >/dev/null 2>&1; then
-        getent hosts "$1" 2>/dev/null | awk 'NR == 1 { print $1 }'
+        # IPv4 ONLY, and this is the whole point of ahostsv4. `getent hosts` returns AAAA first on a
+        # network with IPv6, so on the Pi this answered homespool.lan with fdc2:74d8:1010::cd4 - a
+        # correct address, compared against a candidate list that is IPv4 by construction, matching
+        # nothing, and silently dropping the one name that worked.
+        #
+        # Everything downstream is IPv4: the addresses come from `ip -4`, the certificate covers what
+        # a printer dials over v4, and the CIDR arithmetic here is 32-bit. Asking for A records is
+        # not a limitation, it is the question being asked.
+        # Tested for output, not for exit status: awk succeeds having printed nothing, so `&&` here
+        # would report success on an empty answer and the fallback would never run.
+        local resolved
+        resolved="$(getent ahostsv4 "$1" 2>/dev/null | awk 'NR == 1 { print $1 }')"
+
+        # ahostsv4 is glibc's; musl has getent without it. Filtering hosts output is the fallback.
+        [ -n "$resolved" ] || resolved="$(getent hosts "$1" 2>/dev/null \
+            | awk '{ print $1 }' | grep -E '^[0-9]+\.' | head -1)"
+        echo "$resolved"
     else
         # macOS has no getent. dscacheutil goes through the same resolver the OS uses, so it agrees
         # with /etc/hosts and mDNS where a bare DNS query would not.

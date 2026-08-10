@@ -852,6 +852,21 @@ if test_case "the name candidate claims only what was checked"; then
     esac
 fi
 
+if test_case "a name is resolved to IPv4, not to whatever comes first"; then
+    # The Pi's actual fault. `getent hosts homespool.lan` answered fdc2:74d8:1010::cd4 - correct, and
+    # useless here: the candidate list is IPv4 by construction, so the comparison matched nothing and
+    # the one name that worked was silently dropped. Reverse DNS had been right all along.
+    sandbox_path linux dns-v6first
+    assert_eq "192.168.13.183" "$(resolve_host homespool.lan)" "the A record, not the AAAA"
+
+    HOMESPOOL_ADDRESSES="192.168.13.183	wlan0"
+    export HOMESPOOL_ADDRESSES
+    line="$(name_candidate "$(lan_addresses)")"
+    unset HOMESPOOL_ADDRESSES
+    assert_contains "$line" "homespool.lan" "so the name is offered"
+    assert_contains "$line" "resolves here to 192.168.13.183" "against the address on the list"
+fi
+
 if test_case "a .local served by real DNS is accepted"; then
     # .local was only reserved for mDNS in 2013, and networks built before that serve it from
     # ordinary DNS - where a printer resolves it perfectly. Treating every .local as mDNS would

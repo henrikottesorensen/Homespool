@@ -1,0 +1,17 @@
+#!/bin/sh
+# A dual-stack network, which is the ordinary case. `getent hosts` answers AAAA first - this is what
+# the Pi did - while ahostsv4 answers A. Asking the wrong one compares a v6 address against an
+# IPv4-only candidate list and silently drops the name.
+case "$1" in
+    ahostsv4)
+        case "$2" in
+            homespool.lan) echo "192.168.13.183 STREAM homespool.lan" ;;
+        esac
+        ;;
+    hosts)
+        case "$2" in
+            homespool.lan) echo "fdc2:74d8:1010::cd4 homespool.lan" ;;
+            192.168.13.183) echo "192.168.13.183  homespool.lan" ;;
+        esac
+        ;;
+esac

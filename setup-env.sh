@@ -202,17 +202,17 @@ overlaps_any() {
     return $hit
 }
 
-# Everything already spoken for on this machine: Docker's allocations and the host's own routes.
-# One definition, because a range being free has to mean the same thing to the check that warns and
-# to the search that proposes an alternative - and those were two concatenations that could drift.
+# Everything already spoken for on this machine, for the question "is this range free to move into":
+# Docker's allocations EXCEPT our own, plus the host's own routes. Ours is excluded because a stack
+# is not colliding with itself, and proposing a move off a range only it uses would be nonsense.
 allocated_ranges() {
-    docker_subnets
+    docker_subnets_excluding_ours
     host_routes
 }
 
-# Every subnet Docker has allocated on this machine, one CIDR per line, EXCLUDING this stack's own
-# network - which is matched by its compose label rather than by name, because the project name comes
-# from the directory and a worktree or a -p flag changes it.
+# EVERY subnet Docker has allocated on this machine, one CIDR per line, this stack's own included -
+# because an address inside our own bridge is exactly as unreachable to a printer as one inside
+# anybody else's. The list that leaves ours out answers a different question; see below.
 #
 # Cached, because it is consulted once per candidate address and again for every validation, and
 # each call is a docker inspect per network - which on a machine with a few stacks is a visible
@@ -230,17 +230,32 @@ docker_subnets() {
     echo "$docker_subnets_cache"
 }
 
-docker_subnets_uncached() {
+# The same list without this stack's own network, which is a DIFFERENT question and was the same
+# list for too long. Whether a range is free to move into must ignore our own - a stack does not
+# collide with itself. Whether an ADDRESS is reachable must not: on the Pi the host's own end of our
+# compose bridge, 172.28.0.1 on br-2deab6694565, was offered as somewhere a printer could reach,
+# because the range it sits in had been excluded for the other question's benefit.
+#
+# Matched by compose label rather than by name: the project name comes from the directory, so a
+# worktree or a -p flag changes it.
+docker_subnets_excluding_ours() {
+    local ours id
     command -v docker >/dev/null 2>&1 || return 0
-
-    local ours
     ours="$(docker network ls --filter label=com.docker.compose.network=homespool -q 2>/dev/null || true)"
 
-    local id
     for id in $(docker network ls -q 2>/dev/null || true); do
         case " $ours " in
             *" $id "*) continue ;;
         esac
+        docker network inspect "$id" -f '{{range .IPAM.Config}}{{println .Subnet}}{{end}}' 2>/dev/null || true
+    done | grep -E '^[0-9]+\.' || true
+}
+
+docker_subnets_uncached() {
+    command -v docker >/dev/null 2>&1 || return 0
+
+    local id
+    for id in $(docker network ls -q 2>/dev/null || true); do
         docker network inspect "$id" -f '{{range .IPAM.Config}}{{println .Subnet}}{{end}}' 2>/dev/null || true
     done | grep -E '^[0-9]+\.' || true
 }
@@ -784,15 +799,109 @@ machine_name() {
     hostname 2>/dev/null || true
 }
 
-# The same name, mDNS-qualified when it is bare, which is what makes it resolvable on a home LAN.
-qualified_machine_name() {
-    local name
+# The names this machine might answer to, best first, one per line.
+#
+# A bare hostname was qualified to .local and nothing else, which is wrong wherever the network has a
+# domain of its own: a Pi called "homespool" on a router publishing .lan answers to homespool.lan,
+# and .local is the one form that machine cannot even check - trixie-minbase has no dig, nslookup or
+# host, so it gets treated as mDNS and dropped. The name that works was never offered.
+#
+# So: the FQDN if the resolver knows one, then the short name against each search domain from
+# resolv.conf, and .local last as the fallback it always was. The caller offers the first that
+# actually resolves to an address on the list, so a wrong guess here costs nothing.
+# Deduplicated, because the sources overlap by design: reverse DNS and the hostname-plus-domain
+# guess usually agree, and agreeing twice is not two candidates.
+candidate_names() {
+    candidate_names_raw "${1:-}" | awk 'NF && !seen[$0]++'
+}
+
+candidate_names_raw() {
+    local addresses="${1:-}" name fqdn domain address
+
+    # REVERSE DNS FIRST, because it is the only source that asks the network what it calls this
+    # machine rather than assembling a name and hoping. It is also the only one that works on the
+    # board this was written for: the Pi's resolv.conf says "search ." - the router publishes the
+    # name homespool.lan without publishing the suffix - so every hostname-plus-domain guess comes up
+    # empty while a reverse lookup answers immediately.
+    while IFS= read -r address; do
+        address="${address%%	*}"
+        [ -n "$address" ] || continue
+        reverse_name "$address"
+    done <<< "$addresses"
+
     name="$(machine_name)"
     [ -n "$name" ] || return 0
+
     case "$name" in
-        *.*) echo "$name" ;;
-        *) echo "$name.local" ;;
+        *.*) echo "$name"; return 0 ;;
     esac
+
+    # A name handed in from outside is used exactly as given. It names a machine this one knows
+    # nothing else about - HOMESPOOL_HOSTNAME is the Windows host's name, read by a container - so
+    # every way of qualifying it is a guess about somebody else's network. Its own FQDN was the first
+    # such guess and answered DESKTOP-7Q2 with MacBookPro.lan; this machine's search domain is the
+    # same mistake one step quieter.
+    if [ -n "${HOMESPOOL_HOSTNAME:-}" ]; then
+        echo "$name"
+        return 0
+    fi
+
+    fqdn="$(hostname -f 2>/dev/null || true)"
+    case "$fqdn" in
+        *.*) echo "$fqdn" ;;
+    esac
+
+    for domain in $(search_domains); do
+        case "$domain" in
+            .|localdomain) continue ;;
+            *) echo "$name.$domain" ;;
+        esac
+    done
+
+    echo "$name.local"
+}
+
+# What the network calls an address, or nothing. The trailing dot on a fully-qualified answer is
+# stripped: it is correct DNS notation and wrong everywhere it would then be pasted.
+reverse_name() {
+    local address="$1" name=""
+    if command -v getent >/dev/null 2>&1; then
+        name="$(getent hosts "$address" 2>/dev/null | awk 'NR == 1 { print $2 }')"
+    elif command -v dig >/dev/null 2>&1; then
+        name="$(dig +short +time=2 +tries=1 -x "$address" 2>/dev/null | head -1)"
+    elif command -v host >/dev/null 2>&1; then
+        name="$(host "$address" 2>/dev/null | awk '/domain name pointer/ { print $NF; exit }')"
+    elif command -v dscacheutil >/dev/null 2>&1; then
+        name="$(dscacheutil -q host -a ip_address "$address" 2>/dev/null | awk '/^name:/ { print $2; exit }')"
+    fi
+    [ -n "$name" ] && echo "${name%.}"
+}
+
+# The network's own domains, from whichever of the two places is telling the truth here.
+#
+# resolvectl first, because on a systemd-resolved machine /etc/resolv.conf is a symlink to a stub and
+# the answer is really the daemon's - `resolvectl domain` asks it directly and needs no guess about
+# which of stub-resolv.conf and resolv.conf is in play. Falling back to the file for everything else,
+# which is still most things.
+search_domains() {
+    if command -v resolvectl >/dev/null 2>&1; then
+        resolvectl domain 2>/dev/null \
+            | sed -n 's/.*: *//p' \
+            | tr ' ' '\n' \
+            | sed 's/^~//' \
+            | grep -vE '^$' && return 0
+    fi
+
+    [ -r /etc/resolv.conf ] || return 0
+    awk '/^[[:space:]]*(search|domain)[[:space:]]/ { for (i = 2; i <= NF; i++) print $i }' \
+        /etc/resolv.conf 2>/dev/null
+}
+
+# The best single name, for USER_HOST - which a browser resolves, so .local is fine there.
+# No addresses passed, so no reverse lookups: USER_HOST is a name for a browser, and deriving it
+# from whatever the router calls an interface is a different question from what to call the server.
+qualified_machine_name() {
+    candidate_names "" | head -1
 }
 
 # This machine's name as a candidate for PRINTER_HOST, offered only when it resolves to an address
@@ -804,8 +913,16 @@ qualified_machine_name() {
 # than assuming it, so a name that goes nowhere is never suggested.
 name_candidate() {
     local addresses="$1" name resolved
-    name="$(qualified_machine_name)"
-    [ -n "$name" ] || return 0
+    while IFS= read -r name; do
+        [ -n "$name" ] || continue
+        name_candidate_one "$addresses" "$name" && return 0
+    done <<< "$(candidate_names "$addresses")"
+    return 0
+}
+
+# One name, offered or not. Split out so the loop above reads as "the first of these that works".
+name_candidate_one() {
+    local addresses="$1" name="$2" resolved
 
     # A .local name only survives if UNICAST DNS serves it. Buddy broadcasts its presence over mDNS
     # but cannot resolve it, so an mDNS-only name is one a printer can never reach - however well it

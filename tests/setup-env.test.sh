@@ -112,6 +112,13 @@ test_case() {
 # The script keeps a few globals - the pending list, the docker cache - and a test that inherited
 # the previous test's would pass or fail for reasons that have nothing to do with it.
 reset_state() {
+    # Re-sourced, because a test that overrides a function and then unsets it does not restore the
+    # original - it deletes it. The WSL test did exactly that to is_wsl, and every later test in the
+    # file then ran without it, reporting "command not found" into results that still looked green.
+    # shellcheck source=../setup-env.sh
+    source "$repo_root/setup-env.sh"
+    set +e
+
     pending=""
     dry_run=false
     non_interactive=false
@@ -273,14 +280,38 @@ fi
 # Docker, and the addresses it makes unusable
 # ------------------------------------------------------------------------------------------------
 
-if test_case "docker_subnets excludes this stack's own network"; then
+if test_case "the two subnet questions get two different answers"; then
+    # They were one list, and it was right for one question and wrong for the other. On the Pi that
+    # showed up as 172.28.0.1 on br-2deab6694565 - the host's end of OUR OWN compose bridge - being
+    # offered as somewhere a printer could reach, because the range had been excluded for the
+    # collision check's benefit.
     sandbox_path docker-collision
-    subnets="$(docker_subnets)"
-    assert_contains "$subnets" "172.17.0.0/16" "another stack's network is listed"
-    case "$subnets" in
-        # The stub labels 172.28.0.0/16 as ours; offering it back would make the wizard propose
-        # moving off a range only it is using.
-        *172.28.0.0/16*) fail "our own compose network was not excluded" ;;
+
+    # Reachability: everything counts, ours included. An address in our bridge is as unreachable to
+    # a printer as one in anybody else's.
+    assert_contains "$(docker_subnets)" "172.28.0.0/16" "our own network is in the unreachable list"
+    assert_contains "$(docker_subnets)" "172.17.0.0/16" "and so is another stack's"
+
+    # Collision: ours does not count, because a stack does not collide with itself.
+    case "$(docker_subnets_excluding_ours)" in
+        *172.28.0.0/16*) fail "our own network counted as a collision with itself" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
+    assert_contains "$(docker_subnets_excluding_ours)" "172.17.0.0/16" "another stack's still does"
+fi
+
+if test_case "an address in our own compose bridge is not offered"; then
+    # The Pi's actual symptom, as its own case.
+    sandbox_path linux docker-collision
+    HOMESPOOL_ADDRESSES="192.168.13.183	wlan0
+172.28.0.1	br-2deab6694565"
+    export HOMESPOOL_ADDRESSES
+    addresses="$(lan_addresses)"
+    unset HOMESPOOL_ADDRESSES
+
+    assert_contains "$addresses" "192.168.13.183" "the real address is offered"
+    case "$addresses" in
+        *172.28.0.1*) fail "the host end of our own compose bridge was offered" ;;
         *) passed=$((passed + 1)) ;;
     esac
 fi
@@ -759,7 +790,9 @@ if test_case "inside a container it does not suggest the container id"; then
     # ...unless one is handed in from outside, which is what setup-env.ps1 does.
     HOMESPOOL_HOSTNAME=DESKTOP-7Q2 
     export HOMESPOOL_HOSTNAME
-    assert_eq "DESKTOP-7Q2.local" "$(suggested_user_host)" "the Windows machine's own name"
+    # Verbatim: this machine knows nothing about that one's network, so every way of qualifying it
+    # would be a guess about somebody else's DNS.
+    assert_eq "DESKTOP-7Q2" "$(suggested_user_host)" "the Windows machine's own name, as given"
     unset HOMESPOOL_HOSTNAME
     unset -f in_container
 fi
@@ -790,8 +823,13 @@ if test_case "the name candidate claims only what was checked"; then
     unset -f resolve_host
     unset HOMESPOOL_HOSTNAME
 
-    # A bare hostname qualifies to .local, which a printer cannot resolve - so nothing is offered.
-    assert_eq "" "$line" "a .local name is not offered for PRINTER_HOST"
+    # A bare hostname now tries the network's own domain before .local. Whether anything is offered
+    # depends on the machine running the suite, so this asserts the rule that matters: whatever comes
+    # back is never a .local one.
+    case "$line" in
+        *.local*) fail "a .local name was offered for PRINTER_HOST" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
 
     # A name from real DNS is, because that is the kind a printer could actually use.
     HOMESPOOL_HOSTNAME=printbox.lan
@@ -851,15 +889,25 @@ ANSWERS
     then passed=$((passed + 1)); else fail "refused an answer the operator insisted on"; fi
 fi
 
-if test_case "USER_HOST still gets .local, because browsers do mDNS"; then
-    # The opposite of the rule above, and the reason it is not one rule: what resolves USER_HOST is
-    # a desktop, which does mDNS perfectly well. What resolves PRINTER_HOST is Buddy firmware, which
-    # broadcasts mDNS but cannot resolve it.
+if test_case "USER_HOST may be .local, because browsers do mDNS"; then
+    # The opposite of the PRINTER_HOST rule, and the reason it is not one rule: what resolves
+    # USER_HOST is a desktop, which does mDNS perfectly well. What resolves PRINTER_HOST is Buddy
+    # firmware, which broadcasts mDNS but cannot resolve it.
+    #
+    # Which qualification wins depends on the machine - a network with a domain of its own beats
+    # .local - so this asserts the part that is fixed: a bare name does not stay bare.
+    # machine_name is overridden rather than trusted: in a container it correctly returns nothing, so
+    # the honest answer there is localhost and the rule under test never runs.
     use_temp_env "USER_HOST=localhost"
-    HOMESPOOL_HOSTNAME=printbox
-    export HOMESPOOL_HOSTNAME
-    assert_eq "printbox.local" "$(suggested_user_host)" "qualified for the browser"
-    unset HOMESPOOL_HOSTNAME
+    machine_name() { echo printbox; }
+    case "$(suggested_user_host)" in
+        *.*) passed=$((passed + 1)) ;;
+        *) fail "a bare hostname was offered to a browser unqualified" ;;
+    esac
+
+    # And with nothing to go on, no answer beats a wrong one.
+    machine_name() { echo ""; }
+    assert_eq "localhost" "$(suggested_user_host)" "falls back rather than inventing a name"
 fi
 
 if test_case "smtp offers host.docker.internal instead of localhost"; then

@@ -1,0 +1,15 @@
+#!/bin/sh
+# Recorded from a Debian host. `ip -4 route get 1.1.1.1` names the source address the kernel would
+# actually use; `ip -4 route show` is the fallback the collision check reads.
+case "$*" in
+    *"route get"*)
+        echo "1.1.1.1 via 192.168.13.1 dev eth0 src 192.168.13.238 uid 1000"
+        ;;
+    *"route show"*)
+        cat <<'EOF'
+default via 192.168.13.1 dev eth0 proto dhcp src 192.168.13.238 metric 100
+172.17.0.0/16 dev docker0 proto kernel scope link src 172.17.0.1 linkdown
+192.168.13.0/24 dev eth0 proto kernel scope link src 192.168.13.238 metric 100
+EOF
+        ;;
+esac

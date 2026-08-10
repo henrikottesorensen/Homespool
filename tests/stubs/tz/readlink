@@ -1,0 +1,4 @@
+#!/bin/sh
+# macOS points /etc/localtime into /var/db/timezone/zoneinfo; Linux into /usr/share/zoneinfo. The
+# zone name is whatever follows, on both.
+echo "/var/db/timezone/zoneinfo/Europe/Copenhagen"

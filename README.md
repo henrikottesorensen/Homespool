@@ -108,10 +108,20 @@ If you would rather do it by hand, `cp .env.example .env` and edit — the file 
 setting, and every one of them has a default in `compose.yaml`, so `.env` only needs to hold what
 differs.
 
-**On Windows with Docker Desktop**, run `.\setup-env.ps1` instead. Windows has no bash, so it runs
-the same script inside Homespool's own image; it needs the image built first, and it will say so.
-Detection has to happen on the Windows side — a container cannot see the host's LAN address — so the
-PowerShell script supplies that and nothing else.
+**On Windows with Docker Desktop**, run `setup-env.cmd`. Windows has no bash, so it runs the same
+script inside Homespool's own image; it needs the image built first, and it will say so. Detection
+has to happen on the Windows side — a container cannot see the host's LAN address — so the PowerShell
+script it launches supplies that and nothing else.
+
+Use the `.cmd` rather than calling `setup-env.ps1` directly, unless you already know your execution
+policy allows it. PowerShell refuses to run script *files* by default — *"cannot be loaded because
+running scripts is disabled on this system"* — and the launcher passes `-ExecutionPolicy Bypass` for
+that one process, which is better than being asked to weaken a machine-wide setting to run a setup
+script. By hand, the same thing is:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File .\setup-env.ps1
+```
 
 **On Windows without Docker Desktop** — it requires build 19045, which Windows 10 LTSC 2021 can
 never reach — install WSL2 and Docker Engine inside the distro, then run `./setup-env.sh` there

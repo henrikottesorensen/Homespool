@@ -26,6 +26,11 @@
 .PARAMETER Arguments
     Passed through to setup-env.sh unchanged - --no-prompt, --no-overwrite, --dry-run, --set, --help.
 
+    PREFER setup-env.cmd, which launches this. PowerShell refuses to run script files under the
+    default execution policy, so invoking this one directly fails with "running scripts is disabled
+    on this system" on a machine nobody has configured; the launcher passes -ExecutionPolicy Bypass
+    for its own process and changes nothing on the machine.
+
 .EXAMPLE
     .\setup-env.ps1
     Walks through the settings, then writes .env.

@@ -122,6 +122,39 @@ public class PrinterConnectionActorTests
     }
 
     /// <summary>
+    /// Waits until the actor has logged something containing <paramref name="fragment"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Waiting on the frame and then asserting on the log is a race, and it was a real one.</b> The
+    /// actor writes the frame and logs on the <i>next</i> statement, so
+    /// <c>sentFrames.Count == 1</c> becomes true one statement before the record it describes exists.
+    /// The window is one statement wide on any machine; on a loaded ARM board it was wide enough to
+    /// fail roughly 40% of full-suite runs while passing twelve of twelve in isolation.
+    /// </para>
+    /// <para>
+    /// So a test that asserts on a log line waits for that line, not for the side effect beside it.
+    /// Only the <i>send</i>-path tests need this: the ones that post an answering event and await the
+    /// send task are ordered already, because the actor logs before completing the caller.
+    /// </para>
+    /// </remarks>
+    private static async Task WaitForLogAsync(FakeLogger<PrinterConnectionActor> logger, string fragment)
+    {
+        for (int i = 0; i < 500 && !Logged(logger, fragment); i++)
+        {
+            await Task.Delay(10);
+        }
+
+        Logged(logger, fragment).Should().BeTrue($"the actor should have logged \"{fragment}\" by now");
+    }
+
+    private static bool Logged(FakeLogger<PrinterConnectionActor> logger, string fragment)
+    {
+        return logger.Collector.GetSnapshot()
+                     .Any(record => record.Message.Contains(fragment, StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// A generous ceiling on awaiting anything the actor is supposed to complete - a regression that
     /// leaves a task incomplete (e.g. a pending command not failed on mailbox completion) fails the
     /// test instead of hanging the suite. Same convention as the parsing tests' run ceiling.
@@ -1003,6 +1036,7 @@ public class PrinterConnectionActorTests
         // Act
         Task<CommandSendResult> sendTask = actor.SendCommandAsync(command, CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 1);
+        await WaitForLogAsync(logger, "START_CONNECT_DOWNLOAD");
 
         // Assert - the frame carries them, the log does not
         sentFrames[0].Should().NotBeEmpty();
@@ -1044,6 +1078,7 @@ public class PrinterConnectionActorTests
             new SetToken { Token = "replacement-token99" }, CancellationToken.None);
 
         await WaitUntilAsync(() => sentFrames.Count == 1);
+        await WaitForLogAsync(logger, "SET_TOKEN");
 
         // Assert - it really is in the frame, and really is not in the log
         System.Text.Encoding.ASCII.GetString(sentFrames[0])

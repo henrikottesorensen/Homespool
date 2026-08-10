@@ -135,6 +135,10 @@ mkdir -p "$payload_dir/nginx"
 
 cp "$repo_root/compose.yaml" "$payload_dir/"
 cp "$repo_root/.env.example"  "$payload_dir/"
+# The board configures itself with this on first boot, and an operator can re-run it over SSH to add
+# SMTP or repoint PRINTER_HOST later. Mode carried explicitly: systemd ExecStart needs it executable,
+# and cp -a into the image preserves whatever arrives here.
+install -m 0755 "$repo_root/setup-env.sh" "$payload_dir/setup-env.sh"
 # Only the three files compose bind-mounts. The rest of nginx/ is baked into the proxy image already.
 cp "$repo_root/nginx/homespool.conf.template" "$payload_dir/nginx/"
 cp "$repo_root/nginx/homespool-proxy.conf"   "$payload_dir/nginx/"

@@ -41,7 +41,14 @@
                 <span asp-validation-for="Input.TeamId" class="text-danger"></span>
             </div>
             <div class="form-floating mb-3">
-                <input asp-for="Input.ExpiresInHours" class="form-control" placeholder="48" />
+                @* min and max, because [Range] does not reach the spinner. asp-for renders an int?
+                   as type="number" and turns [Range] into data-val-range, which jQuery checks on
+                   submit - but the up/down arrows obey the HTML attributes and nothing else, so
+                   without these the control walks happily to -1 and then reports that -1 is not
+                   allowed. The bounds are stated twice, here and on the model; a tag helper that
+                   read [Range] would fix that and is more machinery than one input earns. *@
+                <input asp-for="Input.ExpiresInHours" class="form-control" placeholder="48"
+                       min="1" max="8760" />
                 <label asp-for="Input.ExpiresInHours" class="form-label"></label>
                 <span asp-validation-for="Input.ExpiresInHours" class="text-danger"></span>
             </div>

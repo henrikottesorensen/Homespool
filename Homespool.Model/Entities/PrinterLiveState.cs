@@ -77,7 +77,35 @@ public class PrinterLiveState
 
     public int? PrintFan { get; set; }
 
-    /// <summary>Filament used on the current job, in millimetres.</summary>
+    /// <summary>Filament this printer has ever extruded, in millimetres.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A lifetime odometer, not a per-print figure</b> - 1 013 555.875 mm on the MK3.5 when it was
+    /// first read, and it does not reset when a print starts. Subtracting two readings is the only way
+    /// to get what one print used.
+    /// </para>
+    /// <para>
+    /// <b>Which is why it is the one telemetry field that survives a print ending.</b> Firmware guards
+    /// the job block with <c>if (params.has_job)</c> and this sits outside it, so
+    /// <c>PrinterLiveStateMerger</c> deliberately carries it forward where it clears
+    /// <see cref="JobId"/>, <see cref="Progress"/> and the rest: a figure that stops rising when
+    /// nothing extrudes is correct, where a progress that stops falling is a lie.
+    /// </para>
+    /// <para>
+    /// <b>But it is not monotonic, because the printer's EEPROM can be reset</b> (Henrik, 2026-08-10) -
+    /// so it goes backwards exactly once, unpredictably, and a machine that has extruded a kilometre
+    /// then reports zero with nothing anywhere flagging it as odd. <b>Anything subtracting two readings
+    /// must treat a decrease as the counter resetting rather than as negative extrusion</b>, which is a
+    /// branch to write deliberately and not an assumption to make.
+    /// </para>
+    /// <para>
+    /// It is also the only honest signal that a print has actually begun - <c>PRINTING</c> arrives with
+    /// a cold nozzle, and plastic followed 168 s later on a measured run
+    /// (<c>notes/print-queue.md</c>). <b>That use survives a reset</b> where a subtraction does not: it
+    /// waits for the value to <i>increase</i>, so a reset merely means it counts up from zero instead
+    /// of from a kilometre. The signal is a change, not a level.
+    /// </para>
+    /// </remarks>
     public float? FilamentUsed { get; set; }
 
     /// <summary>Seconds until the next filament change.</summary>

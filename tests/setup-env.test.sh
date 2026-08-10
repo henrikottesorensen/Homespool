@@ -809,14 +809,38 @@ if test_case "the name candidate claims only what was checked"; then
     esac
 fi
 
+if test_case "a .local served by real DNS is accepted"; then
+    # .local was only reserved for mDNS in 2013, and networks built before that serve it from
+    # ordinary DNS - where a printer resolves it perfectly. Treating every .local as mDNS would
+    # withhold a name that works, so the question is asked rather than assumed.
+    sandbox_path linux docker-collision dns-local
+    assert_succeeds resolves_in_dns "printbox.local"
+    use_temp_env "PRINTER_HOST="
+    out="$( (validate_printer_host "printbox.local" <<< "y") 2>&1 )"
+    assert_contains "$out" "served by ordinary DNS" "says it checked, and what it found"
+fi
+
+if test_case "with nothing to ask with, .local is treated as mDNS"; then
+    # No dig, nslookup or host - which is every container, including the one the Windows path uses.
+    # Warning wrongly costs a keystroke; approving wrongly costs a PRINTER_HOST no printer can reach,
+    # frozen into a certificate.
+    sandbox_path linux docker-collision
+    resolves_in_dns "printbox.local"
+    assert_eq "2" "$?" "reports that it could not tell"
+    use_temp_env "PRINTER_HOST="
+    out="$( (validate_printer_host "printbox.local" <<< "n") 2>&1 )"
+    assert_contains "$out" "no dig" "says why it could not check"
+fi
+
 if test_case "a hand-typed .local name is challenged too"; then
     # Excluding it from the offered list only covers the list. Typing it walks straight past, and it
     # is the answer somebody reaches for precisely because it resolves from their own machine.
+    sandbox_path linux docker-collision dns-none
     use_temp_env "PRINTER_HOST="
     out="$( (validate_printer_host "printbox.local" <<< "n") 2>&1 )"
     status=$?
     assert_eq "1" "$status" "refused when the answer is no"
-    assert_contains "$out" "cannot resolve" "and says why, not just that"
+    assert_contains "$out" "does not resolve in DNS" "says it checked, and what it found"
 
     # Still the operator's call, as with every other warning here. Two answers, because a name that
     # does not resolve is asked about as well - which this one does not, being mDNS.

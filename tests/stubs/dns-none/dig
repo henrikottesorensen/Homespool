@@ -1,0 +1,8 @@
+#!/bin/sh
+# The ordinary case: .local is mDNS, so unicast DNS knows nothing about it.
+for a in "$@"; do
+    case "$a" in
+        *.lan) echo "192.168.13.238"; exit 0 ;;
+    esac
+done
+exit 0

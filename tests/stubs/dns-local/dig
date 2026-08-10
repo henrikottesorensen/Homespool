@@ -1,0 +1,10 @@
+#!/bin/sh
+# A network that serves .local from ordinary unicast DNS - an SBS-era arrangement, legitimate
+# because .local was only reserved for mDNS in 2013. dig asks the configured servers and never
+# multicast, which is the whole distinction.
+for a in "$@"; do
+    case "$a" in
+        *.local|*.lan) echo "192.168.13.238"; exit 0 ;;
+    esac
+done
+exit 0

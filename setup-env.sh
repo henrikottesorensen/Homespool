@@ -640,17 +640,40 @@ validate_printer_host() {
             ;;
     esac
 
-    # A .local name resolves on this machine and not on a printer. Buddy firmware broadcasts its own
-    # presence over mDNS but cannot RESOLVE mDNS - checked against the firmware - so this is a name
-    # that works everywhere the operator will test it and nowhere it needs to work. Excluded from the
-    # offered list already; this is the same rule for a name typed by hand.
+    # .local is USUALLY mDNS, and mDNS is a name a printer can never use: Buddy broadcasts its own
+    # presence that way but cannot resolve it, so such a name works from every machine the operator
+    # will test on and nowhere it has to work.
+    #
+    # But not always. RFC 6762 only reserved .local in 2013, and networks built before it - Windows
+    # SBS domains especially - legitimately serve .local from ordinary unicast DNS, where a printer
+    # can resolve it perfectly. So this asks rather than assumes, and the question is answerable:
+    # dig, nslookup and host query the configured DNS servers and do NOT do mDNS. Verified rather
+    # than believed - on a normal LAN, dig returns nothing for <host>.local and the address for
+    # <host>.lan.
     case "$host" in
         *.local)
-            warn "$host is an mDNS name. Prusa firmware announces itself over mDNS but cannot resolve"
-            warn "it, so a printer given this name will never find this server - even though it will"
-            warn "resolve perfectly from your own machine. Use the address, or a name your router"
-            warn "publishes in DNS."
-            ask_yes_no "  Use it anyway" n || return 1
+            resolves_in_dns "$host"
+            case $? in
+                0)
+                    say "  $host is served by ordinary DNS, not mDNS - a printer can resolve it."
+                    ;;
+                2)
+                    warn "$host is probably an mDNS name, and Prusa firmware announces itself over"
+                    warn "mDNS but cannot resolve it - so a printer would never find this server,"
+                    warn "however well the name works from your own machine. There is no dig,"
+                    warn "nslookup or host here to check whether your network serves .local from"
+                    warn "real DNS instead, which some older ones do."
+                    ask_yes_no "  Use it anyway" n || return 1
+                    ;;
+                *)
+                    warn "$host is an mDNS name - it does not resolve in DNS, only by multicast."
+                    warn "Prusa firmware announces itself over mDNS but cannot resolve it, so a"
+                    warn "printer given this name will never find this server, even though it"
+                    warn "resolves perfectly from your own machine. Use the address, or a name your"
+                    warn "router publishes in DNS."
+                    ask_yes_no "  Use it anyway" n || return 1
+                    ;;
+            esac
             ;;
     esac
 
@@ -680,6 +703,28 @@ validate_printer_host() {
     fi
 
     return 0
+}
+
+# Whether a name resolves in UNICAST DNS, as distinct from mDNS. 0 yes, 1 no, 2 nothing here can ask.
+#
+# resolve_host cannot answer this: getent and dscacheutil both go through the unified resolver, which
+# includes mDNS, so they say yes to a .local name that only multicast knows. dig, nslookup and host
+# talk to the configured DNS servers and nothing else, which is exactly the distinction wanted.
+#
+# The unknown case warns rather than blessing, and deliberately: wrongly approving an mDNS name costs
+# a PRINTER_HOST no printer can reach, frozen into a certificate, while wrongly warning costs one
+# keystroke. Containers land here - none of these tools is in a base image.
+resolves_in_dns() {
+    local name="$1"
+    if command -v dig >/dev/null 2>&1; then
+        [ -n "$(dig +short +time=2 +tries=1 "$name" A 2>/dev/null | grep -E '^[0-9]+\.')" ]
+    elif command -v nslookup >/dev/null 2>&1; then
+        nslookup -type=A "$name" 2>/dev/null | grep -qE '^Address: [0-9]+\.'
+    elif command -v host >/dev/null 2>&1; then
+        host -t A "$name" >/dev/null 2>&1
+    else
+        return 2
+    fi
 }
 
 resolve_host() {
@@ -762,15 +807,16 @@ name_candidate() {
     name="$(qualified_machine_name)"
     [ -n "$name" ] || return 0
 
-    # NOT a .local name, ever. Buddy firmware broadcasts its own presence over mDNS but cannot
-    # RESOLVE mDNS - checked against the firmware, not assumed - so a .local address is one a printer
-    # can never reach, however well it works from a browser. USER_HOST keeps .local for exactly the
-    # opposite reason: the thing resolving it there is a desktop, which does mDNS perfectly well.
+    # A .local name only survives if UNICAST DNS serves it. Buddy broadcasts its presence over mDNS
+    # but cannot resolve it, so an mDNS-only name is one a printer can never reach - however well it
+    # works from a browser, which is the trap. USER_HOST keeps .local for exactly the opposite
+    # reason: the thing resolving it there is a desktop, which does mDNS perfectly well.
     #
-    # A name only survives here if it comes from real DNS - a router publishing a suffix of its own,
-    # like .lan - which is also the only kind a printer could use.
+    # Not a blanket exclusion, because .local was only reserved for mDNS in 2013 and networks built
+    # before that legitimately serve it from real DNS. Withholding a name that would work is its own
+    # kind of wrong; the unknown case is treated as mDNS, which is the safe direction.
     case "$name" in
-        *.local) return 0 ;;
+        *.local) resolves_in_dns "$name" || return 0 ;;
     esac
 
     resolved="$(resolve_host "$name")"

@@ -790,12 +790,52 @@ if test_case "the name candidate claims only what was checked"; then
     unset -f resolve_host
     unset HOMESPOOL_HOSTNAME
 
-    assert_contains "$line" "printbox.local" "the name, mDNS-qualified"
-    assert_contains "$line" "resolves here to 192.168.13.238" "and what it resolved to, which was checked"
+    # A bare hostname qualifies to .local, which a printer cannot resolve - so nothing is offered.
+    assert_eq "" "$line" "a .local name is not offered for PRINTER_HOST"
+
+    # A name from real DNS is, because that is the kind a printer could actually use.
+    HOMESPOOL_HOSTNAME=printbox.lan
+    export HOMESPOOL_HOSTNAME
+    resolve_host() { echo "192.168.13.238"; }
+    line="$(name_candidate "$(lan_addresses)")"
+    unset -f resolve_host
+    unset HOMESPOOL_HOSTNAME
+
+    assert_contains "$line" "printbox.lan" "a DNS name is offered"
+    assert_contains "$line" "resolves here to 192.168.13.238" "with what it resolved to, which was checked"
     case "$line" in
         *survives*) fail "still promising it survives a lease change" ;;
         *) passed=$((passed + 1)) ;;
     esac
+fi
+
+if test_case "a hand-typed .local name is challenged too"; then
+    # Excluding it from the offered list only covers the list. Typing it walks straight past, and it
+    # is the answer somebody reaches for precisely because it resolves from their own machine.
+    use_temp_env "PRINTER_HOST="
+    out="$( (validate_printer_host "printbox.local" <<< "n") 2>&1 )"
+    status=$?
+    assert_eq "1" "$status" "refused when the answer is no"
+    assert_contains "$out" "cannot resolve" "and says why, not just that"
+
+    # Still the operator's call, as with every other warning here. Two answers, because a name that
+    # does not resolve is asked about as well - which this one does not, being mDNS.
+    if validate_printer_host "printbox.local" >/dev/null 2>&1 <<'ANSWERS'
+y
+y
+ANSWERS
+    then passed=$((passed + 1)); else fail "refused an answer the operator insisted on"; fi
+fi
+
+if test_case "USER_HOST still gets .local, because browsers do mDNS"; then
+    # The opposite of the rule above, and the reason it is not one rule: what resolves USER_HOST is
+    # a desktop, which does mDNS perfectly well. What resolves PRINTER_HOST is Buddy firmware, which
+    # broadcasts mDNS but cannot resolve it.
+    use_temp_env "USER_HOST=localhost"
+    HOMESPOOL_HOSTNAME=printbox
+    export HOMESPOOL_HOSTNAME
+    assert_eq "printbox.local" "$(suggested_user_host)" "qualified for the browser"
+    unset HOMESPOOL_HOSTNAME
 fi
 
 if test_case "smtp offers host.docker.internal instead of localhost"; then

@@ -593,9 +593,8 @@ $name_line"
         if [ -n "$name_line" ]; then
             say
             say "  A name keeps working when this machine's address changes - an address does not -"
-            say "  but only while your router publishes it AND the printer can resolve it. Neither is"
-            say "  checked here, and .local names in particular are mDNS, which printer firmware may"
-            say "  not do at all. Test it from another machine before relying on it."
+            say "  but only while your router keeps publishing it, which is not checked here. Test it"
+            say "  from another machine before relying on it."
         fi
         say
 
@@ -637,6 +636,20 @@ validate_printer_host() {
     case "$host" in
         localhost|127.*|0.0.0.0)
             warn "$host is this machine talking to itself - no printer can reach it."
+            ask_yes_no "  Use it anyway" n || return 1
+            ;;
+    esac
+
+    # A .local name resolves on this machine and not on a printer. Buddy firmware broadcasts its own
+    # presence over mDNS but cannot RESOLVE mDNS - checked against the firmware - so this is a name
+    # that works everywhere the operator will test it and nowhere it needs to work. Excluded from the
+    # offered list already; this is the same rule for a name typed by hand.
+    case "$host" in
+        *.local)
+            warn "$host is an mDNS name. Prusa firmware announces itself over mDNS but cannot resolve"
+            warn "it, so a printer given this name will never find this server - even though it will"
+            warn "resolve perfectly from your own machine. Use the address, or a name your router"
+            warn "publishes in DNS."
             ask_yes_no "  Use it anyway" n || return 1
             ;;
     esac
@@ -748,6 +761,17 @@ name_candidate() {
     local addresses="$1" name resolved
     name="$(qualified_machine_name)"
     [ -n "$name" ] || return 0
+
+    # NOT a .local name, ever. Buddy firmware broadcasts its own presence over mDNS but cannot
+    # RESOLVE mDNS - checked against the firmware, not assumed - so a .local address is one a printer
+    # can never reach, however well it works from a browser. USER_HOST keeps .local for exactly the
+    # opposite reason: the thing resolving it there is a desktop, which does mDNS perfectly well.
+    #
+    # A name only survives here if it comes from real DNS - a router publishing a suffix of its own,
+    # like .lan - which is also the only kind a printer could use.
+    case "$name" in
+        *.local) return 0 ;;
+    esac
 
     resolved="$(resolve_host "$name")"
     [ -n "$resolved" ] || return 0

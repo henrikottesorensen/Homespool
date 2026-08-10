@@ -33,6 +33,16 @@ services:
     # means from both ends at once.
 
     environment:
+      # The zone every timestamp a person reads is rendered in. A container with no TZ is UTC, and
+      # the rendering is server-side rather than in the browser - print history, uploads, invitations
+      # and token pages all call ToLocalTime() - so without this a print that started at 21:00 is
+      # shown as 19:00, and an invitation email states an expiry in a zone its reader does not live
+      # in. Stored times are unaffected: they are DateTimeOffset in Unix milliseconds, so this
+      # changes presentation only and can be corrected later without touching data.
+      #
+      # UTC by default, which is what every deployment already had.
+      TZ: "${TZ:-UTC}"
+
       # Point SQLite at the mounted volume. appsettings.json keeps a relative path so that
       # running outside a container still works.
       ConnectionStrings__HomespoolDb: "Data Source=/app/data/Homespool.Sqlite"
@@ -272,6 +282,12 @@ services:
       - "${PRINTER_PORT:-15443}:15443"
 
     environment:
+      # The same zone the application uses, so the two logs can be read side by side. Without it the
+      # proxy stamps every access line UTC while the application stamps its own local, and correlating
+      # a request across them means doing arithmetic. Not read by the template - envsubst is filtered
+      # to HTTPS_PORT_SUFFIX below - only by nginx's own timestamps.
+      TZ: "${TZ:-UTC}"
+
       # Only used to name the self-signed certificate generated on first start. Browsers will warn
       # whatever this says - the certificate is signed by nobody - so it is cosmetic until you
       # replace the certificate with one of your own.

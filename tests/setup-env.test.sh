@@ -289,6 +289,9 @@ if test_case "lan_addresses falls back to the whole pool when Docker cannot be a
     # handled, the filter silently passed everything and 172.17.0.1 was offered as reachable - the
     # one address guaranteed to be wrong, and the one that gets frozen into a certificate.
     sandbox_path linux
+    # Pinned, because the suite itself runs inside a container on Linux - so the real in_container
+    # would be true there and false on a Mac, and this case is about the HOST wording.
+    in_container() { return 1; }
     addresses="$(lan_addresses 2>/dev/null)"
     assert_contains "$addresses" "192.168.13.238" "the real LAN address survives the conservative filter"
     case "$addresses" in
@@ -296,6 +299,23 @@ if test_case "lan_addresses falls back to the whole pool when Docker cannot be a
         *) passed=$((passed + 1)) ;;
     esac
     assert_contains "$(lan_addresses 2>&1 >/dev/null)" "Could not ask Docker" "and it says so"
+    unset -f in_container
+fi
+
+if test_case "inside a container it does not blame the daemon"; then
+    # The Windows path runs this INSIDE a container, which has no docker CLI and no socket - so the
+    # query cannot succeed and "is it installed and running?" is nonsense, since Docker is running
+    # the very container asking.
+    sandbox_path linux
+    in_container() { return 0; }
+    out="$(lan_addresses 2>&1 >/dev/null)"
+    unset -f in_container
+
+    assert_contains "$out" "Running inside a container" "says what is actually true"
+    case "$out" in
+        *"is it installed and running"*) fail "still blaming the daemon from inside it" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
 fi
 
 if test_case "lan_addresses drops what a printer cannot reach"; then

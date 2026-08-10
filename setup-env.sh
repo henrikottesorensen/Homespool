@@ -419,15 +419,32 @@ unreachable_ranges() {
         return 0
     fi
     if ! $docker_unavailable_warned; then
-        warn "Could not ask Docker which ranges it has allocated - is it installed and running?"
-        warn "Falling back to excluding 172.16.0.0/12 entirely. If your LAN genuinely lives there,"
-        warn "type the address rather than picking from the list."
+        # Two different situations, and blaming the daemon in the first one is nonsense: on the
+        # Windows path this script runs INSIDE a container, which has no docker CLI and no socket,
+        # so of course it cannot ask - while Docker is plainly working, since it is running this.
+        if in_container; then
+            say "  Running inside a container, so Docker's own ranges cannot be listed from here."
+            say "  Excluding 172.16.0.0/12 instead, which covers them. If your LAN genuinely lives"
+            say "  there, type the address rather than picking from the list."
+        else
+            warn "Could not ask Docker which ranges it has allocated - is it installed and running?"
+            warn "Falling back to excluding 172.16.0.0/12 entirely. If your LAN genuinely lives"
+            warn "there, type the address rather than picking from the list."
+        fi
         docker_unavailable_warned=true
     fi
     echo "172.16.0.0/12"
 }
 
 docker_unavailable_warned=false
+
+# Whether this is running inside a container rather than on the host. /.dockerenv is written by
+# Docker itself; the cgroup path covers runtimes that do not, and Podman.
+in_container() {
+    [ -e /.dockerenv ] && return 0
+    grep -qE '(docker|containerd|podman|kubepods)' /proc/1/cgroup 2>/dev/null && return 0
+    return 1
+}
 
 # Loopback and link-local are never reachable by a printer either, and need no daemon to recognise.
 filter_unusable() {

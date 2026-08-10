@@ -26,6 +26,27 @@
 #
 # The questions are the small part. The checks are the point: an address inside a Docker network is
 # an address no printer can reach, and it is frozen into a certificate on the first start.
+#
+# ---------------------------------------------------------------------------------------------
+# PLATFORM CONSTRAINTS - read before "tidying" anything here
+# ---------------------------------------------------------------------------------------------
+#
+# Runs on macOS, WSL and Linux. Two rules follow from that, and both are currently enforced by
+# nothing except this comment:
+#
+#   1. BASH 3.2. macOS still ships bash 3.2 for licensing reasons, so nothing here may use a bash 4
+#      feature - no `declare -A`, no `mapfile`/`readarray`, no `${var,,}` or `${var^^}`, no
+#      globstar, and no `printf '%(...)T'` (4.2+, and the tempting replacement for `date`). At the
+#      time of writing the file uses none of these, which is not luck.
+#
+#   2. NOTHING BUT A SHELL AND COREUTILS. This is what a deployment runs *before* it has a stack, on
+#      a machine that may have containers and little else - so no python, no dotnet, no jq. Prefer
+#      builtins; where an external is needed, keep to POSIX options that GNU and BSD both take
+#      (`date +%Y%m%d-%H%M%S`, not `date --iso-8601=seconds`).
+#
+# Both rules fail the same way: fine on the machine of whoever changed it, broken on somebody
+# else's, and not until a user hits it. If either has to be broken, say so here.
+#
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

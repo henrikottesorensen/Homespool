@@ -227,8 +227,42 @@ overlaps_any() {
 # Docker's allocations EXCEPT our own, plus the host's own routes. Ours is excluded because a stack
 # is not colliding with itself, and proposing a move off a range only it uses would be nonsense.
 allocated_ranges() {
-    docker_subnets_excluding_ours
-    host_routes
+    local ours
+    ours="$(our_compose_subnets)"
+
+    # The host routes have to be filtered too, and missing that made the check accuse the stack of
+    # colliding with itself: Docker creates a route for its own bridge, so 172.28.0.0/16 appears in
+    # the route table BECAUSE our network exists, and excluding it from the Docker list alone left it
+    # arriving by the other path. On the Pi that read as "172.28.0.0/16 collides with 172.28.0.0/16"
+    # and offered to move a running stack off its own subnet.
+    #
+    # Exact matches only. A route equal to one of our subnets is the bridge itself; a SMALLER range
+    # inside it is somebody's real network and still worth reporting.
+    {
+        docker_subnets_excluding_ours
+        host_routes
+    } | while IFS= read -r range; do
+        [ -n "$range" ] || continue
+        case "
+$ours
+" in
+            *"
+$range
+"*) continue ;;
+        esac
+        echo "$range"
+    done
+}
+
+# The subnets of this stack's own compose network, by label rather than by name - the project name
+# comes from the directory, so a worktree or a -p flag changes it.
+our_compose_subnets() {
+    local ours id
+    command -v docker >/dev/null 2>&1 || return 0
+    ours="$(docker network ls --filter label=com.docker.compose.network=homespool -q 2>/dev/null || true)"
+    for id in $ours; do
+        docker network inspect "$id" -f '{{range .IPAM.Config}}{{println .Subnet}}{{end}}' 2>/dev/null || true
+    done | grep -E '^[0-9]+\.' || true
 }
 
 # EVERY subnet Docker has allocated on this machine, one CIDR per line, this stack's own included -
@@ -1237,13 +1271,14 @@ check_subnet_collision() {
     # camera credential and before anything was written.
     colliding="$(overlaps_any "$subnet" <<< "$(allocated_ranges)")" || true
     [ -n "$colliding" ] || return 0
-    colliding="$(echo "$colliding" | tr '\n' ' ')"
+    colliding="$(echo "$colliding" | tr '\n' ' ' | sed 's/ *$//; s/^/ /')"
 
     say
-    warn "The compose network $subnet collides with: $colliding A collision with"
-    warn "another Docker network fails loudly at startup. A collision with a route"
-    warn "this machine already has does not: the stack comes up, and that network"
-    warn "stops being reachable from here."
+    warn "The compose network $subnet collides with:$colliding"
+    say
+    warn "A collision with another Docker network fails loudly at startup. A"
+    warn "collision with a route this machine already has does not: the stack comes"
+    warn "up, and that network stops being reachable from here."
 
     candidate="$(free_subnet)"
     if [ -z "$candidate" ]; then

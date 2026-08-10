@@ -501,6 +501,35 @@ if test_case "free_subnet skips what is taken"; then
     assert_eq "172.20.0.0/16" "$(free_subnet)" "first genuinely free range"
 fi
 
+if test_case "a running stack does not collide with itself"; then
+    # The Pi said "172.28.0.0/16 collides with: 172.28.0.0/16" and offered to move a running stack
+    # off its own subnet. Excluding our network from Docker's list was not enough: Docker creates a
+    # ROUTE for its own bridge, so the range came back through the route table instead.
+    sandbox_path own-bridge-routed docker-collision
+    use_temp_env "PROXY_SUBNET=172.28.0.0/16
+PROXY_NETWORK=172.28.0.0/16"
+
+    case "$(allocated_ranges)" in
+        *172.28.0.0/16*) fail "our own bridge's route counted as somebody else's" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
+
+    out="$(check_subnet_collision 2>&1 <<< "n")"
+    case "$out" in
+        *collides*) fail "reported a collision with itself" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
+    assert_eq "" "$pending" "and planned no move"
+fi
+
+if test_case "a smaller range inside ours is still a collision"; then
+    # Exact matches are the bridge; a real network inside the range is not, and must still be seen.
+    sandbox_path own-bridge-routed docker-collision
+    assert_succeeds cidr_overlap "172.28.0.0/16" "172.28.5.0/24"
+    hits="$(overlaps_any "172.28.0.0/16" <<< "172.28.5.0/24")"
+    assert_eq "172.28.5.0/24" "$hits" "a /24 inside our /16 still reports"
+fi
+
 if test_case "the no-collision path survives set -e"; then
     # The script runs under `set -e`, and "no collision" is reported by FAILING - so an assignment
     # from that substitution ends the run. It did: the interactive flow died silently after the

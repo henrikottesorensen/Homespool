@@ -1336,7 +1336,13 @@ apply() {
         # what lets it run on macOS, WSL and Linux alike - so this would have been the single
         # construct that broke one of the three, on the platform least likely to be tested first.
         # +%Y%m%d-%H%M%S is POSIX, so GNU and BSD date both take it.
-        backup="$env_file.backup-$(date +%Y%m%d-%H%M%S)"
+        #
+        # The fallback is not decoration. Under `set -e` an assignment whose command substitution
+        # fails ends the script THERE, silently - so a missing date(1) aborted the run between
+        # seeding .env and patching it, leaving the file created and unwritten with no message
+        # beyond "command not found". The backup is a nicety; it must never be the thing that loses
+        # somebody's answers. $$ is unique enough for a file nobody sorts.
+        backup="$env_file.backup-$(date +%Y%m%d-%H%M%S 2>/dev/null || echo "$$")"
         ( umask 077 && cat "$env_file" > "$backup" ) \
             && say "Kept a copy of your previous settings at $(basename "$backup")."
     fi

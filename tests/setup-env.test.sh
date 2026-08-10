@@ -142,8 +142,13 @@ sandbox_path() {
     bin="$(mktemp -d "${TMPDIR:-/tmp}/setup-env-bin.XXXXXX")"
     # Everything the script shells out to. A missing one is not a soft failure: the script derives
     # its own directory with dirname on line one, so an absent dirname breaks it before it starts.
+    # date is on this list for a reason worth keeping: it was not, the backup step added later used
+    # it in a command substitution, and under `set -e` that failure ended the script between seeding
+    # .env and patching it. The suite went red for a fault the code did not have, while a real
+    # fragility - a nicety able to abort the write - hid behind it. A tool missing here does not
+    # report itself; it changes behaviour somewhere else.
     for tool in awk sed grep tr head cat seq mktemp chmod cp rm base64 stty sort uniq \
-                dirname basename ln mkdir openssl getent hostname; do
+                dirname basename ln mkdir openssl getent hostname date; do
         src="$(PATH="$system_path" command -v "$tool" 2>/dev/null)" \
             || src="$(PATH="$real_path" command -v "$tool" 2>/dev/null)" \
             || continue

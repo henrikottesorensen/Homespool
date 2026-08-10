@@ -1310,6 +1310,11 @@ apply() {
     # disk world-readable, even briefly.
     if [ -f "$env_file" ]; then
         local backup
+        # date(1) rather than printf's %(...)T, which would be tidier and is a trap: that format is
+        # bash 4.2+, and macOS still ships bash 3.2. Nothing else in this file needs bash 4, which is
+        # what lets it run on macOS, WSL and Linux alike - so this would have been the single
+        # construct that broke one of the three, on the platform least likely to be tested first.
+        # +%Y%m%d-%H%M%S is POSIX, so GNU and BSD date both take it.
         backup="$env_file.backup-$(date +%Y%m%d-%H%M%S)"
         ( umask 077 && cat "$env_file" > "$backup" ) \
             && say "Kept a copy of your previous settings at $(basename "$backup")."

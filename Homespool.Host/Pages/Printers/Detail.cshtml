@@ -170,8 +170,10 @@ else
                     <td>@(job.PrintFile?.Name ?? "(missing)")</td>
                     <td class="text-end">@($"{(job.PrintFile?.Size ?? 0) / 1024.0:N0} KiB")</td>
 
-                    @* Fixed format rather than a culture-dependent one, matching the Files table. *@
-                    <td>@job.QueuedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                    @* Fixed format rather than a culture-dependent one, matching the Files table -
+                       and ToLocalTime, without which this column rendered UTC while the print history
+                       below it rendered local, two hours apart on the same page. *@
+                    <td>@job.QueuedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
 
                     @if (Model.CanUse)
                     {

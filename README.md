@@ -91,9 +91,27 @@ multi-tenant service.
 ### Docker Compose
 
 ```bash
-cp .env.example .env      # set at least PRINTER_HOST before printers need to reach this server
+./setup-env.sh            # asks a handful of questions and writes .env
 docker compose up --build
 ```
+
+`setup-env.sh` exists because one setting has no sensible default and is expensive to get wrong.
+It detects the addresses this machine can be reached on, excludes the ones no printer can route to,
+and writes `.env` — asking about ports and mail only if you want them, and generating the camera
+sidecar's credential without asking at all.
+
+It **patches** `.env` rather than regenerating it, so it is safe to re-run later to add SMTP or
+repoint an address: comments, blank lines, and any setting it did not ask about are left exactly as
+they were. `--dry-run` shows what it would change and writes nothing; `--help` lists the rest.
+
+If you would rather do it by hand, `cp .env.example .env` and edit — the file documents every
+setting, and every one of them has a default in `compose.yaml`, so `.env` only needs to hold what
+differs.
+
+**On Windows**, run `.\setup-env.ps1` instead. Windows has no bash, so it runs the same script
+inside Homespool's own image; it needs the image built first, and it will say so. Detection has to
+happen on the Windows side — neither a container nor WSL2 can see the host's LAN address — so the
+PowerShell script supplies that and nothing else.
 
 That brings up two containers: the application, and an nginx that terminates TLS for both of its
 audiences. The database lives in a named volume (`homespool-data`) so it survives container
@@ -115,10 +133,10 @@ believing. Routes are segregated the same way inside the app: `/p/*` exists on t
 alone, and every other route exists everywhere else, so a request on the wrong one is answered `404`
 — a boundary that is a socket rather than a line of proxy configuration.
 
-**Set `PRINTER_HOST` in `.env` before the first start.** There is no way to infer your server's
-externally-reachable address from inside the container, so USB-key provisioning (below) won't
-produce a usable snippet until it's set — and the printer certificate is issued **once, on the
-first run**, covering every address the machine can see at that moment plus whatever
+**Set `PRINTER_HOST` in `.env` before the first start** — which `setup-env.sh` does for you, and
+is most of why it exists. There is no way to infer your server's externally-reachable address from
+inside the container, so USB-key provisioning (below) won't produce a usable snippet until it's
+set — and the printer certificate is issued **once, on the first run**, covering every address the machine can see at that moment plus whatever
 `PRINTER_HOST` says. Setting it first means it is covered by construction. Setting it later is
 fine too, as long as it is one of the addresses that were detected; if it is not, delete
 `data/certificates/printer.pfx` and restart to have a new certificate issued. See
@@ -435,6 +453,19 @@ refused rather than overwritten; rename it in the send dialog.
 
 Standard ASP.NET Core configuration: `appsettings.json`, environment variables, user secrets.
 In Docker, use the `__` (double underscore) form, e.g. `PrusaConnect__PrinterHost`.
+
+### Time zone
+
+Set `TZ` in `.env` to an IANA name — `Europe/Copenhagen`, `America/Denver`. It defaults to `UTC`,
+which is a container's default and rarely what you want on a machine in a house.
+
+It is worth setting because the conversion happens **on the server**, not in the browser: print
+history, file uploads, invitations and API tokens are all rendered before the page is sent, and an
+invitation email states its expiry the same way — so without it, a print started at 21:00 reads as
+19:00 in a mail nobody can reinterpret.
+
+Presentation only. Times are stored as an absolute instant, so setting this later re-renders
+existing history correctly rather than shifting it.
 
 ### `PrusaConnect`
 

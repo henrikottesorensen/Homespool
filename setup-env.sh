@@ -560,8 +560,21 @@ windows_timezone() {
     local dll="${HOMESPOOL_HOST_DLL:-/app/Homespool.Host.dll}"
     [ -f "$dll" ] || return 0
 
-    dotnet "$dll" --iana-timezone \
-        "$HOMESPOOL_WINDOWS_TZ" "${HOMESPOOL_WINDOWS_REGION:-}" 2>/dev/null || true
+    # The output is CHECKED, not trusted, and this is not caution for its own sake. An image built
+    # before the applet existed does not recognise --iana-timezone: it hands the argument to
+    # WebApplication.CreateBuilder, STARTS THE SERVER, fails migrating a database that is not mounted,
+    # and prints a page of JSON. That was offered as the default time zone, log lines and all.
+    #
+    # So: bounded in time, because a server that starts will sit there; last line only; and it has to
+    # look like an IANA name - Area/Location, no spaces, no braces - or it is discarded. UTC is not
+    # accepted either, since that is what an unset TZ already means and detection should carry on.
+    local runner="" out
+    command -v timeout >/dev/null 2>&1 && runner="timeout 10"
+
+    out="$($runner dotnet "$dll" --iana-timezone \
+        "$HOMESPOOL_WINDOWS_TZ" "${HOMESPOOL_WINDOWS_REGION:-}" 2>/dev/null | tail -1)" || true
+
+    printf '%s\n' "$out" | grep -E '^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+)+$' | head -1
 }
 
 detect_timezone() {

@@ -160,13 +160,17 @@ sandbox_path() {
     bin="$(mktemp -d "${TMPDIR:-/tmp}/setup-env-bin.XXXXXX")"
     # Everything the script shells out to. A missing one is not a soft failure: the script derives
     # its own directory with dirname on line one, so an absent dirname breaks it before it starts.
+    # This list has now bitten twice - date, then tail - and both times the same way, so the rule is
+    # worth stating: adding a command to setup-env.sh means adding it here, and forgetting shows up
+    # as an unrelated test failing rather than as anything about the missing tool.
+    #
     # date is on this list for a reason worth keeping: it was not, the backup step added later used
     # it in a command substitution, and under `set -e` that failure ended the script between seeding
     # .env and patching it. The suite went red for a fault the code did not have, while a real
     # fragility - a nicety able to abort the write - hid behind it. A tool missing here does not
     # report itself; it changes behaviour somewhere else.
     for tool in awk sed grep tr head cat seq mktemp chmod cp rm base64 stty sort uniq \
-                dirname basename ln mkdir openssl getent hostname date; do
+                dirname basename ln mkdir openssl getent hostname date tail timeout; do
         src="$(PATH="$system_path" command -v "$tool" 2>/dev/null)" \
             || src="$(PATH="$real_path" command -v "$tool" 2>/dev/null)" \
             || continue
@@ -585,6 +589,25 @@ if test_case "a Windows zone becomes an IANA one"; then
 
     rm -f "$HOMESPOOL_HOST_DLL"
     unset HOMESPOOL_HOST_DLL HOMESPOOL_WINDOWS_TZ HOMESPOOL_WINDOWS_REGION
+fi
+
+if test_case "an image without the applet does not become the time zone"; then
+    # This happened: the running image predated the applet, so --iana-timezone reached
+    # WebApplication.CreateBuilder, the server started, failed migrating a database that was not
+    # mounted, and a page of Serilog JSON was offered as the default time zone.
+    sandbox_path linux dotnet-old-image
+    HOMESPOOL_HOST_DLL="$(mktemp "${TMPDIR:-/tmp}/hostdll.XXXXXX")"
+    HOMESPOOL_WINDOWS_TZ="W. Europe Standard Time"
+    export HOMESPOOL_HOST_DLL HOMESPOOL_WINDOWS_TZ
+
+    assert_eq "" "$(windows_timezone)" "log output is not a time zone"
+    case "$(detect_timezone)" in
+        *"@t"*|*"{"*) fail "JSON reached TZ" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
+
+    rm -f "$HOMESPOOL_HOST_DLL"
+    unset HOMESPOOL_HOST_DLL HOMESPOOL_WINDOWS_TZ
 fi
 
 if test_case "detect_timezone reads the zoneinfo symlink"; then

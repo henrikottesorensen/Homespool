@@ -1,0 +1,9 @@
+#!/bin/sh
+# An image built before the applet existed. --iana-timezone means nothing to it, so the argument
+# reaches WebApplication.CreateBuilder, the server starts, and it fails on a database that is not
+# mounted - printing Serilog JSON that must never be mistaken for a time zone.
+cat <<'EOF'
+{"@t":"2026-08-10T22:55:04.1590084Z","@m":"No proxy is trusted (XForwarded:KnownProxies and :KnownNetworks are both empty), so forwarded headers are ignored except from loopback.","@l":"Warning"}
+{"@t":"2026-08-10T22:55:05.1491523Z","@m":"Application terminated unexpectedly","@l":"Fatal","@x":"System.InvalidOperationException: Expected SQLite journal mode 'wal' but the database reported 'delete'."}
+EOF
+exit 1

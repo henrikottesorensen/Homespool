@@ -543,9 +543,15 @@ ask_printer_host() {
     say "  can see. Set it now and it is covered by construction."
     say
 
-    local current candidates choice n line addr iface
+    local current candidates choice n line addr iface name_line
     current="$(env_get PRINTER_HOST)"
     candidates="$(lan_addresses)"
+
+    # After the addresses, because the address is the safe answer and the name is the durable one -
+    # and somebody who wants the name will read the whole list anyway.
+    name_line="$(name_candidate "$candidates")"
+    [ -n "$name_line" ] && candidates="$candidates
+$name_line"
 
     if [ -n "$candidates" ]; then
         say "  Addresses on this machine that a printer could reach:"
@@ -672,11 +678,61 @@ suggested_user_host() {
         echo "$current"
         return 0
     fi
-    suggestion="$(hostname 2>/dev/null || echo localhost)"
-    case "$suggestion" in
-        *.*) echo "$suggestion" ;;
-        *) echo "$suggestion.local" ;;
+    suggestion="$(qualified_machine_name)"
+    echo "${suggestion:-localhost}"
+}
+
+# This machine's name, or nothing when there is no honest answer.
+#
+# INSIDE A CONTAINER THERE IS NO HONEST ANSWER. `hostname` returns the container id, so the Windows
+# path - where the wizard runs in a one-off `docker run` - suggested "5d44b2605478.local" as the name
+# to type into a browser. It is meaningless the moment the container exits.
+#
+# HOMESPOOL_HOSTNAME is how setup-env.ps1 supplies the real one, the same way it supplies addresses:
+# a fact from outside that the inside cannot obtain. WSL needs nothing, because WSL2 takes its
+# hostname from the Windows machine already.
+machine_name() {
+    if [ -n "${HOMESPOOL_HOSTNAME:-}" ]; then
+        echo "$HOMESPOOL_HOSTNAME"
+        return 0
+    fi
+    in_container && return 0
+    hostname 2>/dev/null || true
+}
+
+# The same name, mDNS-qualified when it is bare, which is what makes it resolvable on a home LAN.
+qualified_machine_name() {
+    local name
+    name="$(machine_name)"
+    [ -n "$name" ] || return 0
+    case "$name" in
+        *.*) echo "$name" ;;
+        *) echo "$name.local" ;;
     esac
+}
+
+# This machine's name as a candidate for PRINTER_HOST, offered only when it resolves to an address
+# already on the list.
+#
+# A name is the more durable answer - an address stops working the moment the DHCP lease moves, and
+# PrinterAddressSuggestion says exactly that about it: "survives a change of address, but only if
+# your router publishes names to its own DNS". The resolve check is what tests that proviso rather
+# than assuming it, so a name that goes nowhere is never suggested.
+name_candidate() {
+    local addresses="$1" name resolved
+    name="$(qualified_machine_name)"
+    [ -n "$name" ] || return 0
+
+    resolved="$(resolve_host "$name")"
+    [ -n "$resolved" ] || return 0
+
+    # It has to point at an address this machine would otherwise have offered. A name resolving
+    # somewhere else entirely is a stale DNS entry, and baking that into a certificate is the
+    # failure this whole question exists to avoid.
+    echo "$addresses" | awk -F'\t' -v want="$resolved" '$1 == want { found = 1 } END { exit found ? 0 : 1 }' \
+        || return 0
+
+    printf '%s\tthis machine'"'"'s name - survives a new DHCP lease\n' "$name"
 }
 
 # An existing setting beats a detected one: somebody who has already chosen is not asking to be

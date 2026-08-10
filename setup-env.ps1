@@ -185,6 +185,9 @@ $dockerArgs = @(
     # Newline-separated, because each entry now carries its interface name after a tab and those
     # names contain spaces - "vEthernet (WSL)". The shell splits on lines when it sees any.
     '-e', "HOMESPOOL_ADDRESSES=$($addresses -join "`n")",
+    # The machine's name, for the same reason as the addresses: inside the container `hostname` is
+    # the container id, and "5d44b2605478.local" is not a name anybody will type into a browser.
+    '-e', "HOMESPOOL_HOSTNAME=$env:COMPUTERNAME",
     $image,
     '/work/setup-env.sh'
 ) + $Arguments

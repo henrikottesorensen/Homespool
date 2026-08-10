@@ -117,6 +117,7 @@ reset_state() {
     non_interactive=false
     no_prompt=false
     no_overwrite=false
+    unset HOMESPOOL_HOSTNAME
     # A VAR=value prefix only scopes to a COMMAND. `HOMESPOOL_ADDRESSES=x out="$(f)"` is an
     # assignment, not a command, so the prefix is an ordinary assignment too and stays set for the
     # rest of the run - which is how a later test came to be handed a vEthernet address by an
@@ -746,6 +747,36 @@ fi
 #
 # Every case here comes from configuring a real Mailpit and watching it fail.
 # ------------------------------------------------------------------------------------------------
+
+if test_case "inside a container it does not suggest the container id"; then
+    # The Windows path runs in a one-off `docker run`, where `hostname` is the container id - so it
+    # suggested "5d44b2605478.local" as the name to type into a browser.
+    use_temp_env "USER_HOST=localhost"
+    in_container() { return 0; }
+    assert_eq "localhost" "$(suggested_user_host)" "no answer beats a meaningless one"
+    assert_eq "" "$(machine_name)" "and there is no name to be had in there"
+
+    # ...unless one is handed in from outside, which is what setup-env.ps1 does.
+    HOMESPOOL_HOSTNAME=DESKTOP-7Q2 
+    export HOMESPOOL_HOSTNAME
+    assert_eq "DESKTOP-7Q2.local" "$(suggested_user_host)" "the Windows machine's own name"
+    unset HOMESPOOL_HOSTNAME
+    unset -f in_container
+fi
+
+if test_case "the machine name is offered only when it resolves to a listed address"; then
+    sandbox_path linux docker-collision
+    # localhost resolves to 127.0.0.1, which is never on the candidate list - so it is not offered.
+    HOMESPOOL_HOSTNAME=localhost
+    export HOMESPOOL_HOSTNAME
+    assert_eq "" "$(name_candidate "$(lan_addresses)")" "a name pointing off the list is not suggested"
+
+    # A name resolving to an address that IS on the list is what earns a place.
+    HOMESPOOL_HOSTNAME=elsewhere.invalid
+    assert_eq "" "$(name_candidate "$(lan_addresses)")" "and neither is one that resolves nowhere"
+    unset HOMESPOOL_HOSTNAME
+    unset -f in_container 2>/dev/null || true
+fi
 
 if test_case "smtp offers host.docker.internal instead of localhost"; then
     # localhost is the container, so a mail server on the machine is refused from in there - the

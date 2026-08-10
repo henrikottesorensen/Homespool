@@ -90,6 +90,24 @@ assert_contains() {
     esac
 }
 
+# For prose the script prints. The wording is wrapped to fit 80 columns, so any assertion matching
+# more than a couple of words can span a line break - and then re-flowing a paragraph breaks a test
+# that has nothing to do with the change. Both sides are collapsed to single spaces, so these assert
+# on what was said rather than on where it happened to wrap.
+assert_says() {
+    local haystack needle
+    # Trimmed as well as collapsed: echo adds a newline, which tr turns into a trailing space, and a
+    # needle ending in a space matches nothing.
+    haystack="$(echo "$1" | tr '\n' ' ' | tr -s ' ' | sed 's/^ *//; s/ *$//')"
+    needle="$(echo "$2" | tr '\n' ' ' | tr -s ' ' | sed 's/^ *//; s/ *$//')"
+    case "$haystack" in
+        *"$needle"*) passed=$((passed + 1)) ;;
+        # Braced: bash reads the bytes of a multibyte character as part of the name otherwise, and
+        # under `set -u` "…$needle…" dies with "needle<mojibake>: unbound variable".
+        *) fail "${3:-not said}" "…${needle}…" "$1" ;;
+    esac
+}
+
 assert_succeeds() {
     if "$@"; then passed=$((passed + 1)); else fail "expected success: $*"; fi
 }
@@ -348,7 +366,7 @@ if test_case "inside a container it does not blame the daemon"; then
     out="$(lan_addresses 2>&1 >/dev/null)"
     unset -f in_container
 
-    assert_contains "$out" "Running inside a container" "says what is actually true"
+    assert_says "$out" "Running inside a container" "says what is actually true"
     case "$out" in
         *"is it installed and running"*) fail "still blaming the daemon from inside it" ;;
         *) passed=$((passed + 1)) ;;
@@ -875,7 +893,7 @@ if test_case "a .local served by real DNS is accepted"; then
     assert_succeeds resolves_in_dns "printbox.local"
     use_temp_env "PRINTER_HOST="
     out="$( (validate_printer_host "printbox.local" <<< "y") 2>&1 )"
-    assert_contains "$out" "served by ordinary DNS" "says it checked, and what it found"
+    assert_says "$out" "served by ordinary DNS" "says it checked, and what it found"
 fi
 
 if test_case "with nothing to ask with, .local is treated as mDNS"; then
@@ -887,7 +905,7 @@ if test_case "with nothing to ask with, .local is treated as mDNS"; then
     assert_eq "2" "$?" "reports that it could not tell"
     use_temp_env "PRINTER_HOST="
     out="$( (validate_printer_host "printbox.local" <<< "n") 2>&1 )"
-    assert_contains "$out" "no dig" "says why it could not check"
+    assert_says "$out" "no dig" "says why it could not check"
 fi
 
 if test_case "a hand-typed .local name is challenged too"; then
@@ -898,7 +916,7 @@ if test_case "a hand-typed .local name is challenged too"; then
     out="$( (validate_printer_host "printbox.local" <<< "n") 2>&1 )"
     status=$?
     assert_eq "1" "$status" "refused when the answer is no"
-    assert_contains "$out" "does not resolve in DNS" "says it checked, and what it found"
+    assert_says "$out" "does not resolve in DNS" "says it checked, and what it found"
 
     # Still the operator's call, as with every other warning here. Two answers, because a name that
     # does not resolve is asked about as well - which this one does not, being mDNS.
@@ -907,6 +925,19 @@ y
 y
 ANSWERS
     then passed=$((passed + 1)); else fail "refused an answer the operator insisted on"; fi
+fi
+
+if test_case "one machine gets one name"; then
+    # PRINTER_HOST offered homespool.lan while USER_HOST suggested homespool.local - two names for
+    # one box on one screen, because only the first was allowed to ask the network.
+    sandbox_path linux dns-v6first
+    use_temp_env "USER_HOST=localhost"
+    HOMESPOOL_ADDRESSES="192.168.13.183	wlan0"
+    export HOMESPOOL_ADDRESSES
+    suggestion="$(suggested_user_host)"
+    unset HOMESPOOL_ADDRESSES
+
+    assert_eq "homespool.lan" "$suggestion" "the name the network publishes, same as PRINTER_HOST"
 fi
 
 if test_case "USER_HOST may be .local, because browsers do mDNS"; then
@@ -925,8 +956,10 @@ if test_case "USER_HOST may be .local, because browsers do mDNS"; then
         *) fail "a bare hostname was offered to a browser unqualified" ;;
     esac
 
-    # And with nothing to go on, no answer beats a wrong one.
+    # And with nothing to go on at all, no answer beats a wrong one. Both sources are silenced:
+    # reverse DNS is a real source now, so stubbing only machine_name no longer means "nothing".
     machine_name() { echo ""; }
+    reverse_name() { echo ""; }
     assert_eq "localhost" "$(suggested_user_host)" "falls back rather than inventing a name"
 fi
 
@@ -1007,7 +1040,7 @@ host.docker.internal
 
 ANSWERS
     out="$(cat "$temp_env_dir/out")"
-    assert_contains "$out" "does not say how the" "said why it has to ask"
+    assert_says "$out" "does not say how the" "said why it has to ask"
     assert_contains "$pending" "SMTP_PORT=1025" "kept the port"
     assert_contains "$pending" "SMTP_DISABLE_TLS=true" "and took the answer given"
 fi
@@ -1040,7 +1073,7 @@ if test_case "input ending is not an answer"; then
     out="$( (ask_yes_no "Write these" y < /dev/null) 2>&1 )"
     status=$?
     assert_eq "1" "$status" "stops rather than confirming a write nobody asked for"
-    assert_contains "$out" "nothing was written" "and says so"
+    assert_says "$out" "nothing was written" "and says so"
     case "$out" in
         *"Please answer y or n"*"Please answer y or n"*) fail "looping on a closed input" ;;
         *) passed=$((passed + 1)) ;;

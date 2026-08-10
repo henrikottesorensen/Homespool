@@ -459,13 +459,13 @@ unreachable_ranges() {
         # Windows path this script runs INSIDE a container, which has no docker CLI and no socket,
         # so of course it cannot ask - while Docker is plainly working, since it is running this.
         if in_container; then
-            say "  Running inside a container, so Docker's own ranges cannot be listed from here."
-            say "  Excluding 172.16.0.0/12 instead, which covers them. If your LAN genuinely lives"
-            say "  there, type the address rather than picking from the list."
+            say "  Running inside a container, so Docker's own ranges cannot be listed from"
+            say "  here. Excluding 172.16.0.0/12 instead, which covers them. If your LAN"
+            say "  genuinely lives there, type the address rather than picking from the list."
         else
-            warn "Could not ask Docker which ranges it has allocated - is it installed and running?"
-            warn "Falling back to excluding 172.16.0.0/12 entirely. If your LAN genuinely lives"
-            warn "there, type the address rather than picking from the list."
+            warn "Could not ask Docker which ranges it has allocated - is it installed and"
+            warn "running? Falling back to excluding 172.16.0.0/12 entirely. If your LAN"
+            warn "genuinely lives there, type the address rather than picking from the list."
         fi
         docker_unavailable_warned=true
     fi
@@ -592,10 +592,11 @@ ask_printer_host() {
     say
     say "The address printers use to reach this server."
     say
-    say "  This is the one setting with no sensible default, and the one that is expensive to get"
-    say "  wrong: it is written into every USB provisioning bundle, and the printer certificate is"
-    say "  issued once - on the first start - covering this address and every address the machine"
-    say "  can see. Set it now and it is covered by construction."
+    say "  This is the one setting with no sensible default, and the one that is"
+    say "  expensive to get wrong: it is written into every USB provisioning bundle, and"
+    say "  the printer certificate is issued once - on the first start - covering this"
+    say "  address and every address the machine can see. Set it now and it is covered"
+    say "  by construction."
     say
 
     local current candidates choice n line addr iface name_line
@@ -628,9 +629,9 @@ $name_line"
         say "    $((n + 1))) something else - a name, or an address not listed"
         if [ -n "$name_line" ]; then
             say
-            say "  A name keeps working when this machine's address changes - an address does not -"
-            say "  but only while your router keeps publishing it, which is not checked here. Test it"
-            say "  from another machine before relying on it."
+            say "  A name keeps working when this machine's address changes - an address does"
+            say "  not - but only while your router keeps publishing it, which is not checked"
+            say "  here. Test it from another machine before relying on it."
         fi
         say
 
@@ -651,9 +652,9 @@ $name_line"
                 ;;
         esac
     else
-        warn "No usable address detected on this machine."
-        warn "Loopback, link-local and Docker's own ranges are excluded - a printer cannot reach any"
-        warn "of them, and one baked into the certificate cannot be corrected without a reissue."
+        warn "No usable address detected on this machine. Loopback, link-local and"
+        warn "Docker's own ranges are excluded - a printer cannot reach any of them, and"
+        warn "one baked into the certificate cannot be corrected without a reissue."
         choice="$(ask "  Address or name" "$current")"
     fi
 
@@ -665,7 +666,8 @@ validate_printer_host() {
     local host="$1" resolved hit
 
     if [ -z "$host" ]; then
-        warn "Left unset. USB-key provisioning will refuse to produce a snippet until it is."
+        warn "Left unset. USB-key provisioning will refuse to produce a snippet until it"
+        warn "is."
         return 1
     fi
 
@@ -697,8 +699,8 @@ validate_printer_host() {
                     warn "$host is probably an mDNS name, and Prusa firmware announces itself over"
                     warn "mDNS but cannot resolve it - so a printer would never find this server,"
                     warn "however well the name works from your own machine. There is no dig,"
-                    warn "nslookup or host here to check whether your network serves .local from"
-                    warn "real DNS instead, which some older ones do."
+                    warn "nslookup or host here to check whether your network serves .local from real"
+                    warn "DNS instead, which some older ones do."
                     ask_yes_no "  Use it anyway" n || return 1
                     ;;
                 *)
@@ -720,8 +722,8 @@ validate_printer_host() {
         *[!0-9.]*)
             resolved="$(resolve_host "$host")"
             if [ -z "$resolved" ]; then
-                warn "$host does not resolve from here. The certificate will cover the name, but a"
-                warn "printer that cannot resolve it either will have nothing to connect to."
+                warn "$host does not resolve from here. The certificate will cover the name, but"
+                warn "a printer that cannot resolve it either will have nothing to connect to."
                 ask_yes_no "  Use it anyway" y || return 1
             else
                 say "  $host resolves to $resolved - the certificate will cover both."
@@ -733,8 +735,8 @@ validate_printer_host() {
     # rule a picked one already passed.
     hit="$(overlaps_any "${resolved:-$host}/32" <<< "$(unreachable_ranges)" | head -1)"
     if [ -n "$hit" ]; then
-        warn "$host is inside $hit, which printers on your network cannot route to. It would be"
-        warn "minted into the certificate and frozen there."
+        warn "$host is inside $hit, which printers on your network cannot route to. It"
+        warn "would be minted into the certificate and frozen there."
         ask_yes_no "  Use it anyway" n || return 1
     fi
 
@@ -793,15 +795,17 @@ ask_user_host() {
     say
     local suggestion
     suggestion="$(suggested_user_host)"
-    say "The name people type in a browser. Cosmetic - it names the self-signed certificate, and a"
-    say "browser warns about that certificate whatever name it carries."
+    say "The name people type in a browser. Cosmetic - it names the self-signed"
+    say "certificate, and a browser warns about that certificate whatever name it"
+    say "carries."
     plan_set USER_HOST "$(ask "  Name" "$suggestion")"
 }
 
 ask_timezone() {
     say
-    say "The zone timestamps are shown in. The conversion happens on the server, so this decides what"
-    say "print history reads and what an invitation email says its expiry is."
+    say "The zone timestamps are shown in. The conversion happens on the server, so this"
+    say "decides what print history reads and what an invitation email says its expiry"
+    say "is."
     plan_set TZ "$(ask "  Timezone" "$(prefer_current TZ "$(detect_timezone)")")"
 }
 
@@ -855,6 +859,14 @@ candidate_names() {
 candidate_names_raw() {
     local addresses="${1:-}" name fqdn domain address
 
+    # Supplied from outside wins outright, ahead of every lookup. setup-env.ps1 read this off the
+    # Windows host; nothing discovered from inside a container knows better than that, and a reverse
+    # lookup that happens to answer would quietly overrule it.
+    if [ -n "${HOMESPOOL_HOSTNAME:-}" ]; then
+        echo "$HOMESPOOL_HOSTNAME"
+        return 0
+    fi
+
     # REVERSE DNS FIRST, because it is the only source that asks the network what it calls this
     # machine rather than assembling a name and hoping. It is also the only one that works on the
     # board this was written for: the Pi's resolv.conf says "search ." - the router publishes the
@@ -872,16 +884,6 @@ candidate_names_raw() {
     case "$name" in
         *.*) echo "$name"; return 0 ;;
     esac
-
-    # A name handed in from outside is used exactly as given. It names a machine this one knows
-    # nothing else about - HOMESPOOL_HOSTNAME is the Windows host's name, read by a container - so
-    # every way of qualifying it is a guess about somebody else's network. Its own FQDN was the first
-    # such guess and answered DESKTOP-7Q2 with MacBookPro.lan; this machine's search domain is the
-    # same mistake one step quieter.
-    if [ -n "${HOMESPOOL_HOSTNAME:-}" ]; then
-        echo "$name"
-        return 0
-    fi
 
     fqdn="$(hostname -f 2>/dev/null || true)"
     case "$fqdn" in
@@ -935,10 +937,25 @@ search_domains() {
 }
 
 # The best single name, for USER_HOST - which a browser resolves, so .local is fine there.
-# No addresses passed, so no reverse lookups: USER_HOST is a name for a browser, and deriving it
-# from whatever the router calls an interface is a different question from what to call the server.
+# The addresses ARE passed, so reverse DNS gets a say here too.
+#
+# Withholding them was a mistake with a visible result: PRINTER_HOST was offered homespool.lan while
+# USER_HOST suggested homespool.local, two names for one machine on one screen. The reason given was
+# that a browser resolves mDNS perfectly well - true, and not a reason to prefer it. If the network
+# publishes a real name, that is the name, and one the operator can also use for the printers.
+#
+# .local remains the fallback, and only here: a browser can resolve it and the firmware cannot, which
+# is why PRINTER_HOST still refuses one that unicast DNS does not serve.
 qualified_machine_name() {
-    candidate_names "" | head -1
+    # Addresses are passed only when they describe THIS machine. Inside a container they are the
+    # container's own, and a reverse lookup of those names the container - which is the trap the
+    # container guard exists to avoid, arriving by a different route. With HOMESPOOL_ADDRESSES set
+    # they came from the host, so they are worth asking about.
+    if in_container && [ -z "${HOMESPOOL_ADDRESSES:-}" ]; then
+        candidate_names "" | head -1
+    else
+        candidate_names "$(lan_addresses)" | head -1
+    fi
 }
 
 # This machine's name as a candidate for PRINTER_HOST, offered only when it resolves to an address
@@ -1023,16 +1040,17 @@ ask_ports() {
         suffix=":$https"
     fi
     say
-    say "  Plain-HTTP visitors are redirected to HTTPS, and the redirect has to name the port a"
-    say "  BROWSER should ask for - which is not necessarily the one published here, if anything"
-    say "  forwards to this machine."
+    say "  Plain-HTTP visitors are redirected to HTTPS, and the redirect has to name the"
+    say "  port a BROWSER should ask for - which is not necessarily the one published"
+    say "  here, if anything forwards to this machine."
     plan_set HTTPS_PORT_SUFFIX "$(ask "  Port suffix in the redirect" "$suffix")"
 }
 
 ask_smtp() {
     say
-    say "Outgoing mail is optional. Without it, new accounts are created already confirmed and"
-    say "password reset is unavailable - invitations still work, you just pass the link on yourself."
+    say "Outgoing mail is optional. Without it, new accounts are created already"
+    say "confirmed and password reset is unavailable - invitations still work, you just"
+    say "pass the link on yourself."
     say
 
     local current_host
@@ -1053,7 +1071,8 @@ ask_smtp() {
     # there, and the error says "connection refused" about a server that is plainly running.
     case "$host" in
         localhost|127.0.0.1|::1)
-            warn "Homespool runs in a container, so $host is the container itself - not this machine."
+            warn "Homespool runs in a container, so $host is the container itself - not this"
+            warn "machine."
             if ask_yes_no "  Use host.docker.internal, which reaches the host" y; then
                 host="host.docker.internal"
             fi
@@ -1075,11 +1094,11 @@ ask_smtp() {
             # Mailpit on 1025 fails at send time with "does not support the STARTTLS extension" -
             # long after this question, when the connection is the last thing anyone suspects.
             say
-            say "  Port $port is not one of the three well-known ones, so it does not say how the"
-            say "  connection is encrypted. It has to match what the server offers."
-            say "    1) STARTTLS - upgraded after connecting"
-            say "    2) implicit TLS - encrypted from the first byte"
-            say "    3) none - only for a server on this machine; sends the password in the clear"
+            say "  Port $port is not one of the three well-known ones, so it does not say how"
+            say "  the connection is encrypted. It has to match what the server offers."
+            say "    1) STARTTLS - upgraded after connecting 2) implicit TLS - encrypted from"
+            say "    the first byte 3) none - only for a server on this machine; sends the"
+            say "    password in the clear"
             case "$(ask "  Which" 1)" in
                 2) implicit=true;  disable=false ;;
                 3) implicit=false; disable=true  ;;
@@ -1119,8 +1138,8 @@ ensure_go2rtc_credential() {
 
     password="$(random_password)"
     if [ -z "$password" ]; then
-        warn "No source of randomness found - leaving the camera sidecar unauthenticated, which is"
-        warn "what this deployment already had. Its port is not published."
+        warn "No source of randomness found - leaving the camera sidecar unauthenticated,"
+        warn "which is what this deployment already had. Its port is not published."
         return 0
     fi
 
@@ -1194,7 +1213,8 @@ auto_move_subnet() {
     candidate="$(free_subnet)"
     if [ -z "$candidate" ]; then
         warn "The compose network $subnet collides with $(echo "$colliding" | tr '\n' ' ')and every"
-        warn "/16 from 172.16 to 172.31 is taken. Set PROXY_SUBNET and PROXY_NETWORK by hand."
+        warn "/16 from 172.16 to 172.31 is taken. Set PROXY_SUBNET and PROXY_NETWORK by"
+        warn "hand."
         return 0
     fi
 
@@ -1220,10 +1240,10 @@ check_subnet_collision() {
     colliding="$(echo "$colliding" | tr '\n' ' ')"
 
     say
-    warn "The compose network $subnet collides with: $colliding"
-    warn "A collision with another Docker network fails loudly at startup. A collision with a route"
-    warn "this machine already has does not: the stack comes up, and that network stops being"
-    warn "reachable from here."
+    warn "The compose network $subnet collides with: $colliding A collision with"
+    warn "another Docker network fails loudly at startup. A collision with a route"
+    warn "this machine already has does not: the stack comes up, and that network"
+    warn "stops being reachable from here."
 
     candidate="$(free_subnet)"
     if [ -z "$candidate" ]; then
@@ -1271,9 +1291,10 @@ warn_if_already_started() {
                 --filter label=com.docker.compose.volume=homespool-data 2>/dev/null)" ] || return 0
 
     say
-    warn "This stack has run before, so the printer certificate has already been issued - and it is"
-    warn "issued once. Changing PRINTER_HOST in .env does not change what that certificate covers."
-    warn "Reissue it afterwards from Admin -> Printer certificate, or printers will fail to verify."
+    warn "This stack has run before, so the printer certificate has already been"
+    warn "issued - and it is issued once. Changing PRINTER_HOST in .env does not"
+    warn "change what that certificate covers. Reissue it afterwards from Admin ->"
+    warn "Printer certificate, or printers will fail to verify."
 }
 
 # ------------------------------------------------------------------------------------------------
@@ -1323,7 +1344,8 @@ summarise() {
         printf '    %-24s %s  ->  %s\n' "$key" "$before" "$(display_value "$key" "$value")" >&2
     done <<< "$pending"
     say
-    say "Every other line - comments, blank lines, and any key not listed - is left as it is."
+    say "Every other line - comments, blank lines, and any key not listed - is left as"
+    say "it is."
 }
 
 apply() {
@@ -1498,7 +1520,8 @@ main() {
         if [ -f "$env_file" ]; then
             say "Editing the existing $env_file. Only the settings below are touched."
         else
-            say "No .env yet. One will be created from .env.example, with these settings filled in."
+            say "No .env yet. One will be created from .env.example, with these settings filled"
+            say "in."
         fi
 
         ask_printer_host

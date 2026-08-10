@@ -610,20 +610,51 @@ ask_smtp() {
         return 0
     fi
 
-    plan_set SMTP_HOST "$(ask "  Mail server" "$current_host")"
+    local host
+    host="$(ask "  Mail server" "$current_host")"
 
-    # One question for two settings, because they are one decision. Asked separately, the pair can
-    # be made to disagree - implicit TLS on 587, STARTTLS on 465 - and both halves of that fail in
-    # ways that read as a broken server rather than a wrong setting.
-    local mode port implicit
-    mode="$(ask "  465 for implicit TLS, 587 for STARTTLS, 25 for unencrypted" "$(env_get SMTP_PORT)")"
-    port="$mode"
-    case "$mode" in
-        465) implicit=true ;;
-        *)   implicit=false ;;
+    # The same mistake PRINTER_HOST is checked for, and for the same reason: this runs in a
+    # container, so localhost is the container. A mail server on the machine is refused from in
+    # there, and the error says "connection refused" about a server that is plainly running.
+    case "$host" in
+        localhost|127.0.0.1|::1)
+            warn "Homespool runs in a container, so $host is the container itself - not this machine."
+            if ask_yes_no "  Use host.docker.internal, which reaches the host" y; then
+                host="host.docker.internal"
+            fi
+            ;;
+    esac
+    plan_set SMTP_HOST "$host"
+
+    # Port and encryption are one decision on the three well-known ports, so one question settles
+    # both - asked separately they can be made to disagree, and each half then fails in a way that
+    # reads as a broken server rather than a wrong setting.
+    local port implicit disable
+    port="$(ask "  Port - 587 for STARTTLS, 465 for implicit TLS, 25 for none" "$(env_get SMTP_PORT)")"
+    case "$port" in
+        465) implicit=true;  disable=false ;;
+        587) implicit=false; disable=false ;;
+        25)  implicit=false; disable=true  ;;
+        *)
+            # Any other port says nothing about encryption, and guessing STARTTLS is how a local
+            # Mailpit on 1025 fails at send time with "does not support the STARTTLS extension" -
+            # long after this question, when the connection is the last thing anyone suspects.
+            say
+            say "  Port $port is not one of the three well-known ones, so it does not say how the"
+            say "  connection is encrypted. It has to match what the server offers."
+            say "    1) STARTTLS - upgraded after connecting"
+            say "    2) implicit TLS - encrypted from the first byte"
+            say "    3) none - only for a server on this machine; sends the password in the clear"
+            case "$(ask "  Which" 1)" in
+                2) implicit=true;  disable=false ;;
+                3) implicit=false; disable=true  ;;
+                *) implicit=false; disable=false ;;
+            esac
+            ;;
     esac
     plan_set SMTP_PORT "$port"
     plan_set SMTP_USE_IMPLICIT_TLS "$implicit"
+    plan_set SMTP_DISABLE_TLS "$disable"
 
     local username
     username="$(ask "  Username (empty connects without authenticating)" "$(env_get SMTP_USERNAME)")"

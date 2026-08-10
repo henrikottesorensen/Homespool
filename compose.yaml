@@ -32,6 +32,15 @@ services:
     # container's printer port and takes the proxy out of that path, which is what PRINTER_TLS=false
     # means from both ends at once.
 
+    # So that a mail server on the HOST is addressable the same way everywhere. Docker Desktop
+    # resolves host.docker.internal on its own; plain Linux Docker does not, and without this line
+    # the obvious answer for "my mail server runs on this machine" works on a Mac and fails on the
+    # server somebody actually deploys to. localhost cannot be that answer - inside here it is this
+    # container, which is what makes the failure read as "connection refused" from a mail server
+    # that is plainly running.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
     environment:
       # The zone every timestamp a person reads is rendered in. A container with no TZ is UTC, and
       # the rendering is server-side rather than in the browser - print history, uploads, invitations
@@ -116,6 +125,17 @@ services:
       Smtp__Port: "${SMTP_PORT:-587}"
       # true for implicit TLS on port 465; false for STARTTLS on 587.
       Smtp__UseImplicitTls: "${SMTP_USE_IMPLICIT_TLS:-false}"
+
+      # No encryption at all. The application has always supported this and there was no way to
+      # reach it from here, so ".env.example: 25 for unencrypted" was advice that could not be
+      # taken: with implicit TLS off the sender uses SecureSocketOptions.StartTls, which REQUIRES
+      # the upgrade and fails with "does not support the STARTTLS extension" against a server that
+      # offers none. That refusal is right on 587 - falling back would put credentials on the wire -
+      # but it left a local test inbox unreachable.
+      #
+      # It puts mail and any credentials in the clear, so it is for a mail server on this same
+      # machine and nothing else.
+      Smtp__DisableTls: "${SMTP_DISABLE_TLS:-false}"
       Smtp__UserName: "${SMTP_USERNAME:-}"
       # Never put the real password here - compose.yaml is committed. Put SMTP_PASSWORD in a
       # local .env file (gitignored) or export it in the shell before running compose.

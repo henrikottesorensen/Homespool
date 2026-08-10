@@ -637,6 +637,94 @@ USER_HOST=localhost"
 fi
 
 # ------------------------------------------------------------------------------------------------
+# Outgoing mail
+#
+# Every case here comes from configuring a real Mailpit and watching it fail.
+# ------------------------------------------------------------------------------------------------
+
+if test_case "smtp offers host.docker.internal instead of localhost"; then
+    # localhost is the container, so a mail server on the machine is refused from in there - the
+    # same mistake PRINTER_HOST is checked for, which SMTP_HOST was not.
+    use_temp_env "SMTP_HOST=
+SMTP_PORT=587"
+    ask_smtp >/dev/null 2>&1 <<'ANSWERS'
+y
+localhost
+y
+587
+
+ANSWERS
+    assert_contains "$pending" "SMTP_HOST=host.docker.internal" "swapped for something reachable"
+fi
+
+if test_case "smtp keeps localhost if you insist"; then
+    use_temp_env "SMTP_HOST=
+SMTP_PORT=587"
+    ask_smtp >/dev/null 2>&1 <<'ANSWERS'
+y
+localhost
+n
+587
+
+ANSWERS
+    assert_contains "$pending" "SMTP_HOST=localhost" "a warning, not a veto"
+fi
+
+if test_case "port 25 really means no encryption"; then
+    # It was advertised as "25 for unencrypted" in .env.example and here, and set nothing - the
+    # sender demands STARTTLS whenever implicit TLS is off, so port 25 failed at send time.
+    use_temp_env "SMTP_HOST=
+SMTP_PORT=587
+SMTP_USE_IMPLICIT_TLS=false
+SMTP_DISABLE_TLS=false"
+    ask_smtp >/dev/null 2>&1 <<'ANSWERS'
+y
+mail.example.com
+25
+
+ANSWERS
+    assert_contains "$pending" "SMTP_DISABLE_TLS=true" "encryption actually turned off"
+    assert_contains "$pending" "SMTP_USE_IMPLICIT_TLS=false" "and not implicit TLS"
+fi
+
+if test_case "465 and 587 still settle both halves from one answer"; then
+    use_temp_env "SMTP_HOST=
+SMTP_PORT=587
+SMTP_USE_IMPLICIT_TLS=false
+SMTP_DISABLE_TLS=false"
+    ask_smtp >/dev/null 2>&1 <<'ANSWERS'
+y
+mail.example.com
+465
+
+ANSWERS
+    assert_contains "$pending" "SMTP_USE_IMPLICIT_TLS=true" "465 is implicit TLS"
+    assert_contains "$pending" "SMTP_DISABLE_TLS=false" "and still encrypted"
+fi
+
+if test_case "an unusual port asks rather than assuming STARTTLS"; then
+    # Mailpit on 1025 offers no encryption at all. Guessing STARTTLS is how that fails at send
+    # time, with "does not support the STARTTLS extension", long after this question.
+    use_temp_env "SMTP_HOST=
+SMTP_PORT=587
+SMTP_USE_IMPLICIT_TLS=false
+SMTP_DISABLE_TLS=false"
+    # Redirected to a file rather than captured with $( ), which would run ask_smtp in a subshell
+    # and discard everything it planned - the same trap use_temp_env carries a warning about.
+    ask_smtp > "$temp_env_dir/out" 2>&1 <<'ANSWERS'
+y
+host.docker.internal
+1025
+3
+
+ANSWERS
+    out="$(cat "$temp_env_dir/out")"
+    assert_contains "$out" "does not say how the" "said why it has to ask"
+    assert_contains "$pending" "SMTP_PORT=1025" "kept the port"
+    assert_contains "$pending" "SMTP_DISABLE_TLS=true" "and took the answer given"
+fi
+
+# ------------------------------------------------------------------------------------------------
 # Prompts
 #
 # Reachable because the tty guard lives in main(), which sourcing does not run.

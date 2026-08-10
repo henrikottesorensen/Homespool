@@ -146,6 +146,32 @@ ip_in_cidr() {
     cidr_overlap "$1/32" "$2"
 }
 
+# Whether a CIDR overlaps any of the CIDRs on stdin, one per line. Four callers used to spell this
+# loop out, and each had its own way of skipping blanks and swallowing the error from a malformed
+# range - which is three chances to get it subtly different for no gain.
+#
+# Prints the ones it hit, so a caller that wants to name them in a warning does not have to run the
+# comparison a second time to find out which.
+overlaps_any() {
+    local subject="$1" cidr hit=1
+    while read -r cidr; do
+        [ -n "$cidr" ] || continue
+        if cidr_overlap "$subject" "$cidr" 2>/dev/null; then
+            echo "$cidr"
+            hit=0
+        fi
+    done
+    return $hit
+}
+
+# Everything already spoken for on this machine: Docker's allocations and the host's own routes.
+# One definition, because a range being free has to mean the same thing to the check that warns and
+# to the search that proposes an alternative - and those were two concatenations that could drift.
+allocated_ranges() {
+    docker_subnets
+    host_routes
+}
+
 # Every subnet Docker has allocated on this machine, one CIDR per line, EXCLUDING this stack's own
 # network - which is matched by its compose label rather than by name, because the project name comes
 # from the directory and a worktree or a -p flag changes it.
@@ -229,25 +255,49 @@ lan_addresses() {
     } | grep -E '^[0-9]+\.' | filter_unusable | dedupe
 }
 
-# Loopback and link-local are never reachable by a printer, and neither is anything inside a Docker
-# network. The Docker test is done against the ranges Docker has actually allocated rather than
-# against RFC1918 as a whole: 172.16/12 is legitimate space somebody may genuinely run their house
-# on, and a wizard that refused to offer their real address would be wrong in a way they could not
-# argue with. The Pi's first-boot script filters the whole block because it cannot ask.
+# The ranges a printer cannot route to, which is what an offered address is checked against.
+#
+# Normally these are the subnets Docker has actually allocated, asked of the daemon - because
+# 172.16/12 is legitimate space somebody may genuinely run their house on, and refusing to offer
+# their real address would be wrong in a way they could not argue with.
+#
+# But that only holds while the daemon answers. With docker absent, stopped, or not permitting this
+# user, the query returns nothing and the check silently passes everything - including 172.17.0.1,
+# the single address most likely to be wrong and the one that gets frozen into a certificate. An
+# empty answer is reliably "could not ask" rather than "nothing allocated", because a working daemon
+# always has at least the default bridge.
+#
+# So the fallback is the Pi's rule: exclude Docker's whole default pool, and say why. Conservative
+# and loud, on the same reasoning homespool-firstboot.sh gives for excluding the block outright -
+# and here the operator can still type an address by hand, so nothing is actually blocked.
+unreachable_ranges() {
+    local subnets
+    subnets="$(docker_subnets)"
+    if [ -n "$subnets" ]; then
+        echo "$subnets"
+        return 0
+    fi
+    if ! $docker_unavailable_warned; then
+        warn "Could not ask Docker which ranges it has allocated - is it installed and running?"
+        warn "Falling back to excluding 172.16.0.0/12 entirely. If your LAN genuinely lives there,"
+        warn "type the address rather than picking from the list."
+        docker_unavailable_warned=true
+    fi
+    echo "172.16.0.0/12"
+}
+
+docker_unavailable_warned=false
+
+# Loopback and link-local are never reachable by a printer either, and need no daemon to recognise.
 filter_unusable() {
     local subnets addr
-    subnets="$(docker_subnets)"
+    subnets="$(unreachable_ranges)"
     while read -r addr; do
         [ -n "$addr" ] || continue
         case "$addr" in
             127.*|169.254.*|0.0.0.0) continue ;;
         esac
-        local skip=false cidr
-        while read -r cidr; do
-            [ -n "$cidr" ] || continue
-            if ip_in_cidr "$addr" "$cidr"; then skip=true; break; fi
-        done <<< "$subnets"
-        $skip || echo "$addr"
+        overlaps_any "$addr/32" <<< "$subnets" >/dev/null || echo "$addr"
     done
 }
 
@@ -370,7 +420,7 @@ ask_printer_host() {
 }
 
 validate_printer_host() {
-    local host="$1" subnets cidr resolved
+    local host="$1" resolved hit
 
     if [ -z "$host" ]; then
         warn "Left unset. USB-key provisioning will refuse to produce a snippet until it is."
@@ -400,15 +450,14 @@ validate_printer_host() {
             ;;
     esac
 
-    subnets="$(docker_subnets)"
-    while read -r cidr; do
-        [ -n "$cidr" ] || continue
-        if ip_in_cidr "${resolved:-$host}" "$cidr" 2>/dev/null; then
-            warn "$host is inside the Docker network $cidr. Printers on your network cannot route"
-            warn "to it, and it would be minted into the certificate and frozen there."
-            ask_yes_no "  Use it anyway" n || return 1
-        fi
-    done <<< "$subnets"
+    # The same ranges the offered list was filtered against, so a typed address is judged by the
+    # rule a picked one already passed.
+    hit="$(overlaps_any "${resolved:-$host}/32" <<< "$(unreachable_ranges)" | head -1)"
+    if [ -n "$hit" ]; then
+        warn "$host is inside $hit, which printers on your network cannot route to. It would be"
+        warn "minted into the certificate and frozen there."
+        ask_yes_no "  Use it anyway" n || return 1
+    fi
 
     return 0
 }
@@ -571,21 +620,20 @@ random_password() {
 # The subnet is not a question - it is right until it collides with something, and the operator has
 # no way of knowing that in advance. So it is checked, and only mentioned when it is wrong.
 check_subnet_collision() {
-    local subnet colliding cidr candidate
+    local subnet colliding candidate
     subnet="$(env_get PROXY_SUBNET)"
     [ -n "$subnet" ] || return 0
 
-    colliding=""
-    while read -r cidr; do
-        [ -n "$cidr" ] || continue
-        cidr_overlap "$subnet" "$cidr" 2>/dev/null && colliding="$colliding $cidr"
-    done <<< "$(docker_subnets
-                host_routes)"
-
+    # Emptiness is the test, not the exit status - and the `|| true` is load-bearing under `set -e`:
+    # overlaps_any reports "no overlap" by failing, which is the ORDINARY case here, and a bare
+    # assignment from a failing substitution ends the script. It did, silently, right after the
+    # camera credential and before anything was written.
+    colliding="$(overlaps_any "$subnet" <<< "$(allocated_ranges)")" || true
     [ -n "$colliding" ] || return 0
+    colliding="$(echo "$colliding" | tr '\n' ' ')"
 
     say
-    warn "The compose network $subnet collides with:$colliding"
+    warn "The compose network $subnet collides with: $colliding"
     warn "A collision with another Docker network fails loudly at startup. A collision with a route"
     warn "this machine already has does not: the stack comes up, and that network stops being"
     warn "reachable from here."
@@ -606,17 +654,11 @@ check_subnet_collision() {
 }
 
 free_subnet() {
-    local taken octet candidate cidr clash
-    taken="$(docker_subnets
-             host_routes)"
+    local taken octet candidate
+    taken="$(allocated_ranges)"
     for octet in $(seq 16 31); do
         candidate="172.$octet.0.0/16"
-        clash=false
-        while read -r cidr; do
-            [ -n "$cidr" ] || continue
-            if cidr_overlap "$candidate" "$cidr" 2>/dev/null; then clash=true; break; fi
-        done <<< "$taken"
-        if ! $clash; then
+        if ! overlaps_any "$candidate" <<< "$taken" >/dev/null; then
             echo "$candidate"
             return 0
         fi
@@ -698,110 +740,170 @@ apply() {
         say "Created $env_file from .env.example."
     fi
 
-    local key value tmp
+    # The pending pairs, escaped, in a file of their own so awk can read them as its first input.
+    # One pass over .env rather than one pass per key: the old shape rewrote the whole file once for
+    # every answer, which is six rewrites of a 190-line file to change six lines.
+    local pairs tmp key value
+    pairs="$(mktemp "${TMPDIR:-/tmp}/setup-env-pairs.XXXXXX")"
+    tmp="$(mktemp "${TMPDIR:-/tmp}/setup-env.XXXXXX")"
     while IFS= read -r line; do
         [ -n "$line" ] || continue
         key="${line%%=*}"
         value="${line#*=}"
-        tmp="$(mktemp "${TMPDIR:-/tmp}/setup-env.XXXXXX")"
-        if key_present "$env_file" "$key"; then
-            # The value is passed through the environment rather than interpolated into the awk
-            # program, so a password containing a backslash, an ampersand or a slash lands in the
-            # file as typed. Prefix-matched with index() rather than a regex for the same reason.
-            HS_VALUE="$(compose_escape "$value")" awk -v key="$key" '
-                index($0, key "=") == 1 && !done { print key "=" ENVIRON["HS_VALUE"]; done = 1; next }
-                { print }
-            ' "$env_file" > "$tmp"
-        else
-            cat "$env_file" > "$tmp"
-            printf '%s=%s\n' "$key" "$(compose_escape "$value")" >> "$tmp"
-        fi
-        cat "$tmp" > "$env_file"
-        rm -f "$tmp"
+        printf '%s=%s\n' "$key" "$(compose_escape "$value")" >> "$pairs"
     done <<< "$pending"
 
-    # Rewritten in place rather than moved over, so an existing file keeps its own ownership and
-    # mode - but a file holding an SMTP password should not be world-readable either way.
+    # Values are carried in the pairs file rather than interpolated into the program text, and keys
+    # are matched with index() rather than a regex, so a password containing a backslash, an
+    # ampersand or a slash lands in the file exactly as typed.
+    #
+    # The LAST assignment of a key is the one rewritten, which is what makes writing agree with
+    # reading: file_get also takes the last, on the same reasoning a shell and compose use - an
+    # operator who has appended a second PRINTER_HOST= at the bottom means the bottom one. Rewriting
+    # the first would have shown them one value in the summary and changed a different line.
+    awk '
+        FNR == NR {
+            eq = index($0, "=")
+            key = substr($0, 1, eq - 1)
+            value[key] = substr($0, eq + 1)
+            order[++count] = key
+            next
+        }
+        { line[++total] = $0 }
+        END {
+            for (i = 1; i <= total; i++) {
+                for (k in value) {
+                    if (index(line[i], k "=") == 1) {
+                        last[k] = i
+                    }
+                }
+            }
+            for (i = 1; i <= total; i++) {
+                replaced = ""
+                for (k in value) {
+                    # `k in last` first, and not merely for speed: referencing last[k] CREATES it,
+                    # so a bare `last[k] == i` would quietly populate last with every key in value -
+                    # and the append below, which asks whether a key is in last, would then never
+                    # fire. A key the file does not mention would be silently dropped.
+                    if ((k in last) && last[k] == i) {
+                        replaced = k
+                    }
+                }
+                # Parenthesised because `print` takes an expression *list* and treats a bare `>` as
+                # redirection: gawk tolerates an unbracketed ternary here, BSD awk rejects the whole
+                # program. macOS ships BSD awk.
+                print (replaced == "" ? line[i] : replaced "=" value[replaced])
+            }
+            # Anything the file never mentioned is appended, in the order it was answered.
+            for (i = 1; i <= count; i++) {
+                if (!(order[i] in last)) {
+                    print order[i] "=" value[order[i]]
+                }
+            }
+        }
+    ' "$pairs" "$env_file" > "$tmp"
+
+    # Copied over rather than moved, so an existing file keeps its own ownership and mode.
+    cat "$tmp" > "$env_file"
+    rm -f "$tmp" "$pairs"
+
+    # A file holding an SMTP password should not be world-readable.
     chmod 600 "$env_file" 2>/dev/null || true
 }
 
 # ------------------------------------------------------------------------------------------------
 # Entry
+#
+# Everything above is functions with no side effects at load time, and everything that acts is below
+# - so `source setup-env.sh` gets the whole toolbox and runs none of it. That is what tests/ drives:
+# it calls the parsing and the patching directly, with fake `docker`, `ip` and `netstat` ahead of
+# them on PATH, which is the only way the BSD route parser gets exercised on Linux and the Linux one
+# on a Mac. Keep new work above the line, and keep this block a call to main.
 # ------------------------------------------------------------------------------------------------
 
-while [ $# -gt 0 ]; do
-    case "$1" in
-        --set)
-            case "${2:-}" in
-                # Through plan_set, so that --set with the value the file already holds is correctly
-                # nothing rather than a rewrite of the same line - which is what makes this safe to
-                # run unconditionally from another script on every boot.
-                *=*) plan_set "${2%%=*}" "${2#*=}"; non_interactive=true; shift 2 ;;
-                *) echo "setup-env.sh: --set wants KEY=VALUE" >&2; exit 2 ;;
-            esac
-            ;;
-        --dry-run) dry_run=true; shift ;;
-        # 2,8 rather than a fixed larger range: the usage block ends at the --dry-run line, and a
-        # range that runs past it prints half a paragraph about compose defaults. Extend when the
-        # header does.
-        -h|--help) sed -n '2,8p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
-        *) echo "setup-env.sh: unknown argument: $1" >&2; exit 2 ;;
-    esac
-done
+main() {
 
-if [ ! -f "$example_file" ]; then
-    echo "setup-env.sh: no .env.example beside this script - run it from the repository" >&2
-    exit 1
-fi
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --set)
+                case "${2:-}" in
+                    # Through plan_set, so that --set with the value the file already holds is correctly
+                    # nothing rather than a rewrite of the same line - which is what makes this safe to
+                    # run unconditionally from another script on every boot.
+                    *=*) plan_set "${2%%=*}" "${2#*=}"; non_interactive=true; shift 2 ;;
+                    *) echo "setup-env.sh: --set wants KEY=VALUE" >&2; exit 2 ;;
+                esac
+                ;;
+            --dry-run) dry_run=true; shift ;;
+            # 2,8 rather than a fixed larger range: the usage block ends at the --dry-run line, and a
+            # range that runs past it prints half a paragraph about compose defaults. Extend when the
+            # header does.
+            -h|--help) sed -n '2,8p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+            *) echo "setup-env.sh: unknown argument: $1" >&2; exit 2 ;;
+        esac
+    done
 
-if ! $non_interactive; then
-    if [ ! -t 0 ]; then
-        echo "setup-env.sh: nothing to read answers from. Use --set KEY=VALUE to configure" >&2
-        echo "non-interactively." >&2
+    if [ ! -f "$example_file" ]; then
+        echo "setup-env.sh: no .env.example beside this script - run it from the repository" >&2
         exit 1
     fi
 
-    say "Homespool - .env setup"
-    say
-    if [ -f "$env_file" ]; then
-        say "Editing the existing $env_file. Only the settings below are touched."
-    else
-        say "No .env yet. One will be created from .env.example, with these settings filled in."
+    if ! $non_interactive; then
+        if [ ! -t 0 ]; then
+            echo "setup-env.sh: nothing to read answers from. Use --set KEY=VALUE to configure" >&2
+            echo "non-interactively." >&2
+            exit 1
+        fi
+
+        say "Homespool - .env setup"
+        say
+        if [ -f "$env_file" ]; then
+            say "Editing the existing $env_file. Only the settings below are touched."
+        else
+            say "No .env yet. One will be created from .env.example, with these settings filled in."
+        fi
+
+        ask_printer_host
+        ask_user_host
+        ask_timezone
+        ask_ports
+        ask_smtp
+        ensure_go2rtc_credential
+        check_subnet_collision
     fi
 
-    ask_printer_host
-    ask_user_host
-    ask_timezone
-    ask_ports
-    ask_smtp
-    ensure_go2rtc_credential
-    check_subnet_collision
-fi
+    if [ -z "$pending" ]; then
+        say
+        say "Nothing to change."
+        exit 0
+    fi
 
-if [ -z "$pending" ]; then
+    summarise
+    warn_if_already_started
+
+    if $dry_run; then
+        say
+        say "--dry-run: nothing written."
+        exit 0
+    fi
+
+    if ! $non_interactive; then
+        say
+        ask_yes_no "Write these" y || { say "Nothing written."; exit 0; }
+    fi
+
+    apply
+
     say
-    say "Nothing to change."
-    exit 0
-fi
-
-summarise
-warn_if_already_started
-
-if $dry_run; then
+    say "Written. Bring the stack up with:"
     say
-    say "--dry-run: nothing written."
-    exit 0
-fi
-
-if ! $non_interactive; then
+    say "    docker compose up -d"
     say
-    ask_yes_no "Write these" y || { say "Nothing written."; exit 0; }
+
+}
+
+# Sourced, this defines and does nothing; run, it is the script. The comparison is what tells the
+# two apart - BASH_SOURCE[0] is this file either way, and $0 is the caller's name when sourced.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    main "$@"
 fi
-
-apply
-
-say
-say "Written. Bring the stack up with:"
-say
-say "    docker compose up -d"
-say

@@ -281,7 +281,20 @@ host_routes() {
 # deployment and that first answer is empty there.
 lan_addresses() {
     {
-        if command -v ip >/dev/null 2>&1; then
+        # Supplied from outside, because this is running somewhere that cannot see the answer.
+        #
+        # That is Windows: the LAN address exists only on the Windows host, and neither a container
+        # nor WSL2 can reach it - WSL2 is NAT'd behind its own virtual switch, so `ip route get`
+        # there returns the VM's 172.x address exactly as it would in a container. setup-env.ps1
+        # asks Windows and passes the list in here.
+        #
+        # A list, not an answer: everything below still applies to it, so a vEthernet address from
+        # WSL or Hyper-V is filtered out by the same rule that filters Docker's own, and the ranking
+        # and validation are unchanged. This supplies a fact the script cannot obtain, and decides
+        # nothing.
+        if [ -n "${HOMESPOOL_ADDRESSES:-}" ]; then
+            echo "$HOMESPOOL_ADDRESSES" | tr ' ,' '\n\n'
+        elif command -v ip >/dev/null 2>&1; then
             ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.*src \([0-9.]*\).*/\1/p'
             hostname -I 2>/dev/null | tr ' ' '\n'
         else

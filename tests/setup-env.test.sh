@@ -117,6 +117,11 @@ reset_state() {
     non_interactive=false
     no_prompt=false
     no_overwrite=false
+    # A VAR=value prefix only scopes to a COMMAND. `HOMESPOOL_ADDRESSES=x out="$(f)"` is an
+    # assignment, not a command, so the prefix is an ordinary assignment too and stays set for the
+    # rest of the run - which is how a later test came to be handed a vEthernet address by an
+    # earlier one. Cleared here rather than trusted to be scoped.
+    unset HOMESPOOL_ADDRESSES
     docker_subnets_cache=""
     docker_subnets_cached=false
     PATH="$real_path"
@@ -304,6 +309,30 @@ if test_case "lan_addresses drops what a printer cannot reach"; then
             *) passed=$((passed + 1)) ;;
         esac
     done
+fi
+
+if test_case "HOMESPOOL_ADDRESSES supplies what a sandbox cannot see"; then
+    # The Windows path: neither a container nor WSL2 can see the Windows host's LAN address, so
+    # setup-env.ps1 asks Windows and passes the list in. It is a fact, not an answer - everything
+    # else still applies to it.
+    sandbox_path linux docker-collision
+    HOMESPOOL_ADDRESSES="192.168.13.50 172.17.0.1 127.0.0.1 169.254.9.9" \
+        addresses="$(lan_addresses)"
+    assert_eq "192.168.13.50" "$addresses" "the supplied LAN address, with the rest filtered out"
+
+    # Comma-separated too, because that is what a PowerShell array interpolates to.
+    HOMESPOOL_ADDRESSES="192.168.13.50,192.168.13.51" addresses="$(lan_addresses)"
+    assert_eq "192.168.13.50
+192.168.13.51" "$addresses" "both, in the order given"
+fi
+
+if test_case "HOMESPOOL_ADDRESSES still loses a vEthernet address with no daemon"; then
+    # On Windows the supplied list contains WSL and Hyper-V vEthernet addresses in 172.x, and the
+    # container has no Docker socket - so the conservative 172.16/12 fallback is what removes them.
+    # Being unable to ask Docker is the normal case there, not a degradation.
+    sandbox_path linux
+    HOMESPOOL_ADDRESSES="172.28.112.1 192.168.13.50" addresses="$(lan_addresses 2>/dev/null)"
+    assert_eq "192.168.13.50" "$addresses" "the vEthernet address is not offered"
 fi
 
 if test_case "free_subnet skips what is taken"; then

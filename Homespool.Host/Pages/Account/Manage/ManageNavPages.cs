@@ -47,6 +47,9 @@ public static class ManageNavPages
     /// <summary>Personal access tokens for the app API. Homespool's own page, not scaffolded Identity.</summary>
     public static string ApiTokens => "ApiTokens";
 
+    /// <summary>The language this account reads Homespool in. Homespool's own page.</summary>
+    public static string Language => "Language";
+
     /// <summary>
     ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
     ///     directly from your code. This API may change or be removed in future releases.
@@ -96,6 +99,12 @@ public static class ManageNavPages
     public static string ApiTokensNavClass(ViewContext viewContext)
     {
         return PageNavClass(viewContext, ApiTokens);
+    }
+
+    /// <summary>The nav highlight for the language page.</summary>
+    public static string LanguageNavClass(ViewContext viewContext)
+    {
+        return PageNavClass(viewContext, Language);
     }
 
     /// <summary>

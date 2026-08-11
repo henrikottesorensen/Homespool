@@ -8,8 +8,10 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Services;
@@ -58,14 +60,21 @@ public sealed class TelemetryAlertService : BackgroundService
 
     /// <summary>Reuses each check's own description, so the email, the banner and <c>/health</c> all
     /// say the same thing about the same condition.</summary>
-    private static string Describe(HealthReport report)
+    /// <remarks>
+    /// <b>The prose around the list is localised; the list itself is not.</b> Each item is a health
+    /// check's own description, or failing that its key - text this application does not author and
+    /// which names a component rather than describing it to a reader. Translating those would put
+    /// three surfaces out of step with each other for no gain, since the banner and <c>/health</c>
+    /// carry the same strings untranslated.
+    /// </remarks>
+    private static string Describe(HealthReport report, IStringLocalizer<SharedResource> localiser)
     {
         IEnumerable<string> problems = report.Entries
                                              .Where(entry => entry.Value.Status != HealthStatus.Healthy)
                                              .Select(entry => $"<li>{entry.Value.Description ?? entry.Key}</li>");
 
-        return $"<p>Homespool reported a problem:</p><ul>{string.Concat(problems)}</ul>"
-               + "<p>Printing is unaffected, but recorded history may be incomplete until this is resolved.</p>";
+        return $"<p>{localiser["Alert_UnhealthyIntro"].Value}</p><ul>{string.Concat(problems)}</ul>"
+               + $"<p>{localiser["Alert_UnhealthyFooter"].Value}</p>";
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -110,15 +119,15 @@ public sealed class TelemetryAlertService : BackgroundService
             {
                 case AlertAction.Alert:
                     _alerted = await SendAsync(
-                        "Homespool is unhealthy",
-                        Describe(report),
+                        "Alert_UnhealthySubject",
+                        localiser => Describe(report, localiser),
                         cancellationToken);
                     break;
 
                 case AlertAction.Recovered:
                     await SendAsync(
-                        "Homespool has recovered",
-                        "<p>The problems reported earlier have cleared. All health checks are passing again.</p>",
+                        "Alert_RecoveredSubject",
+                        localiser => $"<p>{localiser["Alert_RecoveredBody"].Value}</p>",
                         cancellationToken);
                     _alerted = false;
                     break;
@@ -136,23 +145,38 @@ public sealed class TelemetryAlertService : BackgroundService
     /// as reported - otherwise one unreachable mail server would suppress the alert permanently,
     /// and the recovery notice would be the first anyone heard of it.
     /// </summary>
-    private async Task<bool> SendAsync(string subject, string body, CancellationToken cancellationToken)
+    private async Task<bool> SendAsync(
+        string subjectKey,
+        Func<IStringLocalizer<SharedResource>, string> body,
+        CancellationToken cancellationToken)
     {
         if (_recipients.Count == 0)
         {
-            _logger.LogWarning("{Subject}, but no administrator address is known to send it to.", subject);
+            _logger.LogWarning("{Subject}, but no administrator address is known to send it to.", subjectKey);
 
             return false;
         }
 
         await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
         IEmailSender sender = scope.ServiceProvider.GetRequiredService<IEmailSender>();
+        IStringLocalizer<SharedResource> localiser =
+            scope.ServiceProvider.GetRequiredService<IStringLocalizer<SharedResource>>();
+        UserCultures cultures = scope.ServiceProvider.GetRequiredService<UserCultures>();
 
         bool anySent = false;
 
         foreach (string recipient in _recipients)
         {
-            EmailSendResult result = await sender.SendEmailAsync(recipient, subject, body);
+            // Composed per recipient rather than once for everyone: two administrators can read
+            // Homespool in different languages, and there is no request here to inherit a culture
+            // from. This is the path HSUser.Language exists for.
+            string? culture = await cultures.ForEmailAsync(recipient, cancellationToken);
+
+            (string subject, string message) = UserCultures.InCulture(
+                culture,
+                () => (localiser[subjectKey].Value, body(localiser)));
+
+            EmailSendResult result = await sender.SendEmailAsync(recipient, subject, message);
 
             if (result == EmailSendResult.Sent)
             {

@@ -139,7 +139,7 @@ public sealed class CameraSnapshotFetcher : ICameraSnapshotFetcher
                                                        long limit,
                                                        CancellationToken cancellationToken)
     {
-        using Stream source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        await using Stream source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         using MemoryStream destination = new();
 
         byte[] buffer = ArrayPool<byte>.Shared.Rent(81920);

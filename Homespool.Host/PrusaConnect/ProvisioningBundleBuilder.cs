@@ -202,7 +202,7 @@ public sealed class ProvisioningBundleBuilder
 
         using MemoryStream stream = new();
 
-        using (ZipArchive archive = new(stream, ZipArchiveMode.Create, leaveOpen: true))
+        await using (ZipArchive archive = new(stream, ZipArchiveMode.Create, leaveOpen: true))
         {
             // UTF-8 with no BOM, and LF endings. A BOM ahead of the first section header is not a
             // comment to an ini parser, it is three bytes of rubbish before '[' - the same class of

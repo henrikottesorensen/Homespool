@@ -84,7 +84,7 @@ public class PrusaConnectPrinterController : ControllerBase
                 // all (WebSocketPrinterConnection sends on the socket directly), so the message
                 // type here is inert; ownsWebSocket stays false because the close handshake is the
                 // session's, below.
-                using Stream socketStream = WebSocketStream.Create(webSocket, WebSocketMessageType.Binary);
+                await using Stream socketStream = WebSocketStream.Create(webSocket, WebSocketMessageType.Binary);
                 PipeReader input = PipeReader.Create(socketStream, new StreamPipeReaderOptions(leaveOpen: true));
 
                 // No transport argument any more. It used to take Request.IsHttps to size frames for

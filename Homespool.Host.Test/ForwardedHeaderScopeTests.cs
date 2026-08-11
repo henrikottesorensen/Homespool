@@ -134,7 +134,7 @@ public class ForwardedHeaderScopeTests
                                                         ForwardedHeadersConfigurator.Apply(
                                                             new XForwardedOptions { KnownProxies = ["10.9.9.9"] }, options));
 
-        using ServiceProvider provider = services.BuildServiceProvider();
+        await using ServiceProvider provider = services.BuildServiceProvider();
 
         ApplicationBuilder app = new(provider);
         app.UseWhen(

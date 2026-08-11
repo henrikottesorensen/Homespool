@@ -116,6 +116,10 @@ namespace Homespool.Data.Migrations
                     b.Property<int>("FailedClaimAttempts")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Language")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("INTEGER");
 

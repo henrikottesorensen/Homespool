@@ -425,12 +425,12 @@ public sealed class PrinterQueryServiceTests : IDisposable
         context.PrinterEvents.AddRange(
             new PrinterEvent
             {
-                PrinterId = printer.Id, Timestamp = now.AddMinutes(-1), EventType = Events.Info, Status = PrinterStatus.Printing
+                PrinterId = printer.Id, Timestamp = now.AddMinutes(-1), EventType = Events.Info, Status = PrinterStatus.Printing,
             },
             new PrinterEvent
             {
                 PrinterId = printer.Id, Timestamp = now, EventType = Events.Finished, Status = PrinterStatus.Printing,
-                Reason = "No print to pause"
+                Reason = "No print to pause",
             });
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -470,7 +470,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
         {
             context.TelemetrySamples.Add(new TelemetrySample
             {
-                PrinterId = printer.Id, Timestamp = now.AddSeconds(-i), Status = PrinterStatus.Printing, Progress = i
+                PrinterId = printer.Id, Timestamp = now.AddSeconds(-i), Status = PrinterStatus.Printing, Progress = i,
             });
         }
 

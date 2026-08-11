@@ -64,7 +64,8 @@ public sealed class TelemetryRetentionService : BackgroundService
             do
             {
                 await SweepAsync(stoppingToken);
-            } while (await timer.WaitForNextTickAsync(stoppingToken));
+            }
+            while (await timer.WaitForNextTickAsync(stoppingToken));
         }
         catch (OperationCanceledException)
         {

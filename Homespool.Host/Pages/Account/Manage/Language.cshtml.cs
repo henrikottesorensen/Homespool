@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -39,15 +40,18 @@ public class LanguageModel : PageModel
     private readonly UserManager<HSUser> _userManager;
     private readonly SignInManager<HSUser> _signInManager;
     private readonly IStringLocalizer<SharedResource> _localiser;
+    private readonly TimeProvider _time;
 
     public LanguageModel(
         UserManager<HSUser> userManager,
         SignInManager<HSUser> signInManager,
-        IStringLocalizer<SharedResource> localiser)
+        IStringLocalizer<SharedResource> localiser,
+        TimeProvider time)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _localiser = localiser;
+        _time = time;
     }
 
     /// <summary>The culture currently stored, or <see cref="FollowBrowser"/> when there is none.</summary>
@@ -124,8 +128,13 @@ public class LanguageModel : PageModel
             new(_localiser["Language_FollowBrowser"], FollowBrowser),
         ];
 
+        // Local time, not UTC: the question is whether it is April Fools' where this Homespool is
+        // installed. See SupportedLanguages.DisplayNamesOn.
+        IReadOnlyDictionary<string, string> names =
+            SupportedLanguages.DisplayNamesOn(_time.GetLocalNow());
+
         options.AddRange(SupportedLanguages.CultureNames.Select(
-            culture => new SelectListItem(SupportedLanguages.DisplayNames[culture], culture)));
+            culture => new SelectListItem(names[culture], culture)));
 
         Options = options;
     }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 
 using AwesomeAssertions;
@@ -202,17 +203,18 @@ public sealed class LocalisationTests
     /// What a browser asks for, and what it selects.
     /// </summary>
     /// <remarks>
-    /// In order: the two shipped names exactly; a specific culture selecting the neutral language
-    /// shipped for it; plain <c>en</c> selecting the specific English shipped, which is the
-    /// direction a one-way prefix check silently gets wrong; American English, which is not shipped
-    /// and is not quietly treated as though it were; and two that merely share a prefix.
+    /// In order: the three shipped names exactly; a specific culture selecting the neutral language
+    /// shipped for it; plain <c>en</c> selecting <c>en-GB</c> rather than <c>en-US</c>, which is
+    /// decided by list order and is the direction a one-way prefix check silently gets wrong; and
+    /// three that match nothing, including one that merely shares a prefix.
     /// </remarks>
     [Theory]
     [InlineData("en-GB", "en-GB")]
+    [InlineData("en-US", "en-US")]
     [InlineData("da", "da")]
     [InlineData("da-DK", "da")]
     [InlineData("en", "en-GB")]
-    [InlineData("en-US", null)]
+    [InlineData("de-DE", null)]
     [InlineData("dan", null)]
     [InlineData("", null)]
     [InlineData(null, null)]
@@ -220,6 +222,78 @@ public sealed class LocalisationTests
     {
         SupportedLanguages.Resolve(requested).Should().Be(expected);
         SupportedLanguages.IsSupported(requested).Should().Be(expected is not null);
+    }
+
+    /// <summary>
+    /// What <c>en-US</c> is actually for: the same words, formatted the American way.
+    /// </summary>
+    /// <remarks>
+    /// It ships with no resource file, so this is also the assertion that a culture with no
+    /// resources of its own still reads the neutral ones rather than falling back to nothing. If
+    /// somebody later adds an <c>en-US</c> file, the first half of this test is what says the words
+    /// were supposed to be identical.
+    /// </remarks>
+    [Fact]
+    public void AmericanEnglishSharesTheWordsAndNotTheFormatting()
+    {
+        PrinterStatusText text = new(Localiser());
+        DateTime ninthOfMarch = new(2026, 3, 9);
+
+        InCulture("en-US", () =>
+        {
+            text.For(PrinterStatus.Attention).Should().Be("Waiting for you");
+            ninthOfMarch.ToString("d", CultureInfo.CurrentCulture).Should().Be("3/9/2026");
+        });
+
+        InCulture("en-GB", () =>
+        {
+            text.For(PrinterStatus.Attention).Should().Be("Waiting for you");
+            ninthOfMarch.ToString("d", CultureInfo.CurrentCulture).Should().Be("09/03/2026");
+        });
+    }
+
+    /// <summary>
+    /// The picker's labels are a function of the date, and this pins both sides of it.
+    /// </summary>
+    /// <remarks>
+    /// Asserted against fixed dates rather than the clock, so it neither depends on the calendar nor
+    /// quietly stops being covered for most of the year.
+    /// </remarks>
+    [Fact]
+    public void LabelsAreResolvedForTheDayTheyAreShown()
+    {
+        IReadOnlyDictionary<string, string> ordinary =
+            SupportedLanguages.DisplayNamesOn(new DateTimeOffset(2026, 3, 31, 23, 59, 0, TimeSpan.Zero));
+
+        ordinary[SupportedLanguages.DefaultCulture].Should().Be("English (UK)");
+        ordinary["en-US"].Should().Be("English (US)");
+
+        IReadOnlyDictionary<string, string> april =
+            SupportedLanguages.DisplayNamesOn(new DateTimeOffset(2026, 4, 1, 9, 0, 0, TimeSpan.Zero));
+
+        april[SupportedLanguages.DefaultCulture].Should().Be("English (Traditional)");
+        april["en-US"].Should().Be("English (Simplified)");
+        april["da"].Should().Be("Dansk");
+    }
+
+    /// <summary>
+    /// Whatever a label says, the value behind it is a culture name and does not move.
+    /// </summary>
+    /// <remarks>
+    /// The assertion that matters: the offered cultures, their order and what <c>Resolve</c> returns
+    /// are identical whichever labels are in force, so choosing a language stores the same thing on
+    /// any day of the year. A label wired deeper than the label would be a bug.
+    /// </remarks>
+    [Fact]
+    public void LabelsNeverChangeWhatIsStored()
+    {
+        DateTimeOffset april = new(2026, 4, 1, 9, 0, 0, TimeSpan.Zero);
+
+        SupportedLanguages.DisplayNamesOn(april).Keys
+            .Should().BeEquivalentTo(SupportedLanguages.DisplayNames.Keys);
+
+        SupportedLanguages.Resolve("en-US").Should().Be("en-US");
+        SupportedLanguages.CultureNames.Should().Equal("en-GB", "en-US", "da");
     }
 
     /// <summary>
@@ -252,7 +326,7 @@ public sealed class LocalisationTests
         InCulture("en-GB", () =>
         {
             UserCultures.InCulture(null, () => CultureInfo.CurrentCulture.Name).Should().Be("en-GB");
-            UserCultures.InCulture("en-US", () => CultureInfo.CurrentCulture.Name).Should().Be("en-GB");
+            UserCultures.InCulture("de-DE", () => CultureInfo.CurrentCulture.Name).Should().Be("en-GB");
         });
     }
 }

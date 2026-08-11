@@ -53,12 +53,29 @@ public static class SupportedLanguages
     /// Every culture that may be selected, most-preferred first.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <c>da</c> stays neutral because Danish is one language in one region and naming <c>da-DK</c>
     /// would claim something nobody stated. English does not have that luxury, so it names the
     /// region it is actually written in. Requests match in both directions — <c>en</c> selects
     /// <c>en-GB</c>, <c>da-DK</c> selects <c>da</c> — see <see cref="Matches"/>.
+    /// </para>
+    /// <para>
+    /// <b><c>en-US</c> ships with no resource file of its own, and that is not an oversight.</b> Not
+    /// one string in the application currently differs between the two dialects, so a resource file
+    /// would be an exact copy of the neutral one — and a copy is worse than nothing, because the
+    /// next edit updates one of them. What <c>en-US</c> buys today is entirely the <i>formatting</i>
+    /// half: <c>3/9/2026</c> and a 12-hour clock against <c>09/03/2026</c> and a 24-hour one. It
+    /// falls back to the neutral resources for words, which is the correct behaviour right up until
+    /// somebody writes "customise" or "colour" into one — at which point this needs a file
+    /// containing exactly the words that differ, and nothing else.
+    /// </para>
+    /// <para>
+    /// <b>Order decides what plain <c>en</c> selects</b>, and it selects the first match, so
+    /// <c>en-GB</c> being first is what makes an unqualified <c>Accept-Language: en</c> land on the
+    /// default rather than on American formatting.
+    /// </para>
     /// </remarks>
-    public static readonly IReadOnlyList<string> CultureNames = [DefaultCulture, "da"];
+    public static readonly IReadOnlyList<string> CultureNames = [DefaultCulture, "en-US", "da"];
 
     /// <summary>
     /// What each language calls itself, for a picker.
@@ -70,12 +87,57 @@ public static class SupportedLanguages
     /// Written out rather than taken from <c>CultureInfo.NativeName</c>, which yields "English
     /// (United Kingdom)" and "dansk (Danmark)": accurate, and not what anybody would print on a menu.
     /// </remarks>
+    /// <remarks>
+    /// <b>"UK" here, <c>en-GB</c> in the culture name, and both are right.</b> The label is what a
+    /// person reads, and in English the country is the United Kingdom; the culture name is a BCP 47
+    /// identifier, where the region subtag comes from ISO 3166-1 and is <c>GB</c>. The two
+    /// disagreeing is a property of the standards, not a mistake to tidy — see
+    /// <see cref="DefaultCulture"/> for what happens to somebody who tidies it.
+    /// </remarks>
     public static readonly IReadOnlyDictionary<string, string> DisplayNames =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            [DefaultCulture] = "English",
+            [DefaultCulture] = "English (UK)",
+            ["en-US"] = "English (US)",
             ["da"] = "Dansk",
         };
+
+    /// <summary>
+    /// The names on 1 April.
+    /// </summary>
+    /// <remarks>
+    /// Danish is untouched: the joke is about the two Englishes, and a language that is not part of
+    /// it should not be dragged in.
+    /// </remarks>
+    private static readonly IReadOnlyDictionary<string, string> AprilNames =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [DefaultCulture] = "English (Traditional)",
+            ["en-US"] = "English (Simplified)",
+            ["da"] = "Dansk",
+        };
+
+    /// <summary>
+    /// What to call each language on a given day (Henrik, 2026-08-11).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Labels only, and that is what makes it safe.</b> The values a form posts are culture
+    /// names, so nothing about selecting, storing or resolving a language changes on 1 April — the
+    /// worst case is somebody screenshotting a picker that reads oddly. A joke wired any deeper than
+    /// the label would be a bug with a punchline.
+    /// </para>
+    /// <para>
+    /// <b>Takes the date rather than reading a clock</b>, so it is testable on the other 364 days.
+    /// Callers pass local time: the question is whether it is April Fools' where this Homespool is
+    /// installed, which is the same reasoning that put <c>TZ</c> in the container.
+    /// </para>
+    /// </remarks>
+    /// <param name="today">The current local date.</param>
+    public static IReadOnlyDictionary<string, string> DisplayNamesOn(DateTimeOffset today)
+    {
+        return today is { Month: 4, Day: 1 } ? AprilNames : DisplayNames;
+    }
 
     /// <summary>
     /// The supported cultures as <see cref="CultureInfo"/>, for the request-localisation options.

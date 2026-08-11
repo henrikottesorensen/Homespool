@@ -2,10 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text.Encodings.Web;
+using System.Text.Unicode;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.WebEncoders;
 
 namespace Homespool.Host.Localisation;
 
@@ -30,6 +33,24 @@ public static class Registration
         services.AddLocalization();
 
         services.Configure<RequestLocalizationOptions>(ConfigureCultures);
+
+        // Let non-ASCII text through the HTML encoder as itself.
+        //
+        // The default encoder escapes everything outside Basic Latin, so "Følg min browser" reaches
+        // the browser as "F&#xF8;lg min browser". That renders correctly and is not a bug - but it
+        // inflates every localised page, makes the markup unreadable when something has to be
+        // debugged, and gets dramatically worse for a language that is *entirely* outside the range,
+        // where a page becomes several times its own size in entities.
+        //
+        // Safe because this widens which characters pass through unescaped, not which are escaped:
+        // <, >, & and " are still encoded, so the protection this encoder exists for is untouched.
+        // It works because every response is UTF-8, which is what makes the literal characters
+        // representable in the first place.
+        //
+        // Found by an end-to-end test asserting Danish text on a page, which is the only place it
+        // could have been found - the string is correct everywhere until it is rendered.
+        services.Configure<WebEncoderOptions>(
+            options => options.TextEncoderSettings = new TextEncoderSettings(UnicodeRanges.All));
 
         // Scoped because it reads the request's DbContext.
         services.AddScoped<UserCultures>();

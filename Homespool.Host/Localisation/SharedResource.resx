@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!--
+    Homespool's shared strings, in the neutral language (English).
+
+    Naming: Area_Thing. A key is never the English text itself - an English-keyed resource means
+    changing the wording changes the key, which silently orphans every translation of it.
+
+    Plural keys come in pairs, Thing_One and Thing_Other, and are read through Plural.Format rather
+    than by looking one up directly. See Plural.cs for why the pair is the minimum and why more
+    forms are a per-language matter.
+
+    Nothing machine-facing belongs here: CSS class names, protocol values, gcode, filenames and
+    go2rtc source strings are not text a person reads, and localising one produces a value another
+    system rejects. See notes/localisation.md.
+  -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+
+  <data name="PrinterStatus_Connected" xml:space="preserve">
+    <value>Connected</value>
+    <comment>Shown for Undefined and Unknown alike: the printer is talking to us but has not said what it is doing.</comment>
+  </data>
+  <data name="PrinterStatus_Idle" xml:space="preserve">
+    <value>Idle</value>
+  </data>
+  <data name="PrinterStatus_Busy" xml:space="preserve">
+    <value>Busy</value>
+  </data>
+  <data name="PrinterStatus_Printing" xml:space="preserve">
+    <value>Printing</value>
+  </data>
+  <data name="PrinterStatus_Paused" xml:space="preserve">
+    <value>Paused</value>
+  </data>
+  <data name="PrinterStatus_Finished" xml:space="preserve">
+    <value>Finished</value>
+  </data>
+  <data name="PrinterStatus_Stopped" xml:space="preserve">
+    <value>Stopped</value>
+  </data>
+  <data name="PrinterStatus_Error" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="PrinterStatus_Attention" xml:space="preserve">
+    <value>Waiting for you</value>
+    <comment>Firmware means this literally: a dialog is open on the printer and it is blocked until somebody answers - a filament question before a print, load/unload mid-print, crash recovery, nozzle mismatch (printer_state.cpp). Not a synonym for Error, which is something broken rather than something waiting.</comment>
+  </data>
+  <data name="PrinterStatus_Ready" xml:space="preserve">
+    <value>Ready</value>
+  </data>
+  <data name="PrinterStatus_Offline" xml:space="preserve">
+    <value>Offline</value>
+  </data>
+
+  <data name="Printers_One" xml:space="preserve">
+    <value>{0:N0} printer</value>
+  </data>
+  <data name="Printers_Other" xml:space="preserve">
+    <value>{0:N0} printers</value>
+  </data>
+  <data name="Cameras_One" xml:space="preserve">
+    <value>{0:N0} camera</value>
+  </data>
+  <data name="Cameras_Other" xml:space="preserve">
+    <value>{0:N0} cameras</value>
+  </data>
+  <data name="Files_One" xml:space="preserve">
+    <value>{0:N0} file</value>
+  </data>
+  <data name="Files_Other" xml:space="preserve">
+    <value>{0:N0} files</value>
+  </data>
+
+  <data name="Language_Heading" xml:space="preserve">
+    <value>Language</value>
+  </data>
+  <data name="Language_Description" xml:space="preserve">
+    <value>The language Homespool uses on the site and in the emails you receive.</value>
+  </data>
+  <data name="Language_FollowBrowser" xml:space="preserve">
+    <value>Use my browser’s language setting</value>
+    <comment>The null option. Not the same as choosing English - it follows a person who changes their system language.</comment>
+  </data>
+  <data name="Language_Save" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="Language_Saved" xml:space="preserve">
+    <value>Language updated.</value>
+  </data>
+</root>

@@ -28,6 +28,18 @@ namespace Homespool.Host.Localisation;
 /// page — the behaviour there has always been, and a new firmware state showing as <c>Cooldown</c>
 /// is a great deal better than a page that will not render.
 /// </para>
+/// <para>
+/// <b><see cref="PrinterStatus.Manipulating"/> deliberately has no resource</b>, and is what that
+/// fallback is demonstrated on. Buddy cannot produce it: firmware's <c>DeviceState</c>
+/// (<c>printer_state.hpp</c>) has ten members and no such value, and <c>ParseWireState</c> is the
+/// only writer of a live status. It reached <see cref="PrinterStatus"/> because Connect's own
+/// twelve-value enum was transcribed wholesale (Henrik, December 2025 - see
+/// <c>notes/protocol-vocabulary-boundary.md</c>), so writing words for it would be inventing a
+/// sentence for a badge that cannot render, in two languages, with nothing able to check either.
+/// <see cref="PrinterStatus.Offline"/> keeps its words on the opposite reasoning: Homespool could
+/// synthesise that one itself, since it is a verdict about a connection rather than a report from a
+/// printer.
+/// </para>
 /// </remarks>
 public sealed class PrinterStatusText
 {

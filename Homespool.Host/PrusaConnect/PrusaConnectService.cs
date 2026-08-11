@@ -19,7 +19,7 @@ namespace Homespool.Host.PrusaConnect;
 
 public class PrusaConnectService
 {
-    private readonly HSDbContext _dbContext;
+    private readonly HomespoolDbContext _dbContext;
     private readonly CodeGenerator _codeGenerator;
     private readonly TokenService _tokenService;
     private readonly TeamService _teamService;
@@ -27,7 +27,7 @@ public class PrusaConnectService
     private readonly ILogger<PrusaConnectService> _logger;
     private readonly PrusaConnectOptions _options;
 
-    public PrusaConnectService(HSDbContext dbContext,
+    public PrusaConnectService(HomespoolDbContext dbContext,
                           CodeGenerator codeGenerator,
                           TokenService tokenService,
                           TeamService teamService,

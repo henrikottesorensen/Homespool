@@ -93,7 +93,7 @@ public sealed class QueueAdvancerTests : IDisposable
     public async Task APrintThatNeverStartsIsClosedAsUnknown()
     {
         // Arrange - a row that has been Starting for longer than the bound allows
-        await using HSDbContext context = await SeedAsync();
+        await using HomespoolDbContext context = await SeedAsync();
 
         context.PrintJobs.Add(new PrintJob
         {
@@ -125,7 +125,7 @@ public sealed class QueueAdvancerTests : IDisposable
     public async Task APrintStillWithinItsStartingWindowIsLeftOpen()
     {
         // Arrange
-        await using HSDbContext context = await SeedAsync();
+        await using HomespoolDbContext context = await SeedAsync();
 
         context.PrintJobs.Add(new PrintJob
         {
@@ -160,7 +160,7 @@ public sealed class QueueAdvancerTests : IDisposable
     public async Task ATerminalRefusalDropsTheEntryAndRecordsWhy()
     {
         // Arrange - a file already on the drive, a ready printer, and a printer that refuses
-        await using HSDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
         ConnectRefusing("Forbidden path");
 
         // Act
@@ -197,7 +197,7 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         // Arrange - the moment after START_PRINT consumed the last entry: no queue, one open row,
         // and the printer has since stopped.
-        await using HSDbContext context = await SeedAsync(status: PrinterStatus.Stopped);
+        await using HomespoolDbContext context = await SeedAsync(status: PrinterStatus.Stopped);
 
         context.QueuedPrints.RemoveRange(context.QueuedPrints);
         context.PrintJobs.Add(new PrintJob
@@ -231,7 +231,7 @@ public sealed class QueueAdvancerTests : IDisposable
     public async Task FileNotFoundClearsTheDriveBeliefRatherThanFailingTheEntry()
     {
         // Arrange
-        await using HSDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
         ConnectRefusing("File not found");
 
         // Act
@@ -256,7 +256,7 @@ public sealed class QueueAdvancerTests : IDisposable
     public async Task ATransientRefusalChangesNothing()
     {
         // Arrange
-        await using HSDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
         ConnectRefusing("Can't print now");
 
         // Act
@@ -278,7 +278,7 @@ public sealed class QueueAdvancerTests : IDisposable
     public async Task AnUnknownRefusalIsTreatedAsTransient()
     {
         // Arrange
-        await using HSDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
         ConnectRefusing("Something firmware has not said before");
 
         // Act
@@ -306,7 +306,7 @@ public sealed class QueueAdvancerTests : IDisposable
     public async Task ATransferThatWentStaleIsOfferedAgain()
     {
         // Arrange - a transfer stamped long ago, and the bytes on disk for it
-        await using HSDbContext context = await SeedAsync(status: PrinterStatus.Idle);
+        await using HomespoolDbContext context = await SeedAsync(status: PrinterStatus.Idle);
         await WriteFileOnDiskAsync("queued.bgcode");
 
         PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
@@ -342,7 +342,7 @@ public sealed class QueueAdvancerTests : IDisposable
     public async Task ATransferStillWithinItsWindowIsNotDisturbed()
     {
         // Arrange
-        await using HSDbContext context = await SeedAsync(status: PrinterStatus.Idle);
+        await using HomespoolDbContext context = await SeedAsync(status: PrinterStatus.Idle);
         await WriteFileOnDiskAsync("queued.bgcode");
 
         PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
@@ -435,7 +435,7 @@ public sealed class QueueAdvancerTests : IDisposable
     public async Task AFileAlreadyOnTheDriveAtTheSameSizeIsAdopted()
     {
         // Arrange - we do not think it has arrived; the drive disagrees, at the same size.
-        await using HSDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
         await WriteFileOnDiskAsync("queued.bgcode");
         ConnectRefusingTransferAsExisting(existingSize: OnDiskLength);
 
@@ -461,7 +461,7 @@ public sealed class QueueAdvancerTests : IDisposable
     public async Task AFileAlreadyOnTheDriveAtADifferentSizeHoldsTheQueue()
     {
         // Arrange
-        await using HSDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
         await WriteFileOnDiskAsync("queued.bgcode");
         ConnectRefusingTransferAsExisting(existingSize: OnDiskLength + 4096);
 
@@ -484,7 +484,7 @@ public sealed class QueueAdvancerTests : IDisposable
     private QueueAdvancer NewAdvancer()
     {
         ServiceCollection services = new();
-        services.AddDbContext<HSDbContext>(options => options.UseSqlite($"Data Source={_databasePath}"));
+        services.AddDbContext<HomespoolDbContext>(options => options.UseSqlite($"Data Source={_databasePath}"));
         services.AddScoped<PrinterAccessService>();
         services.AddSingleton(_registry);
         services.AddScoped<PrinterCommandService>();
@@ -515,13 +515,13 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>A user, a team, a printer, a file, and one thing queued on it.</summary>
-    private async Task<HSDbContext> SeedAsync(bool arrived = false, PrinterStatus status = PrinterStatus.Idle)
+    private async Task<HomespoolDbContext> SeedAsync(bool arrived = false, PrinterStatus status = PrinterStatus.Idle)
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        HSDbContext context = new(options);
+        HomespoolDbContext context = new(options);
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         const string email = "owner@example.com";

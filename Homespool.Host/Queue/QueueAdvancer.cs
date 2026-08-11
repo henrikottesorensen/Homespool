@@ -198,7 +198,7 @@ public sealed class QueueAdvancer : BackgroundService
 
         await using (AsyncServiceScope scope = _scopeFactory.CreateAsyncScope())
         {
-            HSDbContext dbContext = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+            HomespoolDbContext dbContext = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
             printerIds = await PrintersNeedingAPassAsync(dbContext, cancellationToken);
         }
@@ -236,7 +236,7 @@ public sealed class QueueAdvancer : BackgroundService
     /// self-limiting: the row closes, the queue is empty, the printer drops off the list.
     /// </para>
     /// </remarks>
-    private static Task<List<int>> PrintersNeedingAPassAsync(HSDbContext dbContext,
+    private static Task<List<int>> PrintersNeedingAPassAsync(HomespoolDbContext dbContext,
         CancellationToken cancellationToken)
     {
         return dbContext.QueuedPrints
@@ -279,7 +279,7 @@ public sealed class QueueAdvancer : BackgroundService
     private async Task AdvanceOnceAsync(int printerId, CancellationToken cancellationToken)
     {
         await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
-        HSDbContext dbContext = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+        HomespoolDbContext dbContext = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
         // Read the printer's own reports first, so a transfer that finished since the last pass is
         // known before anything is decided on the assumption that it has not.
@@ -363,7 +363,7 @@ public sealed class QueueAdvancer : BackgroundService
     /// eventually offers the file again rather than waiting forever.
     /// </para>
     /// </remarks>
-    private async Task ReconcileArrivalsAsync(HSDbContext dbContext, int printerId,
+    private async Task ReconcileArrivalsAsync(HomespoolDbContext dbContext, int printerId,
         CancellationToken cancellationToken)
     {
         long watermark = _watermarks.TryGetValue(printerId, out long last) ? last : 0;
@@ -462,7 +462,7 @@ public sealed class QueueAdvancer : BackgroundService
     /// them out rather than deciding anything - "don't cancel prints on people".
     /// </para>
     /// </remarks>
-    private async Task<PrintJob?> ReconcilePrintAsync(HSDbContext dbContext, int printerId,
+    private async Task<PrintJob?> ReconcilePrintAsync(HomespoolDbContext dbContext, int printerId,
         PrinterLiveState? live, CancellationToken cancellationToken)
     {
         PrintJob? active = await dbContext.PrintJobs
@@ -532,7 +532,7 @@ public sealed class QueueAdvancer : BackgroundService
     }
 
     /// <summary>Offers the head's file to the printer, and records that it did.</summary>
-    private async Task TransferAsync(AsyncServiceScope scope, HSDbContext dbContext, int printerId,
+    private async Task TransferAsync(AsyncServiceScope scope, HomespoolDbContext dbContext, int printerId,
         QueuedPrint head, PrintFileOnPrinter? onPrinter, CancellationToken cancellationToken)
     {
         PrintFileCatalog catalog = scope.ServiceProvider.GetRequiredService<PrintFileCatalog>();
@@ -726,7 +726,7 @@ public sealed class QueueAdvancer : BackgroundService
     /// a genuinely full drive fails the transfer loudly, where a wrong refusal is silent.
     /// </para>
     /// </remarks>
-    private async Task<bool> HasRoomForAsync(AsyncServiceScope scope, HSDbContext dbContext, int printerId,
+    private async Task<bool> HasRoomForAsync(AsyncServiceScope scope, HomespoolDbContext dbContext, int printerId,
         QueuedPrint head, long length, PrintFileOnPrinter onPrinter, CancellationToken cancellationToken)
     {
         DateTimeOffset now = _timeProvider.GetUtcNow();
@@ -821,7 +821,7 @@ public sealed class QueueAdvancer : BackgroundService
     /// (planner.cpp:728), so this tests for the absence of a refusal rather than for a particular
     /// event - the check that would otherwise read a started print as an unrecognised answer.
     /// </remarks>
-    private async Task PrintAsync(AsyncServiceScope scope, HSDbContext dbContext, int printerId,
+    private async Task PrintAsync(AsyncServiceScope scope, HomespoolDbContext dbContext, int printerId,
         QueuedPrint head, string printerPath, CancellationToken cancellationToken)
     {
         PrinterCommandService commands = scope.ServiceProvider.GetRequiredService<PrinterCommandService>();
@@ -885,7 +885,7 @@ public sealed class QueueAdvancer : BackgroundService
     /// cleared and the file is offered again rather than the entry being failed.
     /// </para>
     /// </remarks>
-    private void HandleRefusal(int printerId, HSDbContext dbContext, QueuedPrint head, string? reason)
+    private void HandleRefusal(int printerId, HomespoolDbContext dbContext, QueuedPrint head, string? reason)
     {
         switch (reason)
         {

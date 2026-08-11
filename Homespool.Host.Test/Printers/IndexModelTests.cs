@@ -39,18 +39,18 @@ public sealed class IndexModelTests : IDisposable
     // A reissue offers the names the certificate covers, so these tests need a real one.
     private readonly string _certificateRoot = Path.Combine(Path.GetTempPath(), $"ps-printers-index-certs-{Guid.NewGuid():N}");
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -86,12 +86,12 @@ public sealed class IndexModelTests : IDisposable
         };
     }
 
-    private Task<(IndexModel model, HSUser user, Team team)> NewModelAsync(HSDbContext context)
+    private Task<(IndexModel model, HSUser user, Team team)> NewModelAsync(HomespoolDbContext context)
     {
         return NewModelAsync(context, connectionRegistry: null);
     }
 
-    private async Task<(IndexModel model, HSUser user, Team team)> NewModelAsync(HSDbContext context, PrinterConnectionRegistry? connectionRegistry)
+    private async Task<(IndexModel model, HSUser user, Team team)> NewModelAsync(HomespoolDbContext context, PrinterConnectionRegistry? connectionRegistry)
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 
@@ -147,7 +147,7 @@ public sealed class IndexModelTests : IDisposable
     public async Task OnGetAsyncReportsEnrolmentStatusPerPrinter()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (IndexModel model, _, Team team) = await NewModelAsync(context);
 
         Printer enrolled = NewPrinter(team.Id, "Enrolled printer");
@@ -195,7 +195,7 @@ public sealed class IndexModelTests : IDisposable
     public async Task OnGetAsyncDoesNotListPrintersOutsideTheCallersTeams()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (IndexModel model, _, _) = await NewModelAsync(context);
 
         Team othersTeam = new() { CreatedBy = 999, CreatedAt = DateTimeOffset.UtcNow };
@@ -219,7 +219,7 @@ public sealed class IndexModelTests : IDisposable
     public async Task OnPostRegenerateAsyncReissuesAndShowsTheSnippetOnce()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (IndexModel model, HSUser user, Team team) = await NewModelAsync(context);
 
         Printer printer = NewPrinter(team.Id);
@@ -258,7 +258,7 @@ public sealed class IndexModelTests : IDisposable
     public async Task OnPostRegenerateAsyncForAnUnknownPrinterSetsAStatusMessage()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (IndexModel model, _, _) = await NewModelAsync(context);
 
         // Act
@@ -274,7 +274,7 @@ public sealed class IndexModelTests : IDisposable
     public async Task OnPostRegenerateAsyncForAPrinterTheCallerCannotManageSetsAStatusMessage()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (IndexModel model, _, _) = await NewModelAsync(context);
 
         Team othersTeam = new() { CreatedBy = 999, CreatedAt = DateTimeOffset.UtcNow };
@@ -315,7 +315,7 @@ public sealed class IndexModelTests : IDisposable
     public async Task OnPostRegenerateAsyncForAnAlreadyEnrolledPrinterRendersASnippet()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (IndexModel model, _, Team team) = await NewModelAsync(context);
 
         Printer printer = NewPrinter(team.Id);
@@ -351,7 +351,7 @@ public sealed class IndexModelTests : IDisposable
     public async Task OnPostPauseAsyncFallsBackToAGenericMessageForAnUnpredictedException()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         // An exception PrinterCommandService never throws itself, bypassing the actor's own
         // correlation/timeout handling - as a WebSocket write racing a concurrent disconnect would

@@ -132,7 +132,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
         using (IServiceScope scope = _factory.Services.CreateScope())
         {
-            HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+            HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
             PrinterLiveState liveState = await context.PrinterLiveStates.SingleAsync(l => l.PrinterId == printerId, TestContext.Current.CancellationToken);
             liveState.LastSeenAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromMinutes(5),
                 "the merge ran against real replayed data just now");
@@ -692,7 +692,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         bool persisted = await WaitUntilAsync(async () =>
         {
             using IServiceScope scope = _factory.Services.CreateScope();
-            HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+            HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
             return await context.TelemetrySamples
                 .AnyAsync(sample => sample.PrinterId == printerId && sample.TimeToFilamentChange == 300, TestContext.Current.CancellationToken);
@@ -703,7 +703,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
         using (IServiceScope scope = _factory.Services.CreateScope())
         {
-            HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+            HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
             PrinterLiveState liveState = await context.PrinterLiveStates.SingleAsync(l => l.PrinterId == printerId, TestContext.Current.CancellationToken);
 
             liveState.TimeToFilamentChange.Should().Be(300,
@@ -830,7 +830,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     private async Task<(Guid uuid, string token)> UuidAndTokenAsync(int printerId, long userId)
     {
         using IServiceScope scope = _factory.Services.CreateScope();
-        HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
         Guid uuid = (await context.Printers.SingleAsync(p => p.Id == printerId, TestContext.Current.CancellationToken)).Uuid;
 
         ApiTokenService tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
@@ -904,7 +904,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
         using (IServiceScope scope = _factory.Services.CreateScope())
         {
-            HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+            HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
             uuid = (await context.Printers.SingleAsync(p => p.Id == printerId, TestContext.Current.CancellationToken)).Uuid;
 
             ApiTokenService tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
@@ -947,7 +947,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     private async Task MarkIdleAsync(int printerId)
     {
         using IServiceScope scope = _factory.Services.CreateScope();
-        HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
         context.PrinterLiveStates.Add(new PrinterLiveState
         {
@@ -1026,14 +1026,14 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         return false;
     }
 
-    private async Task<int> WaitForCountAsync(Func<HSDbContext, Task<int>> count, int atLeast)
+    private async Task<int> WaitForCountAsync(Func<HomespoolDbContext, Task<int>> count, int atLeast)
     {
         int seen = 0;
 
         for (int i = 0; i < 300; i++)
         {
             using IServiceScope scope = _factory.Services.CreateScope();
-            HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+            HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
             seen = await count(context);
 
             if (seen >= atLeast)

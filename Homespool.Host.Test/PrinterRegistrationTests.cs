@@ -40,7 +40,7 @@ public sealed class PrinterRegistrationTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-reg-{Guid.NewGuid():N}.db");
 
-    private static PrusaConnectService NewService(HSDbContext context,
+    private static PrusaConnectService NewService(HomespoolDbContext context,
                                                   int lifetimeMinutes = 60,
                                                   ILogger<PrusaConnectService>? logger = null)
     {
@@ -65,13 +65,13 @@ public sealed class PrinterRegistrationTests : IDisposable
         };
     }
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
     public void Dispose()
@@ -85,9 +85,9 @@ public sealed class PrinterRegistrationTests : IDisposable
         }
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -106,7 +106,7 @@ public sealed class PrinterRegistrationTests : IDisposable
     public async Task FirstRegistrationPersistsTheSerialFingerprintAndCode()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         // Act
         CodeResponseDTO response = await NewService(context).GetPrinterCode(Request());
@@ -133,7 +133,7 @@ public sealed class PrinterRegistrationTests : IDisposable
         // Arrange
         // The printer re-POSTs on every reconnect. It must not get a fresh code each time, or a user
         // reading one off the screen would be chasing a moving target.
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         // Act
@@ -157,7 +157,7 @@ public sealed class PrinterRegistrationTests : IDisposable
     public async Task ExpiryIsExactlyTheConfiguredLifetimeAfterCreation()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         // Act
         await NewService(context, lifetimeMinutes: 90).GetPrinterCode(Request());
@@ -180,7 +180,7 @@ public sealed class PrinterRegistrationTests : IDisposable
     public async Task AnExpiredCodeIsReplacedOnTheNextRegistration()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         string original = (await service.GetPrinterCode(Request())).TemporaryCode;
@@ -210,7 +210,7 @@ public sealed class PrinterRegistrationTests : IDisposable
     public async Task AReplacementMainboardWithTheSameSerialCanStillRegister()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         await service.GetPrinterCode(Request(fingerprint: "FINGERPRINT-OF-ORIGINAL-BOARD"));
@@ -237,7 +237,7 @@ public sealed class PrinterRegistrationTests : IDisposable
     public async Task PollingAnUnclaimedRegistrationReturnsNoToken()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         string code = (await service.GetPrinterCode(Request())).TemporaryCode;
@@ -259,7 +259,7 @@ public sealed class PrinterRegistrationTests : IDisposable
     public async Task PollingAClaimedRegistrationIssuesATokenAndStoresOnlyItsHash()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         string code = (await service.GetPrinterCode(Request())).TemporaryCode;
@@ -290,7 +290,7 @@ public sealed class PrinterRegistrationTests : IDisposable
     public async Task PollingWithAnUnknownCodeIsRejected()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         // Act
         Func<Task> act = () => NewService(context).GetToken("NEVER-ISSUED");
@@ -311,7 +311,7 @@ public sealed class PrinterRegistrationTests : IDisposable
     public async Task PollingWithAnExpiredCodeIsRejectedLikeAnUnknownOne()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         string code = (await service.GetPrinterCode(Request())).TemporaryCode;
@@ -342,7 +342,7 @@ public sealed class PrinterRegistrationTests : IDisposable
         // Arrange
         // Exception messages reach logs, and the code is a credential: whoever holds it can claim the
         // printer.
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         // Act
         Exception? thrown = await Record.ExceptionAsync(() => NewService(context).GetToken("SECRET-CODE-VALUE"));
@@ -364,7 +364,7 @@ public sealed class PrinterRegistrationTests : IDisposable
     public async Task ARedeemedCodeCannotBeRedeemedAgain()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         string code = (await service.GetPrinterCode(Request())).TemporaryCode;
@@ -392,7 +392,7 @@ public sealed class PrinterRegistrationTests : IDisposable
     public async Task AReplayedCodeDoesNotInvalidateTheTokenAlreadyIssued()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         string code = (await service.GetPrinterCode(Request())).TemporaryCode;
@@ -423,7 +423,7 @@ public sealed class PrinterRegistrationTests : IDisposable
     public async Task PollingRepeatedlyBeforeBeingClaimedDoesNotConsumeTheCode()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         string code = (await service.GetPrinterCode(Request())).TemporaryCode;
@@ -451,7 +451,7 @@ public sealed class PrinterRegistrationTests : IDisposable
     public async Task IssuingATokenRecordsWhenEnrolmentCompleted()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         string code = (await service.GetPrinterCode(Request())).TemporaryCode;
@@ -485,7 +485,7 @@ public sealed class PrinterRegistrationTests : IDisposable
     public async Task IssuingACodeDoesNotWriteTheCodeOrFingerprintToTheLog()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         using CapturingSink sink = new();
 
         // Act
@@ -508,7 +508,7 @@ public sealed class PrinterRegistrationTests : IDisposable
     public async Task RenewingACodeDoesNotWriteTheReplacementToTheLog()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         using CapturingSink sink = new();
         PrusaConnectService service = NewService(context, logger: sink.AsLogger<PrusaConnectService>());
 
@@ -536,7 +536,7 @@ public sealed class PrinterRegistrationTests : IDisposable
     public async Task IssuingACodeLogsTheRegistrationIdForCorrelation()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         using CapturingSink sink = new();
 
         // Act
@@ -606,7 +606,7 @@ public sealed class PrinterRegistrationTests : IDisposable
         }
     }
 
-    private static async Task ClaimAsync(HSDbContext context)
+    private static async Task ClaimAsync(HomespoolDbContext context)
     {
         // A printer belongs to a team, and foreign keys are enforced, so the owning team has to
         // exist before the printer can reference it.

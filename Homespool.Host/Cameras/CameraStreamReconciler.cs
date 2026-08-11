@@ -57,7 +57,7 @@ public sealed class CameraStreamReconciler : BackgroundService
         try
         {
             using IServiceScope scope = _scopeFactory.CreateScope();
-            HSDbContext database = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+            HomespoolDbContext database = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
             List<Camera> cameras = await database.Cameras
                 .AsNoTracking()

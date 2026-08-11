@@ -35,18 +35,18 @@ public sealed class PrinterCommandServiceTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-printercommand-{Guid.NewGuid():N}.db");
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -63,7 +63,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         }
     }
 
-    private static async Task<TeamMember> AddTeamAsync(HSDbContext context, long userId, bool canRead, bool canUse, bool canManage)
+    private static async Task<TeamMember> AddTeamAsync(HomespoolDbContext context, long userId, bool canRead, bool canUse, bool canManage)
     {
         Team team = new()
         {
@@ -88,7 +88,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         return team.Members.Single();
     }
 
-    private static async Task<Printer> AddPrinterAsync(HSDbContext context, int teamId)
+    private static async Task<Printer> AddPrinterAsync(HomespoolDbContext context, int teamId)
     {
         Printer printer = new()
         {
@@ -162,7 +162,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
     public async Task AskAsyncParsesTheAnswerIntoTheShapeTheCommandDeclared()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: false);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
@@ -190,7 +190,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
     public async Task AskAsyncGivesTheVerdictAndNoAnswerWhenThePrinterRefused()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: false);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
@@ -217,7 +217,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
     public async Task AskAsyncThrowsWhenTheAnswerWillNotParse()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: false);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
@@ -243,7 +243,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
     public async Task AskAsyncEnforcesCanUseLikeSendCommandAsyncDoes()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: false, canManage: false);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
@@ -262,7 +262,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
     public async Task SendCommandAsyncReturnsTheOutcomeWhenTheCallerCanUse()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: false);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
@@ -285,7 +285,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
     public async Task SendCommandAsyncThrowsAccessDeniedWhenTheCallerCanReadButNotUse()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: false, canManage: true);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
@@ -303,7 +303,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
     public async Task SendCommandAsyncThrowsAccessDeniedWhenTheCallerIsNotOnTheTeamAtAll()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         TeamMember someoneElses = await AddTeamAsync(context, userId: 2, canRead: true, canUse: true, canManage: true);
         Printer printer = await AddPrinterAsync(context, someoneElses.TeamId);
@@ -321,7 +321,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
     public async Task SendCommandAsyncThrowsPrinterNotFoundForAnUnknownId()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         PrinterCommandService service = new(new PrinterAccessService(context), new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance));
 
@@ -336,7 +336,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
     public async Task SendCommandAsyncThrowsNotConnectedWhenNoActorIsRegisteredForThePrinter()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: true);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
@@ -355,7 +355,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
     public async Task SendCommandAsyncThrowsNotConnectedWhenTheActorReportsNotConnected()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: true);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
@@ -375,7 +375,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
     public async Task SendCommandAsyncThrowsAlreadyInFlightWhenTheActorReportsAlreadyInFlight()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: true);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
@@ -393,7 +393,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
     public async Task SendCommandAsyncThrowsTimedOutWhenTheActorReportsTimedOut()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: true);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);

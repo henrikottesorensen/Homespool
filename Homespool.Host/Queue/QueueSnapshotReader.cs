@@ -37,11 +37,11 @@ namespace Homespool.Host.Queue;
 /// </remarks>
 public class QueueSnapshotReader
 {
-    private readonly HSDbContext _dbContext;
+    private readonly HomespoolDbContext _dbContext;
     private readonly PrinterConnectionRegistry _registry;
     private readonly TimeProvider _timeProvider;
 
-    public QueueSnapshotReader(HSDbContext dbContext, PrinterConnectionRegistry registry, TimeProvider timeProvider)
+    public QueueSnapshotReader(HomespoolDbContext dbContext, PrinterConnectionRegistry registry, TimeProvider timeProvider)
     {
         _dbContext = dbContext;
         _registry = registry;

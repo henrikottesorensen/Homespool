@@ -28,7 +28,7 @@ public sealed class ApiTokenServiceTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-apitoken-{Guid.NewGuid():N}.db");
 
-    private static async Task<HSUser> AddUserAsync(HSDbContext context, string email = "owner@example.com")
+    private static async Task<HSUser> AddUserAsync(HomespoolDbContext context, string email = "owner@example.com")
     {
         HSUser user = new(email)
         {
@@ -43,18 +43,18 @@ public sealed class ApiTokenServiceTests : IDisposable
         return user;
     }
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -99,7 +99,7 @@ public sealed class ApiTokenServiceTests : IDisposable
     public async Task CreateAsyncReturnsThePrefixedPlaintextAndStoresOnlyItsHash()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
         ApiTokenService service = new(context);
 
@@ -124,7 +124,7 @@ public sealed class ApiTokenServiceTests : IDisposable
     public async Task CreateAsyncMintsADistinctSecretEachTime()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
         ApiTokenService service = new(context);
 
@@ -143,7 +143,7 @@ public sealed class ApiTokenServiceTests : IDisposable
     public async Task FindByCredentialAsyncResolvesAFreshToken()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
         ApiTokenService service = new(context);
 
@@ -167,7 +167,7 @@ public sealed class ApiTokenServiceTests : IDisposable
     public async Task FindByCredentialAsyncRejectsTheRightSecretWithoutThePrefix()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
         ApiTokenService service = new(context);
 
@@ -186,7 +186,7 @@ public sealed class ApiTokenServiceTests : IDisposable
     public async Task FindByCredentialAsyncRejectsAnUnknownSecret()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
         ApiTokenService service = new(context);
 
@@ -210,7 +210,7 @@ public sealed class ApiTokenServiceTests : IDisposable
     public async Task FindByCredentialAsyncRejectsMalformedCredentials(string? credential)
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
         ApiTokenService service = new(context);
 
@@ -228,7 +228,7 @@ public sealed class ApiTokenServiceTests : IDisposable
     public async Task FindByCredentialAsyncRejectsARevokedToken()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
         ApiTokenService service = new(context);
 
@@ -253,7 +253,7 @@ public sealed class ApiTokenServiceTests : IDisposable
     public async Task RevokeAsyncWillNotDeleteAnotherUsersToken()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser owner = await AddUserAsync(context, "owner@example.com");
         HSUser other = await AddUserAsync(context, "other@example.com");
         ApiTokenService service = new(context);
@@ -274,7 +274,7 @@ public sealed class ApiTokenServiceTests : IDisposable
     public async Task ListAsyncReturnsOnlyTheOwnersTokensNewestFirst()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser owner = await AddUserAsync(context, "owner@example.com");
         HSUser other = await AddUserAsync(context, "other@example.com");
         ApiTokenService service = new(context);
@@ -306,7 +306,7 @@ public sealed class ApiTokenServiceTests : IDisposable
     public async Task DeletingAUserRemovesTheirTokens()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
         ApiTokenService service = new(context);
 

@@ -44,18 +44,18 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
 
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-pwrevoke-{Guid.NewGuid():N}.db");
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -96,7 +96,7 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
     public async Task ChangingAPasswordRevokesTheAccountsTokens()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, SignInManager<HSUser> signIn, DefaultHttpContext httpContext, _) =
             IdentityTestHarness.BuildIdentityServices(context);
 
@@ -140,7 +140,7 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
     public async Task AFailedPasswordChangeLeavesTheTokensAlone()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, SignInManager<HSUser> signIn, DefaultHttpContext httpContext, _) =
             IdentityTestHarness.BuildIdentityServices(context);
 
@@ -179,7 +179,7 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
     public async Task AnAccountWithNoTokensIsNotToldAboutThem()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, SignInManager<HSUser> signIn, DefaultHttpContext httpContext, _) =
             IdentityTestHarness.BuildIdentityServices(context);
 
@@ -210,7 +210,7 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
     public async Task ASingleTokenIsReportedInTheSingular()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, SignInManager<HSUser> signIn, DefaultHttpContext httpContext, _) =
             IdentityTestHarness.BuildIdentityServices(context);
 
@@ -243,7 +243,7 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
     public async Task AnotherAccountsTokensSurvive()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, SignInManager<HSUser> signIn, DefaultHttpContext httpContext, _) =
             IdentityTestHarness.BuildIdentityServices(context);
 
@@ -283,7 +283,7 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
     public async Task ResettingAPasswordRevokesTheAccountsTokens()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) =
             IdentityTestHarness.BuildIdentityServices(context);
 
@@ -322,7 +322,7 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
     public async Task AFailedResetLeavesTheTokensAlone()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) =
             IdentityTestHarness.BuildIdentityServices(context);
 

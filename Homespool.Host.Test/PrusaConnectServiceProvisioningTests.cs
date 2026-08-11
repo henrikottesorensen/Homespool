@@ -31,7 +31,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-prov-{Guid.NewGuid():N}.db");
 
-    private static PrusaConnectService NewService(HSDbContext context)
+    private static PrusaConnectService NewService(HomespoolDbContext context)
     {
         return new(context,
             new CodeGenerator(),
@@ -41,18 +41,18 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
             Options.Create(new PrusaConnectOptions()));
     }
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -69,7 +69,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         }
     }
 
-    private static async Task<TeamMember> AddTeamAsync(HSDbContext context, long userId, bool canManage, bool isDefault)
+    private static async Task<TeamMember> AddTeamAsync(HomespoolDbContext context, long userId, bool canManage, bool isDefault)
     {
         Team team = new()
         {
@@ -104,7 +104,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     public async Task ProvisioningCreatesThePrinterUpFrontInTheCallersDefaultTeam()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         TeamMember defaultTeam = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
@@ -135,7 +135,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     public async Task ProvisioningStoresOnlyTheTokensHash()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
@@ -164,7 +164,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     public async Task TheProvisionedTokenFitsTheFirmwareTokenBuffer()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
@@ -184,7 +184,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     public async Task ProvisioningIntoAnExplicitTeamRequiresCanManage()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
@@ -207,7 +207,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     public async Task ProvisioningIntoATeamTheCallerCannotManageIsRejected(bool someoneElsesTeam)
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
@@ -232,7 +232,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     public async Task ProvisioningWithNoDefaultTeamFailsClosed()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         // Act
@@ -250,7 +250,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     public async Task ProvisioningEnrolsNothingUntilThePrinterMakesContact()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
@@ -273,7 +273,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     public async Task RegeneratingReplacesTheTokenInPlace()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
@@ -307,7 +307,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     public async Task RegeneratingRequiresCanManageOnThePrintersTeam()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
@@ -341,7 +341,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     public async Task RegeneratingAsAStrangerToThePrintersTeamIsRejected()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
@@ -363,7 +363,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     public async Task RegeneratingAnUnknownPrinterIsRejected()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         // Act
         Func<Task> regenerate = () => NewService(context).RegenerateProvisioningTokenAsync(printerId: 999, userId: 1);
@@ -379,7 +379,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     public async Task RegeneratingAPrinterThatWasNeverProvisionedIsRejected()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         TeamMember team = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
@@ -426,7 +426,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     public async Task RegeneratingAnAlreadyEnrolledPrinterIssuesAFreshOutstandingToken()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
@@ -472,7 +472,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     public async Task RegeneratingAPrinterThatIsNeitherProvisionedNorEnrolledIsRejected()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
@@ -499,7 +499,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     public async Task APrinterCannotHoldTwoOutstandingProvisioningTokens()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);

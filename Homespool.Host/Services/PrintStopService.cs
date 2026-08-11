@@ -33,11 +33,11 @@ namespace Homespool.Host.Services;
 /// </remarks>
 public class PrintStopService
 {
-    private readonly HSDbContext _dbContext;
+    private readonly HomespoolDbContext _dbContext;
     private readonly PrinterCommandService _commands;
     private readonly ILogger<PrintStopService> _logger;
 
-    public PrintStopService(HSDbContext dbContext, PrinterCommandService commands, ILogger<PrintStopService> logger)
+    public PrintStopService(HomespoolDbContext dbContext, PrinterCommandService commands, ILogger<PrintStopService> logger)
     {
         _dbContext = dbContext;
         _commands = commands;

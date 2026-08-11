@@ -14,12 +14,12 @@ namespace Homespool.Data;
 /// </summary>
 /// <remarks>
 /// Derives from <see cref="IdentityDbContext{TUser,TRole,TKey}"/> rather than plain
-/// <c>DbContext</c>. <c>Program.cs</c> calls <c>AddEntityFrameworkStores&lt;HSDbContext&gt;()</c>,
+/// <c>DbContext</c>. <c>Program.cs</c> calls <c>AddEntityFrameworkStores&lt;HomespoolDbContext&gt;()</c>,
 /// which requires the context to expose the Identity entity sets — with a plain
 /// <c>DbContext</c> the Identity tables are never created and user store resolution fails at
 /// startup. The key type is <see cref="long"/> to match <see cref="HSUser"/>.
 /// </remarks>
-public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, IDataProtectionKeyContext
+public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, IDataProtectionKeyContext
 {
     public DbSet<Printer> Printers { get; set; }
 
@@ -84,7 +84,7 @@ public class HSDbContext : IdentityDbContext<HSUser, IdentityRole<long>, long>, 
     /// only - no image is ever stored, here or anywhere.</summary>
     public DbSet<Camera> Cameras { get; set; }
 
-    public HSDbContext(DbContextOptions<HSDbContext> options)
+    public HomespoolDbContext(DbContextOptions<HomespoolDbContext> options)
         : base(options)
     {
     }

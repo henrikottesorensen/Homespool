@@ -39,18 +39,18 @@ public sealed class DetailModelTests : IDisposable
 
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-printers-detail-{Guid.NewGuid():N}.db");
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -67,7 +67,7 @@ public sealed class DetailModelTests : IDisposable
         }
     }
 
-    private static async Task<(DetailModel model, HSUser user, Team team, PrinterConnectionRegistry connectionRegistry)> NewModelAsync(HSDbContext context)
+    private static async Task<(DetailModel model, HSUser user, Team team, PrinterConnectionRegistry connectionRegistry)> NewModelAsync(HomespoolDbContext context)
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 
@@ -126,7 +126,7 @@ public sealed class DetailModelTests : IDisposable
     public async Task CooldownIsRefusedWhileThePrinterIsPrinting()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (DetailModel model, _, Team team, _) = await NewModelAsync(context);
 
         Printer printer = NewPrinter(team.Id);
@@ -169,7 +169,7 @@ public sealed class DetailModelTests : IDisposable
     public async Task PreheatIsRefusedWhileThePrinterIsPrinting()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (DetailModel model, _, Team team, _) = await NewModelAsync(context);
 
         Printer printer = NewPrinter(team.Id);
@@ -210,7 +210,7 @@ public sealed class DetailModelTests : IDisposable
     public async Task OnGetAsyncReturnsNotFoundForAnUnknownUuid()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (DetailModel model, _, _, _) = await NewModelAsync(context);
 
         // Act
@@ -224,7 +224,7 @@ public sealed class DetailModelTests : IDisposable
     public async Task OnGetAsyncReturnsNotFoundForAPrinterOnATeamTheCallerIsNotOn()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (DetailModel model, _, _, _) = await NewModelAsync(context);
 
         Team someoneElsesTeam = context.AddDefaultTeam(2, DateTimeOffset.UtcNow);
@@ -245,7 +245,7 @@ public sealed class DetailModelTests : IDisposable
     public async Task OnGetAsyncPopulatesStatisticsForAnAccessiblePrinter()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (DetailModel model, _, Team team, _) = await NewModelAsync(context);
 
         Printer printer = NewPrinter(team.Id, name: "MK3.5");
@@ -267,7 +267,7 @@ public sealed class DetailModelTests : IDisposable
     public async Task OnGetAsyncReflectsWhetherThePrinterIsCurrentlyConnected()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (DetailModel model, _, Team team, PrinterConnectionRegistry connectionRegistry) = await NewModelAsync(context);
 
         Printer printer = NewPrinter(team.Id);

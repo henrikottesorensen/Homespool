@@ -56,9 +56,9 @@ public class ApiTokenService
     /// <summary>Length of the base64url secret, which <see cref="SecretByteCount"/> fixes at 43.</summary>
     public const int SecretLength = 43;
 
-    private readonly HSDbContext _dbContext;
+    private readonly HomespoolDbContext _dbContext;
 
-    public ApiTokenService(HSDbContext dbContext)
+    public ApiTokenService(HomespoolDbContext dbContext)
     {
         _dbContext = dbContext;
     }

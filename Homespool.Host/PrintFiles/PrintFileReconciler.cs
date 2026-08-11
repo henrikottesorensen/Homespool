@@ -88,7 +88,7 @@ public sealed class PrintFileReconciler : BackgroundService
     public async Task ReconcileAsync(CancellationToken cancellationToken)
     {
         await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
-        HSDbContext dbContext = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+        HomespoolDbContext dbContext = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
         HashSet<long> users = [.. await dbContext.Users.Select(user => user.Id).ToListAsync(cancellationToken)];
         Dictionary<long, List<StoredFile>> onDisk = ReadDisk(users);

@@ -29,23 +29,23 @@ public sealed class InvitationServiceTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-invite-{Guid.NewGuid():N}.db");
 
-    private static InvitationService NewService(HSDbContext context, int lifetimeHours = 48)
+    private static InvitationService NewService(HomespoolDbContext context, int lifetimeHours = 48)
     {
         return new(context, new TokenService(), Options.Create(new InvitationOptions { LifetimeHours = lifetimeHours }));
     }
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -72,7 +72,7 @@ public sealed class InvitationServiceTests : IDisposable
     public async Task CreateAsyncPersistsANewAccountInviteWithTheDefaultLifetime()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         InvitationService service = NewService(context, lifetimeHours: 48);
 
         DateTimeOffset before = DateTimeOffset.UtcNow;
@@ -104,7 +104,7 @@ public sealed class InvitationServiceTests : IDisposable
     public async Task CreateAsyncUsesTheExplicitExpiryWhenGiven()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         InvitationService service = NewService(context, lifetimeHours: 48);
 
         DateTimeOffset explicitExpiry = DateTimeOffset.UtcNow.AddHours(3);
@@ -124,7 +124,7 @@ public sealed class InvitationServiceTests : IDisposable
     public async Task CreateAsyncBindsAnInviteToTheGivenTeam()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         Team team = new() { CreatedBy = 1, CreatedAt = DateTimeOffset.UtcNow };
         context.Teams.Add(team);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -146,7 +146,7 @@ public sealed class InvitationServiceTests : IDisposable
     public async Task ValidateAsyncReturnsTheInvitationForACorrectTokenOnAnOutstandingInvite()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         InvitationService service = NewService(context);
 
         (Invitation invitation, string plaintext) = await service.CreateAsync(
@@ -169,7 +169,7 @@ public sealed class InvitationServiceTests : IDisposable
     public async Task ValidateAsyncReturnsNullWithoutThrowingForEveryFailureReason()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         InvitationService service = NewService(context);
 
         (Invitation outstanding, string outstandingToken) = await service.CreateAsync(
@@ -202,7 +202,7 @@ public sealed class InvitationServiceTests : IDisposable
     public async Task MarkUsedAsyncMakesTheInvitationSingleUse()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         InvitationService service = NewService(context);
 
         (Invitation invitation, string plaintext) = await service.CreateAsync(
@@ -229,7 +229,7 @@ public sealed class InvitationServiceTests : IDisposable
     public async Task RevokeAsyncExpiresTheInviteImmediately()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         InvitationService service = NewService(context);
 
         (Invitation invitation, string plaintext) = await service.CreateAsync(
@@ -253,7 +253,7 @@ public sealed class InvitationServiceTests : IDisposable
     public async Task RevokeAsyncDoesNothingForAnUnknownId()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         InvitationService service = NewService(context);
 
         // Act
@@ -272,7 +272,7 @@ public sealed class InvitationServiceTests : IDisposable
     public async Task ListAsyncReturnsInvitationsNewestFirst()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         InvitationService service = NewService(context);
 
         (Invitation first, _) = await service.CreateAsync("first@example.com", null, 1, null, CancellationToken.None);

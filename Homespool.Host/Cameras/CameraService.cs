@@ -34,7 +34,7 @@ namespace Homespool.Host.Cameras;
 /// </remarks>
 public class CameraService
 {
-    private readonly HSDbContext _dbContext;
+    private readonly HomespoolDbContext _dbContext;
     private readonly CameraAccessService _access;
     private readonly CameraSourcePolicy _sourcePolicy;
     private readonly Go2RtcClient _streamServer;
@@ -44,7 +44,7 @@ public class CameraService
     private readonly TimeProvider _timeProvider;
 
     public CameraService(
-        HSDbContext dbContext,
+        HomespoolDbContext dbContext,
         CameraAccessService access,
         CameraSourcePolicy sourcePolicy,
         Go2RtcClient streamServer,

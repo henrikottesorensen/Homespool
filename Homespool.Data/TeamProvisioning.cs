@@ -23,11 +23,11 @@ public static class TeamProvisioning
     /// </summary>
     /// <remarks>
     /// <see cref="Team.Name"/> is left null on purpose — see the property. The membership is the
-    /// user's default; the filtered unique index in <c>HSDbContext</c> guarantees they never end up
+    /// user's default; the filtered unique index in <c>HomespoolDbContext</c> guarantees they never end up
     /// with two. Team key assignment flows to <see cref="TeamMember.TeamId"/> through the navigation
     /// on save, so no intermediate round-trip is needed.
     /// </remarks>
-    public static Team AddDefaultTeam(this HSDbContext context, long userId, DateTimeOffset createdAt)
+    public static Team AddDefaultTeam(this HomespoolDbContext context, long userId, DateTimeOffset createdAt)
     {
         ArgumentNullException.ThrowIfNull(context);
 

@@ -138,7 +138,7 @@ public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime, IDisposabl
             tokenInFile.Should().Be(token);
 
             using IServiceScope scope = _factory.Services.CreateScope();
-            Data.HSDbContext context = scope.ServiceProvider.GetRequiredService<Data.HSDbContext>();
+            Data.HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<Data.HomespoolDbContext>();
             PrusaConnectProvisioning stored = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
                 .SingleAsync(context.PrusaConnectProvisionings, TestContext.Current.CancellationToken);
 

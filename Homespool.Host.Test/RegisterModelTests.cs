@@ -36,18 +36,18 @@ public sealed class RegisterModelTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-register-{Guid.NewGuid():N}.db");
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -64,7 +64,7 @@ public sealed class RegisterModelTests : IDisposable
         }
     }
 
-    private static InvitationService NewInvitationService(HSDbContext context)
+    private static InvitationService NewInvitationService(HomespoolDbContext context)
     {
         return new(context, new TokenService(), Options.Create(new InvitationOptions()));
     }
@@ -76,7 +76,7 @@ public sealed class RegisterModelTests : IDisposable
     /// absent.
     /// </summary>
     private static (RegisterModel model, DefaultHttpContext httpContext, CapturingEmailSender emailSender) NewModel(
-        HSDbContext context, InvitationService invitationService, bool smtpConfigured)
+        HomespoolDbContext context, InvitationService invitationService, bool smtpConfigured)
     {
         (UserManager<HSUser> users, SignInManager<HSUser> signIn, DefaultHttpContext httpContext, IServiceProvider provider) =
             IdentityTestHarness.BuildIdentityServices(context);
@@ -135,7 +135,7 @@ public sealed class RegisterModelTests : IDisposable
     public async Task OnGetAsyncWithAValidInviteIsValidAndShowsItsEmail()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         InvitationService invitationService = NewInvitationService(context);
         (Invitation invitation, string plaintext) = await invitationService.CreateAsync(
             "invitee@example.com", null, 1, null, CancellationToken.None);
@@ -156,7 +156,7 @@ public sealed class RegisterModelTests : IDisposable
     public async Task OnGetAsyncIsInvalidForAnUnknownWrongExpiredOrUsedInvite()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         InvitationService invitationService = NewInvitationService(context);
 
         (Invitation outstanding, string outstandingToken) = await invitationService.CreateAsync(
@@ -205,7 +205,7 @@ public sealed class RegisterModelTests : IDisposable
     public async Task OnPostAsyncWithSmtpUnconfiguredSignsInDirectlyAndSpendsTheInvite()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         InvitationService invitationService = NewInvitationService(context);
         (Invitation invitation, string plaintext) = await invitationService.CreateAsync(
             "invitee@example.com", null, 1, null, CancellationToken.None);
@@ -236,7 +236,7 @@ public sealed class RegisterModelTests : IDisposable
     public async Task OnPostAsyncWithSmtpConfiguredSendsConfirmationAndSpendsTheInvite()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         InvitationService invitationService = NewInvitationService(context);
         (Invitation invitation, string plaintext) = await invitationService.CreateAsync(
             "invitee@example.com", null, 1, null, CancellationToken.None);
@@ -267,7 +267,7 @@ public sealed class RegisterModelTests : IDisposable
     public async Task OnPostAsyncWithATeamBoundInviteJoinsThatTeamAndGetsItsOwnDefaultTeam()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         Team existingTeam = new() { Name = "Print Squad", CreatedBy = 1, CreatedAt = DateTimeOffset.UtcNow };
         context.Teams.Add(existingTeam);
@@ -298,7 +298,7 @@ public sealed class RegisterModelTests : IDisposable
     public async Task OnPostAsyncWithANewAccountInviteYieldsOnlyTheDefaultTeam()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         InvitationService invitationService = NewInvitationService(context);
         (Invitation invitation, string plaintext) = await invitationService.CreateAsync(
             "invitee@example.com", null, 1, null, CancellationToken.None);
@@ -328,7 +328,7 @@ public sealed class RegisterModelTests : IDisposable
     public async Task OnPostAsyncRevalidatesAndCreatesNoAccountIfTheInviteWasSpentSinceTheGet()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         InvitationService invitationService = NewInvitationService(context);
         (Invitation invitation, string plaintext) = await invitationService.CreateAsync(
             "invitee@example.com", null, 1, null, CancellationToken.None);
@@ -358,7 +358,7 @@ public sealed class RegisterModelTests : IDisposable
     public async Task OnPostAsyncWithInvalidModelStateCreatesNoAccountAndLeavesTheInviteUnspent()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         InvitationService invitationService = NewInvitationService(context);
         (Invitation invitation, string plaintext) = await invitationService.CreateAsync(
             "invitee@example.com", null, 1, null, CancellationToken.None);
@@ -387,7 +387,7 @@ public sealed class RegisterModelTests : IDisposable
     public async Task OnPostAsyncWithADuplicateEmailCreatesNoAccountAndLeavesTheInviteUnspent()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         (UserManager<HSUser> preexistingUsers, _, _, _) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser existing = new("existing") { Email = "invitee@example.com", EmailConfirmed = true };
@@ -422,7 +422,7 @@ public sealed class RegisterModelTests : IDisposable
     public async Task OnPostAsyncRollsBackTheWholeAcceptIfAConstraintFailsPartwayThrough()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         (UserManager<HSUser> placeholderUsers, _, _, _) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser placeholder = new("placeholder") { Email = "placeholder@example.com", EmailConfirmed = true };

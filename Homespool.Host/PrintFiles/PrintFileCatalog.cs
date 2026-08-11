@@ -36,10 +36,10 @@ namespace Homespool.Host.PrintFiles;
 public sealed class PrintFileCatalog
 {
     private readonly UserFileStore _store;
-    private readonly HSDbContext _dbContext;
+    private readonly HomespoolDbContext _dbContext;
     private readonly ILogger<PrintFileCatalog> _logger;
 
-    public PrintFileCatalog(UserFileStore store, HSDbContext dbContext, ILogger<PrintFileCatalog> logger)
+    public PrintFileCatalog(UserFileStore store, HomespoolDbContext dbContext, ILogger<PrintFileCatalog> logger)
     {
         _store = store;
         _dbContext = dbContext;

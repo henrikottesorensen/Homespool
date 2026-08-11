@@ -60,7 +60,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     public async Task QueuedFilesComeBackInTheOrderTheyWereAdded()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         Printer printer = await SeedAsync(context, canUse: true);
         PrintQueueService queue = NewQueue(context);
         await UploadAsync(context, "one.gcode", "two.gcode", "three.gcode");
@@ -84,7 +84,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     public async Task MovingAJobReordersTheQueueAndRenumbersIt()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         Printer printer = await SeedAsync(context, canUse: true);
         PrintQueueService queue = NewQueue(context);
         await UploadAsync(context, "one.gcode", "two.gcode", "three.gcode");
@@ -111,7 +111,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     public async Task MovingPastTheEndPutsAJobLast()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         Printer printer = await SeedAsync(context, canUse: true);
         PrintQueueService queue = NewQueue(context);
         await UploadAsync(context, "one.gcode", "two.gcode");
@@ -137,7 +137,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     public async Task EnqueueingAfterACancelDoesNotReuseAPosition()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         Printer printer = await SeedAsync(context, canUse: true);
         PrintQueueService queue = NewQueue(context);
         await UploadAsync(context, "one.gcode", "two.gcode", "three.gcode");
@@ -162,7 +162,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     public async Task TheSameFileCanBeQueuedTwice()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         Printer printer = await SeedAsync(context, canUse: true);
         PrintQueueService queue = NewQueue(context);
         await UploadAsync(context, "one.gcode");
@@ -182,7 +182,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     public async Task QueueingAFileTheCallerDoesNotHaveIsRefused()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         Printer printer = await SeedAsync(context, canUse: true);
         PrintQueueService queue = NewQueue(context);
 
@@ -201,7 +201,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     public async Task ReadingIsAllowedWithoutCanUseButChangingIsNot()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         Printer printer = await SeedAsync(context, canUse: false);
         PrintQueueService queue = NewQueue(context);
 
@@ -220,7 +220,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     public async Task SomeoneOutsideTheTeamCannotEvenReadTheQueue()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         Printer printer = await SeedAsync(context, canUse: true);
         PrintQueueService queue = NewQueue(context);
 
@@ -239,7 +239,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     public async Task AnotherMemberWithCanUseMayCancelSomebodyElsesJob()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         Printer printer = await SeedAsync(context, canUse: true);
         await AddMemberAsync(context, printer.TeamId, Bob, canUse: true);
         PrintQueueService queue = NewQueue(context);
@@ -260,7 +260,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     public async Task CancellingAJobThatIsNotThereIsFalseRatherThanAThrow()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         await SeedAsync(context, canUse: true);
         PrintQueueService queue = NewQueue(context);
 
@@ -271,7 +271,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         cancelled.Should().BeFalse();
     }
 
-    private static async Task AddMemberAsync(HSDbContext context, int teamId, long userId, bool canUse)
+    private static async Task AddMemberAsync(HomespoolDbContext context, int teamId, long userId, bool canUse)
     {
         context.TeamMembers.Add(new TeamMember
         {
@@ -286,7 +286,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     }
 
     /// <summary>A user, a team they belong to, and a printer that team owns.</summary>
-    private async Task<Printer> SeedAsync(HSDbContext context, bool canUse)
+    private async Task<Printer> SeedAsync(HomespoolDbContext context, bool canUse)
     {
         HSUser user = new("alice@example.com")
         {
@@ -312,7 +312,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     }
 
     /// <summary>Puts real files on disk for Alice, so the catalog has something to resolve.</summary>
-    private async Task UploadAsync(HSDbContext context, params string[] names)
+    private async Task UploadAsync(HomespoolDbContext context, params string[] names)
     {
         PrintFileCatalog catalog = NewCatalog(context);
 
@@ -323,7 +323,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         }
     }
 
-    private PrintFileCatalog NewCatalog(HSDbContext context)
+    private PrintFileCatalog NewCatalog(HomespoolDbContext context)
     {
         UserFileStore store = new(Options.Create(new PrintFileStorageOptions { Directory = _root }),
             new HostEnvironmentAccessor(_root),
@@ -333,23 +333,23 @@ public sealed class PrintQueueServiceTests : IDisposable
         return new PrintFileCatalog(store, context, NullLogger<PrintFileCatalog>.Instance);
     }
 
-    private PrintQueueService NewQueue(HSDbContext context)
+    private PrintQueueService NewQueue(HomespoolDbContext context)
     {
         return new(context, new PrinterAccessService(context), NewCatalog(context), TimeProvider.System, _signal);
     }
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;

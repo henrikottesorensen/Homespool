@@ -18,7 +18,7 @@ namespace Homespool.Host.Test;
 
 /// <summary>
 /// Builds a real <see cref="UserManager{TUser}"/>/<see cref="SignInManager{TUser}"/> against a migrated
-/// <see cref="HSDbContext"/>, plus a minimal <see cref="IUrlHelper"/>, so <c>RegisterModel</c> and
+/// <see cref="HomespoolDbContext"/>, plus a minimal <see cref="IUrlHelper"/>, so <c>RegisterModel</c> and
 /// <c>Admin/Invites/CreateModel</c> can be unit tested by calling their <c>OnGetAsync</c>/<c>OnPostAsync</c>
 /// directly - the documented approach for unit testing Razor PageModels - without a
 /// TestServer/WebApplicationFactory.
@@ -30,7 +30,7 @@ internal static class IdentityTestHarness
     /// against) and returns the pieces a PageModel constructor needs, plus the <see cref="DefaultHttpContext"/>
     /// backing them so the test can set <c>HttpContext.User</c> before calling into the model.
     /// </summary>
-    public static (UserManager<HSUser> users, SignInManager<HSUser> signIn, DefaultHttpContext httpContext, IServiceProvider provider) BuildIdentityServices(HSDbContext context)
+    public static (UserManager<HSUser> users, SignInManager<HSUser> signIn, DefaultHttpContext httpContext, IServiceProvider provider) BuildIdentityServices(HomespoolDbContext context)
     {
         DefaultHttpContext httpContext = new();
 
@@ -47,7 +47,7 @@ internal static class IdentityTestHarness
         // The options come from the application's own configuration rather than being restated here,
         // so a test cannot create an account the real thing would refuse - see IdentityConfiguration.
         services.AddIdentity<HSUser, IdentityRole<long>>(IdentityConfiguration.Configure)
-                .AddEntityFrameworkStores<HSDbContext>()
+                .AddEntityFrameworkStores<HomespoolDbContext>()
                 .AddDefaultTokenProviders();
 
         ServiceProvider provider = services.BuildServiceProvider();

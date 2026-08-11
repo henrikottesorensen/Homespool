@@ -44,10 +44,10 @@ public class PrintHistoryService
     /// <summary>How many finished prints a page shows without asking for more.</summary>
     private const int RecentCount = 20;
 
-    private readonly HSDbContext _dbContext;
+    private readonly HomespoolDbContext _dbContext;
     private readonly PrinterAccessService _access;
 
-    public PrintHistoryService(HSDbContext dbContext, PrinterAccessService access)
+    public PrintHistoryService(HomespoolDbContext dbContext, PrinterAccessService access)
     {
         _dbContext = dbContext;
         _access = access;

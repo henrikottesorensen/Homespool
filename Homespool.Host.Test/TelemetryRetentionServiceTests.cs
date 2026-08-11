@@ -93,12 +93,12 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
     private async Task<TelemetryRetentionService> StartServiceAsync(StorageOptions options)
     {
         ServiceCollection services = new();
-        services.AddDbContext<HSDbContext>(o => o.UseSqlite(_connectionString));
+        services.AddDbContext<HomespoolDbContext>(o => o.UseSqlite(_connectionString));
         _provider = services.BuildServiceProvider();
 
         await using (AsyncServiceScope migrationScope = _provider.CreateAsyncScope())
         {
-            await migrationScope.ServiceProvider.GetRequiredService<HSDbContext>().Database.MigrateAsync(TestContext.Current.CancellationToken);
+            await migrationScope.ServiceProvider.GetRequiredService<HomespoolDbContext>().Database.MigrateAsync(TestContext.Current.CancellationToken);
         }
 
         _service = new TelemetryRetentionService(_provider.GetRequiredService<IServiceScopeFactory>(),
@@ -110,14 +110,14 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
         return _service;
     }
 
-    private HSDbContext NewVerificationContext()
+    private HomespoolDbContext NewVerificationContext()
     {
-        return new(new DbContextOptionsBuilder<HSDbContext>().UseSqlite(_connectionString).Options);
+        return new(new DbContextOptionsBuilder<HomespoolDbContext>().UseSqlite(_connectionString).Options);
     }
 
     private async Task SeedPrinterAsync(int printerId = 1)
     {
-        await using HSDbContext context = NewVerificationContext();
+        await using HomespoolDbContext context = NewVerificationContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         Team team = new() { CreatedBy = 1, CreatedAt = DateTimeOffset.UtcNow };
@@ -139,7 +139,7 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
 
     private async Task SeedSampleAsync(int printerId, DateTimeOffset timestamp)
     {
-        await using HSDbContext context = NewVerificationContext();
+        await using HomespoolDbContext context = NewVerificationContext();
 
         context.TelemetrySamples.Add(new TelemetrySample
         {
@@ -162,14 +162,14 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
 
         bool sweptDown = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
 
             return await context.TelemetrySamples.CountAsync() == 1;
         }, TimeSpan.FromSeconds(5));
 
         sweptDown.Should().BeTrue("the sweep should run once at startup, without waiting for the hourly timer");
 
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
         TelemetrySample remaining = await verify.TelemetrySamples.SingleAsync(TestContext.Current.CancellationToken);
         remaining.Timestamp.Should().BeCloseTo(DateTimeOffset.UtcNow.AddHours(-1), TimeSpan.FromMinutes(1));
     }
@@ -186,7 +186,7 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
         // the row is still there.
         await Task.Delay(200, TestContext.Current.CancellationToken);
 
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
         (await verify.TelemetrySamples.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
     }
 
@@ -195,7 +195,7 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
     {
         await SeedPrinterAsync();
 
-        await using (HSDbContext context = NewVerificationContext())
+        await using (HomespoolDbContext context = NewVerificationContext())
         {
             context.TelemetrySamples.Add(new TelemetrySample
             {
@@ -212,14 +212,14 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
 
         bool sweptDown = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
 
             return !await context.TelemetrySamples.AnyAsync();
         }, TimeSpan.FromSeconds(5));
 
         sweptDown.Should().BeTrue();
 
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
         (await verify.TelemetrySlotSamples.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse(
             "the FK to TelemetrySample is ON DELETE CASCADE and this database has foreign keys enabled");
     }

@@ -39,18 +39,18 @@ public sealed class PrinterStateIsLiveTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-livestate-{Guid.NewGuid():N}.db");
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -67,7 +67,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         }
     }
 
-    private static async Task<Printer> AddPrinterAsync(HSDbContext context, long userId, PrinterStatus? liveStatus,
+    private static async Task<Printer> AddPrinterAsync(HomespoolDbContext context, long userId, PrinterStatus? liveStatus,
                                                         bool canUse = true, bool canManage = true,
                                                         string? teamName = "Workshop")
     {
@@ -123,7 +123,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
     public async Task ListReportsTheLiveStateRatherThanThePrinterRow()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         await AddPrinterAsync(context, userId: 1, liveStatus: PrinterStatus.Printing);
 
         // Act
@@ -145,7 +145,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
     public async Task GetReportsTheLiveStateRatherThanThePrinterRow()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         Printer printer = await AddPrinterAsync(context, userId: 1, liveStatus: PrinterStatus.Paused);
 
         // Act
@@ -165,7 +165,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
     public async Task APrinterThatHasNeverConnectedIsStillUnknown()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         await AddPrinterAsync(context, userId: 1, liveStatus: null);
 
         // Act
@@ -191,7 +191,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
     public async Task TheDtoCarriesWhatTheInfoEventTaught()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         Printer printer = await AddPrinterAsync(context, userId: 1, liveStatus: PrinterStatus.Idle);
 
         printer.Model = "1.3.5";
@@ -227,7 +227,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
     public async Task ThePermissionFlagsDescribeTheCallerNotThePrinter()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         await AddPrinterAsync(context, userId: 1, liveStatus: PrinterStatus.Idle, canUse: false, canManage: false);
 
         // Act
@@ -251,7 +251,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
     public async Task PatchReportsTheSameStateAsGet()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         Printer printer = await AddPrinterAsync(context, userId: 1, liveStatus: PrinterStatus.Printing);
 
         // Act

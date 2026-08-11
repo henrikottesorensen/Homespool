@@ -48,7 +48,7 @@ namespace Homespool.Host.Authorisation;
 /// </remarks>
 public class PrinterAccessService
 {
-    private readonly HSDbContext _dbContext;
+    private readonly HomespoolDbContext _dbContext;
 
     /// <summary>
     /// Memberships already looked up in this scope, including the misses.
@@ -67,7 +67,7 @@ public class PrinterAccessService
 
     private readonly Dictionary<int, Printer?> _printers = [];
 
-    public PrinterAccessService(HSDbContext dbContext)
+    public PrinterAccessService(HomespoolDbContext dbContext)
     {
         _dbContext = dbContext;
     }

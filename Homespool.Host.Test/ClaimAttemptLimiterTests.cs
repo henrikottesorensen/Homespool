@@ -29,7 +29,7 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
 
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-claimcap-{Guid.NewGuid():N}.db");
 
-    private static ClaimAttemptLimiter NewLimiter(HSDbContext context,
+    private static ClaimAttemptLimiter NewLimiter(HomespoolDbContext context,
                                                   int maxAttempts = 5,
                                                   int baseSeconds = 30,
                                                   int maxSeconds = 3600)
@@ -44,7 +44,7 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
             NullLogger<ClaimAttemptLimiter>.Instance);
     }
 
-    private static async Task<HSUser> SeedUserAsync(HSDbContext context)
+    private static async Task<HSUser> SeedUserAsync(HomespoolDbContext context)
     {
         HSUser user = new("claimer@example.com") { Email = "claimer@example.com" };
 
@@ -54,18 +54,18 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
         return user;
     }
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -78,7 +78,7 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
     public async Task AnUntouchedAccountIsNotBackedOff()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await SeedUserAsync(context);
 
         // Assert
@@ -96,7 +96,7 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
     public async Task FailuresUpToTheThresholdDoNotLockOut()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await SeedUserAsync(context);
         ClaimAttemptLimiter limiter = NewLimiter(context);
 
@@ -118,7 +118,7 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
     public async Task PastTheThresholdTheBackoffAppliesAndThenDoubles()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await SeedUserAsync(context);
         ClaimAttemptLimiter limiter = NewLimiter(context);
 
@@ -150,7 +150,7 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
     public async Task TheBackoffIsCapped()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await SeedUserAsync(context);
         ClaimAttemptLimiter limiter = NewLimiter(context, maxSeconds: 120);
 
@@ -172,7 +172,7 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
     public async Task TheLockoutLapsesOnceItsTimeHasPassed()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await SeedUserAsync(context);
         ClaimAttemptLimiter limiter = NewLimiter(context);
 
@@ -197,7 +197,7 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
     public async Task TheCountAndLockoutSurviveARestart()
     {
         // Arrange
-        await using (HSDbContext context = await MigratedContextAsync())
+        await using (HomespoolDbContext context = await MigratedContextAsync())
         {
             HSUser user = await SeedUserAsync(context);
             ClaimAttemptLimiter limiter = NewLimiter(context);
@@ -209,7 +209,7 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
         }
 
         // Act
-        await using HSDbContext reopened = NewContext();
+        await using HomespoolDbContext reopened = NewContext();
         HSUser reloaded = await reopened.Users.SingleAsync(TestContext.Current.CancellationToken);
 
         // Assert
@@ -224,7 +224,7 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
     public async Task ResetClearsTheCountAndTheLockout()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await SeedUserAsync(context);
         ClaimAttemptLimiter limiter = NewLimiter(context);
 
@@ -254,7 +254,7 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
     public async Task ResettingAnUntouchedAccountIsANoOp()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await SeedUserAsync(context);
 
         // Act

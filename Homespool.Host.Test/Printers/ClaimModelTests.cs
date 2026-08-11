@@ -30,18 +30,18 @@ public sealed class ClaimModelTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-printers-claim-{Guid.NewGuid():N}.db");
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -58,7 +58,7 @@ public sealed class ClaimModelTests : IDisposable
         }
     }
 
-    private static PrusaConnectService NewService(HSDbContext context)
+    private static PrusaConnectService NewService(HomespoolDbContext context)
     {
         return new(context,
             new CodeGenerator(),
@@ -79,7 +79,7 @@ public sealed class ClaimModelTests : IDisposable
         };
     }
 
-    private static async Task<(ClaimModel model, HSUser user)> NewModelAsync(HSDbContext context, string email = "owner@example.com")
+    private static async Task<(ClaimModel model, HSUser user)> NewModelAsync(HomespoolDbContext context, string email = "owner@example.com")
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 
@@ -106,7 +106,7 @@ public sealed class ClaimModelTests : IDisposable
     /// <summary>Issues a fresh claimable code via the real registration path, matching
     /// <c>PrusaConnectServiceClaimTests</c>'s setup - a hand-hashed code would not prove the page
     /// actually drives the same lookup a real printer's poll relies on.</summary>
-    private static async Task<string> SeedClaimableCodeAsync(HSDbContext context, string fingerprint)
+    private static async Task<string> SeedClaimableCodeAsync(HomespoolDbContext context, string fingerprint)
     {
         CodeResponseDTO response = await NewService(context).GetPrinterCode(PrinterRequest(fingerprint));
 
@@ -120,7 +120,7 @@ public sealed class ClaimModelTests : IDisposable
     public async Task OnGetAsyncListsOnlyTeamsTheUserCanManage()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (ClaimModel model, HSUser user) = await NewModelAsync(context);
 
         Team usableOnly = new() { CreatedBy = user.Id, CreatedAt = DateTimeOffset.UtcNow };
@@ -153,7 +153,7 @@ public sealed class ClaimModelTests : IDisposable
     public async Task OnPostAsyncClaimsThePrinterAndRedirectsWithASuccessMessage()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (ClaimModel model, _) = await NewModelAsync(context);
 
         string code = await SeedClaimableCodeAsync(context, "FP-HAPPY-PATH");
@@ -188,7 +188,7 @@ public sealed class ClaimModelTests : IDisposable
     public async Task OnPostAsyncNormalisesCodeCasingAndWhitespace()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (ClaimModel model, _) = await NewModelAsync(context);
 
         string code = await SeedClaimableCodeAsync(context, "FP-CASING");
@@ -207,7 +207,7 @@ public sealed class ClaimModelTests : IDisposable
     public async Task OnPostAsyncWithAnUnknownCodeShowsAnError()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (ClaimModel model, _) = await NewModelAsync(context);
         model.Input.Code = "NEVER-ISSUED-CODE";
 
@@ -225,7 +225,7 @@ public sealed class ClaimModelTests : IDisposable
     public async Task OnPostAsyncWithAnAlreadyClaimedCodeShowsAnError()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (ClaimModel first, _) = await NewModelAsync(context, "first@example.com");
         string code = await SeedClaimableCodeAsync(context, "FP-DOUBLE-CLAIM");
         first.Input.Code = code;
@@ -248,7 +248,7 @@ public sealed class ClaimModelTests : IDisposable
     public async Task OnPostAsyncRejectsATeamTheCallerCannotManage()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (ClaimModel model, _) = await NewModelAsync(context);
 
         Team someoneElses = new() { CreatedBy = 999, CreatedAt = DateTimeOffset.UtcNow };
@@ -273,7 +273,7 @@ public sealed class ClaimModelTests : IDisposable
     public async Task OnPostAsyncWithAnEmptyCodeFailsValidationWithoutCallingTheService()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (ClaimModel model, _) = await NewModelAsync(context);
         model.Input.Code = string.Empty;
         model.ModelState.AddModelError("Input.Code", "Enter the code shown on the printer's screen.");

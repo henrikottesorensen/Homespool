@@ -90,7 +90,7 @@ public static class EnrolmentFlowHelper
         token.Should().NotBeNull("the claim just happened, so the poll must redeem the code");
 
         using IServiceScope scope = factory.Services.CreateScope();
-        HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
         PrusaConnectAuthenticationData auth = await context.PrusaConnectAuthentication
             .Include(a => a.Printer)
             .SingleAsync(a => a.FingerPrintKey == PrinterFingerprint.Key(identity.Fingerprint));

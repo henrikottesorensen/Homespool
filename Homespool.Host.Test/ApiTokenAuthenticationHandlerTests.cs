@@ -38,7 +38,7 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-apiauth-{Guid.NewGuid():N}.db");
 
-    private static async Task<HSUser> AddUserAsync(HSDbContext context, string email = "owner@example.com")
+    private static async Task<HSUser> AddUserAsync(HomespoolDbContext context, string email = "owner@example.com")
     {
         HSUser user = new(email)
         {
@@ -53,18 +53,18 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
         return user;
     }
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -87,7 +87,7 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
     /// exactly like a cookie-authenticated one downstream.
     /// </summary>
     private static async Task<(ApiTokenAuthenticationHandler handler, DefaultHttpContext httpContext)> NewHandlerAsync(
-        HSDbContext context, string? authorization, string? apiKey = null)
+        HomespoolDbContext context, string? authorization, string? apiKey = null)
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, IServiceProvider provider) =
             IdentityTestHarness.BuildIdentityServices(context);
@@ -127,7 +127,7 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
     public async Task ARequestWithoutAnAuthorizationHeaderYieldsNoResult()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (ApiTokenAuthenticationHandler handler, _) = await NewHandlerAsync(context, authorization: null);
 
         // Act
@@ -147,7 +147,7 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
     public async Task ACredentialOfAnotherSchemeYieldsNoResult(string authorization)
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (ApiTokenAuthenticationHandler handler, _) = await NewHandlerAsync(context, authorization);
 
         // Act
@@ -170,7 +170,7 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
     public async Task AGoodTokenInTheApiKeyHeaderIsNotThisSchemesBusiness()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
         ApiTokenService tokens = new(context);
 
@@ -197,7 +197,7 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
     public async Task AnUnknownTokenFails()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (ApiTokenAuthenticationHandler handler, _) = await NewHandlerAsync(
             context, $"Bearer {ApiTokenService.Prefix}{new string('A', ApiTokenService.SecretLength)}");
 
@@ -215,7 +215,7 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
     public async Task ARevokedTokenFails()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
         ApiTokenService tokens = new(context);
 
@@ -243,7 +243,7 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
     public async Task AGoodTokenAuthenticatesAsItsOwner()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
         ApiTokenService tokens = new(context);
 
@@ -274,7 +274,7 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
     public async Task ExtraSpaceAfterTheSchemeIsTolerated()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
         ApiTokenService tokens = new(context);
 
@@ -294,7 +294,7 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
     public async Task TheBearerKeywordIsCaseInsensitive()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
         ApiTokenService tokens = new(context);
 
@@ -319,7 +319,7 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
     public async Task ChallengeAnswers401WithABearerHeader()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (ApiTokenAuthenticationHandler handler, DefaultHttpContext httpContext) = await NewHandlerAsync(context, authorization: null);
 
         // Act
@@ -338,7 +338,7 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
     public async Task ForbidAnswers403()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (ApiTokenAuthenticationHandler handler, DefaultHttpContext httpContext) = await NewHandlerAsync(context, authorization: null);
 
         // Act

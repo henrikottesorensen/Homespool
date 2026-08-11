@@ -15,7 +15,7 @@ namespace Homespool.Data;
 public static class DataServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers <see cref="HSDbContext"/> against SQLite, with pragmas applied per connection
+    /// Registers <see cref="HomespoolDbContext"/> against SQLite, with pragmas applied per connection
     /// and <see cref="StorageOptions"/> bound from configuration.
     /// </summary>
     public static IServiceCollection AddHomespoolData(this IServiceCollection services,
@@ -42,7 +42,7 @@ public static class DataServiceCollectionExtensions
             ForeignKeys = true,
         }.ToString();
 
-        services.AddDbContext<HSDbContext>(ef =>
+        services.AddDbContext<HomespoolDbContext>(ef =>
         {
             ef.UseSqlite(connectionString);
             ef.AddInterceptors(new SqlitePragmaInterceptor(storage.BusyTimeoutMilliseconds));
@@ -73,7 +73,7 @@ public static class DataServiceCollectionExtensions
 
         // Before the AutoMigrate check on purpose: WAL is required whether or not this process is the
         // one applying schema changes, and it must be set before Migrate() opens its read-only probe.
-        EnsureWriteAheadLogging(scope.ServiceProvider.GetRequiredService<HSDbContext>(), logger);
+        EnsureWriteAheadLogging(scope.ServiceProvider.GetRequiredService<HomespoolDbContext>(), logger);
 
         if (!storage.AutoMigrate)
         {
@@ -82,7 +82,7 @@ public static class DataServiceCollectionExtensions
             return;
         }
 
-        HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
         logger.LogInformation("Applying pending database migrations.");
 
@@ -111,7 +111,7 @@ public static class DataServiceCollectionExtensions
     /// since WAL is required whether or not this process owns schema changes.
     /// </para>
     /// </remarks>
-    private static void EnsureWriteAheadLogging(HSDbContext context, ILogger logger)
+    private static void EnsureWriteAheadLogging(HomespoolDbContext context, ILogger logger)
     {
         DbConnection connection = context.Database.GetDbConnection();
         bool wasClosed = connection.State != ConnectionState.Open;

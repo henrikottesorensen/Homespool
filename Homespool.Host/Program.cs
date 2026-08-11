@@ -117,7 +117,7 @@ public static class Program
             builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
             builder.Services.AddDataProtection()
-                            .PersistKeysToDbContext<HSDbContext>();
+                            .PersistKeysToDbContext<HomespoolDbContext>();
 
             builder.Services.AddAuthentication()
                             .AddPrusaConnectPrinterAuthentication()
@@ -125,7 +125,7 @@ public static class Program
                             .AddXApiKeyAuthentication();
 
             builder.Services.AddIdentity<Model.Entities.HSUser, IdentityRole<long>>(Services.IdentityConfiguration.Configure)
-                            .AddEntityFrameworkStores<HSDbContext>()
+                            .AddEntityFrameworkStores<HomespoolDbContext>()
                             .AddErrorDescriber<Services.HSIdentityErrorDescriber>()
                             .AddDefaultTokenProviders();
 
@@ -235,7 +235,7 @@ public static class Program
                             .AddScoped<PrusaConnect.PrinterPreheatService>();
 
             // Plain singletons, not TelemetryWriter's singleton-with-IServiceScopeFactory pattern below:
-            // neither touches HSDbContext, only in-memory state (the directory of live connection
+            // neither touches HomespoolDbContext, only in-memory state (the directory of live connection
             // actors, and the actors' own singleton dependencies), so there is no scoped dependency
             // to protect against capturing. The actors themselves are not registered at all - one is
             // created per accepted WebSocket by the factory and lives exactly as long as that request.
@@ -289,15 +289,15 @@ public static class Program
             // Singleton, not scoped like its neighbors above: one drain loop and one in-memory
             // live-state cache for the whole process, fed by every request's scoped
             // MessageDispatcher through the ITelemetrySink interface - so a request never hands
-            // the writer its own HSDbContext, only a DTO.
+            // the writer its own HomespoolDbContext, only a DTO.
             //
-            // The writer still needs HSDbContext to persist, which is the usual trap for a
+            // The writer still needs HomespoolDbContext to persist, which is the usual trap for a
             // singleton: inject the scoped context directly and it gets captured once, reused
             // forever, single-threaded and stale, for the life of the process. TelemetryWriter
             // avoids this by injecting IServiceScopeFactory instead - itself a singleton, safe to
             // hold - and calling CreateScope() fresh in HydrateAsync and FlushAsync, each wrapped
-            // in a `using` that disposes the scope (and its HSDbContext) the moment that one
-            // read or write finishes. No HSDbContext field ever exists on TelemetryWriter itself.
+            // in a `using` that disposes the scope (and its HomespoolDbContext) the moment that one
+            // read or write finishes. No HomespoolDbContext field ever exists on TelemetryWriter itself.
             builder.Services.AddSingleton<PrusaConnect.TelemetryWriter>();
             builder.Services.AddSingleton<PrusaConnect.ITelemetrySink>(sp => sp.GetRequiredService<PrusaConnect.TelemetryWriter>());
             builder.Services.AddSingleton<PrusaConnect.ITelemetryHealthSource>(sp => sp.GetRequiredService<PrusaConnect.TelemetryWriter>());
@@ -349,7 +349,7 @@ public static class Program
             // the request, which is the only window in which the answer cannot change.
             builder.Services.AddScoped<Authorisation.PrinterAccessService>();
 
-            // Scoped, unlike their singleton neighbors above, because they hold the scoped HSDbContext.
+            // Scoped, unlike their singleton neighbors above, because they hold the scoped HomespoolDbContext.
             builder.Services.AddScoped<Services.TeamService>();
             builder.Services.AddScoped<Services.UnitOfWork>();
             builder.Services.AddScoped<Services.InvitationService>();

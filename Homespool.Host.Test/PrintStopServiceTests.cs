@@ -60,7 +60,7 @@ public sealed class PrintStopServiceTests : IDisposable
     public async Task AStopIsAttributedToWhoeverAskedForIt()
     {
         // Arrange
-        await using HSDbContext context = await SeedAsync();
+        await using HomespoolDbContext context = await SeedAsync();
         await AddPrintAsync(context, PrintState.Printing, ended: false);
         Connect(Events.Finished);
 
@@ -82,7 +82,7 @@ public sealed class PrintStopServiceTests : IDisposable
     public async Task ARefusedStopAttributesNothing()
     {
         // Arrange
-        await using HSDbContext context = await SeedAsync();
+        await using HomespoolDbContext context = await SeedAsync();
         await AddPrintAsync(context, PrintState.Printing, ended: false);
         Connect(Events.Rejected, "No print to stop");
 
@@ -104,7 +104,7 @@ public sealed class PrintStopServiceTests : IDisposable
     public async Task AStopIsStillAttributedWhenTheLoopClosedTheRowFirst()
     {
         // Arrange - closed as Stopped while the command was in flight
-        await using HSDbContext context = await SeedAsync();
+        await using HomespoolDbContext context = await SeedAsync();
         await AddPrintAsync(context, PrintState.Printing, ended: false);
         ConnectClosingTheRowMidFlight(PrintState.Stopped);
 
@@ -127,7 +127,7 @@ public sealed class PrintStopServiceTests : IDisposable
     public async Task APrintThatFinishedInTheRaceIsNotAttributed()
     {
         // Arrange
-        await using HSDbContext context = await SeedAsync();
+        await using HomespoolDbContext context = await SeedAsync();
         await AddPrintAsync(context, PrintState.Printing, ended: false);
         ConnectClosingTheRowMidFlight(PrintState.Finished);
 
@@ -148,7 +148,7 @@ public sealed class PrintStopServiceTests : IDisposable
     public async Task TheFirstStopKeepsTheAttribution()
     {
         // Arrange - already attributed
-        await using HSDbContext context = await SeedAsync();
+        await using HomespoolDbContext context = await SeedAsync();
         await AddPrintAsync(context, PrintState.Printing, ended: false, stoppedBy: Stopper);
         Connect(Events.Finished);
 
@@ -170,7 +170,7 @@ public sealed class PrintStopServiceTests : IDisposable
     public async Task AStopWithNoOpenPrintWritesNothing()
     {
         // Arrange - history, but nothing running
-        await using HSDbContext context = await SeedAsync();
+        await using HomespoolDbContext context = await SeedAsync();
         await AddPrintAsync(context, PrintState.Finished, ended: true);
         Connect(Events.Finished);
 
@@ -187,7 +187,7 @@ public sealed class PrintStopServiceTests : IDisposable
         job.StoppedByUserId.Should().BeNull();
     }
 
-    private PrintStopService NewService(HSDbContext context)
+    private PrintStopService NewService(HomespoolDbContext context)
     {
         return new PrintStopService(context,
             new PrinterCommandService(new PrinterAccessService(context), _registry),
@@ -216,7 +216,7 @@ public sealed class PrintStopServiceTests : IDisposable
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
              .Returns(async _ =>
              {
-                 await using HSDbContext loopContext = NewContext();
+                 await using HomespoolDbContext loopContext = NewContext();
                  PrintJob open = await loopContext.PrintJobs.SingleAsync(job => job.EndedAt == null,
                      TestContext.Current.CancellationToken);
 
@@ -231,14 +231,14 @@ public sealed class PrintStopServiceTests : IDisposable
         _registry.Register(PrinterId, actor);
     }
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        return new HSDbContext(new DbContextOptionsBuilder<HSDbContext>()
+        return new HomespoolDbContext(new DbContextOptionsBuilder<HomespoolDbContext>()
                                .UseSqlite($"Data Source={_databasePath}")
                                .Options);
     }
 
-    private async Task AddPrintAsync(HSDbContext context, PrintState outcome, bool ended, long? stoppedBy = null)
+    private async Task AddPrintAsync(HomespoolDbContext context, PrintState outcome, bool ended, long? stoppedBy = null)
     {
         context.PrintJobs.Add(new PrintJob
         {
@@ -254,9 +254,9 @@ public sealed class PrintStopServiceTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
-    private async Task<HSDbContext> SeedAsync()
+    private async Task<HomespoolDbContext> SeedAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         foreach ((long id, string email) in new[] { (Stopper, "owner@example.com"), (SomebodyElse, "other@example.com") })

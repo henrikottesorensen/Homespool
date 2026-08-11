@@ -57,7 +57,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
     public async Task AFileOnDiskWithNoRowIsIndexedWithoutADigest()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         await AddUserAsync(context);
 
         Directory.CreateDirectory(Path.Combine(_root, "1-alice"));
@@ -81,7 +81,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
     public async Task ARowWhoseFileIsGoneIsRemoved()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         await AddUserAsync(context);
 
         context.PrintFiles.Add(new PrintFile
@@ -111,7 +111,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
     public async Task QueuedPrintsForAVanishedFileAreCancelled()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         await AddUserAsync(context);
 
         PrintFile row = new()
@@ -161,7 +161,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
     public async Task ChangedBytesCorrectTheSizeAndClearTheDigest()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         await AddUserAsync(context);
 
         Directory.CreateDirectory(Path.Combine(_root, "1-alice"));
@@ -200,7 +200,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
     public async Task ADirectoryBelongingToNoUserIsLeftAlone()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         Directory.CreateDirectory(Path.Combine(_root, "999-ghost"));
         string path = Path.Combine(_root, "999-ghost", "orphan.gcode");
@@ -215,7 +215,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         File.Exists(path).Should().BeTrue("the reconciler never writes to the disk");
     }
 
-    private static async Task AddUserAsync(HSDbContext context)
+    private static async Task AddUserAsync(HomespoolDbContext context)
     {
         const string email = "alice@example.com";
 
@@ -233,7 +233,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
     private PrintFileReconciler NewReconciler()
     {
         ServiceCollection services = new();
-        services.AddDbContext<HSDbContext>(options => options.UseSqlite($"Data Source={_databasePath}"));
+        services.AddDbContext<HomespoolDbContext>(options => options.UseSqlite($"Data Source={_databasePath}"));
 
         UserFileStore store = new(Options.Create(new PrintFileStorageOptions { Directory = _root }),
             new HostEnvironmentAccessor(_root),
@@ -247,18 +247,18 @@ public sealed class PrintFileReconcilerTests : IDisposable
             NullLogger<PrintFileReconciler>.Instance);
     }
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;

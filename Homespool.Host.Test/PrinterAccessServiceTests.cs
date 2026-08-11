@@ -73,7 +73,7 @@ public sealed class PrinterAccessServiceTests : IDisposable
         bool expected)
     {
         // Arrange
-        await using HSDbContext context = await SeedAsync();
+        await using HomespoolDbContext context = await SeedAsync();
         PrinterAccessService access = new(context);
 
         // Act
@@ -91,7 +91,7 @@ public sealed class PrinterAccessServiceTests : IDisposable
     public async Task RequireDistinguishesAMissingPrinterFromARefusedOne()
     {
         // Arrange
-        await using HSDbContext context = await SeedAsync();
+        await using HomespoolDbContext context = await SeedAsync();
         PrinterAccessService access = new(context);
 
         // Act & Assert
@@ -119,7 +119,7 @@ public sealed class PrinterAccessServiceTests : IDisposable
     public async Task FindAnswersNullForBothAnUnknownPrinterAndOneYouMayNotSee()
     {
         // Arrange
-        await using HSDbContext context = await SeedAsync();
+        await using HomespoolDbContext context = await SeedAsync();
         PrinterAccessService access = new(context);
         Guid known = await context.Printers.Select(printer => printer.Uuid)
                                   .SingleAsync(TestContext.Current.CancellationToken);
@@ -150,7 +150,7 @@ public sealed class PrinterAccessServiceTests : IDisposable
     public async Task TheDefaultOperationIsNotAPermissionAnybodyHas()
     {
         // Arrange
-        await using HSDbContext context = await SeedAsync();
+        await using HomespoolDbContext context = await SeedAsync();
         PrinterAccessService access = new(context);
 
         // Act & Assert
@@ -164,7 +164,7 @@ public sealed class PrinterAccessServiceTests : IDisposable
     public async Task AllowsIsFalseForAPrinterThatDoesNotExist()
     {
         // Arrange
-        await using HSDbContext context = await SeedAsync();
+        await using HomespoolDbContext context = await SeedAsync();
         PrinterAccessService access = new(context);
 
         // Act
@@ -188,7 +188,7 @@ public sealed class PrinterAccessServiceTests : IDisposable
     public async Task TheMemoIsPerRequestAndPerUser()
     {
         // Arrange
-        await using HSDbContext context = await SeedAsync();
+        await using HomespoolDbContext context = await SeedAsync();
         PrinterAccessService access = new(context);
 
         (await access.AllowsAsync(1, Reader, PrinterOperation.ChangeQueue, TestContext.Current.CancellationToken))
@@ -208,9 +208,9 @@ public sealed class PrinterAccessServiceTests : IDisposable
             .Should().BeTrue("a memo keyed on the printer alone would answer for the wrong person");
     }
 
-    private async Task<HSDbContext> SeedAsync()
+    private async Task<HomespoolDbContext> SeedAsync()
     {
-        HSDbContext context = new(new DbContextOptionsBuilder<HSDbContext>()
+        HomespoolDbContext context = new(new DbContextOptionsBuilder<HomespoolDbContext>()
                                   .UseSqlite($"Data Source={_databasePath}")
                                   .Options);
 

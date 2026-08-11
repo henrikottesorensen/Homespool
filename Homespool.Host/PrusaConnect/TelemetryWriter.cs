@@ -26,7 +26,7 @@ namespace Homespool.Host.PrusaConnect;
 /// Persists what <see cref="MessageDispatcher"/> parses: merges telemetry into a per-printer
 /// live-state cache, snapshots dense <see cref="TelemetrySample"/> rows from the merged result, and
 /// buffers <see cref="PrinterEvent"/> rows — all through one bounded channel, batched, so socket
-/// handlers never open a <see cref="HSDbContext"/> themselves.
+/// handlers never open a <see cref="HomespoolDbContext"/> themselves.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -483,7 +483,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// First sighting of a printer since this process started: reads its current
     /// <see cref="PrinterLiveState"/> (if any) so the merge has a real starting point instead of
     /// treating "never seen this process lifetime" as "never enrolled". A short-lived scope for the
-    /// read alone - the long-lived cache entry it produces holds no <see cref="HSDbContext"/>.
+    /// read alone - the long-lived cache entry it produces holds no <see cref="HomespoolDbContext"/>.
     /// </summary>
     private void OnItemDropped(TelemetryWriteItem dropped)
     {
@@ -932,7 +932,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// firmware upgrade reported by the hardware is not that.
     /// </para>
     /// </remarks>
-    private async Task ApplyPrinterInfoAsync(HSDbContext context,
+    private async Task ApplyPrinterInfoAsync(HomespoolDbContext context,
                                              Dictionary<int, InfoEventDataDTO> pendingPrinterInfo,
                                              CancellationToken cancellationToken)
     {
@@ -1014,7 +1014,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             }
         }
 
-        static Printer Attach(HSDbContext context, int printerId)
+        static Printer Attach(HomespoolDbContext context, int printerId)
         {
             Printer stub = new() { Id = printerId };
             context.Attach(stub);
@@ -1114,7 +1114,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     // interpolated. It is an int computed from a TimeSpan this class owns - never user input.
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "EF1002:Risk of vulnerability to SQL injection",
                                                      Justification = "PRAGMA cannot be parameterised; the interpolated value is an int this class computes.")]
-    private async Task ApplyWriterCommandTimeoutAsync(HSDbContext context, TimeSpan? budget, CancellationToken cancellationToken)
+    private async Task ApplyWriterCommandTimeoutAsync(HomespoolDbContext context, TimeSpan? budget, CancellationToken cancellationToken)
     {
         TimeSpan effective = budget ?? TimeSpan.FromMilliseconds(Math.Max(_options.BusyTimeoutMilliseconds, 1));
         int seconds = Math.Max((int)Math.Ceiling(effective.TotalSeconds), 1);
@@ -1160,7 +1160,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     private async Task<LiveStateCacheEntry> HydrateAsync(int printerId, CancellationToken cancellationToken)
     {
         using IServiceScope scope = _scopeFactory.CreateScope();
-        HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
         await ApplyWriterCommandTimeoutAsync(context, budget: null, cancellationToken);
 
         PrinterLiveState? existing = await context.PrinterLiveStates
@@ -1276,7 +1276,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         }
 
         using IServiceScope scope = _scopeFactory.CreateScope();
-        HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
         await ApplyWriterCommandTimeoutAsync(context, commandBudget, cancellationToken);
 
         if (pendingSamples.Count > 0)

@@ -29,11 +29,11 @@ public class InvitationService
 {
     public const int InviteTokenLength = 32;
 
-    private readonly HSDbContext _dbContext;
+    private readonly HomespoolDbContext _dbContext;
     private readonly TokenService _tokenService;
     private readonly InvitationOptions _options;
 
-    public InvitationService(HSDbContext dbContext, TokenService tokenService, IOptions<InvitationOptions> options)
+    public InvitationService(HomespoolDbContext dbContext, TokenService tokenService, IOptions<InvitationOptions> options)
     {
         ArgumentNullException.ThrowIfNull(options);
 

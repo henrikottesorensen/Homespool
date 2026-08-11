@@ -42,7 +42,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
 
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-auth-{Guid.NewGuid():N}.db");
 
-    private static async Task<Printer> AddPrinterAsync(HSDbContext context)
+    private static async Task<Printer> AddPrinterAsync(HomespoolDbContext context)
     {
         Team team = new()
         {
@@ -71,7 +71,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     }
 
     /// <summary>Seeds an already-enrolled printer and returns its plaintext token.</summary>
-    private static async Task<(Printer printer, string token)> AddEnrolledPrinterAsync(HSDbContext context, string fingerprint)
+    private static async Task<(Printer printer, string token)> AddEnrolledPrinterAsync(HomespoolDbContext context, string fingerprint)
     {
         Printer printer = await AddPrinterAsync(context);
 
@@ -92,7 +92,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     }
 
     /// <summary>Seeds a printer with an outstanding, unbound provisioning token.</summary>
-    private static async Task<(Printer printer, string token)> AddProvisionedPrinterAsync(HSDbContext context)
+    private static async Task<(Printer printer, string token)> AddProvisionedPrinterAsync(HomespoolDbContext context)
     {
         Printer printer = await AddPrinterAsync(context);
 
@@ -111,18 +111,18 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
         return (printer, token);
     }
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -144,7 +144,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     /// would: a fresh context (a request's own scope) and a fresh handler, since the base class
     /// memoises the result per request.
     /// </summary>
-    private async Task<AuthenticateResult> AuthenticateAsync(HSDbContext context,
+    private async Task<AuthenticateResult> AuthenticateAsync(HomespoolDbContext context,
                                                              string? fingerprint,
                                                              string? token,
                                                              bool sendUserAgent = true)
@@ -194,7 +194,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     public async Task ARequestWithoutThePrinterHeadersYieldsNoResult()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         // Act
         AuthenticateResult result = await AuthenticateAsync(context, fingerprint: null, token: null);
@@ -213,7 +213,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     public async Task AnEnrolledPrinterAuthenticatesAndCarriesItsIdentityInTheTicket()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (Printer printer, string token) = await AddEnrolledPrinterAsync(context, Fingerprint);
 
         // Act
@@ -234,7 +234,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     public async Task AnEnrolledPrinterWithTheWrongTokenIsRejected()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         await AddEnrolledPrinterAsync(context, Fingerprint);
 
         // Act
@@ -251,7 +251,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     public async Task AnUnknownFingerprintWithNothingProvisionedIsRejected()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         // Act
         AuthenticateResult result = await AuthenticateAsync(context, "no-such-fingerprint", new TokenService().GenerateToken());
@@ -274,7 +274,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     public async Task FirstContactWithAProvisionedTokenEnrolsThePrinter()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (Printer printer, string token) = await AddProvisionedPrinterAsync(context);
 
         // Act
@@ -284,7 +284,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
         result.Succeeded.Should().BeTrue();
         result.Principal!.FindFirst(HSClaimTypes.PrinterId)!.Value.Should().Be($"{printer.Id}");
 
-        await using HSDbContext verify = NewContext();
+        await using HomespoolDbContext verify = NewContext();
 
         PrusaConnectAuthenticationData enrolled = await verify.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken);
         enrolled.PrinterId.Should().Be(printer.Id);
@@ -302,14 +302,14 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     public async Task ThePromotedCredentialStillVerifiesAgainstTheProvisionedToken()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (Printer _, string token) = await AddProvisionedPrinterAsync(context);
 
         // Act
         await AuthenticateAsync(context, Fingerprint, token);
 
         // Assert
-        await using HSDbContext verify = NewContext();
+        await using HomespoolDbContext verify = NewContext();
         PrusaConnectAuthenticationData enrolled = await verify.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken);
 
         new TokenService().VerifyToken(token, enrolled.HashedToken).Should().BeTrue();
@@ -329,13 +329,13 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     public async Task AfterFirstContactThePrinterAuthenticatesFromTheEnrolledTableAlone()
     {
         // Arrange
-        await using HSDbContext first = await MigratedContextAsync();
+        await using HomespoolDbContext first = await MigratedContextAsync();
         (Printer printer, string token) = await AddProvisionedPrinterAsync(first);
 
         (await AuthenticateAsync(first, Fingerprint, token)).Succeeded.Should().BeTrue();
 
         // Act - a second request, in its own scope, exactly as the next real request would be
-        await using HSDbContext second = NewContext();
+        await using HomespoolDbContext second = NewContext();
         AuthenticateResult result = await AuthenticateAsync(second, Fingerprint, token);
 
         // Assert
@@ -357,7 +357,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     public async Task AWrongTokenAtFirstContactBindsNothing()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         await AddProvisionedPrinterAsync(context);
 
         // Act
@@ -366,7 +366,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
         // Assert
         result.Succeeded.Should().BeFalse();
 
-        await using HSDbContext verify = NewContext();
+        await using HomespoolDbContext verify = NewContext();
         (await verify.PrusaConnectAuthentication.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse("nothing was enrolled");
         (await verify.PrusaConnectProvisionings.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1, "the real printer's token must survive a wrong guess");
     }
@@ -379,7 +379,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     public async Task AProvisionedTokenBindsOnlyItsOwnPrinter()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         await AddProvisionedPrinterAsync(context);
         (Printer target, string token) = await AddProvisionedPrinterAsync(context);
@@ -392,7 +392,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
         result.Succeeded.Should().BeTrue();
         result.Principal!.FindFirst(HSClaimTypes.PrinterId)!.Value.Should().Be($"{target.Id}");
 
-        await using HSDbContext verify = NewContext();
+        await using HomespoolDbContext verify = NewContext();
         (await verify.PrusaConnectProvisionings.CountAsync(TestContext.Current.CancellationToken)).Should().Be(2, "the other two are untouched");
         (await verify.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken)).PrinterId.Should().Be(target.Id);
     }
@@ -405,7 +405,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     public async Task AnEnrolledCredentialTakesPrecedenceOverALeftoverProvisioningRow()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (Printer printer, string enrolledToken) = await AddEnrolledPrinterAsync(context, Fingerprint);
 
         context.PrusaConnectProvisionings.Add(new PrusaConnectProvisioning
@@ -438,11 +438,11 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     public async Task ConcurrentFirstContactsSettleOnASingleEnrolment()
     {
         // Arrange
-        await using HSDbContext seed = await MigratedContextAsync();
+        await using HomespoolDbContext seed = await MigratedContextAsync();
         (Printer printer, string token) = await AddProvisionedPrinterAsync(seed);
 
-        await using HSDbContext left = NewContext();
-        await using HSDbContext right = NewContext();
+        await using HomespoolDbContext left = NewContext();
+        await using HomespoolDbContext right = NewContext();
 
         // Act - two independent request scopes racing, as two real requests would
         AuthenticateResult[] results = await Task.WhenAll(
@@ -452,7 +452,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
         // Assert
         results.Should().Contain(r => r.Succeeded, "at least one request must complete the enrolment");
 
-        await using HSDbContext verify = NewContext();
+        await using HomespoolDbContext verify = NewContext();
 
         PrusaConnectAuthenticationData enrolled = await verify.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken);
         enrolled.PrinterId.Should().Be(printer.Id);

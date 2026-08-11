@@ -58,7 +58,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
 
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-fpid-{Guid.NewGuid():N}.db");
 
-    private static PrusaConnectService NewService(HSDbContext context)
+    private static PrusaConnectService NewService(HomespoolDbContext context)
     {
         return new(context,
             new CodeGenerator(),
@@ -68,18 +68,18 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
             Options.Create(new PrusaConnectOptions()));
     }
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -107,7 +107,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         };
     }
 
-    private static async Task<TeamMember> AddTeamAsync(HSDbContext context, long userId, bool canManage, bool isDefault)
+    private static async Task<TeamMember> AddTeamAsync(HomespoolDbContext context, long userId, bool canManage, bool isDefault)
     {
         Team team = new()
         {
@@ -138,7 +138,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     /// </summary>
     private async Task<AuthenticateResult> AuthenticateAsync(string fingerprint, string token)
     {
-        await using HSDbContext context = NewContext();
+        await using HomespoolDbContext context = NewContext();
 
         DefaultHttpContext httpContext = new();
         httpContext.Request.Headers[Headers.Fingerprint] = fingerprint;
@@ -167,7 +167,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     /// The code-exchange channel end to end: the printer registers, a user claims the code, the
     /// printer polls and receives its token.
     /// </summary>
-    private async Task<(Printer printer, string token)> EnrolByCodeExchangeAsync(HSDbContext context,
+    private async Task<(Printer printer, string token)> EnrolByCodeExchangeAsync(HomespoolDbContext context,
                                                                                    int? teamId,
                                                                                    long userId)
     {
@@ -190,7 +190,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     /// The USB-key channel end to end: a user provisions, then the printer makes first contact and is
     /// promoted into the enrolled table.
     /// </summary>
-    private async Task<(Printer printer, string token)> EnrolByUsbKeyAsync(HSDbContext context,
+    private async Task<(Printer printer, string token)> EnrolByUsbKeyAsync(HomespoolDbContext context,
                                                                             int? teamId,
                                                                             long userId)
     {
@@ -237,7 +237,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     public async Task APrinterEnrolledByCodeExchangeCanAuthenticateAfterwards()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         TeamMember team = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
 
         // Act
@@ -258,7 +258,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     public async Task APrinterEnrolledByUsbKeyCanAuthenticateAfterwards()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         TeamMember team = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
 
         // Act
@@ -286,7 +286,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     public async Task ReissuingAnEnrolledPrintersUsbTokenKeepsItAuthenticating()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         TeamMember team = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
 
         (Printer printer, string original) = await EnrolByUsbKeyAsync(context, team.TeamId, userId: 1);
@@ -304,7 +304,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         AuthenticateResult withOld = await AuthenticateAsync(HeaderFingerprint, original);
         withOld.Succeeded.Should().BeFalse("the token on the discarded stick must stop working");
 
-        await using HSDbContext verify = NewContext();
+        await using HomespoolDbContext verify = NewContext();
         (await verify.PrusaConnectProvisionings.AnyAsync(TestContext.Current.CancellationToken)).Should()
             .BeFalse("the reissued token is consumed by the rebind, exactly as first contact consumes one");
     }
@@ -331,7 +331,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     public async Task ATokenProvisionedForADifferentPrinterDoesNotBindToAnEnrolledOne()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         TeamMember owner = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
 
         (Printer enrolled, string original) = await EnrolByUsbKeyAsync(context, owner.TeamId, userId: 1);
@@ -347,7 +347,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         // Assert
         result.Succeeded.Should().BeFalse("a provisioning token is only ever valid for the printer it was issued for");
 
-        await using HSDbContext verify = NewContext();
+        await using HomespoolDbContext verify = NewContext();
 
         PrusaConnectAuthenticationData credential = await verify.PrusaConnectAuthentication
             .SingleAsync(a => a.FingerPrintKey == HeaderFingerprint, TestContext.Current.CancellationToken);
@@ -377,7 +377,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     public async Task ClaimingAUsbEnrolledPrinterByCodeKeepsItAuthenticating()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         TeamMember team = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
 
         await EnrolByUsbKeyAsync(context, team.TeamId, userId: 1);
@@ -399,7 +399,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     public async Task ReEnrollingAPrinterDoesNotCreateASecondPrinterRow()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         TeamMember team = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
 
         (Printer first, string _) = await EnrolByUsbKeyAsync(context, team.TeamId, userId: 1);
@@ -410,7 +410,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         // Assert
         second.Id.Should().Be(first.Id, "both enrolments describe the same physical printer");
 
-        await using HSDbContext verify = NewContext();
+        await using HomespoolDbContext verify = NewContext();
         (await verify.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
         (await verify.PrusaConnectAuthentication.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1, "one printer holds one enrolled credential");
     }
@@ -429,7 +429,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     public async Task ClaimingAnAlreadyEnrolledPrinterWithoutCanManageIsRejected()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         TeamMember owner = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
 
         await EnrolByUsbKeyAsync(context, owner.TeamId, userId: 1);
@@ -462,7 +462,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     public async Task ARefusedClaimLeavesTheEnrolledPrinterWorking()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         TeamMember owner = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
 
         (Printer printer, string originalToken) = await EnrolByUsbKeyAsync(context, owner.TeamId, userId: 1);
@@ -485,7 +485,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         result.Succeeded.Should().BeTrue("the printer never learned of the failed claim");
         result.Principal!.FindFirst(HSClaimTypes.PrinterId)!.Value.Should().Be($"{printer.Id}");
 
-        await using HSDbContext verify = NewContext();
+        await using HomespoolDbContext verify = NewContext();
         (await verify.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1, "a refused claim must not leave a printer behind");
 
         (await verify.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken)).PrinterId
@@ -500,7 +500,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     public async Task ClaimingAnAlreadyEnrolledPrinterWithCanManageLinksToIt()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         TeamMember owner = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
 
         (Printer enrolled, string originalToken) = await EnrolByUsbKeyAsync(context, owner.TeamId, userId: 1);
@@ -532,7 +532,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     public async Task AWrongTokenIsStillRejectedWhenNothingIsPendingForThePrinter()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         TeamMember team = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
 
         await EnrolByUsbKeyAsync(context, team.TeamId, userId: 1);
@@ -552,7 +552,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     public async Task AnUnrelatedFingerprintIsStillUnknown()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         TeamMember team = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
 
         (Printer _, string token) = await EnrolByUsbKeyAsync(context, team.TeamId, userId: 1);

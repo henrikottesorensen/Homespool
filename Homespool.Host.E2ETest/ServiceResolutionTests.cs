@@ -76,7 +76,7 @@ public sealed class ServiceResolutionTests : IAsyncLifetime, IDisposable
         Type[] ours =
         [
             typeof(Homespool.Host.Program),
-            typeof(Homespool.Data.HSDbContext),
+            typeof(Homespool.Data.HomespoolDbContext),
             typeof(Homespool.Model.Entities.HSUser),
         ];
 

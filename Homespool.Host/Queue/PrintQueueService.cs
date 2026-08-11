@@ -39,13 +39,13 @@ namespace Homespool.Host.Queue;
 /// </remarks>
 public class PrintQueueService
 {
-    private readonly HSDbContext _dbContext;
+    private readonly HomespoolDbContext _dbContext;
     private readonly PrinterAccessService _access;
     private readonly PrintFileCatalog _files;
     private readonly TimeProvider _timeProvider;
     private readonly QueueSignal _signal;
 
-    public PrintQueueService(HSDbContext dbContext,
+    public PrintQueueService(HomespoolDbContext dbContext,
                              PrinterAccessService access,
                              PrintFileCatalog files,
                              TimeProvider timeProvider,

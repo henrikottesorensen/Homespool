@@ -472,7 +472,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
     {
         using IServiceScope scope = _factory.Services.CreateScope();
 
-        return await scope.ServiceProvider.GetRequiredService<HSDbContext>()
+        return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
                           .Printers.Where(printer => printer.Id == printerId)
                           .Select(printer => printer.Uuid)
                           .SingleAsync(TestContext.Current.CancellationToken);
@@ -526,7 +526,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
 
         using IServiceScope scope = _factory.Services.CreateScope();
 
-        return await scope.ServiceProvider.GetRequiredService<HSDbContext>()
+        return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
                           .PrintJobs.AnyAsync(job => job.PrinterId == printerId && job.State == outcome,
                               TestContext.Current.CancellationToken);
     }
@@ -535,7 +535,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
     {
         using IServiceScope scope = _factory.Services.CreateScope();
 
-        return await scope.ServiceProvider.GetRequiredService<HSDbContext>()
+        return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
                           .PrintJobs.SingleAsync(job => job.PrinterId == printerId && job.EndedAt == null,
                               TestContext.Current.CancellationToken);
     }
@@ -544,7 +544,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
     {
         using IServiceScope scope = _factory.Services.CreateScope();
 
-        return await scope.ServiceProvider.GetRequiredService<HSDbContext>()
+        return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
                           .PrintJobs.SingleAsync(job => job.PrinterId == printerId,
                               TestContext.Current.CancellationToken);
     }
@@ -573,7 +573,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
     {
         using IServiceScope scope = _factory.Services.CreateScope();
 
-        return await scope.ServiceProvider.GetRequiredService<HSDbContext>()
+        return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
                           .PrintJobs.CountAsync(job => job.PrinterId == printerId,
                               TestContext.Current.CancellationToken);
     }
@@ -585,7 +585,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
     private async Task ClearBlockClockAsync(int printerId)
     {
         using IServiceScope scope = _factory.Services.CreateScope();
-        HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
         foreach (PrintFileOnPrinter row in await context.PrintFilesOnPrinters
                      .Where(candidate => candidate.PrinterId == printerId)
@@ -601,7 +601,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
     {
         using IServiceScope scope = _factory.Services.CreateScope();
 
-        return await scope.ServiceProvider.GetRequiredService<HSDbContext>()
+        return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
                           .QueuedPrints.CountAsync(queued => queued.PrinterId == printerId,
                               TestContext.Current.CancellationToken);
     }
@@ -610,7 +610,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
     {
         using IServiceScope scope = _factory.Services.CreateScope();
 
-        return await scope.ServiceProvider.GetRequiredService<HSDbContext>()
+        return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
                           .PrintFilesOnPrinters.CountAsync(row => row.PrinterId == printerId,
                               TestContext.Current.CancellationToken);
     }
@@ -623,7 +623,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
 
         using IServiceScope scope = _factory.Services.CreateScope();
 
-        return await scope.ServiceProvider.GetRequiredService<HSDbContext>()
+        return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
                           .PrintFilesOnPrinters.AnyAsync(
                               row => row.PrinterId == printerId && row.PrinterPath != null,
                               TestContext.Current.CancellationToken);
@@ -633,7 +633,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
     {
         using IServiceScope scope = _factory.Services.CreateScope();
 
-        return await scope.ServiceProvider.GetRequiredService<HSDbContext>()
+        return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
                           .PrinterLiveStates.AnyAsync(
                               state => state.PrinterId == printerId && state.Status == status,
                               TestContext.Current.CancellationToken);

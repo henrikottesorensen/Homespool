@@ -163,14 +163,14 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
                 provider => new SimulatedListener(provider.GetRequiredService<IOptions<ListenerOptions>>()));
 
             ServiceDescriptor? descriptor = services.SingleOrDefault(
-                d => d.ServiceType == typeof(DbContextOptions<HSDbContext>));
+                d => d.ServiceType == typeof(DbContextOptions<HomespoolDbContext>));
 
             if (descriptor is not null)
             {
                 services.Remove(descriptor);
             }
 
-            services.AddDbContext<HSDbContext>(options => options.UseSqlite(_connectionString));
+            services.AddDbContext<HomespoolDbContext>(options => options.UseSqlite(_connectionString));
 
             // Everything that keeps a file resolves its configured, relative directory against this.
             // Replacing it is what isolates uploads, certificates and whatever comes next, in one

@@ -85,7 +85,7 @@ public sealed class TelemetryRetentionService : BackgroundService
         try
         {
             using IServiceScope scope = _scopeFactory.CreateScope();
-            HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+            HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
             DateTimeOffset cutoff = DateTimeOffset.UtcNow - TimeSpan.FromDays(_options.TelemetryRetentionDays);
 

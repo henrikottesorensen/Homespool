@@ -26,28 +26,28 @@ public sealed class IndexModelTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-invite-index-{Guid.NewGuid():N}.db");
 
-    private static InvitationService NewInvitationService(HSDbContext context)
+    private static InvitationService NewInvitationService(HomespoolDbContext context)
     {
         return new(context, new TokenService(), Options.Create(new InvitationOptions()));
     }
 
-    private static IndexModel NewModel(HSDbContext context)
+    private static IndexModel NewModel(HomespoolDbContext context)
     {
         return new(NewInvitationService(context), new TeamService(context));
     }
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -123,7 +123,7 @@ public sealed class IndexModelTests : IDisposable
     public async Task TargetOfReportsNewAccountWhenNoTeamIsBound()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         IndexModel model = NewModel(context);
         await model.OnGetAsync(CancellationToken.None);
 
@@ -145,7 +145,7 @@ public sealed class IndexModelTests : IDisposable
     public async Task TargetOfReportsTheBoundTeamsName()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
         Team team = new() { Name = "Print Squad", CreatedBy = 1, CreatedAt = DateTimeOffset.UtcNow };
         context.Teams.Add(team);
@@ -172,7 +172,7 @@ public sealed class IndexModelTests : IDisposable
     public async Task TargetOfFallsBackToANumberedPlaceholderForAnUnknownTeam()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         IndexModel model = NewModel(context);
         await model.OnGetAsync(CancellationToken.None);
 
@@ -196,7 +196,7 @@ public sealed class IndexModelTests : IDisposable
     public async Task OnGetAsyncPopulatesInvitationsNewestFirst()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         InvitationService invitationService = NewInvitationService(context);
 
         (Invitation first, _) = await invitationService.CreateAsync("first@example.com", null, 1, null, CancellationToken.None);
@@ -221,7 +221,7 @@ public sealed class IndexModelTests : IDisposable
     public async Task OnPostRevokeAsyncRevokesAndRedirectsWithAStatusMessage()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         InvitationService invitationService = NewInvitationService(context);
 
         (Invitation invitation, string plaintext) = await invitationService.CreateAsync(

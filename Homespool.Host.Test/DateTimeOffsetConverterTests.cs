@@ -52,13 +52,13 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
 
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-conv-{Guid.NewGuid():N}.db");
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
     public void Dispose()
@@ -147,7 +147,7 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     public async Task SqliteStoresTimestampsAsIntegers()
     {
         // Arrange
-        await using HSDbContext context = NewContext();
+        await using HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         context.PrusaConnectRegistrations.Add(NewRegistration("fp-1", ChronologicalOrder[0]));
@@ -174,7 +174,7 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     public async Task SqlOrderByMatchesChronologicalOrderAcrossOffsets()
     {
         // Arrange
-        await using HSDbContext context = NewContext();
+        await using HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         // insert shuffled, so a passing result cannot come from insertion order
@@ -207,7 +207,7 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     public async Task SqlRangeFilterKeepsRowsAtAPositiveOffset()
     {
         // Arrange
-        await using HSDbContext context = NewContext();
+        await using HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         foreach ((DateTimeOffset stamp, int i) in ChronologicalOrder.Select((s, i) => (s, i)))
@@ -237,7 +237,7 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     public async Task BulkDeleteByTimestampTranslatesAndDeletesTheRightRows()
     {
         // Arrange
-        await using HSDbContext context = NewContext();
+        await using HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         foreach ((DateTimeOffset stamp, int i) in ChronologicalOrder.Select((s, i) => (s, i)))
@@ -272,7 +272,7 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     public async Task ValuesRoundTripAsUtcTruncatedToMilliseconds()
     {
         // Arrange
-        await using HSDbContext context = NewContext();
+        await using HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         // deliberately carries sub-millisecond ticks and a non-zero offset
@@ -306,7 +306,7 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     public async Task NullableTimestampsSurviveTheConversion()
     {
         // Arrange
-        await using HSDbContext context = NewContext();
+        await using HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         Invitation row = new()

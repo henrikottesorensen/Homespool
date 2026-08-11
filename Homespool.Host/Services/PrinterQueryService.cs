@@ -27,11 +27,11 @@ public class PrinterQueryService
     private const int RecentSampleCount = 50;
     private const int RecentEventCount = 20;
 
-    private readonly HSDbContext _dbContext;
+    private readonly HomespoolDbContext _dbContext;
     private readonly PrinterAccessService _access;
     private readonly TimeProvider _timeProvider;
 
-    public PrinterQueryService(HSDbContext dbContext, PrinterAccessService access, TimeProvider timeProvider)
+    public PrinterQueryService(HomespoolDbContext dbContext, PrinterAccessService access, TimeProvider timeProvider)
     {
         _dbContext = dbContext;
         _access = access;

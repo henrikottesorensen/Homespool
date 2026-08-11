@@ -27,7 +27,7 @@ namespace Homespool.Host.E2ETest;
 /// <remarks>
 /// Each test spins up its own <see cref="WebApplicationFactory{TEntryPoint}"/> against a fresh
 /// temp-file SQLite database - the same real-SQLite convention every other phase-1.5 test in this
-/// project follows, for the same reason: <c>HSDbContext</c>'s <c>DateTimeOffset</c> comparisons only
+/// project follows, for the same reason: <c>HomespoolDbContext</c>'s <c>DateTimeOffset</c> comparisons only
 /// translate against the real provider.
 /// </remarks>
 // Program.Main reassigns Serilog's process-wide static Log.Logger at startup, so two

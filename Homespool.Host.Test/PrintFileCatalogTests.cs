@@ -59,7 +59,7 @@ public sealed class PrintFileCatalogTests : IDisposable
     public async Task AnUploadRecordsTheSha384OfItsContent()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         await AddUserAsync(context);
         PrintFileCatalog catalog = NewCatalog(context);
         byte[] content = Encoding.UTF8.GetBytes("G28 ; home\nG1 X10\n");
@@ -83,7 +83,7 @@ public sealed class PrintFileCatalogTests : IDisposable
     public async Task RenamingKeepsTheRowSoAQueuedPrintSurvivesIt()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         await AddUserAsync(context);
         PrintFileCatalog catalog = NewCatalog(context);
 
@@ -116,7 +116,7 @@ public sealed class PrintFileCatalogTests : IDisposable
     public async Task OverwritingKeepsTheRowAndUpdatesTheDigest()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         await AddUserAsync(context);
         PrintFileCatalog catalog = NewCatalog(context);
         byte[] replacement = Encoding.UTF8.GetBytes("second");
@@ -145,7 +145,7 @@ public sealed class PrintFileCatalogTests : IDisposable
     public async Task DeletingAFileAQueuedPrintWantsIsRefusedAndLeavesItOnDisk()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         await AddUserAsync(context);
         PrintFileCatalog catalog = NewCatalog(context);
 
@@ -170,7 +170,7 @@ public sealed class PrintFileCatalogTests : IDisposable
     public async Task DeletingAnUnqueuedFileRemovesTheFileAndItsRow()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         await AddUserAsync(context);
         PrintFileCatalog catalog = NewCatalog(context);
 
@@ -195,7 +195,7 @@ public sealed class PrintFileCatalogTests : IDisposable
     public async Task ResolvingIndexesAFileThatHasNoRowYet()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         await AddUserAsync(context);
         UserFileStore store = NewStore();
         PrintFileCatalog catalog = NewCatalog(context, store);
@@ -217,7 +217,7 @@ public sealed class PrintFileCatalogTests : IDisposable
     public async Task ResolvingAFileThatIsNotThereIsNull()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         await AddUserAsync(context);
         PrintFileCatalog catalog = NewCatalog(context);
 
@@ -228,7 +228,7 @@ public sealed class PrintFileCatalogTests : IDisposable
         row.Should().BeNull();
     }
 
-    private static async Task<HSUser> AddUserAsync(HSDbContext context, string email = "alice@example.com")
+    private static async Task<HSUser> AddUserAsync(HomespoolDbContext context, string email = "alice@example.com")
     {
         HSUser user = new(email)
         {
@@ -245,7 +245,7 @@ public sealed class PrintFileCatalogTests : IDisposable
     }
 
     /// <summary>A queue entry pointing at a file, with the printer and team it needs to exist.</summary>
-    private static async Task<long> AddQueuedPrintAsync(HSDbContext context, long printFileId)
+    private static async Task<long> AddQueuedPrintAsync(HomespoolDbContext context, long printFileId)
     {
         Team team = new() { Name = "team" };
         context.Teams.Add(team);
@@ -278,23 +278,23 @@ public sealed class PrintFileCatalogTests : IDisposable
             NullLogger<UserFileStore>.Instance);
     }
 
-    private PrintFileCatalog NewCatalog(HSDbContext context, UserFileStore? store = null)
+    private PrintFileCatalog NewCatalog(HomespoolDbContext context, UserFileStore? store = null)
     {
         return new(store ?? NewStore(), context, NullLogger<PrintFileCatalog>.Instance);
     }
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;

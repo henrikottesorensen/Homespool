@@ -164,7 +164,7 @@ public sealed class CameraFrameEndpointTests : IAsyncLifetime, IDisposable
     private async Task<Guid> AddCameraAsync(HSUser user, bool reachable)
     {
         using IServiceScope scope = _factory.Services.CreateScope();
-        HSDbContext database = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+        HomespoolDbContext database = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
         TeamMember membership = await database.TeamMembers
             .FirstAsync(member => member.UserId == user.Id, TestContext.Current.CancellationToken);

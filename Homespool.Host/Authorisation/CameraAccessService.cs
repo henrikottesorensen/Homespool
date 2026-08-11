@@ -31,9 +31,9 @@ namespace Homespool.Host.Authorisation;
 /// </remarks>
 public class CameraAccessService
 {
-    private readonly HSDbContext _dbContext;
+    private readonly HomespoolDbContext _dbContext;
 
-    public CameraAccessService(HSDbContext dbContext)
+    public CameraAccessService(HomespoolDbContext dbContext)
     {
         _dbContext = dbContext;
     }

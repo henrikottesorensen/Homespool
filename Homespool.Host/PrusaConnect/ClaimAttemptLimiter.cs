@@ -27,18 +27,18 @@ namespace Homespool.Host.PrusaConnect;
 /// costs one menu press.
 /// </para>
 /// <para>
-/// Writes through <see cref="HSDbContext"/> rather than <c>UserManager.UpdateAsync</c> deliberately:
+/// Writes through <see cref="HomespoolDbContext"/> rather than <c>UserManager.UpdateAsync</c> deliberately:
 /// that would run the user validators and save on its own schedule, and a counter bump has no
 /// business failing because some unrelated field stopped validating.
 /// </para>
 /// </remarks>
 public class ClaimAttemptLimiter
 {
-    private readonly HSDbContext _dbContext;
+    private readonly HomespoolDbContext _dbContext;
     private readonly PrusaConnectOptions _options;
     private readonly ILogger<ClaimAttemptLimiter> _logger;
 
-    public ClaimAttemptLimiter(HSDbContext dbContext,
+    public ClaimAttemptLimiter(HomespoolDbContext dbContext,
                                IOptions<PrusaConnectOptions> options,
                                ILogger<ClaimAttemptLimiter> logger)
     {
@@ -104,7 +104,7 @@ public class ClaimAttemptLimiter
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Saves through the same request-scoped <see cref="HSDbContext"/> the caller's transaction is
+    /// Saves through the same request-scoped <see cref="HomespoolDbContext"/> the caller's transaction is
     /// ambient over (see <c>UnitOfWork</c>), so calling this inside a claim transaction enrols the
     /// reset in it and a rollback takes the reset with it - which is what makes "the counter is
     /// cleared only if the claim actually landed" true rather than merely intended.

@@ -22,11 +22,11 @@ namespace Homespool.Host.Authentication;
 
 public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<PrusaConnectAuthenticationSchemeOptions>
 {
-    private readonly HSDbContext _dbContext;
+    private readonly HomespoolDbContext _dbContext;
     private readonly TokenService _tokenService;
     private readonly UnitOfWork _unitOfWork;
 
-    public PrusaConnectPrinterAuthenticationHandler(HSDbContext dbContext,
+    public PrusaConnectPrinterAuthenticationHandler(HomespoolDbContext dbContext,
                                                     TokenService tokenService,
                                                     UnitOfWork unitOfWork,
                                                     IOptionsMonitor<PrusaConnectAuthenticationSchemeOptions> options,

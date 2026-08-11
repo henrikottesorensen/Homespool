@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace Homespool.Data.Migrations
 {
-    [DbContext(typeof(HSDbContext))]
+    [DbContext(typeof(HomespoolDbContext))]
     [Migration("20260808165854_InitialCreate")]
     partial class InitialCreate
     {

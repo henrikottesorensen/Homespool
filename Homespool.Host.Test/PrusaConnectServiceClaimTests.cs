@@ -31,7 +31,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-claim-{Guid.NewGuid():N}.db");
 
-    private static PrusaConnectService NewService(HSDbContext context, int lifetimeMinutes = 60)
+    private static PrusaConnectService NewService(HomespoolDbContext context, int lifetimeMinutes = 60)
     {
         return new(context,
             new CodeGenerator(),
@@ -53,18 +53,18 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         };
     }
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -81,7 +81,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         }
     }
 
-    private static async Task<TeamMember> AddTeamAsync(HSDbContext context, long userId, bool canManage, bool isDefault)
+    private static async Task<TeamMember> AddTeamAsync(HomespoolDbContext context, long userId, bool canManage, bool isDefault)
     {
         Team team = new()
         {
@@ -114,7 +114,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
     public async Task ClaimingWithNoTeamIdUsesTheCallersDefaultTeam()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         TeamMember defaultTeam = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
@@ -142,7 +142,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
     public async Task ClaimingWithAnExplicitTeamIdUsesThatTeamWhenTheCallerCanManageIt()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
@@ -164,7 +164,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
     public async Task ClaimingIntoATeamTheCallerCannotManageIsRejected()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
@@ -186,7 +186,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
     public async Task ClaimingIntoATeamTheCallerIsNotAMemberOfIsRejected()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
@@ -208,7 +208,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
     public async Task ASecondClaimOfAnAlreadyClaimedCodeIsRejected()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
@@ -233,7 +233,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
     public async Task ClaimingDoesNotConsumeTheCode()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
@@ -254,7 +254,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
     public async Task ClaimingWithAnUnknownOrExpiredCodeIsRejected()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
@@ -274,7 +274,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
     public async Task ClaimingWithNoTeamIdAndNoDefaultTeamFailsClosed()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;

@@ -33,18 +33,18 @@ public sealed class AddModelTests : IDisposable
     // what decides whether a bundle can be built at all.
     private readonly string _certificateRoot = Path.Combine(Path.GetTempPath(), $"ps-printers-add-certs-{Guid.NewGuid():N}");
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -86,7 +86,7 @@ public sealed class AddModelTests : IDisposable
     /// Builds an AddModel wired to real services, a signed-in user with a default team they can
     /// manage, and the fake PageContext plumbing unit-tested PageModels need.
     /// </summary>
-    private async Task<(AddModel model, HSUser user)> NewModelAsync(HSDbContext context, string publicHost = "printers.example.com")
+    private async Task<(AddModel model, HSUser user)> NewModelAsync(HomespoolDbContext context, string publicHost = "printers.example.com")
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 
@@ -125,7 +125,7 @@ public sealed class AddModelTests : IDisposable
     public async Task OnGetAsyncListsOnlyTeamsTheUserCanManage()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (AddModel model, HSUser user) = await NewModelAsync(context);
 
         Team usableOnly = new() { CreatedBy = user.Id, CreatedAt = DateTimeOffset.UtcNow };
@@ -160,7 +160,7 @@ public sealed class AddModelTests : IDisposable
     public async Task OnPostAsyncWithNoPrinterAddressConfiguredBlocksSubmission()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (AddModel model, _) = await NewModelAsync(context, publicHost: string.Empty);
 
         // Act
@@ -180,7 +180,7 @@ public sealed class AddModelTests : IDisposable
     public async Task OnPostAsyncProvisionsThePrinterAndShowsTheSnippetOnce()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (AddModel model, HSUser user) = await NewModelAsync(context);
         model.Input.Name = "Bench printer";
         model.Input.Location = "Workshop";
@@ -215,7 +215,7 @@ public sealed class AddModelTests : IDisposable
     public async Task OnPostAsyncRejectsATeamTheCallerCannotManage()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (AddModel model, HSUser user) = await NewModelAsync(context);
 
         Team someoneElses = new() { CreatedBy = 999, CreatedAt = DateTimeOffset.UtcNow };

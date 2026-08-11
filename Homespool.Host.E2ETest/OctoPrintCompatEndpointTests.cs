@@ -598,7 +598,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime, IDisposable
     private async Task GrantReadOnlyAsync(long ownerId, long readerId)
     {
         using IServiceScope scope = _factory.Services.CreateScope();
-        HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
         TeamMember owner = await context.TeamMembers
             .SingleAsync(member => member.UserId == ownerId && member.IsDefault, TestContext.Current.CancellationToken);
@@ -619,7 +619,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime, IDisposable
     private async Task<Guid> AddPrinterAsync(long userId)
     {
         using IServiceScope scope = _factory.Services.CreateScope();
-        HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
         TeamMember membership = await context.TeamMembers
             .SingleAsync(member => member.UserId == userId && member.IsDefault, TestContext.Current.CancellationToken);

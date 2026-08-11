@@ -12,14 +12,14 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.Services;
 
 /// <summary>
-/// Wraps <see cref="HSDbContext"/> access for team and team-membership operations, so callers
+/// Wraps <see cref="HomespoolDbContext"/> access for team and team-membership operations, so callers
 /// (Razor Pages, controllers) never hold the context directly.
 /// </summary>
 public class TeamService
 {
-    private readonly HSDbContext _dbContext;
+    private readonly HomespoolDbContext _dbContext;
 
-    public TeamService(HSDbContext dbContext)
+    public TeamService(HomespoolDbContext dbContext)
     {
         _dbContext = dbContext;
     }

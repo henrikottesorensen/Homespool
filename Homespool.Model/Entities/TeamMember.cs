@@ -32,7 +32,7 @@ public class TeamMember
     /// </summary>
     /// <remarks>
     /// Exactly one membership per user has this set, enforced by a filtered unique index on
-    /// <c>(UserId) WHERE IsDefault</c> (see <c>HSDbContext</c>). The flag lives here rather than as
+    /// <c>(UserId) WHERE IsDefault</c> (see <c>HomespoolDbContext</c>). The flag lives here rather than as
     /// <c>HSUser.DefaultTeamId</c> to avoid a circular foreign key
     /// (User → Team → TeamMember → User) and the two-step insert it would force at user creation.
     /// </remarks>

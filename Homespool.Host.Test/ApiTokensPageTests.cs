@@ -25,18 +25,18 @@ public sealed class ApiTokensPageTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-apipage-{Guid.NewGuid():N}.db");
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -53,7 +53,7 @@ public sealed class ApiTokensPageTests : IDisposable
         }
     }
 
-    private static async Task<(ApiTokensModel model, DefaultHttpContext httpContext)> NewModelAsync(HSDbContext context, string name)
+    private static async Task<(ApiTokensModel model, DefaultHttpContext httpContext)> NewModelAsync(HomespoolDbContext context, string name)
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) =
             IdentityTestHarness.BuildIdentityServices(context);
@@ -80,7 +80,7 @@ public sealed class ApiTokensPageTests : IDisposable
     public async Task TheResponseCarryingANewSecretIsNotStorable()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (ApiTokensModel model, DefaultHttpContext httpContext) = await NewModelAsync(context, "laptop");
 
         // Act
@@ -99,7 +99,7 @@ public sealed class ApiTokensPageTests : IDisposable
     public async Task CreatingATokenShowsItOnceAndListsIt()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (ApiTokensModel model, _) = await NewModelAsync(context, "laptop");
 
         // Act

@@ -32,18 +32,18 @@ public sealed class CreateModelTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-invite-create-{Guid.NewGuid():N}.db");
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -66,7 +66,7 @@ public sealed class CreateModelTests : IDisposable
     /// unit-tested PageModels need.
     /// </summary>
     private static async Task<(CreateModel model, HSUser admin, CapturingEmailSender emailSender)> NewModelAsync(
-        HSDbContext context, bool signInAdmin = true)
+        HomespoolDbContext context, bool signInAdmin = true)
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 
@@ -118,7 +118,7 @@ public sealed class CreateModelTests : IDisposable
     public async Task OnGetAsyncListsNewAccountFirstThenExistingTeams()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         context.Teams.Add(new Team { Name = "Print Squad", CreatedBy = 1, CreatedAt = DateTimeOffset.UtcNow });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
@@ -144,7 +144,7 @@ public sealed class CreateModelTests : IDisposable
     public async Task OnPostAsyncCreatesANewAccountInviteAndMailsTheAcceptLink()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (CreateModel model, HSUser admin, CapturingEmailSender emailSender) = await NewModelAsync(context);
         model.Input.Email = "invitee@example.com";
 
@@ -172,7 +172,7 @@ public sealed class CreateModelTests : IDisposable
     public async Task TheAcceptLinksCodeValidatesAgainstTheCreatedInvitation()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (CreateModel model, _, _) = await NewModelAsync(context);
         model.Input.Email = "invitee@example.com";
 
@@ -194,7 +194,7 @@ public sealed class CreateModelTests : IDisposable
     public async Task OnPostAsyncBindsTheInviteToTheSelectedTeam()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         Team team = new() { Name = "Print Squad", CreatedBy = 1, CreatedAt = DateTimeOffset.UtcNow };
         context.Teams.Add(team);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -216,7 +216,7 @@ public sealed class CreateModelTests : IDisposable
     public async Task OnPostAsyncHonorsAnExplicitExpiry()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (CreateModel model, _, _) = await NewModelAsync(context);
         model.Input.Email = "invitee@example.com";
         model.Input.ExpiresInHours = 3;
@@ -238,7 +238,7 @@ public sealed class CreateModelTests : IDisposable
     public async Task OnPostAsyncWithInvalidModelStateCreatesNoInvite()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (CreateModel model, _, _) = await NewModelAsync(context);
         model.ModelState.AddModelError(nameof(CreateModel.InputModel.Email), "Required");
 
@@ -259,7 +259,7 @@ public sealed class CreateModelTests : IDisposable
     public async Task OnPostAsyncForbidsWhenNoAdminUserResolves()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (CreateModel model, _, _) = await NewModelAsync(context, signInAdmin: false);
         model.Input.Email = "invitee@example.com";
 

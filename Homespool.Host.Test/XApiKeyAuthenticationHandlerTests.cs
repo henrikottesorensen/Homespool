@@ -38,7 +38,7 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-xapikey-{Guid.NewGuid():N}.db");
 
-    private static async Task<HSUser> AddUserAsync(HSDbContext context, string email = "owner@example.com")
+    private static async Task<HSUser> AddUserAsync(HomespoolDbContext context, string email = "owner@example.com")
     {
         HSUser user = new(email)
         {
@@ -53,18 +53,18 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
         return user;
     }
 
-    private HSDbContext NewContext()
+    private HomespoolDbContext NewContext()
     {
-        DbContextOptions<HSDbContext> options = new DbContextOptionsBuilder<HSDbContext>()
+        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
             .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
-        return new HSDbContext(options);
+        return new HomespoolDbContext(options);
     }
 
-    private async Task<HSDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync()
     {
-        HSDbContext context = NewContext();
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -82,7 +82,7 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
     }
 
     private static async Task<(XApiKeyAuthenticationHandler handler, DefaultHttpContext httpContext)> NewHandlerAsync(
-        HSDbContext context, string? apiKey, string? authorization = null)
+        HomespoolDbContext context, string? apiKey, string? authorization = null)
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, IServiceProvider provider) =
             IdentityTestHarness.BuildIdentityServices(context);
@@ -119,7 +119,7 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
     public async Task ARequestWithoutTheHeaderYieldsNoResult()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (XApiKeyAuthenticationHandler handler, _) = await NewHandlerAsync(context, apiKey: null);
 
         // Act
@@ -138,7 +138,7 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
     public async Task AKeyWithoutOurPrefixYieldsNoResult()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (XApiKeyAuthenticationHandler handler, _) = await NewHandlerAsync(
             context, apiKey: "0123456789ABCDEF0123456789ABCDEF");
 
@@ -161,7 +161,7 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
     public async Task ABearerTokenIsNotThisSchemesBusiness()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
         ApiTokenService tokens = new(context);
 
@@ -188,7 +188,7 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
     public async Task AnUnknownTokenFails()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (XApiKeyAuthenticationHandler handler, _) = await NewHandlerAsync(
             context, apiKey: $"{ApiTokenService.Prefix}{new string('A', ApiTokenService.SecretLength)}");
 
@@ -206,7 +206,7 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
     public async Task ARevokedTokenFails()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
         ApiTokenService tokens = new(context);
 
@@ -237,7 +237,7 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
     public async Task AGoodTokenAuthenticatesAsItsOwner()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
         ApiTokenService tokens = new(context);
 
@@ -267,7 +267,7 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
     public async Task ThePastedValueIsTrimmed()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
         ApiTokenService tokens = new(context);
 
@@ -294,7 +294,7 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
     public async Task ChallengeAnswers401WithoutNamingAScheme()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (XApiKeyAuthenticationHandler handler, DefaultHttpContext httpContext) = await NewHandlerAsync(context, apiKey: null);
 
         // Act
@@ -313,7 +313,7 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
     public async Task ForbidAnswers403()
     {
         // Arrange
-        await using HSDbContext context = await MigratedContextAsync();
+        await using HomespoolDbContext context = await MigratedContextAsync();
         (XApiKeyAuthenticationHandler handler, DefaultHttpContext httpContext) = await NewHandlerAsync(context, apiKey: null);
 
         // Act

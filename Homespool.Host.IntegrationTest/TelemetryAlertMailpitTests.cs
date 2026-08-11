@@ -82,11 +82,11 @@ public sealed class TelemetryAlertMailpitTests : IAsyncLifetime, IDisposable
         ServiceCollection services = new();
 
         services.AddLogging();
-        services.AddDbContext<HSDbContext>(o => o.UseSqlite($"Data Source={_databasePath}"));
+        services.AddDbContext<HomespoolDbContext>(o => o.UseSqlite($"Data Source={_databasePath}"));
 
         services.AddIdentityCore<HSUser>()
                 .AddRoles<IdentityRole<long>>()
-                .AddEntityFrameworkStores<HSDbContext>();
+                .AddEntityFrameworkStores<HomespoolDbContext>();
 
         services.AddSingleton(Options.Create(new SmtpOptions
         {
@@ -111,7 +111,7 @@ public sealed class TelemetryAlertMailpitTests : IAsyncLifetime, IDisposable
 
         await using (AsyncServiceScope scope = _provider.CreateAsyncScope())
         {
-            HSDbContext context = scope.ServiceProvider.GetRequiredService<HSDbContext>();
+            HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
             await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
             RoleManager<IdentityRole<long>> roles = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<long>>>();

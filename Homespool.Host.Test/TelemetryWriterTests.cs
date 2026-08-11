@@ -73,7 +73,7 @@ public sealed class TelemetryWriterTests : IDisposable
         return false;
     }
 
-    private static async Task<int> SampleCountAsync(HSDbContext context)
+    private static async Task<int> SampleCountAsync(HomespoolDbContext context)
     {
         return await context.TelemetrySamples.CountAsync();
     }
@@ -179,12 +179,12 @@ public sealed class TelemetryWriterTests : IDisposable
                                                          TimeSpan? trimWarningInterval = null)
     {
         ServiceCollection services = new();
-        services.AddDbContext<HSDbContext>(o => o.UseSqlite($"Data Source={_databasePath}"));
+        services.AddDbContext<HomespoolDbContext>(o => o.UseSqlite($"Data Source={_databasePath}"));
         _provider = services.BuildServiceProvider();
 
         await using (AsyncServiceScope migrationScope = _provider.CreateAsyncScope())
         {
-            await migrationScope.ServiceProvider.GetRequiredService<HSDbContext>().Database.MigrateAsync(TestContext.Current.CancellationToken);
+            await migrationScope.ServiceProvider.GetRequiredService<HomespoolDbContext>().Database.MigrateAsync(TestContext.Current.CancellationToken);
         }
 
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
@@ -202,9 +202,9 @@ public sealed class TelemetryWriterTests : IDisposable
         return _writer;
     }
 
-    private HSDbContext NewVerificationContext()
+    private HomespoolDbContext NewVerificationContext()
     {
-        return new(new DbContextOptionsBuilder<HSDbContext>().UseSqlite($"Data Source={_databasePath}").Options);
+        return new(new DbContextOptionsBuilder<HomespoolDbContext>().UseSqlite($"Data Source={_databasePath}").Options);
     }
 
     /// <summary>
@@ -215,7 +215,7 @@ public sealed class TelemetryWriterTests : IDisposable
     /// </summary>
     private async Task SeedPrinterAsync(int printerId = 1)
     {
-        await using HSDbContext context = NewVerificationContext();
+        await using HomespoolDbContext context = NewVerificationContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         Team team = new() { CreatedBy = 1, CreatedAt = DateTimeOffset.UtcNow };
@@ -241,7 +241,7 @@ public sealed class TelemetryWriterTests : IDisposable
     /// </summary>
     private async Task<Func<Task>> BreakThePrinterRowAsync(int printerId = 1)
     {
-        await using HSDbContext context = NewVerificationContext();
+        await using HomespoolDbContext context = NewVerificationContext();
 
         Printer printer = await context.Printers.SingleAsync(p => p.Id == printerId, TestContext.Current.CancellationToken);
         int teamId = printer.TeamId;
@@ -252,7 +252,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         return async () =>
         {
-            await using HSDbContext restore = NewVerificationContext();
+            await using HomespoolDbContext restore = NewVerificationContext();
 
             restore.Printers.Add(new Printer
             {
@@ -314,7 +314,7 @@ public sealed class TelemetryWriterTests : IDisposable
         await stopping.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
 
         // Assert
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
 
         (await SampleCountAsync(verify)).Should().Be(25,
             $"a transient failure at shutdown must not lose the buffer - there is no later flush to save it.\n{LogDump()}");
@@ -379,7 +379,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // the database is healthy.
         bool recovered = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext verify = NewVerificationContext();
+            await using HomespoolDbContext verify = NewVerificationContext();
 
             return await SampleCountAsync(verify) == 5
                 && await verify.PrinterEvents.CountAsync() == 1;
@@ -565,13 +565,13 @@ public sealed class TelemetryWriterTests : IDisposable
         // Assert
         bool flushed = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await SampleCountAsync(context) == 1;
         }, TimeSpan.FromSeconds(5));
 
         flushed.Should().BeTrue("a single item should flush immediately once it reaches the batch size");
 
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
         PrinterLiveState state = await verify.PrinterLiveStates.SingleAsync(TestContext.Current.CancellationToken);
         state.PrinterId.Should().Be(1);
         state.Status.Should().Be(PrinterStatus.Printing);
@@ -590,7 +590,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Assert
         bool flushed = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await SampleCountAsync(context) == 1;
         }, TimeSpan.FromSeconds(5));
 
@@ -615,7 +615,7 @@ public sealed class TelemetryWriterTests : IDisposable
         await writer.StopAsync(CancellationToken.None);
 
         // Assert
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
 
         // See TelemetryIsFlushedOnGracefulShutdownEvenBelowBothThresholds for why this is checked:
         // a loop cancelled before it ever ran looks exactly like a clean stop from the call site.
@@ -657,7 +657,7 @@ public sealed class TelemetryWriterTests : IDisposable
         await writer.StopAsync(CancellationToken.None);
 
         // Assert
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
 
         // BackgroundService.StopAsync waits via Task.WhenAny, which does not rethrow - so a drain
         // loop that died of an exception is indistinguishable from a clean stop at the call site,
@@ -695,7 +695,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         bool firstFlushed = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await SampleCountAsync(context) == 1;
         }, TimeSpan.FromSeconds(5));
 
@@ -705,7 +705,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         bool liveStateUpdated = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             PrinterLiveState? state = await context.PrinterLiveStates.SingleOrDefaultAsync(TestContext.Current.CancellationToken);
             return state?.NozzleTemperature == 210;
         }, TimeSpan.FromSeconds(5));
@@ -713,7 +713,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Assert
         liveStateUpdated.Should().BeTrue("the live view must reflect the newest message regardless of the throttle");
 
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
         (await SampleCountAsync(verify)).Should().Be(1,
             "the second message arrived inside the throttle window, so history density - not the live view - is what it skips");
     }
@@ -739,13 +739,13 @@ public sealed class TelemetryWriterTests : IDisposable
         // Assert
         bool flushed = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await context.PrinterEvents.AnyAsync();
         }, TimeSpan.FromSeconds(5));
 
         flushed.Should().BeTrue();
 
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
         PrinterEvent stored = await verify.PrinterEvents.SingleAsync(TestContext.Current.CancellationToken);
 
         stored.PrinterId.Should().Be(1);
@@ -791,13 +791,13 @@ public sealed class TelemetryWriterTests : IDisposable
         // Assert
         bool flushed = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await context.PrinterEvents.AnyAsync();
         }, TimeSpan.FromSeconds(5));
 
         flushed.Should().BeTrue();
 
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
         PrinterEvent stored = await verify.PrinterEvents.SingleAsync(TestContext.Current.CancellationToken);
 
         stored.Payload.Should().NotContain("vC7x4aZfohmcbzH", "the credential must never reach a row");
@@ -848,13 +848,13 @@ public sealed class TelemetryWriterTests : IDisposable
         // Assert
         bool applied = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await context.Printers.AnyAsync(p => p.Firmware != null, TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
         applied.Should().BeTrue();
 
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
         Printer printer = await verify.Printers.SingleAsync(TestContext.Current.CancellationToken);
 
         printer.Firmware.Should().Be("6.5.7");
@@ -883,7 +883,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await context.Printers.AnyAsync(p => p.Firmware == "6.5.7", TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
@@ -895,13 +895,13 @@ public sealed class TelemetryWriterTests : IDisposable
         // Assert
         bool upgraded = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await context.Printers.AnyAsync(p => p.Firmware == "6.6.3", TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
         upgraded.Should().BeTrue();
 
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
         Printer printer = await verify.Printers.SingleAsync(TestContext.Current.CancellationToken);
 
         printer.Model.Should().Be("1.3.5", "an upgrade kit changes the model under the same identity");
@@ -928,7 +928,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
 
             // A range, not equality: SQLite stores REAL as a double, so a widened float never
             // compares equal to the clean double EF sends as the parameter.
@@ -944,13 +944,13 @@ public sealed class TelemetryWriterTests : IDisposable
         // Assert
         bool swappedIn = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await context.Printers.AnyAsync(p => p.NozzleDiameter > 0.5f, TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
         swappedIn.Should().BeTrue();
 
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
         (await verify.Printers.SingleAsync(TestContext.Current.CancellationToken)).NozzleDiameter.Should().BeApproximately(0.6f, 0.001f);
     }
 
@@ -987,12 +987,12 @@ public sealed class TelemetryWriterTests : IDisposable
 
         await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await context.Printers.AnyAsync(p => p.NozzleDiameter != null, TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
         // Assert
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
         Printer printer = await verify.Printers.SingleAsync(TestContext.Current.CancellationToken);
 
         printer.NozzleDiameter.Should().Be(0.4f, "EF narrows the stored double back to the float that was written");
@@ -1036,7 +1036,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Assert
         bool applied = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await context.Printers.AnyAsync(p => p.HasMmuEnabled, TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
@@ -1066,7 +1066,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await context.Printers.AnyAsync(p => p.HasMmuEnabled, TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
@@ -1079,14 +1079,14 @@ public sealed class TelemetryWriterTests : IDisposable
         // The firmware in the second event is the marker that it was processed at all.
         bool processed = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await context.Printers.AnyAsync(p => p.Firmware == "6.5.7", TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
         // Assert
         processed.Should().BeTrue();
 
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
         (await verify.Printers.SingleAsync(TestContext.Current.CancellationToken)).HasMmuEnabled.Should().BeTrue();
     }
 
@@ -1113,13 +1113,13 @@ public sealed class TelemetryWriterTests : IDisposable
         // Assert
         bool applied = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await context.Printers.AnyAsync(p => p.SerialNumber != null, TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
         applied.Should().BeTrue();
 
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
         (await verify.Printers.SingleAsync(TestContext.Current.CancellationToken)).SerialNumber.Should().Be("SN-12345");
     }
 
@@ -1146,7 +1146,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await context.Printers.AnyAsync(p => p.SerialNumber == "SN-ORIGINAL", TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
@@ -1160,14 +1160,14 @@ public sealed class TelemetryWriterTests : IDisposable
         // it the assertion below would pass simply by racing ahead of the flush.
         bool processed = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await context.Printers.AnyAsync(p => p.Firmware == "6.6.3", TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
         // Assert
         processed.Should().BeTrue();
 
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
         (await verify.Printers.SingleAsync(TestContext.Current.CancellationToken)).SerialNumber.Should().Be("SN-ORIGINAL");
     }
 
@@ -1192,7 +1192,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await context.Printers.AnyAsync(p => p.Firmware == "6.5.7", TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(5));
 
@@ -1204,12 +1204,12 @@ public sealed class TelemetryWriterTests : IDisposable
 
         await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await context.PrinterEvents.CountAsync() == 2;
         }, TimeSpan.FromSeconds(5));
 
         // Assert
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
         Printer printer = await verify.Printers.SingleAsync(TestContext.Current.CancellationToken);
 
         printer.Firmware.Should().Be("6.5.7");
@@ -1253,13 +1253,13 @@ public sealed class TelemetryWriterTests : IDisposable
         // Assert
         bool flushed = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await context.PrinterEvents.AnyAsync();
         }, TimeSpan.FromSeconds(5));
 
         flushed.Should().BeTrue();
 
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
         PrinterEvent stored = await verify.PrinterEvents.SingleAsync(TestContext.Current.CancellationToken);
 
         using JsonDocument kept = JsonDocument.Parse(stored.Payload!);
@@ -1303,13 +1303,13 @@ public sealed class TelemetryWriterTests : IDisposable
         // Assert
         bool flushed = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await context.PrinterEvents.AnyAsync();
         }, TimeSpan.FromSeconds(5));
 
         flushed.Should().BeTrue();
 
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
         PrinterEvent stored = await verify.PrinterEvents.SingleAsync(TestContext.Current.CancellationToken);
 
         stored.Payload.Should().Be(
@@ -1330,7 +1330,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await context.PrinterLiveStates.AnyAsync();
         }, TimeSpan.FromSeconds(5));
 
@@ -1338,7 +1338,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         bool secondFlushLanded = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             PrinterLiveState? state = await context.PrinterLiveStates.SingleOrDefaultAsync(TestContext.Current.CancellationToken);
             return state?.Status == PrinterStatus.Printing;
         }, TimeSpan.FromSeconds(5));
@@ -1346,7 +1346,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Assert
         secondFlushLanded.Should().BeTrue();
 
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
         (await verify.PrinterLiveStates.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
             "a second flush for a printer already in the database must update its row, not insert another");
     }
@@ -1380,7 +1380,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await context.PrinterLiveSlotStates.AnyAsync();
         }, TimeSpan.FromSeconds(5));
 
@@ -1395,14 +1395,14 @@ public sealed class TelemetryWriterTests : IDisposable
 
         bool secondSlotPersisted = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await context.PrinterLiveSlotStates.CountAsync() == 2;
         }, TimeSpan.FromSeconds(5));
 
         // Assert
         secondSlotPersisted.Should().BeTrue("a slot seen for the first time in a later flush must be inserted, not silently dropped");
 
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
         (await verify.PrinterLiveSlotStates.Select(s => s.SlotNumber).OrderBy(n => n).ToListAsync(TestContext.Current.CancellationToken))
             .Should().Equal([1, 2], "the first flush's slot must survive, not be replaced by the second's");
     }
@@ -1420,7 +1420,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Assert
         bool populated = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             Printer printer = await context.Printers.SingleAsync();
             return printer.LoadedMaterial == "PLA";
         }, TimeSpan.FromSeconds(5));
@@ -1459,7 +1459,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         bool firstFlushed = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await SampleCountAsync(context) == 1;
         }, TimeSpan.FromSeconds(5));
 
@@ -1470,7 +1470,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Assert
         bool secondFlushed = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             return await SampleCountAsync(context) == 2;
         }, TimeSpan.FromSeconds(5));
 
@@ -1478,7 +1478,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         LogRecords.Where(FlushFailed).Should().BeEmpty("no flush should have failed at all");
 
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
         Printer printer = await verify.Printers.SingleAsync(TestContext.Current.CancellationToken);
         printer.LoadedMaterial.Should().Be("PETG", "the later material must reach the printer row as well");
     }
@@ -1646,7 +1646,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         bool flushed = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
 
             return await context.TelemetrySamples.CountAsync() == 1;
         }, TimeSpan.FromSeconds(5));
@@ -1665,7 +1665,7 @@ public sealed class TelemetryWriterTests : IDisposable
     private TelemetryWriter CreateUnstartedWriter(StorageOptions options, TimeSpan dropWarningInterval)
     {
         ServiceCollection services = new();
-        services.AddDbContext<HSDbContext>(o => o.UseSqlite($"Data Source={_databasePath}"));
+        services.AddDbContext<HomespoolDbContext>(o => o.UseSqlite($"Data Source={_databasePath}"));
         _provider = services.BuildServiceProvider();
 
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
@@ -1716,7 +1716,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Assert
         bool persisted = await WaitUntilAsync(async () =>
         {
-            await using HSDbContext context = NewVerificationContext();
+            await using HomespoolDbContext context = NewVerificationContext();
             PrinterLiveState? state = await context.PrinterLiveStates.SingleOrDefaultAsync(TestContext.Current.CancellationToken);
             return state?.Status == PrinterStatus.Idle;
         }, TimeSpan.FromSeconds(5));
@@ -1751,7 +1751,7 @@ public sealed class TelemetryWriterTests : IDisposable
         failed.Should().BeTrue("the arrangement depends on printer 2's missing row making the batch fail");
 
         // Assert
-        await using HSDbContext verify = NewVerificationContext();
+        await using HomespoolDbContext verify = NewVerificationContext();
         Printer printer1 = await verify.Printers.SingleAsync(p => p.Id == 1, TestContext.Current.CancellationToken);
         printer1.LoadedMaterial.Should().BeNull("a failed flush must not leave a partial write behind");
     }

@@ -114,7 +114,7 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
     private static PlannedReply RejectWithCode(uint commandId, FakeDevice device, string reason, string machineReason)
     {
         return new PlannedReply(EventMessageBuilder.Build("REJECTED", device.WireState, commandId, reason,
-            machineReason: machineReason));
+                                                          machineReason: machineReason));
     }
 
     /// <summary>
@@ -124,9 +124,9 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
     private static bool IsTransferrable(string path)
     {
         return FakeTransfer.IsPlainGcode(path)
-            || path.EndsWith(".bgcode", StringComparison.OrdinalIgnoreCase)
-            || path.EndsWith(".bgc", StringComparison.OrdinalIgnoreCase)
-            || path.EndsWith(".bbf", StringComparison.OrdinalIgnoreCase);
+               || path.EndsWith(".bgcode", StringComparison.OrdinalIgnoreCase)
+               || path.EndsWith(".bgc", StringComparison.OrdinalIgnoreCase)
+               || path.EndsWith(".bbf", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -187,8 +187,11 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
     /// local-flag reasoning.
     /// </para>
     /// </remarks>
-    private static PlannedReply JobControl(uint commandId, FakeDevice device, bool succeeded, string rejectReason,
-        string stateBefore)
+    private static PlannedReply JobControl(uint commandId,
+                                           FakeDevice device,
+                                           bool succeeded,
+                                           string rejectReason,
+                                           string stateBefore)
     {
         if (!succeeded)
         {
@@ -230,9 +233,9 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
                 // planner.cpp:772-776 - STATE_CHANGED on success, not FINISHED.
                 return
                 [
-                    device.TrySetReady()
-                        ? Reply(EventMessageBuilder.Build("STATE_CHANGED", device.WireState, frame.CommandId))
-                        : Reject(frame.CommandId, device, "Can't set ready now"),
+                    device.TrySetReady() ?
+                        Reply(EventMessageBuilder.Build("STATE_CHANGED", device.WireState, frame.CommandId)) :
+                        Reject(frame.CommandId, device, "Can't set ready now"),
                 ];
 
             case "CANCEL_PRINTER_READY":
@@ -245,15 +248,18 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
                 // planner.cpp:786-790 + marlin_printer.cpp:579-586.
                 return
                 [
-                    device.TrySetIdle()
-                        ? Reply(EventMessageBuilder.Build("FINISHED", device.WireState, frame.CommandId))
-                        : Reject(frame.CommandId, device, "Can't set idle now"),
+                    device.TrySetIdle() ?
+                        Reply(EventMessageBuilder.Build("FINISHED", device.WireState, frame.CommandId)) :
+                        Reject(frame.CommandId, device, "Can't set idle now"),
                 ];
 
             case "SEND_INFO":
                 // planner.cpp:735-740 - the INFO event, carrying the command id.
-                return [Reply(EventMessageBuilder.BuildInfo(_identity, device.WireState, frame.CommandId, device.JobId,
-                    device.FreeSpace))];
+                return
+                [
+                    Reply(EventMessageBuilder.BuildInfo(_identity, device.WireState, frame.CommandId, device.JobId,
+                                                        device.FreeSpace))
+                ];
 
             case "START_PRINT":
                 return StartPrint(frame, device);
@@ -381,11 +387,15 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
             return [Reject(frame.CommandId, device, "File not found")];
         }
 
-        return entry.IsFolder
-            ? [Reply(EventMessageBuilder.BuildFolderInfo(device.WireState, path,
-                device.Storage.Children(path), frame.CommandId))]
-            : [Reply(EventMessageBuilder.BuildFileInfo(device.WireState, path, entry.Size, entry.Modified,
-                frame.CommandId))];
+        return entry.IsFolder ?
+            [
+                Reply(EventMessageBuilder.BuildFolderInfo(device.WireState, path,
+                                                          device.Storage.Children(path), frame.CommandId))
+            ] :
+            [
+                Reply(EventMessageBuilder.BuildFileInfo(device.WireState, path, entry.Size, entry.Modified,
+                                                        frame.CommandId))
+            ];
     }
 
     private IReadOnlyList<PlannedReply> StartDownload(ServerCommandFrame frame, FakeDevice device)
@@ -411,7 +421,7 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
         }
 
         FakeTransfer? transfer = device.TryBeginTransfer(arguments.Hash, arguments.TeamId, arguments.Path,
-            arguments.OriginalSize, frame.CommandId, DownloadOrder, FileIdSource);
+                                                         arguments.OriginalSize, frame.CommandId, DownloadOrder, FileIdSource);
 
         if (transfer is null)
         {
@@ -480,9 +490,9 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
                 return
                 [
                     Reply(EventMessageBuilder.BuildTransferTerminal("TRANSFER_FINISHED", device.WireState,
-                        transfer.TransferId, transfer.StartCommandId)),
+                                                                    transfer.TransferId, transfer.StartCommandId)),
                     Reply(EventMessageBuilder.BuildFileInfo(device.WireState, transfer.Path, transfer.TotalSize,
-                        completedAt)),
+                                                            completedAt)),
                 ];
 
             default:
@@ -494,7 +504,7 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
                 return
                 [
                     Reply(EventMessageBuilder.BuildTransferTerminal("TRANSFER_ABORTED", device.WireState,
-                        transfer.TransferId, transfer.StartCommandId)),
+                                                                    transfer.TransferId, transfer.StartCommandId)),
                 ];
         }
     }

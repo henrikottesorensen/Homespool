@@ -134,10 +134,10 @@ public sealed class RouteListenerSegregationTests : IAsyncLifetime, IDisposable
             + "puts its routes on both listeners at once, silently");
 
         unreachableByConvention.Should().HaveCountLessThanOrEqualTo(1,
-            "the file fallback is the one endpoint the framework adds outside the builder MapStaticAssets "
-            + "returns, so no convention of ours can classify it. It is covered instead by the middleware's "
-            + "path fallback, and it is a user-side path. A second exemption appearing here means something "
-            + "new is escaping the convention and needs looking at rather than adding to this list");
+                                                                    "the file fallback is the one endpoint the framework adds outside the builder MapStaticAssets "
+                                                                    + "returns, so no convention of ours can classify it. It is covered instead by the middleware's "
+                                                                    + "path fallback, and it is a user-side path. A second exemption appearing here means something "
+                                                                    + "new is escaping the convention and needs looking at rather than adding to this list");
     }
 
     /// <summary>
@@ -155,7 +155,7 @@ public sealed class RouteListenerSegregationTests : IAsyncLifetime, IDisposable
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.NotFound,
-            "a printer endpoint reached through the proxy is not a printer");
+                                        "a printer endpoint reached through the proxy is not a printer");
     }
 
     /// <summary>
@@ -197,6 +197,6 @@ public sealed class RouteListenerSegregationTests : IAsyncLifetime, IDisposable
         // Assert
         health.StatusCode.Should().Be(HttpStatusCode.OK);
         register.StatusCode.Should().NotBe(HttpStatusCode.NotFound,
-            "the endpoint exists here - it refuses a poll with no code, which is not the same thing");
+                                           "the endpoint exists here - it refuses a poll with no code, which is not the same thing");
     }
 }

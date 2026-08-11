@@ -37,7 +37,10 @@ public sealed class CustomCaSmtpTransportFactory : ISmtpTransportFactory
         return new MailKitSmtpTransport(ValidateAgainstTrustedCa);
     }
 
-    private bool ValidateAgainstTrustedCa(object sender, X509Certificate? certificate, X509Chain? chain, SslPolicyErrors sslPolicyErrors)
+    private bool ValidateAgainstTrustedCa(object sender,
+                                          X509Certificate? certificate,
+                                          X509Chain? chain,
+                                          SslPolicyErrors sslPolicyErrors)
     {
         if (certificate is null)
         {

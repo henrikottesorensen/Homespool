@@ -118,7 +118,8 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
 
         HttpResponseMessage getResponse = await client.GetAsync("/Account/Login", TestContext.Current.CancellationToken);
         getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        string antiforgeryToken = AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        string antiforgeryToken =
+            AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
         using FormUrlEncodedContent body = LoginBody(antiforgeryToken, "user@example.com", Password);
 
@@ -128,7 +129,8 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
         // Assert
         postResponse.StatusCode.Should().Be(HttpStatusCode.Redirect, "a successful login redirects to the return URL");
         postResponse.Headers.Location!.OriginalString.Should().Be("/");
-        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, postResponse).Should().BeTrue("signing in issues the Identity application cookie");
+        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, postResponse).Should()
+                                .BeTrue("signing in issues the Identity application cookie");
     }
 
     /// <summary>
@@ -148,10 +150,12 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         HttpResponseMessage getResponse = await client.GetAsync("/Account/Login", TestContext.Current.CancellationToken);
-        string antiforgeryToken = AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        string antiforgeryToken =
+            AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
         // "user", not "user@example.com" - the account's own name rather than its address.
-        using FormUrlEncodedContent body = LoginBody(antiforgeryToken, EnrolmentFlowHelper.UsernameFor("user@example.com"), Password);
+        using FormUrlEncodedContent body = LoginBody(antiforgeryToken, EnrolmentFlowHelper.UsernameFor("user@example.com"),
+                                                     Password);
 
         // Act
         HttpResponseMessage postResponse = await client.PostAsync("/Account/Login", body, TestContext.Current.CancellationToken);
@@ -159,7 +163,8 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
         // Assert
         postResponse.StatusCode.Should().Be(HttpStatusCode.Redirect);
         postResponse.Headers.Location!.OriginalString.Should().Be("/");
-        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, postResponse).Should().BeTrue("a username is a sign-in identifier, not decoration");
+        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, postResponse).Should()
+                                .BeTrue("a username is a sign-in identifier, not decoration");
     }
 
     /// <summary>
@@ -175,7 +180,8 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         HttpResponseMessage getResponse = await client.GetAsync("/Account/Login", TestContext.Current.CancellationToken);
-        string antiforgeryToken = AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        string antiforgeryToken =
+            AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
         using FormUrlEncodedContent body = LoginBody(antiforgeryToken, "nobody", Password);
 
@@ -200,7 +206,8 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         HttpResponseMessage getResponse = await client.GetAsync("/Account/Login", TestContext.Current.CancellationToken);
-        string antiforgeryToken = AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        string antiforgeryToken =
+            AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
         using FormUrlEncodedContent body = LoginBody(antiforgeryToken, "user@example.com", "wrong-password");
 
@@ -209,7 +216,8 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
 
         // Assert
         postResponse.StatusCode.Should().Be(HttpStatusCode.OK, "a rejected login re-renders the page rather than redirecting");
-        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, postResponse).Should().BeFalse("a rejected login must not sign anyone in");
+        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, postResponse).Should()
+                                .BeFalse("a rejected login must not sign anyone in");
 
         string html = await postResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         html.Should().Contain("Invalid login attempt");
@@ -230,7 +238,8 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         HttpResponseMessage getResponse = await client.GetAsync("/Account/Login", TestContext.Current.CancellationToken);
-        string antiforgeryToken = AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        string antiforgeryToken =
+            AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
         using FormUrlEncodedContent body = LoginBody(antiforgeryToken, "unconfirmed@example.com", Password);
 
@@ -303,7 +312,9 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
         for (int attempt = 0; attempt < 10; attempt++)
         {
             HttpResponseMessage getResponse = await client.GetAsync("/Account/Login", TestContext.Current.CancellationToken);
-            string antiforgeryToken = AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            string antiforgeryToken =
+                AntiforgeryTestHelper.ExtractToken(
+                    await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
             using FormUrlEncodedContent body = LoginBody(antiforgeryToken, "locked@example.com", "wrong-password");
             lastResponse = await client.PostAsync("/Account/Login", body, TestContext.Current.CancellationToken);
@@ -317,17 +328,19 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
 
         // Assert
         lastResponse!.StatusCode.Should().Be(HttpStatusCode.Redirect,
-            "enough wrong passwords must stop being merely rejected and lock the account");
+                                             "enough wrong passwords must stop being merely rejected and lock the account");
         lastResponse.Headers.Location!.OriginalString.Should().Contain("Lockout");
 
         // And the lockout is real, not just a redirect: the *correct* password is refused too.
         HttpResponseMessage correctGet = await client.GetAsync("/Account/Login", TestContext.Current.CancellationToken);
-        string correctToken = AntiforgeryTestHelper.ExtractToken(await correctGet.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        string correctToken =
+            AntiforgeryTestHelper.ExtractToken(await correctGet.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         using FormUrlEncodedContent correctBody = LoginBody(correctToken, "locked@example.com", Password);
 
-        HttpResponseMessage correctResponse = await client.PostAsync("/Account/Login", correctBody, TestContext.Current.CancellationToken);
+        HttpResponseMessage correctResponse =
+            await client.PostAsync("/Account/Login", correctBody, TestContext.Current.CancellationToken);
 
         IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, correctResponse)
-            .Should().BeFalse("a locked-out account must not sign in even with the right password");
+                                .Should().BeFalse("a locked-out account must not sign in even with the right password");
     }
 }

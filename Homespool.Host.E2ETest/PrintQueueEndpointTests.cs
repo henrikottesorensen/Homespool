@@ -86,13 +86,14 @@ public sealed class PrintQueueEndpointTests : IAsyncLifetime, IDisposable
 
         // Act
         using HttpResponseMessage created = await client.PostAsJsonAsync($"/api/v1/printers/{uuid}/queue",
-            new { name = "benchy.bgcode" }, TestContext.Current.CancellationToken);
+                                                                         new { name = "benchy.bgcode" },
+                                                                         TestContext.Current.CancellationToken);
 
         // Assert
         created.StatusCode.Should().Be(HttpStatusCode.Created);
 
         using HttpResponseMessage listed = await client.GetAsync($"/api/v1/printers/{uuid}/queue",
-            TestContext.Current.CancellationToken);
+                                                                 TestContext.Current.CancellationToken);
 
         listed.StatusCode.Should().Be(HttpStatusCode.OK);
 
@@ -155,7 +156,7 @@ public sealed class PrintQueueEndpointTests : IAsyncLifetime, IDisposable
 
         // Act
         using HttpResponseMessage cancelled = await client.DeleteAsync($"/api/v1/printers/{uuid}/queue/{id}",
-            TestContext.Current.CancellationToken);
+                                                                       TestContext.Current.CancellationToken);
 
         // Assert
         cancelled.StatusCode.Should().Be(HttpStatusCode.NoContent);
@@ -183,18 +184,18 @@ public sealed class PrintQueueEndpointTests : IAsyncLifetime, IDisposable
 
         // Act
         using HttpResponseMessage refused = await client.DeleteAsync("/api/v1/files/wanted.bgcode",
-            TestContext.Current.CancellationToken);
+                                                                     TestContext.Current.CancellationToken);
 
         // Assert
         refused.StatusCode.Should().Be(HttpStatusCode.Conflict);
 
         // And once the job is gone, so may the file be.
         using HttpResponseMessage cancelled = await client.DeleteAsync($"/api/v1/printers/{uuid}/queue/{id}",
-            TestContext.Current.CancellationToken);
+                                                                       TestContext.Current.CancellationToken);
         cancelled.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
         using HttpResponseMessage deleted = await client.DeleteAsync("/api/v1/files/wanted.bgcode",
-            TestContext.Current.CancellationToken);
+                                                                     TestContext.Current.CancellationToken);
         deleted.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
         client.Dispose();
@@ -217,9 +218,9 @@ public sealed class PrintQueueEndpointTests : IAsyncLifetime, IDisposable
 
         // Act
         using HttpResponseMessage hers = await bobClient.GetAsync($"/api/v1/printers/{alices}/queue",
-            TestContext.Current.CancellationToken);
+                                                                  TestContext.Current.CancellationToken);
         using HttpResponseMessage imaginary = await bobClient.GetAsync($"/api/v1/printers/{Guid.NewGuid()}/queue",
-            TestContext.Current.CancellationToken);
+                                                                       TestContext.Current.CancellationToken);
 
         // Assert
         hers.StatusCode.Should().Be(HttpStatusCode.NotFound);
@@ -245,7 +246,8 @@ public sealed class PrintQueueEndpointTests : IAsyncLifetime, IDisposable
 
         // Act - Alice's own printer, but a name only she has... asked for by nobody who has it.
         using HttpResponseMessage missing = await aliceClient.PostAsJsonAsync($"/api/v1/printers/{uuid}/queue",
-            new { name = "not-mine.bgcode" }, TestContext.Current.CancellationToken);
+                                                                              new { name = "not-mine.bgcode" },
+                                                                              TestContext.Current.CancellationToken);
 
         // Assert
         missing.StatusCode.Should().Be(HttpStatusCode.NotFound);
@@ -283,7 +285,7 @@ public sealed class PrintQueueEndpointTests : IAsyncLifetime, IDisposable
     private static async Task<Guid> EnqueueAsync(HttpClient client, Guid uuid, string name)
     {
         using HttpResponseMessage response = await client.PostAsJsonAsync($"/api/v1/printers/{uuid}/queue",
-            new { name }, TestContext.Current.CancellationToken);
+                                                                          new { name }, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
 
@@ -313,7 +315,8 @@ public sealed class PrintQueueEndpointTests : IAsyncLifetime, IDisposable
         HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
         TeamMember membership = await context.TeamMembers
-            .SingleAsync(member => member.UserId == userId && member.IsDefault, TestContext.Current.CancellationToken);
+                                             .SingleAsync(member => member.UserId == userId && member.IsDefault,
+                                                          TestContext.Current.CancellationToken);
 
         Printer printer = new()
         {

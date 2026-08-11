@@ -81,8 +81,14 @@ public sealed class FakeTransfer
     /// Supplies each negotiation's <c>file_id</c>. Defaults to a random 32-bit value, as
     /// <c>rand_u()</c> does; a test that wants to predict the id passes its own.
     /// </param>
-    public FakeTransfer(string hash, ulong teamId, string path, long totalSize, int transferId,
-        uint startCommandId, FakeDownloadOrder? order = null, Func<uint>? fileIdSource = null)
+    public FakeTransfer(string hash,
+                        ulong teamId,
+                        string path,
+                        long totalSize,
+                        int transferId,
+                        uint startCommandId,
+                        FakeDownloadOrder? order = null,
+                        Func<uint>? fileIdSource = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(totalSize);
 
@@ -146,9 +152,9 @@ public sealed class FakeTransfer
     /// </summary>
     public static FakeDownloadOrder ChooseOrder(string path, long totalSize)
     {
-        return IsPlainGcode(path) && totalSize >= PlainGcodeMinimalFileSize
-            ? FakeDownloadOrder.PlainGcodeTailFirst
-            : FakeDownloadOrder.Generic;
+        return IsPlainGcode(path) && totalSize >= PlainGcodeMinimalFileSize ?
+            FakeDownloadOrder.PlainGcodeTailFirst :
+            FakeDownloadOrder.Generic;
     }
 
     /// <summary>
@@ -158,9 +164,9 @@ public sealed class FakeTransfer
     public static bool IsPlainGcode(string path)
     {
         return path.EndsWith(".g", StringComparison.OrdinalIgnoreCase)
-            || path.EndsWith(".gc", StringComparison.OrdinalIgnoreCase)
-            || path.EndsWith(".gco", StringComparison.OrdinalIgnoreCase)
-            || path.EndsWith(".gcode", StringComparison.OrdinalIgnoreCase);
+               || path.EndsWith(".gc", StringComparison.OrdinalIgnoreCase)
+               || path.EndsWith(".gco", StringComparison.OrdinalIgnoreCase)
+               || path.EndsWith(".gcode", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -277,9 +283,7 @@ public sealed class FakeTransfer
             // tail is already in place and runs to the end of the file, stop where it starts rather
             // than fetching it twice - the two ranges then tile the file exactly.
             _start = _headEnd;
-            _end = _tailStart >= 0 && _tailEnd == TotalSize && _start < _tailStart
-                ? _tailStart - 1
-                : TotalSize - 1;
+            _end = _tailStart >= 0 && _tailEnd == TotalSize && _start < _tailStart ? _tailStart - 1 : TotalSize - 1;
         }
 
         FileId = _fileIdSource();

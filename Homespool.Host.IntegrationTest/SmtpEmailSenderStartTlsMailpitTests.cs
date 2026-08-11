@@ -156,7 +156,8 @@ public sealed class SmtpEmailSenderStartTlsMailpitTests : IAsyncLifetime, IDispo
             RSASignaturePadding.Pkcs1);
 
         request.CertificateExtensions.Add(
-            new X509BasicConstraintsExtension(certificateAuthority: true, hasPathLengthConstraint: false, pathLengthConstraint: 0, critical: true));
+            new X509BasicConstraintsExtension(certificateAuthority: true, hasPathLengthConstraint: false, pathLengthConstraint: 0,
+                                              critical: true));
 
         return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddDays(1));
     }

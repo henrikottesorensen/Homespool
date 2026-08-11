@@ -110,11 +110,11 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
 
         // Assert
         _dispatcher.Calls.Should().ContainSingle()
-            .Which.printerId.Should().Be(printerId,
-                "the id resolved from the Fingerprint header at upgrade must be the one threaded to the handler");
+                   .Which.printerId.Should().Be(printerId,
+                                                "the id resolved from the Fingerprint header at upgrade must be the one threaded to the handler");
 
         _dispatcher.Calls[0].root.GetProperty("state").GetString().Should().Be("IDLE",
-                "the dispatcher must receive the message the printer actually sent, not just any message");
+                                                                               "the dispatcher must receive the message the printer actually sent, not just any message");
     }
 
     /// <summary>
@@ -161,7 +161,7 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
 
         // Assert
         socket.CloseStatus.Should().Be(WebSocketCloseStatus.NormalClosure,
-            "the server answers a clean disconnect with a normal close");
+                                       "the server answers a clean disconnect with a normal close");
 
         // Result execution runs after the action returns, so give any failure a chance to surface
         // rather than asserting into a gap where it simply has not happened yet.
@@ -190,7 +190,7 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
 
         // Assert
         result.MessageType.Should().Be(WebSocketMessageType.Close,
-            "garbage on the wire ends the connection rather than being skipped");
+                                       "garbage on the wire ends the connection rather than being skipped");
         socket.CloseStatus.Should().Be(WebSocketCloseStatus.PolicyViolation);
     }
 

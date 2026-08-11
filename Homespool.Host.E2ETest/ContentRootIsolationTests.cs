@@ -80,8 +80,8 @@ public sealed class ContentRootIsolationTests : IAsyncLifetime, IDisposable
         Path.IsPathRooted(contentRoot).Should().BeTrue();
 
         contentRoot.Should().StartWith(Path.GetTempPath(),
-            "a relative directory in options resolves against this, so anything but a temp path writes "
-            + "into the repository - which is how uploads and certificates escaped before");
+                                       "a relative directory in options resolves against this, so anything but a temp path writes "
+                                       + "into the repository - which is how uploads and certificates escaped before");
 
         Directory.Exists(contentRoot).Should().BeTrue("components expect to be able to write here immediately");
     }

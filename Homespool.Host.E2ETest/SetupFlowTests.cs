@@ -105,7 +105,8 @@ public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
 
         HttpResponseMessage getResponse = await client.GetAsync("/setup", TestContext.Current.CancellationToken);
         getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        string antiforgeryToken = AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        string antiforgeryToken =
+            AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
         using FormUrlEncodedContent body = new(new Dictionary<string, string>
         {
@@ -143,7 +144,8 @@ public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         HttpResponseMessage getResponse = await client.GetAsync("/setup", TestContext.Current.CancellationToken);
-        string antiforgeryToken = AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        string antiforgeryToken =
+            AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
         using FormUrlEncodedContent body = new(new Dictionary<string, string>
         {

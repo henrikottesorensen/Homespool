@@ -48,9 +48,9 @@ public sealed class CapturingSink : ILogEventSink
     public string? FindPropertyValue(string propertyName)
     {
         return _events
-            .SelectMany(e => e.Properties)
-            .Where(p => p.Key == propertyName)
-            .Select(p => p.Value is ScalarValue { Value: string s } ? s : p.Value.ToString())
-            .FirstOrDefault();
+               .SelectMany(e => e.Properties)
+               .Where(p => p.Key == propertyName)
+               .Select(p => p.Value is ScalarValue { Value: string s } ? s : p.Value.ToString())
+               .FirstOrDefault();
     }
 }

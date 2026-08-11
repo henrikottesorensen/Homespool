@@ -102,9 +102,9 @@ public sealed class UnknownFieldTelemetrySource : ITelemetrySource
 
         for (int i = 0; i < FieldsPerMessage; i++)
         {
-            string name = Distinct
-                ? string.Create(CultureInfo.InvariantCulture, $"unmodelled_{Interlocked.Increment(ref _counter)}")
-                : string.Create(CultureInfo.InvariantCulture, $"unmodelled_{i}");
+            string name = Distinct ?
+                string.Create(CultureInfo.InvariantCulture, $"unmodelled_{Interlocked.Increment(ref _counter)}") :
+                string.Create(CultureInfo.InvariantCulture, $"unmodelled_{i}");
 
             builder.Append('"').Append(name).Append("\":").Append(i).Append(',');
         }

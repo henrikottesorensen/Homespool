@@ -85,9 +85,9 @@ public sealed class ServiceResolutionTests : IAsyncLifetime, IDisposable
         List<ServiceDescriptor> candidates =
         [
             .. _factory.RegisteredServices
-                .Where(d => ownAssemblies.Contains(d.ServiceType.Assembly))
-                .Where(d => !d.ServiceType.ContainsGenericParameters)
-                .Where(d => d.ServiceType != typeof(Microsoft.Extensions.Hosting.IHostedService)),
+                       .Where(d => ownAssemblies.Contains(d.ServiceType.Assembly))
+                       .Where(d => !d.ServiceType.ContainsGenericParameters)
+                       .Where(d => d.ServiceType != typeof(Microsoft.Extensions.Hosting.IHostedService)),
         ];
 
         candidates.Should().NotBeEmpty("if this filters everything out, the test proves nothing");

@@ -72,8 +72,13 @@ public sealed class FakeDevice
     /// <param name="startCommandId">The command id that began it.</param>
     /// <param name="order">Forces a download order; null picks it the way firmware does.</param>
     /// <param name="fileIdSource">Supplies each negotiation's <c>file_id</c>.</param>
-    public FakeTransfer? TryBeginTransfer(string hash, ulong teamId, string path, long totalSize,
-        uint startCommandId, FakeDownloadOrder? order = null, Func<uint>? fileIdSource = null)
+    public FakeTransfer? TryBeginTransfer(string hash,
+                                          ulong teamId,
+                                          string path,
+                                          long totalSize,
+                                          uint startCommandId,
+                                          FakeDownloadOrder? order = null,
+                                          Func<uint>? fileIdSource = null)
     {
         if (Transfer is not null)
         {
@@ -81,7 +86,7 @@ public sealed class FakeDevice
         }
 
         Transfer = new FakeTransfer(hash, teamId, path, totalSize, _nextTransferId++, startCommandId,
-            order, fileIdSource);
+                                    order, fileIdSource);
 
         return Transfer;
     }

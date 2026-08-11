@@ -93,8 +93,8 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
         Path.Combine(Path.GetTempPath(), $"hs-content-{Guid.NewGuid():N}");
 
     public HomespoolFactory(string connectionString,
-                                 MessageDispatcher? messageDispatcher = null,
-                                 params IReadOnlyList<ILogEventSink> extraSinks)
+                            MessageDispatcher? messageDispatcher = null,
+                            params IReadOnlyList<ILogEventSink> extraSinks)
     {
         _connectionString = connectionString;
         _messageDispatcher = messageDispatcher;
@@ -122,7 +122,8 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
     /// makes a test host resemble a started server, which is what these tests are for.
     /// </remarks>
     [SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits",
-                     Justification = "CreateHost is a synchronous override of the test host factory; there is no asynchronous form to call.")]
+                     Justification =
+                         "CreateHost is a synchronous override of the test host factory; there is no asynchronous form to call.")]
     protected override IHost CreateHost(IHostBuilder builder)
     {
         IHost host = base.CreateHost(builder);
@@ -133,11 +134,11 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
         {
             host.Services.GetRequiredService<Homespool.Host.Certificates.PrinterCertificateAuthority>()
                 .EnsureLeaf(Homespool.Host.Certificates.PrinterCertificateNames.ForThisMachineAsync(
-                    connect,
-                    host.Services.GetRequiredService<IOptions<Homespool.Host.Certificates.CertificateOptions>>()
-                        .Value.ParsedContainerNetworks,
-                    host.Services.GetRequiredService<Homespool.Host.Certificates.IHostAddressResolver>(),
-                    System.Threading.CancellationToken.None).GetAwaiter().GetResult())
+                                connect,
+                                host.Services.GetRequiredService<IOptions<Homespool.Host.Certificates.CertificateOptions>>()
+                                    .Value.ParsedContainerNetworks,
+                                host.Services.GetRequiredService<Homespool.Host.Certificates.IHostAddressResolver>(),
+                                System.Threading.CancellationToken.None).GetAwaiter().GetResult())
                 .Dispose();
         }
 
@@ -159,11 +160,12 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
             // of listener, and a test reaches the printer listener by connecting to its port. That keeps the
             // production path free of test seams: nothing in Homespool.Host consults the Host header,
             // here or anywhere.
-            services.AddSingleton<IStartupFilter>(
-                provider => new SimulatedListener(provider.GetRequiredService<IOptions<ListenerOptions>>()));
+            services.AddSingleton<IStartupFilter>(provider =>
+                                                      new SimulatedListener(
+                                                          provider.GetRequiredService<IOptions<ListenerOptions>>()));
 
-            ServiceDescriptor? descriptor = services.SingleOrDefault(
-                d => d.ServiceType == typeof(DbContextOptions<HomespoolDbContext>));
+            ServiceDescriptor? descriptor =
+                services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<HomespoolDbContext>));
 
             if (descriptor is not null)
             {
@@ -178,8 +180,7 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
             // which is how the first three were dealt with, one incident at a time.
             Directory.CreateDirectory(_contentRoot);
 
-            ServiceDescriptor? environment = services.SingleOrDefault(
-                d => d.ServiceType == typeof(IHostEnvironmentAccessor));
+            ServiceDescriptor? environment = services.SingleOrDefault(d => d.ServiceType == typeof(IHostEnvironmentAccessor));
 
             if (environment is not null)
             {
@@ -211,8 +212,7 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
             // a scoped registration would hand each request its own throwaway copy.
             if (_messageDispatcher is not null)
             {
-                ServiceDescriptor? dispatcherDescriptor = services.SingleOrDefault(
-                    d => d.ServiceType == typeof(MessageDispatcher));
+                ServiceDescriptor? dispatcherDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(MessageDispatcher));
 
                 if (dispatcherDescriptor is not null)
                 {

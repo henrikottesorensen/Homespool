@@ -90,7 +90,7 @@ public class TelemetryMessageBuilderTests
 
         // Assert
         without.RootElement.TryGetProperty("filament_change_in", out _)
-            .Should().BeFalse("no scheduled pause means the field is absent, not zero");
+               .Should().BeFalse("no scheduled pause means the field is absent, not zero");
 
         with.RootElement.GetProperty("filament_change_in").GetInt32().Should().Be(300);
 
@@ -100,7 +100,7 @@ public class TelemetryMessageBuilderTests
 
         with.RootElement.EnumerateObject().Select(p => p.Name)
             .Should().Equal(firmwareOrder,
-                "the field sits between time_remaining and progress, matching the firmware's own order");
+                            "the field sits between time_remaining and progress, matching the firmware's own order");
     }
 
     /// <summary>
@@ -147,7 +147,7 @@ public class TelemetryMessageBuilderTests
 
             entry.GetProperty("material").GetString().Should().Be("PLA");
             entry.GetProperty("temp").GetDouble().Should().Be(25.0 + tool - 1,
-                "each tool reports a distinguishable temperature, so the persisted rows are not identical");
+                                                              "each tool reports a distinguishable temperature, so the persisted rows are not identical");
             entry.GetProperty("fan_hotend").ValueKind.Should().Be(JsonValueKind.Number);
         }
 

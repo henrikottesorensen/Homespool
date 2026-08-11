@@ -23,8 +23,8 @@ public static class IdentityCookieTestHelper
     {
         using IServiceScope scope = services.CreateScope();
         CookieAuthenticationOptions cookieOptions = scope.ServiceProvider
-            .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
-            .Get(IdentityConstants.ApplicationScheme);
+                                                         .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
+                                                         .Get(IdentityConstants.ApplicationScheme);
 
         return response.Headers.TryGetValues("Set-Cookie", out IEnumerable<string>? cookies)
                && cookies.Any(c => c.StartsWith($"{cookieOptions.Cookie.Name}=", StringComparison.Ordinal));

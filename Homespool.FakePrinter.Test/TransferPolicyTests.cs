@@ -95,7 +95,7 @@ public class TransferPolicyTests
     {
         FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
         ServerCommandFrame frame = new(ServerCommandKind.Json, 11, Encoding.UTF8.GetBytes(
-            """{"command": "START_CONNECT_DOWNLOAD", "args": [], "kwargs": {"path": "/usb/model.bgcode"}}"""));
+                                           """{"command": "START_CONNECT_DOWNLOAD", "args": [], "kwargs": {"path": "/usb/model.bgcode"}}"""));
 
         IReadOnlyList<PlannedReply> replies = policy.Answer(frame, _device);
 

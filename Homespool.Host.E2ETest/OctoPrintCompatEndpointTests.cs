@@ -103,7 +103,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime, IDisposable
 
         // Act
         using HttpResponseMessage response = await client.GetAsync($"/compat/octoprint/{uuid}/api/version",
-            TestContext.Current.CancellationToken);
+                                                                   TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -215,11 +215,11 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime, IDisposable
 
         // Act
         using HttpResponseMessage refused = await client.GetAsync("/api/v1/files",
-            TestContext.Current.CancellationToken);
+                                                                  TestContext.Current.CancellationToken);
 
         using HttpClient native = NativeClient(token);
         using HttpResponseMessage allowed = await native.GetAsync("/api/v1/files",
-            TestContext.Current.CancellationToken);
+                                                                  TestContext.Current.CancellationToken);
 
         // Assert
         refused.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
@@ -258,7 +258,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime, IDisposable
         using HttpClient native = NativeClient(token);
 
         using HttpResponseMessage listed = await native.GetAsync($"/api/v1/printers/{uuid}/queue",
-            TestContext.Current.CancellationToken);
+                                                                 TestContext.Current.CancellationToken);
 
         using JsonDocument payload =
             JsonDocument.Parse(await listed.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
@@ -292,13 +292,13 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime, IDisposable
         using HttpClient native = NativeClient(token);
 
         using HttpResponseMessage files = await native.GetAsync("/api/v1/files",
-            TestContext.Current.CancellationToken);
+                                                                TestContext.Current.CancellationToken);
 
         (await files.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
             .Should().Contain("shelf.gcode", "the file is stored either way");
 
         using HttpResponseMessage listed = await native.GetAsync($"/api/v1/printers/{uuid}/queue",
-            TestContext.Current.CancellationToken);
+                                                                 TestContext.Current.CancellationToken);
 
         using JsonDocument payload =
             JsonDocument.Parse(await listed.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
@@ -334,7 +334,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime, IDisposable
         using HttpClient native = NativeClient(token);
 
         using HttpResponseMessage stored = await native.GetAsync("/api/v1/files/plain.gcode",
-            TestContext.Current.CancellationToken);
+                                                                 TestContext.Current.CancellationToken);
 
         stored.StatusCode.Should().Be(HttpStatusCode.OK, "the name is the name, whatever path claimed");
 
@@ -484,11 +484,11 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime, IDisposable
 
         // Act
         string page = await (await client.GetAsync($"/Printers/Detail/{uuid}", TestContext.Current.CancellationToken))
-            .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+                            .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         // Assert
         page.Should().Contain($"/compat/octoprint/{uuid}/",
-            "the whole point is that nobody has to assemble this by hand");
+                              "the whole point is that nobody has to assemble this by hand");
         page.Should().Contain("OctoPrint", "the host type has to be named or the address is unusable");
         page.Should().Contain("data-copy-button", "and it is copyable, which is why it is here at all");
 
@@ -520,13 +520,13 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime, IDisposable
 
         // Act
         string page = await (await readerClient.GetAsync($"/Printers/Detail/{uuid}", TestContext.Current.CancellationToken))
-            .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+                            .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         // Assert
         page.Should().Contain("Print history",
-            "the negative below is worthless unless the page actually rendered for this reader");
+                              "the negative below is worthless unless the page actually rendered for this reader");
         page.Should().NotContain("/compat/octoprint/",
-            "an address that uploads and then refuses to queue is worse than none");
+                                 "an address that uploads and then refuses to queue is worse than none");
 
         readerClient.Dispose();
     }
@@ -539,7 +539,8 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime, IDisposable
     /// slicer's own.
     /// </summary>
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
-                     Justification = "Ownership of every part passes to the MultipartFormDataContent returned, which disposes them with itself; each caller disposes that container.")]
+                     Justification =
+                         "Ownership of every part passes to the MultipartFormDataContent returned, which disposes them with itself; each caller disposes that container.")]
     private static MultipartFormDataContent SlicerUpload(string fileName, bool print, string path = "")
     {
         MultipartFormDataContent body = new()
@@ -601,7 +602,8 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime, IDisposable
         HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
         TeamMember owner = await context.TeamMembers
-            .SingleAsync(member => member.UserId == ownerId && member.IsDefault, TestContext.Current.CancellationToken);
+                                        .SingleAsync(member => member.UserId == ownerId && member.IsDefault,
+                                                     TestContext.Current.CancellationToken);
 
         context.TeamMembers.Add(new TeamMember
         {
@@ -622,7 +624,8 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime, IDisposable
         HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
         TeamMember membership = await context.TeamMembers
-            .SingleAsync(member => member.UserId == userId && member.IsDefault, TestContext.Current.CancellationToken);
+                                             .SingleAsync(member => member.UserId == userId && member.IsDefault,
+                                                          TestContext.Current.CancellationToken);
 
         Printer printer = new()
         {

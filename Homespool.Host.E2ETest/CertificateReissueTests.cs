@@ -83,7 +83,8 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
 
         using HttpClient client = await AdministratorClientAsync();
 
-        string page = await (await client.GetAsync("/Admin/Certificate", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string page = await (await client.GetAsync("/Admin/Certificate", TestContext.Current.CancellationToken)).Content
+            .ReadAsStringAsync(TestContext.Current.CancellationToken);
         page.Should().Contain("an-old-address.lan", "the page has to show what the certificate covers today");
 
         // Act
@@ -92,7 +93,8 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
             new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(page)),
         ]);
 
-        using HttpResponseMessage response = await client.PostAsync("/Admin/Certificate?handler=Reissue", form, TestContext.Current.CancellationToken);
+        using HttpResponseMessage response =
+            await client.PostAsync("/Admin/Certificate?handler=Reissue", form, TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Redirect);
@@ -103,15 +105,17 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
         reissued!.Thumbprint.Should().NotBe(originalLeaf.Thumbprint, "a reissue must produce a new certificate");
 
         authority.EnsureAuthority().Thumbprint.Should().Be(originalAuthority.Thumbprint,
-            "rolling the authority would strand every printer already provisioned");
+                                                           "rolling the authority would strand every printer already provisioned");
 
-        string after = await (await client.GetAsync("/Admin/Certificate", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string after =
+            await (await client.GetAsync("/Admin/Certificate", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
         after.Should().ContainEquivalentOf("reload the proxy",
-            "the proxy still serves the old certificate, and a page that only said \"done\" would be describing a "
-            + "file rather than what printers meet");
+                                           "the proxy still serves the old certificate, and a page that only said \"done\" would be describing a "
+                                           + "file rather than what printers meet");
         after.Should().NotContainEquivalentOf("restart the server",
-            "that was the instruction while Kestrel held the leaf; it is now both wrong and needlessly expensive, "
-            + "since reloading nginx keeps the application and every user session up");
+                                              "that was the instruction while Kestrel held the leaf; it is now both wrong and needlessly expensive, "
+                                              + "since reloading nginx keeps the application and every user session up");
     }
 
     /// <summary>
@@ -138,15 +142,16 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
         using HttpClient client = await AdministratorClientAsync();
 
         // Act
-        string page = await (await client.GetAsync("/Admin/Certificate", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string page = await (await client.GetAsync("/Admin/Certificate", TestContext.Current.CancellationToken)).Content
+            .ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         // Assert
         page.Should().ContainEquivalentOf("would narrow this certificate",
-            "an operator about to drop a name their printers may still be using has to be told before pressing, "
-            + "not after a printer stops connecting");
+                                          "an operator about to drop a name their printers may still be using has to be told before pressing, "
+                                          + "not after a printer stops connecting");
         page.Should().Contain("an-old-address.lan", "and the warning has to name which names go");
         page.Should().ContainEquivalentOf("USB visit",
-            "the cost of getting it wrong is what makes the warning worth reading");
+                                          "the cost of getting it wrong is what makes the warning worth reading");
     }
 
     /// <summary>
@@ -166,7 +171,8 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
         authority.IssueLeaf(["a-printer-still-uses-this.lan"]).Dispose();
 
         using HttpClient client = await AdministratorClientAsync();
-        string page = await (await client.GetAsync("/Admin/Certificate", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string page = await (await client.GetAsync("/Admin/Certificate", TestContext.Current.CancellationToken)).Content
+            .ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         // Act
         using FormUrlEncodedContent form = new(
@@ -175,7 +181,8 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
             new("KeepNames", "a-printer-still-uses-this.lan"),
         ]);
 
-        using HttpResponseMessage response = await client.PostAsync("/Admin/Certificate?handler=Reissue", form, TestContext.Current.CancellationToken);
+        using HttpResponseMessage response =
+            await client.PostAsync("/Admin/Certificate?handler=Reissue", form, TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Redirect);
@@ -183,7 +190,7 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
         using X509Certificate2? reissued = authority.LoadLeafIfIssued();
 
         PrinterCertificateAuthority.NamesOf(reissued!).Should().Contain("a-printer-still-uses-this.lan",
-            "the administrator ticked it, and dropping it anyway would strand whichever printer is using it");
+                                                                        "the administrator ticked it, and dropping it anyway would strand whichever printer is using it");
     }
 
     /// <summary>
@@ -204,7 +211,8 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
         authority.IssueLeaf(["an-old-address.lan"]).Dispose();
 
         using HttpClient client = await AdministratorClientAsync();
-        string page = await (await client.GetAsync("/Admin/Certificate", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string page = await (await client.GetAsync("/Admin/Certificate", TestContext.Current.CancellationToken)).Content
+            .ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         // Act
         using FormUrlEncodedContent form = new(
@@ -213,7 +221,8 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
             new("KeepNames", "connect.prusa3d.com"),
         ]);
 
-        using HttpResponseMessage response = await client.PostAsync("/Admin/Certificate?handler=Reissue", form, TestContext.Current.CancellationToken);
+        using HttpResponseMessage response =
+            await client.PostAsync("/Admin/Certificate?handler=Reissue", form, TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Redirect);
@@ -221,7 +230,7 @@ public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
         using X509Certificate2? reissued = authority.LoadLeafIfIssued();
 
         PrinterCertificateAuthority.NamesOf(reissued!).Should().NotContain("connect.prusa3d.com",
-            "the tick list may only preserve names the previous certificate already vouched for");
+                                                                           "the tick list may only preserve names the previous certificate already vouched for");
     }
 
     /// <summary>

@@ -111,7 +111,8 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime, IDisposable
         prePollResponse.StatusCode.Should().Be(HttpStatusCode.Accepted, "nobody has claimed the printer yet");
 
         // ---------- app: a signed-in user claims it ----------
-        (HSUser claimer, HttpClient appClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "claimer@example.com");
+        (HSUser claimer, HttpClient appClient) =
+            await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "claimer@example.com");
         using (appClient)
         {
             HttpResponseMessage claimResponse = await appClient.PostAsJsonAsync("/api/v1/printers/register", new
@@ -123,7 +124,8 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime, IDisposable
 
             claimResponse.StatusCode.Should().Be(HttpStatusCode.Created);
 
-            JsonDocument claimed = JsonDocument.Parse(await claimResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            JsonDocument claimed =
+                JsonDocument.Parse(await claimResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             Guid uuid = claimed.RootElement.GetProperty("uuid").GetGuid();
             claimed.RootElement.GetProperty("name").GetString().Should().Be("Living room MK4");
             claimed.RootElement.GetProperty("state").GetString().Should().Be("UNKNOWN");
@@ -134,32 +136,41 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime, IDisposable
             postPollResponse.Headers.GetValues("Token").Single().Should().NotBeNullOrWhiteSpace();
 
             // ---------- app: GET /api/v1/user ----------
-            JsonDocument user = JsonDocument.Parse(await (await appClient.GetAsync("/api/v1/user", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            JsonDocument user =
+                JsonDocument.Parse(
+                    await (await appClient.GetAsync("/api/v1/user", TestContext.Current.CancellationToken)).Content
+                        .ReadAsStringAsync(TestContext.Current.CancellationToken));
             user.RootElement.GetProperty("id").GetInt64().Should().Be(claimer.Id);
             user.RootElement.GetProperty("teams").GetArrayLength().Should().Be(1, "every account has exactly one default team");
 
             // ---------- app: GET /api/v1/printers ----------
             HttpResponseMessage listResponse = await appClient.GetAsync("/api/v1/printers", TestContext.Current.CancellationToken);
             listResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-            JsonDocument list = JsonDocument.Parse(await listResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            JsonDocument list =
+                JsonDocument.Parse(await listResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             list.RootElement.GetArrayLength().Should().Be(1);
             list.RootElement[0].GetProperty("uuid").GetGuid().Should().Be(uuid);
 
             // ---------- app: GET /api/v1/printers/{uuid} ----------
-            HttpResponseMessage getResponse = await appClient.GetAsync($"/api/v1/printers/{uuid}", TestContext.Current.CancellationToken);
+            HttpResponseMessage getResponse =
+                await appClient.GetAsync($"/api/v1/printers/{uuid}", TestContext.Current.CancellationToken);
             getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
             // ---------- app: PATCH /api/v1/printers/{uuid} ----------
             using JsonContent patchBody = JsonContent.Create(new { name = "Renamed MK4", location = "Garage" });
-            HttpResponseMessage patchResponse = await appClient.PatchAsync($"/api/v1/printers/{uuid}", patchBody, TestContext.Current.CancellationToken);
+            HttpResponseMessage patchResponse =
+                await appClient.PatchAsync($"/api/v1/printers/{uuid}", patchBody, TestContext.Current.CancellationToken);
 
             patchResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-            JsonDocument patched = JsonDocument.Parse(await patchResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            JsonDocument patched =
+                JsonDocument.Parse(await patchResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             patched.RootElement.GetProperty("name").GetString().Should().Be("Renamed MK4");
             patched.RootElement.GetProperty("location").GetString().Should().Be("Garage");
 
-            HttpResponseMessage reGetResponse = await appClient.GetAsync($"/api/v1/printers/{uuid}", TestContext.Current.CancellationToken);
-            JsonDocument reGet = JsonDocument.Parse(await reGetResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            HttpResponseMessage reGetResponse =
+                await appClient.GetAsync($"/api/v1/printers/{uuid}", TestContext.Current.CancellationToken);
+            JsonDocument reGet =
+                JsonDocument.Parse(await reGetResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             reGet.RootElement.GetProperty("name").GetString().Should().Be("Renamed MK4", "the patch must have persisted");
         }
     }
@@ -189,7 +200,7 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime, IDisposable
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         response.Headers.Location.Should().BeNull("an API caller has nowhere to follow a login redirect to");
         response.Headers.WwwAuthenticate.ToString().Should().Contain("Bearer",
-            "the challenge should say how to authenticate, which for a script means a token");
+                                                                     "the challenge should say how to authenticate, which for a script means a token");
     }
 
     /// <summary>
@@ -208,7 +219,8 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime, IDisposable
         string databasePath = Path.Combine(Path.GetTempPath(), $"ps-e2e-presetup-{Guid.NewGuid():N}.db");
 
         await using HomespoolFactory presetupFactory = new($"Data Source={databasePath}");
-        using HttpClient client = presetupFactory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        using HttpClient client =
+            presetupFactory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         try
         {

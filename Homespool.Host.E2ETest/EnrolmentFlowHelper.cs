@@ -92,8 +92,9 @@ public static class EnrolmentFlowHelper
         using IServiceScope scope = factory.Services.CreateScope();
         HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
         PrusaConnectAuthenticationData auth = await context.PrusaConnectAuthentication
-            .Include(a => a.Printer)
-            .SingleAsync(a => a.FingerPrintKey == PrinterFingerprint.Key(identity.Fingerprint));
+                                                           .Include(a => a.Printer)
+                                                           .SingleAsync(a => a.FingerPrintKey ==
+                                                                             PrinterFingerprint.Key(identity.Fingerprint));
 
         return (identity, token!, auth.Printer!.Id, user.Id);
     }
@@ -133,7 +134,9 @@ public static class EnrolmentFlowHelper
     /// server validates, and the test sees an ordinary user with no explanation.
     /// </param>
     public static async Task<(HSUser user, HttpClient client)> CreateAuthenticatedUserAsync(
-        WebApplicationFactory<PrinterAppController> factory, string email, string? role = null)
+        WebApplicationFactory<PrinterAppController> factory,
+        string email,
+        string? role = null)
     {
         using IServiceScope scope = factory.Services.CreateScope();
 
@@ -162,8 +165,8 @@ public static class EnrolmentFlowHelper
 
         ClaimsPrincipal principal = await signInManager.CreateUserPrincipalAsync(user);
         CookieAuthenticationOptions cookieOptions = scope.ServiceProvider
-            .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
-            .Get(IdentityConstants.ApplicationScheme);
+                                                         .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
+                                                         .Get(IdentityConstants.ApplicationScheme);
 
         AuthenticationTicket ticket = new(principal, IdentityConstants.ApplicationScheme);
         string protectedTicket = cookieOptions.TicketDataFormat.Protect(ticket);

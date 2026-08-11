@@ -112,7 +112,9 @@ public sealed class FakePrinterClient : IAsyncDisposable
     /// One <c>GET /p/register</c> poll with the <c>Code</c> header (Buddy's <c>PollRequest</c>
     /// sends only that). Returns the token on 200, null while the claim is pending (202).
     /// </summary>
-    public async Task<string?> PollForTokenOnceAsync(HttpClient httpClient, string code, CancellationToken cancellationToken = default)
+    public async Task<string?> PollForTokenOnceAsync(HttpClient httpClient,
+                                                     string code,
+                                                     CancellationToken cancellationToken = default)
     {
         using HttpRequestMessage request = new(HttpMethod.Get, "/p/register");
         AddUserAgentHeaders(request);
@@ -134,7 +136,10 @@ public sealed class FakePrinterClient : IAsyncDisposable
     /// Polls until a user claims the code and a token is issued, then stores it in
     /// <see cref="Token"/>. The firmware polls every 5 s, forever; pass a shorter interval in tests.
     /// </summary>
-    public async Task<string> EnrolAsync(HttpClient httpClient, string code, TimeSpan pollInterval, CancellationToken cancellationToken = default)
+    public async Task<string> EnrolAsync(HttpClient httpClient,
+                                         string code,
+                                         TimeSpan pollInterval,
+                                         CancellationToken cancellationToken = default)
     {
         while (true)
         {
@@ -194,7 +199,8 @@ public sealed class FakePrinterClient : IAsyncDisposable
     {
         WebSocket socket = _socket ?? throw new InvalidOperationException("Not connected - call ConnectAsync first.");
 
-        await SendMessageAsync(EventMessageBuilder.BuildInfo(Identity, Device.WireState, null, Device.JobId, Device.FreeSpace), cancellationToken);
+        await SendMessageAsync(EventMessageBuilder.BuildInfo(Identity, Device.WireState, null, Device.JobId, Device.FreeSpace),
+                               cancellationToken);
 
         Task read = ReadLoopAsync(socket, cancellationToken);
         Task telemetry = TelemetryLoopAsync(socket, cancellationToken);
@@ -252,7 +258,8 @@ public sealed class FakePrinterClient : IAsyncDisposable
         return builder.Uri;
     }
 
-    private async Task<WebSocket> ConnectWithClientWebSocketAsync(FakePrinterConnectRequest request, CancellationToken cancellationToken)
+    private async Task<WebSocket> ConnectWithClientWebSocketAsync(FakePrinterConnectRequest request,
+                                                                  CancellationToken cancellationToken)
     {
         ClientWebSocket socket = new();
         socket.Options.AddSubProtocol(request.SubProtocol);
@@ -359,7 +366,9 @@ public sealed class FakePrinterClient : IAsyncDisposable
         _ = ExecuteRepliesAsync(socket, replies, cancellationToken);
     }
 
-    private async Task ExecuteRepliesAsync(WebSocket socket, IReadOnlyList<PlannedReply> replies, CancellationToken cancellationToken)
+    private async Task ExecuteRepliesAsync(WebSocket socket,
+                                           IReadOnlyList<PlannedReply> replies,
+                                           CancellationToken cancellationToken)
     {
         try
         {

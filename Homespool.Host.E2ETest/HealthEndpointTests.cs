@@ -71,7 +71,7 @@ public sealed class HealthEndpointTests : IAsyncLifetime, IDisposable
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK,
-            "a monitoring probe has no credentials and arrives before the first administrator exists");
+                                        "a monitoring probe has no credentials and arrives before the first administrator exists");
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public sealed class HealthEndpointTests : IAsyncLifetime, IDisposable
         using JsonDocument document = JsonDocument.Parse(body);
 
         document.RootElement.GetProperty("status").GetString().Should().Be("Healthy",
-            "nothing has failed to flush on a freshly started host");
+                                                                           "nothing has failed to flush on a freshly started host");
 
         JsonElement check = document.RootElement.GetProperty("checks")[0];
         check.GetProperty("name").GetString().Should().Be("telemetry-persistence");
@@ -132,7 +132,7 @@ public sealed class HealthEndpointTests : IAsyncLifetime, IDisposable
         checks[0].GetProperty("name").GetString().Should().Be("telemetry-writer-alive");
 
         body.Should().NotContain("telemetry-persistence",
-            "persistence health must never be able to trigger a restart");
+                                 "persistence health must never be able to trigger a restart");
     }
 
     /// <summary>
@@ -157,9 +157,9 @@ public sealed class HealthEndpointTests : IAsyncLifetime, IDisposable
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK,
-            "a view component that cannot resolve its dependency or its view takes every page down with it");
+                                        "a view component that cannot resolve its dependency or its view takes every page down with it");
 
         body.Should().NotContain("Service problem",
-            "nothing has failed on a freshly started host, and a healthy service should look untouched");
+                                 "nothing has failed on a freshly started host, and a healthy service should look untouched");
     }
 }

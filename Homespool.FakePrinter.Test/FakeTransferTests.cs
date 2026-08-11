@@ -236,7 +236,7 @@ public class FakeTransferTests
     private static FakeTransfer Begin(long size, string path, FakeDownloadOrder? order = null)
     {
         return new FakeTransfer("hash-token", 7, path, size, transferId: 42, startCommandId: 9, order,
-            fileIdSource: () => BitConverter.ToUInt32(RandomNumberGenerator.GetBytes(sizeof(uint))));
+                                fileIdSource: () => BitConverter.ToUInt32(RandomNumberGenerator.GetBytes(sizeof(uint))));
     }
 
     /// <summary>Serves one whole request in a single chunk.</summary>

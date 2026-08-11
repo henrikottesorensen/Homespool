@@ -82,7 +82,9 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         await UploadAsync(bob, "secret.gcode", 512);
 
         // Act
-        string page = await (await alice.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string page =
+            await (await alice.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
 
         // Assert
         page.Should().Contain("benchy.gcode");
@@ -99,7 +101,9 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "pageempty@example.com");
 
-        string page = await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string page =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
 
         page.Should().Contain("No files yet");
 
@@ -121,17 +125,21 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         await UploadAsync(client, "small.gcode", 128);
 
         // Act
-        string bySizeDesc = await (await client.GetAsync("/Files?sort=size&desc=true", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        string bySizeAsc = await (await client.GetAsync("/Files?sort=size&desc=false", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string bySizeDesc =
+            await (await client.GetAsync("/Files?sort=size&desc=true", TestContext.Current.CancellationToken)).Content
+                .ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string bySizeAsc =
+            await (await client.GetAsync("/Files?sort=size&desc=false", TestContext.Current.CancellationToken)).Content
+                .ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         // Assert
         bySizeDesc.IndexOf("big.gcode", StringComparison.Ordinal)
-            .Should().BeLessThan(bySizeDesc.IndexOf("small.gcode", StringComparison.Ordinal),
-                "descending by size puts the largest first");
+                  .Should().BeLessThan(bySizeDesc.IndexOf("small.gcode", StringComparison.Ordinal),
+                                       "descending by size puts the largest first");
 
         bySizeAsc.IndexOf("small.gcode", StringComparison.Ordinal)
-            .Should().BeLessThan(bySizeAsc.IndexOf("big.gcode", StringComparison.Ordinal),
-                "and the same heading clicked again reverses it");
+                 .Should().BeLessThan(bySizeAsc.IndexOf("big.gcode", StringComparison.Ordinal),
+                                      "and the same heading clicked again reverses it");
 
         client.Dispose();
     }
@@ -154,7 +162,9 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
 
         await UploadAsync(client, "rendered.gcode", 128);
 
-        string page = await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string page =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
 
         page.Should().NotContain("@Model", "an unevaluated expression means Razor treated it as text");
         page.Should().NotContain("IndexModel.Columns", "which is how the sort indicators first shipped");
@@ -178,11 +188,13 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "pagedrop@example.com");
 
-        string page = await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string page =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
 
         page.Should().Contain("data-upload-dropzone", "site.js finds the zone by this attribute");
         page.Should().Contain("""type="file" name="file" """.TrimEnd(),
-            "and the drop only fills this input, so it has to be the thing that posts");
+                              "and the drop only fills this input, so it has to be the thing that posts");
         page.Should().Contain("enctype=\"multipart/form-data\"");
 
         client.Dispose();
@@ -199,7 +211,9 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
 
         await UploadAsync(client, "lonely.gcode", 128);
 
-        string page = await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string page =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
 
         page.Should().Contain("lonely.gcode");
         page.Should().NotContain("handler=Send", "a select with no options is worse than no select");
@@ -219,7 +233,9 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
 
         await UploadAsync(client, "mine.gcode", 128);
 
-        string page = await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string page =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
 
         using FormUrlEncodedContent form = new(new List<KeyValuePair<string, string>>
         {
@@ -232,7 +248,9 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
 
         response.StatusCode.Should().Be(HttpStatusCode.Redirect);
 
-        string after = await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string after =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
         after.Should().Contain("not one of yours");
 
         client.Dispose();
@@ -246,10 +264,11 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
 
         await UploadAsync(client, "one.gcode", 64);
 
-        using HttpResponseMessage response = await client.GetAsync("/Files?sort=nonsense&desc=true", TestContext.Current.CancellationToken);
+        using HttpResponseMessage response =
+            await client.GetAsync("/Files?sort=nonsense&desc=true", TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK,
-            "a hand-edited query string is not an error worth a page of its own");
+                                        "a hand-edited query string is not an error worth a page of its own");
 
         client.Dispose();
     }
@@ -264,7 +283,8 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         await UploadAsync(client, "doomed.gcode", 256);
         await UploadAsync(client, "keeper.gcode", 256);
 
-        string page = await (await client.GetAsync("/Files?sort=name&desc=true", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string page = await (await client.GetAsync("/Files?sort=name&desc=true", TestContext.Current.CancellationToken)).Content
+            .ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         // Act
         using FormUrlEncodedContent form = new(new List<KeyValuePair<string, string>>
@@ -278,15 +298,19 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Redirect);
         response.Headers.Location!.OriginalString.Should().Contain("sort=name")
-            .And.Contain("desc=True", "the chosen order has to survive the redirect, or it silently resets");
+                .And.Contain("desc=True", "the chosen order has to survive the redirect, or it silently resets");
 
-        string after = await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string after =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
         after.Should().Contain("Deleted doomed.gcode.", "the page confirms what it did");
 
         // Asserted against the API rather than the rendered page: the confirmation message names the
         // file it just deleted, so "the page no longer mentions it" would be false for a working
         // delete. What is being checked is the store, and that is what the listing reports.
-        string listing = await (await client.GetAsync("/api/v1/files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string listing =
+            await (await client.GetAsync("/api/v1/files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
         listing.Should().NotContain("doomed.gcode");
         listing.Should().Contain("keeper.gcode");
 
@@ -303,7 +327,9 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         await UploadAsync(client, "before.gcode", 256);
 
         // The rename row is a query-string mode, so this is also what proves that link works.
-        string editing = await (await client.GetAsync("/Files?rename=before.gcode", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string editing =
+            await (await client.GetAsync("/Files?rename=before.gcode", TestContext.Current.CancellationToken)).Content
+                .ReadAsStringAsync(TestContext.Current.CancellationToken);
         editing.Should().Contain("newName", "following Rename puts an input in the row");
 
         // Act
@@ -319,7 +345,9 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Redirect);
 
-        string after = await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string after =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
         after.Should().Contain("after.gcode");
         after.Should().NotContain("before.gcode");
 
@@ -336,7 +364,9 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         await UploadAsync(client, "one.gcode", 256);
         await UploadAsync(client, "two.gcode", 256);
 
-        string editing = await (await client.GetAsync("/Files?rename=one.gcode", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string editing =
+            await (await client.GetAsync("/Files?rename=one.gcode", TestContext.Current.CancellationToken)).Content
+                .ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         // Act
         using FormUrlEncodedContent form = new(new List<KeyValuePair<string, string>>
@@ -351,7 +381,9 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Redirect);
 
-        string after = await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string after =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
         after.Should().Contain("already exists", "the conflict is explained rather than swallowed");
         after.Should().Contain("one.gcode", "and nothing moved");
 
@@ -368,7 +400,7 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
 
         response.StatusCode.Should().Be(HttpStatusCode.Redirect);
         response.Headers.Location!.OriginalString.Should().Contain("/Account/Login",
-            "a page, unlike /api, sends a browser somewhere useful");
+                                                                   "a page, unlike /api, sends a browser somewhere useful");
     }
 
     /// <summary>
@@ -382,7 +414,9 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "pageupload@example.com");
 
-        string page = await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string page =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
 
         // Act
         using HttpResponseMessage response = await PostFileAsync(client, page, "uploaded.gcode", "G28 ; home");
@@ -390,7 +424,9 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Redirect);
 
-        string after = await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string after =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
         after.Should().Contain("Uploaded uploaded.gcode.");
         after.Should().Contain("10 B", "the size comes from the bytes that actually arrived");
 
@@ -409,15 +445,21 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "pageclash2@example.com");
 
-        string first = await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string first =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
         (await PostFileAsync(client, first, "benchy.gcode", "original")).Dispose();
 
-        string listed = await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string listed =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
 
         // Act
         (await PostFileAsync(client, listed, "benchy.gcode", "replacement")).Dispose();
 
-        string asked = await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string asked =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
 
         // Assert
         asked.Should().Contain("You already have a file named");
@@ -431,11 +473,14 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
             new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(asked)),
         });
 
-        using HttpResponseMessage replaced = await client.PostAsync($"/Files?handler=Replace&token={token}", form, TestContext.Current.CancellationToken);
+        using HttpResponseMessage replaced =
+            await client.PostAsync($"/Files?handler=Replace&token={token}", form, TestContext.Current.CancellationToken);
 
         replaced.StatusCode.Should().Be(HttpStatusCode.Redirect);
 
-        string content = await (await client.GetAsync("/api/v1/files/benchy.gcode", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string content =
+            await (await client.GetAsync("/api/v1/files/benchy.gcode", TestContext.Current.CancellationToken)).Content
+                .ReadAsStringAsync(TestContext.Current.CancellationToken);
         content.Should().Be("replacement", "the bytes held during the question are the ones published");
 
         client.Dispose();
@@ -448,13 +493,19 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "pagedecline@example.com");
 
-        string first = await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string first =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
         (await PostFileAsync(client, first, "keep.gcode", "original")).Dispose();
 
-        string listed = await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string listed =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
         (await PostFileAsync(client, listed, "keep.gcode", "replacement")).Dispose();
 
-        string asked = await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string asked =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
         string token = Regex.Match(asked, """token=([A-Za-z0-9]{32})""").Groups[1].Value;
 
         // Act
@@ -463,12 +514,15 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
             new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(asked)),
         });
 
-        using HttpResponseMessage discarded = await client.PostAsync($"/Files?handler=Discard&token={token}", form, TestContext.Current.CancellationToken);
+        using HttpResponseMessage discarded =
+            await client.PostAsync($"/Files?handler=Discard&token={token}", form, TestContext.Current.CancellationToken);
 
         // Assert
         discarded.StatusCode.Should().Be(HttpStatusCode.Redirect);
 
-        string content = await (await client.GetAsync("/api/v1/files/keep.gcode", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string content =
+            await (await client.GetAsync("/api/v1/files/keep.gcode", TestContext.Current.CancellationToken)).Content
+                .ReadAsStringAsync(TestContext.Current.CancellationToken);
         content.Should().Be("original", "declining leaves what was already there untouched");
 
         client.Dispose();
@@ -480,11 +534,15 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "pagebadext@example.com");
 
-        string page = await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string page =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
 
         (await PostFileAsync(client, page, "firmware.bbf", "not gcode")).Dispose();
 
-        string after = await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string after =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
         after.Should().Contain("not a file a printer would accept");
         after.Should().Contain("No files yet", "and nothing was stored");
 
@@ -493,7 +551,8 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
 
     /// <summary>Posts the upload form the way a browser would: multipart, with the antiforgery field.</summary>
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
-                     Justification = "MultipartFormDataContent takes ownership of the parts added to it and disposes them with itself, which the using declaration below does.")]
+                     Justification =
+                         "MultipartFormDataContent takes ownership of the parts added to it and disposes them with itself, which the using declaration below does.")]
     private static async Task<HttpResponseMessage> PostFileAsync(HttpClient client, string page, string name, string content)
     {
         // Disposing the MultipartFormDataContent disposes the parts it owns, which is why neither the

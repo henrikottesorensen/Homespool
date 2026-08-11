@@ -52,9 +52,9 @@ public class UnknownFieldTelemetrySourceTests
         using JsonDocument document = Next(source);
 
         document.RootElement.GetProperty("state").GetString().Should().Be("IDLE",
-            "the inner source's own fields must survive untouched");
+                                                                          "the inner source's own fields must survive untouched");
         document.RootElement.EnumerateObject().Count(p => p.Name.StartsWith("unmodelled_", StringComparison.Ordinal))
-            .Should().Be(3);
+                .Should().Be(3);
     }
 
     /// <summary>
@@ -152,16 +152,16 @@ public class UnknownFieldTelemetrySourceTests
         List<string> originalOrder = before.RootElement.EnumerateObject().Select(p => p.Name).ToList();
 
         UnknownFieldTelemetrySource source = new(new FixedSource
-        {
-            Json = System.Text.Encoding.UTF8.GetString(original),
-        })
-        { FieldsPerMessage = 1 };
+            {
+                Json = System.Text.Encoding.UTF8.GetString(original),
+            })
+            { FieldsPerMessage = 1 };
 
         using JsonDocument after = Next(source);
         List<string> spliced = after.RootElement.EnumerateObject().Select(p => p.Name)
-            .Where(n => !n.StartsWith("unmodelled_", StringComparison.Ordinal)).ToList();
+                                    .Where(n => !n.StartsWith("unmodelled_", StringComparison.Ordinal)).ToList();
 
         spliced.Should().Equal(originalOrder,
-            "field order came from a real capture, so the wrapper must not reorder what it wraps");
+                               "field order came from a real capture, so the wrapper must not reorder what it wraps");
     }
 }

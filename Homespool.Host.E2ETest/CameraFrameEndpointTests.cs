@@ -85,8 +85,8 @@ public sealed class CameraFrameEndpointTests : IAsyncLifetime, IDisposable
             $"/api/v1/cameras/{uuid}/frame", TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.NoContent,
-            "a camera that has not produced a frame has nothing current to serve, and a stale one is "
-            + "the failure this design exists to prevent");
+                                        "a camera that has not produced a frame has nothing current to serve, and a stale one is "
+                                        + "the failure this design exists to prevent");
 
         client.Dispose();
     }
@@ -113,7 +113,7 @@ public sealed class CameraFrameEndpointTests : IAsyncLifetime, IDisposable
 
         mine.StatusCode.Should().Be(HttpStatusCode.NoContent, "the owner may ask");
         theirs.StatusCode.Should().Be(HttpStatusCode.NotFound,
-            "a stranger is told the same thing they would be told about a camera that does not exist");
+                                      "a stranger is told the same thing they would be told about a camera that does not exist");
 
         ownerClient.Dispose();
         stranger.Dispose();
@@ -167,7 +167,8 @@ public sealed class CameraFrameEndpointTests : IAsyncLifetime, IDisposable
         HomespoolDbContext database = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
         TeamMember membership = await database.TeamMembers
-            .FirstAsync(member => member.UserId == user.Id, TestContext.Current.CancellationToken);
+                                              .FirstAsync(member => member.UserId == user.Id,
+                                                          TestContext.Current.CancellationToken);
 
         Camera camera = new()
         {

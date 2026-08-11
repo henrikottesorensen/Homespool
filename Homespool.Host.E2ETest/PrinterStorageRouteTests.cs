@@ -88,7 +88,7 @@ public sealed class PrinterStorageRouteTests : IAsyncLifetime, IDisposable
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
-            "a matched route challenges an anonymous caller, where an unmatched one would be 404");
+                                        "a matched route challenges an anonymous caller, where an unmatched one would be 404");
     }
 
     /// <summary>
@@ -103,7 +103,8 @@ public sealed class PrinterStorageRouteTests : IAsyncLifetime, IDisposable
 
         // Act
         using HttpResponseMessage response =
-            await client.GetAsync("/api/v1/printers/11111111-1111-1111-1111-111111111111/storage/sdcard", TestContext.Current.CancellationToken);
+            await client.GetAsync("/api/v1/printers/11111111-1111-1111-1111-111111111111/storage/sdcard",
+                                  TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);

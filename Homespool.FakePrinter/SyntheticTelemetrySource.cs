@@ -37,9 +37,7 @@ public sealed class SyntheticTelemetrySource : ITelemetrySource
         bool full = _sent == 0 || (FullShapeEvery > 0 && _sent % FullShapeEvery == 0);
         _sent++;
 
-        return full
-            ? TelemetryMessageBuilder.BuildFull(device, Readings)
-            : TelemetryMessageBuilder.BuildSlim(device, Readings);
+        return full ? TelemetryMessageBuilder.BuildFull(device, Readings) : TelemetryMessageBuilder.BuildSlim(device, Readings);
     }
 
     /// <inheritdoc/>

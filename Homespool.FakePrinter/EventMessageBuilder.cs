@@ -32,8 +32,12 @@ public static class EventMessageBuilder
     /// planner.cpp:302-317) - e.g. <c>TRANSFER_IN_PROGRESS</c>. Firmware attaches one only to the
     /// rejections that have a code; the job-control refusals carry a reason string alone.
     /// </param>
-    public static byte[] Build(string eventType, string state, uint? commandId = null, string? reason = null,
-        int? jobId = null, string? machineReason = null)
+    public static byte[] Build(string eventType,
+                               string state,
+                               uint? commandId = null,
+                               string? reason = null,
+                               int? jobId = null,
+                               string? machineReason = null)
     {
         ArrayBufferWriter<byte> buffer = new();
 
@@ -86,8 +90,11 @@ public static class EventMessageBuilder
     /// inside <c>data</c> while <c>transfer_id</c> sits at the root - easy to get backwards, and the
     /// server's DTO carries a warning about exactly that.
     /// </remarks>
-    public static byte[] BuildTransferInfo(string state, FakeTransfer transfer, uint? commandId = null,
-        int timeRemaining = 0, int timeTransferring = 0)
+    public static byte[] BuildTransferInfo(string state,
+                                           FakeTransfer transfer,
+                                           uint? commandId = null,
+                                           int timeRemaining = 0,
+                                           int timeTransferring = 0)
     {
         ArrayBufferWriter<byte> buffer = new();
 
@@ -261,8 +268,10 @@ public static class EventMessageBuilder
     /// regular file, and an incomplete <c>.bbf</c> being hidden entirely (render.cpp:1017-1036).
     /// </para>
     /// </remarks>
-    public static byte[] BuildFolderInfo(string state, string path,
-                                         IReadOnlyList<FakeStorageEntry> children, uint? commandId = null)
+    public static byte[] BuildFolderInfo(string state,
+                                         string path,
+                                         IReadOnlyList<FakeStorageEntry> children,
+                                         uint? commandId = null)
     {
         ArgumentNullException.ThrowIfNull(children);
 
@@ -345,8 +354,11 @@ public static class EventMessageBuilder
     /// it carries the <b>full 50-character</b> fingerprint and the serial - the one place either
     /// appears on <c>/p/ws</c> (see <c>notes/cross-channel-identity-bug.md</c>).
     /// </remarks>
-    public static byte[] BuildInfo(PrinterIdentity identity, string state, uint? commandId = null, int? jobId = null,
-        long freeSpace = DefaultFreeSpace)
+    public static byte[] BuildInfo(PrinterIdentity identity,
+                                   string state,
+                                   uint? commandId = null,
+                                   int? jobId = null,
+                                   long freeSpace = DefaultFreeSpace)
     {
         ArrayBufferWriter<byte> buffer = new();
 

@@ -24,10 +24,10 @@ public class UserDirectoryNameTests
     [InlineData("Sørensen", "12-Sørensen")]
     [InlineData("北村", "12-北村")]
     [InlineData("Ægir", "12-Ægir")]
-    [InlineData("henrik", "12-henrik")]
+    [InlineData("alice", "12-alice")]
 
     // Spaces are fine in a path and read better than an underscore.
-    [InlineData("Henrik S", "12-Henrik S")]
+    [InlineData("Bob C", "12-Bob C")]
     public void AUnicodeNameIsKept(string displayName, string expected)
     {
         UserDirectoryName.For(12, displayName).Should().Be(expected);

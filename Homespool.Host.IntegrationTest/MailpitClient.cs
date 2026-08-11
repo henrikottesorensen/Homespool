@@ -62,10 +62,11 @@ public sealed class MailpitClient : IDisposable
         while (true)
         {
             MailpitMessageList list = await _http.GetFromJsonAsync<MailpitMessageList>("/api/v1/messages")
-                                       ?? throw new InvalidOperationException("Mailpit returned an empty response.");
+                                      ?? throw new InvalidOperationException("Mailpit returned an empty response.");
 
-            MailpitMessageSummary? match = list.Messages.FirstOrDefault(
-                m => m.To.Any(a => string.Equals(a.Address, recipientAddress, StringComparison.OrdinalIgnoreCase)));
+            MailpitMessageSummary? match =
+                list.Messages.FirstOrDefault(m => m.To.Any(a => string.Equals(a.Address, recipientAddress,
+                                                                              StringComparison.OrdinalIgnoreCase)));
 
             if (match is not null)
             {
@@ -110,9 +111,10 @@ public sealed class MailpitClient : IDisposable
         while (DateTime.UtcNow < deadline)
         {
             MailpitMessageList list = await _http.GetFromJsonAsync<MailpitMessageList>("/api/v1/messages")
-                                       ?? throw new InvalidOperationException("Mailpit returned an empty response.");
+                                      ?? throw new InvalidOperationException("Mailpit returned an empty response.");
 
-            if (list.Messages.Any(m => m.To.Any(a => string.Equals(a.Address, recipientAddress, StringComparison.OrdinalIgnoreCase))))
+            if (list.Messages.Any(m => m.To.Any(a => string.Equals(a.Address, recipientAddress,
+                                                                   StringComparison.OrdinalIgnoreCase))))
             {
                 return false;
             }
@@ -126,7 +128,7 @@ public sealed class MailpitClient : IDisposable
     public async Task<MailpitMessage> GetMessageAsync(string id)
     {
         return await _http.GetFromJsonAsync<MailpitMessage>($"/api/v1/message/{id}")
-        ?? throw new InvalidOperationException("Mailpit returned an empty response.");
+               ?? throw new InvalidOperationException("Mailpit returned an empty response.");
     }
 
     public void Dispose()
@@ -139,7 +141,8 @@ public sealed class MailpitClient : IDisposable
     // CA1812 flags all four as "never instantiated": true at compile time, since
     // System.Text.Json only ever constructs them through reflection during deserialization.
     [SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes",
-                     Justification = "Only ever constructed by System.Text.Json via reflection when deserializing Mailpit's API response.")]
+                     Justification =
+                         "Only ever constructed by System.Text.Json via reflection when deserializing Mailpit's API response.")]
     public sealed class MailpitMessageList
     {
         [JsonPropertyName("messages")]
@@ -147,7 +150,8 @@ public sealed class MailpitClient : IDisposable
     }
 
     [SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes",
-                     Justification = "Only ever constructed by System.Text.Json via reflection when deserializing Mailpit's API response.")]
+                     Justification =
+                         "Only ever constructed by System.Text.Json via reflection when deserializing Mailpit's API response.")]
     public sealed class MailpitMessageSummary
     {
         [JsonPropertyName("ID")]
@@ -158,7 +162,8 @@ public sealed class MailpitClient : IDisposable
     }
 
     [SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes",
-                     Justification = "Only ever constructed by System.Text.Json via reflection when deserializing Mailpit's API response.")]
+                     Justification =
+                         "Only ever constructed by System.Text.Json via reflection when deserializing Mailpit's API response.")]
     public sealed class MailpitMessage
     {
         [JsonPropertyName("Subject")]
@@ -172,7 +177,8 @@ public sealed class MailpitClient : IDisposable
     }
 
     [SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes",
-                     Justification = "Only ever constructed by System.Text.Json via reflection when deserializing Mailpit's API response.")]
+                     Justification =
+                         "Only ever constructed by System.Text.Json via reflection when deserializing Mailpit's API response.")]
     public sealed class MailpitAddress
     {
         [JsonPropertyName("Address")]

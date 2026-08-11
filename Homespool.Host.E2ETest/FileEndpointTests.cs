@@ -90,14 +90,16 @@ public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
         using StreamContent body = new(new MemoryStream(content));
 
         // Act
-        using HttpResponseMessage response = await client.PutAsync("/api/v1/files/model.bgcode", body, TestContext.Current.CancellationToken);
+        using HttpResponseMessage response =
+            await client.PutAsync("/api/v1/files/model.bgcode", body, TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        using JsonDocument payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        using JsonDocument payload =
+            JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         payload.RootElement.GetProperty("name").GetString().Should().Be("model.bgcode",
-            "the name is the identity now - there is no hash to report");
+                                                                        "the name is the identity now - there is no hash to report");
         payload.RootElement.GetProperty("size").GetInt64().Should().Be(content.Length);
 
         client.Dispose();
@@ -122,9 +124,11 @@ public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
             _factory, "pathreader@example.com");
 
         using StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes("G28\n")));
-        using HttpResponseMessage response = await client.PutAsync("/api/v1/files/a long name.gcode", body, TestContext.Current.CancellationToken);
+        using HttpResponseMessage response =
+            await client.PutAsync("/api/v1/files/a long name.gcode", body, TestContext.Current.CancellationToken);
 
-        using JsonDocument payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        using JsonDocument payload =
+            JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         payload.RootElement.GetProperty("printerPath").GetString().Should().Be("/usb/a long name.gcode");
 
         client.Dispose();
@@ -144,7 +148,8 @@ public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
         using StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes("not gcode")));
 
         // Act
-        using HttpResponseMessage response = await client.PutAsync("/api/v1/files/payload.txt", body, TestContext.Current.CancellationToken);
+        using HttpResponseMessage response =
+            await client.PutAsync("/api/v1/files/payload.txt", body, TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -154,7 +159,8 @@ public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
         // to be describing a shape the endpoint did not return - see OpenApiDocumentTests.
         response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
 
-        JsonElement problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).RootElement;
+        JsonElement problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+                                          .RootElement;
 
         problem.GetProperty("status").GetInt32().Should().Be(400);
         problem.GetProperty("detail").GetString().Should().Contain(".gcode");
@@ -181,7 +187,8 @@ public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
 
         // Act
         using StreamContent second = new(new MemoryStream(Encoding.UTF8.GetBytes("second")));
-        using HttpResponseMessage conflict = await client.PutAsync("/api/v1/files/benchy.gcode", second, TestContext.Current.CancellationToken);
+        using HttpResponseMessage conflict =
+            await client.PutAsync("/api/v1/files/benchy.gcode", second, TestContext.Current.CancellationToken);
 
         using StreamContent third = new(new MemoryStream(Encoding.UTF8.GetBytes("second")));
         using HttpResponseMessage replaced = await client.PutAsync(
@@ -191,7 +198,8 @@ public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
         conflict.StatusCode.Should().Be(HttpStatusCode.Conflict);
         replaced.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        using HttpResponseMessage download = await client.GetAsync("/api/v1/files/benchy.gcode", TestContext.Current.CancellationToken);
+        using HttpResponseMessage download =
+            await client.GetAsync("/api/v1/files/benchy.gcode", TestContext.Current.CancellationToken);
         (await download.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().Be("second");
 
         client.Dispose();
@@ -216,18 +224,20 @@ public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
         // Act & Assert
         using (HttpResponseMessage listed = await client.GetAsync("/api/v1/files", TestContext.Current.CancellationToken))
         {
-            using JsonDocument payload = JsonDocument.Parse(await listed.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            using JsonDocument payload =
+                JsonDocument.Parse(await listed.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             payload.RootElement.GetArrayLength().Should().Be(1);
             payload.RootElement[0].GetProperty("name").GetString().Should().Be("old.gcode");
         }
 
-        using (HttpResponseMessage downloaded = await client.GetAsync("/api/v1/files/old.gcode", TestContext.Current.CancellationToken))
+        using (HttpResponseMessage downloaded =
+               await client.GetAsync("/api/v1/files/old.gcode", TestContext.Current.CancellationToken))
         {
             (await downloaded.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().Be("G28 ; home\n");
         }
 
         using (HttpResponseMessage renamed = await client.PatchAsJsonAsync(
-            "/api/v1/files/old.gcode", new { name = "new.gcode" }, TestContext.Current.CancellationToken))
+                   "/api/v1/files/old.gcode", new { name = "new.gcode" }, TestContext.Current.CancellationToken))
         {
             renamed.StatusCode.Should().Be(HttpStatusCode.OK);
         }
@@ -242,12 +252,14 @@ public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
             moved.StatusCode.Should().Be(HttpStatusCode.OK);
         }
 
-        using (HttpResponseMessage deleted = await client.DeleteAsync("/api/v1/files/new.gcode", TestContext.Current.CancellationToken))
+        using (HttpResponseMessage deleted =
+               await client.DeleteAsync("/api/v1/files/new.gcode", TestContext.Current.CancellationToken))
         {
             deleted.StatusCode.Should().Be(HttpStatusCode.NoContent);
         }
 
-        using (HttpResponseMessage afterDelete = await client.GetAsync("/api/v1/files/new.gcode", TestContext.Current.CancellationToken))
+        using (HttpResponseMessage afterDelete =
+               await client.GetAsync("/api/v1/files/new.gcode", TestContext.Current.CancellationToken))
         {
             afterDelete.StatusCode.Should().Be(HttpStatusCode.NotFound);
         }
@@ -277,22 +289,26 @@ public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
         // Act & Assert
         using (HttpResponseMessage listed = await bob.GetAsync("/api/v1/files", TestContext.Current.CancellationToken))
         {
-            using JsonDocument payload = JsonDocument.Parse(await listed.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            using JsonDocument payload =
+                JsonDocument.Parse(await listed.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             payload.RootElement.GetArrayLength().Should().Be(0, "the listing is scoped to the caller");
         }
 
-        using (HttpResponseMessage fetched = await bob.GetAsync("/api/v1/files/secret.gcode", TestContext.Current.CancellationToken))
+        using (HttpResponseMessage
+               fetched = await bob.GetAsync("/api/v1/files/secret.gcode", TestContext.Current.CancellationToken))
         {
             fetched.StatusCode.Should().Be(HttpStatusCode.NotFound,
-                "404 rather than 403 - telling them apart would confirm the file exists");
+                                           "404 rather than 403 - telling them apart would confirm the file exists");
         }
 
-        using (HttpResponseMessage deleted = await bob.DeleteAsync("/api/v1/files/secret.gcode", TestContext.Current.CancellationToken))
+        using (HttpResponseMessage deleted =
+               await bob.DeleteAsync("/api/v1/files/secret.gcode", TestContext.Current.CancellationToken))
         {
             deleted.StatusCode.Should().Be(HttpStatusCode.NotFound);
         }
 
-        using (HttpResponseMessage stillThere = await alice.GetAsync("/api/v1/files/secret.gcode", TestContext.Current.CancellationToken))
+        using (HttpResponseMessage stillThere =
+               await alice.GetAsync("/api/v1/files/secret.gcode", TestContext.Current.CancellationToken))
         {
             stillThere.StatusCode.Should().Be(HttpStatusCode.OK, "and none of that touched the file");
         }
@@ -375,13 +391,14 @@ public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
         using StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes("G28")));
 
         // Act
-        using HttpResponseMessage response = await client.PutAsync("/api/v1/files/model.gcode", body, TestContext.Current.CancellationToken);
+        using HttpResponseMessage response =
+            await client.PutAsync("/api/v1/files/model.gcode", body, TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         response.Headers.Location.Should().BeNull("a script has nowhere to follow a redirect to");
         response.Headers.WwwAuthenticate.ToString().Should().Contain("Bearer",
-            "the token scheme is in the policy, so its challenge says how to authenticate");
+                                                                     "the token scheme is in the policy, so its challenge says how to authenticate");
     }
 
     /// <summary>
@@ -414,12 +431,14 @@ public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
         using StreamContent body = new(new MemoryStream(content));
 
         // Act
-        using HttpResponseMessage response = await client.PutAsync("/api/v1/files/bearer.bgcode", body, TestContext.Current.CancellationToken);
+        using HttpResponseMessage response =
+            await client.PutAsync("/api/v1/files/bearer.bgcode", body, TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        using JsonDocument payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        using JsonDocument payload =
+            JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         payload.RootElement.GetProperty("name").GetString().Should().Be("bearer.bgcode");
         payload.RootElement.GetProperty("size").GetInt64().Should().Be(content.Length);
     }
@@ -440,7 +459,8 @@ public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
         using StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes("G28")));
 
         // Act
-        using HttpResponseMessage response = await client.PutAsync("/api/v1/files/model.gcode", body, TestContext.Current.CancellationToken);
+        using HttpResponseMessage response =
+            await client.PutAsync("/api/v1/files/model.gcode", body, TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);

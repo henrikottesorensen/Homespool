@@ -39,7 +39,7 @@ public class FirmwareFaithfulPolicyTests
         reply.RootElement.GetProperty("command_id").GetUInt32().Should().Be(5);
         reply.RootElement.GetProperty("job_id").GetInt32().Should().Be(301);
         reply.RootElement.GetProperty("state").GetString().Should().Be("PRINTING",
-            "the ack reports the state at render time, and the pause has not taken effect yet");
+                                                                       "the ack reports the state at render time, and the pause has not taken effect yet");
         _device.State.Should().Be(DeviceState.Paused, "the device itself has still transitioned");
     }
 
@@ -76,7 +76,7 @@ public class FirmwareFaithfulPolicyTests
 
         using JsonDocument reply = Parse(replies[0]);
         reply.RootElement.GetProperty("state").GetString().Should().Be("READY",
-            "confirmed on the wire - this one is not deferred the way job control is");
+                                                                       "confirmed on the wire - this one is not deferred the way job control is");
     }
 
     /// <summary>PAUSE_PRINT with nothing printing rejects with the JC macro's fixed reason.</summary>
@@ -294,7 +294,7 @@ public class FirmwareFaithfulPolicyTests
         using JsonDocument reply = Parse(replies[0]);
         reply.RootElement.GetProperty("event").GetString().Should().Be("REJECTED");
         reply.RootElement.GetProperty("reason").GetString().Should().Be(expected,
-            "the path is rejected on its own terms, not as \"Can't print now\"");
+                                                                        "the path is rejected on its own terms, not as \"Can't print now\"");
     }
 
     /// <summary>
@@ -354,7 +354,7 @@ public class FirmwareFaithfulPolicyTests
         // The wire shape CommandWireEncoder actually produces: an empty "args" array beside the
         // keyword arguments, which is where firmware reads "path" from.
         return RawJsonFrame(id,
-            $$$"""{"command": "START_PRINT", "args": [], "kwargs": {"path": "{{{path}}}"}}""");
+                            $$$"""{"command": "START_PRINT", "args": [], "kwargs": {"path": "{{{path}}}"}}""");
     }
 
     private static ServerCommandFrame JsonCommand(uint id, string name)

@@ -178,7 +178,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
 
         // Assert - the gate with nothing underneath it
         fake.Device.State.Should().Be(DeviceState.Idle,
-            "Idle means nobody has offered the printer up for work, and firmware would have accepted the print");
+                                      "Idle means nobody has offered the printer up for work, and firmware would have accepted the print");
         (await QueueDepthAsync(printerId)).Should().Be(1, "the entry is still waiting, not consumed");
 
         // Act 3 - a person makes it ready, and telemetry carries that to the live state the loop reads
@@ -190,7 +190,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
 
         // Assert - it printed, and the queue is empty
         (await WaitUntilAsync(() => Task.FromResult(fake.Device.State == DeviceState.Printing),
-            TimeSpan.FromSeconds(10))).Should().BeTrue();
+                              TimeSpan.FromSeconds(10))).Should().BeTrue();
 
         (await QueueDepthAsync(printerId)).Should().Be(0, "the entry is consumed once the printer takes the print");
 
@@ -276,12 +276,12 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
 
         // Assert - a row exists, and it reaches Printing once telemetry reports it
         (await WaitUntilAsync(async () => await OutcomeIsAsync(printerId, PrintState.Printing),
-            TimeSpan.FromSeconds(30))).Should().BeTrue("the row is promoted once the printer reports PRINTING");
+                              TimeSpan.FromSeconds(30))).Should().BeTrue("the row is promoted once the printer reports PRINTING");
 
         PrintJob printing = await ActiveAsync(printerId);
         printing.FileName.Should().Be("history.bgcode");
         printing.TrackingId.Should().Be(handle,
-            "the handle the enqueue returned is the one identifier that survives the start of the print");
+                                        "the handle the enqueue returned is the one identifier that survives the start of the print");
         printing.QueuedByUserId.Should().Be(userId);
         printing.PrinterPath.Should().StartWith("/usb/");
         printing.FirmwareJobId.Should().NotBeNull("telemetry carries job_id for the whole print");
@@ -428,14 +428,14 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
 
         await AdvanceAsync(printerId);
         (await WaitUntilAsync(async () => await OutcomeIsAsync(printerId, PrintState.Printing),
-            TimeSpan.FromSeconds(30))).Should().BeTrue();
+                              TimeSpan.FromSeconds(30))).Should().BeTrue();
 
         // Act - stop it the way a person would, over the API
         using HttpClient client = _factory.CreateClient(
             new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer",
-            await IssueTokenAsync(userId));
+                                                                                   await IssueTokenAsync(userId));
 
         using HttpResponseMessage response = await client.PutAsync(
             $"/api/v1/printers/{await UuidAsync(printerId)}/command/stop", content: null,
@@ -453,7 +453,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         stopped.State.Should().Be(PrintState.Stopped);
         stopped.EndedAt.Should().NotBeNull();
         stopped.StoppedByUserId.Should().Be(userId,
-            "a stop made here and one made at the panel are the same state change, so this is the only record of which it was");
+                                            "a stop made here and one made at the panel are the same state change, so this is the only record of which it was");
 
         await EndRunAsync(fake, run);
     }
@@ -479,7 +479,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
     }
 
     private async Task<WebSocket> ConnectAsync(FakePrinterConnectRequest request,
-        CancellationToken cancellationToken)
+                                               CancellationToken cancellationToken)
     {
         WebSocketClient client = _factory.Server.CreateWebSocketClient();
         client.SubProtocols.Add(request.SubProtocol);
@@ -507,7 +507,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         PrintFileCatalog catalog = scope.ServiceProvider.GetRequiredService<PrintFileCatalog>();
 
         await catalog.SaveAsync(userId, name, new MemoryStream(Encoding.UTF8.GetBytes("G28 ; home\nG1 X10\n")),
-            overwrite: false, TestContext.Current.CancellationToken);
+                                overwrite: false, TestContext.Current.CancellationToken);
     }
 
     private async Task<Guid> EnqueueAsync(int printerId, long userId, string name)
@@ -515,7 +515,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         using IServiceScope scope = _factory.Services.CreateScope();
 
         QueuedPrint queued = await scope.ServiceProvider.GetRequiredService<PrintQueueService>()
-                   .EnqueueAsync(printerId, userId, name, TestContext.Current.CancellationToken);
+                                        .EnqueueAsync(printerId, userId, name, TestContext.Current.CancellationToken);
 
         return queued.TrackingId;
     }
@@ -528,7 +528,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
 
         return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
                           .PrintJobs.AnyAsync(job => job.PrinterId == printerId && job.State == outcome,
-                              TestContext.Current.CancellationToken);
+                                              TestContext.Current.CancellationToken);
     }
 
     private async Task<PrintJob> ActiveAsync(int printerId)
@@ -537,7 +537,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
 
         return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
                           .PrintJobs.SingleAsync(job => job.PrinterId == printerId && job.EndedAt == null,
-                              TestContext.Current.CancellationToken);
+                                                 TestContext.Current.CancellationToken);
     }
 
     private async Task<PrintJob> SingleJobAsync(int printerId)
@@ -546,7 +546,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
 
         return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
                           .PrintJobs.SingleAsync(job => job.PrinterId == printerId,
-                              TestContext.Current.CancellationToken);
+                                                 TestContext.Current.CancellationToken);
     }
 
     /// <summary>What a person looking at the printer would be told about the hold.</summary>
@@ -575,7 +575,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
 
         return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
                           .PrintJobs.CountAsync(job => job.PrinterId == printerId,
-                              TestContext.Current.CancellationToken);
+                                                TestContext.Current.CancellationToken);
     }
 
     /// <summary>
@@ -588,8 +588,8 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
         foreach (PrintFileOnPrinter row in await context.PrintFilesOnPrinters
-                     .Where(candidate => candidate.PrinterId == printerId)
-                     .ToListAsync(TestContext.Current.CancellationToken))
+                                                        .Where(candidate => candidate.PrinterId == printerId)
+                                                        .ToListAsync(TestContext.Current.CancellationToken))
         {
             row.BlockedAt = DateTimeOffset.UnixEpoch;
         }
@@ -603,7 +603,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
 
         return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
                           .QueuedPrints.CountAsync(queued => queued.PrinterId == printerId,
-                              TestContext.Current.CancellationToken);
+                                                   TestContext.Current.CancellationToken);
     }
 
     private async Task<int> ReplicaCountAsync(int printerId)
@@ -612,7 +612,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
 
         return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
                           .PrintFilesOnPrinters.CountAsync(row => row.PrinterId == printerId,
-                              TestContext.Current.CancellationToken);
+                                                           TestContext.Current.CancellationToken);
     }
 
     /// <summary>Whether the loop has seen the printer's own <c>FILE_INFO</c> and recorded its path.</summary>

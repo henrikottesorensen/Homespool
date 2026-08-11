@@ -68,16 +68,16 @@ public sealed class RequiresMailpitTlsFixtureFactAttribute : FactAttribute
         if (!File.Exists(caCertPath))
         {
             Skip = "No local Mailpit TLS fixture. Run Homespool.Host.IntegrationTest/start-mailpit-tls.sh, "
-                 + "which brings up Mailpit with STARTTLS and generates the throwaway CA this verifies against.";
+                   + "which brings up Mailpit with STARTTLS and generates the throwaway CA this verifies against.";
             return;
         }
 
         if (!AdvertisesStartTls())
         {
             Skip = $"Nothing on {FixtureHost}:{FixturePort} advertises STARTTLS, though the throwaway CA from "
-                 + "an earlier run is still here. A plain Mailpit is probably running as a development "
-                 + "inbox. Run Homespool.Host.IntegrationTest/start-mailpit-tls.sh to exercise the real "
-                 + "handshake.";
+                   + "an earlier run is still here. A plain Mailpit is probably running as a development "
+                   + "inbox. Run Homespool.Host.IntegrationTest/start-mailpit-tls.sh to exercise the real "
+                   + "handshake.";
         }
     }
 

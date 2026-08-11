@@ -90,7 +90,8 @@ public sealed class SmtpEmailSenderMailpitTests : IAsyncLifetime, IDisposable
         string recipient = $"recipient-{Guid.NewGuid():N}@example.com";
 
         // Act
-        EmailSendResult result = await sender.SendEmailAsync(recipient, "Confirm your email", "<p>Hello from the integration test</p>");
+        EmailSendResult result =
+            await sender.SendEmailAsync(recipient, "Confirm your email", "<p>Hello from the integration test</p>");
 
         // Assert
         result.Should().Be(EmailSendResult.Sent);

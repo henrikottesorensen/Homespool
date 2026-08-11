@@ -25,7 +25,7 @@ public sealed class DelayedReplyPolicy : CommandAnswerPolicy
     public override IReadOnlyList<PlannedReply> Answer(ServerCommandFrame frame, FakeDevice device)
     {
         return _inner.Answer(frame, device)
-            .Select((reply, index) => index == 0 ? reply with { Delay = reply.Delay + _delay } : reply)
-            .ToList();
+                     .Select((reply, index) => index == 0 ? reply with { Delay = reply.Delay + _delay } : reply)
+                     .ToList();
     }
 }

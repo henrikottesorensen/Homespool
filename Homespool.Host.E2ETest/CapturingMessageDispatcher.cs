@@ -25,8 +25,8 @@ internal sealed class CapturingMessageDispatcher : MessageDispatcher
 {
     public CapturingMessageDispatcher()
         : base(NullLogger<MessageDispatcher>.Instance,
-            new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
-            TimeProvider.System)
+               new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
+               TimeProvider.System)
     {
     }
 

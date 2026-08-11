@@ -30,10 +30,10 @@ public sealed class CaptureReplaySourceTests : IDisposable
     public void CommandFramesAreStrippedAndDocumentsSplitInOrder()
     {
         File.WriteAllText(_capturePath, """
-            {"state":"IDLE"}
-            J00000140{"command": "SEND_INFO", "kwargs": {}}
-            {"job_id":301,"progress":25,"state":"PRINTING"}{"state":"PRINTING","event":"STATE_CHANGED"}
-            """);
+                                        {"state":"IDLE"}
+                                        J00000140{"command": "SEND_INFO", "kwargs": {}}
+                                        {"job_id":301,"progress":25,"state":"PRINTING"}{"state":"PRINTING","event":"STATE_CHANGED"}
+                                        """);
 
         CaptureReplaySource source = new(_capturePath);
         FakeDevice device = new();

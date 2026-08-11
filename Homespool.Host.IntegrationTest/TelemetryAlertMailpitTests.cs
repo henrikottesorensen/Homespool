@@ -105,7 +105,7 @@ public sealed class TelemetryAlertMailpitTests : IAsyncLifetime, IDisposable
         // database - what is under test is the alerting, not the diagnosis.
         services.AddHealthChecks()
                 .AddCheck("telemetry-persistence", () => new HealthCheckResult(
-                    status, "Nothing is reaching the database."));
+                              status, "Nothing is reaching the database."));
 
         _provider = services.BuildServiceProvider();
 
@@ -130,8 +130,8 @@ public sealed class TelemetryAlertMailpitTests : IAsyncLifetime, IDisposable
     private TelemetryAlertService NewAlertService(ServiceProvider provider)
     {
         return new(provider.GetRequiredService<HealthCheckService>(),
-            provider.GetRequiredService<IServiceScopeFactory>(),
-            NullLogger<TelemetryAlertService>.Instance);
+                   provider.GetRequiredService<IServiceScopeFactory>(),
+                   NullLogger<TelemetryAlertService>.Instance);
     }
 
     [Fact]

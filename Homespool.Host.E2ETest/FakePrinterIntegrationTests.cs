@@ -56,7 +56,12 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     {
         _root = new HomespoolFactory($"Data Source={_databasePath}", null, _logs);
         _factory = _root.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
-            services.PostConfigure<PrusaConnectOptions>(options => options.CommandResponseTimeoutSeconds = 2)));
+                                                                                         services
+                                                                                             .PostConfigure<
+                                                                                                 PrusaConnectOptions>(options =>
+                                                                                                 options
+                                                                                                         .CommandResponseTimeoutSeconds =
+                                                                                                     2)));
 
         _ = _factory.Server;
 
@@ -109,7 +114,8 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         // 1 ms pacing keeps the writer's drop-oldest channel (4 batches of headroom) far from
         // engaging, so an exact row count is a fair assertion rather than a race.
         CaptureReplaySource source = new("websocket.capture", TimeSpan.FromMilliseconds(1));
-        await using FakePrinterClient fake = new(identity, TimeProvider.System, new FakePrinterOptions { TelemetrySource = source });
+        await using FakePrinterClient fake = new(identity, TimeProvider.System,
+                                                 new FakePrinterOptions { TelemetrySource = source });
         fake.Token = token;
 
         await fake.ConnectAsync(ConnectViaTestServerAsync, TestContext.Current.CancellationToken);
@@ -133,9 +139,10 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         using (IServiceScope scope = _factory.Services.CreateScope())
         {
             HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
-            PrinterLiveState liveState = await context.PrinterLiveStates.SingleAsync(l => l.PrinterId == printerId, TestContext.Current.CancellationToken);
+            PrinterLiveState liveState =
+                await context.PrinterLiveStates.SingleAsync(l => l.PrinterId == printerId, TestContext.Current.CancellationToken);
             liveState.LastSeenAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromMinutes(5),
-                "the merge ran against real replayed data just now");
+                                                    "the merge ran against real replayed data just now");
         }
 
         await fake.CloseAsync(TestContext.Current.CancellationToken);
@@ -615,7 +622,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             TimeSpan.FromSeconds(30));
 
         ended.Should().BeTrue("the transfer never reached a terminal state - the inline engine has no "
-                            + "stall timeout, so a hang here is the production symptom");
+                              + "stall timeout, so a hang here is the production symptom");
         fake.ReplyFault.Should().BeNull();
 
         return fake.Device.LastTransfer!;
@@ -681,7 +688,8 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             Readings = new TelemetryReadings(TimeToFilamentChange: 300),
         };
 
-        await using FakePrinterClient fake = new(identity, TimeProvider.System, new FakePrinterOptions { TelemetrySource = source });
+        await using FakePrinterClient fake = new(identity, TimeProvider.System,
+                                                 new FakePrinterOptions { TelemetrySource = source });
         fake.Token = token;
         fake.Device.StartPrint(jobId: 77);
 
@@ -695,7 +703,8 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
             return await context.TelemetrySamples
-                .AnyAsync(sample => sample.PrinterId == printerId && sample.TimeToFilamentChange == 300, TestContext.Current.CancellationToken);
+                                .AnyAsync(sample => sample.PrinterId == printerId && sample.TimeToFilamentChange == 300,
+                                          TestContext.Current.CancellationToken);
         }, TimeSpan.FromSeconds(20));
 
         // Assert
@@ -704,10 +713,11 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         using (IServiceScope scope = _factory.Services.CreateScope())
         {
             HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
-            PrinterLiveState liveState = await context.PrinterLiveStates.SingleAsync(l => l.PrinterId == printerId, TestContext.Current.CancellationToken);
+            PrinterLiveState liveState =
+                await context.PrinterLiveStates.SingleAsync(l => l.PrinterId == printerId, TestContext.Current.CancellationToken);
 
             liveState.TimeToFilamentChange.Should().Be(300,
-                "the live view is what a UI reads, so the merge has to keep it");
+                                                       "the live view is what a UI reads, so the merge has to keep it");
         }
 
         await EndRunAsync(fake, run);
@@ -752,12 +762,14 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         // Act
-        using HttpResponseMessage response = await client.GetAsync($"/api/v1/printers/{uuid}/storage/usb", TestContext.Current.CancellationToken);
+        using HttpResponseMessage response =
+            await client.GetAsync($"/api/v1/printers/{uuid}/storage/usb", TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        JsonElement listing = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).RootElement;
+        JsonElement listing = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+                                          .RootElement;
 
         listing.GetProperty("path").GetString().Should().Be("/usb");
         listing.GetProperty("kind").GetString().Should().Be("folder");
@@ -776,7 +788,8 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         entries.Should().ContainSingle(e => e.GetProperty("kind").GetString() == "folder");
 
         // And the nested path lists on its own, which is what the catch-all route is for.
-        using HttpResponseMessage nested = await client.GetAsync($"/api/v1/printers/{uuid}/storage/usb/sub", TestContext.Current.CancellationToken);
+        using HttpResponseMessage nested =
+            await client.GetAsync($"/api/v1/printers/{uuid}/storage/usb/sub", TestContext.Current.CancellationToken);
 
         nested.StatusCode.Should().Be(HttpStatusCode.OK);
 
@@ -816,10 +829,11 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
         response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
 
-        JsonElement problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).RootElement;
+        JsonElement problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+                                          .RootElement;
 
         problem.GetProperty("detail").GetString().Should().Be("File not found",
-            "the printer's own words, not ours");
+                                                              "the printer's own words, not ours");
         problem.GetProperty("command").GetString().Should().Be("SEND_FILE_INFO");
         problem.GetProperty("outcome").GetString().Should().Be("Rejected");
 
@@ -857,9 +871,9 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     {
         (PrinterIdentity identity, string token, int printerId, long userId) = await EnrolNewPrinterAsync();
 
-        FakePrinterOptions effective = policyFactory is null
-            ? options ?? new FakePrinterOptions()
-            : new FakePrinterOptions { Policy = policyFactory(identity) };
+        FakePrinterOptions effective = policyFactory is null ?
+            options ?? new FakePrinterOptions() :
+            new FakePrinterOptions { Policy = policyFactory(identity) };
 
         FakePrinterClient fake = new(identity, TimeProvider.System, effective);
         fake.Token = token;
@@ -920,10 +934,10 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.NoContent,
-            "204 means the printer answered and did not refuse");
+                                        "204 means the printer answered and did not refuse");
 
         fake.Device.State.Should().Be(DeviceState.Paused,
-            "the command must have reached the printer and executed, not merely been accepted by the API");
+                                      "the command must have reached the printer and executed, not merely been accepted by the API");
 
         // A printer nobody may see is indistinguishable from one that does not exist.
         using HttpResponseMessage unknown = await client.PutAsync(
@@ -967,7 +981,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         // Every command these tests send is one the printer answers, so a null here would itself be
         // a failure worth surfacing loudly rather than a case to handle.
         return await service.SendCommandAsync(printerId, command, userId, CancellationToken.None)
-            ?? throw new InvalidOperationException($"{command.WireName} reported no answer expected.");
+               ?? throw new InvalidOperationException($"{command.WireName} reported no answer expected.");
     }
 
     private async Task<WebSocket> ConnectViaTestServerAsync(FakePrinterConnectRequest request, CancellationToken cancellationToken)

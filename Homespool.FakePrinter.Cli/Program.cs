@@ -84,8 +84,10 @@ public static class Program
     {
         Console.WriteLine("Usage:");
         Console.WriteLine("  fakeprinter enrol  --server <url> [--identity <file>]");
-        Console.WriteLine("  fakeprinter run    --server <url> [--identity <file>] [--capture <path>] [--printing] [--interval-ms <n>] [--events-every-nth <n>] [--events-every-seconds <n>] [--tools <n>] [--mmu] [--junk-fields <n>] [--junk-distinct]");
-        Console.WriteLine("  fakeprinter blast  --server <url> [--identity <file>] [--events-every-nth <n>] [--events-every-seconds <n>] [--tools <n>] [--mmu] [--junk-fields <n>] [--junk-distinct]");
+        Console.WriteLine(
+            "  fakeprinter run    --server <url> [--identity <file>] [--capture <path>] [--printing] [--interval-ms <n>] [--events-every-nth <n>] [--events-every-seconds <n>] [--tools <n>] [--mmu] [--junk-fields <n>] [--junk-distinct]");
+        Console.WriteLine(
+            "  fakeprinter blast  --server <url> [--identity <file>] [--events-every-nth <n>] [--events-every-seconds <n>] [--tools <n>] [--mmu] [--junk-fields <n>] [--junk-distinct]");
         Console.WriteLine();
         Console.WriteLine("--events-every-nth <n> makes every n-th message a STATE_CHANGED event rather");
         Console.WriteLine("than telemetry - a fixed ratio, 10 matching the firmware ratio, which is what");
@@ -321,9 +323,7 @@ public static class Program
     /// </remarks>
     private static TelemetryReadings ReadingsFrom(Dictionary<string, string> named)
     {
-        int tools = named.TryGetValue("tools", out string? value) && int.TryParse(value, out int parsed)
-            ? Math.Max(parsed, 1)
-            : 1;
+        int tools = named.TryGetValue("tools", out string? value) && int.TryParse(value, out int parsed) ? Math.Max(parsed, 1) : 1;
 
         bool mmu = named.ContainsKey("mmu");
 
@@ -338,8 +338,8 @@ public static class Program
 
     private static TimeSpan IntervalFrom(Dictionary<string, string> named, int defaultMilliseconds)
     {
-        return named.TryGetValue("interval-ms", out string? value) && int.TryParse(value, out int milliseconds)
-            ? TimeSpan.FromMilliseconds(milliseconds)
-            : TimeSpan.FromMilliseconds(defaultMilliseconds);
+        return named.TryGetValue("interval-ms", out string? value) && int.TryParse(value, out int milliseconds) ?
+            TimeSpan.FromMilliseconds(milliseconds) :
+            TimeSpan.FromMilliseconds(defaultMilliseconds);
     }
 }

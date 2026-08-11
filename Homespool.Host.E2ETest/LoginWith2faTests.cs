@@ -143,7 +143,7 @@ public sealed class LoginWith2faTests : IAsyncLifetime, IDisposable
                       ?? throw new InvalidOperationException($"No user seeded for {Email}.");
 
         string base32Key = await userManager.GetAuthenticatorKeyAsync(user)
-                            ?? throw new InvalidOperationException("No authenticator key set for the seeded user.");
+                           ?? throw new InvalidOperationException("No authenticator key set for the seeded user.");
 
         byte[] secretBytes = Base32Encoding.ToBytes(base32Key);
 
@@ -160,7 +160,8 @@ public sealed class LoginWith2faTests : IAsyncLifetime, IDisposable
         HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         HttpResponseMessage loginGet = await client.GetAsync("/Account/Login");
-        string loginAntiforgeryToken = AntiforgeryTestHelper.ExtractToken(await loginGet.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        string loginAntiforgeryToken =
+            AntiforgeryTestHelper.ExtractToken(await loginGet.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
         using FormUrlEncodedContent loginBody = new(new Dictionary<string, string>
         {
@@ -171,14 +172,16 @@ public sealed class LoginWith2faTests : IAsyncLifetime, IDisposable
 
         HttpResponseMessage loginPostResponse = await client.PostAsync("/Account/Login", loginBody);
 
-        loginPostResponse.StatusCode.Should().Be(HttpStatusCode.Redirect, "a 2FA-enabled account still redirects, just not to the app root");
+        loginPostResponse.StatusCode.Should()
+                         .Be(HttpStatusCode.Redirect, "a 2FA-enabled account still redirects, just not to the app root");
         loginPostResponse.Headers.Location!.OriginalString.Should().StartWith("/Account/LoginWith2fa");
         IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, loginPostResponse).Should()
-            .BeFalse("the password alone must not complete sign-in for a 2FA-enabled account");
+                                .BeFalse("the password alone must not complete sign-in for a 2FA-enabled account");
 
         HttpResponseMessage twoFactorGet = await client.GetAsync(loginPostResponse.Headers.Location);
         twoFactorGet.StatusCode.Should().Be(HttpStatusCode.OK);
-        string twoFactorAntiforgeryToken = AntiforgeryTestHelper.ExtractToken(await twoFactorGet.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        string twoFactorAntiforgeryToken =
+            AntiforgeryTestHelper.ExtractToken(await twoFactorGet.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
         return (client, twoFactorAntiforgeryToken);
     }
@@ -199,13 +202,15 @@ public sealed class LoginWith2faTests : IAsyncLifetime, IDisposable
             using FormUrlEncodedContent body = TwoFactorBody(antiforgeryToken, code);
 
             // Act
-            HttpResponseMessage postResponse = await client.PostAsync("/Account/LoginWith2fa", body, TestContext.Current.CancellationToken);
+            HttpResponseMessage postResponse =
+                await client.PostAsync("/Account/LoginWith2fa", body, TestContext.Current.CancellationToken);
 
             // Assert
-            postResponse.StatusCode.Should().Be(HttpStatusCode.Redirect, "a valid code completes sign-in and redirects to the return URL");
+            postResponse.StatusCode.Should()
+                        .Be(HttpStatusCode.Redirect, "a valid code completes sign-in and redirects to the return URL");
             postResponse.Headers.Location!.OriginalString.Should().Be("/");
             IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, postResponse).Should()
-                .BeTrue("a valid authenticator code must issue the Identity application cookie");
+                                    .BeTrue("a valid authenticator code must issue the Identity application cookie");
         }
     }
 
@@ -221,7 +226,8 @@ public sealed class LoginWith2faTests : IAsyncLifetime, IDisposable
             using FormUrlEncodedContent body = TwoFactorBody(antiforgeryToken, "000000");
 
             // Act
-            HttpResponseMessage postResponse = await client.PostAsync("/Account/LoginWith2fa", body, TestContext.Current.CancellationToken);
+            HttpResponseMessage postResponse =
+                await client.PostAsync("/Account/LoginWith2fa", body, TestContext.Current.CancellationToken);
 
             // Assert
             postResponse.StatusCode.Should().Be(HttpStatusCode.OK, "a rejected code re-renders the page rather than redirecting");
@@ -264,7 +270,8 @@ public sealed class LoginWith2faTests : IAsyncLifetime, IDisposable
 
             // Assert
             lastResponse.Should().NotBeNull();
-            lastResponse!.StatusCode.Should().Be(HttpStatusCode.Redirect, "enough failed codes must eventually lock the account out");
+            lastResponse!.StatusCode.Should()
+                         .Be(HttpStatusCode.Redirect, "enough failed codes must eventually lock the account out");
             lastResponse.Headers.Location!.OriginalString.Should().Be("/Account/Lockout");
         }
     }

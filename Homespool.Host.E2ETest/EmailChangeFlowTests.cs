@@ -82,11 +82,12 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime, IDisposable
 
         using (client)
         {
-            HttpResponseMessage pageResponse = await client.GetAsync("/Account/Manage/Email", TestContext.Current.CancellationToken);
+            HttpResponseMessage pageResponse =
+                await client.GetAsync("/Account/Manage/Email", TestContext.Current.CancellationToken);
 
             pageResponse.StatusCode.Should().Be(HttpStatusCode.OK,
-                "every page under Account/Manage rendered a 500 while its layout pointed at the "
-              + "Identity.UI file that was removed with the package");
+                                                "every page under Account/Manage rendered a 500 while its layout pointed at the "
+                                                + "Identity.UI file that was removed with the package");
 
             string page = await pageResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             string token = AntiforgeryTestHelper.ExtractToken(page);
@@ -98,11 +99,12 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime, IDisposable
                 ["__RequestVerificationToken"] = token,
             });
 
-            HttpResponseMessage response = await client.PostAsync("/Account/Manage/Email?handler=ChangeEmail", body, TestContext.Current.CancellationToken);
+            HttpResponseMessage response =
+                await client.PostAsync("/Account/Manage/Email?handler=ChangeEmail", body, TestContext.Current.CancellationToken);
 
             // Assert
             response.StatusCode.Should().Be(HttpStatusCode.Redirect,
-                "a successful request redirects back to the page with a status message");
+                                            "a successful request redirects back to the page with a status message");
 
             _logs.Failures.Should().BeEmpty("building the confirmation link must not throw");
         }

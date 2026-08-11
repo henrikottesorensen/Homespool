@@ -18,8 +18,14 @@ RUN mkdir -p /app/data /app/data/proxy-certificates \
 # with. Installed before the USER switch because apt needs root. If you would rather not carry curl,
 # drop this and the HEALTHCHECK below and declare the probe in compose or your orchestrator instead -
 # the /health endpoint is the same either way.
+#
+# hwdata carries /usr/share/misc/usb.ids, which is how an attached camera gets a name somebody
+# recognises. udev names a device after the strings it reports and falls back to numeric ids when it
+# reports none - a Logitech C910 is one of those, listing itself as 046d_0821 - and this table is
+# what turns that back into "Logitech HD Webcam C910". Data only, no binaries, and UsbDeviceNames
+# degrades to udev's own name when it is absent, so dropping this costs nicer names and nothing else.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends curl \
+ && apt-get install -y --no-install-recommends curl hwdata \
  && rm -rf /var/lib/apt/lists/*
 USER $APP_UID
 EXPOSE 8080

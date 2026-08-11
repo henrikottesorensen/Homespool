@@ -50,6 +50,13 @@ public static class Registration
         // Reads a bind-mounted directory; nothing per-request about it.
         services.AddSingleton<LocalCameraDevices>();
 
+        // Singleton for its cache: the point of it is that a name is looked up once per camera and
+        // not once per page render.
+        services.AddSingleton<UsbDeviceNames>();
+
+        // The one answer to "what is this camera called", so pages and endpoints cannot disagree.
+        services.AddSingleton<CameraDisplayNames>();
+
         // Scoped: both hold a DbContext, and the access gate memoises within a request.
         services.AddScoped<Authorisation.CameraAccessService>();
         services.AddScoped<CameraService>();

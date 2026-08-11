@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
 using Homespool.Host.Authorisation;
+using Homespool.Host.Cameras;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Queue;
@@ -38,6 +39,7 @@ public class DetailModel : PageModel
     private readonly QueueSnapshotReader _snapshots;
     private readonly PrinterAccessService _access;
     private readonly CameraAccessService _cameraAccess;
+    private readonly CameraDisplayNames _cameraNames;
     private readonly PrinterConnectionRegistry _connectionRegistry;
     private readonly UserManager<HSUser> _userManager;
 
@@ -48,6 +50,7 @@ public class DetailModel : PageModel
                        QueueSnapshotReader snapshots,
                        PrinterAccessService access,
                        CameraAccessService cameraAccess,
+                       CameraDisplayNames cameraNames,
                        PrinterConnectionRegistry connectionRegistry,
                        UserManager<HSUser> userManager)
     {
@@ -58,6 +61,7 @@ public class DetailModel : PageModel
         _snapshots = snapshots;
         _access = access;
         _cameraAccess = cameraAccess;
+        _cameraNames = cameraNames;
         _connectionRegistry = connectionRegistry;
         _userManager = userManager;
     }
@@ -164,6 +168,19 @@ public class DetailModel : PageModel
     /// The cameras watching this printer that the caller may see. Empty is the ordinary case.
     /// </summary>
     public IReadOnlyList<Camera> Cameras { get; private set; } = [];
+
+    /// <summary>
+    /// The caption under a picture — see <see cref="CameraDisplayNames"/>.
+    /// </summary>
+    /// <remarks>
+    /// The position is offered as the last resort because a uuid reads badly under a photograph.
+    /// It applies only to a network camera nobody has named, and is ambiguous only on a printer
+    /// watched by several of them at once.
+    /// </remarks>
+    public string CameraName(Camera camera, int index)
+    {
+        return _cameraNames.For(camera, $"Camera {index + 1}");
+    }
 
     public async Task<IActionResult> OnGetAsync(Guid uuid, CancellationToken cancellationToken)
     {

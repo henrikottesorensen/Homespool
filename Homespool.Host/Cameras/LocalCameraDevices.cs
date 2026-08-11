@@ -46,10 +46,12 @@ public sealed class LocalCameraDevices
     private const string CaptureSuffix = "-video-index0";
 
     private readonly ILogger<LocalCameraDevices> _logger;
+    private readonly UsbDeviceNames _usbNames;
 
-    public LocalCameraDevices(ILogger<LocalCameraDevices> logger)
+    public LocalCameraDevices(ILogger<LocalCameraDevices> logger, UsbDeviceNames usbNames)
     {
         _logger = logger;
+        _usbNames = usbNames;
     }
 
     /// <summary>
@@ -102,16 +104,89 @@ public sealed class LocalCameraDevices
         }
     }
 
+    /// <summary>Whether a segment is a four-digit hex id, as udev writes vendor and product.</summary>
+    private static bool IsHexId(string value)
+    {
+        if (value.Length != 4)
+        {
+            return false;
+        }
+
+        foreach (char character in value)
+        {
+            if (!Uri.IsHexDigit(character))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// The readable name of the device a source string reads, or null if it does not read one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is how a camera row gets a caption without storing one. A camera's <c>Source</c>
+    /// already contains the by-id name — <see cref="SourceFor"/> put it there — so the description
+    /// is recoverable whenever it is wanted, and nothing has to be kept in step with the hardware.
+    /// </para>
+    /// <para>
+    /// Null for a network camera, which has no device to name. The caller decides what to show
+    /// instead; there is nothing sensible to invent here.
+    /// </para>
+    /// </remarks>
+    public string? DescribeSource(string? source)
+    {
+        if (source is null)
+        {
+            return null;
+        }
+
+        const string VideoParameter = "video=";
+
+        int start = source.IndexOf(VideoParameter, StringComparison.Ordinal);
+        if (start < 0)
+        {
+            return null;
+        }
+
+        start += VideoParameter.Length;
+
+        int end = source.IndexOf('&', start);
+        string path = end < 0 ? source[start..] : source[start..end];
+
+        // The last segment is the by-id name; the directory in front of it is not interesting and
+        // is not assumed, so a source written by hand against by-path still names something.
+        int slash = path.LastIndexOf('/');
+        string deviceName = slash < 0 ? path : path[(slash + 1)..];
+
+        return deviceName.Length == 0 ? null : Describe(deviceName);
+    }
+
     /// <summary>
     /// Turns a udev name into something a person recognises.
     /// </summary>
     /// <remarks>
-    /// Best effort and deliberately not clever: udev's own name is kept alongside, so a bad guess
-    /// costs nothing. <c>usb-046d_0821_437242E0-video-index0</c> reads as <c>046d_0821_437242E0</c>,
-    /// which is vendor, product and serial - enough to tell two cameras apart, which is all this has
-    /// to do.
+    /// <para>
+    /// <b>udev has usually done this already.</b> A camera that reports its own strings is named
+    /// with them, so <c>usb-Logitech_BRIO-video-index0</c> needs only its punctuation tidied. The
+    /// numeric form is the fallback udev takes when the hardware reports nothing usable:
+    /// <c>usb-046d_0821_437242E0-video-index0</c> is a real C910, and vendor, product and serial is
+    /// all it will say for itself.
+    /// </para>
+    /// <para>
+    /// <b>Only the numeric form is looked up</b>, in <see cref="UsbDeviceNames"/>. Names udev
+    /// already resolved are left alone: they came from the device, and the table is a worse source
+    /// for a fact the hardware stated itself.
+    /// </para>
+    /// <para>
+    /// Best effort throughout, and udev's own name is kept alongside in
+    /// <see cref="LocalCameraDevice.Name"/>, so a bad guess costs nothing.
+    /// </para>
     /// </remarks>
-    private static string Describe(string deviceName)
+    private string Describe(string deviceName)
     {
         string trimmed = deviceName;
 
@@ -125,6 +200,64 @@ public sealed class LocalCameraDevices
             trimmed = trimmed[..^CaptureSuffix.Length];
         }
 
-        return trimmed.Length == 0 ? deviceName : trimmed.Replace('_', ' ');
+        if (trimmed.Length == 0)
+        {
+            return deviceName;
+        }
+
+        return DescribeNumeric(trimmed) ?? trimmed.Replace('_', ' ');
+    }
+
+    /// <summary>
+    /// Names a device whose udev name begins with a numeric vendor id, or null if it does not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Two shapes, because udev falls back per field rather than all at once.</b> Hardware that
+    /// reports neither string gives <c>046d_0821_437242E0</c> — vendor, product, serial — and both
+    /// halves are looked up. Hardware that reports a product but no manufacturer gives
+    /// <c>046d_HD_Pro_Webcam_C920_2A3B</c>, where only the leading id needs translating and the rest
+    /// is already the device's own account of itself.
+    /// </para>
+    /// <para>
+    /// In the first shape the serial is parenthesised, because it is the only thing telling two
+    /// identical cameras apart in a picker that shows nothing else. In the second it is left in the
+    /// run of words: nothing marks where the model stops and the serial starts, and guessing wrongly
+    /// would cut the name in half.
+    /// </para>
+    /// </remarks>
+    private string? DescribeNumeric(string trimmed)
+    {
+        string[] parts = trimmed.Split('_');
+
+        if (parts.Length < 2 || !IsHexId(parts[0]))
+        {
+            return null;
+        }
+
+        if (IsHexId(parts[1]))
+        {
+            string? name = _usbNames.Lookup(parts[0], parts[1]);
+            if (name is null)
+            {
+                return null;
+            }
+
+            // Anything after the product id is the serial, which may itself contain underscores.
+            string serial = string.Join('_', parts[2..]);
+
+            return serial.Length == 0 ? name : $"{name} ({serial})";
+        }
+
+        string? vendor = _usbNames.LookupVendor(parts[0]);
+        if (vendor is null)
+        {
+            return null;
+        }
+
+        string rest = string.Join(' ', parts[1..]);
+
+        // Some products name their maker themselves; no need to say it twice.
+        return rest.StartsWith(vendor, StringComparison.OrdinalIgnoreCase) ? rest : $"{vendor} {rest}";
     }
 }

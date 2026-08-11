@@ -41,6 +41,7 @@ public class IndexModel : PageModel
     private readonly Go2RtcClient _streamServer;
     private readonly CameraFrameCache _frames;
     private readonly PrinterQueryService _printers;
+    private readonly CameraDisplayNames _names;
     private readonly UserManager<HSUser> _userManager;
 
     public IndexModel(
@@ -49,6 +50,7 @@ public class IndexModel : PageModel
         Go2RtcClient streamServer,
         CameraFrameCache frames,
         PrinterQueryService printers,
+        CameraDisplayNames names,
         UserManager<HSUser> userManager)
     {
         _cameras = cameras;
@@ -56,6 +58,7 @@ public class IndexModel : PageModel
         _streamServer = streamServer;
         _frames = frames;
         _printers = printers;
+        _names = names;
         _userManager = userManager;
     }
 
@@ -93,6 +96,12 @@ public class IndexModel : PageModel
         ArgumentNullException.ThrowIfNull(camera);
 
         return CameraSourcePolicy.IsLocalDevice(camera.Source);
+    }
+
+    /// <summary>What to call a camera — see <see cref="CameraDisplayNames"/>.</summary>
+    public string DisplayName(Camera camera)
+    {
+        return _names.For(camera);
     }
 
     public async Task<IActionResult> OnGetAsync(Guid? edit, CancellationToken cancellationToken)

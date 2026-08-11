@@ -17,6 +17,7 @@ using NSubstitute;
 
 using Homespool.Data;
 using Homespool.Host.Authorisation;
+using Homespool.Host.Cameras;
 using Homespool.Host.Pages.Printers;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.PrusaConnect;
@@ -105,7 +106,14 @@ public sealed class DetailModelTests : IDisposable
             new PrinterPreheatService(commands: null!, snapshots),
             new PrintHistoryService(context, access),
             snapshots,
-            access, new CameraAccessService(context), connectionRegistry, users)
+            access,
+            new CameraAccessService(context),
+            new CameraDisplayNames(
+                new LocalCameraDevices(
+                    NullLogger<LocalCameraDevices>.Instance,
+                    new UsbDeviceNames(NullLogger<UsbDeviceNames>.Instance))),
+            connectionRegistry,
+            users)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };

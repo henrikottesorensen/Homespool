@@ -42,7 +42,7 @@ else
                     var age = Model.FrameAge(camera);
                     <tr>
                         <td>
-                            @(camera.Name ?? camera.Uuid.ToString())
+                            @Model.DisplayName(camera)
                             @if (Homespool.Host.Pages.Cameras.IndexModel.IsAttached(camera))
                             {
                                 @* Attached cameras are the server's, not a team's - worth saying so

@@ -46,7 +46,7 @@
                         </div>
                     </div>
                     <figcaption class="d-flex justify-content-between small text-body-secondary mt-1">
-                        <span>@(camera.Name ?? $"Camera {index + 1}")</span>
+                        <span>@Model.CameraName(camera, index)</span>
                         <span class="camera-age"></span>
                     </figcaption>
                 </figure>

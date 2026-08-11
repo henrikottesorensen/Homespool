@@ -84,9 +84,9 @@ public class PrinterClientHeadersTests
     {
         // Act
         PrinterClientHeaders headers = new(RequestWith(
-            ("User-Agent-Printer", "MK3.5"),
-            ("User-Agent-Version", "6.4.0+11974"),
-            ("Code", "MUF4RZJF5R")));
+                                               ("User-Agent-Printer", "MK3.5"),
+                                               ("User-Agent-Version", "6.4.0+11974"),
+                                               ("Code", "MUF4RZJF5R")));
 
         // Assert
         headers.Printer.Should().Be("MK3.5");

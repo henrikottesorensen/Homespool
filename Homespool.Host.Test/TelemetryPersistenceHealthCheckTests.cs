@@ -87,12 +87,12 @@ public class TelemetryPersistenceHealthCheckTests
         // nothing has failed, which is what makes this invisible to every other branch.
         HealthCheckResult result = await CheckAsync(
             new TelemetryHealthSnapshot(DateTimeOffset.UtcNow.AddSeconds(-60), ConsecutiveFailures: 0,
-                PendingSamples: 500, PendingEvents: 40, DroppedMessages: 0, DiscardedEvents: 0));
+                                        PendingSamples: 500, PendingEvents: 40, DroppedMessages: 0, DiscardedEvents: 0));
 
         result.Status.Should().Be(HealthStatus.Unhealthy,
-            "a blocked writer persists nothing while reporting no failures at all");
+                                  "a blocked writer persists nothing while reporting no failures at all");
         result.Description.Should().Contain("blocked rather than broken",
-            "the description has to tell an operator which of the two shapes they are looking at");
+                                            "the description has to tell an operator which of the two shapes they are looking at");
     }
 
     /// <summary>
@@ -106,18 +106,19 @@ public class TelemetryPersistenceHealthCheckTests
         // snapshot that is Unhealthy above.
         HealthCheckResult result = await CheckAsync(
             new TelemetryHealthSnapshot(DateTimeOffset.UtcNow.AddSeconds(-60), ConsecutiveFailures: 0,
-                PendingSamples: 500, PendingEvents: 40, DroppedMessages: 0, DiscardedEvents: 0),
+                                        PendingSamples: 500, PendingEvents: 40, DroppedMessages: 0, DiscardedEvents: 0),
             flushIntervalSeconds: 30);
 
         result.Status.Should().Be(HealthStatus.Healthy,
-            "staleness is measured in missed flush intervals, not in absolute seconds");
+                                  "staleness is measured in missed flush intervals, not in absolute seconds");
     }
 
     [Fact]
     public async Task FlushingNormallyIsHealthy()
     {
         HealthCheckResult result = await CheckAsync(
-            new TelemetryHealthSnapshot(DateTimeOffset.UtcNow, ConsecutiveFailures: 0, PendingSamples: 3, PendingEvents: 0, DroppedMessages: 0, DiscardedEvents: 0));
+            new TelemetryHealthSnapshot(DateTimeOffset.UtcNow, ConsecutiveFailures: 0, PendingSamples: 3, PendingEvents: 0,
+                                        DroppedMessages: 0, DiscardedEvents: 0));
 
         result.Status.Should().Be(HealthStatus.Healthy);
     }
@@ -126,17 +127,19 @@ public class TelemetryPersistenceHealthCheckTests
     public async Task ARecentFailureIsDegradedRatherThanUnhealthy()
     {
         HealthCheckResult result = await CheckAsync(
-            new TelemetryHealthSnapshot(DateTimeOffset.UtcNow, ConsecutiveFailures: 1, PendingSamples: 12, PendingEvents: 2, DroppedMessages: 0, DiscardedEvents: 0));
+            new TelemetryHealthSnapshot(DateTimeOffset.UtcNow, ConsecutiveFailures: 1, PendingSamples: 12, PendingEvents: 2,
+                                        DroppedMessages: 0, DiscardedEvents: 0));
 
         result.Status.Should().Be(HealthStatus.Degraded,
-            "a database that is briefly locked is not something a restart would fix, and the data is still buffered");
+                                  "a database that is briefly locked is not something a restart would fix, and the data is still buffered");
     }
 
     [Fact]
     public async Task SustainedFailureIsUnhealthy()
     {
         HealthCheckResult result = await CheckAsync(
-            new TelemetryHealthSnapshot(DateTimeOffset.UtcNow.AddMinutes(-5), ConsecutiveFailures: 10, PendingSamples: 400, PendingEvents: 9, DroppedMessages: 0, DiscardedEvents: 0));
+            new TelemetryHealthSnapshot(DateTimeOffset.UtcNow.AddMinutes(-5), ConsecutiveFailures: 10, PendingSamples: 400,
+                                        PendingEvents: 9, DroppedMessages: 0, DiscardedEvents: 0));
 
         result.Status.Should().Be(HealthStatus.Unhealthy);
     }
@@ -149,10 +152,11 @@ public class TelemetryPersistenceHealthCheckTests
     public async Task DiscardedEventsAreUnhealthyEvenOnceFlushesRecover()
     {
         HealthCheckResult result = await CheckAsync(
-            new TelemetryHealthSnapshot(DateTimeOffset.UtcNow, ConsecutiveFailures: 0, PendingSamples: 0, PendingEvents: 0, DroppedMessages: 0, DiscardedEvents: 12));
+            new TelemetryHealthSnapshot(DateTimeOffset.UtcNow, ConsecutiveFailures: 0, PendingSamples: 0, PendingEvents: 0,
+                                        DroppedMessages: 0, DiscardedEvents: 12));
 
         result.Status.Should().Be(HealthStatus.Unhealthy,
-            "recovering afterwards does not bring the discarded events back, and nothing else records that they were lost");
+                                  "recovering afterwards does not bring the discarded events back, and nothing else records that they were lost");
     }
 
     /// <summary>
@@ -163,10 +167,11 @@ public class TelemetryPersistenceHealthCheckTests
     public async Task TheCountersAreReportedAlongsideTheVerdict()
     {
         HealthCheckResult result = await CheckAsync(
-            new TelemetryHealthSnapshot(DateTimeOffset.UtcNow, ConsecutiveFailures: 3, PendingSamples: 41, PendingEvents: 7, DroppedMessages: 0, DiscardedEvents: 0));
+            new TelemetryHealthSnapshot(DateTimeOffset.UtcNow, ConsecutiveFailures: 3, PendingSamples: 41, PendingEvents: 7,
+                                        DroppedMessages: 0, DiscardedEvents: 0));
 
         result.Data.Should().Contain("pendingSamples", 41)
-                            .And.Contain("pendingEvents", 7)
-                            .And.Contain("consecutiveFailures", 3);
+              .And.Contain("pendingEvents", 7)
+              .And.Contain("consecutiveFailures", 3);
     }
 }

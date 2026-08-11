@@ -144,11 +144,11 @@ public class PrinterConnectionRegistryTests
 
         // Assert
         FakeLogRecord record = _logger.Collector.GetSnapshot()
-            .Should().ContainSingle(r => r.Level == LogLevel.Error).Subject;
+                                      .Should().ContainSingle(r => r.Level == LogLevel.Error).Subject;
 
         record.StructuredState.Should().Contain(kv => kv.Key == "PrinterId" && kv.Value == "7");
         record.Message.Should().Contain("compromised",
-            "the message has to tell an operator what to do when it was not a reconnect");
+                                        "the message has to tell an operator what to do when it was not a reconnect");
     }
 
     /// <summary>A first registration is ordinary business and must stay silent.</summary>

@@ -32,16 +32,16 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
     private static string[] DnsNames(X509Certificate2 certificate)
     {
         return certificate.Extensions.OfType<X509SubjectAlternativeNameExtension>()
-                   .SelectMany(e => e.EnumerateDnsNames())
-                   .ToArray();
+                          .SelectMany(e => e.EnumerateDnsNames())
+                          .ToArray();
     }
 
     private PrinterCertificateAuthority NewAuthority()
     {
         return new(Options.Create(new CertificateOptions { Directory = "certs" }),
-            new HostEnvironmentAccessor(_root),
-            TimeProvider.System,
-            NullLogger<PrinterCertificateAuthority>.Instance);
+                   new HostEnvironmentAccessor(_root),
+                   TimeProvider.System,
+                   NullLogger<PrinterCertificateAuthority>.Instance);
     }
 
     /// <summary>
@@ -92,7 +92,7 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
 
         // Assert
         Regex.Matches(certificatePem, "BEGIN CERTIFICATE").Count.Should().Be(1,
-            "a second certificate here is the authority, and presenting it fails verification on the printer");
+                                                                             "a second certificate here is the authority, and presenting it fails verification on the printer");
 
         X509Certificate2 fromPem = X509Certificate2.CreateFromPem(certificatePem);
 
@@ -210,11 +210,11 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
     {
         // Act
         using X509Certificate2 first = NewAuthority().EnsureAuthority();
-        using X509Certificate2 second = NewAuthority().EnsureAuthority();   // a "restart"
+        using X509Certificate2 second = NewAuthority().EnsureAuthority(); // a "restart"
 
         // Assert
         second.Thumbprint.Should().Be(first.Thumbprint,
-            "a fresh authority would strand every printer provisioned from the previous one");
+                                      "a fresh authority would strand every printer provisioned from the previous one");
     }
 
     /// <summary>
@@ -303,9 +303,9 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
         DateTime clocklessPrinterBelievesItIs = new(1969, 12, 31, 23, 59, 59, DateTimeKind.Utc);
 
         ca.NotBefore.ToUniversalTime().Should().BeBefore(clocklessPrinterBelievesItIs,
-            "a printer whose RTC was never set reads 1969, and the CA's dates are checked too");
+                                                         "a printer whose RTC was never set reads 1969, and the CA's dates are checked too");
         leaf.NotBefore.ToUniversalTime().Should().BeBefore(clocklessPrinterBelievesItIs,
-            "otherwise a MINI on a LAN without internet can never complete a handshake");
+                                                           "otherwise a MINI on a LAN without internet can never complete a handshake");
 
         // And the far end still bounds it - this concedes the low end only.
         leaf.NotAfter.ToUniversalTime().Should().BeAfter(DateTime.UtcNow);
@@ -344,11 +344,11 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
     {
         // Act
         using X509Certificate2 first = NewAuthority().EnsureLeaf(["192.168.13.238"]);
-        using X509Certificate2 second = NewAuthority().EnsureLeaf(["192.168.13.99", "homespool.lan"]);   // a "restart", elsewhere
+        using X509Certificate2 second = NewAuthority().EnsureLeaf(["192.168.13.99", "homespool.lan"]); // a "restart", elsewhere
 
         // Assert
         second.Thumbprint.Should().Be(first.Thumbprint,
-            "an automatic reissue would drop every live printer connection, and nobody asked for one");
+                                      "an automatic reissue would drop every live printer connection, and nobody asked for one");
         DnsNames(second).Should().BeEquivalentTo(["192.168.13.238"]);
         second.HasPrivateKey.Should().BeTrue("Kestrel serves this, so the key has to survive the round trip to disk");
     }
@@ -388,8 +388,8 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
         File.Exists(authority.LeafKeyPemPath).Should().BeTrue();
 
         served.Thumbprint.Should().Be(original.Thumbprint,
-            "the existing leaf is exported, not reissued - reissuing would silently drop the names the "
-            + "operator had covered");
+                                      "the existing leaf is exported, not reissued - reissuing would silently drop the names the "
+                                      + "operator had covered");
 
         using X509Certificate2 fromPem = X509Certificate2.CreateFromPem(
             File.ReadAllText(authority.LeafCertificatePemPath));
@@ -410,7 +410,7 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
         // Assert
         DnsNames(leaf).Should().BeEquivalentTo(["homespool.lan", "192.168.13.238", "10.0.0.4"]);
         PrinterCertificateAuthority.NamesOf(leaf).Should().BeEquivalentTo(DnsNames(leaf),
-            "drift detection reads the names back through NamesOf, so it must see what was written");
+                                                                          "drift detection reads the names back through NamesOf, so it must see what was written");
     }
 
     public void Dispose()

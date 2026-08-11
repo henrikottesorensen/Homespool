@@ -33,7 +33,7 @@ public class QueueSignalTests
 
         // Assert
         Stopwatch.GetElapsedTime(start).Should().BeLessThan(TimeSpan.FromSeconds(5),
-            "the poke exists precisely so somebody pressing Queue does not wait out a poll interval");
+                                                            "the poke exists precisely so somebody pressing Queue does not wait out a poll interval");
     }
 
     /// <summary>A poke with nobody waiting is not lost - the next wait returns at once.</summary>

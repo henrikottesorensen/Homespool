@@ -136,7 +136,7 @@ public class PrinterConnectionSessionTests
         connection.CloseStatus.Should().Be(WebSocketCloseStatus.NormalClosure);
         connection.WasRegisteredAtClose.Should().BeFalse();
         LogRecords.Should().OnlyContain(r => r.Level == LogLevel.Debug,
-            "an aborted or shutting-down connection is not a fault");
+                                        "an aborted or shutting-down connection is not a fault");
     }
 
     /// <summary>
@@ -266,12 +266,14 @@ public class PrinterConnectionSessionTests
     /// <summary>Supplies the read loop's ending, which is all the session cares about.</summary>
     private sealed class StubWebSocketHandler(Func<Task> end)
         : WebSocketHandler(NullLogger<WebSocketHandler>.Instance,
-            new MessageDispatcher(NullLogger<MessageDispatcher>.Instance,
-                new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
-                TimeProvider.System),
-            Options.Create(new PrusaConnectOptions()))
+                           new MessageDispatcher(NullLogger<MessageDispatcher>.Instance,
+                                                 new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
+                                                 TimeProvider.System),
+                           Options.Create(new PrusaConnectOptions()))
     {
-        public override Task HandlePrusaWebsocket(PipeReader input, int printerId, IPrinterConnectionActor actor,
+        public override Task HandlePrusaWebsocket(PipeReader input,
+                                                  int printerId,
+                                                  IPrinterConnectionActor actor,
                                                   CancellationToken cancellationToken)
         {
             return end();
@@ -297,8 +299,11 @@ public class PrinterConnectionSessionTests
         }
 
         // These tests are about the session's teardown ordering; nothing here sends a transfer chunk.
-        public ValueTask SendChunkAsync(ReadOnlyMemory<byte> header, ITransferContent content, long offset,
-            long count, CancellationToken cancellationToken)
+        public ValueTask SendChunkAsync(ReadOnlyMemory<byte> header,
+                                        ITransferContent content,
+                                        long offset,
+                                        long count,
+                                        CancellationToken cancellationToken)
         {
             return ValueTask.CompletedTask;
         }

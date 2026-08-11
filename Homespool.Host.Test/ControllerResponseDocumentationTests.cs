@@ -40,15 +40,15 @@ public class ControllerResponseDocumentationTests
     private static IEnumerable<MethodInfo> Actions(Type controller)
     {
         return controller.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-                  .Where(method => !method.IsSpecialName
-                                   && method.GetCustomAttribute<NonActionAttribute>() is null);
+                         .Where(method => !method.IsSpecialName
+                                          && method.GetCustomAttribute<NonActionAttribute>() is null);
     }
 
     private static Type Unwrapped(Type returnType)
     {
-        return returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>)
-            ? returnType.GetGenericArguments()[0]
-            : returnType;
+        return returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>) ?
+            returnType.GetGenericArguments()[0] :
+            returnType;
     }
 
     [Fact]
@@ -56,9 +56,9 @@ public class ControllerResponseDocumentationTests
     {
         // Act
         List<string> undocumented = (from controller in AppApiControllers
-                                     from action in Actions(controller)
-                                     where !action.GetCustomAttributes<ProducesResponseTypeAttribute>().Any()
-                                     select $"{controller.Name}.{action.Name}").ToList();
+            from action in Actions(controller)
+            where !action.GetCustomAttributes<ProducesResponseTypeAttribute>().Any()
+            select $"{controller.Name}.{action.Name}").ToList();
 
         // Assert
         undocumented.Should().BeEmpty("an endpoint's status codes are part of its contract");
@@ -120,11 +120,11 @@ public class ControllerResponseDocumentationTests
     {
         // Act
         List<string> untyped = (from controller in AppApiControllers
-                                from action in Actions(controller)
-                                from attribute in action.GetCustomAttributes<ProducesResponseTypeAttribute>()
-                                where attribute.StatusCode >= 400 && attribute.Type != typeof(ProblemDetails)
-                                select $"{controller.Name}.{action.Name} documents {attribute.StatusCode} "
-                                       + $"as {attribute.Type.Name}").ToList();
+            from action in Actions(controller)
+            from attribute in action.GetCustomAttributes<ProducesResponseTypeAttribute>()
+            where attribute.StatusCode >= 400 && attribute.Type != typeof(ProblemDetails)
+            select $"{controller.Name}.{action.Name} documents {attribute.StatusCode} "
+                   + $"as {attribute.Type.Name}").ToList();
 
         // Assert
         untyped.Should().BeEmpty();

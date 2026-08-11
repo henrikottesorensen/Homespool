@@ -41,8 +41,8 @@ public class ProvisioningReadmeTests
         string readme = ProvisioningReadme.Build(Options(), "192.168.13.238", "Bench printer");
 
         readme.Should().Contain("Bench printer")
-            .And.Contain("192.168.13.238")
-            .And.Contain("15443");
+              .And.Contain("192.168.13.238")
+              .And.Contain("15443");
     }
 
     /// <summary>
@@ -69,7 +69,7 @@ public class ProvisioningReadmeTests
     public void AnUnnamedPrinterStillReadsProperly()
     {
         ProvisioningReadme.Build(Options(), "192.168.13.238", printerName: null)
-            .Should().Contain("for a printer").And.NotContain("****");
+                          .Should().Contain("for a printer").And.NotContain("****");
     }
 
     /// <summary>

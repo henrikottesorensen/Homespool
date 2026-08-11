@@ -177,7 +177,7 @@ public sealed class QueueAdvancerTests : IDisposable
         failure.Reason.Should().Be("Forbidden path");
         failure.EndedAt.Should().NotBeNull("nothing printed, so it opens and closes together");
         failure.TrackingId.Should().Be(QueuedTrackingId,
-            "the refusal is findable by the handle the enqueue returned - the row used to exist and be unreachable");
+                                       "the refusal is findable by the handle the enqueue returned - the row used to exist and be unreachable");
     }
 
     /// <summary>
@@ -331,7 +331,7 @@ public sealed class QueueAdvancerTests : IDisposable
         context.ChangeTracker.Clear();
 
         PrintFileOnPrinter row = await context.PrintFilesOnPrinters
-            .SingleAsync(TestContext.Current.CancellationToken);
+                                              .SingleAsync(TestContext.Current.CancellationToken);
 
         row.TransferStartedAt.Should().BeNull(
             "a stale stamp must not be mistaken for a transfer still running, or the queue wedges forever");
@@ -369,7 +369,7 @@ public sealed class QueueAdvancerTests : IDisposable
         context.ChangeTracker.Clear();
 
         PrintFileOnPrinter row = await context.PrintFilesOnPrinters
-            .SingleAsync(TestContext.Current.CancellationToken);
+                                              .SingleAsync(TestContext.Current.CancellationToken);
 
         row.TransferStartedAt.Should().Be(started, "nothing should interrupt a transfer that is merely slow");
     }
@@ -381,7 +381,7 @@ public sealed class QueueAdvancerTests : IDisposable
         Directory.CreateDirectory(directory);
 
         await File.WriteAllTextAsync(Path.Combine(directory, name), "G28 ; home\n",
-            TestContext.Current.CancellationToken);
+                                     TestContext.Current.CancellationToken);
     }
 
     /// <summary>Registers a connected printer whose every command comes back refused.</summary>
@@ -391,7 +391,7 @@ public sealed class QueueAdvancerTests : IDisposable
         actor.IsOpen.Returns(true);
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
              .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
-                 new CommandOutcome(Events.Rejected, reason))));
+                                                            new CommandOutcome(Events.Rejected, reason))));
 
         _registry.Register(PrinterId, actor);
     }
@@ -411,17 +411,18 @@ public sealed class QueueAdvancerTests : IDisposable
              {
                  if (call.Arg<ISendableCommand>() is SendFileInfo)
                  {
-                     string json = existingSize is { } size
-                         ? $"{{\"path\":\"{existingPath}\",\"size\":{size}}}"
-                         : $"{{\"path\":\"{existingPath}\"}}";
+                     string json = existingSize is { } size ?
+                         $"{{\"path\":\"{existingPath}\",\"size\":{size}}}" :
+                         $"{{\"path\":\"{existingPath}\"}}";
 
                      return Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
-                         new CommandOutcome(Events.FileInfo, null),
-                         JsonSerializer.Deserialize<JsonElement>(json)));
+                                                                  new CommandOutcome(Events.FileInfo, null),
+                                                                  JsonSerializer.Deserialize<JsonElement>(json)));
                  }
 
                  return Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
-                     new CommandOutcome(Events.Rejected, "File already exists") { MachineReason = "FILE_EXISTS" }));
+                                                              new CommandOutcome(Events.Rejected, "File already exists")
+                                                                  { MachineReason = "FILE_EXISTS" }));
              });
 
         _registry.Register(PrinterId, actor);
@@ -449,7 +450,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         row.ArrivedAt.Should().NotBeNull("the file is on the drive, whoever put it there");
         row.PrinterPath.Should().Be("/usb/SHAPE-~1.BGC",
-            "the alias the printer answered with is what START_PRINT has to use, and it is unguessable from here");
+                                    "the alias the printer answered with is what START_PRINT has to use, and it is unguessable from here");
         row.BlockedReason.Should().BeNull("nothing is in the way");
     }
 
@@ -518,8 +519,8 @@ public sealed class QueueAdvancerTests : IDisposable
     private async Task<HomespoolDbContext> SeedAsync(bool arrived = false, PrinterStatus status = PrinterStatus.Idle)
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         HomespoolDbContext context = new(options);
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);

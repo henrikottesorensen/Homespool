@@ -82,7 +82,7 @@ public class SourceFileEncodingTests
         }
 
         return directory
-            ?? throw new InvalidOperationException($"No Homespool.slnx above {AppContext.BaseDirectory}.");
+               ?? throw new InvalidOperationException($"No Homespool.slnx above {AppContext.BaseDirectory}.");
     }
 
     private static IEnumerable<string> SourceFiles(DirectoryInfo directory)
@@ -90,7 +90,7 @@ public class SourceFileEncodingTests
         foreach (FileInfo file in directory.EnumerateFiles())
         {
             bool checkIt = CheckedNames.Contains(file.Name)
-                        || (CheckedExtensions.Contains(file.Extension) && !SkippedExtensions.Contains(file.Extension));
+                           || (CheckedExtensions.Contains(file.Extension) && !SkippedExtensions.Contains(file.Extension));
 
             if (checkIt && !file.Name.EndsWith(".min.js", StringComparison.OrdinalIgnoreCase)
                         && !file.Name.EndsWith(".min.css", StringComparison.OrdinalIgnoreCase))
@@ -128,9 +128,9 @@ public class SourceFileEncodingTests
         IReadOnlyList<string> files = AllSourceFiles();
 
         files.Should().HaveCountGreaterThan(200,
-            "the repository has 240+ C# files alone - a smaller number means the walk is not reaching the source tree");
+                                            "the repository has 240+ C# files alone - a smaller number means the walk is not reaching the source tree");
         files.Should().Contain(f => Relative(f) == Path.Combine("Homespool.Host", "Program.cs"),
-            "a known file must be in scope, not merely some files");
+                               "a known file must be in scope, not merely some files");
     }
 
     [Fact]
@@ -139,16 +139,16 @@ public class SourceFileEncodingTests
         byte[] bom = [0xEF, 0xBB, 0xBF];
 
         List<string> offenders = AllSourceFiles()
-            .Where(path =>
-            {
-                using FileStream stream = File.OpenRead(path);
-                Span<byte> head = stackalloc byte[3];
+                                 .Where(path =>
+                                 {
+                                     using FileStream stream = File.OpenRead(path);
+                                     Span<byte> head = stackalloc byte[3];
 
-                return stream.ReadAtLeast(head, 3, throwOnEndOfStream: false) == 3 && head.SequenceEqual(bom);
-            })
-            .Select(Relative)
-            .Order()
-            .ToList();
+                                     return stream.ReadAtLeast(head, 3, throwOnEndOfStream: false) == 3 && head.SequenceEqual(bom);
+                                 })
+                                 .Select(Relative)
+                                 .Order()
+                                 .ToList();
 
         offenders.Should().BeEmpty(
             "UTF-8 has no byte order to mark, and the signature breaks tools that read the first bytes of a file. "
@@ -162,22 +162,22 @@ public class SourceFileEncodingTests
         UTF8Encoding strict = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
         List<string> offenders = AllSourceFiles()
-            .Where(path =>
-            {
-                try
-                {
-                    strict.GetString(File.ReadAllBytes(path));
+                                 .Where(path =>
+                                 {
+                                     try
+                                     {
+                                         strict.GetString(File.ReadAllBytes(path));
 
-                    return false;
-                }
-                catch (DecoderFallbackException)
-                {
-                    return true;
-                }
-            })
-            .Select(Relative)
-            .Order()
-            .ToList();
+                                         return false;
+                                     }
+                                     catch (DecoderFallbackException)
+                                     {
+                                         return true;
+                                     }
+                                 })
+                                 .Select(Relative)
+                                 .Order()
+                                 .ToList();
 
         offenders.Should().BeEmpty(
             "a non-UTF-8 source file is decoded to U+FFFD silently - no compiler error, no warning, on every SDK "

@@ -46,8 +46,8 @@ public sealed class ApiTokenServiceTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }

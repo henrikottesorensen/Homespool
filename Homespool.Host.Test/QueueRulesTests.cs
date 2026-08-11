@@ -56,7 +56,7 @@ public class QueueRulesTests
         else
         {
             action.Kind.Should().Be(QueueActionKind.Wait,
-                "only Ready means a person has offered the printer up for work");
+                                    "only Ready means a person has offered the printer up for work");
             action.Reason.Should().Be(QueueWaitReason.PrinterNotAvailable);
         }
     }
@@ -74,7 +74,7 @@ public class QueueRulesTests
         QueueAction action = QueueRules.Decide(Situation(status, arrived: true, path: "/usb/A~1.BGC"));
 
         action.Kind.Should().Be(QueueActionKind.Wait,
-            "there is a part on the bed in Finished and Stopped, and nobody has offered the printer in Idle");
+                                "there is a part on the bed in Finished and Stopped, and nobody has offered the printer in Idle");
     }
 
     /// <summary>
@@ -122,7 +122,7 @@ public class QueueRulesTests
     public void APrintUsesThePathThePrinterReported()
     {
         QueueAction action = QueueRules.Decide(Situation(PrinterStatus.Ready, arrived: true,
-            path: "/usb/CALICA~3.BGC"));
+                                                         path: "/usb/CALICA~3.BGC"));
 
         action.Head!.PrinterPath.Should().Be("/usb/CALICA~3.BGC");
     }

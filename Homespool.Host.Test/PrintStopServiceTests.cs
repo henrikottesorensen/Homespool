@@ -190,8 +190,8 @@ public sealed class PrintStopServiceTests : IDisposable
     private PrintStopService NewService(HomespoolDbContext context)
     {
         return new PrintStopService(context,
-            new PrinterCommandService(new PrinterAccessService(context), _registry),
-            NullLogger<PrintStopService>.Instance);
+                                    new PrinterCommandService(new PrinterAccessService(context), _registry),
+                                    NullLogger<PrintStopService>.Instance);
     }
 
     private void Connect(Events reply, string? reason = null)
@@ -200,7 +200,7 @@ public sealed class PrintStopServiceTests : IDisposable
         actor.IsOpen.Returns(true);
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
              .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
-                 new CommandOutcome(reply, reason))));
+                                                            new CommandOutcome(reply, reason))));
 
         _registry.Register(PrinterId, actor);
     }
@@ -218,14 +218,14 @@ public sealed class PrintStopServiceTests : IDisposable
              {
                  await using HomespoolDbContext loopContext = NewContext();
                  PrintJob open = await loopContext.PrintJobs.SingleAsync(job => job.EndedAt == null,
-                     TestContext.Current.CancellationToken);
+                                                                         TestContext.Current.CancellationToken);
 
                  open.State = outcome;
                  open.EndedAt = DateTimeOffset.UnixEpoch.AddYears(56);
                  await loopContext.SaveChangesAsync(TestContext.Current.CancellationToken);
 
                  return new CommandSendResult(CommandSendOutcome.Completed,
-                     new CommandOutcome(Events.Finished, null));
+                                              new CommandOutcome(Events.Finished, null));
              });
 
         _registry.Register(PrinterId, actor);
@@ -234,8 +234,8 @@ public sealed class PrintStopServiceTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         return new HomespoolDbContext(new DbContextOptionsBuilder<HomespoolDbContext>()
-                               .UseSqlite($"Data Source={_databasePath}")
-                               .Options);
+                                      .UseSqlite($"Data Source={_databasePath}")
+                                      .Options);
     }
 
     private async Task AddPrintAsync(HomespoolDbContext context, PrintState outcome, bool ended, long? stoppedBy = null)

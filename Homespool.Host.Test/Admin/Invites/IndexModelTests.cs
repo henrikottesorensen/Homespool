@@ -39,8 +39,8 @@ public sealed class IndexModelTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }
@@ -236,6 +236,7 @@ public sealed class IndexModelTests : IDisposable
         result.Should().BeOfType<RedirectToPageResult>();
         model.StatusMessage.Should().Be("Invitation revoked.");
 
-        (await invitationService.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should().BeNull("revoking soft-expires the invite");
+        (await invitationService.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should()
+            .BeNull("revoking soft-expires the invite");
     }
 }

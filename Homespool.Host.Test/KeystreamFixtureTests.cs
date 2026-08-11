@@ -157,13 +157,13 @@ public class KeystreamFixtureTests
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText("keystream-fixtures.json"));
 
         return document.RootElement.EnumerateArray()
-            .Select(entry => new KeystreamFixture(
-                entry.GetProperty("name").GetString()!,
-                Convert.FromHexString(entry.GetProperty("key").GetString()!),
-                Convert.FromHexString(entry.GetProperty("iv").GetString()!),
-                entry.GetProperty("offset").GetInt64(),
-                Convert.FromHexString(entry.GetProperty("keystream").GetString()!)))
-            .ToList();
+                       .Select(entry => new KeystreamFixture(
+                                   entry.GetProperty("name").GetString()!,
+                                   Convert.FromHexString(entry.GetProperty("key").GetString()!),
+                                   Convert.FromHexString(entry.GetProperty("iv").GetString()!),
+                                   entry.GetProperty("offset").GetInt64(),
+                                   Convert.FromHexString(entry.GetProperty("keystream").GetString()!)))
+                       .ToList();
     }
 
     private sealed record KeystreamFixture(string Name, byte[] Key, byte[] Iv, long Offset, byte[] Keystream);

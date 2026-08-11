@@ -112,7 +112,8 @@ public class UnknownFieldTrackerTests
         record.Message.Should().Contain("telemetry.surprise")
               .And.Contain("String", "the JSON kind is the useful, safe half of the value");
         record.Message.Should().NotContain("SENSITIVE-PAYLOAD-CONTENT");
-        record.StructuredState.Should().NotContain(pair => pair.Value != null && pair.Value.Contains("SENSITIVE-PAYLOAD-CONTENT", StringComparison.Ordinal));
+        record.StructuredState.Should()
+              .NotContain(pair => pair.Value != null && pair.Value.Contains("SENSITIVE-PAYLOAD-CONTENT", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -206,11 +207,11 @@ public class UnknownFieldTrackerTests
 
         // Act - an envelope this build models exactly, wrapping a payload full of keys it does not
         Classify(dispatcher, """
-            {"event":"FILE_INFO","state":"IDLE","command_id":7,
-             "data":{"path":"/usb/thing.bkp","size":12,
-                     "iP5nSy8PNRc1GwE6w/9UVFSAPBk4":"thumbnail-fragment",
-                     "arbitrary_slicer_key":"whatever","another_one":1}}
-            """);
+                             {"event":"FILE_INFO","state":"IDLE","command_id":7,
+                              "data":{"path":"/usb/thing.bkp","size":12,
+                                      "iP5nSy8PNRc1GwE6w/9UVFSAPBk4":"thumbnail-fragment",
+                                      "arbitrary_slicer_key":"whatever","another_one":1}}
+                             """);
 
         // Assert
         tracker.Total.Should().Be(0, "data is raw JsonElement and must never be walked");

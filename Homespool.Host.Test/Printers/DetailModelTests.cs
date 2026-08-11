@@ -43,8 +43,8 @@ public sealed class DetailModelTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }
@@ -68,7 +68,8 @@ public sealed class DetailModelTests : IDisposable
         }
     }
 
-    private static async Task<(DetailModel model, HSUser user, Team team, PrinterConnectionRegistry connectionRegistry)> NewModelAsync(HomespoolDbContext context)
+    private static async Task<(DetailModel model, HSUser user, Team team, PrinterConnectionRegistry connectionRegistry)>
+        NewModelAsync(HomespoolDbContext context)
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 
@@ -88,32 +89,34 @@ public sealed class DetailModelTests : IDisposable
         // the 404 rule and connection state, and an empty queue is the right backdrop for both.
         string storeRoot = Path.Combine(Path.GetTempPath(), "homespool-detail-" + Guid.NewGuid().ToString("N"));
         UserFileStore store = new(Options.Create(new PrintFileStorageOptions { Directory = storeRoot }),
-            new HostEnvironmentAccessor(storeRoot),
-            TimeProvider.System,
-            NullLogger<UserFileStore>.Instance);
+                                  new HostEnvironmentAccessor(storeRoot),
+                                  TimeProvider.System,
+                                  NullLogger<UserFileStore>.Instance);
 
         PrinterAccessService access = new(context);
         PrintQueueService queueService = new(context, access,
-            new PrintFileCatalog(store, context, NullLogger<PrintFileCatalog>.Instance), TimeProvider.System,
-            QueueSignal);
+                                             new PrintFileCatalog(store, context, NullLogger<PrintFileCatalog>.Instance),
+                                             TimeProvider.System,
+                                             QueueSignal);
 
         QueueSnapshotReader snapshots = new(context, connectionRegistry, TimeProvider.System);
 
-        DetailModel model = new(new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System), queueService,
+        DetailModel model = new(new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System),
+                                queueService,
 
-            // Constructed rather than substituted: these tests are about the page, and a real one
-            // that never gets a connected printer simply refuses, which is the honest default here.
-            new PrinterPreheatService(commands: null!, snapshots),
-            new PrintHistoryService(context, access),
-            snapshots,
-            access,
-            new CameraAccessService(context),
-            new CameraDisplayNames(
-                new LocalCameraDevices(
-                    NullLogger<LocalCameraDevices>.Instance,
-                    new UsbDeviceNames(NullLogger<UsbDeviceNames>.Instance))),
-            connectionRegistry,
-            users)
+                                // Constructed rather than substituted: these tests are about the page, and a real one
+                                // that never gets a connected printer simply refuses, which is the honest default here.
+                                new PrinterPreheatService(commands: null!, snapshots),
+                                new PrintHistoryService(context, access),
+                                snapshots,
+                                access,
+                                new CameraAccessService(context),
+                                new CameraDisplayNames(
+                                    new LocalCameraDevices(
+                                        NullLogger<LocalCameraDevices>.Instance,
+                                        new UsbDeviceNames(NullLogger<UsbDeviceNames>.Instance))),
+                                connectionRegistry,
+                                users)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };

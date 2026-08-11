@@ -34,15 +34,16 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
     private static PrusaConnectService NewService(HomespoolDbContext context, int lifetimeMinutes = 60)
     {
         return new(context,
-            new CodeGenerator(),
-            new TokenService(),
-            new TeamService(context),
-            TimeProvider.System, NullLogger<PrusaConnectService>.Instance,
-            Options.Create(new PrusaConnectOptions { RegistrationCodeLifetimeMinutes = lifetimeMinutes }));
+                   new CodeGenerator(),
+                   new TokenService(),
+                   new TeamService(context),
+                   TimeProvider.System, NullLogger<PrusaConnectService>.Instance,
+                   Options.Create(new PrusaConnectOptions { RegistrationCodeLifetimeMinutes = lifetimeMinutes }));
     }
 
     private static RegisterPrinterRequestDTO PrinterRequest(string serial = "15715-4842441651816441",
-                                                             string fingerprint = "SUDBAJQ78CTJBNA8IHEMODUG43QD9H5GSBSFE0MMKBST8B9E0L")
+                                                            string fingerprint =
+                                                                "SUDBAJQ78CTJBNA8IHEMODUG43QD9H5GSBSFE0MMKBST8B9E0L")
     {
         return new()
         {
@@ -56,8 +57,8 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }
@@ -131,7 +132,8 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         printer.Name.Should().Be("My printer");
         printer.Location.Should().Be("Office");
 
-        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
+        PrusaConnectRegistration stored =
+            await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
         stored.PrinterId.Should().Be(printer.Id);
     }
 
@@ -222,7 +224,10 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
 
         // Assert
         await secondClaim.Should().ThrowAsync<RegistrationAlreadyClaimedException>();
-        (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1, "the second claim must not create a competing printer");
+        (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should()
+                                                                                  .Be(
+                                                                                      1,
+                                                                                      "the second claim must not create a competing printer");
     }
 
     /// <summary>

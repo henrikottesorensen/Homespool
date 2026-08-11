@@ -149,7 +149,7 @@ public class CaptureReplayTests
         folder.Children[0].Type.Should().Be("PRINT_FILE");
 
         folder.Children.Should().OnlyContain(child => child.Name != child.DisplayName,
-            "every entry in a real listing is aliased - the 8.3 name is what makes this event worth asking for");
+                                             "every entry in a real listing is aliased - the 8.3 name is what makes this event worth asking for");
 
         // Firmware's type vocabulary is wider than the two values this listing is mostly made of:
         // prusa_printer_settings.ini comes back as a plain FILE. That is why Type is a string and not
@@ -232,7 +232,8 @@ public class CaptureReplayTests
                             }
 
                             if (eventDto.EventType == Events.FileInfo && eventDto.Data is not null
-                                && eventDto.Data.Value.Deserialize<FileInfoEventDataDTO>() is { } fileInfo)
+                                                                      && eventDto.Data.Value.Deserialize<FileInfoEventDataDTO>() is
+                                                                          { } fileInfo)
                             {
                                 fileInfoData.Add(fileInfo);
                             }
@@ -271,7 +272,7 @@ public class CaptureReplayTests
         }
 
         return new CaptureReplayResult(telemetryCount, eventCount, telemetryFailures, chamberLedSeen,
-                                        eventFailures, eventTypesSeen, infoData, fileInfoData);
+                                       eventFailures, eventTypesSeen, infoData, fileInfoData);
     }
 
     private sealed record CaptureReplayResult(

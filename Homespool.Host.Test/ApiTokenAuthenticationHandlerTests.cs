@@ -56,8 +56,8 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }
@@ -87,7 +87,9 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
     /// exactly like a cookie-authenticated one downstream.
     /// </summary>
     private static async Task<(ApiTokenAuthenticationHandler handler, DefaultHttpContext httpContext)> NewHandlerAsync(
-        HomespoolDbContext context, string? authorization, string? apiKey = null)
+        HomespoolDbContext context,
+        string? authorization,
+        string? apiKey = null)
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, IServiceProvider provider) =
             IdentityTestHarness.BuildIdentityServices(context);
@@ -320,7 +322,8 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        (ApiTokenAuthenticationHandler handler, DefaultHttpContext httpContext) = await NewHandlerAsync(context, authorization: null);
+        (ApiTokenAuthenticationHandler handler, DefaultHttpContext httpContext) =
+            await NewHandlerAsync(context, authorization: null);
 
         // Act
         await handler.ChallengeAsync(properties: null);
@@ -339,7 +342,8 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        (ApiTokenAuthenticationHandler handler, DefaultHttpContext httpContext) = await NewHandlerAsync(context, authorization: null);
+        (ApiTokenAuthenticationHandler handler, DefaultHttpContext httpContext) =
+            await NewHandlerAsync(context, authorization: null);
 
         // Act
         await handler.ForbidAsync(properties: null);

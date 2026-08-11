@@ -118,8 +118,8 @@ public sealed class TelemetryWriterTests : IDisposable
     private static bool FlushFailed(FakeLogRecord record)
     {
         return record.Level == LogLevel.Error
-        && record.Exception is not null
-        && record.Message.Contains("flush failed");
+               && record.Exception is not null
+               && record.Message.Contains("flush failed");
     }
 
     private static StorageOptions DefaultOptions(int batchSize = 500, double flushIntervalSeconds = 30, double throttleSeconds = 0)
@@ -148,7 +148,8 @@ public sealed class TelemetryWriterTests : IDisposable
     }
 
     [SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits",
-                     Justification = "IDisposable.Dispose cannot be asynchronous, and the service must be stopped before the test's resources are torn down.")]
+                     Justification =
+                         "IDisposable.Dispose cannot be asynchronous, and the service must be stopped before the test's resources are torn down.")]
     public void Dispose()
     {
         if (_writer is not null)
@@ -184,14 +185,15 @@ public sealed class TelemetryWriterTests : IDisposable
 
         await using (AsyncServiceScope migrationScope = _provider.CreateAsyncScope())
         {
-            await migrationScope.ServiceProvider.GetRequiredService<HomespoolDbContext>().Database.MigrateAsync(TestContext.Current.CancellationToken);
+            await migrationScope.ServiceProvider.GetRequiredService<HomespoolDbContext>().Database
+                                .MigrateAsync(TestContext.Current.CancellationToken);
         }
 
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
-                                       Options.Create(options),
-                                       _fakeLogger,
-                                       TimeProvider.System,
-                                       new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance))
+                                      Options.Create(options),
+                                      _fakeLogger,
+                                      TimeProvider.System,
+                                      new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance))
         {
             SampleTrimWarningInterval = trimWarningInterval ?? TimeSpan.FromSeconds(10),
             EventTrimWarningInterval = trimWarningInterval ?? TimeSpan.FromSeconds(10),
@@ -297,7 +299,8 @@ public sealed class TelemetryWriterTests : IDisposable
 
         for (int i = 0; i < 25; i++)
         {
-            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow.AddSeconds(i), new TelemetryDTO { Status = "PRINTING", Progress = i });
+            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow.AddSeconds(i),
+                           new TelemetryDTO { Status = "PRINTING", Progress = i });
         }
 
         Func<Task> restorePrinter = await BreakThePrinterRowAsync();
@@ -306,7 +309,8 @@ public sealed class TelemetryWriterTests : IDisposable
         Task stopping = writer.StopAsync(CancellationToken.None);
 
         bool firstAttemptFailed = await LoggedAsync(record =>
-            record.Level == LogLevel.Warning && record.Message.Contains("during shutdown"));
+                                                        record.Level == LogLevel.Warning &&
+                                                        record.Message.Contains("during shutdown"));
 
         firstAttemptFailed.Should().BeTrue($"the arrangement depends on the first shutdown flush failing.\n{LogDump()}");
 
@@ -317,7 +321,7 @@ public sealed class TelemetryWriterTests : IDisposable
         await using HomespoolDbContext verify = NewVerificationContext();
 
         (await SampleCountAsync(verify)).Should().Be(25,
-            $"a transient failure at shutdown must not lose the buffer - there is no later flush to save it.\n{LogDump()}");
+                                                     $"a transient failure at shutdown must not lose the buffer - there is no later flush to save it.\n{LogDump()}");
     }
 
     /// <summary>
@@ -361,11 +365,11 @@ public sealed class TelemetryWriterTests : IDisposable
         for (int i = 0; i < 5; i++)
         {
             writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow.AddSeconds(i),
-                new TelemetryDTO { Status = "PRINTING", Progress = i, Material = "PLA" });
+                           new TelemetryDTO { Status = "PRINTING", Progress = i, Material = "PLA" });
         }
 
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow,
-            new EventDTO { EventType = Events.StateChanged, Status = "PRINTING" });
+                       new EventDTO { EventType = Events.StateChanged, Status = "PRINTING" });
 
         bool firstAttemptFailed = await LoggedAsync(FlushFailed);
         firstAttemptFailed.Should().BeTrue(
@@ -382,7 +386,7 @@ public sealed class TelemetryWriterTests : IDisposable
             await using HomespoolDbContext verify = NewVerificationContext();
 
             return await SampleCountAsync(verify) == 5
-                && await verify.PrinterEvents.CountAsync() == 1;
+                   && await verify.PrinterEvents.CountAsync() == 1;
         }, TimeSpan.FromSeconds(10));
 
         recovered.Should().BeTrue(
@@ -419,7 +423,8 @@ public sealed class TelemetryWriterTests : IDisposable
         // Act - the first batch fails, which also proves the drain loop is alive and processing.
         for (int i = 0; i < 5; i++)
         {
-            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow.AddSeconds(i), new TelemetryDTO { Status = "PRINTING", Progress = i });
+            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow.AddSeconds(i),
+                           new TelemetryDTO { Status = "PRINTING", Progress = i });
         }
 
         bool firstFailure = await LoggedAsync(FlushFailed);
@@ -428,7 +433,8 @@ public sealed class TelemetryWriterTests : IDisposable
         // Feed well past the batch size, paced so the channel's own capacity does not shed them.
         for (int i = 0; i < 100; i++)
         {
-            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow.AddSeconds(i), new TelemetryDTO { Status = "PRINTING", Progress = i });
+            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow.AddSeconds(i),
+                           new TelemetryDTO { Status = "PRINTING", Progress = i });
             await Task.Delay(2, TestContext.Current.CancellationToken);
         }
 
@@ -436,7 +442,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         // Assert
         LogRecords.Count(FlushFailed).Should().Be(1,
-            $"a failing database must be retried on the flush timer, not once per message.\n{LogDump()}");
+                                                  $"a failing database must be retried on the flush timer, not once per message.\n{LogDump()}");
     }
 
     /// <summary>
@@ -519,7 +525,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Act - feed until the ceiling is reached, then keep going: each event past it is one lost.
         bool atCeiling = await FeedUntilAsync(
             () => writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow,
-                new EventDTO { EventType = Events.StateChanged, Status = "PRINTING" }),
+                                 new EventDTO { EventType = Events.StateChanged, Status = "PRINTING" }),
             () => writer.Current.PendingEvents >= 50,
             TimeSpan.FromSeconds(20));
 
@@ -529,7 +535,7 @@ public sealed class TelemetryWriterTests : IDisposable
         for (int i = 0; i < 100; i++)
         {
             writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow,
-                new EventDTO { EventType = Events.StateChanged, Status = "PRINTING" });
+                           new EventDTO { EventType = Events.StateChanged, Status = "PRINTING" });
             await Task.Delay(2, TestContext.Current.CancellationToken);
         }
 
@@ -541,8 +547,8 @@ public sealed class TelemetryWriterTests : IDisposable
             $"event trims past the first must aggregate into a window summary.\n{LogDump()}");
 
         LogRecords.Where(record => record.Message.Contains("buffered printer event"))
-            .Should().OnlyContain(record => record.Level == LogLevel.Error,
-                "discarding an event is data loss, not degradation - the level must not soften with throttling");
+                  .Should().OnlyContain(record => record.Level == LogLevel.Error,
+                                        "discarding an event is data loss, not degradation - the level must not soften with throttling");
 
         bool counted = await WaitUntilAsync(
             () => Task.FromResult(writer.Current.DiscardedEvents > 20),
@@ -620,10 +626,10 @@ public sealed class TelemetryWriterTests : IDisposable
         // See TelemetryIsFlushedOnGracefulShutdownEvenBelowBothThresholds for why this is checked:
         // a loop cancelled before it ever ran looks exactly like a clean stop from the call site.
         writer.ExecuteTask!.Status.Should().Be(TaskStatus.RanToCompletion,
-            $"the drain loop must finish, not fault or cancel.\nLOG:\n{LogDump()}");
+                                               $"the drain loop must finish, not fault or cancel.\nLOG:\n{LogDump()}");
 
         (await SampleCountAsync(verify)).Should().Be(1,
-            $"shutdown must flush whatever is buffered rather than discarding it.\nLOG:\n{LogDump()}");
+                                                     $"shutdown must flush whatever is buffered rather than discarding it.\nLOG:\n{LogDump()}");
     }
 
     /// <summary>
@@ -666,12 +672,15 @@ public sealed class TelemetryWriterTests : IDisposable
         // See TelemetryIsFlushedOnGracefulShutdownEvenBelowBothThresholds for why this is checked:
         // a loop cancelled before it ever ran looks exactly like a clean stop from the call site.
         writer.ExecuteTask!.Status.Should().Be(TaskStatus.RanToCompletion,
-            $"the drain loop must finish, not fault or cancel.\nLOG:\n{LogDump()}");
+                                               $"the drain loop must finish, not fault or cancel.\nLOG:\n{LogDump()}");
 
         LogRecords.Where(FlushFailed).Should().BeEmpty($"no flush should have failed.\n{LogDump()}");
 
         (await SampleCountAsync(verify)).Should().Be(25, $"everything queued must survive the drain.\n{LogDump()}");
-        (await verify.PrinterEvents.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1, $"an event queued at shutdown is a discrete fact that never repeats.\n{LogDump()}");
+        (await verify.PrinterEvents.CountAsync(TestContext.Current.CancellationToken)).Should()
+                                                                                      .Be(
+                                                                                          1,
+                                                                                          $"an event queued at shutdown is a discrete fact that never repeats.\n{LogDump()}");
 
         // And the live state reflects the last message merged, not an arbitrary earlier one.
         PrinterLiveState state = await verify.PrinterLiveStates.SingleAsync(TestContext.Current.CancellationToken);
@@ -685,7 +694,8 @@ public sealed class TelemetryWriterTests : IDisposable
         // interval is short (unlike the batch-size test above): a throttled message never adds to
         // pendingSamples, so its dirty live-state can only reach the database via the timer, not the
         // batch-size trigger.
-        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1, flushIntervalSeconds: 0.1, throttleSeconds: 3600));
+        TelemetryWriter writer =
+            await StartWriterAsync(DefaultOptions(batchSize: 1, flushIntervalSeconds: 0.1, throttleSeconds: 3600));
         await SeedPrinterAsync();
 
         DateTimeOffset first = DateTimeOffset.UtcNow;
@@ -715,7 +725,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         await using HomespoolDbContext verify = NewVerificationContext();
         (await SampleCountAsync(verify)).Should().Be(1,
-            "the second message arrived inside the throttle window, so history density - not the live view - is what it skips");
+                                                     "the second message arrived inside the throttle window, so history density - not the live view - is what it skips");
     }
 
     [Fact]
@@ -951,7 +961,8 @@ public sealed class TelemetryWriterTests : IDisposable
         swappedIn.Should().BeTrue();
 
         await using HomespoolDbContext verify = NewVerificationContext();
-        (await verify.Printers.SingleAsync(TestContext.Current.CancellationToken)).NozzleDiameter.Should().BeApproximately(0.6f, 0.001f);
+        (await verify.Printers.SingleAsync(TestContext.Current.CancellationToken)).NozzleDiameter.Should()
+                                                                                  .BeApproximately(0.6f, 0.001f);
     }
 
     /// <summary>
@@ -1007,10 +1018,12 @@ public sealed class TelemetryWriterTests : IDisposable
         (await verify.Printers.CountAsync(p => p.NozzleDiameter == 0.4f, TestContext.Current.CancellationToken))
             .Should().Be(0, "float equality against a REAL column matches nothing");
 
-        (await verify.Printers.CountAsync(p => p.NozzleDiameter > 0.39f && p.NozzleDiameter < 0.41f, TestContext.Current.CancellationToken))
+        (await verify.Printers.CountAsync(p => p.NozzleDiameter > 0.39f && p.NozzleDiameter < 0.41f,
+                                          TestContext.Current.CancellationToken))
             .Should().Be(1, "a range is the simplest thing that works");
 
-        (await verify.Printers.CountAsync(p => Math.Abs(p.NozzleDiameter!.Value - 0.4f) < 0.001f, TestContext.Current.CancellationToken))
+        (await verify.Printers.CountAsync(p => Math.Abs(p.NozzleDiameter!.Value - 0.4f) < 0.001f,
+                                          TestContext.Current.CancellationToken))
             .Should().Be(1, "Math.Abs translates to abs() and is the closest thing to an epsilon compare");
     }
 
@@ -1266,7 +1279,7 @@ public sealed class TelemetryWriterTests : IDisposable
         kept.RootElement.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(
             ["size", "m_timestamp", "read_only", "display_name", "type", "path"],
             "only the fields render.cpp emits itself survive - preview included, since that one is "
-          + "firmware-rendered but is pure gcode content");
+            + "firmware-rendered but is pure gcode content");
 
         stored.Payload.Should().NotContain("iVBORw0KGgoAAAA").And.NotContain("layer_height");
         stored.Payload.Should().NotContain("iP5nSy8", "a blacklist could never have named this key");
@@ -1400,10 +1413,12 @@ public sealed class TelemetryWriterTests : IDisposable
         }, TimeSpan.FromSeconds(5));
 
         // Assert
-        secondSlotPersisted.Should().BeTrue("a slot seen for the first time in a later flush must be inserted, not silently dropped");
+        secondSlotPersisted.Should()
+                           .BeTrue("a slot seen for the first time in a later flush must be inserted, not silently dropped");
 
         await using HomespoolDbContext verify = NewVerificationContext();
-        (await verify.PrinterLiveSlotStates.Select(s => s.SlotNumber).OrderBy(n => n).ToListAsync(TestContext.Current.CancellationToken))
+        (await verify.PrinterLiveSlotStates.Select(s => s.SlotNumber).OrderBy(n => n)
+                     .ToListAsync(TestContext.Current.CancellationToken))
             .Should().Equal([1, 2], "the first flush's slot must survive, not be replaced by the second's");
     }
 
@@ -1503,7 +1518,8 @@ public sealed class TelemetryWriterTests : IDisposable
         // Assert - DropOldest must mean Enqueue is always a non-blocking TryWrite; this would hang
         // (rather than throw) if that regressed to a blocking write against a full bounded channel.
         Task enqueueTask = Task.Run(enqueueMany, TestContext.Current.CancellationToken);
-        Task completed = await Task.WhenAny(enqueueTask, Task.Delay(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        Task completed =
+            await Task.WhenAny(enqueueTask, Task.Delay(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
 
         completed.Should().Be(enqueueTask, "Enqueue must never block, even against a full channel");
         enqueueTask.IsFaulted.Should().BeFalse();
@@ -1528,8 +1544,8 @@ public sealed class TelemetryWriterTests : IDisposable
 
         // Assert
         bool warned = await LoggedAsync(record => record.Level == LogLevel.Warning
-                                              && record.Message.Contains("Dropped")
-                                              && record.StructuredState!.Any(kv => kv.Key == "PrinterId" && kv.Value == "1"));
+                                                  && record.Message.Contains("Dropped")
+                                                  && record.StructuredState!.Any(kv => kv.Key == "PrinterId" && kv.Value == "1"));
 
         warned.Should().BeTrue($"a full channel under DropOldest must be logged, not silently discarded. Log:\n{LogDump()}");
     }
@@ -1555,7 +1571,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         // Assert
         LogRecords.Count(record => record.Level == LogLevel.Warning && record.Message.Contains("Dropped"))
-            .Should().Be(1, $"drops beyond the first must aggregate, not flood the log. Log:\n{LogDump()}");
+                  .Should().Be(1, $"drops beyond the first must aggregate, not flood the log. Log:\n{LogDump()}");
     }
 
     /// <summary>
@@ -1583,11 +1599,11 @@ public sealed class TelemetryWriterTests : IDisposable
         FakeLogRecord summary = LogRecords.Last(record => record.Level == LogLevel.Warning && record.Message.Contains("Dropped"));
 
         summary.StructuredState.Should().Contain(kv => kv.Key == "Count" && kv.Value == "10",
-            $"the summary must carry the 9 accumulated drops plus its own. Log:\n{LogDump()}");
+                                                 $"the summary must carry the 9 accumulated drops plus its own. Log:\n{LogDump()}");
         summary.StructuredState.Should().Contain(kv => kv.Key == "TotalDropped" && kv.Value == "11",
-            "the lifetime total rides along so a single log line orients an operator");
+                                                 "the lifetime total rides along so a single log line orients an operator");
         LogRecords.Count(record => record.Level == LogLevel.Warning && record.Message.Contains("Dropped"))
-            .Should().Be(2, "one immediate first warning, one summary - nothing per-drop in between");
+                  .Should().Be(2, "one immediate first warning, one summary - nothing per-drop in between");
     }
 
     /// <summary>
@@ -1600,7 +1616,8 @@ public sealed class TelemetryWriterTests : IDisposable
     {
         // Arrange - seed first so the drain loop can flush once started; drops happen before start.
         await SeedPrinterAsync();
-        TelemetryWriter writer = CreateUnstartedWriter(DefaultOptions(batchSize: 1, flushIntervalSeconds: 0.05), TimeSpan.FromMinutes(10));
+        TelemetryWriter writer =
+            CreateUnstartedWriter(DefaultOptions(batchSize: 1, flushIntervalSeconds: 0.05), TimeSpan.FromMinutes(10));
 
         for (int i = 0; i < 29; i++)
         {
@@ -1618,7 +1635,7 @@ public sealed class TelemetryWriterTests : IDisposable
         counted.Should().BeTrue(
             $"expected the snapshot to report exactly 25 drops, saw {writer.Current.DroppedMessages}. Log:\n{LogDump()}");
         LogRecords.Count(record => record.Level == LogLevel.Warning && record.Message.Contains("Dropped"))
-            .Should().Be(1);
+                  .Should().Be(1);
     }
 
     /// <summary>
@@ -1654,7 +1671,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Assert
         flushed.Should().BeTrue($"the good message must land, proving the bad ones were consumed. Log:\n{LogDump()}");
         LogRecords.Count(record => record.Level == LogLevel.Error && record.Message.Contains("failed to process"))
-            .Should().Be(1, $"five failures inside one window must produce one Error, not five. Log:\n{LogDump()}");
+                  .Should().Be(1, $"five failures inside one window must produce one Error, not five. Log:\n{LogDump()}");
     }
 
     /// <summary>
@@ -1669,10 +1686,10 @@ public sealed class TelemetryWriterTests : IDisposable
         _provider = services.BuildServiceProvider();
 
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
-                                       Options.Create(options),
-                                       _fakeLogger,
-                                       TimeProvider.System,
-                                       new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance))
+                                      Options.Create(options),
+                                      _fakeLogger,
+                                      TimeProvider.System,
+                                      new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance))
         {
             DropWarningInterval = dropWarningInterval,
         };
@@ -1778,11 +1795,12 @@ public sealed class TelemetryWriterTests : IDisposable
         bool trimmed = await FeedUntilAsync(
             () => writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }),
             () => LogRecords.Any(record => record.Level == LogLevel.Warning
-                                        && record.Message.Contains("Discarded")
-                                        && record.StructuredState!.Any(kv => kv.Key == "Count")),
+                                           && record.Message.Contains("Discarded")
+                                           && record.StructuredState!.Any(kv => kv.Key == "Count")),
             TimeSpan.FromSeconds(30));
 
-        trimmed.Should().BeTrue($"the pending sample buffer must not grow without bound while every flush keeps failing. Log:\n{LogDump()}");
+        trimmed.Should()
+               .BeTrue($"the pending sample buffer must not grow without bound while every flush keeps failing. Log:\n{LogDump()}");
     }
 
     /// <summary>
@@ -1811,9 +1829,9 @@ public sealed class TelemetryWriterTests : IDisposable
         bool trimmed = await FeedUntilAsync(
             () => writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO { Status = "IDLE", EventType = Events.Info }),
             () => LogRecords.Any(record => record.Level == LogLevel.Error
-                                        && record.Message.Contains("Discarded")
-                                        && record.Message.Contains("event")
-                                        && record.StructuredState!.Any(kv => kv.Key == "Count")),
+                                           && record.Message.Contains("Discarded")
+                                           && record.Message.Contains("event")
+                                           && record.StructuredState!.Any(kv => kv.Key == "Count")),
             TimeSpan.FromSeconds(30));
 
         trimmed.Should().BeTrue($"the pending event buffer must have a ceiling too, even a distant one. Log:\n{LogDump()}");

@@ -41,23 +41,23 @@ public sealed class PrinterCertificateHealthCheckTests : IDisposable
     private static PrinterCertificateHealthCheck NewCheck(PrinterCertificateAuthority authority, string host, bool tls = true)
     {
         return new(authority,
-            Options.Create(new PrusaConnectOptions { PrinterHost = host, PrinterTls = tls }),
-            Options.Create(new CertificateOptions()),
-            new DnsHostAddressResolver(),
-            TimeProvider.System);
+                   Options.Create(new PrusaConnectOptions { PrinterHost = host, PrinterTls = tls }),
+                   Options.Create(new CertificateOptions()),
+                   new DnsHostAddressResolver(),
+                   TimeProvider.System);
     }
 
     private PrinterCertificateAuthority NewAuthority(int authorityDays = 5475, int leafDays = 730)
     {
         return new(Options.Create(new CertificateOptions
-        {
-            Directory = "certs",
-            AuthorityValidityDays = authorityDays,
-            LeafValidityDays = leafDays,
-        }),
-            new HostEnvironmentAccessor(_root),
-            TimeProvider.System,
-            NullLogger<PrinterCertificateAuthority>.Instance);
+                   {
+                       Directory = "certs",
+                       AuthorityValidityDays = authorityDays,
+                       LeafValidityDays = leafDays,
+                   }),
+                   new HostEnvironmentAccessor(_root),
+                   TimeProvider.System,
+                   NullLogger<PrinterCertificateAuthority>.Instance);
     }
 
     /// <summary>
@@ -101,8 +101,8 @@ public sealed class PrinterCertificateHealthCheckTests : IDisposable
         // Assert
         result.Status.Should().Be(HealthStatus.Degraded);
         result.Description.Should().Contain("192.168.13.99")
-            .And.Contain("192.168.13.238", "the message has to say what it does cover, or there is nothing to act on")
-            .And.Contain("Admin -> Printer certificate");
+              .And.Contain("192.168.13.238", "the message has to say what it does cover, or there is nothing to act on")
+              .And.Contain("Admin -> Printer certificate");
     }
 
     /// <summary>
@@ -149,7 +149,7 @@ public sealed class PrinterCertificateHealthCheckTests : IDisposable
         // Assert
         result.Status.Should().Be(HealthStatus.Degraded);
         result.Description.Should().Contain("AUTHORITY")
-            .And.Contain("USB visit to every printer");
+              .And.Contain("USB visit to every printer");
     }
 
     /// <summary>

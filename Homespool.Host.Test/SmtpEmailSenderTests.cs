@@ -209,7 +209,8 @@ public sealed class SmtpEmailSenderTests
     {
         // Arrange
         (SmtpEmailSender sender, FakeSmtpTransport transport) = NewSender();
-        transport.ThrowOnConnect = new SmtpCommandException(SmtpErrorCode.RecipientNotAccepted, SmtpStatusCode.ServiceNotAvailable, "down");
+        transport.ThrowOnConnect =
+            new SmtpCommandException(SmtpErrorCode.RecipientNotAccepted, SmtpStatusCode.ServiceNotAvailable, "down");
 
         // Act
         EmailSendResult result = await sender.SendEmailAsync("recipient@example.com", "Subject", "Body");
@@ -242,7 +243,8 @@ public sealed class SmtpEmailSenderTests
     {
         // Arrange
         (SmtpEmailSender sender, FakeSmtpTransport transport) = NewSender();
-        transport.ThrowOnSend = new SmtpCommandException(SmtpErrorCode.MessageNotAccepted, SmtpStatusCode.TransactionFailed, "rejected");
+        transport.ThrowOnSend =
+            new SmtpCommandException(SmtpErrorCode.MessageNotAccepted, SmtpStatusCode.TransactionFailed, "rejected");
 
         // Act
         EmailSendResult result = await sender.SendEmailAsync("recipient@example.com", "Subject", "Body");

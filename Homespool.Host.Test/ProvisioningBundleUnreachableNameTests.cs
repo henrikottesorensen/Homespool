@@ -98,7 +98,7 @@ public sealed class ProvisioningBundleUnreachableNameTests : IDisposable
         IReadOnlyList<IPNetwork> configured = [IPNetwork.Parse(network)];
 
         ProvisioningBundleBuilder.IsUnreachableByPrinters([IPAddress.Parse(address)], configured)
-            .Should().Be(unreachable);
+                                 .Should().Be(unreachable);
     }
 
     /// <summary>
@@ -109,7 +109,7 @@ public sealed class ProvisioningBundleUnreachableNameTests : IDisposable
     public void NoConfiguredRangesMeansNothingIsFiltered()
     {
         ProvisioningBundleBuilder.IsUnreachableByPrinters([IPAddress.Parse("172.17.0.2")], [])
-            .Should().BeFalse();
+                                 .Should().BeFalse();
     }
 
     /// <summary>
@@ -140,7 +140,7 @@ public sealed class ProvisioningBundleUnreachableNameTests : IDisposable
 
         // Assert
         offered.Select(suggestion => suggestion.Value).Should().BeEquivalentTo(["192.168.13.238"],
-            "a printer cannot route to a container's bridge network, so those are not choices - they are traps");
+                                                                               "a printer cannot route to a container's bridge network, so those are not choices - they are traps");
     }
 
     /// <summary>
@@ -191,7 +191,8 @@ public sealed class ProvisioningBundleUnreachableNameTests : IDisposable
 
     private static ProvisioningBundleBuilder NewBuilder(PrinterCertificateAuthority authority, IHostAddressResolver resolver)
     {
-        return new(Options.Create(new PrusaConnectOptions { PrinterHost = "192.168.13.238", PrinterPort = 15443, PrinterTls = true }),
+        return new(
+            Options.Create(new PrusaConnectOptions { PrinterHost = "192.168.13.238", PrinterPort = 15443, PrinterTls = true }),
             Options.Create(new CertificateOptions { ContainerNetworks = ["172.16.0.0/12"] }),
             authority,
             resolver);
@@ -200,9 +201,9 @@ public sealed class ProvisioningBundleUnreachableNameTests : IDisposable
     private PrinterCertificateAuthority NewAuthority()
     {
         return new(Options.Create(new CertificateOptions { Directory = "certs" }),
-            new HostEnvironmentAccessor(_root),
-            TimeProvider.System,
-            NullLogger<PrinterCertificateAuthority>.Instance);
+                   new HostEnvironmentAccessor(_root),
+                   TimeProvider.System,
+                   NullLogger<PrinterCertificateAuthority>.Instance);
     }
 
     public void Dispose()

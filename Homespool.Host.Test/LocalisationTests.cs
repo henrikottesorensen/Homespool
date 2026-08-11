@@ -290,7 +290,7 @@ public sealed class LocalisationTests
         DateTimeOffset april = new(2026, 4, 1, 9, 0, 0, TimeSpan.Zero);
 
         SupportedLanguages.DisplayNamesOn(april).Keys
-            .Should().BeEquivalentTo(SupportedLanguages.DisplayNames.Keys);
+                          .Should().BeEquivalentTo(SupportedLanguages.DisplayNames.Keys);
 
         SupportedLanguages.Resolve("en-US").Should().Be("en-US");
         SupportedLanguages.CultureNames.Should().Equal("en-GB", "en-US", "da");

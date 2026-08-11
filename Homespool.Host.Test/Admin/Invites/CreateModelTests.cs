@@ -35,8 +35,8 @@ public sealed class CreateModelTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }
@@ -66,13 +66,15 @@ public sealed class CreateModelTests : IDisposable
     /// unit-tested PageModels need.
     /// </summary>
     private static async Task<(CreateModel model, HSUser admin, CapturingEmailSender emailSender)> NewModelAsync(
-        HomespoolDbContext context, bool signInAdmin = true)
+        HomespoolDbContext context,
+        bool signInAdmin = true)
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 
         HSUser admin = new("admin") { Email = "admin@example.com", EmailConfirmed = true };
         IdentityResult createResult = await users.CreateAsync(admin, "Sup3rSecret!23");
-        createResult.Succeeded.Should().BeTrue("test setup must succeed: {0}", string.Join(", ", createResult.Errors.Select(e => e.Description)));
+        createResult.Succeeded.Should().BeTrue("test setup must succeed: {0}",
+                                               string.Join(", ", createResult.Errors.Select(e => e.Description)));
 
         if (signInAdmin)
         {

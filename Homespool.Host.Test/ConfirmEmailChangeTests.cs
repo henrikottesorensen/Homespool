@@ -46,8 +46,8 @@ public sealed class ConfirmEmailChangeTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }
@@ -119,7 +119,8 @@ public sealed class ConfirmEmailChangeTests : IDisposable
         await model.OnGetAsync(user.Id.ToString(), "after@example.com", code);
 
         // Assert
-        HSUser reloaded = await context.Users.AsNoTracking().SingleAsync(u => u.Id == user.Id, TestContext.Current.CancellationToken);
+        HSUser reloaded = await context.Users.AsNoTracking()
+                                       .SingleAsync(u => u.Id == user.Id, TestContext.Current.CancellationToken);
 
         reloaded.Email.Should().Be("after@example.com");
         reloaded.UserName.Should().Be("henrik", "an address change is not a rename");
@@ -159,7 +160,8 @@ public sealed class ConfirmEmailChangeTests : IDisposable
         // AsNoTracking, and a fresh read: the tracked instance still carries the values the refused
         // call set on it in memory, so asserting against it would pass whether or not anything was
         // written. What matters is the row.
-        HSUser reloaded = await context.Users.AsNoTracking().SingleAsync(u => u.Id == mover.Id, TestContext.Current.CancellationToken);
+        HSUser reloaded = await context.Users.AsNoTracking()
+                                       .SingleAsync(u => u.Id == mover.Id, TestContext.Current.CancellationToken);
 
         reloaded.Email.Should().Be("mover@example.com", "a refused change must leave the address where it was");
         reloaded.UserName.Should().Be("mover");

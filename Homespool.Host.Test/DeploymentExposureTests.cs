@@ -35,9 +35,9 @@ public class DeploymentExposureTests
 
         verdict.State.Should().Be(ExposureState.PrinterTokensCrossThePublicInternet);
         verdict.Description.Should().Contain("printers.example.com")
-            .And.Contain("203.0.113.9")
-            .And.Contain("PrusaConnect:PrinterTls")
-            .And.Contain("new provisioning bundles", "the ones already handed out say tls = False");
+               .And.Contain("203.0.113.9")
+               .And.Contain("PrusaConnect:PrinterTls")
+               .And.Contain("new provisioning bundles", "the ones already handed out say tls = False");
     }
 
     /// <summary>
@@ -57,7 +57,7 @@ public class DeploymentExposureTests
     public void PlaintextOnAPrivateAddressIsNotNaggedAbout(string address)
     {
         DeploymentExposure.EvaluatePrinterTransport(false, "homespool.lan", At(address), ContainerNetworks)
-            .IsProblem.Should().BeFalse();
+                          .IsProblem.Should().BeFalse();
     }
 
     /// <summary>One public answer among several is still public: that is the one an attacker uses.</summary>
@@ -65,8 +65,8 @@ public class DeploymentExposureTests
     public void AnyPublicAddressIsEnough()
     {
         DeploymentExposure.EvaluatePrinterTransport(
-                false, "homespool.lan", At("192.168.13.238", "203.0.113.9"), ContainerNetworks)
-            .State.Should().Be(ExposureState.PrinterTokensCrossThePublicInternet);
+                              false, "homespool.lan", At("192.168.13.238", "203.0.113.9"), ContainerNetworks)
+                          .State.Should().Be(ExposureState.PrinterTokensCrossThePublicInternet);
     }
 
     /// <summary>A name that resolves to nothing says nothing, so neither does this.</summary>
@@ -74,7 +74,7 @@ public class DeploymentExposureTests
     public void AnUnresolvableHostIsNotGuessedAt()
     {
         DeploymentExposure.EvaluatePrinterTransport(false, "homespool.lan", At(), ContainerNetworks)
-            .IsProblem.Should().BeFalse();
+                          .IsProblem.Should().BeFalse();
     }
 
     /// <summary>With TLS on there is nothing to report, whatever the address is.</summary>
@@ -82,7 +82,7 @@ public class DeploymentExposureTests
     public void TlsMakesTheAddressIrrelevant()
     {
         DeploymentExposure.EvaluatePrinterTransport(true, "printers.example.com", At("203.0.113.9"), ContainerNetworks)
-            .IsProblem.Should().BeFalse();
+                          .IsProblem.Should().BeFalse();
     }
 
     /// <summary>
@@ -96,8 +96,8 @@ public class DeploymentExposureTests
 
         verdict.State.Should().Be(ExposureState.SessionInClear);
         verdict.Description.Should().Contain("192.168.13.44")
-            .And.Contain("session cookie")
-            .And.Contain("Listeners:UserHttpsPort");
+               .And.Contain("session cookie")
+               .And.Contain("Listeners:UserHttpsPort");
     }
 
     /// <summary>
@@ -116,7 +116,7 @@ public class DeploymentExposureTests
     public void EncryptedOrLocalSessionsAreLeftAlone(bool isHttps, string client)
     {
         DeploymentExposure.EvaluateAdminSession(isHttps, IPAddress.Parse(client))
-            .IsProblem.Should().BeFalse();
+                          .IsProblem.Should().BeFalse();
     }
 
     /// <summary>

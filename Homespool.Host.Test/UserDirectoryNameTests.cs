@@ -92,7 +92,7 @@ public class UserDirectoryNameTests
         string suffix = name["12-".Length..];
 
         Encoding.UTF8.GetByteCount(suffix)
-              .Should().BeLessThanOrEqualTo(UserDirectoryName.MaxSuffixBytes);
+                .Should().BeLessThanOrEqualTo(UserDirectoryName.MaxSuffixBytes);
 
         // Whole characters only - a halved surrogate pair would render as a replacement character.
         suffix.Should().NotContain("�");

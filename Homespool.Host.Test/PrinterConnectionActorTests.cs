@@ -75,13 +75,17 @@ public class PrinterConnectionActorTests
         return connection;
     }
 
-    private static PrinterConnectionActor NewActor(IPrinterConnection connection, ITelemetrySink? sink = null,
-        TimeSpan? responseTimeout = null, int printerId = 1, TimeSpan? sendTimeout = null,
-        ILogger<PrinterConnectionActor>? logger = null, ITransferContentStore? contentStore = null)
+    private static PrinterConnectionActor NewActor(IPrinterConnection connection,
+                                                   ITelemetrySink? sink = null,
+                                                   TimeSpan? responseTimeout = null,
+                                                   int printerId = 1,
+                                                   TimeSpan? sendTimeout = null,
+                                                   ILogger<PrinterConnectionActor>? logger = null,
+                                                   ITransferContentStore? contentStore = null)
     {
         return new(printerId, connection, sink ?? Substitute.For<ITelemetrySink>(),
-            logger ?? NullLogger<PrinterConnectionActor>.Instance, responseTimeout ?? TimeSpan.FromSeconds(10),
-            contentStore ?? Substitute.For<ITransferContentStore>())
+                   logger ?? NullLogger<PrinterConnectionActor>.Instance, responseTimeout ?? TimeSpan.FromSeconds(10),
+                   contentStore ?? Substitute.For<ITransferContentStore>())
         {
             SendTimeout = sendTimeout ?? TimeSpan.FromSeconds(30),
         };
@@ -177,8 +181,11 @@ public class PrinterConnectionActorTests
         return uint.Parse(System.Text.Encoding.ASCII.GetString(frame, 1, 8), System.Globalization.NumberStyles.HexNumber);
     }
 
-    private static InboundEventMessage EventAnswering(uint commandId, Events eventType = Events.Finished, string? reason = null,
-        string? dataJson = null, string? machineReason = null)
+    private static InboundEventMessage EventAnswering(uint commandId,
+                                                      Events eventType = Events.Finished,
+                                                      string? reason = null,
+                                                      string? dataJson = null,
+                                                      string? machineReason = null)
     {
         return new(DateTimeOffset.UtcNow, new EventDTO
         {
@@ -259,7 +266,8 @@ public class PrinterConnectionActorTests
         await WaitUntilAsync(() => sentFrames.Count == 1);
 
         // Act
-        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), Events.Rejected, "Can't set idle now"), CancellationToken.None);
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), Events.Rejected, "Can't set idle now"),
+                              CancellationToken.None);
         CommandSendResult result = await Eventually(sendTask);
 
         // Assert
@@ -288,15 +296,15 @@ public class PrinterConnectionActorTests
         // Act - a transfer refusal's shape: the busy-slot case, which is the one that is transient.
         await actor.PostAsync(
             EventAnswering(CommandIdOf(sentFrames[0]), Events.Rejected, "Another transfer in progress",
-                machineReason: "TRANSFER_IN_PROGRESS"),
+                           machineReason: "TRANSFER_IN_PROGRESS"),
             CancellationToken.None);
         CommandSendResult result = await Eventually(sendTask);
 
         // Assert
         result.Response!.MachineReason.Should().Be("TRANSFER_IN_PROGRESS",
-            "the code is the part a classifier can rely on across firmware releases");
+                                                   "the code is the part a classifier can rely on across firmware releases");
         result.Response.Reason.Should().Be("Another transfer in progress",
-            "the prose stays, because it is what a person reads");
+                                           "the prose stays, because it is what a person reads");
 
         actor.Complete();
         await Eventually(actor.Completion);
@@ -315,7 +323,7 @@ public class PrinterConnectionActorTests
         await WaitUntilAsync(() => sentFrames.Count == 1);
 
         await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), Events.Rejected, "Can't set idle now"),
-            CancellationToken.None);
+                              CancellationToken.None);
         CommandSendResult result = await Eventually(sendTask);
 
         result.Response!.MachineReason.Should().BeNull();
@@ -345,14 +353,14 @@ public class PrinterConnectionActorTests
         await WaitUntilAsync(() => sentFrames.Count == 1);
 
         const string listing = """
-            {"children":[{"name":"MODEL~1.GCO","display_name":"model.gcode","size":614400,
-                          "read_only":false,"type":"PRINT_FILE"}],
-             "file_count":1,"display_name":"usb","type":"FOLDER","path":"/usb"}
-            """;
+                               {"children":[{"name":"MODEL~1.GCO","display_name":"model.gcode","size":614400,
+                                             "read_only":false,"type":"PRINT_FILE"}],
+                                "file_count":1,"display_name":"usb","type":"FOLDER","path":"/usb"}
+                               """;
 
         // Act
         await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), Events.FileInfo, dataJson: listing),
-            CancellationToken.None);
+                              CancellationToken.None);
         CommandSendResult result = await Eventually(sendTask);
 
         // Assert
@@ -638,7 +646,8 @@ public class PrinterConnectionActorTests
         DateTimeOffset receivedAt = DateTimeOffset.UtcNow;
 
         // Act
-        await actor.PostAsync(new InboundTelemetryMessage(receivedAt, new TelemetryDTO { Status = "PRINTING" }), CancellationToken.None);
+        await actor.PostAsync(new InboundTelemetryMessage(receivedAt, new TelemetryDTO { Status = "PRINTING" }),
+                              CancellationToken.None);
         await WaitUntilAsync(() => sink.TelemetryCalls.Count == 1);
 
         // Assert
@@ -661,8 +670,10 @@ public class PrinterConnectionActorTests
         // Nothing to persist for this shape - the transfer feature isn't built. Posting telemetry
         // afterwards and waiting for it proves the transfer message was processed (FIFO), not
         // merely ignored in the mailbox.
-        await actor.PostAsync(new InboundTransferRequestMessage(DateTimeOffset.UtcNow, new InlineRequestDTO()), CancellationToken.None);
-        await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }), CancellationToken.None);
+        await actor.PostAsync(new InboundTransferRequestMessage(DateTimeOffset.UtcNow, new InlineRequestDTO()),
+                              CancellationToken.None);
+        await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }),
+                              CancellationToken.None);
         await WaitUntilAsync(() => sink.TelemetryCalls.Count == 1);
 
         // Assert
@@ -704,7 +715,8 @@ public class PrinterConnectionActorTests
         using GatedTelemetrySink sink = new();
         PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), sink);
 
-        await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }), CancellationToken.None);
+        await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }),
+                              CancellationToken.None);
         await WaitUntilAsync(() => sink.IsHeld);
 
         using CancellationTokenSource cts = new();
@@ -717,7 +729,8 @@ public class PrinterConnectionActorTests
 
         sink.Release();
 
-        await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE" }), CancellationToken.None);
+        await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE" }),
+                              CancellationToken.None);
         await WaitUntilAsync(() => sink.TelemetryCount == 2);
 
         // Assert
@@ -729,7 +742,7 @@ public class PrinterConnectionActorTests
         await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0])), CancellationToken.None);
 
         (await Eventually(next)).Outcome.Should().Be(CommandSendOutcome.Completed,
-            "the abandoned command must not have taken the one in-flight slot with it");
+                                                     "the abandoned command must not have taken the one in-flight slot with it");
 
         actor.Complete();
         await Eventually(actor.Completion);
@@ -753,7 +766,8 @@ public class PrinterConnectionActorTests
         using GatedTelemetrySink sink = new();
         PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), sink);
 
-        await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }), CancellationToken.None);
+        await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }),
+                              CancellationToken.None);
         await WaitUntilAsync(() => sink.IsHeld);
 
         // Queued behind the held message, exactly as a click landing during shutdown would be.
@@ -795,7 +809,8 @@ public class PrinterConnectionActorTests
         await WaitUntilAsync(() => sentFrames.Count == 1);
 
         // Park the loop, then let the printer's answer arrive behind the held message.
-        await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }), CancellationToken.None);
+        await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }),
+                              CancellationToken.None);
         await WaitUntilAsync(() => sink.IsHeld);
         await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0])), CancellationToken.None);
 
@@ -805,7 +820,7 @@ public class PrinterConnectionActorTests
 
         // Assert
         (await Eventually(send)).Outcome.Should().Be(CommandSendOutcome.Completed,
-            "the reply arrived within the timeout; only the loop was late to it");
+                                                     "the reply arrived within the timeout; only the loop was late to it");
 
         actor.Complete();
         await Eventually(actor.Completion);
@@ -865,7 +880,8 @@ public class PrinterConnectionActorTests
         // Act
         for (int i = 0; i < 5; i++)
         {
-            await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }), CancellationToken.None);
+            await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }),
+                                  CancellationToken.None);
         }
 
         actor.Complete();
@@ -874,7 +890,7 @@ public class PrinterConnectionActorTests
         // Assert - the loop survived all five (Completion ran to the drain, not to a fault), and
         // exactly one Error was written for the burst.
         logger.Collector.GetSnapshot().Count(record => record.Level == LogLevel.Error)
-            .Should().Be(1, "five poison messages inside one throttle window must produce one Error, not five");
+              .Should().Be(1, "five poison messages inside one throttle window must produce one Error, not five");
     }
 
     /// <summary>
@@ -895,7 +911,8 @@ public class PrinterConnectionActorTests
         /// property SA1401 asks for would silently drop the guarantee this exists to provide.
         /// </remarks>
         [SuppressMessage("Design", "SA1401:Fields should be private",
-                         Justification = "Volatile cross-thread flag on a test double; a property cannot carry the volatile semantics.")]
+                         Justification =
+                             "Volatile cross-thread flag on a test double; a property cannot carry the volatile semantics.")]
         public volatile bool IsHeld;
 
         public int TelemetryCount
@@ -966,9 +983,9 @@ public class PrinterConnectionActorTests
 
         // Assert
         string[] messages = logger.Collector.GetSnapshot()
-            .Where(record => record.Level == LogLevel.Debug)
-            .Select(record => record.Message)
-            .ToArray();
+                                  .Where(record => record.Level == LogLevel.Debug)
+                                  .Select(record => record.Message)
+                                  .ToArray();
 
         messages.Should().Contain(message => message.Contains("sent PAUSE_PRINT", StringComparison.Ordinal)
                                              && message.Contains(commandId.ToString(), StringComparison.Ordinal));

@@ -128,14 +128,15 @@ public class CameraFrameCacheTests
     }
 
     private static (CameraFrameCache cache, ICameraSnapshotFetcher fetcher, FakeTimeProvider time) Build(
-        int refreshFloorSeconds = 2, int maxAgeSeconds = 60)
+        int refreshFloorSeconds = 2,
+        int maxAgeSeconds = 60)
     {
         FakeTimeProvider time = new(Start);
         ICameraSnapshotFetcher fetcher = Substitute.For<ICameraSnapshotFetcher>();
 
         fetcher.FetchAsync(Arg.Any<Uri>(), Arg.Any<CancellationToken>())
                .Returns(_ => Task.FromResult<CameraFrame?>(
-                   new CameraFrame([1, 2, 3], "image/jpeg", time.GetUtcNow())));
+                            new CameraFrame([1, 2, 3], "image/jpeg", time.GetUtcNow())));
 
         CameraOptions options = new()
         {

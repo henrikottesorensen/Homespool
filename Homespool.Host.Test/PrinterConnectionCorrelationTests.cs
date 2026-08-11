@@ -76,9 +76,9 @@ public sealed class PrinterConnectionCorrelationTests : IDisposable
     private static IReadOnlyDictionary<string, object?> ScopeOf(FakeLogRecord record)
     {
         return record.Scopes
-              .OfType<IEnumerable<KeyValuePair<string, object>>>()
-              .SelectMany(scope => scope)
-              .ToDictionary(pair => pair.Key, pair => (object?)pair.Value);
+                     .OfType<IEnumerable<KeyValuePair<string, object>>>()
+                     .SelectMany(scope => scope)
+                     .ToDictionary(pair => pair.Key, pair => (object?)pair.Value);
     }
 
     private async Task RunSessionAsync(PrinterConnectionActorFactory actorFactory)
@@ -106,7 +106,8 @@ public sealed class PrinterConnectionCorrelationTests : IDisposable
 
         // Assert
         FakeLogRecord fromReadLoop = Records.Should()
-            .Contain(record => record.Category!.Contains("WebSocketHandler", StringComparison.Ordinal)).Subject;
+                                            .Contain(record => record.Category!.Contains(
+                                                         "WebSocketHandler", StringComparison.Ordinal)).Subject;
 
         ScopeOf(fromReadLoop).Should().Contain("PrinterId", PrinterId);
         ScopeOf(fromReadLoop).Should().ContainKey("ConnectionId");
@@ -129,7 +130,8 @@ public sealed class PrinterConnectionCorrelationTests : IDisposable
 
         // Assert
         FakeLogRecord atActorCreation = Records.Should()
-            .Contain(record => record.Category!.Contains("PrinterConnectionActor", StringComparison.Ordinal)).Subject;
+                                               .Contain(record => record.Category!.Contains(
+                                                            "PrinterConnectionActor", StringComparison.Ordinal)).Subject;
 
         ScopeOf(atActorCreation).Should().Contain("PrinterId", PrinterId);
         ScopeOf(atActorCreation).Should().ContainKey("ConnectionId");
@@ -144,11 +146,11 @@ public sealed class PrinterConnectionCorrelationTests : IDisposable
 
         // Assert
         object?[] connectionIds = Records
-            .Select(ScopeOf)
-            .Where(scope => scope.ContainsKey("ConnectionId"))
-            .Select(scope => scope["ConnectionId"])
-            .Distinct()
-            .ToArray();
+                                  .Select(ScopeOf)
+                                  .Where(scope => scope.ContainsKey("ConnectionId"))
+                                  .Select(scope => scope["ConnectionId"])
+                                  .Distinct()
+                                  .ToArray();
 
         connectionIds.Should().HaveCount(2, "a printer id alone cannot tell two connections apart");
     }
@@ -157,11 +159,13 @@ public sealed class PrinterConnectionCorrelationTests : IDisposable
     private sealed class StubHandler(ILogger logger) : WebSocketHandler(
         NullLogger<WebSocketHandler>.Instance,
         new MessageDispatcher(NullLogger<MessageDispatcher>.Instance,
-            new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
-            TimeProvider.System),
+                              new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
+                              TimeProvider.System),
         Options.Create(new PrusaConnectOptions()))
     {
-        public override Task HandlePrusaWebsocket(PipeReader input, int printerId, IPrinterConnectionActor actor,
+        public override Task HandlePrusaWebsocket(PipeReader input,
+                                                  int printerId,
+                                                  IPrinterConnectionActor actor,
                                                   CancellationToken cancellationToken)
         {
             logger.LogInformation("read loop running");
@@ -199,8 +203,11 @@ public sealed class PrinterConnectionCorrelationTests : IDisposable
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask SendChunkAsync(ReadOnlyMemory<byte> header, ITransferContent content, long offset,
-                                        long count, CancellationToken cancellationToken)
+        public ValueTask SendChunkAsync(ReadOnlyMemory<byte> header,
+                                        ITransferContent content,
+                                        long offset,
+                                        long count,
+                                        CancellationToken cancellationToken)
         {
             return ValueTask.CompletedTask;
         }

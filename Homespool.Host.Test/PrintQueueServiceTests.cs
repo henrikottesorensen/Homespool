@@ -92,7 +92,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         await queue.EnqueueAsync(printer.Id, Alice, "one.gcode", TestContext.Current.CancellationToken);
         await queue.EnqueueAsync(printer.Id, Alice, "two.gcode", TestContext.Current.CancellationToken);
         QueuedPrint third = await queue.EnqueueAsync(printer.Id, Alice, "three.gcode",
-            TestContext.Current.CancellationToken);
+                                                     TestContext.Current.CancellationToken);
 
         // Act
         bool moved = await queue.MoveAsync(third.TrackingId, Alice, 0, TestContext.Current.CancellationToken);
@@ -117,7 +117,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         await UploadAsync(context, "one.gcode", "two.gcode");
 
         QueuedPrint first = await queue.EnqueueAsync(printer.Id, Alice, "one.gcode",
-            TestContext.Current.CancellationToken);
+                                                     TestContext.Current.CancellationToken);
         await queue.EnqueueAsync(printer.Id, Alice, "two.gcode", TestContext.Current.CancellationToken);
 
         // Act
@@ -144,7 +144,7 @@ public sealed class PrintQueueServiceTests : IDisposable
 
         await queue.EnqueueAsync(printer.Id, Alice, "one.gcode", TestContext.Current.CancellationToken);
         QueuedPrint second = await queue.EnqueueAsync(printer.Id, Alice, "two.gcode",
-            TestContext.Current.CancellationToken);
+                                                      TestContext.Current.CancellationToken);
 
         // Act
         await queue.CancelAsync(second.TrackingId, Alice, TestContext.Current.CancellationToken);
@@ -188,7 +188,7 @@ public sealed class PrintQueueServiceTests : IDisposable
 
         // Act
         Func<Task> act = () => queue.EnqueueAsync(printer.Id, Alice, "nothing.gcode",
-            TestContext.Current.CancellationToken);
+                                                  TestContext.Current.CancellationToken);
 
         // Assert
         await act.Should().ThrowAsync<PrintFileNotFoundException>();
@@ -208,7 +208,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         // Act
         IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Alice, TestContext.Current.CancellationToken);
         Func<Task> enqueue = () => queue.EnqueueAsync(printer.Id, Alice, "one.gcode",
-            TestContext.Current.CancellationToken);
+                                                      TestContext.Current.CancellationToken);
 
         // Assert
         jobs.Should().BeEmpty();
@@ -246,7 +246,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         await UploadAsync(context, "one.gcode");
 
         QueuedPrint job = await queue.EnqueueAsync(printer.Id, Alice, "one.gcode",
-            TestContext.Current.CancellationToken);
+                                                   TestContext.Current.CancellationToken);
 
         // Act
         bool cancelled = await queue.CancelAsync(job.TrackingId, Bob, TestContext.Current.CancellationToken);
@@ -319,16 +319,16 @@ public sealed class PrintQueueServiceTests : IDisposable
         foreach (string name in names)
         {
             await catalog.SaveAsync(Alice, name, new MemoryStream([1, 2, 3]), overwrite: false,
-                TestContext.Current.CancellationToken);
+                                    TestContext.Current.CancellationToken);
         }
     }
 
     private PrintFileCatalog NewCatalog(HomespoolDbContext context)
     {
         UserFileStore store = new(Options.Create(new PrintFileStorageOptions { Directory = _root }),
-            new HostEnvironmentAccessor(_root),
-            TimeProvider.System,
-            NullLogger<UserFileStore>.Instance);
+                                  new HostEnvironmentAccessor(_root),
+                                  TimeProvider.System,
+                                  NullLogger<UserFileStore>.Instance);
 
         return new PrintFileCatalog(store, context, NullLogger<PrintFileCatalog>.Instance);
     }
@@ -341,8 +341,8 @@ public sealed class PrintQueueServiceTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }

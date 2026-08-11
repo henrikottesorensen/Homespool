@@ -46,7 +46,7 @@ public class TelemetryWriterLivenessHealthCheckTests
         HealthCheckResult result = await CheckAsync(new StubHealthSource { IsDraining = false });
 
         result.Status.Should().Be(HealthStatus.Unhealthy,
-            "the service would go on serving while never persisting anything again");
+                                  "the service would go on serving while never persisting anything again");
     }
 
     /// <summary>
@@ -76,6 +76,6 @@ public class TelemetryWriterLivenessHealthCheckTests
         HealthCheckResult result = await CheckAsync(source);
 
         result.Status.Should().Be(HealthStatus.Healthy,
-            "a restart would not fix the database and would throw away everything still buffered");
+                                  "a restart would not fix the database and would throw away everything still buffered");
     }
 }

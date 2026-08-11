@@ -96,8 +96,10 @@ public sealed class UserFileStoreTests : IDisposable
         await SaveAsync(store, Bob, "benchy.gcode", Encoding.UTF8.GetBytes("bob"));
 
         // Assert
-        (await File.ReadAllTextAsync(store.Find(Alice, "benchy.gcode")!.Path, TestContext.Current.CancellationToken)).Should().Be("alice");
-        (await File.ReadAllTextAsync(store.Find(Bob, "benchy.gcode")!.Path, TestContext.Current.CancellationToken)).Should().Be("bob");
+        (await File.ReadAllTextAsync(store.Find(Alice, "benchy.gcode")!.Path, TestContext.Current.CancellationToken)).Should()
+            .Be("alice");
+        (await File.ReadAllTextAsync(store.Find(Bob, "benchy.gcode")!.Path, TestContext.Current.CancellationToken)).Should()
+            .Be("bob");
     }
 
     /// <summary>
@@ -116,7 +118,8 @@ public sealed class UserFileStoreTests : IDisposable
 
         // Assert
         await act.Should().ThrowAsync<PrintFileNameConflictException>();
-        (await File.ReadAllTextAsync(store.Find(Alice, "benchy.gcode")!.Path, TestContext.Current.CancellationToken)).Should().Be("first",
+        (await File.ReadAllTextAsync(store.Find(Alice, "benchy.gcode")!.Path, TestContext.Current.CancellationToken)).Should().Be(
+            "first",
             "a refused upload must not have replaced anything");
         store.List(Alice).Should().ContainSingle("nor left a second copy behind");
     }
@@ -155,7 +158,7 @@ public sealed class UserFileStoreTests : IDisposable
         await act.Should().ThrowAsync<PrintFileNameConflictException>();
         store.Find(Alice, "BENCHY.gcode").Should().NotBeNull("and a lookup folds case the same way");
         store.Find(Alice, "BENCHY.gcode")!.FileName.Should().Be("Benchy.gcode",
-            "the name reported is the one on disk, not the spelling that was asked for");
+                                                                "the name reported is the one on disk, not the spelling that was asked for");
     }
 
     [Fact]
@@ -193,7 +196,7 @@ public sealed class UserFileStoreTests : IDisposable
         // Assert
         saved.FileName.Should().Be(expected);
         Path.GetFullPath(saved.Path).Should().StartWith(Path.GetFullPath(_root),
-            "nothing a caller supplies may place a file outside the store");
+                                                        "nothing a caller supplies may place a file outside the store");
     }
 
     /// <summary>
@@ -240,13 +243,13 @@ public sealed class UserFileStoreTests : IDisposable
 
         // Act
         Func<Task> act = () => store.SaveAsync(Alice, "model.gcode", new ThrowingStream(), overwrite: false,
-            CancellationToken.None);
+                                               CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<IOException>();
         store.List(Alice).Should().BeEmpty("a half-written upload must never be listable");
         Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories)
-            .Should().BeEmpty("nor left in the incoming directory");
+                 .Should().BeEmpty("nor left in the incoming directory");
     }
 
     [Fact]
@@ -263,7 +266,8 @@ public sealed class UserFileStoreTests : IDisposable
         renamed.Should().NotBeNull();
         renamed!.FileName.Should().Be("new.gcode");
         renamed.PrinterPath.Should().Be("/usb/new.gcode");
-        (await File.ReadAllTextAsync(renamed.Path, TestContext.Current.CancellationToken)).Should().Be("content", "a rename moves bytes, it does not copy them");
+        (await File.ReadAllTextAsync(renamed.Path, TestContext.Current.CancellationToken)).Should()
+            .Be("content", "a rename moves bytes, it does not copy them");
         store.List(Alice).Should().ContainSingle();
         store.Find(Alice, "old.gcode").Should().BeNull();
     }
@@ -281,7 +285,8 @@ public sealed class UserFileStoreTests : IDisposable
 
         // Assert
         act.Should().Throw<PrintFileNameConflictException>();
-        (await File.ReadAllTextAsync(store.Find(Alice, "two.gcode")!.Path, TestContext.Current.CancellationToken)).Should().Be("two",
+        (await File.ReadAllTextAsync(store.Find(Alice, "two.gcode")!.Path, TestContext.Current.CancellationToken)).Should().Be(
+            "two",
             "the file that was already there must be untouched");
     }
 
@@ -420,15 +425,21 @@ public sealed class UserFileStoreTests : IDisposable
         UserFileStore.IsAllowedExtension(name).Should().Be(allowed);
     }
 
-    private static async Task<StoredFile> SaveAsync(UserFileStore store, long userId, string fileName, byte[] content,
-        bool overwrite = false)
+    private static async Task<StoredFile> SaveAsync(UserFileStore store,
+                                                    long userId,
+                                                    string fileName,
+                                                    byte[] content,
+                                                    bool overwrite = false)
     {
         return (await PublishAsync(store, userId, fileName, content, overwrite)).File;
     }
 
     /// <summary>The same save, keeping the digest - for the tests that are about the digest.</summary>
-    private static Task<PublishedFile> PublishAsync(UserFileStore store, long userId, string fileName, byte[] content,
-        bool overwrite = false)
+    private static Task<PublishedFile> PublishAsync(UserFileStore store,
+                                                    long userId,
+                                                    string fileName,
+                                                    byte[] content,
+                                                    bool overwrite = false)
     {
         return store.SaveAsync(userId, fileName, new MemoryStream(content), overwrite, CancellationToken.None);
     }
@@ -445,7 +456,7 @@ public sealed class UserFileStoreTests : IDisposable
 
         // Act
         await store.SaveAsync(Alice, "model.gcode", new MemoryStream([1, 2, 3]), overwrite: false,
-            CancellationToken.None, "Sørensen");
+                              CancellationToken.None, "Sørensen");
 
         // Assert
         Directory.EnumerateDirectories(_root).Select(Path.GetFileName)
@@ -468,11 +479,11 @@ public sealed class UserFileStoreTests : IDisposable
         UserFileStore store = NewStore();
 
         await store.SaveAsync(Alice, "first.gcode", new MemoryStream([1]), overwrite: false,
-            CancellationToken.None, "henrik");
+                              CancellationToken.None, "henrik");
 
         // Act - the same user, now displaying under a different name.
         await store.SaveAsync(Alice, "second.gcode", new MemoryStream([2]), overwrite: false,
-            CancellationToken.None, "Henrik Sørensen");
+                              CancellationToken.None, "Henrik Sørensen");
 
         // Assert
         Directory.EnumerateDirectories(_root).Where(d => Path.GetFileName(d) != ".incoming")
@@ -498,7 +509,7 @@ public sealed class UserFileStoreTests : IDisposable
 
         // Act
         await store.SaveAsync(Alice, "model.gcode", new MemoryStream([1]), overwrite: false,
-            CancellationToken.None, "Something Else Entirely");
+                              CancellationToken.None, "Something Else Entirely");
 
         // Assert
         store.Find(Alice, "model.gcode").Should().NotBeNull();
@@ -516,9 +527,9 @@ public sealed class UserFileStoreTests : IDisposable
 
         // 1 and 12: without the hyphen in the pattern, "1-*" would claim "12-*" too.
         await store.SaveAsync(Alice, "alice.gcode", new MemoryStream([1]), overwrite: false,
-            CancellationToken.None, "alice");
+                              CancellationToken.None, "alice");
         await store.SaveAsync(12, "twelve.gcode", new MemoryStream([2]), overwrite: false,
-            CancellationToken.None, "twelve");
+                              CancellationToken.None, "twelve");
 
         // Act & Assert
         store.List(Alice).Should().ContainSingle(file => file.FileName == "alice.gcode");
@@ -528,9 +539,9 @@ public sealed class UserFileStoreTests : IDisposable
     private UserFileStore NewStore()
     {
         return new(Options.Create(new PrintFileStorageOptions { Directory = _root }),
-            new HostEnvironmentAccessor(_root),
-            TimeProvider.System,
-            NullLogger<UserFileStore>.Instance);
+                   new HostEnvironmentAccessor(_root),
+                   TimeProvider.System,
+                   NullLogger<UserFileStore>.Instance);
     }
 
     /// <summary>A body that dies part-way through, which is what a disconnecting client looks like.</summary>

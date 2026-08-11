@@ -56,7 +56,8 @@ public class WebSocketPrinterConnectionTests
 
         // A command send is in flight: inside the socket, holding the connection's write lock.
         System.Threading.Tasks.Task send =
-            connection.SendAsync(Encoding.ASCII.GetBytes("J0000002A{\"command\":\"PAUSE_PRINT\"}"), CancellationToken.None).AsTask();
+            connection.SendAsync(Encoding.ASCII.GetBytes("J0000002A{\"command\":\"PAUSE_PRINT\"}"), CancellationToken.None)
+                      .AsTask();
 
         await WaitUntilAsync(() => socket.Operations.Contains(FakeWebSocket.SendStarted));
 
@@ -68,7 +69,8 @@ public class WebSocketPrinterConnectionTests
         await System.Threading.Tasks.Task.Delay(50, TestContext.Current.CancellationToken);
 
         socket.ReleaseSends();
-        await System.Threading.Tasks.Task.WhenAll(send, close).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        await System.Threading.Tasks.Task.WhenAll(send, close)
+                    .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         // Assert
         socket.Operations.Should().Equal(

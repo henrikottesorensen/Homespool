@@ -61,7 +61,8 @@ public class WebSocketHandlerCancellationTests
         RecordingMessageDispatcher dispatcher = new();
         using CancellationTokenSource cts = new();
 
-        Task run = NewHandler(dispatcher).HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(), cts.Token);
+        Task run = NewHandler(dispatcher)
+            .HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(), cts.Token);
 
         // Nothing is ever written, so once the loop has started there is exactly one place it can
         // be: awaiting ReadAsync. No race to lose - only a moment to let it get there.
@@ -101,8 +102,9 @@ public class WebSocketHandlerCancellationTests
 
         // Act
         Func<Task> act = async () =>
-            await NewHandler(dispatcher).HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(), cts.Token)
-                                        .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            await NewHandler(dispatcher)
+                  .HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(), cts.Token)
+                  .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         // Assert
         await act.Should().NotThrowAsync(
@@ -114,8 +116,8 @@ public class WebSocketHandlerCancellationTests
     /// <inheritdoc cref="WebSocketHandlerParsingTests"/>
     private sealed class RecordingMessageDispatcher()
         : MessageDispatcher(NullLogger<MessageDispatcher>.Instance,
-            new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
-            TimeProvider.System)
+                            new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
+                            TimeProvider.System)
     {
         public List<string> Received { get; } = [];
 

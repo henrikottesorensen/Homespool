@@ -56,8 +56,8 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }
@@ -82,7 +82,9 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
     }
 
     private static async Task<(XApiKeyAuthenticationHandler handler, DefaultHttpContext httpContext)> NewHandlerAsync(
-        HomespoolDbContext context, string? apiKey, string? authorization = null)
+        HomespoolDbContext context,
+        string? apiKey,
+        string? authorization = null)
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, IServiceProvider provider) =
             IdentityTestHarness.BuildIdentityServices(context);

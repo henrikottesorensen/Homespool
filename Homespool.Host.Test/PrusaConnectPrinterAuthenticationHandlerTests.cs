@@ -71,7 +71,9 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     }
 
     /// <summary>Seeds an already-enrolled printer and returns its plaintext token.</summary>
-    private static async Task<(Printer printer, string token)> AddEnrolledPrinterAsync(HomespoolDbContext context, string fingerprint)
+    private static async Task<(Printer printer, string token)> AddEnrolledPrinterAsync(
+        HomespoolDbContext context,
+        string fingerprint)
     {
         Printer printer = await AddPrinterAsync(context);
 
@@ -114,8 +116,8 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }
@@ -286,7 +288,8 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
 
         await using HomespoolDbContext verify = NewContext();
 
-        PrusaConnectAuthenticationData enrolled = await verify.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken);
+        PrusaConnectAuthenticationData enrolled =
+            await verify.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken);
         enrolled.PrinterId.Should().Be(printer.Id);
         enrolled.FingerPrintKey.Should().Be(Fingerprint, "the presented fingerprint is bound to the printer");
 
@@ -310,7 +313,8 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
 
         // Assert
         await using HomespoolDbContext verify = NewContext();
-        PrusaConnectAuthenticationData enrolled = await verify.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken);
+        PrusaConnectAuthenticationData enrolled =
+            await verify.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken);
 
         new TokenService().VerifyToken(token, enrolled.HashedToken).Should().BeTrue();
     }
@@ -367,8 +371,10 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
         result.Succeeded.Should().BeFalse();
 
         await using HomespoolDbContext verify = NewContext();
-        (await verify.PrusaConnectAuthentication.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse("nothing was enrolled");
-        (await verify.PrusaConnectProvisionings.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1, "the real printer's token must survive a wrong guess");
+        (await verify.PrusaConnectAuthentication.AnyAsync(TestContext.Current.CancellationToken)).Should()
+            .BeFalse("nothing was enrolled");
+        (await verify.PrusaConnectProvisionings.CountAsync(TestContext.Current.CancellationToken)).Should()
+            .Be(1, "the real printer's token must survive a wrong guess");
     }
 
     /// <summary>
@@ -393,8 +399,10 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
         result.Principal!.FindFirst(HSClaimTypes.PrinterId)!.Value.Should().Be($"{target.Id}");
 
         await using HomespoolDbContext verify = NewContext();
-        (await verify.PrusaConnectProvisionings.CountAsync(TestContext.Current.CancellationToken)).Should().Be(2, "the other two are untouched");
-        (await verify.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken)).PrinterId.Should().Be(target.Id);
+        (await verify.PrusaConnectProvisionings.CountAsync(TestContext.Current.CancellationToken)).Should()
+            .Be(2, "the other two are untouched");
+        (await verify.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken)).PrinterId.Should()
+            .Be(target.Id);
     }
 
     /// <summary>
@@ -454,11 +462,13 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
 
         await using HomespoolDbContext verify = NewContext();
 
-        PrusaConnectAuthenticationData enrolled = await verify.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken);
+        PrusaConnectAuthenticationData enrolled =
+            await verify.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken);
         enrolled.PrinterId.Should().Be(printer.Id);
         enrolled.FingerPrintKey.Should().Be(Fingerprint);
 
-        (await verify.PrusaConnectProvisionings.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse("the token is consumed exactly once");
+        (await verify.PrusaConnectProvisionings.AnyAsync(TestContext.Current.CancellationToken)).Should()
+            .BeFalse("the token is consumed exactly once");
     }
 
     /// <summary>

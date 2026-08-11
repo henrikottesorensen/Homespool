@@ -34,18 +34,18 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     private static PrusaConnectService NewService(HomespoolDbContext context)
     {
         return new(context,
-            new CodeGenerator(),
-            new TokenService(),
-            new TeamService(context),
-            TimeProvider.System, NullLogger<PrusaConnectService>.Instance,
-            Options.Create(new PrusaConnectOptions()));
+                   new CodeGenerator(),
+                   new TokenService(),
+                   new TeamService(context),
+                   TimeProvider.System, NullLogger<PrusaConnectService>.Instance,
+                   Options.Create(new PrusaConnectOptions()));
     }
 
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }
@@ -144,7 +144,8 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         (Printer printer, string token) = await service.ProvisionPrinterAsync(null, null, teamId: null, userId: 1);
 
         // Assert
-        PrusaConnectProvisioning stored = await context.PrusaConnectProvisionings.SingleAsync(TestContext.Current.CancellationToken);
+        PrusaConnectProvisioning stored =
+            await context.PrusaConnectProvisionings.SingleAsync(TestContext.Current.CancellationToken);
 
         stored.PrinterId.Should().Be(printer.Id);
         stored.HashedToken.Should().NotBe(token, "the token must never be stored in the clear");
@@ -212,16 +213,18 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
 
-        TeamMember target = someoneElsesTeam
-            ? await AddTeamAsync(context, userId: 2, canManage: true, isDefault: true)
-            : await AddTeamAsync(context, userId: 1, canManage: false, isDefault: false);
+        TeamMember target = someoneElsesTeam ?
+            await AddTeamAsync(context, userId: 2, canManage: true, isDefault: true) :
+            await AddTeamAsync(context, userId: 1, canManage: false, isDefault: false);
 
         // Act
         Func<Task> provision = () => service.ProvisionPrinterAsync(null, null, teamId: target.TeamId, userId: 1);
 
         // Assert
         await provision.Should().ThrowAsync<TeamAccessDeniedException>();
-        (await context.Printers.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse("a refused provision must not leave a printer behind");
+        (await context.Printers.AnyAsync(TestContext.Current.CancellationToken)).Should()
+                                                                                .BeFalse(
+                                                                                    "a refused provision must not leave a printer behind");
     }
 
     /// <summary>
@@ -259,8 +262,10 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         await service.ProvisionPrinterAsync(null, null, teamId: null, userId: 1);
 
         // Assert
-        (await context.PrusaConnectRegistrations.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse("provisioning bypasses /p/register entirely");
-        (await context.PrusaConnectAuthentication.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse("enrolment completes at first contact, not here");
+        (await context.PrusaConnectRegistrations.AnyAsync(TestContext.Current.CancellationToken)).Should()
+            .BeFalse("provisioning bypasses /p/register entirely");
+        (await context.PrusaConnectAuthentication.AnyAsync(TestContext.Current.CancellationToken)).Should()
+            .BeFalse("enrolment completes at first contact, not here");
     }
 
     // ---------- regenerate ----------
@@ -285,14 +290,18 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         // Assert
         reissued.Should().NotBe(original);
 
-        PrusaConnectProvisioning stored = await context.PrusaConnectProvisionings.SingleAsync(TestContext.Current.CancellationToken);
+        PrusaConnectProvisioning stored =
+            await context.PrusaConnectProvisionings.SingleAsync(TestContext.Current.CancellationToken);
         TokenService tokenService = new();
 
         tokenService.VerifyToken(reissued, stored.HashedToken).Should().BeTrue("the reissued token must work");
         tokenService.VerifyToken(original, stored.HashedToken).Should()
-            .BeFalse("the token on the discarded USB stick must stop working");
+                    .BeFalse("the token on the discarded USB stick must stop working");
 
-        (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1, "reissuing must not create a second printer");
+        (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should()
+                                                                                  .Be(
+                                                                                      1,
+                                                                                      "reissuing must not create a second printer");
     }
 
     /// <summary>
@@ -451,17 +460,22 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         string reissued = await service.RegenerateProvisioningTokenAsync(printer.Id, userId: 1);
 
         // Assert
-        PrusaConnectProvisioning outstanding = await context.PrusaConnectProvisionings.SingleAsync(TestContext.Current.CancellationToken);
+        PrusaConnectProvisioning outstanding =
+            await context.PrusaConnectProvisionings.SingleAsync(TestContext.Current.CancellationToken);
 
         outstanding.PrinterId.Should().Be(printer.Id);
         tokenService.VerifyToken(reissued, outstanding.HashedToken).Should().BeTrue();
 
-        PrusaConnectAuthenticationData credential = await context.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken);
+        PrusaConnectAuthenticationData credential =
+            await context.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken);
 
         tokenService.VerifyToken(enrolledToken, credential.HashedToken).Should()
-            .BeTrue("the printer must keep working until it is actually given the reissued token");
+                    .BeTrue("the printer must keep working until it is actually given the reissued token");
 
-        (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1, "reissuing must not create a second printer");
+        (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should()
+                                                                                  .Be(
+                                                                                      1,
+                                                                                      "reissuing must not create a second printer");
     }
 
     /// <summary>

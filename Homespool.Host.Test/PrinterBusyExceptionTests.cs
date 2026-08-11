@@ -28,7 +28,7 @@ public class PrinterBusyExceptionTests
 
         message.Should().Contain("isn't known yet");
         message.Should().NotContain("not busy",
-            "that sentence describes a printer doing something, which this one is not");
+                                    "that sentence describes a printer doing something, which this one is not");
     }
 
     /// <summary>A state that really is mid-something names itself and says what is allowed.</summary>

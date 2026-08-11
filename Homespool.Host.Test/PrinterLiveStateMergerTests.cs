@@ -80,7 +80,7 @@ public class PrinterLiveStateMergerTests
         state.TimeToFilamentChange.Should().BeNull();
 
         state.FilamentUsed.Should().Be(1015687.625f,
-            "it is a lifetime odometer outside the has_job guard - stopping rising is correct, unlike progress");
+                                       "it is a lifetime odometer outside the has_job guard - stopping rising is correct, unlike progress");
         state.NozzleTemperature.Should().Be(210.5f, "everything outside the job block still carries forward");
     }
 
@@ -99,7 +99,7 @@ public class PrinterLiveStateMergerTests
 
         // Act - only progress moved
         PrinterLiveStateMerger.Merge(state, new TelemetryDTO { Status = "PRINTING", Progress = 41 },
-            DateTimeOffset.UtcNow);
+                                     DateTimeOffset.UtcNow);
 
         // Assert
         state.Progress.Should().Be(41);

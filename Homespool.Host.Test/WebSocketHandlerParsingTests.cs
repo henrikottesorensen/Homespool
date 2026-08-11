@@ -213,16 +213,16 @@ public class WebSocketHandlerParsingTests
         Pipe wire = new();
 
         WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance,
-            new RecordingMessageDispatcher(),
-            Options.Create(new PrusaConnectOptions { MaxIncomingMessageBytes = 4096 }));
+                                       new RecordingMessageDispatcher(),
+                                       Options.Create(new PrusaConnectOptions { MaxIncomingMessageBytes = 4096 }));
 
         // Act
         Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 7,
-            Substitute.For<IPrinterConnectionActor>(), CancellationToken.None);
+                                                Substitute.For<IPrinterConnectionActor>(), CancellationToken.None);
 
         // Valid JSON as far as it goes, and never closed - the shape that used to buffer for ever.
         await WriteInChunksAsync(wire.Writer,
-            Encoding.UTF8.GetBytes("{\"a\":\"" + new string('x', 8192)), chunkSize: 1024);
+                                 Encoding.UTF8.GetBytes("{\"a\":\"" + new string('x', 8192)), chunkSize: 1024);
 
         // Assert
         PrinterMessageTooLargeException thrown = await Assert.ThrowsAsync<PrinterMessageTooLargeException>(() => run);
@@ -250,18 +250,18 @@ public class WebSocketHandlerParsingTests
         RecordingMessageDispatcher dispatcher = new();
 
         WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, dispatcher,
-            Options.Create(new PrusaConnectOptions { MaxIncomingMessageBytes = 4096 }));
+                                       Options.Create(new PrusaConnectOptions { MaxIncomingMessageBytes = 4096 }));
 
         // Act
         Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 7,
-            Substitute.For<IPrinterConnectionActor>(), CancellationToken.None);
+                                                Substitute.For<IPrinterConnectionActor>(), CancellationToken.None);
 
         // Three complete messages, each close to the cap: over 4096 bytes in total, under it each.
         for (int i = 0; i < 3; i++)
         {
             await WriteInChunksAsync(wire.Writer,
-                Encoding.UTF8.GetBytes($$"""{"job_id":{{i}},"pad":"{{new string('x', 3000)}}"}""" + "\n"),
-                chunkSize: 512);
+                                     Encoding.UTF8.GetBytes($$"""{"job_id":{{i}},"pad":"{{new string('x', 3000)}}"}""" + "\n"),
+                                     chunkSize: 512);
         }
 
         await wire.Writer.CompleteAsync();
@@ -291,7 +291,8 @@ public class WebSocketHandlerParsingTests
         WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, new RecordingMessageDispatcher(), DefaultOptions);
 
         // Act
-        Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(), CancellationToken.None);
+        Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(),
+                                                CancellationToken.None);
 
         await WriteInChunksAsync(wire.Writer, Encoding.UTF8.GetBytes("""{"job_id":301,,,}"""), chunkSize: 4096);
         await wire.Writer.CompleteAsync();
@@ -322,7 +323,8 @@ public class WebSocketHandlerParsingTests
         RecordingMessageDispatcher dispatcher = new();
         WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, dispatcher, DefaultOptions);
 
-        Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(), CancellationToken.None);
+        Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(),
+                                                CancellationToken.None);
 
         if (chunkSizes.Length == 1)
         {
@@ -376,8 +378,8 @@ public class WebSocketHandlerParsingTests
     /// </summary>
     private sealed class RecordingMessageDispatcher()
         : MessageDispatcher(NullLogger<MessageDispatcher>.Instance,
-            new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
-            TimeProvider.System)
+                            new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
+                            TimeProvider.System)
     {
         public List<string> Received { get; } = [];
 

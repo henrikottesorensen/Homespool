@@ -52,7 +52,8 @@ public class PrinterAddressSuggestionTests
     public void ADockerRangeAddressIsFlaggedRatherThanTrusted(string address)
     {
         // Act
-        IReadOnlyList<PrinterAddressSuggestion> suggestions = PrinterAddressSuggestion.Classify([IPAddress.Parse(address)], hostName: null, DockerDefault);
+        IReadOnlyList<PrinterAddressSuggestion> suggestions =
+            PrinterAddressSuggestion.Classify([IPAddress.Parse(address)], hostName: null, DockerDefault);
 
         // Assert
         Find(suggestions, address)!.Durability.Should().Be(AddressDurability.ProbablyTheContainersOwn);
@@ -72,7 +73,8 @@ public class PrinterAddressSuggestionTests
     public void AnOrdinaryPrivateAddressIsOfferedWithTheLeaseCaveat(string address)
     {
         // Act
-        IReadOnlyList<PrinterAddressSuggestion> suggestions = PrinterAddressSuggestion.Classify([IPAddress.Parse(address)], hostName: null, DockerDefault);
+        IReadOnlyList<PrinterAddressSuggestion> suggestions =
+            PrinterAddressSuggestion.Classify([IPAddress.Parse(address)], hostName: null, DockerDefault);
 
         // Assert
         Find(suggestions, address)!.Durability.Should().Be(AddressDurability.UntilTheLeaseMoves);
@@ -111,8 +113,10 @@ public class PrinterAddressSuggestionTests
     public void AHostNameLeadsUnlessItIsMdns()
     {
         // Act
-        IReadOnlyList<PrinterAddressSuggestion> named = PrinterAddressSuggestion.Classify([IPAddress.Parse("192.168.1.5")], "homespool.lan", DockerDefault);
-        IReadOnlyList<PrinterAddressSuggestion> mdns = PrinterAddressSuggestion.Classify([IPAddress.Parse("192.168.1.5")], "homespool.local", DockerDefault);
+        IReadOnlyList<PrinterAddressSuggestion> named =
+            PrinterAddressSuggestion.Classify([IPAddress.Parse("192.168.1.5")], "homespool.lan", DockerDefault);
+        IReadOnlyList<PrinterAddressSuggestion> mdns =
+            PrinterAddressSuggestion.Classify([IPAddress.Parse("192.168.1.5")], "homespool.local", DockerDefault);
 
         // Assert
         named[0].Value.Should().Be("homespool.lan");

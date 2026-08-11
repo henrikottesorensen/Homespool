@@ -47,8 +47,8 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }
@@ -187,7 +187,7 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
         ChangePasswordModel model = new(users, signIn, new ApiTokenService(context), new UnitOfWork(context),
-            NullLogger<ChangePasswordModel>.Instance)
+                                        NullLogger<ChangePasswordModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
             Input = new ChangePasswordModel.InputModel

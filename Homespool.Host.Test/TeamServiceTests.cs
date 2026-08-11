@@ -26,8 +26,8 @@ public sealed class TeamServiceTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }
@@ -101,8 +101,10 @@ public sealed class TeamServiceTests : IDisposable
         context.Teams.AddRange(owned, someoneElses);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        await new TeamService(context).AddMemberAsync(owned.Id, 1, canRead: true, canUse: true, canManage: true, CancellationToken.None);
-        await new TeamService(context).AddMemberAsync(someoneElses.Id, 2, canRead: true, canUse: true, canManage: true, CancellationToken.None);
+        await new TeamService(context).AddMemberAsync(owned.Id, 1, canRead: true, canUse: true, canManage: true,
+                                                      CancellationToken.None);
+        await new TeamService(context).AddMemberAsync(someoneElses.Id, 2, canRead: true, canUse: true, canManage: true,
+                                                      CancellationToken.None);
 
         // Act
         IReadOnlyList<TeamMember> memberships = await new TeamService(context).GetTeamsForUserAsync(1, CancellationToken.None);

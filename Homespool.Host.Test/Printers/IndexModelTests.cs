@@ -45,8 +45,8 @@ public sealed class IndexModelTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }
@@ -94,7 +94,9 @@ public sealed class IndexModelTests : IDisposable
         return NewModelAsync(context, connectionRegistry: null);
     }
 
-    private async Task<(IndexModel model, HSUser user, Team team)> NewModelAsync(HomespoolDbContext context, PrinterConnectionRegistry? connectionRegistry)
+    private async Task<(IndexModel model, HSUser user, Team team)> NewModelAsync(
+        HomespoolDbContext context,
+        PrinterConnectionRegistry? connectionRegistry)
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 
@@ -124,18 +126,19 @@ public sealed class IndexModelTests : IDisposable
         IndexModel model = new(
             new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System),
             new PrusaConnectService(context, new CodeGenerator(), new TokenService(), new TeamService(context),
-                TimeProvider.System, NullLogger<PrusaConnectService>.Instance, Options.Create(options)),
-            new ProvisioningBundleBuilder(Options.Create(options), Options.Create(new CertificateOptions()), authority, new DnsHostAddressResolver()),
+                                    TimeProvider.System, NullLogger<PrusaConnectService>.Instance, Options.Create(options)),
+            new ProvisioningBundleBuilder(Options.Create(options), Options.Create(new CertificateOptions()), authority,
+                                          new DnsHostAddressResolver()),
             new TeamService(context),
             users,
             Options.Create(options),
             connectionRegistry,
             new PrinterCommandService(new PrinterAccessService(context), connectionRegistry),
             new PrintStopService(context, new PrinterCommandService(new PrinterAccessService(context), connectionRegistry),
-                NullLogger<PrintStopService>.Instance),
+                                 NullLogger<PrintStopService>.Instance),
             new PrinterStatusText(
                 new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider()
-                    .GetRequiredService<IStringLocalizer<SharedResource>>()))
+                                       .GetRequiredService<IStringLocalizer<SharedResource>>()))
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };
@@ -254,7 +257,8 @@ public sealed class IndexModelTests : IDisposable
         string reissuedToken = model.Offer!.Snippet.Split("token = ")[1].Trim();
         reissuedToken.Should().NotBe(originalToken);
 
-        PrusaConnectProvisioning stored = await context.PrusaConnectProvisionings.SingleAsync(TestContext.Current.CancellationToken);
+        PrusaConnectProvisioning stored =
+            await context.PrusaConnectProvisionings.SingleAsync(TestContext.Current.CancellationToken);
         tokenService.VerifyToken(reissuedToken, stored.HashedToken).Should().BeTrue();
         tokenService.VerifyToken(originalToken, stored.HashedToken).Should().BeFalse("the old token must stop working");
     }

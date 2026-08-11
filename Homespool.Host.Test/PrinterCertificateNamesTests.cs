@@ -60,7 +60,7 @@ public class PrinterCertificateNamesTests
 
         // Assert
         names.Should().Contain("homespool.lan",
-            "it is the operator's declared answer, and unresolvable from here is not unreachable from a printer");
+                               "it is the operator's declared answer, and unresolvable from here is not unreachable from a printer");
         names[0].Should().Be("homespool.lan", "the first name becomes the certificate's subject");
     }
 
@@ -102,9 +102,9 @@ public class PrinterCertificateNamesTests
 
         // Assert
         names.Should().Contain("198.51.100.7",
-            "a printer whose DNS cannot answer needs the address, and nothing else can supply it in a container");
+                               "a printer whose DNS cannot answer needs the address, and nothing else can supply it in a container");
         names[0].Should().Be("homespool.lan",
-            "expansion adds to the configured host rather than displacing it, and the first name is the subject");
+                             "expansion adds to the configured host rather than displacing it, and the first name is the subject");
     }
 
     /// <summary>
@@ -120,9 +120,9 @@ public class PrinterCertificateNamesTests
         {
             ["homespool.lan"] =
             [
-                IPAddress.Parse("172.31.9.9"),          // a container range
-                IPAddress.Parse("127.0.0.1"),           // this machine, named from this machine
-                IPAddress.Parse("169.254.4.9"),         // a lease that never arrived
+                IPAddress.Parse("172.31.9.9"), // a container range
+                IPAddress.Parse("127.0.0.1"), // this machine, named from this machine
+                IPAddress.Parse("169.254.4.9"), // a lease that never arrived
                 IPAddress.Parse("fdc2:74d8:1010::cd4"), // the firmware's stack has no IPv6
             ],
         });
@@ -135,6 +135,6 @@ public class PrinterCertificateNamesTests
         names.Should().Contain("homespool.lan", "the configured host is kept whatever it resolves to");
         names.Should().NotContain("172.31.9.9").And.NotContain("127.0.0.1")
              .And.NotContain("169.254.4.9").And.NotContain("fdc2:74d8:1010::cd4",
-                 "covering an address no printer can reach hedges nothing and advertises the internal network");
+                                                           "covering an address no printer can reach hedges nothing and advertises the internal network");
     }
 }

@@ -57,7 +57,7 @@ public class PrinterCertificateDriftTests
         verdict.State.Should().Be(PrinterCertificateState.AddressesMoved);
         verdict.IsProblem.Should().BeTrue();
         verdict.Description.Should().Contain("192.168.13.238").And.Contain("192.168.13.99")
-            .And.Contain("Admin -> Printer certificate");
+               .And.Contain("Admin -> Printer certificate");
     }
 
     /// <summary>

@@ -28,8 +28,8 @@ public sealed class ApiTokensPageTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }
@@ -53,7 +53,9 @@ public sealed class ApiTokensPageTests : IDisposable
         }
     }
 
-    private static async Task<(ApiTokensModel model, DefaultHttpContext httpContext)> NewModelAsync(HomespoolDbContext context, string name)
+    private static async Task<(ApiTokensModel model, DefaultHttpContext httpContext)> NewModelAsync(
+        HomespoolDbContext context,
+        string name)
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) =
             IdentityTestHarness.BuildIdentityServices(context);

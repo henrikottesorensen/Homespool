@@ -30,7 +30,8 @@ namespace Homespool.Host.Test;
 /// indicated by server" signal (download.cpp:556-577) - and never in silence.
 /// </remarks>
 [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
-                 Justification = "Content is handed to the actor, which owns disposal - on a terminal event or at teardown. That transfer of ownership is itself what two of these tests assert.")]
+                 Justification =
+                     "Content is handed to the actor, which owns disposal - on a terminal event or at teardown. That transfer of ownership is itself what two of these tests assert.")]
 public class TransferRequestHandlingTests
 {
     private const string Hash = "offer-hash";
@@ -61,7 +62,7 @@ public class TransferRequestHandlingTests
         // Assert
         connection.Chunks[0].Should().Be((111u, 1024L, 1024L));
         connection.Chunks[1].Should().Be((222u, 0L, 1024L),
-            "the jump is the same transfer renegotiated, not a foreign one");
+                                         "the jump is the same transfer renegotiated, not a foreign one");
         connection.EmptyChunks.Should().BeEmpty("nothing here is a failure");
     }
 
@@ -216,7 +217,7 @@ public class TransferRequestHandlingTests
 
         // The real connection's chunk send, so the read actually happens rather than being recorded.
         PrinterConnectionActor actor = new(1, new ReadingConnection(), Substitute.For<ITelemetrySink>(),
-            NullLogger<PrinterConnectionActor>.Instance, TimeSpan.FromSeconds(10), store)
+                                           NullLogger<PrinterConnectionActor>.Instance, TimeSpan.FromSeconds(10), store)
         {
             SendTimeout = TimeSpan.FromMilliseconds(200),
         };
@@ -247,7 +248,7 @@ public class TransferRequestHandlingTests
         });
 
         return new PrinterConnectionActor(1, connection, Substitute.For<ITelemetrySink>(),
-            NullLogger<PrinterConnectionActor>.Instance, TimeSpan.FromSeconds(10), store);
+                                          NullLogger<PrinterConnectionActor>.Instance, TimeSpan.FromSeconds(10), store);
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition)
@@ -283,8 +284,11 @@ public class TransferRequestHandlingTests
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask SendChunkAsync(ReadOnlyMemory<byte> header, ITransferContent content, long offset,
-            long count, CancellationToken cancellationToken)
+        public ValueTask SendChunkAsync(ReadOnlyMemory<byte> header,
+                                        ITransferContent content,
+                                        long offset,
+                                        long count,
+                                        CancellationToken cancellationToken)
         {
             Chunks.Add((ParseFileId(header.Span), offset, count));
 
@@ -294,7 +298,7 @@ public class TransferRequestHandlingTests
         private static uint ParseFileId(ReadOnlySpan<byte> header)
         {
             return uint.Parse(System.Text.Encoding.ASCII.GetString(header[1..9]),
-                System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture);
+                              System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture);
         }
     }
 
@@ -347,8 +351,11 @@ public class TransferRequestHandlingTests
             return ValueTask.CompletedTask;
         }
 
-        public async ValueTask SendChunkAsync(ReadOnlyMemory<byte> header, ITransferContent content, long offset,
-            long count, CancellationToken cancellationToken)
+        public async ValueTask SendChunkAsync(ReadOnlyMemory<byte> header,
+                                              ITransferContent content,
+                                              long offset,
+                                              long count,
+                                              CancellationToken cancellationToken)
         {
             byte[] buffer = new byte[count];
             await content.ReadAsync(buffer, offset, cancellationToken);

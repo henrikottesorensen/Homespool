@@ -61,18 +61,18 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     private static PrusaConnectService NewService(HomespoolDbContext context)
     {
         return new(context,
-            new CodeGenerator(),
-            new TokenService(),
-            new TeamService(context),
-            TimeProvider.System, NullLogger<PrusaConnectService>.Instance,
-            Options.Create(new PrusaConnectOptions()));
+                   new CodeGenerator(),
+                   new TokenService(),
+                   new TeamService(context),
+                   TimeProvider.System, NullLogger<PrusaConnectService>.Instance,
+                   Options.Create(new PrusaConnectOptions()));
     }
 
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }
@@ -168,8 +168,8 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     /// printer polls and receives its token.
     /// </summary>
     private async Task<(Printer printer, string token)> EnrolByCodeExchangeAsync(HomespoolDbContext context,
-                                                                                   int? teamId,
-                                                                                   long userId)
+                                                                                 int? teamId,
+                                                                                 long userId)
     {
         PrusaConnectService service = NewService(context);
 
@@ -191,8 +191,8 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     /// promoted into the enrolled table.
     /// </summary>
     private async Task<(Printer printer, string token)> EnrolByUsbKeyAsync(HomespoolDbContext context,
-                                                                            int? teamId,
-                                                                            long userId)
+                                                                           int? teamId,
+                                                                           long userId)
     {
         (Printer printer, string token) = await NewService(context).ProvisionPrinterAsync("MK3.5", null, teamId, userId);
 
@@ -299,7 +299,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         // Assert
         result.Succeeded.Should().BeTrue("the printer now holds the reissued token and nothing else");
         result.Principal!.FindFirst(HSClaimTypes.PrinterId)!.Value.Should().Be($"{printer.Id}",
-            "a reissue rebinds the enrolment it was issued for, rather than starting a new one");
+                                                                               "a reissue rebinds the enrolment it was issued for, rather than starting a new one");
 
         AuthenticateResult withOld = await AuthenticateAsync(HeaderFingerprint, original);
         withOld.Succeeded.Should().BeFalse("the token on the discarded stick must stop working");
@@ -350,11 +350,12 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         await using HomespoolDbContext verify = NewContext();
 
         PrusaConnectAuthenticationData credential = await verify.PrusaConnectAuthentication
-            .SingleAsync(a => a.FingerPrintKey == HeaderFingerprint, TestContext.Current.CancellationToken);
+                                                                .SingleAsync(a => a.FingerPrintKey == HeaderFingerprint,
+                                                                             TestContext.Current.CancellationToken);
 
         credential.PrinterId.Should().Be(enrolled.Id, "the enrolment must not have moved to the other printer");
         new TokenService().VerifyToken(original, credential.HashedToken).Should()
-            .BeTrue("the rightful owner's token must be untouched by the attempt");
+                          .BeTrue("the rightful owner's token must be untouched by the attempt");
 
         (await verify.PrusaConnectProvisionings.SingleAsync(TestContext.Current.CancellationToken)).PrinterId.Should().Be(theirs.Id,
             "the unrelated provisioning token is left alone, not consumed by the failed attempt");
@@ -412,7 +413,8 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
 
         await using HomespoolDbContext verify = NewContext();
         (await verify.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
-        (await verify.PrusaConnectAuthentication.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1, "one printer holds one enrolled credential");
+        (await verify.PrusaConnectAuthentication.CountAsync(TestContext.Current.CancellationToken)).Should()
+            .Be(1, "one printer holds one enrolled credential");
     }
 
     // ---------- the CanManage gate on a known printer ----------
@@ -440,10 +442,12 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         PrusaConnectService service = NewService(context);
         await service.GetPrinterCode(PrinterRequest());
 
-        PrusaConnectRegistration registration = await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
+        PrusaConnectRegistration registration =
+            await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
 
         // Act
-        Func<Task> claim = () => service.ClaimPrinterAsync(registration.TemporaryCode, "Mine now", null, stranger.TeamId, userId: 2);
+        Func<Task> claim = () =>
+            service.ClaimPrinterAsync(registration.TemporaryCode, "Mine now", null, stranger.TeamId, userId: 2);
 
         // Assert
         await claim.Should().ThrowAsync<TeamAccessDeniedException>();
@@ -472,7 +476,8 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         PrusaConnectService service = NewService(context);
         await service.GetPrinterCode(PrinterRequest());
 
-        PrusaConnectRegistration registration = await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
+        PrusaConnectRegistration registration =
+            await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
         string code = registration.TemporaryCode;
 
         // Act
@@ -486,7 +491,10 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         result.Principal!.FindFirst(HSClaimTypes.PrinterId)!.Value.Should().Be($"{printer.Id}");
 
         await using HomespoolDbContext verify = NewContext();
-        (await verify.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1, "a refused claim must not leave a printer behind");
+        (await verify.Printers.CountAsync(TestContext.Current.CancellationToken)).Should()
+                                                                                 .Be(
+                                                                                     1,
+                                                                                     "a refused claim must not leave a printer behind");
 
         (await verify.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken)).PrinterId
             .Should().BeNull("the pending registration stays unclaimed, ready for someone who may claim it");

@@ -39,8 +39,8 @@ public sealed class RegisterModelTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }
@@ -76,7 +76,9 @@ public sealed class RegisterModelTests : IDisposable
     /// absent.
     /// </summary>
     private static (RegisterModel model, DefaultHttpContext httpContext, CapturingEmailSender emailSender) NewModel(
-        HomespoolDbContext context, InvitationService invitationService, bool smtpConfigured)
+        HomespoolDbContext context,
+        InvitationService invitationService,
+        bool smtpConfigured)
     {
         (UserManager<HSUser> users, SignInManager<HSUser> signIn, DefaultHttpContext httpContext, IServiceProvider provider) =
             IdentityTestHarness.BuildIdentityServices(context);
@@ -220,12 +222,14 @@ public sealed class RegisterModelTests : IDisposable
         // Assert
         result.Should().BeOfType<LocalRedirectResult>().Which.Url.Should().Be("/dashboard");
 
-        HSUser stored = await context.Users.SingleAsync(u => u.Email == "invitee@example.com", TestContext.Current.CancellationToken);
+        HSUser stored =
+            await context.Users.SingleAsync(u => u.Email == "invitee@example.com", TestContext.Current.CancellationToken);
         stored.EmailConfirmed.Should().BeTrue("no SMTP means no confirmation mail can ever arrive");
 
         httpContext.Response.Headers.Should().ContainKey("Set-Cookie", "signing in writes the auth cookie");
 
-        (await invitationService.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should().BeNull("the invite is spent");
+        (await invitationService.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should()
+            .BeNull("the invite is spent");
     }
 
     /// <summary>
@@ -252,12 +256,14 @@ public sealed class RegisterModelTests : IDisposable
         RedirectToPageResult redirect = result.Should().BeOfType<RedirectToPageResult>().Subject;
         redirect.PageName.Should().Be("RegisterConfirmation");
 
-        HSUser stored = await context.Users.SingleAsync(u => u.Email == "invitee@example.com", TestContext.Current.CancellationToken);
+        HSUser stored =
+            await context.Users.SingleAsync(u => u.Email == "invitee@example.com", TestContext.Current.CancellationToken);
         stored.EmailConfirmed.Should().BeFalse("SMTP is configured, so a confirmation mail is expected to arrive");
 
         emailSender.SentEmails.Should().ContainSingle(e => e.email == "invitee@example.com" && e.subject == "Confirm your email");
 
-        (await invitationService.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should().BeNull("the invite is spent regardless of the confirmation path");
+        (await invitationService.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should()
+            .BeNull("the invite is spent regardless of the confirmation path");
     }
 
     // ---------- team membership ----------
@@ -286,11 +292,14 @@ public sealed class RegisterModelTests : IDisposable
 
         // Assert
         HSUser user = await context.Users.SingleAsync(u => u.Email == "invitee@example.com", TestContext.Current.CancellationToken);
-        List<TeamMember> memberships = await context.TeamMembers.Where(m => m.UserId == user.Id).ToListAsync(TestContext.Current.CancellationToken);
+        List<TeamMember> memberships = await context.TeamMembers.Where(m => m.UserId == user.Id)
+                                                    .ToListAsync(TestContext.Current.CancellationToken);
 
         memberships.Should().HaveCount(2, "the user's own default team plus the invited team");
-        memberships.Should().ContainSingle(m => m.IsDefault && m.TeamId != existingTeam.Id, "the default team is a fresh one, not the invited team");
-        memberships.Should().ContainSingle(m => m.TeamId == existingTeam.Id && !m.IsDefault && m.CanRead && m.CanUse && !m.CanManage);
+        memberships.Should().ContainSingle(m => m.IsDefault && m.TeamId != existingTeam.Id,
+                                           "the default team is a fresh one, not the invited team");
+        memberships.Should()
+                   .ContainSingle(m => m.TeamId == existingTeam.Id && !m.IsDefault && m.CanRead && m.CanUse && !m.CanManage);
     }
 
     /// <summary>A new-account invite (no team) yields only the default team, no extra membership.</summary>
@@ -312,7 +321,8 @@ public sealed class RegisterModelTests : IDisposable
 
         // Assert
         HSUser user = await context.Users.SingleAsync(u => u.Email == "invitee@example.com", TestContext.Current.CancellationToken);
-        List<TeamMember> memberships = await context.TeamMembers.Where(m => m.UserId == user.Id).ToListAsync(TestContext.Current.CancellationToken);
+        List<TeamMember> memberships = await context.TeamMembers.Where(m => m.UserId == user.Id)
+                                                    .ToListAsync(TestContext.Current.CancellationToken);
 
         memberships.Should().ContainSingle();
         memberships[0].IsDefault.Should().BeTrue();
@@ -350,7 +360,8 @@ public sealed class RegisterModelTests : IDisposable
         // Assert
         result.Should().BeOfType<PageResult>();
         model.InviteValid.Should().BeFalse();
-        (await context.Users.CountAsync(u => u.Email == "invitee@example.com", TestContext.Current.CancellationToken)).Should().Be(0);
+        (await context.Users.CountAsync(u => u.Email == "invitee@example.com", TestContext.Current.CancellationToken)).Should()
+            .Be(0);
     }
 
     /// <summary>An invalid submission (e.g. a password mismatch) redisplays the form without creating an account.</summary>
@@ -366,7 +377,8 @@ public sealed class RegisterModelTests : IDisposable
         (RegisterModel model, _, _) = NewModel(context, invitationService, smtpConfigured: false);
         SetInvite(model, invitation.Id, plaintext);
         SetValidInput(model);
-        model.ModelState.AddModelError(nameof(RegisterModel.InputModel.ConfirmPassword), "The password and confirmation password do not match.");
+        model.ModelState.AddModelError(nameof(RegisterModel.InputModel.ConfirmPassword),
+                                       "The password and confirmation password do not match.");
 
         // Act
         IActionResult result = await model.OnPostAsync("/dashboard", CancellationToken.None);
@@ -375,8 +387,10 @@ public sealed class RegisterModelTests : IDisposable
         result.Should().BeOfType<PageResult>();
         model.InviteValid.Should().BeTrue("the invite itself was fine - only the submitted form was rejected");
 
-        (await context.Users.CountAsync(u => u.Email == "invitee@example.com", TestContext.Current.CancellationToken)).Should().Be(0);
-        (await invitationService.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should().NotBeNull("an invite is never spent by a rejected submission");
+        (await context.Users.CountAsync(u => u.Email == "invitee@example.com", TestContext.Current.CancellationToken)).Should()
+            .Be(0);
+        (await invitationService.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should()
+            .NotBeNull("an invite is never spent by a rejected submission");
     }
 
     /// <summary>
@@ -408,8 +422,10 @@ public sealed class RegisterModelTests : IDisposable
         result.Should().BeOfType<PageResult>();
         model.ModelState.IsValid.Should().BeFalse();
 
-        (await context.Users.CountAsync(u => u.Email == "invitee@example.com", TestContext.Current.CancellationToken)).Should().Be(1, "no second row for the duplicate email");
-        (await invitationService.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should().NotBeNull("the failed attempt must not spend the invite");
+        (await context.Users.CountAsync(u => u.Email == "invitee@example.com", TestContext.Current.CancellationToken)).Should()
+            .Be(1, "no second row for the duplicate email");
+        (await invitationService.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should()
+            .NotBeNull("the failed attempt must not spend the invite");
     }
 
     /// <summary>
@@ -464,7 +480,9 @@ public sealed class RegisterModelTests : IDisposable
         model.ModelState.IsValid.Should().BeFalse();
         model.ModelState[string.Empty]!.Errors.Should().ContainSingle(e => e.ErrorMessage.Contains("try again"));
 
-        (await context.Users.CountAsync(u => u.Email == "invitee@example.com", TestContext.Current.CancellationToken)).Should().Be(0, "the whole transaction rolled back, including the user row");
-        (await invitationService.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should().NotBeNull("a rolled-back accept must not spend the invite");
+        (await context.Users.CountAsync(u => u.Email == "invitee@example.com", TestContext.Current.CancellationToken)).Should()
+            .Be(0, "the whole transaction rolled back, including the user row");
+        (await invitationService.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should()
+            .NotBeNull("a rolled-back accept must not spend the invite");
     }
 }

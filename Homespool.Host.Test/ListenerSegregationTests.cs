@@ -72,8 +72,8 @@ public class ListenerSegregationTests
         // Assert
         nextCalled.Should().BeFalse("the endpoint must not run at all, not merely fail afterwards");
         context.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound,
-            "404 rather than 403: on this listener the route genuinely does not exist, and 403 would "
-            + "confirm to whoever is probing that it exists elsewhere");
+                                                "404 rather than 403: on this listener the route genuinely does not exist, and 403 would "
+                                                + "confirm to whoever is probing that it exists elsewhere");
     }
 
     /// <summary>
@@ -192,9 +192,9 @@ public class ListenerSegregationTests
 
         if (matched)
         {
-            EndpointMetadataCollection metadata = requirement is null
-                ? new EndpointMetadataCollection()
-                : new EndpointMetadataCollection(new ListenerRequirement(requirement.Value));
+            EndpointMetadataCollection metadata = requirement is null ?
+                new EndpointMetadataCollection() :
+                new EndpointMetadataCollection(new ListenerRequirement(requirement.Value));
 
             context.SetEndpoint(new Endpoint(_ => Task.CompletedTask, metadata, "test endpoint"));
         }

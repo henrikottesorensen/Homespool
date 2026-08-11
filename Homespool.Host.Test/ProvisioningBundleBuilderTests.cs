@@ -60,20 +60,20 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
     private PrinterCertificateAuthority NewAuthority()
     {
         return new(Options.Create(new CertificateOptions { Directory = "certs" }),
-            new HostEnvironmentAccessor(_root),
-            TimeProvider.System,
-            NullLogger<PrinterCertificateAuthority>.Instance);
+                   new HostEnvironmentAccessor(_root),
+                   TimeProvider.System,
+                   NullLogger<PrinterCertificateAuthority>.Instance);
     }
 
     private ProvisioningBundleBuilder NewBuilder(PrinterCertificateAuthority authority,
-                                                bool tls = true,
-                                                string host = "printers.example.com",
-                                                IHostAddressResolver? resolver = null)
+                                                 bool tls = true,
+                                                 string host = "printers.example.com",
+                                                 IHostAddressResolver? resolver = null)
     {
         return new(Options.Create(new PrusaConnectOptions { PrinterHost = host, PrinterPort = 15443, PrinterTls = tls }),
-            Options.Create(new CertificateOptions { ContainerNetworks = ["172.16.0.0/12"] }),
-            authority,
-            resolver ?? new FakeResolver());
+                   Options.Create(new CertificateOptions { ContainerNetworks = ["172.16.0.0/12"] }),
+                   authority,
+                   resolver ?? new FakeResolver());
     }
 
     /// <summary>
@@ -117,7 +117,7 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
         // Assert
         Entries(zip).Keys.Should().BeEquivalentTo(["prusa_printer_settings.ini", "connect.der", "README.Bundle.md"]);
         Entries(zip).Keys.Should().AllSatisfy(name => name.Should().NotContain("/",
-            "a wrapping folder puts every file one level deep on the stick, where the printer finds none of them"));
+                                                                               "a wrapping folder puts every file one level deep on the stick, where the printer finds none of them"));
     }
 
     /// <summary>
@@ -137,7 +137,9 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
         authority.EnsureLeaf(["printers.example.com"]);
 
         // Act
-        byte[] der = Entries(await NewBuilder(authority).BuildAsync("printers.example.com", Token, "Bench printer", CancellationToken.None))["connect.der"];
+        byte[] der = Entries(await NewBuilder(authority)
+                                 .BuildAsync("printers.example.com", Token, "Bench printer",
+                                             CancellationToken.None))["connect.der"];
 
         // Assert
         der.Should().BeEquivalentTo(await File.ReadAllBytesAsync(authority.AuthorityDerPath, CancellationToken.None));
@@ -165,7 +167,8 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
         authority.EnsureLeaf(["printers.example.com"]);
 
         // Act
-        string ini = IniOf(await NewBuilder(authority).BuildAsync("printers.example.com", Token, "Bench printer", CancellationToken.None));
+        string ini = IniOf(await NewBuilder(authority)
+                               .BuildAsync("printers.example.com", Token, "Bench printer", CancellationToken.None));
 
         // Assert
         ini.Should().NotContain(";", "a ';' line is a parse error here, not a comment");
@@ -199,7 +202,9 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
         authority.EnsureLeaf(["printers.example.com"]);
 
         // Act
-        byte[] ini = Entries(await NewBuilder(authority).BuildAsync("printers.example.com", Token, "Bench printer", CancellationToken.None))["prusa_printer_settings.ini"];
+        byte[] ini = Entries(await NewBuilder(authority)
+                                 .BuildAsync("printers.example.com", Token, "Bench printer", CancellationToken.None))[
+            "prusa_printer_settings.ini"];
 
         // Assert
         ini.Should().StartWith([(byte)'#']);
@@ -222,7 +227,8 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
         authority.EnsureLeaf(["printers.example.com"]);
 
         // Act
-        string ini = IniOf(await NewBuilder(authority).BuildAsync("printers.example.com", Token, "Bench printer", CancellationToken.None));
+        string ini = IniOf(await NewBuilder(authority)
+                               .BuildAsync("printers.example.com", Token, "Bench printer", CancellationToken.None));
 
         // Assert
         ini.Should().Contain("ENTIRE trust store")
@@ -272,13 +278,13 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
         // Assert
         names[0].Value.Should().Be("printers.example.com");
         names.Select(suggestion => suggestion.Value).Should()
-            .Contain("homespool.lan").And.Contain("192.168.13.238");
+             .Contain("homespool.lan").And.Contain("192.168.13.238");
 
         // Each carries what it costs, which is the difference between surviving a moved lease and
         // breaking silently one day - the only thing distinguishing these options to a reader.
         names.Should().AllSatisfy(suggestion => suggestion.Note.Should().NotBeNullOrWhiteSpace());
         names.Single(suggestion => suggestion.Value == "192.168.13.238").Durability
-            .Should().Be(AddressDurability.UntilTheLeaseMoves);
+             .Should().Be(AddressDurability.UntilTheLeaseMoves);
     }
 
     /// <summary>
@@ -295,11 +301,12 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
         PrinterCertificateAuthority authority = NewAuthority();
 
         // Act
-        byte[] zip = await NewBuilder(authority, tls: false).BuildAsync("192.168.13.238", Token, "Bench printer", CancellationToken.None);
+        byte[] zip = await NewBuilder(authority, tls: false)
+            .BuildAsync("192.168.13.238", Token, "Bench printer", CancellationToken.None);
 
         // Assert
         Entries(zip).Keys.Should().BeEquivalentTo(["prusa_printer_settings.ini", "README.Bundle.md"],
-            "the instructions still ship - and say why there is no certificate");
+                                                  "the instructions still ship - and say why there is no certificate");
 
         string ini = IniOf(zip);
         ini.Should().Contain("tls = False")

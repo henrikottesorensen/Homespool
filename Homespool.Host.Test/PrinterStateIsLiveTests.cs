@@ -42,8 +42,8 @@ public sealed class PrinterStateIsLiveTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }
@@ -67,9 +67,12 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         }
     }
 
-    private static async Task<Printer> AddPrinterAsync(HomespoolDbContext context, long userId, PrinterStatus? liveStatus,
-                                                        bool canUse = true, bool canManage = true,
-                                                        string? teamName = "Workshop")
+    private static async Task<Printer> AddPrinterAsync(HomespoolDbContext context,
+                                                       long userId,
+                                                       PrinterStatus? liveStatus,
+                                                       bool canUse = true,
+                                                       bool canManage = true,
+                                                       string? teamName = "Workshop")
     {
         Team team = new() { CreatedBy = userId, CreatedAt = DateTimeOffset.UtcNow, Name = teamName };
         context.Teams.Add(team);
@@ -127,8 +130,9 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         await AddPrinterAsync(context, userId: 1, liveStatus: PrinterStatus.Printing);
 
         // Act
-        IReadOnlyList<PrinterWithState> listed = await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
-            .ListPrintersWithStateForUserAsync(1, CancellationToken.None);
+        IReadOnlyList<PrinterWithState> listed =
+            await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
+                .ListPrintersWithStateForUserAsync(1, CancellationToken.None);
 
         // Assert
         listed.Should().ContainSingle();
@@ -169,8 +173,9 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         await AddPrinterAsync(context, userId: 1, liveStatus: null);
 
         // Act
-        IReadOnlyList<PrinterWithState> listed = await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
-            .ListPrintersWithStateForUserAsync(1, CancellationToken.None);
+        IReadOnlyList<PrinterWithState> listed =
+            await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
+                .ListPrintersWithStateForUserAsync(1, CancellationToken.None);
 
         // Assert
         listed.Should().ContainSingle();
@@ -231,8 +236,9 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         await AddPrinterAsync(context, userId: 1, liveStatus: PrinterStatus.Idle, canUse: false, canManage: false);
 
         // Act
-        IReadOnlyList<PrinterWithState> listed = await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
-            .ListPrintersWithStateForUserAsync(1, CancellationToken.None);
+        IReadOnlyList<PrinterWithState> listed =
+            await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
+                .ListPrintersWithStateForUserAsync(1, CancellationToken.None);
 
         // Assert
         PrinterReadDTO dto = PrinterReadDTO.FromEntity(listed.Should().ContainSingle().Subject);

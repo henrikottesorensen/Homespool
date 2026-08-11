@@ -66,7 +66,7 @@ public sealed class PrintFileCatalogTests : IDisposable
 
         // Act
         await catalog.SaveAsync(Alice, "benchy.gcode", new MemoryStream(content), overwrite: false,
-            TestContext.Current.CancellationToken);
+                                TestContext.Current.CancellationToken);
 
         // Assert
         PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
@@ -88,7 +88,7 @@ public sealed class PrintFileCatalogTests : IDisposable
         PrintFileCatalog catalog = NewCatalog(context);
 
         await catalog.SaveAsync(Alice, "benchy.gcode", new MemoryStream([1, 2, 3]), overwrite: false,
-            TestContext.Current.CancellationToken);
+                                TestContext.Current.CancellationToken);
 
         PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
         long queuedPrintId = await AddQueuedPrintAsync(context, row.Id);
@@ -103,7 +103,7 @@ public sealed class PrintFileCatalogTests : IDisposable
         renamed.Name.Should().Be("boat.gcode");
 
         QueuedPrint job = await context.QueuedPrints.SingleAsync(j => j.Id == queuedPrintId,
-            TestContext.Current.CancellationToken);
+                                                                 TestContext.Current.CancellationToken);
 
         job.PrintFileId.Should().Be(row.Id);
     }
@@ -122,13 +122,13 @@ public sealed class PrintFileCatalogTests : IDisposable
         byte[] replacement = Encoding.UTF8.GetBytes("second");
 
         await catalog.SaveAsync(Alice, "benchy.gcode", new MemoryStream(Encoding.UTF8.GetBytes("first")),
-            overwrite: false, TestContext.Current.CancellationToken);
+                                overwrite: false, TestContext.Current.CancellationToken);
 
         long originalId = (await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken)).Id;
 
         // Act
         await catalog.SaveAsync(Alice, "benchy.gcode", new MemoryStream(replacement), overwrite: true,
-            TestContext.Current.CancellationToken);
+                                TestContext.Current.CancellationToken);
 
         // Assert
         PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
@@ -150,7 +150,7 @@ public sealed class PrintFileCatalogTests : IDisposable
         PrintFileCatalog catalog = NewCatalog(context);
 
         await catalog.SaveAsync(Alice, "benchy.gcode", new MemoryStream([1, 2, 3]), overwrite: false,
-            TestContext.Current.CancellationToken);
+                                TestContext.Current.CancellationToken);
 
         PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
         await AddQueuedPrintAsync(context, row.Id);
@@ -175,7 +175,7 @@ public sealed class PrintFileCatalogTests : IDisposable
         PrintFileCatalog catalog = NewCatalog(context);
 
         await catalog.SaveAsync(Alice, "benchy.gcode", new MemoryStream([1, 2, 3]), overwrite: false,
-            TestContext.Current.CancellationToken);
+                                TestContext.Current.CancellationToken);
 
         // Act
         PrintFileDeletion result =
@@ -202,7 +202,7 @@ public sealed class PrintFileCatalogTests : IDisposable
 
         // Straight to the store, so the row is never written - a file from before this table existed.
         await store.SaveAsync(Alice, "orphan.gcode", new MemoryStream([1, 2, 3]), overwrite: false,
-            TestContext.Current.CancellationToken);
+                              TestContext.Current.CancellationToken);
 
         // Act
         PrintFile? row = await catalog.ResolveAsync(Alice, "orphan.gcode", TestContext.Current.CancellationToken);
@@ -273,9 +273,9 @@ public sealed class PrintFileCatalogTests : IDisposable
     private UserFileStore NewStore()
     {
         return new(Options.Create(new PrintFileStorageOptions { Directory = _root }),
-            new HostEnvironmentAccessor(_root),
-            TimeProvider.System,
-            NullLogger<UserFileStore>.Instance);
+                   new HostEnvironmentAccessor(_root),
+                   TimeProvider.System,
+                   NullLogger<UserFileStore>.Instance);
     }
 
     private PrintFileCatalog NewCatalog(HomespoolDbContext context, UserFileStore? store = null)
@@ -286,8 +286,8 @@ public sealed class PrintFileCatalogTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }

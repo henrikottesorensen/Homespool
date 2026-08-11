@@ -62,7 +62,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         Directory.CreateDirectory(Path.Combine(_root, "1-alice"));
         await File.WriteAllBytesAsync(Path.Combine(_root, "1-alice", "handcopied.gcode"), [1, 2, 3],
-            TestContext.Current.CancellationToken);
+                                      TestContext.Current.CancellationToken);
 
         // Act
         using PrintFileReconciler reconciler = NewReconciler();
@@ -236,22 +236,22 @@ public sealed class PrintFileReconcilerTests : IDisposable
         services.AddDbContext<HomespoolDbContext>(options => options.UseSqlite($"Data Source={_databasePath}"));
 
         UserFileStore store = new(Options.Create(new PrintFileStorageOptions { Directory = _root }),
-            new HostEnvironmentAccessor(_root),
-            TimeProvider.System,
-            NullLogger<UserFileStore>.Instance);
+                                  new HostEnvironmentAccessor(_root),
+                                  TimeProvider.System,
+                                  NullLogger<UserFileStore>.Instance);
 
         return new PrintFileReconciler(services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
-            store,
-            Options.Create(new PrintFileStorageOptions { Directory = _root }),
-            new HostEnvironmentAccessor(_root),
-            NullLogger<PrintFileReconciler>.Instance);
+                                       store,
+                                       Options.Create(new PrintFileStorageOptions { Directory = _root }),
+                                       new HostEnvironmentAccessor(_root),
+                                       NullLogger<PrintFileReconciler>.Instance);
     }
 
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }

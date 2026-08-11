@@ -20,28 +20,28 @@ public class AlertTransitionTests
     public void BecomingUnhealthyAlerts()
     {
         AlertTransition.Decide(HealthStatus.Unhealthy, alreadyAlerted: false)
-            .Should().Be(AlertAction.Alert);
+                       .Should().Be(AlertAction.Alert);
     }
 
     [Fact]
     public void StayingUnhealthySendsNothingFurther()
     {
         AlertTransition.Decide(HealthStatus.Unhealthy, alreadyAlerted: true)
-            .Should().Be(AlertAction.None, "the incident has already been reported once");
+                       .Should().Be(AlertAction.None, "the incident has already been reported once");
     }
 
     [Fact]
     public void RecoveringAfterAnAlertSendsTheAllClear()
     {
         AlertTransition.Decide(HealthStatus.Healthy, alreadyAlerted: true)
-            .Should().Be(AlertAction.Recovered);
+                       .Should().Be(AlertAction.Recovered);
     }
 
     [Fact]
     public void StayingHealthySendsNothing()
     {
         AlertTransition.Decide(HealthStatus.Healthy, alreadyAlerted: false)
-            .Should().Be(AlertAction.None);
+                       .Should().Be(AlertAction.None);
     }
 
     /// <summary>
@@ -52,7 +52,7 @@ public class AlertTransitionTests
     public void DegradedDoesNotAlert()
     {
         AlertTransition.Decide(HealthStatus.Degraded, alreadyAlerted: false)
-            .Should().Be(AlertAction.None);
+                       .Should().Be(AlertAction.None);
     }
 
     /// <summary>
@@ -63,6 +63,6 @@ public class AlertTransitionTests
     public void DegradedDoesNotClearAnExistingAlert()
     {
         AlertTransition.Decide(HealthStatus.Degraded, alreadyAlerted: true)
-            .Should().Be(AlertAction.None);
+                       .Should().Be(AlertAction.None);
     }
 }

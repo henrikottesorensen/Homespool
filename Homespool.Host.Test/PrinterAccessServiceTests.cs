@@ -69,8 +69,9 @@ public sealed class PrinterAccessServiceTests : IDisposable
     [InlineData(PrinterOperation.ManagePrinter, Manager, true)]
     [InlineData(PrinterOperation.ViewPrinter, Stranger, false)]
     [InlineData(PrinterOperation.ChangeQueue, Stranger, false)]
-    public async Task EachOperationNeedsThePermissionItIsMappedTo(PrinterOperation operation, long userId,
-        bool expected)
+    public async Task EachOperationNeedsThePermissionItIsMappedTo(PrinterOperation operation,
+                                                                  long userId,
+                                                                  bool expected)
     {
         // Arrange
         await using HomespoolDbContext context = await SeedAsync();
@@ -97,12 +98,12 @@ public sealed class PrinterAccessServiceTests : IDisposable
         // Act & Assert
         await FluentActions
               .Awaiting(() => access.RequireAsync(999, Reader, PrinterOperation.ViewPrinter,
-                   TestContext.Current.CancellationToken))
+                                                  TestContext.Current.CancellationToken))
               .Should().ThrowAsync<PrinterNotFoundException>();
 
         await FluentActions
               .Awaiting(() => access.RequireAsync(1, Reader, PrinterOperation.ChangeQueue,
-                   TestContext.Current.CancellationToken))
+                                                  TestContext.Current.CancellationToken))
               .Should().ThrowAsync<TeamAccessDeniedException>();
     }
 
@@ -126,10 +127,10 @@ public sealed class PrinterAccessServiceTests : IDisposable
 
         // Act
         Printer? unknown = await access.FindAsync(Guid.NewGuid(), Reader, PrinterOperation.ViewPrinter,
-            TestContext.Current.CancellationToken);
+                                                  TestContext.Current.CancellationToken);
 
         Printer? forbidden = await access.FindAsync(known, Stranger, PrinterOperation.ViewPrinter,
-            TestContext.Current.CancellationToken);
+                                                    TestContext.Current.CancellationToken);
 
         // Assert
         unknown.Should().BeNull();
@@ -169,7 +170,7 @@ public sealed class PrinterAccessServiceTests : IDisposable
 
         // Act
         bool allowed = await access.AllowsAsync(999, Manager, PrinterOperation.ViewPrinter,
-            TestContext.Current.CancellationToken);
+                                                TestContext.Current.CancellationToken);
 
         // Assert
         allowed.Should().BeFalse();
@@ -196,7 +197,7 @@ public sealed class PrinterAccessServiceTests : IDisposable
 
         // Act - grant it behind the service's back
         TeamMember member = await context.TeamMembers.SingleAsync(m => m.UserId == Reader,
-            TestContext.Current.CancellationToken);
+                                                                  TestContext.Current.CancellationToken);
         member.CanUse = true;
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
@@ -211,8 +212,8 @@ public sealed class PrinterAccessServiceTests : IDisposable
     private async Task<HomespoolDbContext> SeedAsync()
     {
         HomespoolDbContext context = new(new DbContextOptionsBuilder<HomespoolDbContext>()
-                                  .UseSqlite($"Data Source={_databasePath}")
-                                  .Options);
+                                         .UseSqlite($"Data Source={_databasePath}")
+                                         .Options);
 
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 

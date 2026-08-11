@@ -385,7 +385,8 @@ public class TokenServiceTests
         const int otherIterations = 8192;
         byte[] key = Rfc2898DeriveBytes.Pbkdf2(tokenData, salt, otherIterations, HashAlgorithmName.SHA384, TokenService.HashLength);
 
-        string hash = $"${HashAlgorithmName.SHA384.Name}${otherIterations}${Base64Url.EncodeToString(salt)}${Base64Url.EncodeToString(key)}$";
+        string hash =
+            $"${HashAlgorithmName.SHA384.Name}${otherIterations}${Base64Url.EncodeToString(salt)}${Base64Url.EncodeToString(key)}$";
 
         // Assert
         _tokenService.VerifyToken(token, hash).Should().BeTrue();

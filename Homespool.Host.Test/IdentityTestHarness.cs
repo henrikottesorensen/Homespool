@@ -30,7 +30,8 @@ internal static class IdentityTestHarness
     /// against) and returns the pieces a PageModel constructor needs, plus the <see cref="DefaultHttpContext"/>
     /// backing them so the test can set <c>HttpContext.User</c> before calling into the model.
     /// </summary>
-    public static (UserManager<HSUser> users, SignInManager<HSUser> signIn, DefaultHttpContext httpContext, IServiceProvider provider) BuildIdentityServices(HomespoolDbContext context)
+    public static (UserManager<HSUser> users, SignInManager<HSUser> signIn, DefaultHttpContext httpContext, IServiceProvider
+        provider) BuildIdentityServices(HomespoolDbContext context)
     {
         DefaultHttpContext httpContext = new();
 
@@ -54,9 +55,9 @@ internal static class IdentityTestHarness
         httpContext.RequestServices = provider;
 
         return (provider.GetRequiredService<UserManager<HSUser>>(),
-                provider.GetRequiredService<SignInManager<HSUser>>(),
-                httpContext,
-                provider);
+            provider.GetRequiredService<SignInManager<HSUser>>(),
+            httpContext,
+            provider);
     }
 
     /// <summary>
@@ -86,8 +87,8 @@ internal static class IdentityTestHarness
     public static void SignInAsPrincipal(DefaultHttpContext httpContext, HSUser user)
     {
         httpContext.User = new ClaimsPrincipal(new ClaimsIdentity(
-            [new Claim(ClaimTypes.NameIdentifier, user.Id.ToString())],
-            IdentityConstants.ApplicationScheme));
+                                                   [new Claim(ClaimTypes.NameIdentifier, user.Id.ToString())],
+                                                   IdentityConstants.ApplicationScheme));
     }
 
     /// <summary>A bare PageContext, enough for ModelState/HttpContext but no real routing.</summary>

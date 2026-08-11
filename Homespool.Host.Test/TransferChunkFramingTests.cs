@@ -62,7 +62,7 @@ public class TransferChunkFramingTests
 
         frames.Should().HaveCountGreaterThan(1, "256 KiB cannot fit in one acceptable frame");
         frames.Should().OnlyContain(f => f.Payload.Length <= MaxAcceptableFramePayload,
-            "a frame over 65535 bytes is written with the 64-bit length marker, which firmware rejects");
+                                    "a frame over 65535 bytes is written with the 64-bit length marker, which firmware rejects");
 
         // Exactly one message: continuation frames until the last, which carries FIN.
         frames.Take(frames.Count - 1).Should().OnlyContain(f => !f.Fin);
@@ -89,7 +89,7 @@ public class TransferChunkFramingTests
         // Act
         using ArrayContent source = new(content);
         await connection.SendChunkAsync(ChunkWireEncoder.EncodeHeader(1), source, 0, content.Length,
-            CancellationToken.None);
+                                        CancellationToken.None);
 
         // Assert
         IReadOnlyList<Frame> frames = Frame.ParseAll(capture.Written.ToArray());
@@ -180,7 +180,7 @@ public class TransferChunkFramingTests
         // send 64 bytes and stop.
         using ArrayContent source = new(content, maxRead: 64);
         await connection.SendChunkAsync(ChunkWireEncoder.EncodeHeader(1), source, 0, content.Length,
-            CancellationToken.None);
+                                        CancellationToken.None);
 
         // Assert
         byte[] whole = Frame.ParseAll(capture.Written.ToArray()).SelectMany(f => f.Payload).ToArray();
@@ -188,8 +188,8 @@ public class TransferChunkFramingTests
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
-                     Justification = "The socket and its capture stream live for the duration of the test; neither holds an OS handle.")]
-
+                                                     Justification =
+                                                         "The socket and its capture stream live for the duration of the test; neither holds an OS handle.")]
     private static (WebSocketPrinterConnection connection, CaptureStream capture) NewConnection()
     {
         CaptureStream capture = new();

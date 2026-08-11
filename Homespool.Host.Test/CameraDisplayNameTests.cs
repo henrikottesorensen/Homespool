@@ -33,18 +33,18 @@ public sealed class CameraDisplayNameTests : IDisposable
     /// doubly-indented interface line that must not be mistaken for one.
     /// </summary>
     private const string Table = """
-        #
-        # A comment, which the parser skips.
-        #
-        046d  Logitech, Inc.
-        \t0821  HD Webcam C910
-        \t0825  Webcam C270
-        \t\t00  An interface, not a product
-        0c45  Microdia
-        \t6340  Camera
-        1bcf  Sunplus Innovation Technology Inc.
-        \t2c99  Cheap Webcam
-        """;
+                                 #
+                                 # A comment, which the parser skips.
+                                 #
+                                 046d  Logitech, Inc.
+                                 \t0821  HD Webcam C910
+                                 \t0825  Webcam C270
+                                 \t\t00  An interface, not a product
+                                 0c45  Microdia
+                                 \t6340  Camera
+                                 1bcf  Sunplus Innovation Technology Inc.
+                                 \t2c99  Cheap Webcam
+                                 """;
 
     private readonly string _tablePath;
 
@@ -153,7 +153,8 @@ public sealed class CameraDisplayNameTests : IDisposable
     public void AMissingTableLeavesUdevsOwnName()
     {
         CameraDisplayNames names = Build(Path.Combine(Path.GetTempPath(), $"absent-{Guid.NewGuid():N}.ids"));
-        Camera camera = new() { Uuid = Guid.NewGuid(), Source = LocalCameraDevices.SourceFor("usb-046d_0821_437242E0-video-index0") };
+        Camera camera = new()
+            { Uuid = Guid.NewGuid(), Source = LocalCameraDevices.SourceFor("usb-046d_0821_437242E0-video-index0") };
 
         names.For(camera).Should().Be("046d 0821 437242E0");
     }

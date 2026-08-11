@@ -55,8 +55,8 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }
@@ -85,7 +85,7 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     {
         // Arrange
         Func<DateTimeOffset, long> toStorage = new DateTimeOffsetToUnixMillisecondsConverter()
-            .ConvertToProviderExpression.Compile();
+                                               .ConvertToProviderExpression.Compile();
 
         DateTimeOffset utc = new(2026, 3, 30, 11, 14, 1, TimeSpan.Zero);
 
@@ -107,7 +107,7 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     {
         // Arrange
         Func<DateTimeOffset, long> toStorage = new DateTimeOffsetToUnixMillisecondsConverter()
-            .ConvertToProviderExpression.Compile();
+                                               .ConvertToProviderExpression.Compile();
 
         // Act
         long[] stored = ChronologicalOrder.Select(toStorage).ToArray();
@@ -125,7 +125,7 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
     {
         // Arrange
         Func<DateTimeOffset, long> broken = new DateTimeOffsetToBinaryConverter()
-            .ConvertToProviderExpression.Compile();
+                                            .ConvertToProviderExpression.Compile();
 
         // Act
         long[] stored = ChronologicalOrder.Select(broken).ToArray();
@@ -187,9 +187,9 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
 
         // Act
         List<DateTimeOffset> sorted = await context.PrusaConnectRegistrations
-            .OrderBy(a => a.TemporaryCodeExpiry)
-            .Select(a => a.TemporaryCodeExpiry)
-            .ToListAsync(TestContext.Current.CancellationToken);
+                                                   .OrderBy(a => a.TemporaryCodeExpiry)
+                                                   .Select(a => a.TemporaryCodeExpiry)
+                                                   .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
         sorted.Should().Equal(ChronologicalOrder.Select(s => s.ToUniversalTime()));
@@ -223,10 +223,10 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
 
         // Act
         List<DateTimeOffset> matched = await context.PrusaConnectRegistrations
-            .Where(a => a.TemporaryCodeExpiry >= from && a.TemporaryCodeExpiry <= to)
-            .OrderBy(a => a.TemporaryCodeExpiry)
-            .Select(a => a.TemporaryCodeExpiry)
-            .ToListAsync(TestContext.Current.CancellationToken);
+                                                    .Where(a => a.TemporaryCodeExpiry >= from && a.TemporaryCodeExpiry <= to)
+                                                    .OrderBy(a => a.TemporaryCodeExpiry)
+                                                    .Select(a => a.TemporaryCodeExpiry)
+                                                    .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
         matched.Should().Equal(ChronologicalOrder[1..6].Select(s => s.ToUniversalTime()));
@@ -251,8 +251,8 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
 
         // Act
         int deleted = await context.PrusaConnectRegistrations
-            .Where(a => a.TemporaryCodeExpiry < cutoff)
-            .ExecuteDeleteAsync(TestContext.Current.CancellationToken);
+                                   .Where(a => a.TemporaryCodeExpiry < cutoff)
+                                   .ExecuteDeleteAsync(TestContext.Current.CancellationToken);
 
         // Assert
         deleted.Should().Be(3);
@@ -277,15 +277,16 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
 
         // deliberately carries sub-millisecond ticks and a non-zero offset
         DateTimeOffset original = new DateTimeOffset(2026, 3, 30, 11, 14, 1, 123, TimeSpan.Zero)
-            .AddTicks(4567)
-            .ToOffset(TimeSpan.FromHours(13));
+                                  .AddTicks(4567)
+                                  .ToOffset(TimeSpan.FromHours(13));
 
         context.PrusaConnectRegistrations.Add(NewRegistration("fp-rt", original));
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
         context.ChangeTracker.Clear();
 
         // Act
-        DateTimeOffset readBack = (await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken)).TemporaryCodeExpiry;
+        DateTimeOffset readBack = (await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken))
+            .TemporaryCodeExpiry;
 
         // Assert
         readBack.Offset.Should().Be(TimeSpan.Zero, "values round-trip as UTC; the offset is not stored");

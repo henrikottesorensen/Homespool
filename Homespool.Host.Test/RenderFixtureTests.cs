@@ -101,10 +101,10 @@ public class RenderFixtureTests
 
         // Act
         Dictionary<string, TelemetryDTO> telemetry = fixtures
-            .Where(fixture => !fixture.Output.TryGetProperty("event", out _))
-            .ToDictionary(
-                fixture => fixture.Scenario,
-                fixture => JsonSerializer.Deserialize<TelemetryDTO>(fixture.Output)!);
+                                                     .Where(fixture => !fixture.Output.TryGetProperty("event", out _))
+                                                     .ToDictionary(
+                                                         fixture => fixture.Scenario,
+                                                         fixture => JsonSerializer.Deserialize<TelemetryDTO>(fixture.Output)!);
 
         // Assert
         telemetry.Should().HaveCount(5);
@@ -186,9 +186,9 @@ public class RenderFixtureTests
 
         // A finished job answers with its terminal state instead of its details.
         events["Even - job info - old job ID FINISHED"].Data!.Value.GetProperty("state").GetString()
-            .Should().Be("FIN_OK");
+                                                       .Should().Be("FIN_OK");
         events["Even - job info - old job ID ABORTED"].Data!.Value.GetProperty("state").GetString()
-            .Should().Be("FIN_STOPPED");
+                                                      .Should().Be("FIN_STOPPED");
 
         events["Event - info"].EventType.Should().Be(Events.Info);
         events["Event - transfer info, no transfer"].EventType.Should().Be(Events.TransferInfo);
@@ -221,7 +221,7 @@ public class RenderFixtureTests
         single.TransferPaused.Should().BeTrue();
         single.Slots.Should().Be(1);
         single.Storages.Should().BeEmpty("an empty storages array is still an array - it is absent "
-                                          + "only when the field itself is omitted");
+                                         + "only when the field itself is omitted");
         single.NetworkInfo.Should().NotBeNull();
         single.Tools.Should().ContainKey("1");
         single.Tools!["1"].Material.Should().Be("---", "the no-filament sentinel is a literal string");
@@ -264,7 +264,7 @@ public class RenderFixtureTests
         data.GetProperty("time_transferring").GetInt64().Should().Be(0);
         data.GetProperty("path").GetString().Should().Be("/usb/whatever.gcode");
         data.GetProperty("type").GetString().Should().Be("FROM_CONNECT",
-            "the wire spelling of the transfer type, which nothing in this project had yet seen");
+                                                         "the wire spelling of the transfer type, which nothing in this project had yet seen");
 
         // With no transfer running the payload collapses to a type alone - so a consumer cannot
         // assume the other fields exist.
@@ -297,11 +297,11 @@ public class RenderFixtureTests
 
         // Act
         TransferEventDataDTO? active = events["Event - transfer info"].Data!.Value
-            .Deserialize<TransferEventDataDTO>();
+                                                                      .Deserialize<TransferEventDataDTO>();
         TransferEventDataDTO? none = events["Event - transfer info, no transfer"].Data!.Value
-            .Deserialize<TransferEventDataDTO>();
+                                                                                 .Deserialize<TransferEventDataDTO>();
         TransferEventDataDTO? noPath = events["Event - transfer info no upload path"].Data!.Value
-            .Deserialize<TransferEventDataDTO>();
+                                                                                     .Deserialize<TransferEventDataDTO>();
 
         // Assert
         active.Should().NotBeNull();
@@ -320,7 +320,7 @@ public class RenderFixtureTests
         none.Transferred.Should().BeNull();
 
         noPath!.Path.Should().BeNull("firmware guards the field on a non-null destination rather "
-                                      + "than sending an empty one");
+                                     + "than sending an empty one");
 
         // None of these scenarios sets start_cmd_id - their test never exercises it - so the field
         // being null here is the renderer's behaviour, not a mapping failure. The shape that does
@@ -345,8 +345,8 @@ public class RenderFixtureTests
     {
         // Arrange
         const string finished = """
-            {"data":{"start_cmd_id":11},"transfer_id":1037732555,"state":"IDLE","event":"TRANSFER_FINISHED"}
-            """;
+                                {"data":{"start_cmd_id":11},"transfer_id":1037732555,"state":"IDLE","event":"TRANSFER_FINISHED"}
+                                """;
 
         // Act
         EventDTO? eventDto = JsonSerializer.Deserialize<EventDTO>(finished);
@@ -356,7 +356,7 @@ public class RenderFixtureTests
         eventDto.EventType.Should().Be(Events.TransferFinished);
         eventDto.TransferId.Should().Be(1037732555);
         eventDto.CommandId.Should().BeNull("the terminal events are unsolicited - they answer no "
-                                            + "command, which is why start_cmd_id has to exist");
+                                           + "command, which is why start_cmd_id has to exist");
         data!.StartCommandId.Should().Be(11u);
     }
 
@@ -383,7 +383,7 @@ public class RenderFixtureTests
 
         JsonElement data = stateChanged.Data!.Value;
         data.GetProperty("code").GetString().Should().Be("00000",
-            "the error code is a zero-padded string, not a number");
+                                                         "the error code is a zero-padded string, not a number");
         data.GetProperty("buttons").EnumerateArray().Select(button => button.GetString())
             .Should().Equal("Yes", "No");
     }
@@ -395,10 +395,10 @@ public class RenderFixtureTests
         // Clone each output element: it belongs to the document, which is disposed on the way out
         // of this method, and a JsonElement into a disposed document throws when read.
         return document.RootElement.EnumerateArray()
-            .Select(entry => new RenderFixture(
-                entry.GetProperty("scenario").GetString()!,
-                entry.GetProperty("output").Clone()))
-            .ToList();
+                       .Select(entry => new RenderFixture(
+                                   entry.GetProperty("scenario").GetString()!,
+                                   entry.GetProperty("output").Clone()))
+                       .ToList();
     }
 
     /// <summary>Every fixture whose output has an <c>"event"</c> property, deserialized and keyed by
@@ -406,10 +406,10 @@ public class RenderFixtureTests
     private static Dictionary<string, EventDTO> EventsByScenario(IReadOnlyList<RenderFixture> fixtures)
     {
         return fixtures
-            .Where(fixture => fixture.Output.TryGetProperty("event", out _))
-            .ToDictionary(
-                fixture => fixture.Scenario,
-                fixture => JsonSerializer.Deserialize<EventDTO>(fixture.Output)!);
+               .Where(fixture => fixture.Output.TryGetProperty("event", out _))
+               .ToDictionary(
+                   fixture => fixture.Scenario,
+                   fixture => JsonSerializer.Deserialize<EventDTO>(fixture.Output)!);
     }
 
     /// <summary>One entry of the generated fixture: the section name it came from, and the exact

@@ -136,9 +136,7 @@ public class CameraSourcePolicyTests
     {
         IHostAddressResolver resolver = Substitute.For<IHostAddressResolver>();
 
-        IReadOnlyList<IPAddress> answer = resolvesTo is null
-            ? []
-            : [IPAddress.Parse(resolvesTo)];
+        IReadOnlyList<IPAddress> answer = resolvesTo is null ? [] : [IPAddress.Parse(resolvesTo)];
 
         resolver.ResolveAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
                 .Returns(Task.FromResult(answer));

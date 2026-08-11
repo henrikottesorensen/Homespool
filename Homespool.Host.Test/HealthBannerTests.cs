@@ -19,9 +19,9 @@ public class HealthBannerTests
     private static HealthReport Report(params (string name, HealthStatus status, string? description)[] entries)
     {
         return new(entries.ToDictionary(
-                e => e.name,
-                e => new HealthReportEntry(e.status, e.description, TimeSpan.Zero, exception: null, data: null)),
-            TimeSpan.Zero);
+                       e => e.name,
+                       e => new HealthReportEntry(e.status, e.description, TimeSpan.Zero, exception: null, data: null)),
+                   TimeSpan.Zero);
     }
 
     [Fact]
@@ -62,8 +62,10 @@ public class HealthBannerTests
     public void OnlyTheUnhealthyEntriesAreShownAndTheirOwnDescriptionsAreUsed()
     {
         IReadOnlyList<HealthBannerItem> items = HealthBanner.From(Report(
-            ("telemetry-persistence", HealthStatus.Unhealthy, "Nothing is reaching the database."),
-            ("telemetry-writer-alive", HealthStatus.Healthy, "The telemetry drain loop is running.")));
+                                                                      ("telemetry-persistence", HealthStatus.Unhealthy,
+                                                                          "Nothing is reaching the database."),
+                                                                      ("telemetry-writer-alive", HealthStatus.Healthy,
+                                                                          "The telemetry drain loop is running.")));
 
         items.Should().ContainSingle();
         items[0].Message.Should().Be("Nothing is reaching the database.");

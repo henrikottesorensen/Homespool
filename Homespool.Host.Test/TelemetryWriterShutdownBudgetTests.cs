@@ -59,8 +59,8 @@ public class TelemetryWriterShutdownBudgetTests
     {
         (TelemetryWriter.MaxShutdownFlushDuration + InFlightFlushAllowance)
             .Should().BeLessThan(ContainerStopGracePeriod - NonDrainShutdownAllowance,
-                "the drain has to finish and report what it lost before the container runtime SIGKILLs it - "
-                + "a shutdown killed mid-flush loses the buffers and the record of losing them");
+                                 "the drain has to finish and report what it lost before the container runtime SIGKILLs it - "
+                                 + "a shutdown killed mid-flush loses the buffers and the record of losing them");
     }
 
     /// <summary>
@@ -76,7 +76,7 @@ public class TelemetryWriterShutdownBudgetTests
     public void TheShutdownFlushIsStillPatientEnoughToRideOutBriefContention()
     {
         TelemetryWriter.MaxShutdownFlushDuration
-            .Should().BeGreaterThan(TimeSpan.FromSeconds(5),
-                "a shutdown that gives up almost immediately discards data a short wait would have saved");
+                       .Should().BeGreaterThan(TimeSpan.FromSeconds(5),
+                                               "a shutdown that gives up almost immediately discards data a short wait would have saved");
     }
 }

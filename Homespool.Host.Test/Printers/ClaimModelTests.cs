@@ -33,8 +33,8 @@ public sealed class ClaimModelTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }
@@ -61,11 +61,11 @@ public sealed class ClaimModelTests : IDisposable
     private static PrusaConnectService NewService(HomespoolDbContext context)
     {
         return new(context,
-            new CodeGenerator(),
-            new TokenService(),
-            new TeamService(context),
-            TimeProvider.System, NullLogger<PrusaConnectService>.Instance,
-            Options.Create(new PrusaConnectOptions()));
+                   new CodeGenerator(),
+                   new TokenService(),
+                   new TeamService(context),
+                   TimeProvider.System, NullLogger<PrusaConnectService>.Instance,
+                   Options.Create(new PrusaConnectOptions()));
     }
 
     private static RegisterPrinterRequestDTO PrinterRequest(string fingerprint)
@@ -79,7 +79,8 @@ public sealed class ClaimModelTests : IDisposable
         };
     }
 
-    private static async Task<(ClaimModel model, HSUser user)> NewModelAsync(HomespoolDbContext context, string email = "owner@example.com")
+    private static async Task<(ClaimModel model, HSUser user)> NewModelAsync(HomespoolDbContext context,
+                                                                             string email = "owner@example.com")
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 
@@ -93,9 +94,9 @@ public sealed class ClaimModelTests : IDisposable
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
         ClaimModel model = new(NewService(context), new TeamService(context), users, new UnitOfWork(context),
-            new ClaimAttemptLimiter(context, Options.Create(new PrusaConnectOptions()),
-                NullLogger<ClaimAttemptLimiter>.Instance),
-            NullLogger<ClaimModel>.Instance)
+                               new ClaimAttemptLimiter(context, Options.Create(new PrusaConnectOptions()),
+                                                       NullLogger<ClaimAttemptLimiter>.Instance),
+                               NullLogger<ClaimModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };
@@ -171,7 +172,8 @@ public sealed class ClaimModelTests : IDisposable
         Printer printer = await context.Printers.SingleAsync(TestContext.Current.CancellationToken);
         printer.Name.Should().Be("Bench printer");
 
-        PrusaConnectRegistration registration = await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
+        PrusaConnectRegistration registration =
+            await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
         registration.PrinterId.Should().Be(printer.Id);
 
         model.StatusSuccess.Should().BeTrue();
@@ -240,7 +242,10 @@ public sealed class ClaimModelTests : IDisposable
         // Assert
         result.Should().BeOfType<PageResult>();
         second.ModelState.IsValid.Should().BeFalse();
-        (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1, "the second claim must not create a competing printer");
+        (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should()
+                                                                                  .Be(
+                                                                                      1,
+                                                                                      "the second claim must not create a competing printer");
     }
 
     /// <summary>A team the caller cannot manage is rejected, and nothing is created.</summary>

@@ -37,8 +37,8 @@ public sealed class InvitationServiceTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }
@@ -214,7 +214,8 @@ public sealed class InvitationServiceTests : IDisposable
         await service.MarkUsedAsync(tracked, CancellationToken.None);
 
         // Assert
-        Invitation stored = await context.Invitations.SingleAsync(i => i.Id == invitation.Id, TestContext.Current.CancellationToken);
+        Invitation stored =
+            await context.Invitations.SingleAsync(i => i.Id == invitation.Id, TestContext.Current.CancellationToken);
         stored.UsedAt.Should().NotBeNull();
 
         (await service.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should().BeNull();
@@ -239,7 +240,8 @@ public sealed class InvitationServiceTests : IDisposable
         await service.RevokeAsync(invitation.Id, CancellationToken.None);
 
         // Assert
-        Invitation stored = await context.Invitations.SingleAsync(i => i.Id == invitation.Id, TestContext.Current.CancellationToken);
+        Invitation stored =
+            await context.Invitations.SingleAsync(i => i.Id == invitation.Id, TestContext.Current.CancellationToken);
         stored.ExpiresAt.Should().BeOnOrBefore(DateTimeOffset.UtcNow);
 
         (await service.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should().BeNull();

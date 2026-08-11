@@ -35,13 +35,13 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
                                                   int maxSeconds = 3600)
     {
         return new(context,
-            Options.Create(new PrusaConnectOptions
-            {
-                MaxFailedClaimAttempts = maxAttempts,
-                ClaimLockoutBaseSeconds = baseSeconds,
-                ClaimLockoutMaxSeconds = maxSeconds,
-            }),
-            NullLogger<ClaimAttemptLimiter>.Instance);
+                   Options.Create(new PrusaConnectOptions
+                   {
+                       MaxFailedClaimAttempts = maxAttempts,
+                       ClaimLockoutBaseSeconds = baseSeconds,
+                       ClaimLockoutMaxSeconds = maxSeconds,
+                   }),
+                   NullLogger<ClaimAttemptLimiter>.Instance);
     }
 
     private static async Task<HSUser> SeedUserAsync(HomespoolDbContext context)
@@ -57,8 +57,8 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }

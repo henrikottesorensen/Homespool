@@ -47,16 +47,16 @@ public class ControllerReturnTypeTests
     private static IEnumerable<MethodInfo> DeclaredMethods(Type controller)
     {
         return controller.GetMethods(BindingFlags.Public | BindingFlags.NonPublic
-                              | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-                  .Where(method => !method.IsSpecialName);
+                                                         | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                         .Where(method => !method.IsSpecialName);
     }
 
     /// <summary>The type an action actually answers with, unwrapped from its <see cref="Task{T}"/>.</summary>
     private static Type Unwrapped(Type returnType)
     {
-        return returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>)
-            ? returnType.GetGenericArguments()[0]
-            : returnType;
+        return returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>) ?
+            returnType.GetGenericArguments()[0] :
+            returnType;
     }
 
     [Fact]
@@ -64,9 +64,9 @@ public class ControllerReturnTypeTests
     {
         // Act
         List<string> offenders = (from controller in Controllers
-                                  from method in DeclaredMethods(controller)
-                                  where Unwrapped(method.ReturnType) == typeof(IActionResult)
-                                  select $"{controller.Name}.{method.Name}").ToList();
+            from method in DeclaredMethods(controller)
+            where Unwrapped(method.ReturnType) == typeof(IActionResult)
+            select $"{controller.Name}.{method.Name}").ToList();
 
         // Assert
         offenders.Should().BeEmpty(
@@ -88,15 +88,15 @@ public class ControllerReturnTypeTests
     {
         // Act
         List<string> offenders = (from controller in Controllers
-                                  from method in controller.GetMethods(BindingFlags.Public | BindingFlags.Instance
-                                                                       | BindingFlags.DeclaredOnly)
-                                  where !method.IsSpecialName
-                                        && method.GetCustomAttribute<NonActionAttribute>() is null
-                                  let returned = Unwrapped(method.ReturnType)
-                                  where !typeof(ActionResult).IsAssignableFrom(returned)
-                                        && !(returned.IsGenericType
-                                             && returned.GetGenericTypeDefinition() == typeof(ActionResult<>))
-                                  select $"{controller.Name}.{method.Name} returns {returned.Name}").ToList();
+            from method in controller.GetMethods(BindingFlags.Public | BindingFlags.Instance
+                                                                     | BindingFlags.DeclaredOnly)
+            where !method.IsSpecialName
+                  && method.GetCustomAttribute<NonActionAttribute>() is null
+            let returned = Unwrapped(method.ReturnType)
+            where !typeof(ActionResult).IsAssignableFrom(returned)
+                  && !(returned.IsGenericType
+                       && returned.GetGenericTypeDefinition() == typeof(ActionResult<>))
+            select $"{controller.Name}.{method.Name} returns {returned.Name}").ToList();
 
         // Assert
         offenders.Should().BeEmpty();

@@ -70,7 +70,8 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
     }
 
     [SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits",
-                     Justification = "IDisposable.Dispose cannot be asynchronous, and the service must be stopped before the test's resources are torn down.")]
+                     Justification =
+                         "IDisposable.Dispose cannot be asynchronous, and the service must be stopped before the test's resources are torn down.")]
     public void Dispose()
     {
         if (_service is not null)
@@ -98,12 +99,13 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
 
         await using (AsyncServiceScope migrationScope = _provider.CreateAsyncScope())
         {
-            await migrationScope.ServiceProvider.GetRequiredService<HomespoolDbContext>().Database.MigrateAsync(TestContext.Current.CancellationToken);
+            await migrationScope.ServiceProvider.GetRequiredService<HomespoolDbContext>().Database
+                                .MigrateAsync(TestContext.Current.CancellationToken);
         }
 
         _service = new TelemetryRetentionService(_provider.GetRequiredService<IServiceScopeFactory>(),
-                                                  Options.Create(options),
-                                                  NullLogger<TelemetryRetentionService>.Instance);
+                                                 Options.Create(options),
+                                                 NullLogger<TelemetryRetentionService>.Instance);
 
         await _service.StartAsync(CancellationToken.None);
 

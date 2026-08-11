@@ -121,16 +121,18 @@ public class ForwardedHeaderScopeTests
     [InlineData(UserPort, false, "192.168.13.110", "the user listener is only reachable through the proxy")]
     [InlineData(PrinterPort, true, "192.168.13.110", "nginx terminates printer TLS, so X-Real-IP is its word")]
     [InlineData(PrinterPort, false, "10.9.9.9", "printers connect to this port directly, so the header is the caller's own")]
-    public async Task TheBranchDecidesWhetherTheStatedAddressIsBelieved(
-        int arrivedOnPort, bool printerListenerIsProxied, string expectedAddress, string because)
+    public async Task TheBranchDecidesWhetherTheStatedAddressIsBelieved(int arrivedOnPort,
+                                                                        bool printerListenerIsProxied,
+                                                                        string expectedAddress,
+                                                                        string because)
     {
         // Arrange - the pipeline as Program.cs composes it, over the real forwarded-headers middleware.
         ServiceCollection services = new();
         services.AddOptions();
         services.AddLogging();
         services.Configure<ForwardedHeadersOptions>(options =>
-            ForwardedHeadersConfigurator.Apply(
-                new XForwardedOptions { KnownProxies = ["10.9.9.9"] }, options));
+                                                        ForwardedHeadersConfigurator.Apply(
+                                                            new XForwardedOptions { KnownProxies = ["10.9.9.9"] }, options));
 
         using ServiceProvider provider = services.BuildServiceProvider();
 

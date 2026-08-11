@@ -36,8 +36,8 @@ public sealed class AddModelTests : IDisposable
     private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-            .UseSqlite($"Data Source={_databasePath}")
-            .Options;
+                                                       .UseSqlite($"Data Source={_databasePath}")
+                                                       .Options;
 
         return new HomespoolDbContext(options);
     }
@@ -79,14 +79,16 @@ public sealed class AddModelTests : IDisposable
             authority.EnsureLeaf([options.PrinterHost]);
         }
 
-        return new ProvisioningBundleBuilder(Options.Create(options), Options.Create(new CertificateOptions()), authority, new DnsHostAddressResolver());
+        return new ProvisioningBundleBuilder(Options.Create(options), Options.Create(new CertificateOptions()), authority,
+                                             new DnsHostAddressResolver());
     }
 
     /// <summary>
     /// Builds an AddModel wired to real services, a signed-in user with a default team they can
     /// manage, and the fake PageContext plumbing unit-tested PageModels need.
     /// </summary>
-    private async Task<(AddModel model, HSUser user)> NewModelAsync(HomespoolDbContext context, string publicHost = "printers.example.com")
+    private async Task<(AddModel model, HSUser user)> NewModelAsync(HomespoolDbContext context,
+                                                                    string publicHost = "printers.example.com")
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 
@@ -107,10 +109,12 @@ public sealed class AddModelTests : IDisposable
         };
 
         PrusaConnectService prusaConnectService = new(context, new CodeGenerator(), new TokenService(), new TeamService(context),
-            TimeProvider.System, NullLogger<PrusaConnectService>.Instance, Options.Create(options));
+                                                      TimeProvider.System, NullLogger<PrusaConnectService>.Instance,
+                                                      Options.Create(options));
 
-        AddModel model = new(prusaConnectService, NewBundleBuilder(options), new TeamService(context), users, new UnitOfWork(context),
-            Options.Create(options), NullLogger<AddModel>.Instance)
+        AddModel model = new(prusaConnectService, NewBundleBuilder(options), new TeamService(context), users,
+                             new UnitOfWork(context),
+                             Options.Create(options), NullLogger<AddModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };
@@ -169,7 +173,9 @@ public sealed class AddModelTests : IDisposable
         // Assert
         model.Offer.Should().BeNull();
         model.ModelState.IsValid.Should().BeFalse();
-        (await context.Printers.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse("nothing should be provisioned while unconfigured");
+        (await context.Printers.AnyAsync(TestContext.Current.CancellationToken)).Should()
+                                                                                .BeFalse(
+                                                                                    "nothing should be provisioned while unconfigured");
     }
 
     /// <summary>
@@ -198,14 +204,15 @@ public sealed class AddModelTests : IDisposable
         model.Offer.Should().NotBeNull();
         model.Offer!.CanBuild.Should().BeTrue("the certificate covers the configured address");
         model.Offer.Snippet.Should().Contain("[service::connect]")
-            .And.Contain("hostname = printers.example.com")
-            .And.Contain("port = 443")
-            .And.Contain("tls = True");
+             .And.Contain("hostname = printers.example.com")
+             .And.Contain("port = 443")
+             .And.Contain("tls = True");
 
-        PrusaConnectProvisioning stored = await context.PrusaConnectProvisionings.SingleAsync(TestContext.Current.CancellationToken);
+        PrusaConnectProvisioning stored =
+            await context.PrusaConnectProvisionings.SingleAsync(TestContext.Current.CancellationToken);
         string tokenInSnippet = model.Offer!.Snippet.Split("token = ")[1].Trim();
         new TokenService().VerifyToken(tokenInSnippet, stored.HashedToken).Should()
-            .BeTrue("the snippet must carry the same token that was hashed and stored");
+                          .BeTrue("the snippet must carry the same token that was hashed and stored");
 
         model.Input.Name.Should().BeNull("the form resets after a successful provision, same as invite creation");
     }

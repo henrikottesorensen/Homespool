@@ -81,14 +81,18 @@ internal sealed class FakeWebSocket : WebSocket
         _state = WebSocketState.Aborted;
     }
 
-    public override Task CloseAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken)
+    public override Task CloseAsync(WebSocketCloseStatus closeStatus,
+                                    string? statusDescription,
+                                    CancellationToken cancellationToken)
     {
         _state = WebSocketState.Closed;
 
         return Task.CompletedTask;
     }
 
-    public override Task CloseOutputAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken)
+    public override Task CloseOutputAsync(WebSocketCloseStatus closeStatus,
+                                          string? statusDescription,
+                                          CancellationToken cancellationToken)
     {
         Record(CloseFrameSent);
         _state = WebSocketState.CloseSent;
@@ -106,7 +110,10 @@ internal sealed class FakeWebSocket : WebSocket
         throw new NotSupportedException("This fake only supports the write side; parse-loop tests read from a PipeReader instead.");
     }
 
-    public override async Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType messageType, bool endOfMessage, CancellationToken cancellationToken)
+    public override async Task SendAsync(ArraySegment<byte> buffer,
+                                         WebSocketMessageType messageType,
+                                         bool endOfMessage,
+                                         CancellationToken cancellationToken)
     {
         Record(SendStarted);
 

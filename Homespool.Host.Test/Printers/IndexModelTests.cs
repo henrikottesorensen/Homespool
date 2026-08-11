@@ -10,6 +10,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -19,6 +21,7 @@ using NSubstitute.ExceptionExtensions;
 using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Certificates;
+using Homespool.Host.Localisation;
 using Homespool.Host.Pages.Printers;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
@@ -129,7 +132,10 @@ public sealed class IndexModelTests : IDisposable
             connectionRegistry,
             new PrinterCommandService(new PrinterAccessService(context), connectionRegistry),
             new PrintStopService(context, new PrinterCommandService(new PrinterAccessService(context), connectionRegistry),
-                NullLogger<PrintStopService>.Instance))
+                NullLogger<PrintStopService>.Instance),
+            new PrinterStatusText(
+                new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider()
+                    .GetRequiredService<IStringLocalizer<SharedResource>>()))
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };

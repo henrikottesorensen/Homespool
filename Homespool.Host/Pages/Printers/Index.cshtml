@@ -52,7 +52,7 @@ else
                 <td>
                     @if (row.Connected)
                     {
-                        <span class="badge @IndexModel.StatusBadgeClass(row.LiveStatus)">@IndexModel.StatusText(row.LiveStatus)</span>
+                        <span class="badge @IndexModel.StatusBadgeClass(row.LiveStatus)">@Model.StatusText(row.LiveStatus)</span>
                     }
                     else if (row.Enrolled)
                     {

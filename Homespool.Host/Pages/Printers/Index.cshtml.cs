@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Options;
 
 using Homespool.Host.Exceptions;
+using Homespool.Host.Localisation;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.Services;
@@ -36,6 +37,7 @@ public class IndexModel : PageModel
     private readonly PrinterConnectionRegistry _connectionRegistry;
     private readonly PrinterCommandService _printerCommandService;
     private readonly PrintStopService _printStopService;
+    private readonly PrinterStatusText _statusText;
 
     public IndexModel(PrinterQueryService printerQueryService,
                       PrusaConnectService prusaConnectService,
@@ -45,7 +47,8 @@ public class IndexModel : PageModel
                       IOptions<PrusaConnectOptions> options,
                       PrinterConnectionRegistry connectionRegistry,
                       PrinterCommandService printerCommandService,
-                      PrintStopService printStopService)
+                      PrintStopService printStopService,
+                      PrinterStatusText statusText)
     {
         _printerQueryService = printerQueryService;
         _prusaConnectService = prusaConnectService;
@@ -56,6 +59,7 @@ public class IndexModel : PageModel
         _connectionRegistry = connectionRegistry;
         _printerCommandService = printerCommandService;
         _printStopService = printStopService;
+        _statusText = statusText;
     }
 
     public IReadOnlyList<PrinterRow> Printers { get; private set; } = [];
@@ -87,31 +91,20 @@ public class IndexModel : PageModel
         bool Connected, PrinterStatus? LiveStatus);
 
     /// <summary>
-    /// What a connected printer's status says, in a person's words rather than the enum's.
-    /// </summary>
-    /// <remarks>
-    /// <b>Null means connected but not yet heard from</b> - the socket is up and no telemetry has
-    /// landed, which is a real few seconds after a printer connects, not an error.
-    /// <see cref="PrinterStatus.Undefined"/> is the same thing from the other side: a stored value
-    /// nobody wrote.
-    /// </remarks>
-    public static string StatusText(PrinterStatus? status)
-    {
-        return status switch
-        {
-            null or PrinterStatus.Undefined or PrinterStatus.Unknown => "Connected",
-            PrinterStatus.Attention => "Needs attention",
-            _ => status.Value.ToString(),
-        };
-    }
-
-    /// <summary>
     /// The badge colour for a status - semantic, so what needs a person reads at a glance.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Three tiers and a default: <b>danger</b> for the two that need somebody now,
     /// <b>success</b> for a printer doing what it was asked, and <b>secondary</b> for every resting
     /// state, so a listing of idle printers stays quiet instead of glowing green.
+    /// </para>
+    /// <para>
+    /// <b>Not localised, and worth noticing beside <see cref="StatusText"/>.</b> This returns a CSS
+    /// class name — a value Bootstrap parses, not one a person reads — so translating it would
+    /// produce a class that styles nothing. Same enum, same row of the page, opposite sides of the
+    /// machine-text boundary.
+    /// </para>
     /// </remarks>
     public static string StatusBadgeClass(PrinterStatus? status)
     {
@@ -122,6 +115,20 @@ public class IndexModel : PageModel
             PrinterStatus.Printing or PrinterStatus.Ready => "text-bg-success",
             _ => "text-bg-secondary",
         };
+    }
+
+    /// <summary>
+    /// What a connected printer's status says, in a person's words rather than the enum's — and in
+    /// their language. See <see cref="Localisation.PrinterStatusText"/>.
+    /// </summary>
+    /// <remarks>
+    /// <b>No longer static, and that is the change.</b> The words used to be written here, ending in
+    /// <c>status.ToString()</c> so most states reached the page as a C# identifier that happened to
+    /// read like English. There was nothing to translate because nobody had written the words down.
+    /// </remarks>
+    public string StatusText(PrinterStatus? status)
+    {
+        return _statusText.For(status);
     }
 
     public async Task OnGetAsync(CancellationToken cancellationToken)

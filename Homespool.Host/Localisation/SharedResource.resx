@@ -144,4 +144,24 @@
   <data name="Language_Saved" xml:space="preserve">
     <value>Language updated.</value>
   </data>
+  <data name="Alert_UnhealthySubject" xml:space="preserve">
+    <value>Homespool is unhealthy</value>
+    <comment>Email subject. Sent to administrators, each in their own stored language.</comment>
+  </data>
+  <data name="Alert_UnhealthyIntro" xml:space="preserve">
+    <value>Homespool reported a problem:</value>
+  </data>
+  <data name="Alert_UnhealthyFooter" xml:space="preserve">
+    <value>Printing is unaffected, but recorded history may be incomplete until this is resolved.</value>
+  </data>
+  <data name="Alert_RecoveredSubject" xml:space="preserve">
+    <value>Homespool has recovered</value>
+  </data>
+  <data name="Alert_RecoveredBody" xml:space="preserve">
+    <value>The problems reported earlier have cleared. All health checks are passing again.</value>
+  </data>
+  <data name="Account_InvalidUserName" xml:space="preserve">
+    <value>&apos;{0}&apos; is not a usable username. Use letters, digits, and - . _ only; an email address cannot be a username.</value>
+    <comment>Replaces Identity&apos;s own wording, which describes a rule this application does not apply. The three punctuation marks are listed literally and must survive translation.</comment>
+  </data>
 </root>

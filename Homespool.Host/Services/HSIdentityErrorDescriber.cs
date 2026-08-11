@@ -1,11 +1,12 @@
-using System.Globalization;
-
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Localization;
+
+using Homespool.Host.Localisation;
 
 namespace Homespool.Host.Services;
 
 /// <summary>
-/// Corrects the one Identity message that this application makes untrue.
+/// Corrects the one Identity message that this application makes untrue, in the reader's language.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -22,19 +23,33 @@ namespace Homespool.Host.Services;
 /// only decides what a rejection *says*, so a test seeing Identity's wording instead is a difference
 /// with nothing behind it.
 /// </para>
+/// <para>
+/// <b>Every other message is still Identity's own, and still English.</b> Overriding one member to
+/// read from resources does not localise the base class: a wrong password and a too-short one are
+/// answered by <c>IdentityErrorDescriber</c> in whatever language it shipped in. Localising those
+/// means overriding each in turn, which is Phase B work and deliberately not smuggled in here - see
+/// <c>notes/localisation.md</c>.
+/// </para>
 /// </remarks>
 public class HSIdentityErrorDescriber : IdentityErrorDescriber
 {
+    private readonly IStringLocalizer<SharedResource> _localiser;
+
+    public HSIdentityErrorDescriber(IStringLocalizer<SharedResource> localiser)
+    {
+        _localiser = localiser;
+    }
+
     /// <inheritdoc/>
     public override IdentityError InvalidUserName(string? userName)
     {
+        // The localiser formats with CurrentCulture, which the request-localisation middleware has
+        // already set - so the message arrives in the language the page is being rendered in rather
+        // than the server's.
         return new IdentityError
         {
             Code = nameof(InvalidUserName),
-            Description = string.Format(
-                CultureInfo.CurrentCulture,
-                "'{0}' is not a usable username. Use letters, digits, and - . _ only; an email address cannot be a username.",
-                userName),
+            Description = _localiser["Account_InvalidUserName", userName ?? string.Empty],
         };
     }
 }

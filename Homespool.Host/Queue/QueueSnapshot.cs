@@ -33,9 +33,10 @@ namespace Homespool.Host.Queue;
 /// it could not be sent.
 /// </para>
 /// </param>
-public sealed record QueueSnapshot(bool Connected,
-                                   PrinterStatus Status,
-                                   QueueHead? Head,
-                                   bool TransferInFlight,
-                                   bool PrintInFlight = false,
-                                   string? BlockedReason = null);
+public sealed record QueueSnapshot(
+    bool Connected,
+    PrinterStatus Status,
+    QueueHead? Head,
+    bool TransferInFlight,
+    bool PrintInFlight = false,
+    string? BlockedReason = null);

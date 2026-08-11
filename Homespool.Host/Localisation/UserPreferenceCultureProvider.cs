@@ -51,8 +51,8 @@ public sealed class UserPreferenceCultureProvider : RequestCultureProvider
         UserCultures cultures = httpContext.RequestServices.GetRequiredService<UserCultures>();
 
         string? culture = await cultures
-            .ForUserAsync(userId, httpContext.RequestAborted)
-            .ConfigureAwait(false);
+                                .ForUserAsync(userId, httpContext.RequestAborted)
+                                .ConfigureAwait(false);
 
         return culture is null ? null : new ProviderCultureResult(culture);
     }

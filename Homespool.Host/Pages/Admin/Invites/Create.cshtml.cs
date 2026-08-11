@@ -35,12 +35,11 @@ public class CreateModel : PageModel
     private readonly IEmailSender _emailSender;
     private readonly ILogger<CreateModel> _logger;
 
-    public CreateModel(
-        InvitationService invitationService,
-        TeamService teamService,
-        UserManager<HSUser> userManager,
-        IEmailSender emailSender,
-        ILogger<CreateModel> logger)
+    public CreateModel(InvitationService invitationService,
+                       TeamService teamService,
+                       UserManager<HSUser> userManager,
+                       IEmailSender emailSender,
+                       ILogger<CreateModel> logger)
     {
         _invitationService = invitationService;
         _teamService = teamService;
@@ -96,9 +95,7 @@ public class CreateModel : PageModel
             return Forbid();
         }
 
-        DateTimeOffset? expiresAt = Input.ExpiresInHours is int hours
-            ? DateTimeOffset.UtcNow + TimeSpan.FromHours(hours)
-            : null;
+        DateTimeOffset? expiresAt = Input.ExpiresInHours is int hours ? DateTimeOffset.UtcNow + TimeSpan.FromHours(hours) : null;
 
         (Invitation invitation, string plaintextToken) = await _invitationService.CreateAsync(
             Input.Email, Input.TeamId, admin.Id, expiresAt, cancellationToken);
@@ -115,7 +112,7 @@ public class CreateModel : PageModel
             "You're invited to Homespool",
             $"You have been invited. Accept by <a href='{HtmlEncoder.Default.Encode(AcceptLink!)}'>clicking here</a>. " +
             $"This invitation expires {invitation.ExpiresAt.ToLocalTime()
-                .ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)}.");
+                                                 .ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)}.");
 
         EmailSent = sendResult == EmailSendResult.Sent;
 

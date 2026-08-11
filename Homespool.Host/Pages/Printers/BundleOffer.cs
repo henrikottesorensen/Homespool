@@ -29,12 +29,13 @@ namespace Homespool.Host.Pages.Printers;
 /// </param>
 /// <param name="Snippet">The ini section, rendered for <see cref="PreferredName"/>, for anyone who wants to read it.</param>
 /// <param name="TlsEnabled">Whether the bundle will carry a trust anchor at all.</param>
-public sealed record BundleOffer(int PrinterId,
-                                 string? PrinterName,
-                                 string Token,
-                                 IReadOnlyList<PrinterAddressSuggestion> Names,
-                                 string Snippet,
-                                 bool TlsEnabled)
+public sealed record BundleOffer(
+    int PrinterId,
+    string? PrinterName,
+    string Token,
+    IReadOnlyList<PrinterAddressSuggestion> Names,
+    string Snippet,
+    bool TlsEnabled)
 {
     /// <summary>The address selected by default: the first, which is the configured one when it is covered.</summary>
     public string? PreferredName => Names.Count > 0 ? Names[0].Value : null;

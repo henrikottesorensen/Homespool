@@ -61,14 +61,14 @@ public class CameraAccessService
     public async Task<IReadOnlyList<Camera>> ListAsync(long userId, CancellationToken cancellationToken)
     {
         return await _dbContext.Cameras
-            .Where(camera => _dbContext.TeamMembers.Any(
-                member => member.TeamId == camera.TeamId && member.UserId == userId && member.CanRead))
-            .Include(camera => camera.Printer)
-            .OrderBy(camera => camera.Name ?? string.Empty)
-            .ThenBy(camera => camera.Id)
-            .AsNoTracking()
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+                               .Where(camera => _dbContext.TeamMembers.Any(member => member.TeamId == camera.TeamId &&
+                                                                                     member.UserId == userId && member.CanRead))
+                               .Include(camera => camera.Printer)
+                               .OrderBy(camera => camera.Name ?? string.Empty)
+                               .ThenBy(camera => camera.Id)
+                               .AsNoTracking()
+                               .ToListAsync(cancellationToken)
+                               .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -79,18 +79,17 @@ public class CameraAccessService
     /// authority over a camera comes from the camera - inheriting it through the printer is the rule
     /// that works for bound cameras and quietly fails for unbound ones.
     /// </remarks>
-    public async Task<IReadOnlyList<Camera>> ListForPrinterAsync(
-        int printerId, long userId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<Camera>> ListForPrinterAsync(int printerId, long userId, CancellationToken cancellationToken)
     {
         return await _dbContext.Cameras
-            .Where(camera => camera.PrinterId == printerId)
-            .Where(camera => _dbContext.TeamMembers.Any(
-                member => member.TeamId == camera.TeamId && member.UserId == userId && member.CanRead))
-            .OrderBy(camera => camera.Name ?? string.Empty)
-            .ThenBy(camera => camera.Id)
-            .AsNoTracking()
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+                               .Where(camera => camera.PrinterId == printerId)
+                               .Where(camera => _dbContext.TeamMembers.Any(member => member.TeamId == camera.TeamId &&
+                                                                                     member.UserId == userId && member.CanRead))
+                               .OrderBy(camera => camera.Name ?? string.Empty)
+                               .ThenBy(camera => camera.Id)
+                               .AsNoTracking()
+                               .ToListAsync(cancellationToken)
+                               .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -102,13 +101,12 @@ public class CameraAccessService
     /// UUID that answers differently for "no such camera" and "not yours" is a way to find out which
     /// cameras exist.
     /// </remarks>
-    public async Task<Camera?> FindAsync(
-        Guid uuid, long userId, CameraOperation operation, CancellationToken cancellationToken)
+    public async Task<Camera?> FindAsync(Guid uuid, long userId, CameraOperation operation, CancellationToken cancellationToken)
     {
         Camera? camera = await _dbContext.Cameras
-            .Include(entity => entity.Printer)
-            .FirstOrDefaultAsync(entity => entity.Uuid == uuid, cancellationToken)
-            .ConfigureAwait(false);
+                                         .Include(entity => entity.Printer)
+                                         .FirstOrDefaultAsync(entity => entity.Uuid == uuid, cancellationToken)
+                                         .ConfigureAwait(false);
 
         if (camera is null)
         {
@@ -116,10 +114,10 @@ public class CameraAccessService
         }
 
         TeamMember? membership = await _dbContext.TeamMembers
-            .FirstOrDefaultAsync(
-                member => member.TeamId == camera.TeamId && member.UserId == userId,
-                cancellationToken)
-            .ConfigureAwait(false);
+                                                 .FirstOrDefaultAsync(
+                                                     member => member.TeamId == camera.TeamId && member.UserId == userId,
+                                                     cancellationToken)
+                                                 .ConfigureAwait(false);
 
         if (membership is null || !RequiredPermission(operation)(membership))
         {
@@ -148,15 +146,15 @@ public class CameraAccessService
     public async Task<bool> IsAdministratorAsync(long userId, CancellationToken cancellationToken)
     {
         return await _dbContext.UserRoles
-            .Join(
-                _dbContext.Roles,
-                userRole => userRole.RoleId,
-                role => role.Id,
-                (userRole, role) => new { userRole.UserId, role.Name })
-            .AnyAsync(
-                pair => pair.UserId == userId && pair.Name == Services.AdminBootstrap.AdminRole,
-                cancellationToken)
-            .ConfigureAwait(false);
+                               .Join(
+                                   _dbContext.Roles,
+                                   userRole => userRole.RoleId,
+                                   role => role.Id,
+                                   (userRole, role) => new { userRole.UserId, role.Name })
+                               .AnyAsync(
+                                   pair => pair.UserId == userId && pair.Name == Services.AdminBootstrap.AdminRole,
+                                   cancellationToken)
+                               .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -169,12 +167,12 @@ public class CameraAccessService
     public async Task<IReadOnlyList<Team>> ManageableTeamsAsync(long userId, CancellationToken cancellationToken)
     {
         return await _dbContext.TeamMembers
-            .Where(member => member.UserId == userId && member.CanManage)
-            .Select(member => member.Team!)
-            .OrderBy(team => team.Name ?? string.Empty)
-            .ThenBy(team => team.Id)
-            .AsNoTracking()
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+                               .Where(member => member.UserId == userId && member.CanManage)
+                               .Select(member => member.Team!)
+                               .OrderBy(team => team.Name ?? string.Empty)
+                               .ThenBy(team => team.Id)
+                               .AsNoTracking()
+                               .ToListAsync(cancellationToken)
+                               .ConfigureAwait(false);
     }
 }

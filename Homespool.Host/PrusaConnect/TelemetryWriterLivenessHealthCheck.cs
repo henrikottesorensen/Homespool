@@ -36,7 +36,7 @@ public sealed class TelemetryWriterLivenessHealthCheck : IHealthCheck
         if (!_source.IsDraining)
         {
             return Task.FromResult(HealthCheckResult.Unhealthy(
-                "The telemetry drain loop has stopped; nothing will be persisted until the process restarts."));
+                                       "The telemetry drain loop has stopped; nothing will be persisted until the process restarts."));
         }
 
         return Task.FromResult(HealthCheckResult.Healthy("The telemetry drain loop is running."));

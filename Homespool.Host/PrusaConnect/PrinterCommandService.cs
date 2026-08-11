@@ -57,7 +57,10 @@ public class PrinterCommandService
     /// will ever come: that is success, not a shortfall, and callers must not read it as failure. See
     /// <see cref="CommandSendOutcome.Dispatched"/>.
     /// </returns>
-    public async Task<CommandOutcome?> SendCommandAsync(int printerId, ISendableCommand commandData, long userId, CancellationToken cancellationToken)
+    public async Task<CommandOutcome?> SendCommandAsync(int printerId,
+                                                        ISendableCommand commandData,
+                                                        long userId,
+                                                        CancellationToken cancellationToken)
     {
         CommandSendResult result = await SendAndCheckAsync(printerId, commandData, userId, cancellationToken);
 
@@ -96,8 +99,10 @@ public class PrinterCommandService
     /// a command declaring <see cref="ISendableCommand.ExpectsReply"/> false, as
     /// <see cref="SendCommandAsync"/>.
     /// </returns>
-    public async Task<CommandOutcome<TAnswer>?> AskAsync<TAnswer>(int printerId, ISendableCommand<TAnswer> commandData,
-        long userId, CancellationToken cancellationToken)
+    public async Task<CommandOutcome<TAnswer>?> AskAsync<TAnswer>(int printerId,
+                                                                  ISendableCommand<TAnswer> commandData,
+                                                                  long userId,
+                                                                  CancellationToken cancellationToken)
     {
         CommandSendResult result = await SendAndCheckAsync(printerId, commandData, userId, cancellationToken);
 
@@ -132,8 +137,10 @@ public class PrinterCommandService
     /// <see cref="CommandSendOutcome.Completed"/> or <see cref="CommandSendOutcome.Dispatched"/>
     /// result, which is the only distinction the two callers still have to make.
     /// </summary>
-    private async Task<CommandSendResult> SendAndCheckAsync(int printerId, ISendableCommand commandData, long userId,
-        CancellationToken cancellationToken)
+    private async Task<CommandSendResult> SendAndCheckAsync(int printerId,
+                                                            ISendableCommand commandData,
+                                                            long userId,
+                                                            CancellationToken cancellationToken)
     {
         await _access.RequireAsync(printerId, userId, PrinterOperation.ControlPrinter, cancellationToken);
 

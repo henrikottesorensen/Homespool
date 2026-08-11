@@ -59,7 +59,7 @@ public class QueueSnapshotReader
     public bool IsTransferInFlight(PrintFileOnPrinter? onPrinter)
     {
         return onPrinter?.TransferStartedAt is { } startedAt
-            && _timeProvider.GetUtcNow() - startedAt < QueueAdvancer.TransferStaleAfter;
+               && _timeProvider.GetUtcNow() - startedAt < QueueAdvancer.TransferStaleAfter;
     }
 
     /// <summary>Reads the situation for one printer.</summary>
@@ -76,29 +76,31 @@ public class QueueSnapshotReader
         PrinterLiveState? live = await _dbContext.PrinterLiveStates
                                                  .AsNoTracking()
                                                  .SingleOrDefaultAsync(state => state.PrinterId == printerId,
-                                                     cancellationToken);
+                                                                       cancellationToken);
 
         bool printInFlight = await _dbContext.PrintJobs
                                              .AsNoTracking()
                                              .AnyAsync(job => job.PrinterId == printerId && job.EndedAt == null,
-                                                 cancellationToken);
+                                                       cancellationToken);
 
         if (head?.PrintFile is null)
         {
             return new QueueSnapshot(_registry.IsConnected(printerId), live?.Status ?? PrinterStatus.Unknown,
-                Head: null, TransferInFlight: false, printInFlight);
+                                     Head: null, TransferInFlight: false, printInFlight);
         }
 
         PrintFileOnPrinter? onPrinter = await _dbContext.PrintFilesOnPrinters
-            .AsNoTracking()
-            .SingleOrDefaultAsync(row => row.PrinterId == printerId && row.PrintFileId == head.PrintFileId,
-                cancellationToken);
+                                                        .AsNoTracking()
+                                                        .SingleOrDefaultAsync(
+                                                            row => row.PrinterId == printerId &&
+                                                                   row.PrintFileId == head.PrintFileId,
+                                                            cancellationToken);
 
         return new QueueSnapshot(
             _registry.IsConnected(printerId),
             live?.Status ?? PrinterStatus.Unknown,
             new QueueHead(head.Id, head.PrintFileId, head.PrintFile.Name, onPrinter?.Arrived ?? false,
-                onPrinter?.PrinterPath),
+                          onPrinter?.PrinterPath),
             IsTransferInFlight(onPrinter),
             printInFlight,
             onPrinter?.BlockedReason);

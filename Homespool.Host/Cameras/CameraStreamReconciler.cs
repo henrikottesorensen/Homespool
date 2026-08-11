@@ -42,10 +42,9 @@ public sealed class CameraStreamReconciler : BackgroundService
     private readonly Go2RtcClient _streamServer;
     private readonly ILogger<CameraStreamReconciler> _logger;
 
-    public CameraStreamReconciler(
-        IServiceScopeFactory scopeFactory,
-        Go2RtcClient streamServer,
-        ILogger<CameraStreamReconciler> logger)
+    public CameraStreamReconciler(IServiceScopeFactory scopeFactory,
+                                  Go2RtcClient streamServer,
+                                  ILogger<CameraStreamReconciler> logger)
     {
         _scopeFactory = scopeFactory;
         _streamServer = streamServer;
@@ -60,9 +59,9 @@ public sealed class CameraStreamReconciler : BackgroundService
             HomespoolDbContext database = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
             List<Camera> cameras = await database.Cameras
-                .AsNoTracking()
-                .ToListAsync(stoppingToken)
-                .ConfigureAwait(false);
+                                                 .AsNoTracking()
+                                                 .ToListAsync(stoppingToken)
+                                                 .ConfigureAwait(false);
 
             if (cameras.Count == 0)
             {
@@ -84,8 +83,8 @@ public sealed class CameraStreamReconciler : BackgroundService
                 return;
             }
 
-            IEnumerable<Camera> missing = cameras.Where(
-                camera => !known.Contains(camera.Uuid.ToString("D", CultureInfo.InvariantCulture)));
+            IEnumerable<Camera> missing =
+                cameras.Where(camera => !known.Contains(camera.Uuid.ToString("D", CultureInfo.InvariantCulture)));
 
             int restored = 0;
 

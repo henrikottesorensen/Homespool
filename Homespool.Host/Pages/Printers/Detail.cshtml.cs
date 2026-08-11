@@ -192,7 +192,8 @@ public class DetailModel : PageModel
             return Forbid();
         }
 
-        PrinterStatistics? statistics = await _printerQueryService.GetPrinterStatisticsForUserAsync(uuid, user.Id, cancellationToken);
+        PrinterStatistics? statistics =
+            await _printerQueryService.GetPrinterStatisticsForUserAsync(uuid, user.Id, cancellationToken);
 
         if (statistics is null)
         {
@@ -203,7 +204,7 @@ public class DetailModel : PageModel
         Connected = _connectionRegistry.IsConnected(statistics.Printer.Id);
 
         CanUse = await _access.AllowsAsync(statistics.Printer.Id, user.Id, PrinterOperation.ChangeQueue,
-            cancellationToken);
+                                           cancellationToken);
 
         SlicerUrl = $"{Request.Scheme}://{Request.Host}/compat/octoprint/{statistics.Printer.Uuid}/";
 
@@ -228,16 +229,16 @@ public class DetailModel : PageModel
     /// Takes the target index rather than a direction, because that is what the service takes and
     /// where the clamping lives - the page only does the arithmetic its two buttons imply.
     /// </remarks>
-    public Task<IActionResult> OnPostMoveAsync(Guid uuid, Guid id, int position,
-        CancellationToken cancellationToken)
+    public Task<IActionResult> OnPostMoveAsync(Guid uuid,
+                                               Guid id,
+                                               int position,
+                                               CancellationToken cancellationToken)
     {
         return ActAsync(uuid, async (userId, printer) =>
         {
             bool moved = await _queueService.MoveAsync(id, userId, position, cancellationToken);
 
-            return moved
-                ? ("Queue reordered.", true)
-                : ("That print is no longer in the queue.", false);
+            return moved ? ("Queue reordered.", true) : ("That print is no longer in the queue.", false);
         }, cancellationToken);
     }
 
@@ -251,9 +252,7 @@ public class DetailModel : PageModel
         {
             bool cancelled = await _queueService.CancelAsync(id, userId, cancellationToken);
 
-            return cancelled
-                ? ("Removed from the queue.", true)
-                : ("That print is no longer in the queue.", false);
+            return cancelled ? ("Removed from the queue.", true) : ("That print is no longer in the queue.", false);
         }, cancellationToken);
     }
 
@@ -280,7 +279,7 @@ public class DetailModel : PageModel
             await _preheat.PreheatAsync(printer.Id, userId, preset, cancellationToken);
 
             return ($"Heating to {preset.NozzleTemperature} °C nozzle and {preset.BedTemperature} °C bed for {preset.Name}.",
-                    true);
+                true);
         }, cancellationToken);
     }
 
@@ -304,8 +303,9 @@ public class DetailModel : PageModel
     /// gets if they post anyway. The buttons are not rendered for them - but a button that is not
     /// rendered is not a permission check.
     /// </remarks>
-    private async Task<IActionResult> ActAsync(Guid uuid, Func<long, Printer, Task<(string message, bool success)>> action,
-        CancellationToken cancellationToken)
+    private async Task<IActionResult> ActAsync(Guid uuid,
+                                               Func<long, Printer, Task<(string message, bool success)>> action,
+                                               CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 

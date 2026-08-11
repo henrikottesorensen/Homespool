@@ -189,7 +189,7 @@ public class CertificateModel : PageModel
         if (names.Length == 0)
         {
             StatusMessage = "No usable address could be detected and PrusaConnect:PrinterHost is not set, so a new "
-                          + "certificate would cover nothing a printer could verify. Set the address first.";
+                            + "certificate would cover nothing a printer could verify. Set the address first.";
 
             return RedirectToPage();
         }
@@ -236,11 +236,11 @@ public class CertificateModel : PageModel
         // Plain text, no markup: this is rendered as-is, and a page that shows an operator literal
         // asterisks around its most important sentence has undermined the sentence.
         StatusMessage = $"Reissued for {string.Join(", ", names)}, valid until "
-                      + $"{issued.NotAfter.ToUniversalTime():yyyy-MM-dd}. RELOAD THE PROXY to serve it - run "
-                      + "\"docker compose exec proxy nginx -s reload\". New connections get it immediately; a printer "
-                      + "that is already connected keeps meeting the previous certificate until it next reconnects, "
-                      + "which is harmless because both are signed by the same authority. Nothing is needed at the "
-                      + "printers themselves: that authority has not changed.";
+                        + $"{issued.NotAfter.ToUniversalTime():yyyy-MM-dd}. RELOAD THE PROXY to serve it - run "
+                        + "\"docker compose exec proxy nginx -s reload\". New connections get it immediately; a printer "
+                        + "that is already connected keeps meeting the previous certificate until it next reconnects, "
+                        + "which is harmless because both are signed by the same authority. Nothing is needed at the "
+                        + "printers themselves: that authority has not changed.";
 
         return RedirectToPage();
     }

@@ -58,9 +58,9 @@ public sealed class PrintFileReconciler : BackgroundService
 
         _scopeFactory = scopeFactory;
         _store = store;
-        _root = Path.IsPathRooted(options.Value.Directory)
-            ? options.Value.Directory
-            : Path.Combine(environment.ContentRootPath, options.Value.Directory);
+        _root = Path.IsPathRooted(options.Value.Directory) ?
+            options.Value.Directory :
+            Path.Combine(environment.ContentRootPath, options.Value.Directory);
         _logger = logger;
     }
 
@@ -145,8 +145,8 @@ public sealed class PrintFileReconciler : BackgroundService
             // is asked rather than surprised - but there is nobody to ask here and nothing to preserve:
             // the bytes already left without going through us.
             List<QueuedPrint> orphaned = await dbContext.QueuedPrints
-                                                      .Where(job => job.PrintFileId == row.Id)
-                                                      .ToListAsync(cancellationToken);
+                                                        .Where(job => job.PrintFileId == row.Id)
+                                                        .ToListAsync(cancellationToken);
 
             if (orphaned.Count > 0)
             {

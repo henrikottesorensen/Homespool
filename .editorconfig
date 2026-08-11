@@ -19,6 +19,36 @@ tab_width = 4
 end_of_line = lf
 insert_final_newline = true
 
+# Alignment - how continuation lines are indented. These are what preserve hand-aligned chains,
+# arguments and attributes; without them Rider flattens them to a fixed continuation indent.
+csharp_align_multiline_parameter = true
+csharp_align_multiline_argument = true
+csharp_align_multiline_calls_chain = true
+
+# Wrapping - where line breaks go. Declarations only. The invocation equivalents are deliberately
+# absent: keep_existing_invocation_parens_arrangement defaults to true, and that is what stops Rider
+# re-breaking call sites that were wrapped by hand.
+csharp_keep_existing_declaration_parens_arrangement = false
+csharp_wrap_after_declaration_lpar = false
+csharp_wrap_before_declaration_rpar = false
+csharp_wrap_parameters_style = chop_if_long
+
+# Binary operators trail the line they belong to rather than leading the next one.
+csharp_wrap_before_binary_opsign = false
+csharp_wrap_before_binary_pattern_op = false
+csharp_wrap_before_ternary_opsigns = false
+
+csharp_blank_lines_between_using_groups = 1
+csharp_place_attribute_on_same_line = never
+
+# SA1128 requires the constructor initializer on its own line, and Rider joins it by default.
+# Two tools with an opinion about the same line; this is the one that yields.
+csharp_place_constructor_initializer_on_same_line = false
+max_line_length = 132
+
+csharp_keep_existing_linebreaks = true
+#csharp_keep_existing_linebreaks = false
+
 # Stylecop settings
 ## Using Directives
 dotnet_sort_system_directives_first = true
@@ -62,33 +92,33 @@ dotnet_naming_rule.non_field_members_should_be_pascal_case.style = pascal_case
 
 dotnet_naming_symbols.interface.applicable_kinds = interface
 dotnet_naming_symbols.interface.applicable_accessibilities = public, internal, private, protected, protected_internal, private_protected
-dotnet_naming_symbols.interface.required_modifiers = 
+dotnet_naming_symbols.interface.required_modifiers =
 
 dotnet_naming_symbols.types.applicable_kinds = class, struct, interface, enum
 dotnet_naming_symbols.types.applicable_accessibilities = public, internal, private, protected, protected_internal, private_protected
-dotnet_naming_symbols.types.required_modifiers = 
+dotnet_naming_symbols.types.required_modifiers =
 
 dotnet_naming_symbols.non_field_members.applicable_kinds = property, event, method
 dotnet_naming_symbols.non_field_members.applicable_accessibilities = public, internal, private, protected, protected_internal, private_protected
-dotnet_naming_symbols.non_field_members.required_modifiers = 
+dotnet_naming_symbols.non_field_members.required_modifiers =
 
 # Naming styles
 
 dotnet_naming_style.begins_with_i.required_prefix = I
-dotnet_naming_style.begins_with_i.required_suffix = 
-dotnet_naming_style.begins_with_i.word_separator = 
+dotnet_naming_style.begins_with_i.required_suffix =
+dotnet_naming_style.begins_with_i.word_separator =
 dotnet_naming_style.begins_with_i.capitalization = pascal_case
 
-dotnet_naming_style.pascal_case.required_prefix = 
-dotnet_naming_style.pascal_case.required_suffix = 
-dotnet_naming_style.pascal_case.word_separator = 
+dotnet_naming_style.pascal_case.required_prefix =
+dotnet_naming_style.pascal_case.required_suffix =
+dotnet_naming_style.pascal_case.word_separator =
 dotnet_naming_style.pascal_case.capitalization = pascal_case
 
-dotnet_naming_style.pascal_case.required_prefix = 
-dotnet_naming_style.pascal_case.required_suffix = 
-dotnet_naming_style.pascal_case.word_separator = 
+dotnet_naming_style.pascal_case.required_prefix =
+dotnet_naming_style.pascal_case.required_suffix =
+dotnet_naming_style.pascal_case.word_separator =
 dotnet_naming_style.pascal_case.capitalization = pascal_case
-dotnet_style_operator_placement_when_wrapping = beginning_of_line
+dotnet_style_operator_placement_when_wrapping = end_of_line
 dotnet_style_coalesce_expression = true:suggestion
 dotnet_style_null_propagation = true:suggestion
 dotnet_style_prefer_is_null_check_over_reference_equality_method = true:suggestion
@@ -637,3 +667,15 @@ dotnet_diagnostic.VSTHRD110.severity = none
 # of them under Pages.
 [Homespool.Host/Pages/**.cs]
 dotnet_diagnostic.SA1649.severity = none
+
+# Rider's formatter, off for everything that is not C#. Reformatting a project otherwise rewrites
+# Razor pages, appsettings.json, the csproj and the vendored assets under wwwroot - none of which the
+# C# settings above have anything to say about, and all of which arrive as noise in a diff meant to
+# be about method signatures.
+#
+# This disables the formatter, not cleanup: a Code Cleanup run can still reach these files.
+[*.{svg,css,js,map,json,xml,csproj,props,targets,resx,ico,png,txt,md,cshtml,razor,yml,yaml,sh}]
+disable_formatter = true
+
+[**/wwwroot/**]
+disable_formatter = true

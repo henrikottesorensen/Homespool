@@ -53,7 +53,7 @@ public static class PrinterStatusExtensions
             "ATTENTION" => PrinterStatus.Attention,
             "READY" => PrinterStatus.Ready,
             _ => throw new ArgumentOutOfRangeException(nameof(wireValue), wireValue,
-                                                        "Not one of the 9 printer states firmware sends."),
+                                                       "Not one of the 9 printer states firmware sends."),
         };
     }
 }

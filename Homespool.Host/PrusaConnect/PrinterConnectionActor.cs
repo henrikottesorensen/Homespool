@@ -126,8 +126,12 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// </remarks>
     public TimeSpan SendTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
-    public PrinterConnectionActor(int printerId, IPrinterConnection connection, ITelemetrySink sink,
-        ILogger<PrinterConnectionActor> logger, TimeSpan responseTimeout, ITransferContentStore contentStore)
+    public PrinterConnectionActor(int printerId,
+                                  IPrinterConnection connection,
+                                  ITelemetrySink sink,
+                                  ILogger<PrinterConnectionActor> logger,
+                                  TimeSpan responseTimeout,
+                                  ITransferContentStore contentStore)
     {
         _printerId = printerId;
         _connection = connection;
@@ -269,8 +273,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                         else
                         {
                             _logger.LogError(e,
-                                "unhandled error processing {MessageType} - {Count} such fault(s) in the last {ElapsedSeconds:F0}s, {Total} since this connection opened. The latest fault's exception is attached.",
-                                message.GetType().Name, window.Count, window.Elapsed.TotalSeconds, window.Total);
+                                             "unhandled error processing {MessageType} - {Count} such fault(s) in the last {ElapsedSeconds:F0}s, {Total} since this connection opened. The latest fault's exception is attached.",
+                                             message.GetType().Name, window.Count, window.Elapsed.TotalSeconds, window.Total);
                         }
                     }
                 }
@@ -453,11 +457,11 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             // a payload is the one part of an answer that can carry anything, and FILE_INFO's runs to
             // ~90 KB with a preview in it. PrinterCommandService is the only thing that reads it.
             answered.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.Completed,
-                new CommandOutcome(eventDto.EventType, eventDto.Reason)
-                {
-                    MachineReason = eventDto.MachineReason,
-                },
-                eventDto.Data));
+                                                                   new CommandOutcome(eventDto.EventType, eventDto.Reason)
+                                                                   {
+                                                                       MachineReason = eventDto.MachineReason,
+                                                                   },
+                                                                   eventDto.Data));
         }
 
         EndTransferIfTerminal(eventDto);
@@ -541,7 +545,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             // A different transfer's request. Answering it with this transfer's bytes is precisely
             // what firmware's file_id check exists to catch, and would kill a live print.
             _logger.LogWarning("transfer request for file_id {Requested}, active is {Active}",
-                request.FileId, _transfer.FileId);
+                               request.FileId, _transfer.FileId);
 
             return;
         }
@@ -551,7 +555,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         if (count <= 0 || request.Start < 0 || request.End >= _transfer.Content.Length)
         {
             _logger.LogWarning("transfer request {Start}..{End} outside the {Length}-byte file",
-                request.Start, request.End, _transfer.Content.Length);
+                               request.Start, request.End, _transfer.Content.Length);
             await FailTransferAsync(request.FileId);
 
             return;
@@ -565,8 +569,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             // reads and writes interleaved, and neither has any other bound - the reads because a
             // data directory can be a network mount, the writes because a peer can stop draining.
             await _connection.SendChunkAsync(header, _transfer.Content, request.Start, count, CancellationToken.None)
-                .AsTask()
-                .WaitAsync(SendTimeout);
+                             .AsTask()
+                             .WaitAsync(SendTimeout);
         }
         catch (TimeoutException)
         {
@@ -574,7 +578,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             // and for the same reason: nothing else can break a stalled write, and the printer's own
             // 60s socket timeout lets it reconnect while our side would leak silently.
             _logger.LogError("transfer chunk write did not finish within {Timeout}, abandoning the connection",
-                SendTimeout);
+                             SendTimeout);
             Complete();
         }
         catch (Exception e) when (e is IOException or ObjectDisposedException or InvalidOperationException)
@@ -621,7 +625,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         if (_transfer.TransferId is not null && eventDto.TransferId != _transfer.TransferId)
         {
             _logger.LogDebug("{EventType} for transfer {Reported}, ours is {Ours} - leaving it open",
-                eventDto.EventType, eventDto.TransferId, _transfer.TransferId);
+                             eventDto.EventType, eventDto.TransferId, _transfer.TransferId);
 
             return;
         }
@@ -647,8 +651,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         try
         {
             await _connection.SendAsync(ChunkWireEncoder.EncodeHeader(fileId), CancellationToken.None)
-                .AsTask()
-                .WaitAsync(SendTimeout);
+                             .AsTask()
+                             .WaitAsync(SendTimeout);
         }
         catch (Exception e) when (e is TimeoutException or IOException or ObjectDisposedException or InvalidOperationException)
         {
@@ -664,7 +668,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
 
         _pending = null;
         _logger.LogWarning("command {CommandId} ({Command}) timed out waiting for a reply",
-            expired.CommandId, expired.WireName);
+                           expired.CommandId, expired.WireName);
         expired.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null));
     }
 }

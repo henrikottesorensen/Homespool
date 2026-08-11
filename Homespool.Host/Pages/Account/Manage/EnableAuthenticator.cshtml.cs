@@ -1,5 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
+
 #nullable disable
 
 using System;
@@ -14,6 +15,7 @@ using System.Threading.Tasks;
 
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
+
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -31,11 +33,10 @@ public class EnableAuthenticatorModel : PageModel
     private readonly ILogger<EnableAuthenticatorModel> _logger;
     private readonly UrlEncoder _urlEncoder;
 
-    public EnableAuthenticatorModel(
-        UserManager<HSUser> userManager,
-        UnitOfWork unitOfWork,
-        ILogger<EnableAuthenticatorModel> logger,
-        UrlEncoder urlEncoder)
+    public EnableAuthenticatorModel(UserManager<HSUser> userManager,
+                                    UnitOfWork unitOfWork,
+                                    ILogger<EnableAuthenticatorModel> logger,
+                                    UrlEncoder urlEncoder)
     {
         _userManager = userManager;
         _unitOfWork = unitOfWork;
@@ -161,9 +162,7 @@ public class EnableAuthenticatorModel : PageModel
 
         // The redirect happens only after the commit, so nobody is ever sent to a page showing
         // recovery codes that were rolled back.
-        return issuedRecoveryCodes
-            ? RedirectToPage("./ShowRecoveryCodes")
-            : RedirectToPage("./TwoFactorAuthentication");
+        return issuedRecoveryCodes ? RedirectToPage("./ShowRecoveryCodes") : RedirectToPage("./TwoFactorAuthentication");
     }
 
     private async Task LoadSharedKeyAndQrCodeUriAsync(HSUser user)

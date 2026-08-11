@@ -172,7 +172,8 @@ public class TokenService
         }
 
         // Hash supplied token with knownHash's settings.
-        byte[] hashedInputToken = Rfc2898DeriveBytes.Pbkdf2(tokenData, salt, iterations, new HashAlgorithmName(hashAlgorithm), HashLength);
+        byte[] hashedInputToken =
+            Rfc2898DeriveBytes.Pbkdf2(tokenData, salt, iterations, new HashAlgorithmName(hashAlgorithm), HashLength);
 
         // Compare hashed input token with known hash value.
         return CryptographicOperations.FixedTimeEquals(hashedInputToken, hash);

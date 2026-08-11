@@ -19,7 +19,7 @@ public static class DataServiceCollectionExtensions
     /// and <see cref="StorageOptions"/> bound from configuration.
     /// </summary>
     public static IServiceCollection AddHomespoolData(this IServiceCollection services,
-                                                           IConfiguration configuration)
+                                                      IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);

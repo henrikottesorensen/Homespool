@@ -30,11 +30,10 @@ public sealed class CameraSnapshotFetcher : ICameraSnapshotFetcher
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<CameraSnapshotFetcher> _logger;
 
-    public CameraSnapshotFetcher(
-        IHttpClientFactory httpClientFactory,
-        IOptions<CameraOptions> options,
-        TimeProvider timeProvider,
-        ILogger<CameraSnapshotFetcher> logger)
+    public CameraSnapshotFetcher(IHttpClientFactory httpClientFactory,
+                                 IOptions<CameraOptions> options,
+                                 TimeProvider timeProvider,
+                                 ILogger<CameraSnapshotFetcher> logger)
     {
         _httpClientFactory = httpClientFactory;
         _options = options;
@@ -57,8 +56,8 @@ public sealed class CameraSnapshotFetcher : ICameraSnapshotFetcher
             HttpClient client = _httpClientFactory.CreateClient(HttpClientName);
 
             using HttpResponseMessage response = await client
-                .GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, timeout.Token)
-                .ConfigureAwait(false);
+                                                       .GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, timeout.Token)
+                                                       .ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -136,8 +135,9 @@ public sealed class CameraSnapshotFetcher : ICameraSnapshotFetcher
     /// endless response costs the limit and not the stream - which is the whole reason to read
     /// rather than call <c>ReadAsByteArrayAsync</c>, whose own cap cannot be set per client.
     /// </remarks>
-    private static async Task<byte[]?> ReadCappedAsync(
-        HttpResponseMessage response, long limit, CancellationToken cancellationToken)
+    private static async Task<byte[]?> ReadCappedAsync(HttpResponseMessage response,
+                                                       long limit,
+                                                       CancellationToken cancellationToken)
     {
         using Stream source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         using MemoryStream destination = new();

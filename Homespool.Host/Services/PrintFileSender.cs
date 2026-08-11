@@ -68,8 +68,10 @@ public class PrintFileSender
     /// it then pulls the bytes at its own pace over the same WebSocket, and a full-size model takes
     /// minutes. Watch for <c>TRANSFER_FINISHED</c>, or the transfer fields in telemetry.
     /// </remarks>
-    public async Task<CommandOutcome?> SendAsync(Printer printer, StoredFile file, long userId,
-        CancellationToken cancellationToken)
+    public async Task<CommandOutcome?> SendAsync(Printer printer,
+                                                 StoredFile file,
+                                                 long userId,
+                                                 CancellationToken cancellationToken)
     {
         string token = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(TransferTokenBytes));
 

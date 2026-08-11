@@ -43,11 +43,10 @@ public class CameraController : ControllerBase
     private readonly Go2RtcClient _streamServer;
     private readonly UserManager<HSUser> _userManager;
 
-    public CameraController(
-        CameraAccessService access,
-        CameraFrameCache frames,
-        Go2RtcClient streamServer,
-        UserManager<HSUser> userManager)
+    public CameraController(CameraAccessService access,
+                            CameraFrameCache frames,
+                            Go2RtcClient streamServer,
+                            UserManager<HSUser> userManager)
     {
         _access = access;
         _frames = frames;
@@ -85,8 +84,8 @@ public class CameraController : ControllerBase
         }
 
         Camera? camera = await _access
-            .FindAsync(uuid, userId.Value, CameraOperation.ViewCamera, cancellationToken)
-            .ConfigureAwait(false);
+                               .FindAsync(uuid, userId.Value, CameraOperation.ViewCamera, cancellationToken)
+                               .ConfigureAwait(false);
 
         // Not found and not permitted are deliberately the same answer, following
         // PrinterAccessService: a UUID that answers differently is a way to learn which exist.
@@ -118,8 +117,6 @@ public class CameraController : ControllerBase
 
     private long? UserId()
     {
-        return long.TryParse(_userManager.GetUserId(User), CultureInfo.InvariantCulture, out long id)
-            ? id
-            : null;
+        return long.TryParse(_userManager.GetUserId(User), CultureInfo.InvariantCulture, out long id) ? id : null;
     }
 }

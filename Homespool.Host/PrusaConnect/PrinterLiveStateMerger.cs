@@ -130,10 +130,10 @@ public static class PrinterLiveStateMerger
     private static void MergeJob(PrinterLiveState state, TelemetryDTO telemetry)
     {
         bool hasJob = telemetry.JobId is not null
-            || telemetry.Progress is not null
-            || telemetry.TimePrinting is not null
-            || telemetry.TimeRemaining is not null
-            || telemetry.TimeToFilamentChange is not null;
+                      || telemetry.Progress is not null
+                      || telemetry.TimePrinting is not null
+                      || telemetry.TimeRemaining is not null
+                      || telemetry.TimeToFilamentChange is not null;
 
         if (!hasJob)
         {

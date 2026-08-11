@@ -55,8 +55,8 @@ public sealed record FilamentPreset(string Name, int NozzleTemperature, int BedT
         }
 
         return Standard
-            .Select(preset => preset.Name == "PA" ? preset with { NozzleTemperature = 280 } : preset)
-            .ToList();
+               .Select(preset => preset.Name == "PA" ? preset with { NozzleTemperature = 280 } : preset)
+               .ToList();
     }
 
     /// <summary>
@@ -68,8 +68,7 @@ public sealed record FilamentPreset(string Name, int NozzleTemperature, int BedT
     /// </remarks>
     public static FilamentPreset? Find(string? model, string? name)
     {
-        return For(model).FirstOrDefault(
-            preset => string.Equals(preset.Name, name, StringComparison.OrdinalIgnoreCase));
+        return For(model).FirstOrDefault(preset => string.Equals(preset.Name, name, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsMini(string? model)

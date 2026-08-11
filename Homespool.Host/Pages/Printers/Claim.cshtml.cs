@@ -127,8 +127,8 @@ public class ClaimModel : PageModel
             // Deliberately says how long, rather than a bare refusal: the overwhelmingly likely
             // person reading this is someone who mistyped, standing at their own printer.
             ModelState.AddModelError(string.Empty,
-                $"Too many unrecognised codes. Try again in {FormatWait(remaining)}. "
-                + "The printer's own code is unaffected - it is still waiting.");
+                                     $"Too many unrecognised codes. Try again in {FormatWait(remaining)}. "
+                                     + "The printer's own code is unaffected - it is still waiting.");
 
             return Page();
         }
@@ -174,16 +174,16 @@ public class ClaimModel : PageModel
             await _attemptLimiter.RecordFailedAttemptAsync(user, now, cancellationToken);
 
             ModelState.AddModelError(string.Empty,
-                "No printer is waiting with that code. Check it against the printer's screen - codes expire, so it "
-                + "may have already been replaced. Letters O, I and L are read as 0, 1 and 1, so those are safe to "
-                + "get wrong.");
+                                     "No printer is waiting with that code. Check it against the printer's screen - codes expire, so it "
+                                     + "may have already been replaced. Letters O, I and L are read as 0, 1 and 1, so those are safe to "
+                                     + "get wrong.");
 
             return Page();
         }
         catch (RegistrationAlreadyClaimedException)
         {
             ModelState.AddModelError(string.Empty,
-                "This code has already been claimed. If that wasn't you, make sure you copied the current code from the printer's screen.");
+                                     "This code has already been claimed. If that wasn't you, make sure you copied the current code from the printer's screen.");
 
             return Page();
         }

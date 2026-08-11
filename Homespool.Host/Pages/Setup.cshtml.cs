@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
+
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -33,15 +34,14 @@ public class SetupModel : PageModel
     private readonly UnitOfWork _unitOfWork;
     private readonly ILogger<SetupModel> _logger;
 
-    public SetupModel(
-        UserManager<HSUser> userManager,
-        IUserStore<HSUser> userStore,
-        SignInManager<HSUser> signInManager,
-        SetupState setupState,
-        AccountConfirmationPolicy accountConfirmationPolicy,
-        TeamService teamService,
-        UnitOfWork unitOfWork,
-        ILogger<SetupModel> logger)
+    public SetupModel(UserManager<HSUser> userManager,
+                      IUserStore<HSUser> userStore,
+                      SignInManager<HSUser> signInManager,
+                      SetupState setupState,
+                      AccountConfirmationPolicy accountConfirmationPolicy,
+                      TeamService teamService,
+                      UnitOfWork unitOfWork,
+                      ILogger<SetupModel> logger)
     {
         _userManager = userManager;
         _userStore = userStore;

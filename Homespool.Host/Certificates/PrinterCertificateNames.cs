@@ -75,9 +75,9 @@ public static class PrinterCertificateNames
     /// </param>
     /// <param name="cancellationToken">The usual.</param>
     public static async Task<IReadOnlyList<string>> ForThisMachineAsync(PrusaConnectOptions connect,
-                                                                       IReadOnlyList<IPNetwork> containerNetworks,
-                                                                       IHostAddressResolver resolver,
-                                                                       CancellationToken cancellationToken)
+                                                                        IReadOnlyList<IPNetwork> containerNetworks,
+                                                                        IHostAddressResolver resolver,
+                                                                        CancellationToken cancellationToken)
     {
         List<string> names = [];
 

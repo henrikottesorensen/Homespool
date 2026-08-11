@@ -107,8 +107,10 @@ public class PrinterAccessService
     /// </remarks>
     /// <exception cref="PrinterNotFoundException">No printer has that id.</exception>
     /// <exception cref="TeamAccessDeniedException">The caller may not do this to it.</exception>
-    public async Task<Printer> RequireAsync(int printerId, long userId, PrinterOperation operation,
-        CancellationToken cancellationToken)
+    public async Task<Printer> RequireAsync(int printerId,
+                                            long userId,
+                                            PrinterOperation operation,
+                                            CancellationToken cancellationToken)
     {
         Printer? printer = await PrinterAsync(printerId, cancellationToken);
 
@@ -142,13 +144,15 @@ public class PrinterAccessService
     /// tree has nowhere to put a <see cref="Func{T, TResult}"/>.
     /// </para>
     /// </remarks>
-    public async Task<Printer?> FindAsync(Guid uuid, long userId, PrinterOperation operation,
-        CancellationToken cancellationToken)
+    public async Task<Printer?> FindAsync(Guid uuid,
+                                          long userId,
+                                          PrinterOperation operation,
+                                          CancellationToken cancellationToken)
     {
         Printer? printer = await _dbContext.Printers
                                            .AsNoTracking()
                                            .SingleOrDefaultAsync(candidate => candidate.Uuid == uuid,
-                                               cancellationToken);
+                                                                 cancellationToken);
 
         if (printer is null)
         {
@@ -170,8 +174,10 @@ public class PrinterAccessService
     /// answer to the question actually asked and keeps this free of the not-found/not-allowed split
     /// the other two entry points care about.
     /// </remarks>
-    public async Task<bool> AllowsAsync(int printerId, long userId, PrinterOperation operation,
-        CancellationToken cancellationToken)
+    public async Task<bool> AllowsAsync(int printerId,
+                                        long userId,
+                                        PrinterOperation operation,
+                                        CancellationToken cancellationToken)
     {
         Printer? printer = await PrinterAsync(printerId, cancellationToken);
 
@@ -195,15 +201,17 @@ public class PrinterAccessService
         Printer? printer = await _dbContext.Printers
                                            .AsNoTracking()
                                            .SingleOrDefaultAsync(candidate => candidate.Id == printerId,
-                                               cancellationToken);
+                                                                 cancellationToken);
 
         _printers[printerId] = printer;
 
         return printer;
     }
 
-    private async Task<TeamMember?> MembershipAsync(int printerId, int teamId, long userId,
-        CancellationToken cancellationToken)
+    private async Task<TeamMember?> MembershipAsync(int printerId,
+                                                    int teamId,
+                                                    long userId,
+                                                    CancellationToken cancellationToken)
     {
         if (_memberships.TryGetValue((printerId, userId), out TeamMember? cached))
         {
@@ -216,8 +224,8 @@ public class PrinterAccessService
         TeamMember? membership = await _dbContext.TeamMembers
                                                  .AsNoTracking()
                                                  .SingleOrDefaultAsync(
-                                                      member => member.TeamId == teamId && member.UserId == userId,
-                                                      cancellationToken);
+                                                     member => member.TeamId == teamId && member.UserId == userId,
+                                                     cancellationToken);
 
         _memberships[(printerId, userId)] = membership;
 

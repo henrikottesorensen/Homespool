@@ -48,8 +48,8 @@ public sealed class TelemetryAlertService : BackgroundService
     private bool _alerted;
 
     public TelemetryAlertService(HealthCheckService healthChecks,
-        IServiceScopeFactory scopeFactory,
-        ILogger<TelemetryAlertService> logger)
+                                 IServiceScopeFactory scopeFactory,
+                                 ILogger<TelemetryAlertService> logger)
     {
         _healthChecks = healthChecks;
         _scopeFactory = scopeFactory;
@@ -61,8 +61,8 @@ public sealed class TelemetryAlertService : BackgroundService
     private static string Describe(HealthReport report)
     {
         IEnumerable<string> problems = report.Entries
-            .Where(entry => entry.Value.Status != HealthStatus.Healthy)
-            .Select(entry => $"<li>{entry.Value.Description ?? entry.Key}</li>");
+                                             .Where(entry => entry.Value.Status != HealthStatus.Healthy)
+                                             .Select(entry => $"<li>{entry.Value.Description ?? entry.Key}</li>");
 
         return $"<p>Homespool reported a problem:</p><ul>{string.Concat(problems)}</ul>"
                + "<p>Printing is unaffected, but recorded history may be incomplete until this is resolved.</p>";
@@ -200,8 +200,8 @@ public sealed class TelemetryAlertService : BackgroundService
         IList<HSUser> admins = await users.GetUsersInRoleAsync(AdminBootstrap.AdminRole);
 
         _recipients = admins.Select(a => a.Email)
-            .Where(email => !string.IsNullOrWhiteSpace(email))
-            .Select(email => email!)
-            .ToList();
+                            .Where(email => !string.IsNullOrWhiteSpace(email))
+                            .Select(email => email!)
+                            .ToList();
     }
 }

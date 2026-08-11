@@ -38,7 +38,7 @@ public sealed class FileTransferContent : ITransferContent
     public FileTransferContent(string path)
     {
         _handle = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.Read,
-            FileOptions.Asynchronous | FileOptions.SequentialScan);
+                                  FileOptions.Asynchronous | FileOptions.SequentialScan);
         Length = RandomAccess.GetLength(_handle);
     }
 

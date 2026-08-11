@@ -205,7 +205,7 @@ public static class SupportedLanguages
     private static bool SharesLanguagePart(string longer, string shorter)
     {
         return longer.Length > shorter.Length
-            && longer[shorter.Length] == '-'
-            && longer.AsSpan(0, shorter.Length).Equals(shorter, StringComparison.OrdinalIgnoreCase);
+               && longer[shorter.Length] == '-'
+               && longer.AsSpan(0, shorter.Length).Equals(shorter, StringComparison.OrdinalIgnoreCase);
     }
 }

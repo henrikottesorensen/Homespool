@@ -111,8 +111,8 @@ public class PrintStopService
                                                    && job.StoppedByUserId == null
                                                    && (job.EndedAt == null || job.State == PrintState.Stopped))
                                      .ExecuteUpdateAsync(
-                                          set => set.SetProperty(job => job.StoppedByUserId, userId),
-                                          cancellationToken);
+                                         set => set.SetProperty(job => job.StoppedByUserId, userId),
+                                         cancellationToken);
 
         if (marked > 0)
         {

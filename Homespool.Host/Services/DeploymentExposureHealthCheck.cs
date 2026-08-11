@@ -49,9 +49,9 @@ public sealed class DeploymentExposureHealthCheck : IHealthCheck
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context,
                                                           CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<IPAddress> resolved = _connect.IsPrinterAddressConfigured
-            ? await _resolver.ResolveAsync(_connect.PrinterHost.Trim(), cancellationToken)
-            : [];
+        IReadOnlyList<IPAddress> resolved = _connect.IsPrinterAddressConfigured ?
+            await _resolver.ResolveAsync(_connect.PrinterHost.Trim(), cancellationToken) :
+            [];
 
         ExposureVerdict verdict = DeploymentExposure.EvaluatePrinterTransport(
             _connect.PrinterTls,
@@ -59,8 +59,6 @@ public sealed class DeploymentExposureHealthCheck : IHealthCheck
             resolved,
             _certificates.ParsedContainerNetworks);
 
-        return verdict.IsProblem
-            ? HealthCheckResult.Degraded(verdict.Description)
-            : HealthCheckResult.Healthy(verdict.Description);
+        return verdict.IsProblem ? HealthCheckResult.Degraded(verdict.Description) : HealthCheckResult.Healthy(verdict.Description);
     }
 }

@@ -17,7 +17,8 @@ namespace Homespool.Host.PrintFiles;
 /// (notes/internet-exposure.md).
 /// </remarks>
 [SuppressMessage("Usage", "CA2213:Disposable fields should be disposed",
-                 Justification = "The wrapped stream is the request body, owned by the server. Disposing it here would close the request mid-pipeline; see Dispose.")]
+                 Justification =
+                     "The wrapped stream is the request body, owned by the server. Disposing it here would close the request mid-pipeline; see Dispose.")]
 public sealed class LengthLimitingStream : Stream
 {
     private readonly Stream _inner;

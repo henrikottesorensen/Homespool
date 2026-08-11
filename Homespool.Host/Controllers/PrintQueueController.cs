@@ -49,8 +49,10 @@ public class PrintQueueController : ControllerBase
     private readonly PrinterQueryService _printers;
     private readonly UserManager<HSUser> _userManager;
 
-    public PrintQueueController(PrintQueueService queue, QueueSnapshotReader snapshots,
-        PrinterQueryService printers, UserManager<HSUser> userManager)
+    public PrintQueueController(PrintQueueService queue,
+                                QueueSnapshotReader snapshots,
+                                PrinterQueryService printers,
+                                UserManager<HSUser> userManager)
     {
         _queue = queue;
         _snapshots = snapshots;
@@ -67,7 +69,7 @@ public class PrintQueueController : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<IReadOnlyList<QueuedPrintReadDTO>>> List(Guid uuid,
-                                                                          CancellationToken cancellationToken)
+                                                                            CancellationToken cancellationToken)
     {
         (Printer? printer, long userId, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
 
@@ -111,8 +113,8 @@ public class PrintQueueController : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<QueuedPrintReadDTO>> Enqueue(Guid uuid,
-                                                              [FromBody] EnqueueRequest body,
-                                                              CancellationToken cancellationToken)
+                                                                [FromBody] EnqueueRequest body,
+                                                                CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(body);
 
@@ -231,7 +233,7 @@ public class PrintQueueController : ControllerBase
     /// <see cref="PrinterController"/> follows.
     /// </remarks>
     private async Task<(Printer? printer, long userId, ActionResult? failure)> ResolveAsync(Guid uuid,
-                                                                                            CancellationToken cancellationToken)
+        CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 

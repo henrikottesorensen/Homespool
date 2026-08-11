@@ -40,10 +40,9 @@ public sealed class Go2RtcClient
     private readonly IOptions<CameraOptions> _options;
     private readonly ILogger<Go2RtcClient> _logger;
 
-    public Go2RtcClient(
-        IHttpClientFactory httpClientFactory,
-        IOptions<CameraOptions> options,
-        ILogger<Go2RtcClient> logger)
+    public Go2RtcClient(IHttpClientFactory httpClientFactory,
+                        IOptions<CameraOptions> options,
+                        ILogger<Go2RtcClient> logger)
     {
         _httpClientFactory = httpClientFactory;
         _options = options;
@@ -78,8 +77,8 @@ public sealed class Go2RtcClient
         {
             HttpClient client = _httpClientFactory.CreateClient(HttpClientName);
             using HttpResponseMessage response = await client
-                .PutAsync(request, content: null, cancellationToken)
-                .ConfigureAwait(false);
+                                                       .PutAsync(request, content: null, cancellationToken)
+                                                       .ConfigureAwait(false);
 
             if (response.IsSuccessStatusCode)
             {
@@ -130,8 +129,8 @@ public sealed class Go2RtcClient
         {
             HttpClient client = _httpClientFactory.CreateClient(HttpClientName);
             using HttpResponseMessage response = await client
-                .DeleteAsync(request, cancellationToken)
-                .ConfigureAwait(false);
+                                                       .DeleteAsync(request, cancellationToken)
+                                                       .ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -172,12 +171,11 @@ public sealed class Go2RtcClient
             HttpClient client = _httpClientFactory.CreateClient(HttpClientName);
 
             Dictionary<string, JsonElement>? streams = await client
-                .GetFromJsonAsync<Dictionary<string, JsonElement>>(request, cancellationToken)
-                .ConfigureAwait(false);
+                                                             .GetFromJsonAsync<Dictionary<string, JsonElement>>(
+                                                                 request, cancellationToken)
+                                                             .ConfigureAwait(false);
 
-            return streams is null
-                ? new HashSet<string>(StringComparer.Ordinal)
-                : streams.Keys.ToHashSet(StringComparer.Ordinal);
+            return streams is null ? new HashSet<string>(StringComparer.Ordinal) : streams.Keys.ToHashSet(StringComparer.Ordinal);
         }
         catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException)
         {

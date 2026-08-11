@@ -33,37 +33,35 @@ public static class ProvisioningReadme
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        string forPrinter = string.IsNullOrWhiteSpace(printerName)
-            ? "a printer"
-            : $"**{printerName.Trim()}**";
+        string forPrinter = string.IsNullOrWhiteSpace(printerName) ? "a printer" : $"**{printerName.Trim()}**";
 
-        string certificateStep = options.PrinterTls
-            ? """
-              ### 3. Both files, or neither
+        string certificateStep = options.PrinterTls ?
+            """
+            ### 3. Both files, or neither
 
-              `connect.der` is the certificate your printer will check this server against, and the ini
-              tells it to use that file and nothing else. One without the other does not work: the ini
-              alone leaves the printer with no way to verify the server, and the certificate alone is
-              never read.
-              """
-            : """
-              ### 3. This bundle has no certificate, deliberately
+            `connect.der` is the certificate your printer will check this server against, and the ini
+            tells it to use that file and nothing else. One without the other does not work: the ini
+            alone leaves the printer with no way to verify the server, and the certificate alone is
+            never read.
+            """ :
+            """
+            ### 3. This bundle has no certificate, deliberately
 
-              This server is configured to talk to printers over plain HTTP, so there is nothing for the
-              printer to verify and no `connect.der` in the zip. The token below crosses your network in
-              clear text. That is a setting for testing, not for a printer you rely on.
-              """;
+            This server is configured to talk to printers over plain HTTP, so there is nothing for the
+            printer to verify and no `connect.der` in the zip. The token below crosses your network in
+            clear text. That is a setting for testing, not for a printer you rely on.
+            """;
 
-        string afterwards = options.PrinterTls
-            ? """
-              ## While this bundle is loaded, the printer cannot use Prusa Connect
+        string afterwards = options.PrinterTls ?
+            """
+            ## While this bundle is loaded, the printer cannot use Prusa Connect
 
-              `custom_cert = 1` **replaces** the certificates your printer shipped with, rather than
-              adding to them. That is what lets it trust your server, and it is also why it can no
-              longer verify Prusa's. To undo it, load an ini with `custom_cert = 0` and the Prusa
-              Connect settings you want back.
-              """
-            : string.Empty;
+            `custom_cert = 1` **replaces** the certificates your printer shipped with, rather than
+            adding to them. That is what lets it trust your server, and it is also why it can no
+            longer verify Prusa's. To undo it, load an ini with `custom_cert = 0` and the Prusa
+            Connect settings you want back.
+            """ :
+            string.Empty;
 
         return $"""
                 # Provisioning bundle for {forPrinter}

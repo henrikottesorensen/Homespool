@@ -42,11 +42,10 @@ public class LanguageModel : PageModel
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly TimeProvider _time;
 
-    public LanguageModel(
-        UserManager<HSUser> userManager,
-        SignInManager<HSUser> signInManager,
-        IStringLocalizer<SharedResource> localiser,
-        TimeProvider time)
+    public LanguageModel(UserManager<HSUser> userManager,
+                         SignInManager<HSUser> signInManager,
+                         IStringLocalizer<SharedResource> localiser,
+                         TimeProvider time)
     {
         _userManager = userManager;
         _signInManager = signInManager;
@@ -133,8 +132,7 @@ public class LanguageModel : PageModel
         IReadOnlyDictionary<string, string> names =
             SupportedLanguages.DisplayNamesOn(_time.GetLocalNow());
 
-        options.AddRange(SupportedLanguages.CultureNames.Select(
-            culture => new SelectListItem(names[culture], culture)));
+        options.AddRange(SupportedLanguages.CultureNames.Select(culture => new SelectListItem(names[culture], culture)));
 
         Options = options;
     }

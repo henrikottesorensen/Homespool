@@ -104,9 +104,9 @@ public sealed class ProvisioningBundleBuilder
     public static bool CouldReachAPrinter(IPAddress address, IReadOnlyList<IPNetwork> containerNetworks)
     {
         return address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
-        && !IPAddress.IsLoopback(address)
-        && !address.GetAddressBytes().Take(2).SequenceEqual<byte>([169, 254])
-        && !PrinterAddressSuggestion.IsProbablyTheContainersOwn(address, containerNetworks);
+               && !IPAddress.IsLoopback(address)
+               && !address.GetAddressBytes().Take(2).SequenceEqual<byte>([169, 254])
+               && !PrinterAddressSuggestion.IsProbablyTheContainersOwn(address, containerNetworks);
     }
 
     /// <summary>
@@ -131,9 +131,9 @@ public sealed class ProvisioningBundleBuilder
 
         if (!_options.PrinterTls)
         {
-            return _options.IsPrinterAddressConfigured
-                ? [PrinterAddressSuggestion.Describe(_options.PrinterHost.Trim(), containerNetworks)]
-                : [];
+            return _options.IsPrinterAddressConfigured ?
+                [PrinterAddressSuggestion.Describe(_options.PrinterHost.Trim(), containerNetworks)] :
+                [];
         }
 
         using X509Certificate2? leaf = _authority.LoadLeafIfIssued();
@@ -160,8 +160,12 @@ public sealed class ProvisioningBundleBuilder
 
         // The configured address first when the certificate carries it: it is the one an operator
         // chose deliberately, and the one every other page already talks about.
-        return [.. usable.OrderByDescending(
-            suggestion => suggestion.Value.Equals(_options.PrinterHost?.Trim(), StringComparison.OrdinalIgnoreCase))];
+        return
+        [
+            .. usable.OrderByDescending(suggestion =>
+                                            suggestion.Value.Equals(_options.PrinterHost?.Trim(),
+                                                                    StringComparison.OrdinalIgnoreCase))
+        ];
     }
 
     /// <summary>

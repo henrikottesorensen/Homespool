@@ -8,9 +8,7 @@ public static class AuthenticationBuilderExtensions
     {
         builder.AddScheme<PrusaConnectAuthenticationSchemeOptions, PrusaConnectPrinterAuthenticationHandler>(
             Schemes.PrusaConnectPrinter,
-            options =>
-            {
-            });
+            options => { });
 
         return builder;
     }
@@ -23,9 +21,7 @@ public static class AuthenticationBuilderExtensions
     {
         builder.AddScheme<ApiTokenAuthenticationSchemeOptions, ApiTokenAuthenticationHandler>(
             Schemes.ApiToken,
-            options =>
-            {
-            });
+            options => { });
 
         return builder;
     }
@@ -39,9 +35,7 @@ public static class AuthenticationBuilderExtensions
     {
         builder.AddScheme<ApiTokenAuthenticationSchemeOptions, XApiKeyAuthenticationHandler>(
             Schemes.XApiKey,
-            options =>
-            {
-            });
+            options => { });
 
         return builder;
     }

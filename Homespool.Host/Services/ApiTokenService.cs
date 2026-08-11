@@ -110,9 +110,9 @@ public class ApiTokenService
     public async Task<IReadOnlyList<ApiToken>> ListAsync(long userId, CancellationToken cancellationToken)
     {
         return await _dbContext.ApiTokens
-            .Where(t => t.UserId == userId)
-            .OrderByDescending(t => t.CreatedAt)
-            .ToListAsync(cancellationToken);
+                               .Where(t => t.UserId == userId)
+                               .OrderByDescending(t => t.CreatedAt)
+                               .ToListAsync(cancellationToken);
     }
 
     /// <summary>
@@ -125,7 +125,7 @@ public class ApiTokenService
         // Ownership is in the query rather than checked after loading: a token belonging to another
         // user is not found at all, so there is no path on which the wrong row reaches the delete.
         ApiToken? token = await _dbContext.ApiTokens
-            .SingleOrDefaultAsync(t => t.Id == tokenId && t.UserId == userId, cancellationToken);
+                                          .SingleOrDefaultAsync(t => t.Id == tokenId && t.UserId == userId, cancellationToken);
 
         if (token is null)
         {
@@ -158,8 +158,8 @@ public class ApiTokenService
     public async Task<int> RevokeAllForUserAsync(long userId, CancellationToken cancellationToken)
     {
         return await _dbContext.ApiTokens
-            .Where(t => t.UserId == userId)
-            .ExecuteDeleteAsync(cancellationToken);
+                               .Where(t => t.UserId == userId)
+                               .ExecuteDeleteAsync(cancellationToken);
     }
 
     /// <summary>

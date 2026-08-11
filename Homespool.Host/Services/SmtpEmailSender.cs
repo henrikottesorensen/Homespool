@@ -46,11 +46,9 @@ public class SmtpEmailSender : IEmailSender
         {
             // SecureSocketOptions.StartTls *requires* the upgrade and fails if the server does not offer it, which is
             // what we want on 587: silently falling back to plaintext would send credentials in the clear.
-            SecureSocketOptions socketOptions = _options.DisableTls
-                ? SecureSocketOptions.None
-                : _options.UseImplicitTls
-                    ? SecureSocketOptions.SslOnConnect
-                    : SecureSocketOptions.StartTls;
+            SecureSocketOptions socketOptions = _options.DisableTls ? SecureSocketOptions.None
+                : _options.UseImplicitTls ? SecureSocketOptions.SslOnConnect
+                : SecureSocketOptions.StartTls;
 
             await client.ConnectAsync(_options.Host, _options.Port, socketOptions, timeout.Token);
 

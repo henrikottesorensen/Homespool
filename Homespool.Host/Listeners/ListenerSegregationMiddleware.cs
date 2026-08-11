@@ -67,7 +67,7 @@ public sealed class ListenerSegregationMiddleware : IMiddleware
         // instead of the route, so an unclassified endpoint under /p is still printer-only, and an
         // unclassified endpoint anywhere else is still absent from the printer listener.
         ListenerClass belongsTo = endpoint.Metadata.GetMetadata<ListenerRequirement>()?.Listener
-                               ?? ListenerSegregation.ClassFor(context.Request.Path);
+                                  ?? ListenerSegregation.ClassFor(context.Request.Path);
 
         ListenerClass arrivedOn = ClassOf(context.Connection.LocalPort);
 

@@ -1,10 +1,12 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
+
 #nullable disable
 
 using System.Threading.Tasks;
 
 using Homespool.Model.Entities;
+
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -18,8 +20,9 @@ public class TwoFactorAuthenticationModel : PageModel
     private readonly SignInManager<HSUser> _signInManager;
     private readonly ILogger<TwoFactorAuthenticationModel> _logger;
 
-    public TwoFactorAuthenticationModel(
-        UserManager<HSUser> userManager, SignInManager<HSUser> signInManager, ILogger<TwoFactorAuthenticationModel> logger)
+    public TwoFactorAuthenticationModel(UserManager<HSUser> userManager,
+                                        SignInManager<HSUser> signInManager,
+                                        ILogger<TwoFactorAuthenticationModel> logger)
     {
         _userManager = userManager;
         _signInManager = signInManager;
@@ -83,7 +86,8 @@ public class TwoFactorAuthenticationModel : PageModel
         }
 
         await _signInManager.ForgetTwoFactorClientAsync();
-        StatusMessage = "The current browser has been forgotten. When you login again from this browser you will be prompted for your 2fa code.";
+        StatusMessage =
+            "The current browser has been forgotten. When you login again from this browser you will be prompted for your 2fa code.";
         return RedirectToPage();
     }
 }

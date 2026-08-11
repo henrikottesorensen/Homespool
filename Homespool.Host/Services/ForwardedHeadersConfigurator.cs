@@ -49,8 +49,8 @@ public static class ForwardedHeadersConfigurator
         // Scheme and host as well as the address: absolute URLs - confirmation and password-reset
         // links especially - must be built with the address the user actually reached.
         target.ForwardedHeaders = ForwardedHeaders.XForwardedFor
-                                | ForwardedHeaders.XForwardedProto
-                                | ForwardedHeaders.XForwardedHost;
+                                  | ForwardedHeaders.XForwardedProto
+                                  | ForwardedHeaders.XForwardedHost;
 
         target.ForwardedForHeaderName = source.ClientAddressHeader;
         target.ForwardLimit = source.ForwardLimit;

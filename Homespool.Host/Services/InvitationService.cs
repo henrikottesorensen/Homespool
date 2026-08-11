@@ -56,12 +56,11 @@ public class InvitationService
     /// Explicit expiry, or <c>null</c> to use the configured default lifetime from now.
     /// </param>
     /// <param name="cancellationToken">Cancels the insert; nothing is persisted if it fires first.</param>
-    public async Task<(Invitation invitation, string plaintextToken)> CreateAsync(
-        string email,
-        int? teamId,
-        long invitedBy,
-        DateTimeOffset? expiresAt,
-        CancellationToken cancellationToken)
+    public async Task<(Invitation invitation, string plaintextToken)> CreateAsync(string email,
+                                                                                  int? teamId,
+                                                                                  long invitedBy,
+                                                                                  DateTimeOffset? expiresAt,
+                                                                                  CancellationToken cancellationToken)
     {
         DateTimeOffset now = DateTimeOffset.UtcNow;
         string plaintext = _tokenService.GenerateToken(InviteTokenLength);

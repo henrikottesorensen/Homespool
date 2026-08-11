@@ -74,9 +74,9 @@ public static class Program
         string windowsId = args[1];
         string? region = args.Length > 2 && !string.IsNullOrWhiteSpace(args[2]) ? args[2] : null;
 
-        bool converted = region is null
-            ? TimeZoneInfo.TryConvertWindowsIdToIanaId(windowsId, out string? iana)
-            : TimeZoneInfo.TryConvertWindowsIdToIanaId(windowsId, region, out iana);
+        bool converted = region is null ?
+            TimeZoneInfo.TryConvertWindowsIdToIanaId(windowsId, out string? iana) :
+            TimeZoneInfo.TryConvertWindowsIdToIanaId(windowsId, region, out iana);
 
         if (!converted || string.IsNullOrEmpty(iana))
         {
@@ -98,10 +98,10 @@ public static class Program
         }
 
         Log.Logger = new LoggerConfiguration()
-            .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
-            .Enrich.FromLogContext()
-            .WriteTo.Console(new RenderedCompactJsonFormatter())
-            .CreateBootstrapLogger();
+                     .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
+                     .Enrich.FromLogContext()
+                     .WriteTo.Console(new RenderedCompactJsonFormatter())
+                     .CreateBootstrapLogger();
 
         try
         {
@@ -109,27 +109,27 @@ public static class Program
 
             // Add services to the container.
             builder.Services.AddSerilog((services, lc) => lc
-                   .ReadFrom.Configuration(builder.Configuration)
-                   .ReadFrom.Services(services)
-                   .Enrich.FromLogContext()
-                   .WriteTo.Console(new RenderedCompactJsonFormatter()));
+                                                          .ReadFrom.Configuration(builder.Configuration)
+                                                          .ReadFrom.Services(services)
+                                                          .Enrich.FromLogContext()
+                                                          .WriteTo.Console(new RenderedCompactJsonFormatter()));
 
             builder.Services.AddHomespoolData(builder.Configuration);
 
             builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
             builder.Services.AddDataProtection()
-                            .PersistKeysToDbContext<HomespoolDbContext>();
+                   .PersistKeysToDbContext<HomespoolDbContext>();
 
             builder.Services.AddAuthentication()
-                            .AddPrusaConnectPrinterAuthentication()
-                            .AddApiTokenAuthentication()
-                            .AddXApiKeyAuthentication();
+                   .AddPrusaConnectPrinterAuthentication()
+                   .AddApiTokenAuthentication()
+                   .AddXApiKeyAuthentication();
 
             builder.Services.AddIdentity<Model.Entities.HSUser, IdentityRole<long>>(Services.IdentityConfiguration.Configure)
-                            .AddEntityFrameworkStores<HomespoolDbContext>()
-                            .AddErrorDescriber<Services.HSIdentityErrorDescriber>()
-                            .AddDefaultTokenProviders();
+                   .AddEntityFrameworkStores<HomespoolDbContext>()
+                   .AddErrorDescriber<Services.HSIdentityErrorDescriber>()
+                   .AddDefaultTokenProviders();
 
             builder.Services.ConfigureApplicationCookie(options =>
             {
@@ -154,7 +154,7 @@ public static class Program
             builder.Services.AddHomespoolLocalisation();
 
             builder.Services.AddControllers(options =>
-                options.Conventions.Add(new ApiExplorerVisibilityConvention()));
+                                                options.Conventions.Add(new ApiExplorerVisibilityConvention()));
 
             builder.Services.AddOpenApi();
 
@@ -230,13 +230,13 @@ public static class Program
             builder.Services.AddSingleton<Services.SetupGateMiddleware>();
 
             builder.Services.AddScoped<PrusaConnect.PrusaConnectService>()
-                            .AddScoped<PrusaConnect.WebSocketHandler>()
-                            .AddScoped<PrusaConnect.TokenService>()
-                            .AddScoped<PrusaConnect.CodeGenerator>()
-                            .AddScoped<PrusaConnect.ClaimAttemptLimiter>()
-                            .AddScoped<PrusaConnect.MessageDispatcher>()
-                            .AddScoped<PrusaConnect.PrinterCommandService>()
-                            .AddScoped<PrusaConnect.PrinterPreheatService>();
+                   .AddScoped<PrusaConnect.WebSocketHandler>()
+                   .AddScoped<PrusaConnect.TokenService>()
+                   .AddScoped<PrusaConnect.CodeGenerator>()
+                   .AddScoped<PrusaConnect.ClaimAttemptLimiter>()
+                   .AddScoped<PrusaConnect.MessageDispatcher>()
+                   .AddScoped<PrusaConnect.PrinterCommandService>()
+                   .AddScoped<PrusaConnect.PrinterPreheatService>();
 
             // Plain singletons, not TelemetryWriter's singleton-with-IServiceScopeFactory pattern below:
             // neither touches HomespoolDbContext, only in-memory state (the directory of live connection
@@ -255,17 +255,20 @@ public static class Program
             // handlers register files through ITransferOffers. Singleton because an offer has to
             // outlive the request that made it - the printer collects it on its own schedule.
             builder.Services.AddSingleton<PrusaConnect.Transfers.TransferOfferStore>();
-            builder.Services.AddSingleton<PrusaConnect.Transfers.ITransferContentStore>(
-                sp => sp.GetRequiredService<PrusaConnect.Transfers.TransferOfferStore>());
-            builder.Services.AddSingleton<PrusaConnect.Transfers.ITransferOffers>(
-                sp => sp.GetRequiredService<PrusaConnect.Transfers.TransferOfferStore>());
+            builder.Services.AddSingleton<PrusaConnect.Transfers.ITransferContentStore>(sp => sp
+                .GetRequiredService<PrusaConnect.Transfers.TransferOfferStore>());
+            builder.Services.AddSingleton<PrusaConnect.Transfers.ITransferOffers>(sp => sp
+                                                                                      .GetRequiredService<
+                                                                                          PrusaConnect.Transfers.
+                                                                                          TransferOfferStore>());
 
             // Uploaded gcode: options, the store, and the content-root accessor it needs. Singleton
             // because the store holds no per-request state - it is a path and a couple of rules.
             builder.Services.Configure<PrintFiles.PrintFileStorageOptions>(
                 builder.Configuration.GetSection(PrintFiles.PrintFileStorageOptions.SectionName));
-            builder.Services.AddSingleton<IHostEnvironmentAccessor>(
-                sp => new HostEnvironmentAccessor(sp.GetRequiredService<IWebHostEnvironment>().ContentRootPath));
+            builder.Services.AddSingleton<IHostEnvironmentAccessor>(sp => new HostEnvironmentAccessor(
+                                                                        sp.GetRequiredService<IWebHostEnvironment>()
+                                                                          .ContentRootPath));
             builder.Services.AddSingleton<PrintFiles.UserFileStore>();
 
             // Scoped, because it holds a DbContext - which is exactly why the index lives here rather
@@ -304,7 +307,9 @@ public static class Program
             // read or write finishes. No HomespoolDbContext field ever exists on TelemetryWriter itself.
             builder.Services.AddSingleton<PrusaConnect.TelemetryWriter>();
             builder.Services.AddSingleton<PrusaConnect.ITelemetrySink>(sp => sp.GetRequiredService<PrusaConnect.TelemetryWriter>());
-            builder.Services.AddSingleton<PrusaConnect.ITelemetryHealthSource>(sp => sp.GetRequiredService<PrusaConnect.TelemetryWriter>());
+            builder.Services.AddSingleton<PrusaConnect.ITelemetryHealthSource>(sp => sp
+                                                                                   .GetRequiredService<
+                                                                                       PrusaConnect.TelemetryWriter>());
             builder.Services.AddHostedService(sp => sp.GetRequiredService<PrusaConnect.TelemetryWriter>());
 
             // The middle link in a three-part budget that no single file used to own: the writer's
@@ -323,9 +328,11 @@ public static class Program
                                                            .Get<StorageOptions>() ?? new StorageOptions();
 
             builder.Services.Configure<HostOptions>(options =>
-                options.ShutdownTimeout = PrusaConnect.TelemetryWriter.MaxShutdownFlushDuration
-                                        + TimeSpan.FromMilliseconds(shutdownStorageOptions.BusyTimeoutMilliseconds)
-                                        + TimeSpan.FromSeconds(1.5));
+                                                        options.ShutdownTimeout =
+                                                            PrusaConnect.TelemetryWriter.MaxShutdownFlushDuration
+                                                            + TimeSpan.FromMilliseconds(
+                                                                shutdownStorageOptions.BusyTimeoutMilliseconds)
+                                                            + TimeSpan.FromSeconds(1.5));
 
             // The process answering requests says nothing about whether it is still recording
             // anything - a flush bug once made every write fail permanently while the service looked
@@ -383,7 +390,8 @@ public static class Program
             // for SIGKILL - which is exactly what loses the buffered samples. TelemetryWriter logs
             // the matching "drained" or "unwritten" line when it finishes.
             app.Lifetime.ApplicationStopping.Register(() =>
-                app.Logger.LogInformation("Shutting down: draining buffered telemetry to the database. Please let this finish."));
+                                                          app.Logger.LogInformation(
+                                                              "Shutting down: draining buffered telemetry to the database. Please let this finish."));
 
             // Apply migrations on service startup. (assuming StorageOptions have enabled it).
             app.Services.MigrateHomespoolData();
@@ -433,7 +441,8 @@ public static class Program
             // entirely when both lists are empty, which means "trust anybody". Proven by probe:
             // unconfigured, a loopback client's X-Forwarded-Proto was honoured; trusting 10.0.0.0/8
             // instead, the same request was ignored. Leaving the middleware out is unambiguous.
-            if (app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Services.XForwardedOptions>>().Value.TrustsAnything)
+            if (app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Services.XForwardedOptions>>().Value
+                   .TrustsAnything)
             {
                 int printerPort = ReadListenerOptions(builder.Configuration).PrinterPort;
                 bool printerListenerIsProxied = PrinterTransportIsSecure(app.Services);
@@ -634,7 +643,8 @@ public static class Program
             builder.Configuration.GetSection(Services.XForwardedOptions.SectionName));
 
         builder.Services.Configure<ForwardedHeadersOptions>(options =>
-            Services.ForwardedHeadersConfigurator.Apply(forwarded, options, Log.Warning));
+                                                                Services.ForwardedHeadersConfigurator.Apply(
+                                                                    forwarded, options, Log.Warning));
 
         if (forwarded.TrustsAnything)
         {
@@ -701,12 +711,13 @@ public static class Program
         // registered in that case: when a proxy terminates TLS, redirecting to https is the proxy's
         // job and it knows the public port - this process does not.
         builder.Services.AddHttpsRedirection(options =>
-            options.HttpsPort = ReadListenerOptions(builder.Configuration).UserHttpsPort);
+                                                 options.HttpsPort = ReadListenerOptions(builder.Configuration).UserHttpsPort);
 
         builder.WebHost.ConfigureKestrel(options =>
         {
             Listeners.ListenerOptions listeners = options.ApplicationServices
-                .GetRequiredService<Microsoft.Extensions.Options.IOptions<Listeners.ListenerOptions>>().Value;
+                                                         .GetRequiredService<Microsoft.Extensions.Options.IOptions<
+                                                             Listeners.ListenerOptions>>().Value;
 
             listeners.Validate();
 
@@ -791,7 +802,7 @@ public static class Program
     private static bool PrinterTransportIsSecure(IServiceProvider services)
     {
         return services.GetRequiredService<Microsoft.Extensions.Options.IOptions<PrusaConnect.PrusaConnectOptions>>()
-                .Value.PrinterTls;
+                       .Value.PrinterTls;
     }
 
     /// <summary>
@@ -825,24 +836,30 @@ public static class Program
     /// </para>
     /// </remarks>
     [SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits",
-                     Justification = "Runs during startup, before the server accepts connections, so there is nothing to deadlock against and no asynchronous caller to yield to.")]
+                     Justification =
+                         "Runs during startup, before the server accepts connections, so there is nothing to deadlock against and no asynchronous caller to yield to.")]
     private static IReadOnlyList<string> PrinterCertificateNames(IServiceProvider services)
     {
         PrusaConnect.PrusaConnectOptions connect = services
-            .GetRequiredService<Microsoft.Extensions.Options.IOptions<PrusaConnect.PrusaConnectOptions>>().Value;
+                                                   .GetRequiredService<Microsoft.Extensions.Options.IOptions<
+                                                       PrusaConnect.PrusaConnectOptions>>().Value;
 
         Certificates.CertificateOptions certificates = services
-            .GetRequiredService<Microsoft.Extensions.Options.IOptions<Certificates.CertificateOptions>>().Value;
+                                                       .GetRequiredService<Microsoft.Extensions.Options.IOptions<
+                                                           Certificates.CertificateOptions>>().Value;
 
         // Blocking here is deliberate and bounded: this runs on the startup path, before the first
         // request and before the proxy is let through to read the leaf, so there is nothing to be
         // asynchronous for yet. The resolver caps each lookup, and only detected names are asked -
         // the configured host is taken as given.
-        List<string> names = [.. Certificates.PrinterCertificateNames.ForThisMachineAsync(
-            connect,
-            certificates.ParsedContainerNetworks,
-            services.GetRequiredService<Certificates.IHostAddressResolver>(),
-            System.Threading.CancellationToken.None).GetAwaiter().GetResult()];
+        List<string> names =
+        [
+            .. Certificates.PrinterCertificateNames.ForThisMachineAsync(
+                connect,
+                certificates.ParsedContainerNetworks,
+                services.GetRequiredService<Certificates.IHostAddressResolver>(),
+                System.Threading.CancellationToken.None).GetAwaiter().GetResult()
+        ];
 
         if (names.Count == 0)
         {

@@ -64,8 +64,6 @@ public class PrinterClientHeaders
 
     private static string? Single(HttpRequest request, string name)
     {
-        return request.Headers.TryGetValue(name, out StringValues values) && values.Count == 1
-            ? values.Single()
-            : null;
+        return request.Headers.TryGetValue(name, out StringValues values) && values.Count == 1 ? values.Single() : null;
     }
 }

@@ -1,5 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
+
 #nullable disable
 
 using System;
@@ -11,8 +12,10 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Duende.IdentityModel;
+
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
+
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -36,13 +39,12 @@ public class ExternalLoginModel : PageModel
     private readonly ILogger<ExternalLoginModel> _logger;
     private readonly AccountConfirmationPolicy _accountConfirmationPolicy;
 
-    public ExternalLoginModel(
-        SignInManager<HSUser> signInManager,
-        UserManager<HSUser> userManager,
-        IUserStore<HSUser> userStore,
-        ILogger<ExternalLoginModel> logger,
-        IEmailSender emailSender,
-        AccountConfirmationPolicy accountConfirmationPolicy)
+    public ExternalLoginModel(SignInManager<HSUser> signInManager,
+                              UserManager<HSUser> userManager,
+                              IUserStore<HSUser> userStore,
+                              ILogger<ExternalLoginModel> logger,
+                              IEmailSender emailSender,
+                              AccountConfirmationPolicy accountConfirmationPolicy)
     {
         _signInManager = signInManager;
         _userManager = userManager;
@@ -133,10 +135,13 @@ public class ExternalLoginModel : PageModel
         }
 
         // Sign in the user with this external login provider if the user already has a login.
-        SignInResult result = await _signInManager.ExternalLoginSignInAsync(info.LoginProvider, info.ProviderKey, isPersistent: false, bypassTwoFactor: true);
+        SignInResult result =
+            await _signInManager.ExternalLoginSignInAsync(info.LoginProvider, info.ProviderKey, isPersistent: false,
+                                                          bypassTwoFactor: true);
         if (result.Succeeded)
         {
-            _logger.LogInformation("{Name} logged in with {LoginProvider} provider.", info.Principal.Identity.Name, info.LoginProvider);
+            _logger.LogInformation("{Name} logged in with {LoginProvider} provider.", info.Principal.Identity.Name,
+                                   info.LoginProvider);
             return LocalRedirect(returnUrl);
         }
 
@@ -200,7 +205,7 @@ public class ExternalLoginModel : PageModel
                         protocol: Request.Scheme);
 
                     EmailSendResult sendResult = await _emailSender.SendEmailAsync(Input.Email, "Confirm your email",
-                        $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+                                                                                   $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
 
                     // Own address, just supplied by the external provider - safe to report. See RegisterModel.
                     bool emailFailed = sendResult == EmailSendResult.Failed;
@@ -237,8 +242,8 @@ public class ExternalLoginModel : PageModel
         catch
         {
             throw new InvalidOperationException($"Can't create an instance of '{nameof(HSUser)}'. " +
-                $"Ensure that '{nameof(HSUser)}' is not an abstract class and has a parameterless constructor, or alternatively " +
-                $"override the external login page in /Areas/Identity/Pages/Account/ExternalLogin.cshtml");
+                                                $"Ensure that '{nameof(HSUser)}' is not an abstract class and has a parameterless constructor, or alternatively " +
+                                                $"override the external login page in /Areas/Identity/Pages/Account/ExternalLogin.cshtml");
         }
     }
 

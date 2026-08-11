@@ -271,12 +271,13 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         // actually discards something - not an approximation from watching queue depth. Logged as
         // a warning rather than silently: a drop means the writer is falling behind the printer(s)
         // it's serving, which is worth an operator's attention, not just a debugging footnote.
-        _channel = Channel.CreateBounded<TelemetryWriteItem>(new BoundedChannelOptions(Math.Max(_options.WriteBatchSize, 1) * CapacityBatches)
-        {
-            FullMode = BoundedChannelFullMode.DropOldest,
-            SingleReader = true,
-            SingleWriter = false,
-        }, OnItemDropped);
+        _channel = Channel.CreateBounded<TelemetryWriteItem>(
+            new BoundedChannelOptions(Math.Max(_options.WriteBatchSize, 1) * CapacityBatches)
+            {
+                FullMode = BoundedChannelFullMode.DropOldest,
+                SingleReader = true,
+                SingleWriter = false,
+            }, OnItemDropped);
     }
 
     /// <summary>
@@ -641,7 +642,8 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
                 while (_channel.Reader.TryRead(out TelemetryWriteItem? item))
                 {
-                    await ProcessItemAsync(item, cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, CancellationToken.None);
+                    await ProcessItemAsync(item, cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo,
+                                           CancellationToken.None);
 
                     // The failure guard is what stops a batch trigger becoming a per-message one.
                     // While flushes are failing the buffers never fall back below WriteBatchSize, so
@@ -670,13 +672,15 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                         && _consecutiveFlushFailures == 0
                         && !_shuttingDown)
                     {
-                        await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, CancellationToken.None);
+                        await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo,
+                                             CancellationToken.None);
                     }
                 }
             }
             else
             {
-                await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, CancellationToken.None);
+                await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo,
+                                     CancellationToken.None);
 
                 timerTick = flushTimer.WaitForNextTickAsync().AsTask();
             }
@@ -760,8 +764,8 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                 else
                 {
                     _logger.LogError(e,
-                        "[{PrinterId}] dropping one message that failed to process - {Count} such failure(s) in the last {ElapsedSeconds:F0}s, {Total} since startup. The latest failure's exception is attached.",
-                        item.PrinterId, window.Count, window.Elapsed.TotalSeconds, window.Total);
+                                     "[{PrinterId}] dropping one message that failed to process - {Count} such failure(s) in the last {ElapsedSeconds:F0}s, {Total} since startup. The latest failure's exception is attached.",
+                                     item.PrinterId, window.Count, window.Elapsed.TotalSeconds, window.Total);
                 }
             }
         }
@@ -791,8 +795,8 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
         double throttle = _options.MinimumSampleIntervalSeconds;
         bool dueForSample = throttle <= 0
-                          || entry.LastSampledAt is null
-                          || (item.ReceivedAt - entry.LastSampledAt.Value).TotalSeconds >= throttle;
+                            || entry.LastSampledAt is null
+                            || (item.ReceivedAt - entry.LastSampledAt.Value).TotalSeconds >= throttle;
 
         // The throttle governs history density only - the live-state merge above always runs, so the
         // live view stays current even while samples are being skipped.
@@ -948,10 +952,10 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             List<int> printerIds = [.. pendingPrinterInfo.Keys];
 
             storedSerials = await context.Printers
-                .AsNoTracking()
-                .Where(p => printerIds.Contains(p.Id))
-                .Select(p => new { p.Id, p.SerialNumber })
-                .ToDictionaryAsync(p => p.Id, p => p.SerialNumber, cancellationToken);
+                                         .AsNoTracking()
+                                         .Where(p => printerIds.Contains(p.Id))
+                                         .Select(p => new { p.Id, p.SerialNumber })
+                                         .ToDictionaryAsync(p => p.Id, p => p.SerialNumber, cancellationToken);
         }
 
         foreach ((int printerId, InfoEventDataDTO info) in pendingPrinterInfo)
@@ -1113,8 +1117,11 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     // CA2100/EF1002: SQLite does not accept bound parameters in PRAGMA, so the value is
     // interpolated. It is an int computed from a TimeSpan this class owns - never user input.
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "EF1002:Risk of vulnerability to SQL injection",
-                                                     Justification = "PRAGMA cannot be parameterised; the interpolated value is an int this class computes.")]
-    private async Task ApplyWriterCommandTimeoutAsync(HomespoolDbContext context, TimeSpan? budget, CancellationToken cancellationToken)
+                                                     Justification =
+                                                         "PRAGMA cannot be parameterised; the interpolated value is an int this class computes.")]
+    private async Task ApplyWriterCommandTimeoutAsync(HomespoolDbContext context,
+                                                      TimeSpan? budget,
+                                                      CancellationToken cancellationToken)
     {
         TimeSpan effective = budget ?? TimeSpan.FromMilliseconds(Math.Max(_options.BusyTimeoutMilliseconds, 1));
         int seconds = Math.Max((int)Math.Ceiling(effective.TotalSeconds), 1);
@@ -1164,9 +1171,9 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         await ApplyWriterCommandTimeoutAsync(context, budget: null, cancellationToken);
 
         PrinterLiveState? existing = await context.PrinterLiveStates
-            .Include(s => s.Slots)
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.PrinterId == printerId, cancellationToken);
+                                                  .Include(s => s.Slots)
+                                                  .AsNoTracking()
+                                                  .FirstOrDefaultAsync(s => s.PrinterId == printerId, cancellationToken);
 
         if (existing is not null)
         {
@@ -1204,7 +1211,8 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     {
         try
         {
-            await FlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, cancellationToken, commandBudget);
+            await FlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, cancellationToken,
+                             commandBudget);
 
             _consecutiveFlushFailures = 0;
             _lastFlushAt = _timeProvider.GetUtcNow();
@@ -1213,7 +1221,8 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         {
             _consecutiveFlushFailures++;
 
-            _logger.LogError(e, "Telemetry flush failed; {SampleCount} samples and {EventCount} events remain pending for the next attempt.",
+            _logger.LogError(
+                e, "Telemetry flush failed; {SampleCount} samples and {EventCount} events remain pending for the next attempt.",
                 pendingSamples.Count, pendingEvents.Count);
         }
         finally

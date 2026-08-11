@@ -44,14 +44,13 @@ public class IndexModel : PageModel
     private readonly CameraDisplayNames _names;
     private readonly UserManager<HSUser> _userManager;
 
-    public IndexModel(
-        CameraService cameras,
-        CameraAccessService access,
-        Go2RtcClient streamServer,
-        CameraFrameCache frames,
-        PrinterQueryService printers,
-        CameraDisplayNames names,
-        UserManager<HSUser> userManager)
+    public IndexModel(CameraService cameras,
+                      CameraAccessService access,
+                      Go2RtcClient streamServer,
+                      CameraFrameCache frames,
+                      PrinterQueryService printers,
+                      CameraDisplayNames names,
+                      UserManager<HSUser> userManager)
     {
         _cameras = cameras;
         _access = access;
@@ -117,15 +116,18 @@ public class IndexModel : PageModel
         if (edit is Guid uuid)
         {
             Editing = await _access
-                .FindAsync(uuid, userId.Value, CameraOperation.ManageCamera, cancellationToken)
-                .ConfigureAwait(false);
+                            .FindAsync(uuid, userId.Value, CameraOperation.ManageCamera, cancellationToken)
+                            .ConfigureAwait(false);
         }
 
         return Page();
     }
 
-    public async Task<IActionResult> OnPostAddNetworkAsync(
-        string? name, string source, int teamId, int? printerId, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostAddNetworkAsync(string? name,
+                                                           string source,
+                                                           int teamId,
+                                                           int? printerId,
+                                                           CancellationToken cancellationToken)
     {
         long? userId = UserId();
         if (userId is null)
@@ -134,16 +136,19 @@ public class IndexModel : PageModel
         }
 
         CameraSaveOutcome outcome = await _cameras
-            .CreateAsync(userId.Value, teamId, name, source, printerId, cancellationToken)
-            .ConfigureAwait(false);
+                                          .CreateAsync(userId.Value, teamId, name, source, printerId, cancellationToken)
+                                          .ConfigureAwait(false);
 
         Report(outcome);
 
         return RedirectToPage();
     }
 
-    public async Task<IActionResult> OnPostAddAttachedAsync(
-        string? name, string device, int teamId, int? printerId, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostAddAttachedAsync(string? name,
+                                                            string device,
+                                                            int teamId,
+                                                            int? printerId,
+                                                            CancellationToken cancellationToken)
     {
         long? userId = UserId();
         if (userId is null)
@@ -156,16 +161,19 @@ public class IndexModel : PageModel
         string source = LocalCameraDevices.SourceFor(device);
 
         CameraSaveOutcome outcome = await _cameras
-            .CreateAsync(userId.Value, teamId, name, source, printerId, cancellationToken)
-            .ConfigureAwait(false);
+                                          .CreateAsync(userId.Value, teamId, name, source, printerId, cancellationToken)
+                                          .ConfigureAwait(false);
 
         Report(outcome);
 
         return RedirectToPage();
     }
 
-    public async Task<IActionResult> OnPostEditAsync(
-        Guid uuid, string? name, string source, int? printerId, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostEditAsync(Guid uuid,
+                                                     string? name,
+                                                     string source,
+                                                     int? printerId,
+                                                     CancellationToken cancellationToken)
     {
         long? userId = UserId();
         if (userId is null)
@@ -174,8 +182,8 @@ public class IndexModel : PageModel
         }
 
         CameraSaveOutcome outcome = await _cameras
-            .UpdateAsync(userId.Value, uuid, name, source, printerId, cancellationToken)
-            .ConfigureAwait(false);
+                                          .UpdateAsync(userId.Value, uuid, name, source, printerId, cancellationToken)
+                                          .ConfigureAwait(false);
 
         Report(outcome);
 
@@ -219,9 +227,7 @@ public class IndexModel : PageModel
 
         TimeSpan age = frame.AgeAt(DateTimeOffset.UtcNow);
 
-        return age.TotalSeconds < 2
-            ? "just now"
-            : string.Create(CultureInfo.InvariantCulture, $"{(int)age.TotalSeconds}s ago");
+        return age.TotalSeconds < 2 ? "just now" : string.Create(CultureInfo.InvariantCulture, $"{(int)age.TotalSeconds}s ago");
     }
 
     private async Task LoadAsync(long userId, CancellationToken cancellationToken)
@@ -232,9 +238,7 @@ public class IndexModel : PageModel
 
         Printers = await _printers.ListPrintersForUserAsync(userId, cancellationToken).ConfigureAwait(false);
 
-        AvailableDevices = IsAdministrator
-            ? await _cameras.AvailableDevicesAsync(cancellationToken).ConfigureAwait(false)
-            : [];
+        AvailableDevices = IsAdministrator ? await _cameras.AvailableDevicesAsync(cancellationToken).ConfigureAwait(false) : [];
     }
 
     private void Report(CameraSaveOutcome outcome)

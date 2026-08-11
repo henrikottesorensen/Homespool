@@ -71,11 +71,11 @@ public class PrusaConnectPrinterController : ControllerBase
                 });
 
                 _logger.LogDebug("Connected websocket from {Client}:{Port} {Printer} {Fingerprint} {PrinterId}",
-                    HttpContext.Connection.RemoteIpAddress,
-                    HttpContext.Connection.RemotePort,
-                    clientHeaders.Printer,
-                    clientHeaders.FingerPrint,
-                    printerId);
+                                 HttpContext.Connection.RemoteIpAddress,
+                                 HttpContext.Connection.RemotePort,
+                                 clientHeaders.Printer,
+                                 clientHeaders.FingerPrint,
+                                 printerId);
 
                 // The read side: WebSocketStream (.NET 10) presents the socket as a plain byte
                 // stream - EOF at the peer's close frame - and StreamPipeReader gives the handler

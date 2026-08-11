@@ -129,7 +129,7 @@ public sealed class UsbDeviceNames
     private static bool Matches(string line, int start, string lowercaseId)
     {
         return line.Length >= start + 4
-            && string.Equals(line.Substring(start, 4), lowercaseId, StringComparison.OrdinalIgnoreCase);
+               && string.Equals(line.Substring(start, 4), lowercaseId, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

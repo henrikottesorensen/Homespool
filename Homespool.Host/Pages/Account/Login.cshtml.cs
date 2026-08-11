@@ -1,5 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
+
 #nullable disable
 
 using System.Collections.Generic;
@@ -7,6 +8,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
 
 using Homespool.Model.Entities;
+
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -103,7 +105,7 @@ public class LoginModel : PageModel
             // username may not contain '@' (HSUser.AllowedUsernameCharacters) - so this order settles
             // nothing that could be ambiguous; it is just the cheaper lookup first.
             HSUser user = await _userManager.FindByNameAsync(Input.Login)
-                       ?? await _userManager.FindByEmailAsync(Input.Login);
+                          ?? await _userManager.FindByEmailAsync(Input.Login);
 
             if (user is null)
             {
@@ -116,9 +118,9 @@ public class LoginModel : PageModel
             }
 
             Microsoft.AspNetCore.Identity.SignInResult result = await _signInManager.PasswordSignInAsync(user,
-                                                                           Input.Password,
-                                                                           Input.RememberMe,
-                                                                           lockoutOnFailure: true);
+                Input.Password,
+                Input.RememberMe,
+                lockoutOnFailure: true);
             if (result.Succeeded)
             {
                 _logger.LogInformation("User logged in.");

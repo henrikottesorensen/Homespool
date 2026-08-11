@@ -93,7 +93,9 @@ public class PrinterPreheatService
     /// </summary>
     /// <exception cref="PrinterBusyException">The printer is in a state where this would interfere.</exception>
     /// <exception cref="TeamAccessDeniedException">Caller lacks <c>CanUse</c>.</exception>
-    public Task<PreheatOutcome> PreheatAsync(int printerId, long userId, FilamentPreset preset,
+    public Task<PreheatOutcome> PreheatAsync(int printerId,
+                                             long userId,
+                                             FilamentPreset preset,
                                              CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(preset);
@@ -116,8 +118,11 @@ public class PrinterPreheatService
         return ApplyAsync(printerId, userId, bedTemperature: 0, nozzleTemperature: 0, cancellationToken);
     }
 
-    private async Task<PreheatOutcome> ApplyAsync(int printerId, long userId, int bedTemperature,
-                                                  int nozzleTemperature, CancellationToken cancellationToken)
+    private async Task<PreheatOutcome> ApplyAsync(int printerId,
+                                                  long userId,
+                                                  int bedTemperature,
+                                                  int nozzleTemperature,
+                                                  CancellationToken cancellationToken)
     {
         QueueSnapshot snapshot = await _snapshots.ReadAsync(printerId, cancellationToken);
 

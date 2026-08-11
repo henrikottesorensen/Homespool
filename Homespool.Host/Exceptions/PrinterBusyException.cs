@@ -53,8 +53,8 @@ public class PrinterBusyException : Exception
     /// </remarks>
     private static string BuildMessage(PrinterStatus status)
     {
-        return status is PrinterStatus.Unknown or PrinterStatus.Undefined
-            ? "The printer's current state isn't known yet - it reports one shortly after connecting."
-            : $"The printer is {status} - heaters can only be changed when the printer is not busy.";
+        return status is PrinterStatus.Unknown or PrinterStatus.Undefined ?
+            "The printer's current state isn't known yet - it reports one shortly after connecting." :
+            $"The printer is {status} - heaters can only be changed when the printer is not busy.";
     }
 }

@@ -73,7 +73,7 @@ public static class ListenerSegregation
         // Segment-exact, so a page called "printers" or "profile" is not mistaken for the printer
         // protocol. Only "p" and things beneath it qualify.
         bool printer = path.Equals("p", StringComparison.OrdinalIgnoreCase)
-                    || path.StartsWith("p/", StringComparison.OrdinalIgnoreCase);
+                       || path.StartsWith("p/", StringComparison.OrdinalIgnoreCase);
 
         return printer ? ListenerClass.Printer : ListenerClass.User;
     }

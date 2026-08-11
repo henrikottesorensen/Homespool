@@ -157,7 +157,7 @@ public class OctoPrintCompatController : ControllerBase
         if (!IsMultipart(Request.ContentType, out string? boundary))
         {
             return Explain(StatusCodes.Status400BadRequest,
-                "Expected a multipart/form-data body, as a print host receives.");
+                           "Expected a multipart/form-data body, as a print host receives.");
         }
 
         MultipartReader reader = new(boundary, Request.Body);
@@ -195,7 +195,7 @@ public class OctoPrintCompatController : ControllerBase
         catch (UploadTooLargeException)
         {
             return Explain(StatusCodes.Status413PayloadTooLarge,
-                $"That file is larger than this server's {_options.MaxUploadBytes}-byte upload limit.");
+                           $"That file is larger than this server's {_options.MaxUploadBytes}-byte upload limit.");
         }
         catch (PrintFileNameConflictException)
         {
@@ -203,8 +203,8 @@ public class OctoPrintCompatController : ControllerBase
             // for /api/v1, where the caller holds that flag, and useless here, where the caller is a
             // slicer that has none. Name the action this caller actually has instead.
             return Explain(StatusCodes.Status409Conflict,
-                $"A file named '{Path.GetFileName(disposition?.FileName.Value ?? string.Empty)}' already exists. "
-                + "Rename it in the send dialog, or delete the existing file in Homespool.");
+                           $"A file named '{Path.GetFileName(disposition?.FileName.Value ?? string.Empty)}' already exists. "
+                           + "Rename it in the send dialog, or delete the existing file in Homespool.");
         }
         catch (ArgumentException e)
         {
@@ -227,7 +227,7 @@ public class OctoPrintCompatController : ControllerBase
                 // The file is already stored, so this is a partial success: say what happened rather
                 // than implying nothing did.
                 return Explain(StatusCodes.Status403Forbidden,
-                    $"'{stored.FileName}' was uploaded, but you may not change this printer's queue.");
+                               $"'{stored.FileName}' was uploaded, but you may not change this printer's queue.");
             }
         }
 
@@ -319,7 +319,7 @@ public class OctoPrintCompatController : ControllerBase
         await using LengthLimitingStream limited = new(section.Body, _options.MaxUploadBytes);
 
         return await _files.SaveAsync(owner.Id, fileName, limited, overwrite: false, cancellationToken,
-            owner.UserName);
+                                      owner.UserName);
     }
 
     /// <summary>
@@ -328,7 +328,8 @@ public class OctoPrintCompatController : ControllerBase
     /// apart from "not yours" would confirm the existence of other people's printers.
     /// </summary>
     private async Task<(Printer? printer, HSUser? user, ActionResult? failure)> ResolveAsync(
-        Guid uuid, CancellationToken cancellationToken)
+        Guid uuid,
+        CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 

@@ -70,7 +70,7 @@ public sealed class LocalCameraDevices
         ArgumentException.ThrowIfNullOrWhiteSpace(deviceName);
 
         return $"ffmpeg:device?video={ByIdDirectory}/{deviceName}"
-             + $"&input_format=mjpeg&video_size={width}x{height}";
+               + $"&input_format=mjpeg&video_size={width}x{height}";
     }
 
     /// <summary>

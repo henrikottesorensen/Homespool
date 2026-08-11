@@ -53,7 +53,7 @@ public sealed class CameraSourcePolicy
     public static bool IsLocalDevice(string? source)
     {
         return source is not null
-            && source.TrimStart().StartsWith(DevicePrefix, StringComparison.OrdinalIgnoreCase);
+               && source.TrimStart().StartsWith(DevicePrefix, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

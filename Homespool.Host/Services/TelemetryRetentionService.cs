@@ -64,8 +64,7 @@ public sealed class TelemetryRetentionService : BackgroundService
             do
             {
                 await SweepAsync(stoppingToken);
-            }
-            while (await timer.WaitForNextTickAsync(stoppingToken));
+            } while (await timer.WaitForNextTickAsync(stoppingToken));
         }
         catch (OperationCanceledException)
         {
@@ -90,8 +89,8 @@ public sealed class TelemetryRetentionService : BackgroundService
             DateTimeOffset cutoff = DateTimeOffset.UtcNow - TimeSpan.FromDays(_options.TelemetryRetentionDays);
 
             int deleted = await context.TelemetrySamples
-                .Where(s => s.Timestamp < cutoff)
-                .ExecuteDeleteAsync(cancellationToken);
+                                       .Where(s => s.Timestamp < cutoff)
+                                       .ExecuteDeleteAsync(cancellationToken);
 
             if (deleted > 0)
             {

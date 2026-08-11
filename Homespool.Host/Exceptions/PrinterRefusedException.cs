@@ -30,9 +30,7 @@ public class PrinterRefusedException : Exception
     }
 
     public PrinterRefusedException(Events eventType, string? reason)
-        : base(reason is null
-            ? $"The printer refused it ({eventType})."
-            : $"The printer refused it: {reason}")
+        : base(reason is null ? $"The printer refused it ({eventType})." : $"The printer refused it: {reason}")
     {
         EventType = eventType;
         Reason = reason;

@@ -102,8 +102,8 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
     private async Task<AuthenticateResult?> AuthenticateEnrolledAsync(string fingerprint, string token)
     {
         PrusaConnectAuthenticationData? auth = await _dbContext.PrusaConnectAuthentication
-            .Include(a => a.Printer)
-            .SingleOrDefaultAsync(a => a.FingerPrintKey == fingerprint);
+                                                               .Include(a => a.Printer)
+                                                               .SingleOrDefaultAsync(a => a.FingerPrintKey == fingerprint);
 
         if (auth is null)
         {
@@ -154,7 +154,7 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
     private async Task<AuthenticateResult> RebindReissuedTokenAsync(PrusaConnectAuthenticationData enrolled, string token)
     {
         PrusaConnectProvisioning? reissued = await _dbContext.PrusaConnectProvisionings
-            .SingleOrDefaultAsync(p => p.PrinterId == enrolled.PrinterId);
+                                                             .SingleOrDefaultAsync(p => p.PrinterId == enrolled.PrinterId);
 
         if (reissued is null || !_tokenService.VerifyToken(token, reissued.HashedToken))
         {
@@ -204,8 +204,8 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
     private async Task<AuthenticateResult> BindProvisionedPrinterAsync(string fingerprint, string token)
     {
         List<PrusaConnectProvisioning> pending = await _dbContext.PrusaConnectProvisionings
-            .Include(p => p.Printer)
-            .ToListAsync();
+                                                                 .Include(p => p.Printer)
+                                                                 .ToListAsync();
 
         foreach (PrusaConnectProvisioning candidate in pending)
         {
@@ -276,7 +276,7 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
             }
 
             Logger.LogWarning("PrusaConnect provisioning promotion for printer {PrinterId} failed and left no enrolled row.",
-                provisioning.PrinterId);
+                              provisioning.PrinterId);
             return AuthenticateResult.Fail("Printer unknown");
         }
     }

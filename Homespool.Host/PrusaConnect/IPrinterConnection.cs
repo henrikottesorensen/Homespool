@@ -51,6 +51,9 @@ public interface IPrinterConnection
     /// <param name="cancellationToken">Cancels the reads. Never passed to the socket write, for the
     /// same reason <see cref="SendAsync"/> does not - a cancelled write leaves a partial frame on the
     /// wire.</param>
-    ValueTask SendChunkAsync(ReadOnlyMemory<byte> header, ITransferContent content, long offset,
-        long count, CancellationToken cancellationToken);
+    ValueTask SendChunkAsync(ReadOnlyMemory<byte> header,
+                             ITransferContent content,
+                             long offset,
+                             long count,
+                             CancellationToken cancellationToken);
 }

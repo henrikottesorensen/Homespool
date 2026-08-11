@@ -89,10 +89,10 @@ public class SqlitePragmaInterceptor : DbConnectionInterceptor
         int granularity = Math.Max(_busyTimeoutMilliseconds / 2, 1);
 
         command.CommandText = string.Create(CultureInfo.InvariantCulture,
-            $"""
-             PRAGMA synchronous = NORMAL;
-             PRAGMA busy_timeout = {granularity};
-             """);
+                                            $"""
+                                             PRAGMA synchronous = NORMAL;
+                                             PRAGMA busy_timeout = {granularity};
+                                             """);
 
         command.ExecuteNonQuery();
     }

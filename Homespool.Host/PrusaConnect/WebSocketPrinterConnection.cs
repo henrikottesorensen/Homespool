@@ -24,7 +24,8 @@ namespace Homespool.Host.PrusaConnect;
 /// nothing.
 /// </remarks>
 [SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable",
-                 Justification = "The semaphore allocates no wait handle, and disposing it would race in-flight sends. See the remarks.")]
+                 Justification =
+                     "The semaphore allocates no wait handle, and disposing it would race in-flight sends. See the remarks.")]
 public sealed class WebSocketPrinterConnection : IClosablePrinterConnection
 {
     /// <summary>
@@ -107,8 +108,11 @@ public sealed class WebSocketPrinterConnection : IClosablePrinterConnection
         }
     }
 
-    public async ValueTask SendChunkAsync(ReadOnlyMemory<byte> header, ITransferContent content,
-        long offset, long count, CancellationToken cancellationToken)
+    public async ValueTask SendChunkAsync(ReadOnlyMemory<byte> header,
+                                          ITransferContent content,
+                                          long offset,
+                                          long count,
+                                          CancellationToken cancellationToken)
     {
         // Held across every fragment. Two fragments of one message with somebody else's message in
         // between is not a message either party can parse - and the close frame is a send too.
@@ -162,7 +166,7 @@ public sealed class WebSocketPrinterConnection : IClosablePrinterConnection
                 // The write keeps CancellationToken.None for the same reason SendAsync does:
                 // cancelling mid-frame leaves a partial frame on the wire and aborts the socket.
                 await _webSocket.SendAsync(buffer.AsMemory(0, headerLength + filled),
-                    WebSocketMessageType.Binary, last, CancellationToken.None);
+                                           WebSocketMessageType.Binary, last, CancellationToken.None);
 
                 if (last)
                 {

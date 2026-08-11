@@ -48,7 +48,11 @@ public class BundleModel : PageModel
         return NotFound();
     }
 
-    public async Task<IActionResult> OnPostAsync(string token, string hostname, int printerId, string? printerName, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostAsync(string token,
+                                                 string hostname,
+                                                 int printerId,
+                                                 string? printerName,
+                                                 CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(hostname))
         {
@@ -85,13 +89,11 @@ public class BundleModel : PageModel
     private static string FileNameFor(string? printerName, int printerId)
     {
         string slug = new((printerName ?? string.Empty)
-            .Select(c => char.IsLetterOrDigit(c) ? char.ToLowerInvariant(c) : '-')
-            .ToArray());
+                          .Select(c => char.IsLetterOrDigit(c) ? char.ToLowerInvariant(c) : '-')
+                          .ToArray());
 
         slug = string.Join('-', slug.Split('-', StringSplitOptions.RemoveEmptyEntries));
 
-        return string.IsNullOrEmpty(slug)
-            ? $"homespool-printer-{printerId}.zip"
-            : $"homespool-{slug}.zip";
+        return string.IsNullOrEmpty(slug) ? $"homespool-printer-{printerId}.zip" : $"homespool-{slug}.zip";
     }
 }

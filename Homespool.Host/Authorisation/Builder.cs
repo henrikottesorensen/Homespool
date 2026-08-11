@@ -16,7 +16,7 @@ public static class Builder
     public static void Build(AuthorizationOptions options)
     {
         options.AddPolicy(Policies.PrusaConnectPrinter,
-             policy => policy.RequireAuthenticatedUser()
+                          policy => policy.RequireAuthenticatedUser()
                                           .AddAuthenticationSchemes(Authentication.Schemes.PrusaConnectPrinter));
 
         // Both schemes, not one: the web UI calls these endpoints with its cookie and scripts call
@@ -24,7 +24,7 @@ public static class Builder
         // cookie. Naming the schemes explicitly also stops the printer scheme from ever answering
         // here - without a list, the default scheme alone applies and additions elsewhere leak in.
         options.AddPolicy(Policies.Api,
-             policy => policy.RequireAuthenticatedUser()
+                          policy => policy.RequireAuthenticatedUser()
                                           .AddAuthenticationSchemes(IdentityConstants.ApplicationScheme,
                                                                     Authentication.Schemes.ApiToken));
 
@@ -33,7 +33,7 @@ public static class Builder
         // carries no antiforgery token, so a cookie here would make the upload endpoint a CSRF sink.
         // Requiring a token removes that by construction rather than by remembering to defend it.
         options.AddPolicy(Policies.Compat,
-             policy => policy.RequireAuthenticatedUser()
+                          policy => policy.RequireAuthenticatedUser()
                                           .AddAuthenticationSchemes(Authentication.Schemes.ApiToken,
                                                                     Authentication.Schemes.XApiKey));
     }

@@ -142,7 +142,7 @@ public class PrinterController : ControllerBase
         {
             // orig_size is uint32 on the wire; a file this large cannot be described at all.
             return this.Failure(StatusCodes.Status400BadRequest,
-                "Files must be under 4 GiB - a printer cannot be sent anything larger.");
+                                "Files must be under 4 GiB - a printer cannot be sent anything larger.");
         }
 
         (Printer? printer, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
@@ -161,17 +161,17 @@ public class PrinterController : ControllerBase
         {
             CommandOutcome? outcome = await _sender.SendAsync(printer, file, caller.Id, cancellationToken);
 
-            return outcome?.EventType is Events.Rejected or Events.Failed
-                ? this.CommandFailure(StatusCodes.Status409Conflict, wireName,
-                    outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString())
-                : NoContent();
+            return outcome?.EventType is Events.Rejected or Events.Failed ?
+                this.CommandFailure(StatusCodes.Status409Conflict, wireName,
+                                    outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString()) :
+                NoContent();
         }
         catch (PrintFileUnreadableException e)
         {
             return this.Failure(StatusCodes.Status409Conflict, e.Message);
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
-            or CommandResponseTimedOutException or CommandSendTimedOutException)
+                                      or CommandResponseTimedOutException or CommandSendTimedOutException)
         {
             _logger.LogInformation(e, "{Command} to printer {PrinterId} did not complete", wireName, printer.Id);
 
@@ -205,7 +205,7 @@ public class PrinterController : ControllerBase
             // The printer enforces this itself (path_allowed, planner.cpp:135-141); rejecting here
             // turns a silent refusal into an explanation.
             return this.Failure(StatusCodes.Status400BadRequest,
-                "Path must be under /usb/ and contain no '/../' segment.");
+                                "Path must be under /usb/ and contain no '/../' segment.");
         }
 
         (Printer? printer, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
@@ -290,7 +290,7 @@ public class PrinterController : ControllerBase
                 // same event, distinguished only by reason text - so this stays one status code and
                 // hands the caller firmware's own words rather than guessing at a 404.
                 return this.CommandFailure(StatusCodes.Status409Conflict, command.WireName,
-                    outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString());
+                                           outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString());
             }
 
             if (outcome?.Answer is null)
@@ -299,10 +299,10 @@ public class PrinterController : ControllerBase
                 // simply no listing to return, and inventing an empty one would claim the storage is
                 // empty when what happened is that the printer said nothing.
                 _logger.LogInformation("{Command} to printer {PrinterId} answered {Outcome} with no data",
-                    command.WireName, printer.Id, outcome?.EventType.ToString() ?? "nothing");
+                                       command.WireName, printer.Id, outcome?.EventType.ToString() ?? "nothing");
 
                 return this.CommandFailure(StatusCodes.Status502BadGateway, command.WireName,
-                    "The printer answered without a listing.");
+                                           "The printer answered without a listing.");
             }
 
             return Ok(PrinterStorageReadDTO.FromEvent(outcome.Answer));
@@ -316,7 +316,7 @@ public class PrinterController : ControllerBase
             return this.CommandFailure(StatusCodes.Status502BadGateway, command.WireName, e.Message);
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
-            or CommandResponseTimedOutException or CommandSendTimedOutException)
+                                      or CommandResponseTimedOutException or CommandSendTimedOutException)
         {
             _logger.LogInformation(e, "{Command} to printer {PrinterId} did not complete", command.WireName, printer.Id);
 
@@ -454,7 +454,7 @@ public class PrinterController : ControllerBase
     }
 
     private async Task<(Printer? printer, ActionResult? failure)> ResolveAsync(Guid uuid,
-                                                                                CancellationToken cancellationToken)
+                                                                               CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
@@ -514,7 +514,7 @@ public class PrinterController : ControllerBase
                 onFailure?.Invoke();
 
                 return this.CommandFailure(StatusCodes.Status409Conflict, command.WireName,
-                    outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString());
+                                           outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString());
             }
 
             // 204, which is ours rather than the spec's - Connect documents 200 with a Command
@@ -524,7 +524,7 @@ public class PrinterController : ControllerBase
             return NoContent();
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
-            or CommandResponseTimedOutException or CommandSendTimedOutException)
+                                      or CommandResponseTimedOutException or CommandSendTimedOutException)
         {
             onFailure?.Invoke();
             _logger.LogInformation(e, "{Command} to printer {PrinterId} did not complete", command.WireName, printer.Id);

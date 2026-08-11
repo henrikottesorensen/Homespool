@@ -141,9 +141,9 @@ public class IndexModel : PageModel
         // No decimal on bytes, one everywhere else: "512 B" and "4.1 MB" both read better than the
         // alternative. Invariant culture so the separator does not move with the server's locale -
         // see notes/floating-point.md on the same hazard in Razor.
-        return unit == 0
-            ? string.Create(CultureInfo.InvariantCulture, $"{bytes} B")
-            : string.Create(CultureInfo.InvariantCulture, $"{size:0.#} {units[unit]}");
+        return unit == 0 ?
+            string.Create(CultureInfo.InvariantCulture, $"{bytes} B") :
+            string.Create(CultureInfo.InvariantCulture, $"{size:0.#} {units[unit]}");
     }
 
     /// <summary>
@@ -173,9 +173,10 @@ public class IndexModel : PageModel
 
         // Only offer to rename something that is actually there, so a stale link is an ordinary page
         // rather than an input editing nothing.
-        Renaming = rename is not null && Files.Any(file => string.Equals(file.FileName, rename, StringComparison.OrdinalIgnoreCase))
-            ? rename
-            : null;
+        Renaming =
+            rename is not null && Files.Any(file => string.Equals(file.FileName, rename, StringComparison.OrdinalIgnoreCase)) ?
+                rename :
+                null;
     }
 
     /// <summary>
@@ -198,8 +199,10 @@ public class IndexModel : PageModel
     /// <c>MemoryBufferThreshold</c> to a temp file on disk, not into memory.
     /// </para>
     /// </remarks>
-    public async Task<IActionResult> OnPostUploadAsync(IFormFile? file, string? sort, bool desc,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostUploadAsync(IFormFile? file,
+                                                       string? sort,
+                                                       bool desc,
+                                                       CancellationToken cancellationToken)
     {
         long? userId = UserId();
 
@@ -243,7 +246,7 @@ public class IndexModel : PageModel
         try
         {
             StoredFile? stored = await _files.PublishAsync(userId.Value, staged.Token, overwrite: false,
-                cancellationToken, UserName());
+                                                           cancellationToken, UserName());
 
             (StatusMessage, StatusSuccess) = ($"Uploaded {stored!.FileName}.", true);
         }
@@ -258,8 +261,10 @@ public class IndexModel : PageModel
     }
 
     /// <summary>Answers the replace question with yes, using bytes already on disk.</summary>
-    public async Task<IActionResult> OnPostReplaceAsync(string token, string? sort, bool desc,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostReplaceAsync(string token,
+                                                        string? sort,
+                                                        bool desc,
+                                                        CancellationToken cancellationToken)
     {
         long? userId = UserId();
 
@@ -269,11 +274,11 @@ public class IndexModel : PageModel
         }
 
         StoredFile? stored = await _files.PublishAsync(userId.Value, token, overwrite: true, cancellationToken,
-            UserName());
+                                                       UserName());
 
-        (StatusMessage, StatusSuccess) = stored is null
-            ? ("That upload is no longer waiting - it may have been cleared up. Try again.", false)
-            : ($"Replaced {stored.FileName}.", true);
+        (StatusMessage, StatusSuccess) = stored is null ?
+            ("That upload is no longer waiting - it may have been cleared up. Try again.", false) :
+            ($"Replaced {stored.FileName}.", true);
 
         return RedirectToSelf(sort, desc);
     }
@@ -319,8 +324,11 @@ public class IndexModel : PageModel
     /// different questions - "put this on the printer" and "print this next" - and collapsing them
     /// would mean guessing which was meant.
     /// </remarks>
-    public async Task<IActionResult> OnPostQueueAsync(string name, int printerId, string? sort, bool desc,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostQueueAsync(string name,
+                                                      int printerId,
+                                                      string? sort,
+                                                      bool desc,
+                                                      CancellationToken cancellationToken)
     {
         long? userId = UserId();
 
@@ -358,8 +366,11 @@ public class IndexModel : PageModel
         return RedirectToSelf(sort, desc);
     }
 
-    public async Task<IActionResult> OnPostSendAsync(string name, int printerId, string? sort, bool desc,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostSendAsync(string name,
+                                                     int printerId,
+                                                     string? sort,
+                                                     bool desc,
+                                                     CancellationToken cancellationToken)
     {
         long? userId = UserId();
 
@@ -403,9 +414,9 @@ public class IndexModel : PageModel
         {
             CommandOutcome? outcome = await _sender.SendAsync(printer, file, userId.Value, cancellationToken);
 
-            (StatusMessage, StatusSuccess) = outcome?.EventType is Events.Rejected or Events.Failed
-                ? ($"{PrinterName(printer)} refused it: {outcome!.Reason}", false)
-                : ($"Sending {file.FileName} to {PrinterName(printer)}. It moves at the printer's pace.", true);
+            (StatusMessage, StatusSuccess) = outcome?.EventType is Events.Rejected or Events.Failed ?
+                ($"{PrinterName(printer)} refused it: {outcome!.Reason}", false) :
+                ($"Sending {file.FileName} to {PrinterName(printer)}. It moves at the printer's pace.", true);
         }
         catch (PrintFileUnreadableException e)
         {
@@ -440,8 +451,11 @@ public class IndexModel : PageModel
         return RedirectToSelf(sort, desc);
     }
 
-    public async Task<IActionResult> OnPostRenameAsync(string name, string newName, string? sort, bool desc,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostRenameAsync(string name,
+                                                       string newName,
+                                                       string? sort,
+                                                       bool desc,
+                                                       CancellationToken cancellationToken)
     {
         long? userId = UserId();
 
@@ -456,9 +470,9 @@ public class IndexModel : PageModel
             StoredFile? renamed =
                 await _files.RenameAsync(userId.Value, name, newName ?? string.Empty, cancellationToken);
 
-            (StatusMessage, StatusSuccess) = renamed is null
-                ? ($"There is no file named {name}.", false)
-                : ($"Renamed to {renamed.FileName}.", true);
+            (StatusMessage, StatusSuccess) = renamed is null ?
+                ($"There is no file named {name}.", false) :
+                ($"Renamed to {renamed.FileName}.", true);
         }
         catch (PrintFileNameConflictException e)
         {
@@ -480,8 +494,10 @@ public class IndexModel : PageModel
     /// would cancel may not be the deleter's own. Cancelling the queued print is the deliberate act that
     /// unblocks it - see <see cref="PrintFileCatalog.DeleteAsync"/>.
     /// </remarks>
-    public async Task<IActionResult> OnPostDeleteAsync(string name, string? sort, bool desc,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostDeleteAsync(string name,
+                                                       string? sort,
+                                                       bool desc,
+                                                       CancellationToken cancellationToken)
     {
         long? userId = UserId();
 
@@ -527,9 +543,7 @@ public class IndexModel : PageModel
     {
         long? userId = UserId();
 
-        Printers = userId is null
-            ? []
-            : await _printers.ListPrintersForUserAsync(userId.Value, cancellationToken);
+        Printers = userId is null ? [] : await _printers.ListPrintersForUserAsync(userId.Value, cancellationToken);
     }
 
     private long? UserId()
@@ -573,15 +587,11 @@ public class IndexModel : PageModel
 
         IOrderedEnumerable<StoredFile> ordered = Sort switch
         {
-            Columns.Size => desc
-                ? files.OrderByDescending(file => file.Length)
-                : files.OrderBy(file => file.Length),
-            Columns.Uploaded => desc
-                ? files.OrderByDescending(file => file.UploadedAt)
-                : files.OrderBy(file => file.UploadedAt),
-            _ => desc
-                ? files.OrderByDescending(file => file.FileName, StringComparer.OrdinalIgnoreCase)
-                : files.OrderBy(file => file.FileName, StringComparer.OrdinalIgnoreCase),
+            Columns.Size => desc ? files.OrderByDescending(file => file.Length) : files.OrderBy(file => file.Length),
+            Columns.Uploaded => desc ? files.OrderByDescending(file => file.UploadedAt) : files.OrderBy(file => file.UploadedAt),
+            _ => desc ?
+                files.OrderByDescending(file => file.FileName, StringComparer.OrdinalIgnoreCase) :
+                files.OrderBy(file => file.FileName, StringComparer.OrdinalIgnoreCase),
         };
 
         // Ordering is presentation, so it happens here rather than in the store, which keeps

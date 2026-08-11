@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 using Homespool.Model.Entities;
+
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -60,9 +61,9 @@ public class ConfirmEmailChangeModel : PageModel
     /// </remarks>
     private static string AlertRecipientNotice(bool isAlertRecipient)
     {
-        return isAlertRecipient
-            ? " Service health alerts will continue to go to your previous address until the service is restarted."
-            : string.Empty;
+        return isAlertRecipient ?
+            " Service health alerts will continue to go to your previous address until the service is restarted." :
+            string.Empty;
     }
 
     public async Task<IActionResult> OnGetAsync(string userId, string email, string code)
@@ -111,6 +112,6 @@ public class ConfirmEmailChangeModel : PageModel
     private async Task<bool> IsAlertRecipientAsync(HSUser user)
     {
         return _smtp.Value.IsConfigured
-        && await _userManager.IsInRoleAsync(user, Services.AdminBootstrap.AdminRole);
+               && await _userManager.IsInRoleAsync(user, Services.AdminBootstrap.AdminRole);
     }
 }

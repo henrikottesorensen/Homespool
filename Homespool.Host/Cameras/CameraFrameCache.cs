@@ -43,11 +43,10 @@ public sealed class CameraFrameCache
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<CameraFrameCache> _logger;
 
-    public CameraFrameCache(
-        ICameraSnapshotFetcher fetcher,
-        IOptions<CameraOptions> options,
-        TimeProvider timeProvider,
-        ILogger<CameraFrameCache> logger)
+    public CameraFrameCache(ICameraSnapshotFetcher fetcher,
+                            IOptions<CameraOptions> options,
+                            TimeProvider timeProvider,
+                            ILogger<CameraFrameCache> logger)
     {
         _fetcher = fetcher;
         _options = options;

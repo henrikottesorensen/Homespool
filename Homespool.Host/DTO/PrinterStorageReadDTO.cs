@@ -78,8 +78,9 @@ public class PrinterStorageReadDTO
 
         string[] words = wireType.Split('_', StringSplitOptions.RemoveEmptyEntries);
 
-        return string.Concat(words.Select((word, index) => index == 0
-            ? word.ToLowerInvariant()
-            : char.ToUpperInvariant(word[0]) + word[1..].ToLowerInvariant()));
+        return string.Concat(words.Select((word, index) =>
+                                              index == 0 ?
+                                                  word.ToLowerInvariant() :
+                                                  char.ToUpperInvariant(word[0]) + word[1..].ToLowerInvariant()));
     }
 }

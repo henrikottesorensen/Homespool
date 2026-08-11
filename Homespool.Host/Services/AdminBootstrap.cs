@@ -35,7 +35,8 @@ public static class AdminBootstrap
     /// connections and would open exactly that window.
     /// </remarks>
     [SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits",
-                     Justification = "Deliberately synchronous: the setup flag and bootstrap token must be settled before the first request can reach /setup, which a hosted service would not guarantee.")]
+                     Justification =
+                         "Deliberately synchronous: the setup flag and bootstrap token must be settled before the first request can reach /setup, which a hosted service would not guarantee.")]
     public static void SeedAdminBootstrap(this IServiceProvider services)
     {
         ArgumentNullException.ThrowIfNull(services);

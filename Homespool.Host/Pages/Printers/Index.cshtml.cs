@@ -87,8 +87,13 @@ public class IndexModel : PageModel
     /// Deliberately not <c>Printer.Status</c>, which is written once as <c>Unknown</c> when the row is
     /// created and never updated again - see <see cref="PrinterQueryService"/>.
     /// </remarks>
-    public record PrinterRow(Printer Printer, string TeamName, bool Enrolled, bool AwaitingUsbProvisioning,
-        bool Connected, PrinterStatus? LiveStatus);
+    public record PrinterRow(
+        Printer Printer,
+        string TeamName,
+        bool Enrolled,
+        bool AwaitingUsbProvisioning,
+        bool Connected,
+        PrinterStatus? LiveStatus);
 
     /// <summary>
     /// The badge colour for a status - semantic, so what needs a person reads at a glance.
@@ -223,8 +228,10 @@ public class IndexModel : PageModel
     /// same exceptions and returns the same <see cref="CommandOutcome"/>, so the reporting below is
     /// unchanged either way.
     /// </remarks>
-    private async Task<IActionResult> SendCommandAsync(int printerId, ISendableCommand command,
-        CancellationToken cancellationToken, Func<int, long, CancellationToken, Task<CommandOutcome?>>? send = null)
+    private async Task<IActionResult> SendCommandAsync(int printerId,
+                                                       ISendableCommand command,
+                                                       CancellationToken cancellationToken,
+                                                       Func<int, long, CancellationToken, Task<CommandOutcome?>>? send = null)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
@@ -313,20 +320,20 @@ public class IndexModel : PageModel
 
         IReadOnlyList<TeamMember> memberships = await _teamService.GetTeamsForUserAsync(user.Id, cancellationToken);
         Dictionary<int, string> teamNames = memberships
-            .Where(m => m.Team is not null)
-            .ToDictionary(m => m.TeamId, m => m.Team!.Name ?? $"Team #{m.TeamId}");
+                                            .Where(m => m.Team is not null)
+                                            .ToDictionary(m => m.TeamId, m => m.Team!.Name ?? $"Team #{m.TeamId}");
 
         PrinterEnrolmentStatus status = await _prusaConnectService.GetEnrolmentStatusAsync(
             printers.Select(row => row.Printer.Id).ToList(), cancellationToken);
 
         Printers = printers
-            .Select(row => new PrinterRow(
-                row.Printer,
-                teamNames.TryGetValue(row.Printer.TeamId, out string? name) ? name : $"Team #{row.Printer.TeamId}",
-                status.Enrolled.Contains(row.Printer.Id),
-                status.AwaitingUsbProvisioning.Contains(row.Printer.Id),
-                _connectionRegistry.IsConnected(row.Printer.Id),
-                row.LiveState?.Status))
-            .ToList();
+                   .Select(row => new PrinterRow(
+                               row.Printer,
+                               teamNames.TryGetValue(row.Printer.TeamId, out string? name) ? name : $"Team #{row.Printer.TeamId}",
+                               status.Enrolled.Contains(row.Printer.Id),
+                               status.AwaitingUsbProvisioning.Contains(row.Printer.Id),
+                               _connectionRegistry.IsConnected(row.Printer.Id),
+                               row.LiveState?.Status))
+                   .ToList();
     }
 }

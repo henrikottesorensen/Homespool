@@ -65,7 +65,7 @@ public record PrinterAddressSuggestion(string Value, AddressDurability Durabilit
 
             if (octets[0] == 169 && octets[1] == 254)
             {
-                continue;   // link-local: the machine failed to get an address at all
+                continue; // link-local: the machine failed to get an address at all
             }
 
             suggestions.Add(Describe(address.ToString(), containerNetworks));
@@ -107,13 +107,13 @@ public record PrinterAddressSuggestion(string Value, AddressDurability Durabilit
                 + "Test it before relying on it.");
         }
 
-        return IsProbablyTheContainersOwn(address, containerNetworks)
-            ? new PrinterAddressSuggestion(
+        return IsProbablyTheContainersOwn(address, containerNetworks) ?
+            new PrinterAddressSuggestion(
                 value,
                 AddressDurability.ProbablyTheContainersOwn,
                 "This looks like a Docker address, which is this container's own - printers on your "
-                + "network cannot reach it. Use the address of the machine running Docker instead.")
-            : new PrinterAddressSuggestion(
+                + "network cannot reach it. Use the address of the machine running Docker instead.") :
+            new PrinterAddressSuggestion(
                 value,
                 AddressDurability.UntilTheLeaseMoves,
                 "Works immediately and needs no DNS, but stops working if this machine's address "
@@ -145,7 +145,7 @@ public record PrinterAddressSuggestion(string Value, AddressDurability Durabilit
         ArgumentNullException.ThrowIfNull(containerNetworks);
 
         return address.AddressFamily == AddressFamily.InterNetwork
-            && containerNetworks.Any(network => network.Contains(address));
+               && containerNetworks.Any(network => network.Contains(address));
     }
 
     /// <summary>
@@ -160,10 +160,10 @@ public record PrinterAddressSuggestion(string Value, AddressDurability Durabilit
     public static IReadOnlyList<PrinterAddressSuggestion> Gather(IReadOnlyList<IPNetwork> containerNetworks)
     {
         IEnumerable<IPAddress> addresses = NetworkInterface.GetAllNetworkInterfaces()
-            .Where(n => n.OperationalStatus == OperationalStatus.Up)
-            .Where(n => n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
-            .SelectMany(n => n.GetIPProperties().UnicastAddresses)
-            .Select(u => u.Address);
+                                                           .Where(n => n.OperationalStatus == OperationalStatus.Up)
+                                                           .Where(n => n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+                                                           .SelectMany(n => n.GetIPProperties().UnicastAddresses)
+                                                           .Select(u => u.Address);
 
         string? hostName = null;
 

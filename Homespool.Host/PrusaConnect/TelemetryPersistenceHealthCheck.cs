@@ -99,22 +99,22 @@ public sealed class TelemetryPersistenceHealthCheck : IHealthCheck
         if (snapshot.DiscardedEvents > 0)
         {
             return Task.FromResult(HealthCheckResult.Unhealthy(
-                $"{snapshot.DiscardedEvents} printer events were discarded to cap memory - the database has been rejecting writes long enough to lose data.",
-                data: data));
+                                       $"{snapshot.DiscardedEvents} printer events were discarded to cap memory - the database has been rejecting writes long enough to lose data.",
+                                       data: data));
         }
 
         if (snapshot.ConsecutiveFailures >= UnhealthyAfterConsecutiveFailures)
         {
             return Task.FromResult(HealthCheckResult.Unhealthy(
-                $"{snapshot.ConsecutiveFailures} consecutive telemetry flushes have failed; nothing is reaching the database.",
-                data: data));
+                                       $"{snapshot.ConsecutiveFailures} consecutive telemetry flushes have failed; nothing is reaching the database.",
+                                       data: data));
         }
 
         if (snapshot.ConsecutiveFailures > 0)
         {
             return Task.FromResult(HealthCheckResult.Degraded(
-                $"{snapshot.ConsecutiveFailures} telemetry flush(es) have failed since the last success; {snapshot.PendingSamples} samples and {snapshot.PendingEvents} events are still buffered.",
-                data: data));
+                                       $"{snapshot.ConsecutiveFailures} telemetry flush(es) have failed since the last success; {snapshot.PendingSamples} samples and {snapshot.PendingEvents} events are still buffered.",
+                                       data: data));
         }
 
         // A writer can be stuck without ever failing, and until 2026-07-29 nothing here could see it.
@@ -142,8 +142,8 @@ public sealed class TelemetryPersistenceHealthCheck : IHealthCheck
         if (snapshot.LastFlushAt is { } lastFlush && _timeProvider.GetUtcNow() - lastFlush > staleAfter)
         {
             return Task.FromResult(HealthCheckResult.Unhealthy(
-                $"No telemetry flush has completed for {(_timeProvider.GetUtcNow() - lastFlush).TotalSeconds:F0}s, with none failing either - the writer is blocked rather than broken, and nothing is reaching the database.",
-                data: data));
+                                       $"No telemetry flush has completed for {(_timeProvider.GetUtcNow() - lastFlush).TotalSeconds:F0}s, with none failing either - the writer is blocked rather than broken, and nothing is reaching the database.",
+                                       data: data));
         }
 
         // Never having flushed is not a fault: a process with no printers connected has had nothing

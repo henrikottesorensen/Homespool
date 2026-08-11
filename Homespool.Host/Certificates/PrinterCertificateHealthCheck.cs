@@ -71,7 +71,7 @@ public sealed class PrinterCertificateHealthCheck : IHealthCheck
         if (!_connect.PrinterTls)
         {
             return Result(PrinterCertificateDrift.Evaluate(
-                tlsEnabled: false, null, [], [], null, null, _time.GetUtcNow()));
+                              tlsEnabled: false, null, [], [], null, null, _time.GetUtcNow()));
         }
 
         using X509Certificate2? leaf = _authority.LoadLeafIfIssued();
@@ -101,8 +101,8 @@ public sealed class PrinterCertificateHealthCheck : IHealthCheck
     private static HealthCheckResult Result(PrinterCertificateVerdict verdict,
                                             IReadOnlyDictionary<string, object>? data = null)
     {
-        return verdict.IsProblem
-            ? HealthCheckResult.Degraded(verdict.Description, data: data)
-            : HealthCheckResult.Healthy(verdict.Description, data);
+        return verdict.IsProblem ?
+            HealthCheckResult.Degraded(verdict.Description, data: data) :
+            HealthCheckResult.Healthy(verdict.Description, data);
     }
 }

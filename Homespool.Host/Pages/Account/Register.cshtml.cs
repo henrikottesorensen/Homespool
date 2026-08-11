@@ -1,5 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
+
 #nullable disable
 
 using System;
@@ -11,6 +12,7 @@ using System.Threading.Tasks;
 
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
+
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -39,16 +41,15 @@ public class RegisterModel : PageModel
     private readonly TeamService _teamService;
     private readonly UnitOfWork _unitOfWork;
 
-    public RegisterModel(
-        UserManager<HSUser> userManager,
-        IUserStore<HSUser> userStore,
-        SignInManager<HSUser> signInManager,
-        ILogger<RegisterModel> logger,
-        IEmailSender emailSender,
-        AccountConfirmationPolicy accountConfirmationPolicy,
-        InvitationService invitationService,
-        TeamService teamService,
-        UnitOfWork unitOfWork)
+    public RegisterModel(UserManager<HSUser> userManager,
+                         IUserStore<HSUser> userStore,
+                         SignInManager<HSUser> signInManager,
+                         ILogger<RegisterModel> logger,
+                         IEmailSender emailSender,
+                         AccountConfirmationPolicy accountConfirmationPolicy,
+                         InvitationService invitationService,
+                         TeamService teamService,
+                         UnitOfWork unitOfWork)
     {
         _userManager = userManager;
         _userStore = userStore;
@@ -174,7 +175,8 @@ public class RegisterModel : PageModel
 
             if (invitation.TeamId is int teamId)
             {
-                await _teamService.AddMemberAsync(teamId, user.Id, canRead: true, canUse: true, canManage: false, cancellationToken);
+                await _teamService.AddMemberAsync(teamId, user.Id, canRead: true, canUse: true, canManage: false,
+                                                  cancellationToken);
             }
 
             await _invitationService.MarkUsedAsync(invitation, cancellationToken);
@@ -206,7 +208,7 @@ public class RegisterModel : PageModel
                 protocol: Request.Scheme);
 
             EmailSendResult sendResult = await _emailSender.SendEmailAsync(invitation.Email, "Confirm your email",
-                $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+                                                                           $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
 
             bool emailFailed = sendResult == EmailSendResult.Failed;
 

@@ -26,9 +26,9 @@ public static class CommandWireEncoder
         // against the live MK3.5, so it is kept byte-identical rather than folded into the general
         // case. A command with kwargs carries an empty "args" array alongside them, which is how
         // every argument-bearing case in tests/unit/connect/command.cpp is written.
-        byte[] payload = commandData.Arguments is null
-            ? JsonSerializer.SerializeToUtf8Bytes(new { command = commandData.WireName })
-            : JsonSerializer.SerializeToUtf8Bytes(new
+        byte[] payload = commandData.Arguments is null ?
+            JsonSerializer.SerializeToUtf8Bytes(new { command = commandData.WireName }) :
+            JsonSerializer.SerializeToUtf8Bytes(new
             {
                 command = commandData.WireName,
                 args = System.Array.Empty<object>(),

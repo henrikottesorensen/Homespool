@@ -1,5 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
+
 #nullable disable
 
 using System.ComponentModel.DataAnnotations;
@@ -9,6 +10,7 @@ using System.Threading.Tasks;
 
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
+
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -22,10 +24,9 @@ public class EmailModel : PageModel
     private readonly SignInManager<HSUser> _signInManager;
     private readonly IEmailSender _emailSender;
 
-    public EmailModel(
-        UserManager<HSUser> userManager,
-        SignInManager<HSUser> signInManager,
-        IEmailSender emailSender)
+    public EmailModel(UserManager<HSUser> userManager,
+                      SignInManager<HSUser> signInManager,
+                      IEmailSender emailSender)
     {
         _userManager = userManager;
         _signInManager = signInManager;
@@ -129,9 +130,9 @@ public class EmailModel : PageModel
                 "Confirm your email",
                 $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
 
-            StatusMessage = sendResult == EmailSendResult.Failed
-                ? "Could not send the confirmation link. Your email is unchanged - contact your administrator."
-                : "Confirmation link to change email sent. Please check your email.";
+            StatusMessage = sendResult == EmailSendResult.Failed ?
+                "Could not send the confirmation link. Your email is unchanged - contact your administrator." :
+                "Confirmation link to change email sent. Please check your email.";
             return RedirectToPage();
         }
 
@@ -167,9 +168,9 @@ public class EmailModel : PageModel
             "Confirm your email",
             $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
 
-        StatusMessage = sendResult == EmailSendResult.Failed
-            ? "Could not send the verification email - contact your administrator."
-            : "Verification email sent. Please check your email.";
+        StatusMessage = sendResult == EmailSendResult.Failed ?
+            "Could not send the verification email - contact your administrator." :
+            "Verification email sent. Please check your email.";
         return RedirectToPage();
     }
 }

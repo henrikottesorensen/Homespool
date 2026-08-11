@@ -101,7 +101,7 @@ public class AddModel : PageModel
             // POST must be refused server-side too, or a bypassed form would hand out a snippet with
             // an empty hostname.
             ModelState.AddModelError(string.Empty,
-                "The server's public address is not configured yet (PrusaConnect:PrinterHost). Ask your administrator to set it before provisioning printers this way.");
+                                     "The server's public address is not configured yet (PrusaConnect:PrinterHost). Ask your administrator to set it before provisioning printers this way.");
 
             return Page();
         }

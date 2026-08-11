@@ -1,5 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
+
 #nullable disable
 
 using System;
@@ -8,6 +9,7 @@ using System.Linq;
 using System.Threading.Tasks;
 
 using Homespool.Model.Entities;
+
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -20,9 +22,8 @@ public class GenerateRecoveryCodesModel : PageModel
     private readonly UserManager<HSUser> _userManager;
     private readonly ILogger<GenerateRecoveryCodesModel> _logger;
 
-    public GenerateRecoveryCodesModel(
-        UserManager<HSUser> userManager,
-        ILogger<GenerateRecoveryCodesModel> logger)
+    public GenerateRecoveryCodesModel(UserManager<HSUser> userManager,
+                                      ILogger<GenerateRecoveryCodesModel> logger)
     {
         _userManager = userManager;
         _logger = logger;

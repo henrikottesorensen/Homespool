@@ -37,7 +37,12 @@ public class TeamService
         return _dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<TeamMember> AddMemberAsync(int teamId, long userId, bool canRead, bool canUse, bool canManage, CancellationToken cancellationToken)
+    public async Task<TeamMember> AddMemberAsync(int teamId,
+                                                 long userId,
+                                                 bool canRead,
+                                                 bool canUse,
+                                                 bool canManage,
+                                                 CancellationToken cancellationToken)
     {
         TeamMember member = new()
         {

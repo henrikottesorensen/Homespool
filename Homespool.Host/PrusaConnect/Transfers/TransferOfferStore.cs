@@ -79,7 +79,8 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
 
     /// <inheritdoc />
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
-                     Justification = "The handle is deliberately long-lived: PinnedOffer owns it, and closes it when the offer is revoked or swept and nothing is reading it. Disposing here would defeat the pinning this method exists for.")]
+                     Justification =
+                         "The handle is deliberately long-lived: PinnedOffer owns it, and closes it when the offer is revoked or swept and nothing is reading it. Disposing here would defeat the pinning this method exists for.")]
     public bool Offer(string token, string path)
     {
         SweepIdle();

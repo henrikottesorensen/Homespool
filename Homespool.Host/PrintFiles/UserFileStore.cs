@@ -51,7 +51,8 @@ namespace Homespool.Host.PrintFiles;
 /// </para>
 /// </remarks>
 [SuppressMessage("Security", "CA3003:Review code for file path injection vulnerabilities",
-                 Justification = "Every caller-supplied name is reduced by SafeName to Path.GetFileName and then refused if it is empty, '.' or '..', so no input can express a directory or traverse upwards. The other path component is a user id, which is an integer this process read from its own database.")]
+                 Justification =
+                     "Every caller-supplied name is reduced by SafeName to Path.GetFileName and then refused if it is empty, '.' or '..', so no input can express a directory or traverse upwards. The other path component is a user id, which is an integer this process read from its own database.")]
 public sealed class UserFileStore
 {
     /// <summary>
@@ -123,12 +124,14 @@ public sealed class UserFileStore
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<UserFileStore> _logger;
 
-    public UserFileStore(IOptions<PrintFileStorageOptions> options, IHostEnvironmentAccessor environment,
-        TimeProvider timeProvider, ILogger<UserFileStore> logger)
+    public UserFileStore(IOptions<PrintFileStorageOptions> options,
+                         IHostEnvironmentAccessor environment,
+                         TimeProvider timeProvider,
+                         ILogger<UserFileStore> logger)
     {
-        _root = Path.IsPathRooted(options.Value.Directory)
-            ? options.Value.Directory
-            : Path.Combine(environment.ContentRootPath, options.Value.Directory);
+        _root = Path.IsPathRooted(options.Value.Directory) ?
+            options.Value.Directory :
+            Path.Combine(environment.ContentRootPath, options.Value.Directory);
         _timeProvider = timeProvider;
         _logger = logger;
     }
@@ -155,9 +158,9 @@ public sealed class UserFileStore
         }
 
         return Directory.EnumerateFiles(directory)
-            .Select(Describe)
-            .OrderBy(file => file.FileName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+                        .Select(Describe)
+                        .OrderBy(file => file.FileName, StringComparer.OrdinalIgnoreCase)
+                        .ToList();
     }
 
     /// <summary>Resolves one of <paramref name="userId"/>'s files by name, or null if they have no
@@ -184,8 +187,8 @@ public sealed class UserFileStore
         }
 
         string? path = Directory.EnumerateFiles(directory)
-            .FirstOrDefault(candidate => string.Equals(Path.GetFileName(candidate), safeName,
-                StringComparison.OrdinalIgnoreCase));
+                                .FirstOrDefault(candidate => string.Equals(Path.GetFileName(candidate), safeName,
+                                                                           StringComparison.OrdinalIgnoreCase));
 
         return path is null ? null : Describe(path);
     }
@@ -228,8 +231,12 @@ public sealed class UserFileStore
     /// there is no directory yet - an existing one is found by its id prefix and kept whatever its
     /// name says, so this going stale is cosmetic. Null means the folder is the bare id.
     /// </param>
-    public async Task<PublishedFile> SaveAsync(long userId, string fileName, Stream content, bool overwrite,
-        CancellationToken cancellationToken, string? userName = null)
+    public async Task<PublishedFile> SaveAsync(long userId,
+                                               string fileName,
+                                               Stream content,
+                                               bool overwrite,
+                                               CancellationToken cancellationToken,
+                                               string? userName = null)
     {
         // Fails a doomed request before hundreds of megabytes cross the wire. The check inside
         // Publish is the authoritative one; this is the courtesy.
@@ -269,8 +276,10 @@ public sealed class UserFileStore
     /// refused before it is written rather than after.
     /// </para>
     /// </remarks>
-    public async Task<PendingUpload> StageAsync(long userId, string fileName, Stream content,
-        CancellationToken cancellationToken)
+    public async Task<PendingUpload> StageAsync(long userId,
+                                                string fileName,
+                                                Stream content,
+                                                CancellationToken cancellationToken)
     {
         string safeName = RequireSafeName(fileName);
 
@@ -295,7 +304,7 @@ public sealed class UserFileStore
         try
         {
             await using FileStream file = new(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
-                bufferSize: 64 * 1024, useAsync: true);
+                                              bufferSize: 64 * 1024, useAsync: true);
 
             digest = await CopyAndHashAsync(content, file, cancellationToken);
         }
@@ -362,7 +371,7 @@ public sealed class UserFileStore
 
         StoredFile stored = Describe(path);
         _logger.LogInformation("Stored {FileName} for user {UserId} ({Length} bytes){Replaced}",
-            stored.FileName, userId, stored.Length, existing is null ? string.Empty : ", replacing");
+                               stored.FileName, userId, stored.Length, existing is null ? string.Empty : ", replacing");
 
         return new PublishedFile(stored, pending.Digest);
     }
@@ -419,7 +428,7 @@ public sealed class UserFileStore
 
         File.Move(existing.Path, path, overwrite: true);
         _logger.LogInformation("Renamed {FileName} to {NewName} for user {UserId}",
-            existing.FileName, safeNewName, userId);
+                               existing.FileName, safeNewName, userId);
 
         return Describe(path);
     }
@@ -471,8 +480,9 @@ public sealed class UserFileStore
     /// <see cref="Model.Entities.PrintFile.Digest"/> for why, including why interop did not decide it.
     /// </para>
     /// </remarks>
-    private static async Task<string> CopyAndHashAsync(Stream content, Stream destination,
-        CancellationToken cancellationToken)
+    private static async Task<string> CopyAndHashAsync(Stream content,
+                                                       Stream destination,
+                                                       CancellationToken cancellationToken)
     {
         using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA384);
 

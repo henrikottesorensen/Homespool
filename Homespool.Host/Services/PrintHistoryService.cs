@@ -68,12 +68,13 @@ public class PrintHistoryService
         return await _dbContext.PrintJobs
                                .AsNoTracking()
                                .SingleOrDefaultAsync(job => job.PrinterId == printerId && job.EndedAt == null,
-                                   cancellationToken);
+                                                     cancellationToken);
     }
 
     /// <summary>Finished prints, newest first.</summary>
-    public async Task<IReadOnlyList<PrintJob>> ListAsync(int printerId, long userId,
-        CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<PrintJob>> ListAsync(int printerId,
+                                                         long userId,
+                                                         CancellationToken cancellationToken)
     {
         await _access.RequireAsync(printerId, userId, PrinterOperation.ViewHistory, cancellationToken);
 

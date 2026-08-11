@@ -31,7 +31,9 @@ public class SmtpConnectivityProbe : BackgroundService
     private readonly ISmtpTransportFactory _transportFactory;
     private readonly ILogger<SmtpConnectivityProbe> _logger;
 
-    public SmtpConnectivityProbe(IOptions<SmtpOptions> options, ISmtpTransportFactory transportFactory, ILogger<SmtpConnectivityProbe> logger)
+    public SmtpConnectivityProbe(IOptions<SmtpOptions> options,
+                                 ISmtpTransportFactory transportFactory,
+                                 ILogger<SmtpConnectivityProbe> logger)
     {
         _options = options.Value;
         _transportFactory = transportFactory;
@@ -60,11 +62,9 @@ public class SmtpConnectivityProbe : BackgroundService
         {
             using ISmtpTransport client = _transportFactory.Create();
 
-            SecureSocketOptions socketOptions = _options.DisableTls
-                ? SecureSocketOptions.None
-                : _options.UseImplicitTls
-                    ? SecureSocketOptions.SslOnConnect
-                    : SecureSocketOptions.StartTls;
+            SecureSocketOptions socketOptions = _options.DisableTls ? SecureSocketOptions.None
+                : _options.UseImplicitTls ? SecureSocketOptions.SslOnConnect
+                : SecureSocketOptions.StartTls;
 
             await client.ConnectAsync(_options.Host, _options.Port, socketOptions, timeout.Token);
 

@@ -237,7 +237,7 @@ public sealed class QueueAdvancer : BackgroundService
     /// </para>
     /// </remarks>
     private static Task<List<int>> PrintersNeedingAPassAsync(HomespoolDbContext dbContext,
-        CancellationToken cancellationToken)
+                                                             CancellationToken cancellationToken)
     {
         return dbContext.QueuedPrints
                         .Select(queued => queued.PrinterId)
@@ -288,7 +288,7 @@ public sealed class QueueAdvancer : BackgroundService
         PrinterLiveState? live = await dbContext.PrinterLiveStates
                                                 .AsNoTracking()
                                                 .SingleOrDefaultAsync(state => state.PrinterId == printerId,
-                                                    cancellationToken);
+                                                                      cancellationToken);
 
         await ReconcilePrintAsync(dbContext, printerId, live, cancellationToken);
 
@@ -308,11 +308,12 @@ public sealed class QueueAdvancer : BackgroundService
         QueuedPrint head = await dbContext.QueuedPrints
                                           .Include(queued => queued.PrintFile)
                                           .SingleAsync(queued => queued.Id == snapshot.Head.QueuedPrintId,
-                                              cancellationToken);
+                                                       cancellationToken);
 
         PrintFileOnPrinter? onPrinter = await dbContext.PrintFilesOnPrinters
-            .SingleOrDefaultAsync(row => row.PrinterId == printerId && row.PrintFileId == head.PrintFileId,
-                cancellationToken);
+                                                       .SingleOrDefaultAsync(
+                                                           row => row.PrinterId == printerId && row.PrintFileId == head.PrintFileId,
+                                                           cancellationToken);
 
         QueueAction action = QueueRules.Decide(snapshot);
 
@@ -363,18 +364,19 @@ public sealed class QueueAdvancer : BackgroundService
     /// eventually offers the file again rather than waiting forever.
     /// </para>
     /// </remarks>
-    private async Task ReconcileArrivalsAsync(HomespoolDbContext dbContext, int printerId,
-        CancellationToken cancellationToken)
+    private async Task ReconcileArrivalsAsync(HomespoolDbContext dbContext,
+                                              int printerId,
+                                              CancellationToken cancellationToken)
     {
         long watermark = _watermarks.TryGetValue(printerId, out long last) ? last : 0;
 
         List<PrinterEvent> events = await dbContext.PrinterEvents
-            .AsNoTracking()
-            .Where(printerEvent => printerEvent.PrinterId == printerId
-                                   && printerEvent.Id > watermark
-                                   && printerEvent.EventType == Events.FileInfo)
-            .OrderBy(printerEvent => printerEvent.Id)
-            .ToListAsync(cancellationToken);
+                                                   .AsNoTracking()
+                                                   .Where(printerEvent => printerEvent.PrinterId == printerId
+                                                                          && printerEvent.Id > watermark
+                                                                          && printerEvent.EventType == Events.FileInfo)
+                                                   .OrderBy(printerEvent => printerEvent.Id)
+                                                   .ToListAsync(cancellationToken);
 
         long highest = await dbContext.PrinterEvents
                                       .Where(printerEvent => printerEvent.PrinterId == printerId)
@@ -408,10 +410,10 @@ public sealed class QueueAdvancer : BackgroundService
             }
 
             PrintFileOnPrinter? row = await dbContext.PrintFilesOnPrinters
-                .Include(candidate => candidate.PrintFile)
-                .SingleOrDefaultAsync(candidate => candidate.PrinterId == printerId
-                                                   && candidate.PrintFile!.Name == displayName,
-                    cancellationToken);
+                                                     .Include(candidate => candidate.PrintFile)
+                                                     .SingleOrDefaultAsync(candidate => candidate.PrinterId == printerId
+                                                                               && candidate.PrintFile!.Name == displayName,
+                                                                           cancellationToken);
 
             if (row is null || row.Arrived)
             {
@@ -424,7 +426,7 @@ public sealed class QueueAdvancer : BackgroundService
             changed = true;
 
             _logger.LogInformation("[{PrinterId}] {FileName} is on the drive as {PrinterPath}",
-                printerId, displayName, data.Path);
+                                   printerId, displayName, data.Path);
         }
 
         if (changed)
@@ -462,11 +464,14 @@ public sealed class QueueAdvancer : BackgroundService
     /// them out rather than deciding anything - "don't cancel prints on people".
     /// </para>
     /// </remarks>
-    private async Task<PrintJob?> ReconcilePrintAsync(HomespoolDbContext dbContext, int printerId,
-        PrinterLiveState? live, CancellationToken cancellationToken)
+    private async Task<PrintJob?> ReconcilePrintAsync(HomespoolDbContext dbContext,
+                                                      int printerId,
+                                                      PrinterLiveState? live,
+                                                      CancellationToken cancellationToken)
     {
         PrintJob? active = await dbContext.PrintJobs
-            .SingleOrDefaultAsync(job => job.PrinterId == printerId && job.EndedAt == null, cancellationToken);
+                                          .SingleOrDefaultAsync(job => job.PrinterId == printerId && job.EndedAt == null,
+                                                                cancellationToken);
 
         if (active is null)
         {
@@ -485,7 +490,7 @@ public sealed class QueueAdvancer : BackgroundService
                 await dbContext.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation("[{PrinterId}] {FileName} is printing (firmware job {JobId})",
-                    printerId, active.FileName, active.FirmwareJobId);
+                                       printerId, active.FileName, active.FirmwareJobId);
 
                 return active;
             }
@@ -532,8 +537,12 @@ public sealed class QueueAdvancer : BackgroundService
     }
 
     /// <summary>Offers the head's file to the printer, and records that it did.</summary>
-    private async Task TransferAsync(AsyncServiceScope scope, HomespoolDbContext dbContext, int printerId,
-        QueuedPrint head, PrintFileOnPrinter? onPrinter, CancellationToken cancellationToken)
+    private async Task TransferAsync(AsyncServiceScope scope,
+                                     HomespoolDbContext dbContext,
+                                     int printerId,
+                                     QueuedPrint head,
+                                     PrintFileOnPrinter? onPrinter,
+                                     CancellationToken cancellationToken)
     {
         PrintFileCatalog catalog = scope.ServiceProvider.GetRequiredService<PrintFileCatalog>();
         StoredFile? file = catalog.Find(head.QueuedByUserId, head.PrintFile!.Name);
@@ -544,7 +553,7 @@ public sealed class QueueAdvancer : BackgroundService
             // entry is dropped rather than retried forever - the reconciler makes the same call when
             // it finds a row whose file has left.
             _logger.LogWarning("[{PrinterId}] {FileName} is queued but no longer on disk; dropping the entry",
-                printerId, head.PrintFile.Name);
+                               printerId, head.PrintFile.Name);
             dbContext.QueuedPrints.Remove(head);
             await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -552,7 +561,7 @@ public sealed class QueueAdvancer : BackgroundService
         }
 
         Printer printer = await dbContext.Printers.SingleAsync(candidate => candidate.Id == printerId,
-            cancellationToken);
+                                                               cancellationToken);
 
         onPrinter ??= new PrintFileOnPrinter { PrinterId = printerId, PrintFileId = head.PrintFileId };
 
@@ -601,10 +610,11 @@ public sealed class QueueAdvancer : BackgroundService
             }
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
-            or CommandResponseTimedOutException or CommandSendTimedOutException or PrintFileUnreadableException)
+                                      or CommandResponseTimedOutException or CommandSendTimedOutException or
+                                      PrintFileUnreadableException)
         {
             _logger.LogInformation(e, "[{PrinterId}] could not start the transfer of {FileName}",
-                printerId, file.FileName);
+                                   printerId, file.FileName);
             onPrinter.TransferStartedAt = null;
             await dbContext.SaveChangesAsync(cancellationToken);
         }
@@ -614,7 +624,7 @@ public sealed class QueueAdvancer : BackgroundService
             // deliberate - it is not this loop's business to cancel somebody's print because their
             // permissions changed, and a restored permission resumes it.
             _logger.LogWarning("[{PrinterId}] {FileName} is queued by a user who may no longer use this printer",
-                printerId, file.FileName);
+                               printerId, file.FileName);
             onPrinter.TransferStartedAt = null;
             await dbContext.SaveChangesAsync(cancellationToken);
         }
@@ -647,8 +657,12 @@ public sealed class QueueAdvancer : BackgroundService
     /// here because the counter depends on what else is on that drive.
     /// </para>
     /// </remarks>
-    private async Task ReconcileExistingFileAsync(AsyncServiceScope scope, int printerId, QueuedPrint head,
-        StoredFile file, PrintFileOnPrinter onPrinter, CancellationToken cancellationToken)
+    private async Task ReconcileExistingFileAsync(AsyncServiceScope scope,
+                                                  int printerId,
+                                                  QueuedPrint head,
+                                                  StoredFile file,
+                                                  PrintFileOnPrinter onPrinter,
+                                                  CancellationToken cancellationToken)
     {
         PrinterCommandService commands = scope.ServiceProvider.GetRequiredService<PrinterCommandService>();
         FileInfoEventDataDTO? existing;
@@ -661,13 +675,14 @@ public sealed class QueueAdvancer : BackgroundService
             existing = answer?.Answer;
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
-            or CommandResponseTimedOutException or CommandSendTimedOutException or TeamAccessDeniedException
-            or CommandAnswerUnreadableException)
+                                      or CommandResponseTimedOutException or CommandSendTimedOutException or
+                                      TeamAccessDeniedException
+                                      or CommandAnswerUnreadableException)
         {
             // Could not ask. Not a block: the next pass asks again, and holding a queue on an
             // unanswered question would punish a printer that was merely busy.
             _logger.LogDebug(e, "[{PrinterId}] could not ask about the existing {FileName}",
-                printerId, file.FileName);
+                             printerId, file.FileName);
 
             return;
         }
@@ -688,13 +703,13 @@ public sealed class QueueAdvancer : BackgroundService
 
         // Somebody else's file under our name. Held rather than failed, because the entry is still
         // wanted and a person deleting it at the panel should see the queue resume by itself.
-        onPrinter.BlockedReason = existing?.Size is { } size
-            ? string.Create(CultureInfo.InvariantCulture,
-                $"The printer already has a different file called {file.FileName}: {size} bytes there, "
-                + $"{file.Length} here. Delete it at the printer, or rename this one.")
-            : string.Create(CultureInfo.InvariantCulture,
-                $"The printer already has a file called {file.FileName} and would not say how big it is, "
-                + $"so it cannot be confirmed as this one. Delete it at the printer, or rename this one.");
+        onPrinter.BlockedReason = existing?.Size is { } size ?
+            string.Create(CultureInfo.InvariantCulture,
+                          $"The printer already has a different file called {file.FileName}: {size} bytes there, "
+                          + $"{file.Length} here. Delete it at the printer, or rename this one.") :
+            string.Create(CultureInfo.InvariantCulture,
+                          $"The printer already has a file called {file.FileName} and would not say how big it is, "
+                          + $"so it cannot be confirmed as this one. Delete it at the printer, or rename this one.");
 
         onPrinter.BlockedAt = _timeProvider.GetUtcNow();
 
@@ -726,8 +741,13 @@ public sealed class QueueAdvancer : BackgroundService
     /// a genuinely full drive fails the transfer loudly, where a wrong refusal is silent.
     /// </para>
     /// </remarks>
-    private async Task<bool> HasRoomForAsync(AsyncServiceScope scope, HomespoolDbContext dbContext, int printerId,
-        QueuedPrint head, long length, PrintFileOnPrinter onPrinter, CancellationToken cancellationToken)
+    private async Task<bool> HasRoomForAsync(AsyncServiceScope scope,
+                                             HomespoolDbContext dbContext,
+                                             int printerId,
+                                             QueuedPrint head,
+                                             long length,
+                                             PrintFileOnPrinter onPrinter,
+                                             CancellationToken cancellationToken)
     {
         DateTimeOffset now = _timeProvider.GetUtcNow();
 
@@ -749,12 +769,13 @@ public sealed class QueueAdvancer : BackgroundService
                 await commands.AskAsync(printerId, new SendInfo(), head.QueuedByUserId, cancellationToken);
 
             free = answer?.Answer?.Storages?
-                         .FirstOrDefault(storage => storage.MountPoint == "/usb")?
-                         .FreeSpace;
+                .FirstOrDefault(storage => storage.MountPoint == "/usb")?
+                .FreeSpace;
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
-            or CommandResponseTimedOutException or CommandSendTimedOutException or TeamAccessDeniedException
-            or CommandAnswerUnreadableException)
+                                      or CommandResponseTimedOutException or CommandSendTimedOutException or
+                                      TeamAccessDeniedException
+                                      or CommandAnswerUnreadableException)
         {
             // Could not ask. Not a block - the next pass asks again, and treating an unanswered
             // question as "no room" would hold a queue on a printer that was merely busy.
@@ -772,7 +793,7 @@ public sealed class QueueAdvancer : BackgroundService
             if (onPrinter.BlockedReason?.StartsWith(SpaceBlockPrefix, StringComparison.Ordinal) == true)
             {
                 _logger.LogInformation("[{PrinterId}] there is room for {FileName} now; the queue resumes",
-                    printerId, head.PrintFile!.Name);
+                                       printerId, head.PrintFile!.Name);
 
                 onPrinter.BlockedReason = null;
                 onPrinter.BlockedAt = null;
@@ -783,7 +804,7 @@ public sealed class QueueAdvancer : BackgroundService
         }
 
         string reason = string.Create(CultureInfo.InvariantCulture,
-            $"{SpaceBlockPrefix} {head.PrintFile!.Name} needs {length} bytes, {free} free.");
+                                      $"{SpaceBlockPrefix} {head.PrintFile!.Name} needs {length} bytes, {free} free.");
 
         bool newlyBlocked = onPrinter.BlockedReason is null;
 
@@ -821,15 +842,20 @@ public sealed class QueueAdvancer : BackgroundService
     /// (planner.cpp:728), so this tests for the absence of a refusal rather than for a particular
     /// event - the check that would otherwise read a started print as an unrecognised answer.
     /// </remarks>
-    private async Task PrintAsync(AsyncServiceScope scope, HomespoolDbContext dbContext, int printerId,
-        QueuedPrint head, string printerPath, CancellationToken cancellationToken)
+    private async Task PrintAsync(AsyncServiceScope scope,
+                                  HomespoolDbContext dbContext,
+                                  int printerId,
+                                  QueuedPrint head,
+                                  string printerPath,
+                                  CancellationToken cancellationToken)
     {
         PrinterCommandService commands = scope.ServiceProvider.GetRequiredService<PrinterCommandService>();
 
         try
         {
             CommandOutcome? outcome = await commands.SendCommandAsync(printerId,
-                new StartPrint { Path = printerPath }, head.QueuedByUserId, cancellationToken);
+                                                                      new StartPrint { Path = printerPath }, head.QueuedByUserId,
+                                                                      cancellationToken);
 
             if (outcome?.EventType is Events.Rejected or Events.Failed)
             {
@@ -861,7 +887,8 @@ public sealed class QueueAdvancer : BackgroundService
             await dbContext.SaveChangesAsync(cancellationToken);
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
-            or CommandResponseTimedOutException or CommandSendTimedOutException or TeamAccessDeniedException)
+                                      or CommandResponseTimedOutException or CommandSendTimedOutException or
+                                      TeamAccessDeniedException)
         {
             // Transient by nature: the next tick asks again.
             _logger.LogInformation(e, "[{PrinterId}] could not start {Path}", printerId, printerPath);
@@ -891,7 +918,7 @@ public sealed class QueueAdvancer : BackgroundService
         {
             case "File not found":
                 _logger.LogInformation("[{PrinterId}] the drive no longer has {FileName}; sending it again",
-                    printerId, head.PrintFile?.Name);
+                                       printerId, head.PrintFile?.Name);
 
                 dbContext.PrintFilesOnPrinters
                          .Where(row => row.PrinterId == printerId && row.PrintFileId == head.PrintFileId)

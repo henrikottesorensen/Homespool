@@ -83,16 +83,16 @@ public static class ConnectIni
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        string transportNote = options.PrinterTls
-            ? """
-              # custom_cert = 1 makes connect.der, beside this file, the printer's ENTIRE trust store -
-              # replacing the certificates it shipped with rather than adding to them. While that is
-              # set, this printer cannot talk to Prusa Connect. Set custom_cert = 0 to undo it.
-              """
-            : """
-              # tls = False: this printer's token crosses the network in clear, and so does everything
-              # it says afterwards. That is a setting for reading the wire on a network you control.
-              """;
+        string transportNote = options.PrinterTls ?
+            """
+            # custom_cert = 1 makes connect.der, beside this file, the printer's ENTIRE trust store -
+            # replacing the certificates it shipped with rather than adding to them. While that is
+            # set, this printer cannot talk to Prusa Connect. Set custom_cert = 0 to undo it.
+            """ :
+            """
+            # tls = False: this printer's token crosses the network in clear, and so does everything
+            # it says afterwards. That is a setting for reading the wire on a network you control.
+            """;
 
         return $"""
                 # Homespool provisioning. Copy this file to the root of a USB stick - not into a folder,

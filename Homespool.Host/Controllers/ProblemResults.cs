@@ -48,8 +48,11 @@ internal static class ProblemResults
     /// or answered unreadably - the caller reads <c>detail</c> either way and the extensions only add
     /// detail for machines.
     /// </remarks>
-    public static ObjectResult CommandFailure(this ControllerBase controller, int statusCode, string wireName,
-                                              string detail, string? outcome = null)
+    public static ObjectResult CommandFailure(this ControllerBase controller,
+                                              int statusCode,
+                                              string wireName,
+                                              string detail,
+                                              string? outcome = null)
     {
         ProblemDetails problem = controller.ProblemDetailsFactory.CreateProblemDetails(
             controller.HttpContext, statusCode: statusCode, detail: detail);

@@ -72,7 +72,7 @@ public class MessageDispatcher
             InlineRequestDTO request = root.Deserialize<InlineRequestDTO>()!;
 
             _logger.LogDebug("transfer chunk request file_id={FileId} {Start}..{End}",
-                request.FileId, request.Start, request.End);
+                             request.FileId, request.Start, request.End);
 
             return new InboundTransferRequestMessage(receivedAt, request);
         }

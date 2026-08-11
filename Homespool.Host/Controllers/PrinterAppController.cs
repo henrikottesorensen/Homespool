@@ -36,7 +36,8 @@ namespace Homespool.Host.Controllers;
 [ApiController]
 [Route("/api/v1")]
 [Authorize(Policy = Authorisation.Policies.Api)]
-[ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)] // 401 is the auth policy's, not any action's - an unauthenticated caller never reaches one.
+[ProducesResponseType<ProblemDetails>(StatusCodes
+    .Status401Unauthorized)] // 401 is the auth policy's, not any action's - an unauthenticated caller never reaches one.
 public class PrinterAppController : ControllerBase
 {
     private readonly PrusaConnectService _prusaConnectService;
@@ -68,7 +69,8 @@ public class PrinterAppController : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<PrinterReadDTO>> RegisterPrinter([FromBody] RegisterPrinterAppRequestDTO body, CancellationToken cancellationToken)
+    public async Task<ActionResult<PrinterReadDTO>> RegisterPrinter([FromBody] RegisterPrinterAppRequestDTO body,
+                                                                    CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
@@ -101,7 +103,7 @@ public class PrinterAppController : ControllerBase
                 printer.Uuid, user.Id, cancellationToken);
 
             return StatusCode(StatusCodes.Status201Created,
-                claimed is null ? PrinterReadDTO.FromEntity(printer) : PrinterReadDTO.FromEntity(claimed));
+                              claimed is null ? PrinterReadDTO.FromEntity(printer) : PrinterReadDTO.FromEntity(claimed));
         }
         catch (PrinterNotFoundException)
         {
@@ -154,7 +156,8 @@ public class PrinterAppController : ControllerBase
             return Forbid();
         }
 
-        IReadOnlyList<PrinterWithState> printers = await _printerQueryService.ListPrintersWithStateForUserAsync(user.Id, cancellationToken);
+        IReadOnlyList<PrinterWithState> printers =
+            await _printerQueryService.ListPrintersWithStateForUserAsync(user.Id, cancellationToken);
 
         return Ok(printers.Select(PrinterReadDTO.FromEntity).ToList());
     }
@@ -189,7 +192,9 @@ public class PrinterAppController : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<PrinterReadDTO>> PatchPrinter(Guid uuid, [FromBody] PrinterPatchInputDTO body, CancellationToken cancellationToken)
+    public async Task<ActionResult<PrinterReadDTO>> PatchPrinter(Guid uuid,
+                                                                 [FromBody] PrinterPatchInputDTO body,
+                                                                 CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
@@ -202,7 +207,8 @@ public class PrinterAppController : ControllerBase
 
         try
         {
-            PrinterWithState? printer = await _printerQueryService.UpdatePrinterAsync(uuid, user.Id, body.Name, body.Location, cancellationToken);
+            PrinterWithState? printer =
+                await _printerQueryService.UpdatePrinterAsync(uuid, user.Id, body.Name, body.Location, cancellationToken);
 
             if (printer is null)
             {

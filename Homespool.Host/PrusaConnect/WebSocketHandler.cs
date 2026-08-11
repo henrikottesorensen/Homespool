@@ -50,7 +50,10 @@ public class WebSocketHandler
     /// <c>virtual</c> only so tests can substitute an end for the read loop - throwing, or returning
     /// - without a socket to produce one. Same seam as <c>RecordingMessageDispatcher</c>'s.
     /// </remarks>
-    public virtual async Task HandlePrusaWebsocket(PipeReader input, int printerId, IPrinterConnectionActor actor, CancellationToken cancellationToken)
+    public virtual async Task HandlePrusaWebsocket(PipeReader input,
+                                                   int printerId,
+                                                   IPrinterConnectionActor actor,
+                                                   CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {

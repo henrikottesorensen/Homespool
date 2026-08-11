@@ -6,8 +6,9 @@ namespace Homespool.Host.Queue;
 /// <param name="FileName">Its name, for logs and for matching the printer's <c>FILE_INFO</c>.</param>
 /// <param name="FileHasArrived">Whether the bytes are believed to be on the drive.</param>
 /// <param name="PrinterPath">What the printer calls it, once a <c>FILE_INFO</c> has said.</param>
-public sealed record QueueHead(long QueuedPrintId,
-                               long PrintFileId,
-                               string FileName,
-                               bool FileHasArrived,
-                               string? PrinterPath);
+public sealed record QueueHead(
+    long QueuedPrintId,
+    long PrintFileId,
+    string FileName,
+    bool FileHasArrived,
+    string? PrinterPath);

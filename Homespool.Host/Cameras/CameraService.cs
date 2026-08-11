@@ -43,15 +43,14 @@ public class CameraService
     private readonly LocalCameraDevices _devices;
     private readonly TimeProvider _timeProvider;
 
-    public CameraService(
-        HomespoolDbContext dbContext,
-        CameraAccessService access,
-        CameraSourcePolicy sourcePolicy,
-        Go2RtcClient streamServer,
-        ICameraSnapshotFetcher fetcher,
-        CameraFrameCache frames,
-        LocalCameraDevices devices,
-        TimeProvider timeProvider)
+    public CameraService(HomespoolDbContext dbContext,
+                         CameraAccessService access,
+                         CameraSourcePolicy sourcePolicy,
+                         Go2RtcClient streamServer,
+                         ICameraSnapshotFetcher fetcher,
+                         CameraFrameCache frames,
+                         LocalCameraDevices devices,
+                         TimeProvider timeProvider)
     {
         _dbContext = dbContext;
         _access = access;
@@ -75,26 +74,24 @@ public class CameraService
     public async Task<IReadOnlyList<LocalCameraDevice>> AvailableDevicesAsync(CancellationToken cancellationToken)
     {
         List<string> claimed = await _dbContext.Cameras
-            .Select(camera => camera.Source)
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+                                               .Select(camera => camera.Source)
+                                               .ToListAsync(cancellationToken)
+                                               .ConfigureAwait(false);
 
         return _devices.List()
-                       .Where(device => !claimed.Any(
-                           source => source.Contains(device.Name, StringComparison.Ordinal)))
+                       .Where(device => !claimed.Any(source => source.Contains(device.Name, StringComparison.Ordinal)))
                        .ToList();
     }
 
     /// <summary>
     /// Adds a camera, registers it, and finds out whether it actually produces a picture.
     /// </summary>
-    public async Task<CameraSaveOutcome> CreateAsync(
-        long userId,
-        int teamId,
-        string? name,
-        string source,
-        int? printerId,
-        CancellationToken cancellationToken)
+    public async Task<CameraSaveOutcome> CreateAsync(long userId,
+                                                     int teamId,
+                                                     string? name,
+                                                     string source,
+                                                     int? printerId,
+                                                     CancellationToken cancellationToken)
     {
         CameraSaveOutcome? refusal = await CheckPermittedAsync(userId, teamId, source, cancellationToken)
             .ConfigureAwait(false);
@@ -132,17 +129,16 @@ public class CameraService
     /// <summary>
     /// Changes a camera. Re-registers it, and forgets any frame from the old source.
     /// </summary>
-    public async Task<CameraSaveOutcome> UpdateAsync(
-        long userId,
-        Guid uuid,
-        string? name,
-        string source,
-        int? printerId,
-        CancellationToken cancellationToken)
+    public async Task<CameraSaveOutcome> UpdateAsync(long userId,
+                                                     Guid uuid,
+                                                     string? name,
+                                                     string source,
+                                                     int? printerId,
+                                                     CancellationToken cancellationToken)
     {
         Camera? camera = await _access
-            .FindAsync(uuid, userId, CameraOperation.ManageCamera, cancellationToken)
-            .ConfigureAwait(false);
+                               .FindAsync(uuid, userId, CameraOperation.ManageCamera, cancellationToken)
+                               .ConfigureAwait(false);
 
         if (camera is null)
         {
@@ -183,8 +179,8 @@ public class CameraService
     public async Task<bool> DeleteAsync(long userId, Guid uuid, CancellationToken cancellationToken)
     {
         Camera? camera = await _access
-            .FindAsync(uuid, userId, CameraOperation.ManageCamera, cancellationToken)
-            .ConfigureAwait(false);
+                               .FindAsync(uuid, userId, CameraOperation.ManageCamera, cancellationToken)
+                               .ConfigureAwait(false);
 
         if (camera is null)
         {
@@ -212,29 +208,32 @@ public class CameraService
     /// Whether this account may put <paramref name="source"/> on a camera owned by this team, or
     /// the refusal to show them.
     /// </summary>
-    private async Task<CameraSaveOutcome?> CheckPermittedAsync(
-        long userId, int teamId, string source, CancellationToken cancellationToken)
+    private async Task<CameraSaveOutcome?> CheckPermittedAsync(long userId,
+                                                               int teamId,
+                                                               string source,
+                                                               CancellationToken cancellationToken)
     {
         if (CameraSourcePolicy.IsLocalDevice(source))
         {
             bool isAdministrator = await _access.IsAdministratorAsync(userId, cancellationToken)
                                                 .ConfigureAwait(false);
 
-            return isAdministrator
-                ? null
-                : CameraSaveOutcome.Refused(
+            return isAdministrator ?
+                null :
+                CameraSaveOutcome.Refused(
                     "A camera plugged into this server can only be set up by an administrator. "
                     + "A camera reachable over the network does not need one.");
         }
 
         TeamMember? membership = await _dbContext.TeamMembers
-            .FirstOrDefaultAsync(
-                member => member.TeamId == teamId && member.UserId == userId, cancellationToken)
-            .ConfigureAwait(false);
+                                                 .FirstOrDefaultAsync(
+                                                     member => member.TeamId == teamId && member.UserId == userId,
+                                                     cancellationToken)
+                                                 .ConfigureAwait(false);
 
-        return membership is not null && membership.CanManage
-            ? null
-            : CameraSaveOutcome.Refused("You cannot add a camera to that team.");
+        return membership is not null && membership.CanManage ?
+            null :
+            CameraSaveOutcome.Refused("You cannot add a camera to that team.");
     }
 
     /// <summary>
@@ -249,8 +248,8 @@ public class CameraService
     private async Task<CameraSaveOutcome> RegisterAndProveAsync(Camera camera, CancellationToken cancellationToken)
     {
         bool registered = await _streamServer
-            .PutStreamAsync(camera.Uuid, camera.Source, cancellationToken)
-            .ConfigureAwait(false);
+                                .PutStreamAsync(camera.Uuid, camera.Source, cancellationToken)
+                                .ConfigureAwait(false);
 
         if (!registered)
         {
@@ -261,8 +260,8 @@ public class CameraService
         }
 
         CameraFrame? frame = await _fetcher
-            .FetchAsync(_streamServer.FrameUrl(camera.Uuid), cancellationToken)
-            .ConfigureAwait(false);
+                                   .FetchAsync(_streamServer.FrameUrl(camera.Uuid), cancellationToken)
+                                   .ConfigureAwait(false);
 
         if (frame is not null)
         {
@@ -274,11 +273,11 @@ public class CameraService
         // usually a device the stream server cannot open.
         return CameraSaveOutcome.Silent(
             camera,
-            CameraSourcePolicy.IsLocalDevice(camera.Source)
-                ? "Saved, but no picture came back. The stream server may not have access to this "
-                  + "camera: check that the go2rtc service in compose.yaml can reach video devices, "
-                  + "and that nothing else on this machine is already using it."
-                : "Saved, but no picture came back yet. If the camera is switched on and reachable, "
-                  + "try the page again in a moment - some cameras take a few seconds to answer.");
+            CameraSourcePolicy.IsLocalDevice(camera.Source) ?
+                "Saved, but no picture came back. The stream server may not have access to this "
+                + "camera: check that the go2rtc service in compose.yaml can reach video devices, "
+                + "and that nothing else on this machine is already using it." :
+                "Saved, but no picture came back yet. If the camera is switched on and reachable, "
+                + "try the page again in a moment - some cameras take a few seconds to answer.");
     }
 }

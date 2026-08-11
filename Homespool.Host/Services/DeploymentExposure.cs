@@ -64,15 +64,15 @@ public static class DeploymentExposure
         if (reachableFromOutside.Length == 0)
         {
             return new(ExposureState.Ok,
-                "Printers reach this server over plain HTTP, at an address only your own network can reach.");
+                       "Printers reach this server over plain HTTP, at an address only your own network can reach.");
         }
 
         return new(ExposureState.PrinterTokensCrossThePublicInternet,
-            $"Printers are told to reach this server at {printerHost.Trim()} over plain HTTP, and that address is "
-            + $"reachable from the internet ({string.Join(", ", reachableFromOutside.AsEnumerable())}). Every printer's "
-            + "token crosses the internet in clear text, in both directions, and a token identifies a printer "
-            + "permanently. Set PrusaConnect:PrinterTls to true, restart, and issue new provisioning bundles - the "
-            + "ones already handed out say tls = False.");
+                   $"Printers are told to reach this server at {printerHost.Trim()} over plain HTTP, and that address is "
+                   + $"reachable from the internet ({string.Join(", ", reachableFromOutside.AsEnumerable())}). Every printer's "
+                   + "token crosses the internet in clear text, in both directions, and a token identifies a printer "
+                   + "permanently. Set PrusaConnect:PrinterTls to true, restart, and issue new provisioning bundles - the "
+                   + "ones already handed out say tls = False.");
     }
 
     /// <summary>
@@ -113,9 +113,9 @@ public static class DeploymentExposure
         IPAddress readable = client.IsIPv4MappedToIPv6 ? client.MapToIPv4() : client;
 
         return new(ExposureState.SessionInClear,
-            $"You are signed in over plain HTTP, from {readable}. Your session cookie - and anything you type, "
-            + "including passwords - crosses the network readable by anyone on the path. Put the shipped proxy back "
-            + "in front of this server, or set Listeners:UserHttpsPort so it terminates TLS itself.");
+                   $"You are signed in over plain HTTP, from {readable}. Your session cookie - and anything you type, "
+                   + "including passwords - crosses the network readable by anyone on the path. Put the shipped proxy back "
+                   + "in front of this server, or set Listeners:UserHttpsPort so it terminates TLS itself.");
     }
 
     /// <summary>

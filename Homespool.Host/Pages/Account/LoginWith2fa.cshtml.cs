@@ -1,5 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
+
 #nullable disable
 
 using System;
@@ -7,6 +8,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
 
 using Homespool.Model.Entities;
+
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -81,7 +83,7 @@ public class LoginWith2faModel : PageModel
         }
 
         string authenticatorCode = Input.TwoFactorCode.Replace(" ", string.Empty, StringComparison.Ordinal)
-                                                      .Replace("-", string.Empty, StringComparison.Ordinal);
+                                        .Replace("-", string.Empty, StringComparison.Ordinal);
 
         Microsoft.AspNetCore.Identity.SignInResult result =
             await _signInManager.TwoFactorAuthenticatorSignInAsync(authenticatorCode, rememberMe, Input.RememberMachine);

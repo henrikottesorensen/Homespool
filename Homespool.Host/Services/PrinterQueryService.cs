@@ -25,6 +25,7 @@ public class PrinterQueryService
     /// <summary>Rows shown on the printer detail page - a display choice, not a protocol knob, so
     /// fixed constants rather than a config option.</summary>
     private const int RecentSampleCount = 50;
+
     private const int RecentEventCount = 20;
 
     private readonly HomespoolDbContext _dbContext;
@@ -62,17 +63,19 @@ public class PrinterQueryService
     /// entity. Anything reporting a printer's state to a caller has to join to that, which is what
     /// this exists for. Null live state means the printer has never connected.
     /// </remarks>
-    public async Task<IReadOnlyList<PrinterWithState>> ListPrintersWithStateForUserAsync(long userId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<PrinterWithState>> ListPrintersWithStateForUserAsync(
+        long userId,
+        CancellationToken cancellationToken)
     {
         return await _dbContext.Printers
                                .AsNoTracking()
                                .Where(p => _dbContext.TeamMembers.Any(m => m.TeamId == p.TeamId && m.UserId == userId && m.CanRead))
                                .OrderBy(p => p.Id)
                                .Select(p => new PrinterWithState(
-                                   p,
-                                   _dbContext.PrinterLiveStates.SingleOrDefault(s => s.PrinterId == p.Id),
-                                   _dbContext.TeamMembers.SingleOrDefault(m => m.TeamId == p.TeamId && m.UserId == userId),
-                                   _dbContext.Teams.SingleOrDefault(t => t.Id == p.TeamId)))
+                                           p,
+                                           _dbContext.PrinterLiveStates.SingleOrDefault(s => s.PrinterId == p.Id),
+                                           _dbContext.TeamMembers.SingleOrDefault(m => m.TeamId == p.TeamId && m.UserId == userId),
+                                           _dbContext.Teams.SingleOrDefault(t => t.Id == p.TeamId)))
                                .ToListAsync(cancellationToken);
     }
 
@@ -88,10 +91,10 @@ public class PrinterQueryService
                          .Where(p => p.Uuid == uuid &&
                                      _dbContext.TeamMembers.Any(m => m.TeamId == p.TeamId && m.UserId == userId && m.CanRead))
                          .Select(p => new PrinterWithState(
-                             p,
-                             _dbContext.PrinterLiveStates.SingleOrDefault(s => s.PrinterId == p.Id),
-                             _dbContext.TeamMembers.SingleOrDefault(m => m.TeamId == p.TeamId && m.UserId == userId),
-                             _dbContext.Teams.SingleOrDefault(t => t.Id == p.TeamId)))
+                                     p,
+                                     _dbContext.PrinterLiveStates.SingleOrDefault(s => s.PrinterId == p.Id),
+                                     _dbContext.TeamMembers.SingleOrDefault(m => m.TeamId == p.TeamId && m.UserId == userId),
+                                     _dbContext.Teams.SingleOrDefault(t => t.Id == p.TeamId)))
                          .SingleOrDefaultAsync(cancellationToken);
     }
 
@@ -122,7 +125,11 @@ public class PrinterQueryService
     /// next <c>GET</c> will - a PATCH answering <c>UNKNOWN</c> while a GET one second later says
     /// <c>PRINTING</c> would look like the edit had reset something.
     /// </remarks>
-    public async Task<PrinterWithState?> UpdatePrinterAsync(Guid uuid, long userId, string? name, string? location, CancellationToken cancellationToken)
+    public async Task<PrinterWithState?> UpdatePrinterAsync(Guid uuid,
+                                                            long userId,
+                                                            string? name,
+                                                            string? location,
+                                                            CancellationToken cancellationToken)
     {
         // Two questions, two refusal shapes, and the order matters: a caller who cannot even read
         // this printer gets null, because saying "forbidden" would confirm the UUID exists. One who
@@ -144,18 +151,19 @@ public class PrinterQueryService
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         PrinterLiveState? liveState = await _dbContext.PrinterLiveStates
-            .AsNoTracking()
-            .SingleOrDefaultAsync(s => s.PrinterId == printer.Id, cancellationToken);
+                                                      .AsNoTracking()
+                                                      .SingleOrDefaultAsync(s => s.PrinterId == printer.Id, cancellationToken);
 
         Team? team = await _dbContext.Teams
-            .AsNoTracking()
-            .SingleOrDefaultAsync(t => t.Id == printer.TeamId, cancellationToken);
+                                     .AsNoTracking()
+                                     .SingleOrDefaultAsync(t => t.Id == printer.TeamId, cancellationToken);
 
         // The DTO carries the caller's own permissions, so the membership is data here rather than a
         // check - the checks above have already run.
         TeamMember? membership = await _dbContext.TeamMembers
-            .AsNoTracking()
-            .SingleOrDefaultAsync(m => m.TeamId == printer.TeamId && m.UserId == userId, cancellationToken);
+                                                 .AsNoTracking()
+                                                 .SingleOrDefaultAsync(m => m.TeamId == printer.TeamId && m.UserId == userId,
+                                                                       cancellationToken);
 
         return new PrinterWithState(printer, liveState, membership, team);
     }
@@ -165,14 +173,17 @@ public class PrinterQueryService
     /// "doesn't exist or caller can't even read it" rule as <see cref="GetPrinterForUserAsync"/> -
     /// both cases return <c>null</c> so a 404 never confirms a UUID belongs to someone else's team.
     /// </summary>
-    public async Task<PrinterStatistics?> GetPrinterStatisticsForUserAsync(Guid uuid, long userId, CancellationToken cancellationToken)
+    public async Task<PrinterStatistics?> GetPrinterStatisticsForUserAsync(Guid uuid,
+                                                                           long userId,
+                                                                           CancellationToken cancellationToken)
     {
         Printer? printer = await _dbContext.Printers
-            .AsNoTracking()
-            .Include(p => p.Team)
-            .SingleOrDefaultAsync(p => p.Uuid == uuid &&
-                                       _dbContext.TeamMembers.Any(m => m.TeamId == p.TeamId && m.UserId == userId && m.CanRead),
-                                  cancellationToken);
+                                           .AsNoTracking()
+                                           .Include(p => p.Team)
+                                           .SingleOrDefaultAsync(p => p.Uuid == uuid &&
+                                                                      _dbContext.TeamMembers.Any(m => m.TeamId == p.TeamId &&
+                                                                          m.UserId == userId && m.CanRead),
+                                                                 cancellationToken);
 
         if (printer is null)
         {
@@ -180,22 +191,22 @@ public class PrinterQueryService
         }
 
         PrinterLiveState? liveState = await _dbContext.PrinterLiveStates
-            .AsNoTracking()
-            .SingleOrDefaultAsync(s => s.PrinterId == printer.Id, cancellationToken);
+                                                      .AsNoTracking()
+                                                      .SingleOrDefaultAsync(s => s.PrinterId == printer.Id, cancellationToken);
 
         List<TelemetrySample> samples = await _dbContext.TelemetrySamples
-            .AsNoTracking()
-            .Where(s => s.PrinterId == printer.Id)
-            .OrderByDescending(s => s.Timestamp)
-            .Take(RecentSampleCount)
-            .ToListAsync(cancellationToken);
+                                                        .AsNoTracking()
+                                                        .Where(s => s.PrinterId == printer.Id)
+                                                        .OrderByDescending(s => s.Timestamp)
+                                                        .Take(RecentSampleCount)
+                                                        .ToListAsync(cancellationToken);
 
         List<PrinterEvent> events = await _dbContext.PrinterEvents
-            .AsNoTracking()
-            .Where(e => e.PrinterId == printer.Id)
-            .OrderByDescending(e => e.Timestamp)
-            .Take(RecentEventCount)
-            .ToListAsync(cancellationToken);
+                                                    .AsNoTracking()
+                                                    .Where(e => e.PrinterId == printer.Id)
+                                                    .OrderByDescending(e => e.Timestamp)
+                                                    .Take(RecentEventCount)
+                                                    .ToListAsync(cancellationToken);
 
         return new PrinterStatistics(printer, liveState, samples, events);
     }
@@ -209,7 +220,11 @@ public class PrinterQueryService
 /// per-request rather than per-printer. Null only where a caller mapped a printer without asking on
 /// whose behalf, which the queries here never do.
 /// </remarks>
-public sealed record PrinterWithState(Printer Printer, PrinterLiveState? LiveState, TeamMember? Membership = null, Team? Team = null);
+public sealed record PrinterWithState(
+    Printer Printer,
+    PrinterLiveState? LiveState,
+    TeamMember? Membership = null,
+    Team? Team = null);
 
 /// <summary>Result of <see cref="PrinterQueryService.GetPrinterStatisticsForUserAsync"/> - a
 /// printer's live state plus recent history, newest first.</summary>

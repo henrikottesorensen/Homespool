@@ -100,10 +100,10 @@ public sealed class UserCultures
     public async Task<string?> ForUserAsync(long userId, CancellationToken cancellationToken)
     {
         string? stored = await _context.Users
-            .Where(user => user.Id == userId)
-            .Select(user => user.Language)
-            .FirstOrDefaultAsync(cancellationToken)
-            .ConfigureAwait(false);
+                                       .Where(user => user.Id == userId)
+                                       .Select(user => user.Language)
+                                       .FirstOrDefaultAsync(cancellationToken)
+                                       .ConfigureAwait(false);
 
         return SupportedLanguages.Resolve(stored);
     }
@@ -123,10 +123,10 @@ public sealed class UserCultures
         string normalised = emailAddress.ToUpperInvariant();
 
         string? stored = await _context.Users
-            .Where(user => user.NormalizedEmail == normalised)
-            .Select(user => user.Language)
-            .FirstOrDefaultAsync(cancellationToken)
-            .ConfigureAwait(false);
+                                       .Where(user => user.NormalizedEmail == normalised)
+                                       .Select(user => user.Language)
+                                       .FirstOrDefaultAsync(cancellationToken)
+                                       .ConfigureAwait(false);
 
         return SupportedLanguages.Resolve(stored);
     }

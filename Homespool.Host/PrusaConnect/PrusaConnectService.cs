@@ -28,12 +28,12 @@ public class PrusaConnectService
     private readonly PrusaConnectOptions _options;
 
     public PrusaConnectService(HomespoolDbContext dbContext,
-                          CodeGenerator codeGenerator,
-                          TokenService tokenService,
-                          TeamService teamService,
-                          TimeProvider timeProvider,
-                          ILogger<PrusaConnectService> logger,
-                          IOptions<PrusaConnectOptions> options)
+                               CodeGenerator codeGenerator,
+                               TokenService tokenService,
+                               TeamService teamService,
+                               TimeProvider timeProvider,
+                               ILogger<PrusaConnectService> logger,
+                               IOptions<PrusaConnectOptions> options)
     {
         _dbContext = dbContext;
         _codeGenerator = codeGenerator;
@@ -65,7 +65,7 @@ public class PrusaConnectService
         DateTimeOffset now = _timeProvider.GetUtcNow();
         DateTimeOffset codeExpiry = now + _options.RegistrationCodeLifetime;
         PrusaConnectRegistration? registration = await _dbContext.PrusaConnectRegistrations
-            .SingleOrDefaultAsync(a => a.FingerPrint == printer.FingerPrint);
+                                                                 .SingleOrDefaultAsync(a => a.FingerPrint == printer.FingerPrint);
 
         bool registered = false;
         bool renewed = false;
@@ -99,7 +99,8 @@ public class PrusaConnectService
         {
             _logger.LogInformation("PrusaConnect printer {SerialNumber} ({PrinterType}, firmware {Firmware}) "
                                    + "registered as {RegistrationId}; Connect code issued, expiring {CodeExpiry:o}.",
-                                   printer.SerialNumber, printer.PrinterType, printer.Firmware, registration.Id, registration.TemporaryCodeExpiry);
+                                   printer.SerialNumber, printer.PrinterType, printer.Firmware, registration.Id,
+                                   registration.TemporaryCodeExpiry);
         }
         else if (renewed)
         {
@@ -170,7 +171,7 @@ public class PrusaConnectService
         string token = _tokenService.GenerateToken();
 
         await MaterialiseEnrolledCredentialAsync(registration.PrinterId.Value, registration.FingerPrint,
-            _tokenService.HashToken(token), now);
+                                                 _tokenService.HashToken(token), now);
 
         // The handshake this registration belonged to is over. Removing it - rather than leaving a
         // spent row - is what makes the code single-use: a replay finds nothing and is a 404, and it
@@ -192,7 +193,7 @@ public class PrusaConnectService
     private Task<PrusaConnectRegistration?> FindActiveRegistrationAsync(string temporaryCode, DateTimeOffset now)
     {
         return _dbContext.PrusaConnectRegistrations
-            .SingleOrDefaultAsync(a => a.TemporaryCode == temporaryCode && a.TemporaryCodeExpiry > now);
+                         .SingleOrDefaultAsync(a => a.TemporaryCode == temporaryCode && a.TemporaryCodeExpiry > now);
     }
 
     /// <summary>
@@ -206,12 +207,15 @@ public class PrusaConnectService
     /// recorded, but the key is derived from it: keying on the long form left the credential
     /// unreachable, since no later request ever carries it (see <see cref="PrinterFingerprint"/>).
     /// </remarks>
-    private async Task MaterialiseEnrolledCredentialAsync(int printerId, string fullFingerPrint, string hashedToken, DateTimeOffset now)
+    private async Task MaterialiseEnrolledCredentialAsync(int printerId,
+                                                          string fullFingerPrint,
+                                                          string hashedToken,
+                                                          DateTimeOffset now)
     {
         string key = PrinterFingerprint.Key(fullFingerPrint);
 
         PrusaConnectAuthenticationData? existing = await _dbContext.PrusaConnectAuthentication
-            .SingleOrDefaultAsync(a => a.FingerPrintKey == key);
+                                                                   .SingleOrDefaultAsync(a => a.FingerPrintKey == key);
 
         if (existing is null)
         {
@@ -287,7 +291,7 @@ public class PrusaConnectService
         await _dbContext.SaveChangesAsync();
 
         _logger.LogInformation("PrusaConnect registration {RegistrationId} claimed as printer {PrinterUuid} in team {TeamId}.",
-            registration.Id, printer.Uuid, resolvedTeamId);
+                               registration.Id, printer.Uuid, resolvedTeamId);
 
         return printer;
     }
@@ -302,8 +306,8 @@ public class PrusaConnectService
         string key = PrinterFingerprint.Key(fullFingerPrint);
 
         PrusaConnectAuthenticationData? existing = await _dbContext.PrusaConnectAuthentication
-            .Include(a => a.Printer)
-            .SingleOrDefaultAsync(a => a.FingerPrintKey == key);
+                                                                   .Include(a => a.Printer)
+                                                                   .SingleOrDefaultAsync(a => a.FingerPrintKey == key);
 
         return existing?.Printer;
     }
@@ -326,7 +330,9 @@ public class PrusaConnectService
     /// unclaimed. A refused claim leaves the pending row for someone who does hold the permission.
     /// </para>
     /// </remarks>
-    private async Task<Printer> LinkClaimToEnrolledPrinterAsync(PrusaConnectRegistration registration, Printer enrolled, long userId)
+    private async Task<Printer> LinkClaimToEnrolledPrinterAsync(PrusaConnectRegistration registration,
+                                                                Printer enrolled,
+                                                                long userId)
     {
         await RequireManageAsync(enrolled.TeamId, userId);
 
@@ -336,7 +342,7 @@ public class PrusaConnectService
 
         _logger.LogInformation("PrusaConnect registration {RegistrationId} claimed for already-enrolled printer {PrinterUuid}; "
                                + "its credential will be replaced when the printer next polls.",
-            registration.Id, enrolled.Uuid);
+                               registration.Id, enrolled.Uuid);
 
         return enrolled;
     }
@@ -348,7 +354,10 @@ public class PrusaConnectService
     /// the snippet. The printer never touches <c>/p/register</c>; it presents this token on its first
     /// request and the auth handler binds and promotes it there.
     /// </summary>
-    public async Task<(Printer printer, string token)> ProvisionPrinterAsync(string? name, string? location, int? teamId, long userId)
+    public async Task<(Printer printer, string token)> ProvisionPrinterAsync(string? name,
+                                                                             string? location,
+                                                                             int? teamId,
+                                                                             long userId)
     {
         DateTimeOffset now = _timeProvider.GetUtcNow();
 
@@ -370,7 +379,7 @@ public class PrusaConnectService
         await _dbContext.SaveChangesAsync();
 
         _logger.LogInformation("Printer {PrinterUuid} provisioned with a USB-key token in team {TeamId}.",
-            printer.Uuid, resolvedTeamId);
+                               printer.Uuid, resolvedTeamId);
 
         return (printer, token);
     }
@@ -413,7 +422,7 @@ public class PrusaConnectService
         await RequireManageAsync(printer.TeamId, userId);
 
         PrusaConnectProvisioning? provisioning = await _dbContext.PrusaConnectProvisionings
-            .SingleOrDefaultAsync(p => p.PrinterId == printerId);
+                                                                 .SingleOrDefaultAsync(p => p.PrinterId == printerId);
 
         string token = _tokenService.GenerateToken();
 
@@ -455,17 +464,18 @@ public class PrusaConnectService
     /// through the code exchange but not yet polled by its own printer appears in neither set - there
     /// is nothing to show or act on for it here, only "waiting for the printer to connect".
     /// </summary>
-    public async Task<PrinterEnrolmentStatus> GetEnrolmentStatusAsync(IReadOnlyCollection<int> printerIds, CancellationToken cancellationToken)
+    public async Task<PrinterEnrolmentStatus> GetEnrolmentStatusAsync(IReadOnlyCollection<int> printerIds,
+                                                                      CancellationToken cancellationToken)
     {
         HashSet<int> enrolled = (await _dbContext.PrusaConnectAuthentication
-            .Where(a => printerIds.Contains(a.PrinterId))
-            .Select(a => a.PrinterId)
-            .ToListAsync(cancellationToken)).ToHashSet();
+                                                 .Where(a => printerIds.Contains(a.PrinterId))
+                                                 .Select(a => a.PrinterId)
+                                                 .ToListAsync(cancellationToken)).ToHashSet();
 
         HashSet<int> awaitingProvisioning = (await _dbContext.PrusaConnectProvisionings
-            .Where(p => printerIds.Contains(p.PrinterId))
-            .Select(p => p.PrinterId)
-            .ToListAsync(cancellationToken)).ToHashSet();
+                                                             .Where(p => printerIds.Contains(p.PrinterId))
+                                                             .Select(p => p.PrinterId)
+                                                             .ToListAsync(cancellationToken)).ToHashSet();
 
         return new PrinterEnrolmentStatus(enrolled, awaitingProvisioning);
     }

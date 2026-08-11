@@ -25,8 +25,8 @@ public static class TeamOptionSelectListBuilder
     public static IReadOnlyList<SelectListItem> BuildManageableOptions(IReadOnlyList<TeamMember> memberships)
     {
         return memberships
-            .Where(m => m.CanManage)
-            .Select(m => new SelectListItem(m.Team?.Name ?? $"Team #{m.TeamId}", m.TeamId.ToString(), m.IsDefault))
-            .ToList();
+               .Where(m => m.CanManage)
+               .Select(m => new SelectListItem(m.Team?.Name ?? $"Team #{m.TeamId}", m.TeamId.ToString(), m.IsDefault))
+               .ToList();
     }
 }

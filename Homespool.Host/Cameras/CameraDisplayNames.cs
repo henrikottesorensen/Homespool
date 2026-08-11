@@ -49,8 +49,8 @@ public sealed class CameraDisplayNames
         ArgumentNullException.ThrowIfNull(camera);
 
         return camera.Name
-            ?? _devices.DescribeSource(camera.Source)
-            ?? lastResort
-            ?? camera.Uuid.ToString();
+               ?? _devices.DescribeSource(camera.Source)
+               ?? lastResort
+               ?? camera.Uuid.ToString();
     }
 }

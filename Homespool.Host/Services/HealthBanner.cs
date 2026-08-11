@@ -33,10 +33,10 @@ public static class HealthBanner
         // Each item's text is the check's own description, not a rewording of it. Those are already
         // written as sentences for whoever gets paged, and a second phrasing here would drift.
         return report.Entries
-            .Where(entry => entry.Value.Status != HealthStatus.Healthy)
-            .Select(entry => new HealthBannerItem(
-                entry.Value.Description ?? $"{entry.Key} is {entry.Value.Status}.",
-                entry.Value.Status == HealthStatus.Unhealthy ? "alert-danger" : "alert-warning"))
-            .ToList();
+                     .Where(entry => entry.Value.Status != HealthStatus.Healthy)
+                     .Select(entry => new HealthBannerItem(
+                                 entry.Value.Description ?? $"{entry.Key} is {entry.Value.Status}.",
+                                 entry.Value.Status == HealthStatus.Unhealthy ? "alert-danger" : "alert-warning"))
+                     .ToList();
     }
 }

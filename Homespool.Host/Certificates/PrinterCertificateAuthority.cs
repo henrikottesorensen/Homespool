@@ -107,13 +107,13 @@ public class PrinterCertificateAuthority
         _options = options.Value;
         _time = time;
         _logger = logger;
-        _directory = Path.IsPathRooted(_options.Directory)
-            ? _options.Directory
-            : Path.Combine(environment.ContentRootPath, _options.Directory);
+        _directory = Path.IsPathRooted(_options.Directory) ?
+            _options.Directory :
+            Path.Combine(environment.ContentRootPath, _options.Directory);
 
-        _proxyDirectory = Path.IsPathRooted(_options.ProxyDirectory)
-            ? _options.ProxyDirectory
-            : Path.Combine(environment.ContentRootPath, _options.ProxyDirectory);
+        _proxyDirectory = Path.IsPathRooted(_options.ProxyDirectory) ?
+            _options.ProxyDirectory :
+            Path.Combine(environment.ContentRootPath, _options.ProxyDirectory);
     }
 
     /// <summary>Path of the DER-encoded authority, which is what goes on the USB stick.</summary>
@@ -182,9 +182,10 @@ public class PrinterCertificateAuthority
         CertificateRequest request = new($"CN={_options.AuthorityName}", key, HashAlgorithmName.SHA256);
 
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(
-            certificateAuthority: true, hasPathLengthConstraint: true, pathLengthConstraint: 0, critical: true));
+                                              certificateAuthority: true, hasPathLengthConstraint: true, pathLengthConstraint: 0,
+                                              critical: true));
         request.CertificateExtensions.Add(new X509KeyUsageExtension(
-            X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, critical: true));
+                                              X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, critical: true));
         request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, critical: false));
 
         DateTimeOffset now = _time.GetUtcNow();
@@ -312,9 +313,9 @@ public class PrinterCertificateAuthority
     /// </remarks>
     public X509Certificate2? LoadLeafIfIssued()
     {
-        return File.Exists(LeafPath)
-            ? X509CertificateLoader.LoadPkcs12FromFile(LeafPath, null, X509KeyStorageFlags.Exportable)
-            : null;
+        return File.Exists(LeafPath) ?
+            X509CertificateLoader.LoadPkcs12FromFile(LeafPath, null, X509KeyStorageFlags.Exportable) :
+            null;
     }
 
     /// <summary>
@@ -350,13 +351,14 @@ public class PrinterCertificateAuthority
         CertificateRequest request = new($"CN={distinct[0]}", key, HashAlgorithmName.SHA256);
 
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(
-            certificateAuthority: false, hasPathLengthConstraint: false, pathLengthConstraint: 0, critical: true));
+                                              certificateAuthority: false, hasPathLengthConstraint: false, pathLengthConstraint: 0,
+                                              critical: true));
 
         // DigitalSignature is what ECDHE_ECDSA needs; the firmware negotiates nothing else.
         request.CertificateExtensions.Add(new X509KeyUsageExtension(
-            X509KeyUsageFlags.DigitalSignature, critical: true));
+                                              X509KeyUsageFlags.DigitalSignature, critical: true));
         request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
-            [new Oid("1.3.6.1.5.5.7.3.1")], critical: false));   // serverAuth
+                                              [new Oid("1.3.6.1.5.5.7.3.1")], critical: false)); // serverAuth
 
         SubjectAlternativeNameBuilder subjectNames = new();
 
@@ -436,8 +438,8 @@ public class PrinterCertificateAuthority
         {
             File.SetUnixFileMode(path,
                                  UnixFileMode.UserRead | UnixFileMode.UserWrite
-                               | UnixFileMode.GroupRead
-                               | UnixFileMode.OtherRead);
+                                                       | UnixFileMode.GroupRead
+                                                       | UnixFileMode.OtherRead);
         }
     }
 }

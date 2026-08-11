@@ -1,5 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
+
 #nullable disable
 
 using System.ComponentModel.DataAnnotations;
@@ -8,6 +9,7 @@ using System.Threading.Tasks;
 
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
+
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -24,12 +26,11 @@ public class ChangePasswordModel : PageModel
     private readonly UnitOfWork _unitOfWork;
     private readonly ILogger<ChangePasswordModel> _logger;
 
-    public ChangePasswordModel(
-        UserManager<HSUser> userManager,
-        SignInManager<HSUser> signInManager,
-        ApiTokenService apiTokens,
-        UnitOfWork unitOfWork,
-        ILogger<ChangePasswordModel> logger)
+    public ChangePasswordModel(UserManager<HSUser> userManager,
+                               SignInManager<HSUser> signInManager,
+                               ApiTokenService apiTokens,
+                               UnitOfWork unitOfWork,
+                               ILogger<ChangePasswordModel> logger)
     {
         _userManager = userManager;
         _signInManager = signInManager;
@@ -126,7 +127,8 @@ public class ChangePasswordModel : PageModel
         // back together.
         await using (IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken))
         {
-            IdentityResult changePasswordResult = await _userManager.ChangePasswordAsync(user, Input.OldPassword, Input.NewPassword);
+            IdentityResult changePasswordResult =
+                await _userManager.ChangePasswordAsync(user, Input.OldPassword, Input.NewPassword);
 
             if (!changePasswordResult.Succeeded)
             {

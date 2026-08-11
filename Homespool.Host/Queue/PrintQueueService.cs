@@ -163,8 +163,8 @@ public class PrintQueueService
                                       CancellationToken cancellationToken)
     {
         QueuedPrint? job = await _dbContext.QueuedPrints
-                                         .SingleOrDefaultAsync(candidate => candidate.TrackingId == trackingId,
-                                             cancellationToken);
+                                           .SingleOrDefaultAsync(candidate => candidate.TrackingId == trackingId,
+                                                                 cancellationToken);
 
         if (job is null)
         {
@@ -174,10 +174,10 @@ public class PrintQueueService
         await _access.RequireAsync(job.PrinterId, userId, PrinterOperation.ChangeQueue, cancellationToken);
 
         List<QueuedPrint> queue = await _dbContext.QueuedPrints
-                                                .Where(candidate => candidate.PrinterId == job.PrinterId)
-                                                .OrderBy(candidate => candidate.Position)
-                                                .ThenBy(candidate => candidate.Id)
-                                                .ToListAsync(cancellationToken);
+                                                  .Where(candidate => candidate.PrinterId == job.PrinterId)
+                                                  .OrderBy(candidate => candidate.Position)
+                                                  .ThenBy(candidate => candidate.Id)
+                                                  .ToListAsync(cancellationToken);
 
         queue.Remove(queue.Single(candidate => candidate.Id == job.Id));
         queue.Insert(Math.Clamp(targetIndex, 0, queue.Count), job);
@@ -205,8 +205,8 @@ public class PrintQueueService
     public async Task<bool> CancelAsync(Guid trackingId, long userId, CancellationToken cancellationToken)
     {
         QueuedPrint? job = await _dbContext.QueuedPrints
-                                         .SingleOrDefaultAsync(candidate => candidate.TrackingId == trackingId,
-                                             cancellationToken);
+                                           .SingleOrDefaultAsync(candidate => candidate.TrackingId == trackingId,
+                                                                 cancellationToken);
 
         if (job is null)
         {

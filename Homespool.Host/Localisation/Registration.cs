@@ -49,8 +49,7 @@ public static class Registration
         //
         // Found by an end-to-end test asserting Danish text on a page, which is the only place it
         // could have been found - the string is correct everywhere until it is rendered.
-        services.Configure<WebEncoderOptions>(
-            options => options.TextEncoderSettings = new TextEncoderSettings(UnicodeRanges.All));
+        services.Configure<WebEncoderOptions>(options => options.TextEncoderSettings = new TextEncoderSettings(UnicodeRanges.All));
 
         // Scoped because it reads the request's DbContext.
         services.AddScoped<UserCultures>();

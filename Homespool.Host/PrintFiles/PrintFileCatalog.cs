@@ -62,8 +62,10 @@ public sealed class PrintFileCatalog
     /// Streams an upload to disk without naming it yet. Straight through - a staged upload has no row
     /// because it is not yet a file anyone has.
     /// </summary>
-    public Task<PendingUpload> StageAsync(long userId, string fileName, Stream content,
-        CancellationToken cancellationToken)
+    public Task<PendingUpload> StageAsync(long userId,
+                                          string fileName,
+                                          Stream content,
+                                          CancellationToken cancellationToken)
     {
         return _store.StageAsync(userId, fileName, content, cancellationToken);
     }
@@ -121,8 +123,12 @@ public sealed class PrintFileCatalog
     /// </summary>
     /// <exception cref="ArgumentException">The name is empty, or not one a printer would accept.</exception>
     /// <exception cref="PrintFileNameConflictException">The name is taken and <paramref name="overwrite"/> is false.</exception>
-    public async Task<StoredFile> SaveAsync(long userId, string fileName, Stream content, bool overwrite,
-        CancellationToken cancellationToken, string? userName = null)
+    public async Task<StoredFile> SaveAsync(long userId,
+                                            string fileName,
+                                            Stream content,
+                                            bool overwrite,
+                                            CancellationToken cancellationToken,
+                                            string? userName = null)
     {
         PublishedFile published =
             await _store.SaveAsync(userId, fileName, content, overwrite, cancellationToken, userName);
@@ -137,8 +143,11 @@ public sealed class PrintFileCatalog
     /// this user - the Files page's two-step path.
     /// </summary>
     /// <exception cref="PrintFileNameConflictException">The name is taken and <paramref name="overwrite"/> is false.</exception>
-    public async Task<StoredFile?> PublishAsync(long userId, string token, bool overwrite,
-        CancellationToken cancellationToken, string? userName = null)
+    public async Task<StoredFile?> PublishAsync(long userId,
+                                                string token,
+                                                bool overwrite,
+                                                CancellationToken cancellationToken,
+                                                string? userName = null)
     {
         PublishedFile? published = _store.Publish(userId, token, overwrite, userName);
 
@@ -161,8 +170,10 @@ public sealed class PrintFileCatalog
     /// <b>Queued jobs are untouched, and that is the point of the whole table.</b> They reference the
     /// row's id, so the file changing its name is invisible to them.
     /// </remarks>
-    public async Task<StoredFile?> RenameAsync(long userId, string fileName, string newName,
-        CancellationToken cancellationToken)
+    public async Task<StoredFile?> RenameAsync(long userId,
+                                               string fileName,
+                                               string newName,
+                                               CancellationToken cancellationToken)
     {
         // Resolved before the move, because afterwards the old name finds nothing - and a rename of a
         // file that was never indexed still has to end with a row carrying the new name.

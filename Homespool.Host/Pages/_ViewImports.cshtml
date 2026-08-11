@@ -1,6 +1,14 @@
 @using Microsoft.AspNetCore.Identity
+@using Microsoft.Extensions.Localization
+@using Homespool.Host.Localisation
 @using Homespool.Host.Pages
 @using Homespool.Model.Entities;
+
+@* Available to every view without each one injecting it. Named Localiser rather than the
+   conventional single letter: a one-character identifier in a Razor file is hard to search for and
+   easy to shadow, and this is the seam Phase B will touch on nearly every page. Views that want the
+   shorter name can still inject their own. See notes/localisation.md. *@
+@inject IStringLocalizer<SharedResource> Localiser
 
 
 

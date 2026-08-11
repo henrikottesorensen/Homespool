@@ -17,6 +17,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using Scalar.AspNetCore;
 
@@ -28,6 +29,7 @@ using Homespool.Data;
 using Homespool.Host.Authentication;
 using Homespool.Host.Cameras;
 using Homespool.Host.Listeners;
+using Homespool.Host.Localisation;
 using Homespool.Host.Queue;
 
 namespace Homespool.Host;
@@ -148,6 +150,8 @@ public static class Program
             builder.Services.AddAuthorization(Authorisation.Builder.Build);
 
             builder.Services.AddRazorPages();
+
+            builder.Services.AddHomespoolLocalisation();
 
             builder.Services.AddControllers(options =>
                 options.Conventions.Add(new ApiExplorerVisibilityConvention()));
@@ -477,6 +481,14 @@ public static class Program
 
             app.UseAuthentication();
             app.UseAuthorization();
+
+            // After authentication, and that ordering is load-bearing rather than tidy: the first
+            // culture provider reads the signed-in account's stored language, so it needs
+            // HttpContext.User populated. Placed before it - which is where most guidance puts
+            // request localisation - the provider sees an anonymous request every time and silently
+            // never fires, leaving Accept-Language to decide for somebody who had chosen.
+            app.UseRequestLocalization(
+                app.Services.GetRequiredService<IOptions<RequestLocalizationOptions>>().Value);
 
             // Anonymous by design: a monitoring system holds no credentials, and the response carries
             // only counters and timestamps about this service's own write path - nothing about

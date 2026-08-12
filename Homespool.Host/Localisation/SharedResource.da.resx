@@ -915,4 +915,85 @@
   <data name="Printers_ClaimThem" xml:space="preserve">
     <value>dem</value>
   </data>
+  <data name="Account_AssociateAccount" xml:space="preserve">
+    <value>Tilknyt din {0}-konto.</value>
+  </data>
+  <data name="Account_ExternalAuthenticated" xml:space="preserve">
+    <value>Du er blevet godkendt med {0}. Vælg en e-mailadresse og et brugernavn til dette websted nedenfor, og klik på Registrér for at fuldføre login.</value>
+  </data>
+  <data name="Account_CheckEmailToReset" xml:space="preserve">
+    <value>Tjek din e-mail for at nulstille din adgangskode.</value>
+  </data>
+  <data name="Account_RecoveryCodeIntro" xml:space="preserve">
+    <value>Du har valgt at logge ind med en gendannelseskode. Dette login huskes ikke, før du enten indtaster en kode fra godkendelsesappen ved login eller slår tofaktorgodkendelse fra og logger ind igen.</value>
+  </data>
+  <data name="Account_NoAuthenticatorAccess" xml:space="preserve">
+    <value>Har du ikke adgang til din godkendelsesenhed? Du kan {0}.</value>
+  </data>
+  <data name="Tokens_Explanation" xml:space="preserve">
+    <value>En token lader et script kalde API&apos;et som dig, med præcis dine rettigheder, uden din adgangskode. Send den som {0}. En tilbagekaldelse træder i kraft med det samme.</value>
+  </data>
+  <data name="TwoFactor_DisableKeepsKeys" xml:space="preserve">
+    <value>At slå tofaktorgodkendelse fra ændrer ikke de nøgler, der bruges i godkendelsesapps. Vil du skifte den nøgle, en godkendelsesapp bruger, bør du {0}</value>
+  </data>
+  <data name="TwoFactor_LoseCodesWarning" xml:space="preserve">
+    <value>Mister du din enhed og ikke har gendannelseskoderne, mister du adgangen til din konto. At generere nye gendannelseskoder ændrer ikke de nøgler, der bruges i godkendelsesapps. Vil du skifte den nøgle, en godkendelsesapp bruger, bør du {0}</value>
+  </data>
+  <data name="TwoFactor_LoseDeviceWarning" xml:space="preserve">
+    <value>Mister du din enhed og ikke har gendannelseskoderne, mister du adgangen til din konto.</value>
+  </data>
+  <data name="TwoFactor_NewCodesKeepKeys" xml:space="preserve">
+    <value>At generere nye gendannelseskoder ændrer ikke de nøgler, der bruges i godkendelsesapps. Vil du skifte den nøgle, en godkendelsesapp bruger, bør du {0}</value>
+  </data>
+  <data name="Account_InviteInvalid" xml:space="preserve">
+    <value>Dette invitationslink er ugyldigt, udløbet eller allerede brugt. Bed en administrator om en ny invitation.</value>
+  </data>
+  <data name="Account_ConfirmEmailFailed" xml:space="preserve">
+    <value>Din konto blev oprettet, men bekræftelsesmailen kunne ikke sendes. Kontakt din administrator - kontoen kan ikke bruges, før den er bekræftet.</value>
+  </data>
+  <data name="Account_TokensRevoked" xml:space="preserve">
+    <value>Alle API-tokens på kontoen er tilbagekaldt. Scripts, der bruger en, skal have en ny token, som du kan oprette under {0}.</value>
+  </data>
+  <data name="Files_DropHere" xml:space="preserve">
+    <value>Slip en fil her, eller vælg en. .gcode, .bgcode, .gco eller .bgc, op til {0}.</value>
+  </data>
+  <data name="Printers_AddIntro" xml:space="preserve">
+    <value>Klargør en printer og en token på forhånd, til en USB-nøgle - printeren behøver ikke kontakte serveren først. Printeren tilmelder sig selv, i det øjeblik den forbinder med sin token.</value>
+  </data>
+  <data name="Setup_NoAdminYet" xml:space="preserve">
+    <value>Der findes endnu ingen administratorkonto. Opret en nedenfor med den engangs-opsætningstoken, der blev skrevet til serverkonsollen ved opstart.</value>
+  </data>
+  <data name="Printers_FreeSomeSpace" xml:space="preserve">
+    <value>Frigør plads på printeren, så fortsætter den af sig selv.</value>
+  </data>
+  <data name="TwoFactor_DownloadApp" xml:space="preserve">
+    <value>Hent en app til tofaktorgodkendelse, for eksempel Microsoft Authenticator til {0} og {1} eller Google Authenticator til {2} og {3}.</value>
+  </data>
+  <data name="TwoFactor_AfterScanning" xml:space="preserve">
+    <value>Når du har scannet QR-koden eller indtastet nøglen ovenfor, giver din app til tofaktorgodkendelse dig en unik kode. Indtast koden i bekræftelsesfeltet nedenfor.</value>
+  </data>
+  <data name="Account_ReadyNoMail" xml:space="preserve">
+    <value>Din konto er klar til brug. Der kræves ingen bekræftelse, fordi denne server ikke har udgående mail konfigureret.</value>
+  </data>
+  <data name="Account_PasswordReset" xml:space="preserve">
+    <value>Din adgangskode er nulstillet. {0}.</value>
+  </data>
+  <data name="Cert_NoneIssued" xml:space="preserve">
+    <value>Der er ikke udstedt noget certifikat, så ingen printer kan verificere denne server. Et oprettes normalt ved opstart - se serverloggen for hvorfor det ikke skete.</value>
+  </data>
+  <data name="Invites_Created" xml:space="preserve">
+    <value>Invitationen er oprettet.</value>
+  </data>
+  <data name="Printers_NoPublicAddress" xml:space="preserve">
+    <value>Serverens offentlige adresse er ikke konfigureret ({0}), så der kan endnu ikke laves et brugbart uddrag. Bed din administrator om at sætte den.</value>
+  </data>
+  <data name="Printers_ClaimSteps" xml:space="preserve">
+    <value>Gå på printeren til {0}, og indtast derefter den kode, den viser.</value>
+  </data>
+  <data name="Cameras_Capturing" xml:space="preserve">
+    <value>Henter billede…</value>
+  </data>
+  <data name="Printers_TemperatureTarget" xml:space="preserve">
+    <value>{0}° / mål {1}°</value>
+  </data>
 </root>

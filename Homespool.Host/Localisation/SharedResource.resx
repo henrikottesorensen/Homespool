@@ -923,4 +923,85 @@
   <data name="Printers_ClaimThem" xml:space="preserve">
     <value>them</value>
   </data>
+  <data name="Account_AssociateAccount" xml:space="preserve">
+    <value>Associate your {0} account.</value>
+  </data>
+  <data name="Account_ExternalAuthenticated" xml:space="preserve">
+    <value>You&apos;ve successfully authenticated with {0}. Please choose an email address and a username for this site below, then click the Register button to finish logging in.</value>
+  </data>
+  <data name="Account_CheckEmailToReset" xml:space="preserve">
+    <value>Please check your email to reset your password.</value>
+  </data>
+  <data name="Account_RecoveryCodeIntro" xml:space="preserve">
+    <value>You have requested to log in with a recovery code. This login will not be remembered until you provide an authenticator app code at log in or disable 2FA and log in again.</value>
+  </data>
+  <data name="Account_NoAuthenticatorAccess" xml:space="preserve">
+    <value>Don&apos;t have access to your authenticator device? You can {0}.</value>
+  </data>
+  <data name="Tokens_Explanation" xml:space="preserve">
+    <value>A token lets a script call the API as you, with exactly your permissions, without your password. Send it as {0}. Revoking one takes effect immediately.</value>
+  </data>
+  <data name="TwoFactor_DisableKeepsKeys" xml:space="preserve">
+    <value>Disabling 2FA does not change the keys used in authenticator apps. If you wish to change the key used in an authenticator app you should {0}</value>
+  </data>
+  <data name="TwoFactor_LoseCodesWarning" xml:space="preserve">
+    <value>If you lose your device and don&apos;t have the recovery codes you will lose access to your account. Generating new recovery codes does not change the keys used in authenticator apps. If you wish to change the key used in an authenticator app you should {0}</value>
+  </data>
+  <data name="TwoFactor_LoseDeviceWarning" xml:space="preserve">
+    <value>If you lose your device and don&apos;t have the recovery codes you will lose access to your account.</value>
+  </data>
+  <data name="TwoFactor_NewCodesKeepKeys" xml:space="preserve">
+    <value>Generating new recovery codes does not change the keys used in authenticator apps. If you wish to change the key used in an authenticator app you should {0}</value>
+  </data>
+  <data name="Account_InviteInvalid" xml:space="preserve">
+    <value>This invitation link is invalid, has expired, or has already been used. Ask an administrator for a new invitation.</value>
+  </data>
+  <data name="Account_ConfirmEmailFailed" xml:space="preserve">
+    <value>Your account was created, but the confirmation email could not be sent. Contact your administrator - the account cannot be used until it is confirmed.</value>
+  </data>
+  <data name="Account_TokensRevoked" xml:space="preserve">
+    <value>Any API tokens on the account have been revoked. Scripts using one will need a new token, which you can create under {0}.</value>
+  </data>
+  <data name="Files_DropHere" xml:space="preserve">
+    <value>Drop a file here, or choose one. .gcode, .bgcode, .gco or .bgc, up to {0}.</value>
+  </data>
+  <data name="Printers_AddIntro" xml:space="preserve">
+    <value>Provisions a printer and a token up front, for a USB stick - no need for the printer to contact this server first. The printer enrols itself the moment it connects using the token.</value>
+  </data>
+  <data name="Setup_NoAdminYet" xml:space="preserve">
+    <value>No administrator account exists yet. Create one below using the one-time setup token printed to the server console at startup.</value>
+  </data>
+  <data name="Printers_FreeSomeSpace" xml:space="preserve">
+    <value>Free some space on the printer and it will carry on by itself.</value>
+  </data>
+  <data name="TwoFactor_DownloadApp" xml:space="preserve">
+    <value>Download a two-factor authenticator app like Microsoft Authenticator for {0} and {1} or Google Authenticator for {2} and {3}.</value>
+  </data>
+  <data name="TwoFactor_AfterScanning" xml:space="preserve">
+    <value>Once you have scanned the QR code or input the key above, your two factor authentication app will provide you with a unique code. Enter the code in the confirmation box below.</value>
+  </data>
+  <data name="Account_ReadyNoMail" xml:space="preserve">
+    <value>Your account is ready to use. No confirmation is needed, because this server has no outgoing mail configured.</value>
+  </data>
+  <data name="Account_PasswordReset" xml:space="preserve">
+    <value>Your password has been reset. Please {0}.</value>
+  </data>
+  <data name="Cert_NoneIssued" xml:space="preserve">
+    <value>No certificate has been issued, so no printer can verify this server. One is normally created at startup - check the server log for why it was not.</value>
+  </data>
+  <data name="Invites_Created" xml:space="preserve">
+    <value>Invitation created.</value>
+  </data>
+  <data name="Printers_NoPublicAddress" xml:space="preserve">
+    <value>This server&apos;s public address is not configured ({0}), so a usable snippet cannot be produced yet. Ask your administrator to set it.</value>
+  </data>
+  <data name="Printers_ClaimSteps" xml:space="preserve">
+    <value>On the printer, go to {0}, then enter the code it displays.</value>
+  </data>
+  <data name="Cameras_Capturing" xml:space="preserve">
+    <value>Capturing…</value>
+  </data>
+  <data name="Printers_TemperatureTarget" xml:space="preserve">
+    <value>{0}° / target {1}°</value>
+  </data>
 </root>

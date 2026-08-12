@@ -9,8 +9,7 @@
 <partial name="_StatusMessage" for="StatusMessage" />
 
 <p class="text-muted">
-    A token lets a script call the API as you, with exactly your permissions, without your password.
-    Send it as <code>Authorization: Bearer &lt;token&gt;</code>. Revoking one takes effect immediately.
+    @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Tokens_Explanation"].Value, "<code>Authorization: Bearer &lt;token&gt;</code>"))
 </p>
 
 @if (Model.CreatedToken is not null)

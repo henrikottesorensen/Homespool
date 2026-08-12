@@ -30,8 +30,7 @@
     </div>
 </div>
 <p>
-    Don't have access to your authenticator device? You can
-    <a id="recovery-code-login" asp-page="./LoginWithRecoveryCode" asp-route-returnUrl="@Model.ReturnUrl">@Localiser["TwoFactor_RecoveryCodeLink"]</a>.
+    @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Account_NoAuthenticatorAccess"].Value, $"<a id=\"recovery-code-login\" href=\"{Url.Page("./LoginWithRecoveryCode", new { returnUrl = Model.ReturnUrl })}\">{Localiser["TwoFactor_RecoveryCodeLink"].Value}</a>"))
 </p>
 
 @section Scripts {

@@ -42,7 +42,7 @@
                            what "no picture yet" should look like - not a broken-image icon. *@
                         <img class="camera-image w-100 h-100 object-fit-contain d-none" alt="" />
                         <div class="camera-status d-flex align-items-center justify-content-center text-body-secondary small">
-                            Capturing…
+                            @Localiser["Cameras_Capturing"]
                         </div>
                     </div>
                     <figcaption class="d-flex justify-content-between small text-body-secondary mt-1">
@@ -87,8 +87,8 @@ else
             {
                 <tr><th>@Localiser["Printers_FilamentChangeIn"]</th><td>@TimeSpan.FromSeconds(untilChange).ToString("g")</td></tr>
             }
-            <tr><th>@Localiser["Printers_NozzleTemp"]</th><td>@(liveState.NozzleTemperature?.ToString("0.0") ?? "-")&deg; / target @(liveState.TargetNozzleTemperature?.ToString("0.0") ?? "-")&deg;</td></tr>
-            <tr><th>@Localiser["Printers_BedTemp"]</th><td>@(liveState.BedTemperature?.ToString("0.0") ?? "-")&deg; / target @(liveState.TargetBedTemperature?.ToString("0.0") ?? "-")&deg;</td></tr>
+            <tr><th>@Localiser["Printers_NozzleTemp"]</th><td>@Localiser["Printers_TemperatureTarget", liveState.NozzleTemperature?.ToString("0.0") ?? "-", liveState.TargetNozzleTemperature?.ToString("0.0") ?? "-"]</td></tr>
+            <tr><th>@Localiser["Printers_BedTemp"]</th><td>@Localiser["Printers_TemperatureTarget", liveState.BedTemperature?.ToString("0.0") ?? "-", liveState.TargetBedTemperature?.ToString("0.0") ?? "-"]</td></tr>
             <tr><th>@Localiser["Printers_Material"]</th><td>@(liveState.Material ?? "-")</td></tr>
             <tr><th>@Localiser["Printers_Speed"]</th><td>@(liveState.Speed is { } speed ? $"{speed}%" : "-")</td></tr>
             <tr><th>@Localiser["Printers_Flow"]</th><td>@(liveState.Flow is { } flow ? $"{flow}%" : "-")</td></tr>
@@ -123,7 +123,7 @@ else
     <div class="alert alert-warning" role="alert">
         <strong>@Localiser["Printers_QueueHeld"]</strong> @hold
         <br />
-        Free some space on the printer and it will carry on by itself.
+        @Localiser["Printers_FreeSomeSpace"]
     </div>
 }
 

@@ -45,7 +45,7 @@
         <button type="submit" class="btn btn-primary text-nowrap">@Localiser["Files_Upload"]</button>
     </form>
     <p class="text-body-secondary small mb-0 mt-2">
-        Drop a file here, or choose one. .gcode, .bgcode, .gco or .bgc, up to @IndexModel.FormatSize(Model.MaxUploadBytes).
+        @Localiser["Files_DropHere", IndexModel.FormatSize(Model.MaxUploadBytes)]
     </p>
 </div>
 

@@ -13,11 +13,10 @@
         <strong>@Localiser["TwoFactor_KeepCodesSafe"]</strong>
     </p>
     <p>
-        If you lose your device and don't have the recovery codes you will lose access to your account.
+        @Localiser["TwoFactor_LoseDeviceWarning"]
     </p>
     <p>
-        Generating new recovery codes does not change the keys used in authenticator apps. If you wish to change the key
-        used in an authenticator app you should <a asp-page="./ResetAuthenticator">@Localiser["TwoFactor_ResetKeysLink"]</a>
+        @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["TwoFactor_NewCodesKeepKeys"].Value, $"<a href=\"{Url.Page("./ResetAuthenticator")}\">{Localiser["TwoFactor_ResetKeysLink"].Value}</a>"))
     </p>
 </div>
 <div>

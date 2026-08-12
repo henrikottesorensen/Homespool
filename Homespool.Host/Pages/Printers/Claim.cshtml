@@ -7,8 +7,7 @@
 <h1>@ViewData["Title"]</h1>
 
 <p>
-    On the printer, go to <em>Settings &rarr; Network &rarr; Prusa Connect &rarr; Add Printer to
-    Connect</em>, then enter the code it displays.
+    @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Printers_ClaimSteps"].Value, "<em>Settings &rarr; Network &rarr; Prusa Connect &rarr; Add Printer to Connect</em>"))
 </p>
 
 @* The printer's registration dialog is hardcoded to Prusa's production instance - the QR URL and the

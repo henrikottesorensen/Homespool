@@ -9,8 +9,7 @@
 @if (Model.EmailFailed)
 {
     <div class="alert alert-warning" role="alert">
-        Your account was created, but the confirmation email could not be sent.
-        Contact your administrator - the account cannot be used until it is confirmed.
+        @Localiser["Account_ConfirmEmailFailed"]
     </div>
 }
 else if (Model.SmtpConfigured)
@@ -20,8 +19,7 @@ else if (Model.SmtpConfigured)
 else
 {
     <p>
-        Your account is ready to use. No confirmation is needed, because this server has no
-        outgoing mail configured.
+        @Localiser["Account_ReadyNoMail"]
     </p>
     <p><a asp-page="./Login">@Localiser["Account_SignIn"]</a></p>
 }

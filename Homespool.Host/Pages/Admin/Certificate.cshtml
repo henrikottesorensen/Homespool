@@ -36,8 +36,7 @@
 @if (Model.Covered.Count == 0)
 {
     <div class="alert alert-danger" role="alert">
-        No certificate has been issued, so no printer can verify this server. One is normally created at
-        startup - check the server log for why it was not.
+        @Localiser["Cert_NoneIssued"]
     </div>
 }
 

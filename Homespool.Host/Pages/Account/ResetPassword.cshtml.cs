@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
@@ -16,6 +17,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.Pages.Account;
@@ -25,16 +27,19 @@ public class ResetPasswordModel : PageModel
     private readonly UserManager<HSUser> _userManager;
     private readonly ApiTokenService _apiTokens;
     private readonly UnitOfWork _unitOfWork;
+    private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<ResetPasswordModel> _logger;
 
     public ResetPasswordModel(UserManager<HSUser> userManager,
                               ApiTokenService apiTokens,
                               UnitOfWork unitOfWork,
+                              IStringLocalizer<SharedResource> localiser,
                               ILogger<ResetPasswordModel> logger)
     {
         _userManager = userManager;
         _apiTokens = apiTokens;
         _unitOfWork = unitOfWork;
+        _localiser = localiser;
         _logger = logger;
     }
 
@@ -89,7 +94,7 @@ public class ResetPasswordModel : PageModel
     {
         if (code == null)
         {
-            return BadRequest("A code must be supplied for password reset.");
+            return BadRequest(_localiser["Account_ResetNeedsCode"].Value);
         }
         else
         {

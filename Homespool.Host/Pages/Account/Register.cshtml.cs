@@ -191,7 +191,7 @@ public class RegisterModel : PageModel
         catch (DbUpdateException ex)
         {
             _logger.LogError(ex, "Failed to accept invitation {InviteId}; rolling back the account.", InviteId);
-            ModelState.AddModelError(string.Empty, "Could not complete registration. Please try again.");
+            ModelState.AddModelError(string.Empty, _localiser["Account_RegistrationFailed"]);
 
             return Page();
         }

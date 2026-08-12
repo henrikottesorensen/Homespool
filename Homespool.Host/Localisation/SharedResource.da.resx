@@ -1251,4 +1251,205 @@
   <data name="Manage_TokenName" xml:space="preserve">
     <value>Navn på token</value>
   </data>
+  <data name="Files_ChooseFile" xml:space="preserve">
+    <value>Vælg en fil, der skal uploades.</value>
+  </data>
+  <data name="Files_TooLarge" xml:space="preserve">
+    <value>Filen er større end grænsen på {0}.</value>
+  </data>
+  <data name="Files_UploadedFile" xml:space="preserve">
+    <value>{0} er uploadet.</value>
+  </data>
+  <data name="Files_UploadGone" xml:space="preserve">
+    <value>Den upload venter ikke længere - den kan være blevet ryddet op. Prøv igen.</value>
+  </data>
+  <data name="Files_Replaced" xml:space="preserve">
+    <value>{0} er erstattet.</value>
+  </data>
+  <data name="Files_Discarded" xml:space="preserve">
+    <value>Uploaden er kasseret.</value>
+  </data>
+  <data name="Files_PrinterNotYours" xml:space="preserve">
+    <value>Den printer er ikke en af dine.</value>
+  </data>
+  <data name="Files_Queued" xml:space="preserve">
+    <value>{0} er lagt i køen.</value>
+  </data>
+  <data name="Files_PrinterReadOnly" xml:space="preserve">
+    <value>Du må se den printer, men ikke bruge den.</value>
+  </data>
+  <data name="Files_NoSuchFile" xml:space="preserve">
+    <value>Der findes ingen fil, der hedder {0}.</value>
+  </data>
+  <data name="Files_OverFourGiB" xml:space="preserve">
+    <value>Filen er over 4 GiB - en printer kan ikke modtage noget større.</value>
+  </data>
+  <data name="Files_Refused" xml:space="preserve">
+    <value>{0} afviste den: {1}</value>
+  </data>
+  <data name="Files_Sending" xml:space="preserve">
+    <value>{0} sendes til {1}. Det går i printerens tempo.</value>
+  </data>
+  <data name="Files_PrinterNotConnected" xml:space="preserve">
+    <value>{0} er ikke forbundet lige nu.</value>
+  </data>
+  <data name="Files_PrinterBusy" xml:space="preserve">
+    <value>{0} er stadig optaget af en tidligere kommando.</value>
+  </data>
+  <data name="Files_PrinterNoAnswer" xml:space="preserve">
+    <value>{0} svarede ikke i tide.</value>
+  </data>
+  <data name="Files_NoPermission" xml:space="preserve">
+    <value>Du har ikke rettigheder til at bruge den printer.</value>
+  </data>
+  <data name="Files_SendFailed" xml:space="preserve">
+    <value>Noget gik galt, da filen skulle sendes.</value>
+  </data>
+  <data name="Files_Renamed" xml:space="preserve">
+    <value>Omdøbt til {0}.</value>
+  </data>
+  <data name="Files_Deleted" xml:space="preserve">
+    <value>{0} er slettet.</value>
+  </data>
+  <data name="Files_QueuedCannotDelete" xml:space="preserve">
+    <value>{0} står i printkøen. Annullér det køede print først.</value>
+  </data>
+  <data name="Printers_CommandRejected" xml:space="preserve">
+    <value>{0} blev afvist: {1}</value>
+  </data>
+  <data name="Printers_CommandSent" xml:space="preserve">
+    <value>{0} er sendt.</value>
+  </data>
+  <data name="Printers_GoneNow" xml:space="preserve">
+    <value>Den printer findes ikke længere.</value>
+  </data>
+  <data name="Printers_NoControlPermission" xml:space="preserve">
+    <value>Du har ikke rettigheder til at styre den printer.</value>
+  </data>
+  <data name="Printers_NotConnectedNow" xml:space="preserve">
+    <value>Den printer er ikke forbundet lige nu.</value>
+  </data>
+  <data name="Printers_StillBusy" xml:space="preserve">
+    <value>Den printer er stadig i gang med en tidligere kommando.</value>
+  </data>
+  <data name="Printers_NoResponse" xml:space="preserve">
+    <value>Den printer svarede ikke i tide.</value>
+  </data>
+  <data name="Printers_CommandFailed" xml:space="preserve">
+    <value>Noget gik galt, da kommandoen skulle sendes.</value>
+  </data>
+  <data name="Printers_ClaimLockedOut" xml:space="preserve">
+    <value>For mange ukendte koder. Prøv igen om {0}. Printerens egen kode er upåvirket - den venter stadig.</value>
+  </data>
+  <data name="Printers_ClaimWaitSeconds" xml:space="preserve">
+    <value>{0} sekunder</value>
+  </data>
+  <data name="Printers_ClaimWaitOneSecond" xml:space="preserve">
+    <value>1 sekund</value>
+  </data>
+  <data name="Printers_ClaimWaitMinutes" xml:space="preserve">
+    <value>{0} minutter</value>
+  </data>
+  <data name="Printers_ClaimWaitOneMinute" xml:space="preserve">
+    <value>1 minut</value>
+  </data>
+  <data name="Printers_ClaimNoSuchCode" xml:space="preserve">
+    <value>Ingen printer venter med den kode. Tjek den mod printerens skærm - koder udløber, så den kan allerede være skiftet ud. Bogstaverne O, I og L læses som 0, 1 og 1, så dem er det ufarligt at tage fejl af.</value>
+  </data>
+  <data name="Printers_ClaimAlreadyClaimed" xml:space="preserve">
+    <value>Den kode er allerede blevet brugt. Var det ikke dig, så sørg for at kopiere den kode, der står på printerens skærm nu.</value>
+  </data>
+  <data name="Printers_ClaimNoTeamPermission" xml:space="preserve">
+    <value>Du har ikke rettigheder til at tilknytte en printer til det team.</value>
+  </data>
+  <data name="Printers_ClaimFailed" xml:space="preserve">
+    <value>Noget gik galt, da printeren skulle tilknyttes. Prøv igen.</value>
+  </data>
+  <data name="Printers_AddNoPublicAddress" xml:space="preserve">
+    <value>Serverens offentlige adresse er ikke konfigureret ({0}). Bed din administrator om at sætte den, før printere klargøres på den måde.</value>
+  </data>
+  <data name="Printers_AddNoTeamPermission" xml:space="preserve">
+    <value>Du har ikke rettigheder til at tilføje en printer til det team.</value>
+  </data>
+  <data name="Printers_AddFailed" xml:space="preserve">
+    <value>Noget gik galt, da printeren skulle klargøres. Prøv igen.</value>
+  </data>
+  <data name="Printers_StoppedAtPrinter" xml:space="preserve">
+    <value>på printeren</value>
+  </data>
+  <data name="Printers_QueueReordered" xml:space="preserve">
+    <value>Køen er omordnet.</value>
+  </data>
+  <data name="Printers_JobGone" xml:space="preserve">
+    <value>Det print står ikke længere i køen.</value>
+  </data>
+  <data name="Printers_JobRemoved" xml:space="preserve">
+    <value>Fjernet fra køen.</value>
+  </data>
+  <data name="Printers_NoSuchFilament" xml:space="preserve">
+    <value>‘{0}’ er ikke et filament, som denne printer har en forudindstilling til.</value>
+  </data>
+  <data name="Printers_HeatingTo" xml:space="preserve">
+    <value>Varmer op til {0} °C i dysen og {1} °C på byggepladen til {2}.</value>
+  </data>
+  <data name="Printers_HeatersOff" xml:space="preserve">
+    <value>Begge varmelegemer er slukket.</value>
+  </data>
+  <data name="Setup_TokenInvalid" xml:space="preserve">
+    <value>Opsætningstokenet er ugyldigt, eller førstegangsopsætningen er allerede gennemført.</value>
+  </data>
+  <data name="Setup_Failed" xml:space="preserve">
+    <value>Opsætningen kunne ikke gennemføres. Prøv igen.</value>
+  </data>
+  <data name="Account_InvalidLogin" xml:space="preserve">
+    <value>Forkert brugernavn eller adgangskode.</value>
+  </data>
+  <data name="Account_InvalidAuthenticatorCode" xml:space="preserve">
+    <value>Forkert kode fra tofaktorappen.</value>
+  </data>
+  <data name="Account_InvalidRecoveryCode" xml:space="preserve">
+    <value>Forkert gendannelseskode.</value>
+  </data>
+  <data name="Account_RegistrationFailed" xml:space="preserve">
+    <value>Registreringen kunne ikke gennemføres. Prøv igen.</value>
+  </data>
+  <data name="Account_ResetNeedsCode" xml:space="preserve">
+    <value>Der skal følge en kode med for at nulstille adgangskoden.</value>
+  </data>
+  <data name="Account_EmailConfirmed" xml:space="preserve">
+    <value>Tak fordi du bekræftede din e-mailadresse.</value>
+  </data>
+  <data name="Account_EmailConfirmFailed" xml:space="preserve">
+    <value>E-mailadressen kunne ikke bekræftes.</value>
+  </data>
+  <data name="Account_ExternalProviderError" xml:space="preserve">
+    <value>Fejl fra ekstern udbyder: {0}</value>
+  </data>
+  <data name="Manage_TokenRevoked" xml:space="preserve">
+    <value>Tokenet er tilbagekaldt.</value>
+  </data>
+  <data name="Manage_TokenGone" xml:space="preserve">
+    <value>Det token findes ikke længere.</value>
+  </data>
+  <data name="Manage_PasswordChanged" xml:space="preserve">
+    <value>Din adgangskode er ændret.</value>
+  </data>
+  <data name="Manage_PasswordChangedOneToken" xml:space="preserve">
+    <value>Din adgangskode er ændret. 1 API-token blev tilbagekaldt.</value>
+  </data>
+  <data name="Manage_PasswordChangedTokens" xml:space="preserve">
+    <value>Din adgangskode er ændret. {0} API-tokens blev tilbagekaldt.</value>
+  </data>
+  <data name="Manage_VerificationCodeInvalid" xml:space="preserve">
+    <value>Bekræftelseskoden er forkert.</value>
+  </data>
+  <data name="Manage_BrowserForgotten" xml:space="preserve">
+    <value>Denne browser er glemt. Næste gang du logger ind herfra, bliver du bedt om din tofaktorkode.</value>
+  </data>
+  <data name="Printers_StoppedByPerson" xml:space="preserve">
+    <value>af {0}</value>
+  </data>
+  <data name="Printers_StoppedFromHere" xml:space="preserve">
+    <value>herfra</value>
+  </data>
 </root>

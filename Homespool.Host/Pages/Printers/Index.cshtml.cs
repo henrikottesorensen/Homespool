@@ -263,29 +263,29 @@ public class IndexModel : PageModel
             // guard rather than a live case.
             (StatusMessage, StatusSuccess) = outcome?.EventType switch
             {
-                Events.Rejected or Events.Failed => ($"{command.WireName} rejected: {outcome!.Reason}", false),
-                _ => ($"{command.WireName} sent.", true),
+                Events.Rejected or Events.Failed => (_localiser["Printers_CommandRejected", command.WireName, outcome!.Reason ?? string.Empty], false),
+                _ => (_localiser["Printers_CommandSent", command.WireName], true),
             };
         }
         catch (PrinterNotFoundException)
         {
-            (StatusMessage, StatusSuccess) = ("That printer no longer exists.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Printers_GoneNow"], false);
         }
         catch (TeamAccessDeniedException)
         {
-            (StatusMessage, StatusSuccess) = ("You don't have permission to control that printer.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Printers_NoControlPermission"], false);
         }
         catch (PrinterNotConnectedException)
         {
-            (StatusMessage, StatusSuccess) = ("That printer isn't connected right now.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Printers_NotConnectedNow"], false);
         }
         catch (CommandAlreadyInFlightException)
         {
-            (StatusMessage, StatusSuccess) = ("That printer is still processing a previous command.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Printers_StillBusy"], false);
         }
         catch (CommandResponseTimedOutException)
         {
-            (StatusMessage, StatusSuccess) = ("That printer didn't respond in time.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Printers_NoResponse"], false);
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
@@ -295,7 +295,7 @@ public class IndexModel : PageModel
             // the socket layer produced, rather than a typed exception).
             // Without this, that unlikely-but-real race surfaces as an unhandled 500 instead of a
             // message. Excluded when the request itself was cancelled - nothing will render anyway.
-            (StatusMessage, StatusSuccess) = ("Something went wrong sending the command.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Printers_CommandFailed"], false);
         }
 
         return RedirectToPage();

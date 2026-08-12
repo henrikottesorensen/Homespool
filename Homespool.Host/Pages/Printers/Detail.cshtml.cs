@@ -7,10 +7,12 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 
 using Homespool.Host.Authorisation;
 using Homespool.Host.Cameras;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Localisation;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Queue;
 using Homespool.Host.Services;
@@ -41,6 +43,7 @@ public class DetailModel : PageModel
     private readonly CameraAccessService _cameraAccess;
     private readonly CameraDisplayNames _cameraNames;
     private readonly PrinterConnectionRegistry _connectionRegistry;
+    private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly UserManager<HSUser> _userManager;
 
     public DetailModel(PrinterQueryService printerQueryService,
@@ -52,6 +55,7 @@ public class DetailModel : PageModel
                        CameraAccessService cameraAccess,
                        CameraDisplayNames cameraNames,
                        PrinterConnectionRegistry connectionRegistry,
+                       IStringLocalizer<SharedResource> localiser,
                        UserManager<HSUser> userManager)
     {
         _printerQueryService = printerQueryService;
@@ -64,6 +68,7 @@ public class DetailModel : PageModel
         _cameraNames = cameraNames;
         _connectionRegistry = connectionRegistry;
         _userManager = userManager;
+        _localiser = localiser;
     }
 
     public PrinterStatistics Statistics { get; private set; } = null!;
@@ -95,10 +100,12 @@ public class DetailModel : PageModel
     {
         if (job.StoppedByUserId is not { } stopper)
         {
-            return "at the printer";
+            return _localiser["Printers_StoppedAtPrinter"];
         }
 
-        return StopperNames.TryGetValue(stopper, out string? name) ? $"by {name}" : "from here";
+        return StopperNames.TryGetValue(stopper, out string? name) ?
+            _localiser["Printers_StoppedByPerson", name] :
+            _localiser["Printers_StoppedFromHere"];
     }
 
     /// <summary>
@@ -238,7 +245,9 @@ public class DetailModel : PageModel
         {
             bool moved = await _queueService.MoveAsync(id, userId, position, cancellationToken);
 
-            return moved ? ("Queue reordered.", true) : ("That print is no longer in the queue.", false);
+            return moved ?
+                (_localiser["Printers_QueueReordered"].Value, true) :
+                (_localiser["Printers_JobGone"].Value, false);
         }, cancellationToken);
     }
 
@@ -252,7 +261,9 @@ public class DetailModel : PageModel
         {
             bool cancelled = await _queueService.CancelAsync(id, userId, cancellationToken);
 
-            return cancelled ? ("Removed from the queue.", true) : ("That print is no longer in the queue.", false);
+            return cancelled ?
+                (_localiser["Printers_JobRemoved"].Value, true) :
+                (_localiser["Printers_JobGone"].Value, false);
         }, cancellationToken);
     }
 
@@ -273,12 +284,13 @@ public class DetailModel : PageModel
 
             if (preset is null)
             {
-                return ($"'{filament}' is not a filament this printer has a preset for.", false);
+                return (_localiser["Printers_NoSuchFilament", filament].Value, false);
             }
 
             await _preheat.PreheatAsync(printer.Id, userId, preset, cancellationToken);
 
-            return ($"Heating to {preset.NozzleTemperature} °C nozzle and {preset.BedTemperature} °C bed for {preset.Name}.",
+            return (
+                _localiser["Printers_HeatingTo", preset.NozzleTemperature, preset.BedTemperature, preset.Name].Value,
                 true);
         }, cancellationToken);
     }
@@ -290,7 +302,7 @@ public class DetailModel : PageModel
         {
             await _preheat.CooldownAsync(printer.Id, userId, cancellationToken);
 
-            return ("Both heaters switched off.", true);
+            return (_localiser["Printers_HeatersOff"].Value, true);
         }, cancellationToken);
     }
 

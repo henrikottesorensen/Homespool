@@ -5,6 +5,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
@@ -13,6 +14,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.Pages;
@@ -32,6 +34,7 @@ public class SetupModel : PageModel
     private readonly AccountConfirmationPolicy _accountConfirmationPolicy;
     private readonly TeamService _teamService;
     private readonly UnitOfWork _unitOfWork;
+    private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<SetupModel> _logger;
 
     public SetupModel(UserManager<HSUser> userManager,
@@ -41,6 +44,7 @@ public class SetupModel : PageModel
                       AccountConfirmationPolicy accountConfirmationPolicy,
                       TeamService teamService,
                       UnitOfWork unitOfWork,
+                      IStringLocalizer<SharedResource> localiser,
                       ILogger<SetupModel> logger)
     {
         _userManager = userManager;
@@ -51,6 +55,7 @@ public class SetupModel : PageModel
         _accountConfirmationPolicy = accountConfirmationPolicy;
         _teamService = teamService;
         _unitOfWork = unitOfWork;
+        _localiser = localiser;
         _logger = logger;
     }
 
@@ -120,7 +125,7 @@ public class SetupModel : PageModel
         // setup reads the same as a wrong one - no oracle for either.
         if (!_setupState.Verify(Input.Token))
         {
-            ModelState.AddModelError(string.Empty, "The setup token is invalid, or first-time setup is already complete.");
+            ModelState.AddModelError(string.Empty, _localiser["Setup_TokenInvalid"]);
 
             return Page();
         }
@@ -166,7 +171,7 @@ public class SetupModel : PageModel
         catch (DbUpdateException ex)
         {
             _logger.LogError(ex, "Failed to complete first-time setup; rolling back the account.");
-            ModelState.AddModelError(string.Empty, "Could not complete setup. Please try again.");
+            ModelState.AddModelError(string.Empty, _localiser["Setup_Failed"]);
 
             return Page();
         }

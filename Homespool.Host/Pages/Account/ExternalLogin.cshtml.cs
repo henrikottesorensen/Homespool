@@ -128,7 +128,7 @@ public class ExternalLoginModel : PageModel
         returnUrl = returnUrl ?? Url.Content("~/");
         if (remoteError != null)
         {
-            ErrorMessage = $"Error from external provider: {remoteError}";
+            ErrorMessage = _localiser["Account_ExternalProviderError", remoteError];
             return RedirectToPage("./Login", new { ReturnUrl = returnUrl });
         }
 

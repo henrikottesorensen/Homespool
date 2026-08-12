@@ -114,7 +114,7 @@ public sealed class AddModelTests : IDisposable
 
         AddModel model = new(prusaConnectService, NewBundleBuilder(options), new TeamService(context), users,
                              new UnitOfWork(context),
-                             Options.Create(options), NullLogger<AddModel>.Instance)
+                             Options.Create(options), TestLocaliser.Shared(), NullLogger<AddModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };

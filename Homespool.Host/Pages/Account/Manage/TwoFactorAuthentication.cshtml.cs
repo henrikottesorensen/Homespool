@@ -5,11 +5,13 @@
 
 using System.Threading.Tasks;
 
+using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.Pages.Account.Manage;
@@ -18,14 +20,17 @@ public class TwoFactorAuthenticationModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly SignInManager<HSUser> _signInManager;
+    private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<TwoFactorAuthenticationModel> _logger;
 
     public TwoFactorAuthenticationModel(UserManager<HSUser> userManager,
                                         SignInManager<HSUser> signInManager,
+                                        IStringLocalizer<SharedResource> localiser,
                                         ILogger<TwoFactorAuthenticationModel> logger)
     {
         _userManager = userManager;
         _signInManager = signInManager;
+        _localiser = localiser;
         _logger = logger;
     }
 
@@ -87,7 +92,7 @@ public class TwoFactorAuthenticationModel : PageModel
 
         await _signInManager.ForgetTwoFactorClientAsync();
         StatusMessage =
-            "The current browser has been forgotten. When you login again from this browser you will be prompted for your 2fa code.";
+            _localiser["Manage_BrowserForgotten"];
         return RedirectToPage();
     }
 }

@@ -1277,4 +1277,205 @@
   <data name="Manage_TokenName" xml:space="preserve">
     <value>Token name</value>
   </data>
+  <data name="Files_ChooseFile" xml:space="preserve">
+    <value>Choose a file to upload.</value>
+  </data>
+  <data name="Files_TooLarge" xml:space="preserve">
+    <value>That file is larger than the {0} limit.</value>
+  </data>
+  <data name="Files_UploadedFile" xml:space="preserve">
+    <value>Uploaded {0}.</value>
+  </data>
+  <data name="Files_UploadGone" xml:space="preserve">
+    <value>That upload is no longer waiting - it may have been cleared up. Try again.</value>
+  </data>
+  <data name="Files_Replaced" xml:space="preserve">
+    <value>Replaced {0}.</value>
+  </data>
+  <data name="Files_Discarded" xml:space="preserve">
+    <value>Upload discarded.</value>
+  </data>
+  <data name="Files_PrinterNotYours" xml:space="preserve">
+    <value>That printer is not one of yours.</value>
+  </data>
+  <data name="Files_Queued" xml:space="preserve">
+    <value>Queued {0}.</value>
+  </data>
+  <data name="Files_PrinterReadOnly" xml:space="preserve">
+    <value>You may read that printer but not use it.</value>
+  </data>
+  <data name="Files_NoSuchFile" xml:space="preserve">
+    <value>There is no file named {0}.</value>
+  </data>
+  <data name="Files_OverFourGiB" xml:space="preserve">
+    <value>That file is over 4 GiB - a printer cannot be sent anything larger.</value>
+  </data>
+  <data name="Files_Refused" xml:space="preserve">
+    <value>{0} refused it: {1}</value>
+  </data>
+  <data name="Files_Sending" xml:space="preserve">
+    <value>Sending {0} to {1}. It moves at the printer’s pace.</value>
+  </data>
+  <data name="Files_PrinterNotConnected" xml:space="preserve">
+    <value>{0} isn’t connected right now.</value>
+  </data>
+  <data name="Files_PrinterBusy" xml:space="preserve">
+    <value>{0} is still busy with a previous command.</value>
+  </data>
+  <data name="Files_PrinterNoAnswer" xml:space="preserve">
+    <value>{0} didn’t answer in time.</value>
+  </data>
+  <data name="Files_NoPermission" xml:space="preserve">
+    <value>You don’t have permission to use that printer.</value>
+  </data>
+  <data name="Files_SendFailed" xml:space="preserve">
+    <value>Something went wrong sending that file.</value>
+  </data>
+  <data name="Files_Renamed" xml:space="preserve">
+    <value>Renamed to {0}.</value>
+  </data>
+  <data name="Files_Deleted" xml:space="preserve">
+    <value>Deleted {0}.</value>
+  </data>
+  <data name="Files_QueuedCannotDelete" xml:space="preserve">
+    <value>{0} is queued to print. Cancel the queued print first.</value>
+  </data>
+  <data name="Printers_CommandRejected" xml:space="preserve">
+    <value>{0} rejected: {1}</value>
+  </data>
+  <data name="Printers_CommandSent" xml:space="preserve">
+    <value>{0} sent.</value>
+  </data>
+  <data name="Printers_GoneNow" xml:space="preserve">
+    <value>That printer no longer exists.</value>
+  </data>
+  <data name="Printers_NoControlPermission" xml:space="preserve">
+    <value>You don’t have permission to control that printer.</value>
+  </data>
+  <data name="Printers_NotConnectedNow" xml:space="preserve">
+    <value>That printer isn’t connected right now.</value>
+  </data>
+  <data name="Printers_StillBusy" xml:space="preserve">
+    <value>That printer is still processing a previous command.</value>
+  </data>
+  <data name="Printers_NoResponse" xml:space="preserve">
+    <value>That printer didn’t respond in time.</value>
+  </data>
+  <data name="Printers_CommandFailed" xml:space="preserve">
+    <value>Something went wrong sending the command.</value>
+  </data>
+  <data name="Printers_ClaimLockedOut" xml:space="preserve">
+    <value>Too many unrecognised codes. Try again in {0}. The printer’s own code is unaffected - it is still waiting.</value>
+  </data>
+  <data name="Printers_ClaimWaitSeconds" xml:space="preserve">
+    <value>{0} seconds</value>
+  </data>
+  <data name="Printers_ClaimWaitOneSecond" xml:space="preserve">
+    <value>1 second</value>
+  </data>
+  <data name="Printers_ClaimWaitMinutes" xml:space="preserve">
+    <value>{0} minutes</value>
+  </data>
+  <data name="Printers_ClaimWaitOneMinute" xml:space="preserve">
+    <value>1 minute</value>
+  </data>
+  <data name="Printers_ClaimNoSuchCode" xml:space="preserve">
+    <value>No printer is waiting with that code. Check it against the printer’s screen - codes expire, so it may have already been replaced. Letters O, I and L are read as 0, 1 and 1, so those are safe to get wrong.</value>
+  </data>
+  <data name="Printers_ClaimAlreadyClaimed" xml:space="preserve">
+    <value>This code has already been claimed. If that wasn’t you, make sure you copied the current code from the printer’s screen.</value>
+  </data>
+  <data name="Printers_ClaimNoTeamPermission" xml:space="preserve">
+    <value>You don’t have permission to claim a printer into that team.</value>
+  </data>
+  <data name="Printers_ClaimFailed" xml:space="preserve">
+    <value>Something went wrong claiming the printer. Please try again.</value>
+  </data>
+  <data name="Printers_AddNoPublicAddress" xml:space="preserve">
+    <value>The server’s public address is not configured yet ({0}). Ask your administrator to set it before provisioning printers this way.</value>
+  </data>
+  <data name="Printers_AddNoTeamPermission" xml:space="preserve">
+    <value>You don’t have permission to add a printer to that team.</value>
+  </data>
+  <data name="Printers_AddFailed" xml:space="preserve">
+    <value>Something went wrong provisioning the printer. Please try again.</value>
+  </data>
+  <data name="Printers_StoppedAtPrinter" xml:space="preserve">
+    <value>at the printer</value>
+  </data>
+  <data name="Printers_QueueReordered" xml:space="preserve">
+    <value>Queue reordered.</value>
+  </data>
+  <data name="Printers_JobGone" xml:space="preserve">
+    <value>That print is no longer in the queue.</value>
+  </data>
+  <data name="Printers_JobRemoved" xml:space="preserve">
+    <value>Removed from the queue.</value>
+  </data>
+  <data name="Printers_NoSuchFilament" xml:space="preserve">
+    <value>‘{0}’ is not a filament this printer has a preset for.</value>
+  </data>
+  <data name="Printers_HeatingTo" xml:space="preserve">
+    <value>Heating to {0} °C nozzle and {1} °C bed for {2}.</value>
+  </data>
+  <data name="Printers_HeatersOff" xml:space="preserve">
+    <value>Both heaters switched off.</value>
+  </data>
+  <data name="Setup_TokenInvalid" xml:space="preserve">
+    <value>The setup token is invalid, or first-time setup is already complete.</value>
+  </data>
+  <data name="Setup_Failed" xml:space="preserve">
+    <value>Could not complete setup. Please try again.</value>
+  </data>
+  <data name="Account_InvalidLogin" xml:space="preserve">
+    <value>Invalid login attempt.</value>
+  </data>
+  <data name="Account_InvalidAuthenticatorCode" xml:space="preserve">
+    <value>Invalid authenticator code.</value>
+  </data>
+  <data name="Account_InvalidRecoveryCode" xml:space="preserve">
+    <value>Invalid recovery code entered.</value>
+  </data>
+  <data name="Account_RegistrationFailed" xml:space="preserve">
+    <value>Could not complete registration. Please try again.</value>
+  </data>
+  <data name="Account_ResetNeedsCode" xml:space="preserve">
+    <value>A code must be supplied for password reset.</value>
+  </data>
+  <data name="Account_EmailConfirmed" xml:space="preserve">
+    <value>Thank you for confirming your email.</value>
+  </data>
+  <data name="Account_EmailConfirmFailed" xml:space="preserve">
+    <value>Error confirming your email.</value>
+  </data>
+  <data name="Account_ExternalProviderError" xml:space="preserve">
+    <value>Error from external provider: {0}</value>
+  </data>
+  <data name="Manage_TokenRevoked" xml:space="preserve">
+    <value>Token revoked.</value>
+  </data>
+  <data name="Manage_TokenGone" xml:space="preserve">
+    <value>That token no longer exists.</value>
+  </data>
+  <data name="Manage_PasswordChanged" xml:space="preserve">
+    <value>Your password has been changed.</value>
+  </data>
+  <data name="Manage_PasswordChangedOneToken" xml:space="preserve">
+    <value>Your password has been changed. 1 API token was revoked.</value>
+  </data>
+  <data name="Manage_PasswordChangedTokens" xml:space="preserve">
+    <value>Your password has been changed. {0} API tokens were revoked.</value>
+  </data>
+  <data name="Manage_VerificationCodeInvalid" xml:space="preserve">
+    <value>Verification code is invalid.</value>
+  </data>
+  <data name="Manage_BrowserForgotten" xml:space="preserve">
+    <value>The current browser has been forgotten. When you login again from this browser you will be prompted for your 2fa code.</value>
+  </data>
+  <data name="Printers_StoppedByPerson" xml:space="preserve">
+    <value>by {0}</value>
+  </data>
+  <data name="Printers_StoppedFromHere" xml:space="preserve">
+    <value>from here</value>
+  </data>
 </root>

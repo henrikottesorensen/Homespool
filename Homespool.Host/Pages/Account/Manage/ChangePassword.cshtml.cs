@@ -7,6 +7,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
@@ -14,6 +15,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.Pages.Account.Manage;
@@ -24,18 +26,21 @@ public class ChangePasswordModel : PageModel
     private readonly SignInManager<HSUser> _signInManager;
     private readonly ApiTokenService _apiTokens;
     private readonly UnitOfWork _unitOfWork;
+    private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<ChangePasswordModel> _logger;
 
     public ChangePasswordModel(UserManager<HSUser> userManager,
                                SignInManager<HSUser> signInManager,
                                ApiTokenService apiTokens,
                                UnitOfWork unitOfWork,
+                               IStringLocalizer<SharedResource> localiser,
                                ILogger<ChangePasswordModel> logger)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _apiTokens = apiTokens;
         _unitOfWork = unitOfWork;
+        _localiser = localiser;
         _logger = logger;
     }
 
@@ -155,9 +160,9 @@ public class ChangePasswordModel : PageModel
         // was something to report. Most accounts hold no tokens and do not need telling so.
         StatusMessage = revoked switch
         {
-            0 => "Your password has been changed.",
-            1 => "Your password has been changed. 1 API token was revoked.",
-            _ => $"Your password has been changed. {revoked} API tokens were revoked.",
+            0 => _localiser["Manage_PasswordChanged"],
+            1 => _localiser["Manage_PasswordChangedOneToken"],
+            _ => _localiser["Manage_PasswordChangedTokens", revoked],
         };
 
         return RedirectToPage();

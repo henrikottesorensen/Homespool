@@ -603,16 +603,16 @@
     <value>Udløber</value>
   </data>
   <data name="TwoFactor_AuthenticatorApp" xml:space="preserve">
-    <value>Godkendelsesapp</value>
+    <value>Tofaktorapp</value>
   </data>
   <data name="TwoFactor_AddApp" xml:space="preserve">
-    <value>Tilføj godkendelsesapp</value>
+    <value>Tilføj tofaktorapp</value>
   </data>
   <data name="TwoFactor_SetUpApp" xml:space="preserve">
-    <value>Opsæt godkendelsesapp</value>
+    <value>Opsæt tofaktorapp</value>
   </data>
   <data name="TwoFactor_ResetApp" xml:space="preserve">
-    <value>Nulstil godkendelsesapp</value>
+    <value>Nulstil tofaktorapp</value>
   </data>
   <data name="TwoFactor_Disable" xml:space="preserve">
     <value>Slå tofaktor fra</value>
@@ -645,10 +645,10 @@
     <value>Scan QR-koden eller indtast denne nøgle</value>
   </data>
   <data name="TwoFactor_Steps" xml:space="preserve">
-    <value>Følg disse trin for at bruge en godkendelsesapp:</value>
+    <value>Følg disse trin for at bruge en tofaktorapp:</value>
   </data>
   <data name="TwoFactor_LoginHelp" xml:space="preserve">
-    <value>Dit login er beskyttet med en godkendelsesapp. Indtast din kode nedenfor.</value>
+    <value>Dit login er beskyttet med en tofaktorapp. Indtast din kode nedenfor.</value>
   </data>
   <data name="Account_ResetPassword" xml:space="preserve">
     <value>Nulstil</value>
@@ -777,7 +777,7 @@
     <value>Privatlivs- og cookiepolitikken er ikke accepteret.</value>
   </data>
   <data name="TwoFactor_ScanKeyInto" xml:space="preserve">
-    <value>Scan QR-koden, eller indtast denne nøgle {0} i din godkendelsesapp. Mellemrum og store/små bogstaver betyder ikke noget.</value>
+    <value>Scan QR-koden, eller indtast denne nøgle {0} i din tofaktorapp. Mellemrum og store/små bogstaver betyder ikke noget.</value>
   </data>
   <data name="TwoFactor_LearnQr" xml:space="preserve">
     <value>Læs hvordan du {0}.</value>
@@ -874,16 +874,16 @@
     <value>Du har genereret nye gendannelseskoder.</value>
   </data>
   <data name="TwoFactor_AppVerified" xml:space="preserve">
-    <value>Din godkendelsesapp er bekræftet.</value>
+    <value>Din tofaktorapp er bekræftet.</value>
   </data>
   <data name="TwoFactor_Disabled" xml:space="preserve">
-    <value>Tofaktorgodkendelse er slået fra. Du kan slå den til igen, når du opsætter en godkendelsesapp</value>
+    <value>Tofaktorgodkendelse er slået fra. Du kan slå den til igen, når du opsætter en tofaktorapp</value>
   </data>
   <data name="Cameras_Removed" xml:space="preserve">
     <value>Kameraet er fjernet.</value>
   </data>
   <data name="Cameras_NotYours" xml:space="preserve">
-    <value>Det kamera findes ikke, eller det er ikke dit at fjerne.</value>
+    <value>Det kamera findes ikke, eller du må ikke fjerne det.</value>
   </data>
   <data name="Cameras_SavedWithPicture" xml:space="preserve">
     <value>Kameraet er gemt, og det sendte et billede.</value>
@@ -925,7 +925,7 @@
     <value>Tjek din e-mail for at nulstille din adgangskode.</value>
   </data>
   <data name="Account_RecoveryCodeIntro" xml:space="preserve">
-    <value>Du har valgt at logge ind med en gendannelseskode. Dette login huskes ikke, før du enten indtaster en kode fra godkendelsesappen ved login eller slår tofaktorgodkendelse fra og logger ind igen.</value>
+    <value>Du har valgt at logge ind med en gendannelseskode. Dette login huskes ikke, før du enten indtaster en kode fra tofaktorappen ved login eller slår tofaktorgodkendelse fra og logger ind igen.</value>
   </data>
   <data name="Account_NoAuthenticatorAccess" xml:space="preserve">
     <value>Har du ikke adgang til din godkendelsesenhed? Du kan {0}.</value>
@@ -934,16 +934,16 @@
     <value>Et token lader et script kalde API&apos;et som dig, med præcis dine rettigheder, uden din adgangskode. Send det som {0}. En tilbagekaldelse træder i kraft med det samme.</value>
   </data>
   <data name="TwoFactor_DisableKeepsKeys" xml:space="preserve">
-    <value>At slå tofaktorgodkendelse fra ændrer ikke de nøgler, der bruges i godkendelsesapps. Vil du skifte den nøgle, en godkendelsesapp bruger, bør du {0}</value>
+    <value>At slå tofaktorgodkendelse fra ændrer ikke de nøgler, der bruges i tofaktorapps. Vil du skifte den nøgle, en tofaktorapp bruger, bør du {0}</value>
   </data>
   <data name="TwoFactor_LoseCodesWarning" xml:space="preserve">
-    <value>Mister du din enhed og ikke har gendannelseskoderne, mister du adgangen til din konto. At generere nye gendannelseskoder ændrer ikke de nøgler, der bruges i godkendelsesapps. Vil du skifte den nøgle, en godkendelsesapp bruger, bør du {0}</value>
+    <value>Mister du din enhed og ikke har gendannelseskoderne, mister du adgangen til din konto. At generere nye gendannelseskoder ændrer ikke de nøgler, der bruges i tofaktorapps. Vil du skifte den nøgle, en tofaktorapp bruger, bør du {0}</value>
   </data>
   <data name="TwoFactor_LoseDeviceWarning" xml:space="preserve">
     <value>Mister du din enhed og ikke har gendannelseskoderne, mister du adgangen til din konto.</value>
   </data>
   <data name="TwoFactor_NewCodesKeepKeys" xml:space="preserve">
-    <value>At generere nye gendannelseskoder ændrer ikke de nøgler, der bruges i godkendelsesapps. Vil du skifte den nøgle, en godkendelsesapp bruger, bør du {0}</value>
+    <value>At generere nye gendannelseskoder ændrer ikke de nøgler, der bruges i tofaktorapps. Vil du skifte den nøgle, en tofaktorapp bruger, bør du {0}</value>
   </data>
   <data name="Account_InviteInvalid" xml:space="preserve">
     <value>Dette invitationslink er ugyldigt, udløbet eller allerede brugt. Bed en administrator om en ny invitation.</value>
@@ -961,16 +961,16 @@
     <value>Klargør en printer og et token på forhånd, til en USB-nøgle - printeren behøver ikke kontakte serveren først. Printeren tilmelder sig selv, i det øjeblik den forbinder med sit token.</value>
   </data>
   <data name="Setup_NoAdminYet" xml:space="preserve">
-    <value>Der findes endnu ingen administratorkonto. Opret en nedenfor med det engangs-opsætningstoken, der blev skrevet til serverkonsollen ved opstart.</value>
+    <value>Der findes endnu ingen administratorkonto. Opret en nedenfor med den engangskode, der blev skrevet til serverkonsollen ved opstart.</value>
   </data>
   <data name="Printers_FreeSomeSpace" xml:space="preserve">
     <value>Frigør plads på printeren, så fortsætter den af sig selv.</value>
   </data>
   <data name="TwoFactor_DownloadApp" xml:space="preserve">
-    <value>Hent en app til tofaktorgodkendelse, for eksempel Microsoft Authenticator til {0} og {1} eller Google Authenticator til {2} og {3}.</value>
+    <value>Hent en tofaktorapp, for eksempel Microsoft Authenticator til {0} og {1} eller Google Authenticator til {2} og {3}.</value>
   </data>
   <data name="TwoFactor_AfterScanning" xml:space="preserve">
-    <value>Når du har scannet QR-koden eller indtastet nøglen ovenfor, giver din app til tofaktorgodkendelse dig en unik kode. Indtast koden i bekræftelsesfeltet nedenfor.</value>
+    <value>Når du har scannet QR-koden eller indtastet nøglen ovenfor, giver din tofaktorapp dig en unik kode. Indtast koden i bekræftelsesfeltet nedenfor.</value>
   </data>
   <data name="Account_ReadyNoMail" xml:space="preserve">
     <value>Din konto er klar til brug. Der kræves ingen bekræftelse, fordi denne server ikke har udgående mail konfigureret.</value>

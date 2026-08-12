@@ -11,9 +11,11 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
 using Homespool.Host.Exceptions;
+using Homespool.Host.Localisation;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
@@ -38,13 +40,15 @@ public class ClaimModel : PageModel
     private readonly UnitOfWork _unitOfWork;
     private readonly ClaimAttemptLimiter _attemptLimiter;
     private readonly ILogger<ClaimModel> _logger;
+    private readonly IStringLocalizer<SharedResource> _localiser;
 
     public ClaimModel(PrusaConnectService prusaConnectService,
                       TeamService teamService,
                       UserManager<HSUser> userManager,
                       UnitOfWork unitOfWork,
                       ClaimAttemptLimiter attemptLimiter,
-                      ILogger<ClaimModel> logger)
+                      ILogger<ClaimModel> logger,
+                      IStringLocalizer<SharedResource> localiser)
     {
         _prusaConnectService = prusaConnectService;
         _teamService = teamService;
@@ -52,6 +56,7 @@ public class ClaimModel : PageModel
         _unitOfWork = unitOfWork;
         _attemptLimiter = attemptLimiter;
         _logger = logger;
+        _localiser = localiser;
     }
 
     [BindProperty]
@@ -80,8 +85,8 @@ public class ClaimModel : PageModel
         /// <c>ABCDE-FGHJK</c> or typing spaces is submitting a longer string than the code is. The
         /// real length check is the lookup itself.
         /// </remarks>
-        [Required(ErrorMessage = "Enter the code shown on the printer's screen.")]
-        [StringLength(32, ErrorMessage = "That doesn't look like a registration code.")]
+        [Required(ErrorMessage = "Validation_ClaimCodeRequired")]
+        [StringLength(32, ErrorMessage = "Validation_ClaimCodeShape")]
         [Display(Name = "Registration code")]
         public string Code { get; set; } = string.Empty;
 
@@ -158,7 +163,7 @@ public class ClaimModel : PageModel
             // matching Admin/Invites/IndexModel.OnPostRevokeAsync's pattern. The property names match
             // IndexModel's own [TempData] properties (the default TempData key is the property name),
             // which is what lets the message survive the redirect to a different page.
-            StatusMessage = "Printer claimed. It will show as connected once it completes its next check-in.";
+            StatusMessage = _localiser["Printers_Claimed"];
             StatusSuccess = true;
 
             return RedirectToPage("Index");

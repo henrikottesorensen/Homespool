@@ -8,11 +8,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
+using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.Pages.Account.Manage;
@@ -21,12 +23,15 @@ public class GenerateRecoveryCodesModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly ILogger<GenerateRecoveryCodesModel> _logger;
+    private readonly IStringLocalizer<SharedResource> _localiser;
 
     public GenerateRecoveryCodesModel(UserManager<HSUser> userManager,
-                                      ILogger<GenerateRecoveryCodesModel> logger)
+                                      ILogger<GenerateRecoveryCodesModel> logger,
+                                      IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
         _logger = logger;
+        _localiser = localiser;
     }
 
     /// <summary>
@@ -79,7 +84,7 @@ public class GenerateRecoveryCodesModel : PageModel
         RecoveryCodes = recoveryCodes.ToArray();
 
         _logger.LogInformation("User with ID '{UserId}' has generated new 2FA recovery codes.", userId);
-        StatusMessage = "You have generated new recovery codes.";
+        StatusMessage = _localiser["TwoFactor_CodesGenerated"];
         return RedirectToPage("./ShowRecoveryCodes");
     }
 }

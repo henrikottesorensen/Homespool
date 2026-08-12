@@ -144,4 +144,865 @@
   <data name="Language_Saved" xml:space="preserve">
     <value>Language updated.</value>
   </data>
+  <data name="Alert_UnhealthySubject" xml:space="preserve">
+    <value>Homespool is unhealthy</value>
+    <comment>Email subject. Sent to administrators, each in their own stored language.</comment>
+  </data>
+  <data name="Alert_UnhealthyIntro" xml:space="preserve">
+    <value>Homespool reported a problem:</value>
+  </data>
+  <data name="Alert_UnhealthyFooter" xml:space="preserve">
+    <value>Printing is unaffected, but recorded history may be incomplete until this is resolved.</value>
+  </data>
+  <data name="Alert_RecoveredSubject" xml:space="preserve">
+    <value>Homespool has recovered</value>
+  </data>
+  <data name="Alert_RecoveredBody" xml:space="preserve">
+    <value>The problems reported earlier have cleared. All health checks are passing again.</value>
+  </data>
+  <data name="Account_InvalidUserName" xml:space="preserve">
+    <value>&apos;{0}&apos; is not a usable username. Use letters, digits, and - . _ only; an email address cannot be a username.</value>
+    <comment>Replaces Identity&apos;s own wording, which describes a rule this application does not apply. The three punctuation marks are listed literally and must survive translation.</comment>
+  </data>
+  <data name="Printers_Title" xml:space="preserve">
+    <value>Printers</value>
+  </data>
+  <data name="Printers_Claim" xml:space="preserve">
+    <value>Claim printer (code)</value>
+  </data>
+  <data name="Printers_Add" xml:space="preserve">
+    <value>Add printer (USB key)</value>
+  </data>
+  <data name="Printers_None" xml:space="preserve">
+    <value>No printers yet.</value>
+  </data>
+  <data name="Printers_Location" xml:space="preserve">
+    <value>Location</value>
+  </data>
+  <data name="Printers_AwaitingUsb" xml:space="preserve">
+    <value>Awaiting USB provisioning</value>
+    <comment>The printer has a provisioning token nobody has carried to it yet. Deliberately not "USB connection", which reads as a cable between the printer and this server - there is no such cable, and the USB key never touches the machine Homespool runs on.</comment>
+  </data>
+  <data name="Printers_AwaitingAny" xml:space="preserve">
+    <value>Awaiting connection</value>
+  </data>
+  <data name="Printers_ReissueToken" xml:space="preserve">
+    <value>Reissue USB token</value>
+  </data>
+  <data name="Printers_RegenerateToken" xml:space="preserve">
+    <value>Regenerate USB token</value>
+  </data>
+  <data name="Common_Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Common_Team" xml:space="preserve">
+    <value>Team</value>
+  </data>
+  <data name="Common_Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Command_Pause" xml:space="preserve">
+    <value>Pause</value>
+  </data>
+  <data name="Command_Resume" xml:space="preserve">
+    <value>Resume</value>
+  </data>
+  <data name="Command_Stop" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="Printers_NotFound" xml:space="preserve">
+    <value>That printer no longer exists.</value>
+  </data>
+  <data name="Printers_NotYours" xml:space="preserve">
+    <value>You don&apos;t have permission to manage that printer.</value>
+  </data>
+  <data name="Printers_NoUsbToken" xml:space="preserve">
+    <value>That printer was never set up with a USB key, so there is no token to reissue.</value>
+  </data>
+  <data name="Files_Title" xml:space="preserve">
+    <value>Files</value>
+  </data>
+  <data name="Files_None" xml:space="preserve">
+    <value>No files yet. Upload a sliced model to send it to a printer.</value>
+  </data>
+  <data name="Files_DuplicateName" xml:space="preserve">
+    <value>You already have a file named</value>
+  </data>
+  <data name="Files_Replace" xml:space="preserve">
+    <value>Replace it</value>
+  </data>
+  <data name="Files_KeepExisting" xml:space="preserve">
+    <value>Keep the existing file</value>
+  </data>
+  <data name="Files_Upload" xml:space="preserve">
+    <value>Upload</value>
+  </data>
+  <data name="Files_Size" xml:space="preserve">
+    <value>Size</value>
+  </data>
+  <data name="Files_Uploaded" xml:space="preserve">
+    <value>Uploaded</value>
+  </data>
+  <data name="Files_Send" xml:space="preserve">
+    <value>Send</value>
+  </data>
+  <data name="Files_SendTitle" xml:space="preserve">
+    <value>Transfer the file to the printer now</value>
+  </data>
+  <data name="Files_Queue" xml:space="preserve">
+    <value>Queue</value>
+  </data>
+  <data name="Files_QueueTitle" xml:space="preserve">
+    <value>Add to the printer&apos;s queue to print when it is free</value>
+  </data>
+  <data name="Files_Rename" xml:space="preserve">
+    <value>Rename</value>
+  </data>
+  <data name="Files_Download" xml:space="preserve">
+    <value>Download</value>
+  </data>
+  <data name="Common_Save" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="Common_Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="Common_Delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="Cameras_Title" xml:space="preserve">
+    <value>Cameras</value>
+  </data>
+  <data name="Cameras_None" xml:space="preserve">
+    <value>No cameras yet.</value>
+  </data>
+  <data name="Cameras_Source" xml:space="preserve">
+    <value>Source</value>
+  </data>
+  <data name="Cameras_Picture" xml:space="preserve">
+    <value>Picture</value>
+  </data>
+  <data name="Cameras_NoPictureYet" xml:space="preserve">
+    <value>no picture yet</value>
+  </data>
+  <data name="Cameras_Attached" xml:space="preserve">
+    <value>attached</value>
+  </data>
+  <data name="Cameras_Actions" xml:space="preserve">
+    <value>Actions</value>
+  </data>
+  <data name="Cameras_Edit" xml:space="preserve">
+    <value>Edit</value>
+  </data>
+  <data name="Cameras_EditHeading" xml:space="preserve">
+    <value>Edit camera</value>
+  </data>
+  <data name="Cameras_Remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="Cameras_AddNetwork" xml:space="preserve">
+    <value>Add a camera on the network</value>
+  </data>
+  <data name="Cameras_AddAttached" xml:space="preserve">
+    <value>Add a camera plugged into this server</value>
+  </data>
+  <data name="Cameras_Address" xml:space="preserve">
+    <value>Address</value>
+  </data>
+  <data name="Cameras_Device" xml:space="preserve">
+    <value>Camera</value>
+  </data>
+  <data name="Common_Add" xml:space="preserve">
+    <value>Add</value>
+  </data>
+  <data name="Common_None" xml:space="preserve">
+    <value>None</value>
+  </data>
+  <data name="Common_Printer" xml:space="preserve">
+    <value>Printer</value>
+  </data>
+  <data name="Cameras_NetworkHelp" xml:space="preserve">
+    <value>An RTSP or HTTP address, for example {0}. Homespool registers it with the stream server for you.</value>
+  </data>
+  <data name="Cameras_AttachedHelp" xml:space="preserve">
+    <value>Only cameras nobody has claimed are listed. A camera attached to the server belongs to the machine rather than to a team, so only an administrator can set one up.</value>
+  </data>
+  <data name="Cameras_Seen" xml:space="preserve">
+    <value>seen {0}</value>
+  </data>
+  <data name="Printers_BackToList" xml:space="preserve">
+    <value>← Back to printers</value>
+  </data>
+  <data name="Printers_CurrentStatus" xml:space="preserve">
+    <value>Current status</value>
+  </data>
+  <data name="Printers_NotConnected" xml:space="preserve">
+    <value>Not connected</value>
+  </data>
+  <data name="Printers_LastSeen" xml:space="preserve">
+    <value>Last seen</value>
+  </data>
+  <data name="Printers_Nozzle" xml:space="preserve">
+    <value>Nozzle</value>
+  </data>
+  <data name="Printers_Bed" xml:space="preserve">
+    <value>Bed</value>
+  </data>
+  <data name="Printers_NozzleTemp" xml:space="preserve">
+    <value>Nozzle temperature</value>
+  </data>
+  <data name="Printers_BedTemp" xml:space="preserve">
+    <value>Bed temperature</value>
+  </data>
+  <data name="Printers_Temperature" xml:space="preserve">
+    <value>Temperature</value>
+  </data>
+  <data name="Printers_Material" xml:space="preserve">
+    <value>Material</value>
+  </data>
+  <data name="Printers_Speed" xml:space="preserve">
+    <value>Speed</value>
+  </data>
+  <data name="Printers_Flow" xml:space="preserve">
+    <value>Flow</value>
+  </data>
+  <data name="Printers_Progress" xml:space="preserve">
+    <value>Progress</value>
+  </data>
+  <data name="Printers_TimePrinting" xml:space="preserve">
+    <value>Time printing</value>
+  </data>
+  <data name="Printers_TimeRemaining" xml:space="preserve">
+    <value>Time remaining</value>
+  </data>
+  <data name="Printers_FilamentChangeIn" xml:space="preserve">
+    <value>Filament change in</value>
+  </data>
+  <data name="Printers_PrintingNow" xml:space="preserve">
+    <value>Printing now</value>
+  </data>
+  <data name="Printers_Starting" xml:space="preserve">
+    <value>starting</value>
+  </data>
+  <data name="Printers_PrintHistory" xml:space="preserve">
+    <value>Print history</value>
+  </data>
+  <data name="Printers_NothingFinished" xml:space="preserve">
+    <value>Nothing has finished printing yet.</value>
+  </data>
+  <data name="Printers_RecentEvents" xml:space="preserve">
+    <value>Recent events</value>
+  </data>
+  <data name="Printers_NoEvents" xml:space="preserve">
+    <value>No events yet.</value>
+  </data>
+  <data name="Printers_RecentTelemetry" xml:space="preserve">
+    <value>Recent telemetry</value>
+  </data>
+  <data name="Printers_NoTelemetry" xml:space="preserve">
+    <value>No telemetry yet.</value>
+  </data>
+  <data name="Printers_NoTelemetryHistory" xml:space="preserve">
+    <value>No telemetry history yet.</value>
+  </data>
+  <data name="Printers_QueueHeld" xml:space="preserve">
+    <value>The queue is held.</value>
+  </data>
+  <data name="Printers_Preheat" xml:space="preserve">
+    <value>Preheat</value>
+  </data>
+  <data name="Printers_PreheatFor" xml:space="preserve">
+    <value>Preheat for</value>
+  </data>
+  <data name="Printers_CoolDown" xml:space="preserve">
+    <value>Cool down</value>
+  </data>
+  <data name="Printers_SlicerHeading" xml:space="preserve">
+    <value>Send from a slicer</value>
+  </data>
+  <data name="Printers_ApiTokenLink" xml:space="preserve">
+    <value>personal access token</value>
+  </data>
+  <data name="Printers_PrintersListLink" xml:space="preserve">
+    <value>printers list</value>
+  </data>
+  <data name="Common_Event" xml:space="preserve">
+    <value>Event</value>
+  </data>
+  <data name="Common_Time" xml:space="preserve">
+    <value>Time</value>
+  </data>
+  <data name="Common_Reason" xml:space="preserve">
+    <value>Reason</value>
+  </data>
+  <data name="Common_Outcome" xml:space="preserve">
+    <value>Outcome</value>
+  </data>
+  <data name="Common_Started" xml:space="preserve">
+    <value>Started</value>
+  </data>
+  <data name="Common_File" xml:space="preserve">
+    <value>File</value>
+  </data>
+  <data name="Common_Job" xml:space="preserve">
+    <value>Job</value>
+  </data>
+  <data name="Common_Queued" xml:space="preserve">
+    <value>Queued</value>
+  </data>
+  <data name="Common_Queue" xml:space="preserve">
+    <value>Queue</value>
+  </data>
+  <data name="Common_Actions" xml:space="preserve">
+    <value>Actions</value>
+  </data>
+  <data name="Common_Copy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="Printers_SlicerHelp" xml:space="preserve">
+    <value>PrusaSlicer can send straight to this printer. Under {0}, set {1} to {2}, paste this as the hostname, and use a {3} as the API key. {4} adds the file to the queue above rather than starting it.</value>
+    <comment>The braces are PrusaSlicer's own menu labels and a link, kept English: they have to match what a person sees in the slicer, which this application does not author.</comment>
+  </data>
+  <data name="Printers_PreheatWarning" xml:space="preserve">
+    <value>Both are refused while the printer is busy, {0}: changing a heater mid-print ruins the print without ending it, and the printer will not refuse it on your behalf. To stop a print, use the controls on the {1}.</value>
+  </data>
+  <data name="Printers_CoolingIncluded" xml:space="preserve">
+    <value>cooling included</value>
+  </data>
+  <data name="Printers_NothingQueued" xml:space="preserve">
+    <value>Nothing queued. Send a file to this printer&apos;s queue from {0}.</value>
+  </data>
+  <data name="Account_LogIn" xml:space="preserve">
+    <value>Log in</value>
+  </data>
+  <data name="Account_LogInHelp" xml:space="preserve">
+    <value>Use a local account to log in.</value>
+  </data>
+  <data name="Account_ForgotPassword" xml:space="preserve">
+    <value>Forgot your password?</value>
+  </data>
+  <data name="Account_ResendConfirmation" xml:space="preserve">
+    <value>Resend email confirmation</value>
+  </data>
+  <data name="Account_CreateAccount" xml:space="preserve">
+    <value>Create account</value>
+  </data>
+  <data name="Account_CreateAccountHelp" xml:space="preserve">
+    <value>Create your account.</value>
+  </data>
+  <data name="Account_Username" xml:space="preserve">
+    <value>Username</value>
+  </data>
+  <data name="Account_Email" xml:space="preserve">
+    <value>Email</value>
+  </data>
+  <data name="Account_Password" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="Account_ConfirmPassword" xml:space="preserve">
+    <value>Confirm Password</value>
+  </data>
+  <data name="Account_UsernameCharsPre" xml:space="preserve">
+    <value>Letters, digits, and</value>
+  </data>
+  <data name="Account_UsernameCharsPost" xml:space="preserve">
+    <value>. You sign in with this or your email address.</value>
+  </data>
+  <data name="Nav_Login" xml:space="preserve">
+    <value>Login</value>
+  </data>
+  <data name="Nav_Logout" xml:space="preserve">
+    <value>Logout</value>
+  </data>
+  <data name="Nav_Invites" xml:space="preserve">
+    <value>Invites</value>
+  </data>
+  <data name="Nav_Certificate" xml:space="preserve">
+    <value>Certificate</value>
+  </data>
+  <data name="Nav_Privacy" xml:space="preserve">
+    <value>Privacy</value>
+  </data>
+  <data name="Home_Tagline" xml:space="preserve">
+    <value>A self-hosted 3D printer spooler. Your models never leave your machines.</value>
+  </data>
+  <data name="Account_AcceptInvitation" xml:space="preserve">
+    <value>Accept invitation</value>
+  </data>
+  <data name="Home_Title" xml:space="preserve">
+    <value>Home</value>
+  </data>
+  <data name="Manage_Profile" xml:space="preserve">
+    <value>Profile</value>
+  </data>
+  <data name="Manage_ExternalLogins" xml:space="preserve">
+    <value>External logins</value>
+  </data>
+  <data name="Manage_TwoFactor" xml:space="preserve">
+    <value>Two-factor authentication</value>
+  </data>
+  <data name="Manage_ApiTokens" xml:space="preserve">
+    <value>API tokens</value>
+  </data>
+  <data name="Manage_ChangeEmail" xml:space="preserve">
+    <value>Change email</value>
+  </data>
+  <data name="Manage_SendVerification" xml:space="preserve">
+    <value>Send verification email</value>
+  </data>
+  <data name="Manage_UpdatePassword" xml:space="preserve">
+    <value>Update password</value>
+  </data>
+  <data name="Tokens_Yours" xml:space="preserve">
+    <value>Your tokens</value>
+  </data>
+  <data name="Tokens_None" xml:space="preserve">
+    <value>You have no tokens.</value>
+  </data>
+  <data name="Tokens_Create" xml:space="preserve">
+    <value>Create token</value>
+  </data>
+  <data name="Tokens_Revoke" xml:space="preserve">
+    <value>Revoke</value>
+  </data>
+  <data name="Tokens_Created" xml:space="preserve">
+    <value>Created</value>
+  </data>
+  <data name="Tokens_CopyNow" xml:space="preserve">
+    <value>Copy this now</value>
+  </data>
+  <data name="Tokens_ShownOnce" xml:space="preserve">
+    <value>It is stored only as a hash, so this is the only time it can be shown. If you lose it, revoke it and make another.</value>
+  </data>
+  <data name="Invites_Create" xml:space="preserve">
+    <value>Create invitation</value>
+  </data>
+  <data name="Invites_None" xml:space="preserve">
+    <value>No invitations yet.</value>
+  </data>
+  <data name="Invites_Target" xml:space="preserve">
+    <value>Target</value>
+  </data>
+  <data name="Invites_Expires" xml:space="preserve">
+    <value>Expires</value>
+  </data>
+  <data name="Invites_BackToList" xml:space="preserve">
+    <value>Back to invitations</value>
+  </data>
+  <data name="Invites_EmailSent" xml:space="preserve">
+    <value>An email with the accept link was sent.</value>
+  </data>
+  <data name="Invites_NoEmailSent" xml:space="preserve">
+    <value>No email was sent (mail is not configured, or the send failed) — copy the link below.</value>
+  </data>
+  <data name="Setup_CreateAdmin" xml:space="preserve">
+    <value>Create administrator</value>
+  </data>
+  <data name="Printers_ClaimHeading" xml:space="preserve">
+    <value>Claim printer</value>
+  </data>
+  <data name="Common_Back" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="Common_Created" xml:space="preserve">
+    <value>Created</value>
+  </data>
+  <data name="Common_Expires" xml:space="preserve">
+    <value>Expires</value>
+  </data>
+  <data name="TwoFactor_AuthenticatorApp" xml:space="preserve">
+    <value>Authenticator app</value>
+  </data>
+  <data name="TwoFactor_AddApp" xml:space="preserve">
+    <value>Add authenticator app</value>
+  </data>
+  <data name="TwoFactor_SetUpApp" xml:space="preserve">
+    <value>Set up authenticator app</value>
+  </data>
+  <data name="TwoFactor_ResetApp" xml:space="preserve">
+    <value>Reset authenticator app</value>
+  </data>
+  <data name="TwoFactor_Disable" xml:space="preserve">
+    <value>Disable 2FA</value>
+  </data>
+  <data name="TwoFactor_ForgetBrowser" xml:space="preserve">
+    <value>Forget this browser</value>
+  </data>
+  <data name="TwoFactor_ResetRecoveryCodes" xml:space="preserve">
+    <value>Reset recovery codes</value>
+  </data>
+  <data name="TwoFactor_GenerateCodes" xml:space="preserve">
+    <value>Generate Recovery Codes</value>
+  </data>
+  <data name="TwoFactor_KeepCodesSafe" xml:space="preserve">
+    <value>Put these codes in a safe place.</value>
+  </data>
+  <data name="TwoFactor_DisableOnly" xml:space="preserve">
+    <value>This action only disables 2FA.</value>
+  </data>
+  <data name="TwoFactor_NoCodesLeft" xml:space="preserve">
+    <value>You have no recovery codes left.</value>
+  </data>
+  <data name="TwoFactor_VerificationCode" xml:space="preserve">
+    <value>Verification Code</value>
+  </data>
+  <data name="TwoFactor_Verify" xml:space="preserve">
+    <value>Verify</value>
+  </data>
+  <data name="TwoFactor_ScanQr" xml:space="preserve">
+    <value>Scan the QR Code or enter this key</value>
+  </data>
+  <data name="TwoFactor_Steps" xml:space="preserve">
+    <value>To use an authenticator app go through the following steps:</value>
+  </data>
+  <data name="TwoFactor_LoginHelp" xml:space="preserve">
+    <value>Your login is protected with an authenticator app. Enter your authenticator code below.</value>
+  </data>
+  <data name="Account_ResetPassword" xml:space="preserve">
+    <value>Reset</value>
+  </data>
+  <data name="Account_ResetPasswordHelp" xml:space="preserve">
+    <value>Reset your password.</value>
+  </data>
+  <data name="Account_EnterEmail" xml:space="preserve">
+    <value>Enter your email.</value>
+  </data>
+  <data name="Account_Resend" xml:space="preserve">
+    <value>Resend</value>
+  </data>
+  <data name="Account_Register" xml:space="preserve">
+    <value>Register</value>
+  </data>
+  <data name="Account_SignIn" xml:space="preserve">
+    <value>Sign in</value>
+  </data>
+  <data name="Account_CheckEmail" xml:space="preserve">
+    <value>Please check your email to confirm your account.</value>
+  </data>
+  <data name="Account_AccessDenied" xml:space="preserve">
+    <value>You do not have access to this resource.</value>
+  </data>
+  <data name="Account_LockedOut" xml:space="preserve">
+    <value>This account has been locked out, please try again later.</value>
+  </data>
+  <data name="Account_LoggedOut" xml:space="preserve">
+    <value>You have successfully logged out of the application.</value>
+  </data>
+  <data name="Account_ResetPasswordTitle" xml:space="preserve">
+    <value>Reset Password</value>
+  </data>
+  <data name="Account_ClickToLogIn" xml:space="preserve">
+    <value>click here to log in</value>
+  </data>
+  <data name="Manage_AccountTitle" xml:space="preserve">
+    <value>Manage your account</value>
+  </data>
+  <data name="Manage_AccountSubtitle" xml:space="preserve">
+    <value>Change your account settings</value>
+  </data>
+  <data name="Cert_Title" xml:space="preserve">
+    <value>Printer certificate</value>
+  </data>
+  <data name="Cert_PlainHttpHeading" xml:space="preserve">
+    <value>Printers connect over plain HTTP in this deployment</value>
+  </data>
+  <data name="Cert_PlainHttpBody" xml:space="preserve">
+    <value>This setting exists only to help a developer read the traffic between Homespool and a printer. Every printer token, every file and every printer&apos;s PrusaLink password crosses the network in clear while it is off.</value>
+    <comment>The password is not a figure of speech: firmware sends the printer&apos;s PrusaLink password in its INFO event (InfoEventDataDTO), the credential its own HTTP server accepts as X-Api-Key, and TelemetryWriter masks it in logs for that reason. Do not weaken this back to "token" - it was written from the wire.</comment>
+  </data>
+  <data name="Cert_Explanation" xml:space="preserve">
+    <value>Printers verify this server against a certificate it mints for itself. The certificate is issued {0} and then left alone - reissuing it automatically would drop every live printer connection each time an interface appeared, and quietly change what this server claims to be. So when this machine&apos;s addresses move, the fix is here rather than automatic.</value>
+  </data>
+  <data name="Cert_Once" xml:space="preserve">
+    <value>once</value>
+  </data>
+  <data name="Cert_Covers" xml:space="preserve">
+    <value>The certificate covers</value>
+  </data>
+  <data name="Cert_MachineAnswersOn" xml:space="preserve">
+    <value>This machine now answers on</value>
+  </data>
+  <data name="Cert_PrintersToldToUse" xml:space="preserve">
+    <value>Printers are told to use</value>
+  </data>
+  <data name="Cert_AuthorityExpires" xml:space="preserve">
+    <value>Authority expires</value>
+  </data>
+  <data name="Cert_Expires" xml:space="preserve">
+    <value>Certificate expires</value>
+  </data>
+  <data name="Cert_Reissue" xml:space="preserve">
+    <value>Reissue for this machine&apos;s current addresses</value>
+  </data>
+  <data name="Cert_WouldNarrow" xml:space="preserve">
+    <value>Reissuing would narrow this certificate.</value>
+  </data>
+  <data name="Cert_KeepTicked" xml:space="preserve">
+    <value>Tick any name a printer is still connecting to and it will be kept:</value>
+  </data>
+  <data name="Cert_WouldDrop" xml:space="preserve">
+    <value>a reissue would drop this</value>
+  </data>
+  <data name="Cert_NotInCertificate" xml:space="preserve">
+    <value>not in the certificate</value>
+  </data>
+  <data name="Cert_WouldStopConnecting" xml:space="preserve">
+    <value>any printer whose ini tells it to use one of these will stop connecting</value>
+  </data>
+  <data name="Cert_NoUsableAddress" xml:space="preserve">
+    <value>no usable address was detected</value>
+  </data>
+  <data name="Cert_NotConfigured" xml:space="preserve">
+    <value>not configured (</value>
+  </data>
+  <data name="Cert_Nothing" xml:space="preserve">
+    <value>nothing</value>
+  </data>
+  <data name="Cert_ProxyReloaded" xml:space="preserve">
+    <value>proxy reloaded</value>
+  </data>
+  <data name="Cert_ToTakeEffect" xml:space="preserve">
+    <value>to take effect -</value>
+  </data>
+  <data name="TwoFactor_MustGenerate" xml:space="preserve">
+    <value>You must {0} before you can log in with a recovery code.</value>
+  </data>
+  <data name="TwoFactor_CanGenerate" xml:space="preserve">
+    <value>You can {0}.</value>
+  </data>
+  <data name="TwoFactor_ShouldGenerate" xml:space="preserve">
+    <value>You should {0}.</value>
+  </data>
+  <data name="TwoFactor_GenerateLink" xml:space="preserve">
+    <value>generate a new set of recovery codes</value>
+  </data>
+  <data name="TwoFactor_OneCodeLeft" xml:space="preserve">
+    <value>You have 1 recovery code left.</value>
+  </data>
+  <data name="TwoFactor_MustAcceptPolicy" xml:space="preserve">
+    <value>You must accept the policy before you can enable two factor authentication.</value>
+  </data>
+  <data name="TwoFactor_PolicyNotAccepted" xml:space="preserve">
+    <value>Privacy and cookie policy have not been accepted.</value>
+  </data>
+  <data name="TwoFactor_ScanKeyInto" xml:space="preserve">
+    <value>Scan the QR Code or enter this key {0} into your two factor authenticator app. Spaces and casing do not matter.</value>
+  </data>
+  <data name="TwoFactor_LearnQr" xml:space="preserve">
+    <value>Learn how to {0}.</value>
+  </data>
+  <data name="TwoFactor_EnableQrLink" xml:space="preserve">
+    <value>enable QR code generation</value>
+  </data>
+  <data name="Bundle_DownloadNow" xml:space="preserve">
+    <value>Download this now.</value>
+  </data>
+  <data name="Bundle_TokenOnce" xml:space="preserve">
+    <value>The token inside it is shown once and cannot be retrieved again - if the download is lost before the printer connects, use &quot;Regenerate&quot; to issue a new one.</value>
+  </data>
+  <data name="Bundle_AddressLabel" xml:space="preserve">
+    <value>Address this printer should use</value>
+  </data>
+  <data name="Bundle_AddressHelp" xml:space="preserve">
+    <value>These are the names this server&apos;s printer certificate covers. An address that is not on the list cannot be verified by a printer, however reachable it looks from here.</value>
+  </data>
+  <data name="Bundle_Download" xml:space="preserve">
+    <value>Download provisioning bundle</value>
+  </data>
+  <data name="Bundle_ReadIniInstead" xml:space="preserve">
+    <value>Read the ini instead</value>
+  </data>
+  <data name="Bundle_PlainHttp" xml:space="preserve">
+    <value>This deployment serves printers over plain HTTP</value>
+  </data>
+  <data name="TwoFactor_RecoveryCodeLink" xml:space="preserve">
+    <value>log in with a recovery code</value>
+  </data>
+  <data name="TwoFactor_ResetKeysLink" xml:space="preserve">
+    <value>reset your authenticator keys.</value>
+  </data>
+  <data name="Cert_NotConfiguredFor" xml:space="preserve">
+    <value>not configured ({0})</value>
+  </data>
+  <data name="Cert_ReissueNeedsReload" xml:space="preserve">
+    <value>A reissue needs the {0} to take effect - </value>
+  </data>
+  <data name="Cameras_DeviceLineIn" xml:space="preserve">
+    <value>needs a {0} line in {1} for the go2rtc service.</value>
+  </data>
+  <data name="Printers_IgnoreQr" xml:space="preserve">
+    <value>Ignore the QR code and the {0} link on the printer&apos;s screen.</value>
+  </data>
+  <data name="Validation_Length" xml:space="preserve">
+    <value>The {0} must be at least {2} and at max {1} characters long.</value>
+    <comment>Used as the resource key by AddDataAnnotationsLocalization: the attribute argument names this key rather than carrying the sentence, so the wording can change without touching every model.</comment>
+  </data>
+  <data name="Validation_PasswordMismatch" xml:space="preserve">
+    <value>The password and confirmation password do not match.</value>
+  </data>
+  <data name="Validation_NewPasswordMismatch" xml:space="preserve">
+    <value>The new password and confirmation password do not match.</value>
+  </data>
+  <data name="Validation_ClaimCodeRequired" xml:space="preserve">
+    <value>Enter the code shown on the printer&apos;s screen.</value>
+  </data>
+  <data name="Validation_ClaimCodeShape" xml:space="preserve">
+    <value>That doesn&apos;t look like a registration code.</value>
+  </data>
+  <data name="Validation_ExpiryRange" xml:space="preserve">
+    <value>Expiry must be between 1 and 8760 hours.</value>
+  </data>
+  <data name="Invites_Revoked" xml:space="preserve">
+    <value>Invitation revoked.</value>
+  </data>
+  <data name="Cert_NoTlsNoReissue" xml:space="preserve">
+    <value>Printers connect over plain HTTP in this deployment, so there is no certificate to reissue.</value>
+  </data>
+  <data name="Printers_Claimed" xml:space="preserve">
+    <value>Printer claimed. It will show as connected once it completes its next check-in.</value>
+  </data>
+  <data name="Account_ExternalLoginError" xml:space="preserve">
+    <value>Error loading external login information.</value>
+  </data>
+  <data name="Account_ExternalLoginConfirmError" xml:space="preserve">
+    <value>Error loading external login information during confirmation.</value>
+  </data>
+  <data name="Account_EmailChangeError" xml:space="preserve">
+    <value>Error changing email.</value>
+  </data>
+  <data name="Account_EmailChangeThanks" xml:space="preserve">
+    <value>Thank you for confirming your email change.</value>
+  </data>
+  <data name="Manage_ProfileUpdated" xml:space="preserve">
+    <value>Your profile has been updated</value>
+  </data>
+  <data name="Manage_EmailUnchanged" xml:space="preserve">
+    <value>Your email is unchanged.</value>
+  </data>
+  <data name="TwoFactor_CodesGenerated" xml:space="preserve">
+    <value>You have generated new recovery codes.</value>
+  </data>
+  <data name="TwoFactor_AppVerified" xml:space="preserve">
+    <value>Your authenticator app has been verified.</value>
+  </data>
+  <data name="TwoFactor_Disabled" xml:space="preserve">
+    <value>2fa has been disabled. You can reenable 2fa when you setup an authenticator app</value>
+  </data>
+  <data name="Cameras_Removed" xml:space="preserve">
+    <value>Camera removed.</value>
+  </data>
+  <data name="Cameras_NotYours" xml:space="preserve">
+    <value>That camera does not exist, or is not yours to remove.</value>
+  </data>
+  <data name="Cameras_SavedWithPicture" xml:space="preserve">
+    <value>Camera saved, and it sent a picture.</value>
+  </data>
+  <data name="Cert_NoAddressToCover" xml:space="preserve">
+    <value>Set the address first. No usable address could be detected and PrusaConnect:PrinterHost is not set, so a printer could not verify a new certificate.</value>
+  </data>
+  <data name="Bundle_UnzipToRoot" xml:space="preserve">
+    <value>Unzip it onto the {0} of a USB stick - not into a folder, or the printer will not find the files - then load it from the printer&apos;s own menu: {1}.</value>
+  </data>
+  <data name="Bundle_Root" xml:space="preserve">
+    <value>root</value>
+  </data>
+  <data name="Bundle_TrustStore" xml:space="preserve">
+    <value>The zip carries {0} as well, and the ini sets {1}. That {2} the printer&apos;s trust store rather than adding to it, so while it is set the printer cannot talk to Prusa Connect. The same warning is written inside the ini, where it is read at the moment it matters.</value>
+  </data>
+  <data name="Bundle_Replaces" xml:space="preserve">
+    <value>replaces</value>
+  </data>
+  <data name="Bundle_WhatFileContains" xml:space="preserve">
+    <value>What the file will contain, for {0}. Choosing a different address above changes the {1} line to match.</value>
+  </data>
+  <data name="Bundle_CertIssuedTooEarly" xml:space="preserve">
+    <value>In a container that usually means the certificate was issued before {0} was set, so it covers only addresses inside the container - which work from in there and nowhere else. Set the address printers should use, then reissue under {1}.</value>
+  </data>
+  <data name="Printers_ClaimWrongServer" xml:space="preserve">
+    <value>This also assumes the printer is already pointed at this server (its {0} sets the hostname). If it still talks to Prusa Connect, the code on its screen came from {1} and will never work here.</value>
+  </data>
+  <data name="Printers_ClaimThem" xml:space="preserve">
+    <value>them</value>
+  </data>
+  <data name="Account_AssociateAccount" xml:space="preserve">
+    <value>Associate your {0} account.</value>
+  </data>
+  <data name="Account_ExternalAuthenticated" xml:space="preserve">
+    <value>You&apos;ve successfully authenticated with {0}. Please choose an email address and a username for this site below, then click the Register button to finish logging in.</value>
+  </data>
+  <data name="Account_CheckEmailToReset" xml:space="preserve">
+    <value>Please check your email to reset your password.</value>
+  </data>
+  <data name="Account_RecoveryCodeIntro" xml:space="preserve">
+    <value>You have requested to log in with a recovery code. This login will not be remembered until you provide an authenticator app code at log in or disable 2FA and log in again.</value>
+  </data>
+  <data name="Account_NoAuthenticatorAccess" xml:space="preserve">
+    <value>Don&apos;t have access to your authenticator device? You can {0}.</value>
+  </data>
+  <data name="Tokens_Explanation" xml:space="preserve">
+    <value>A token lets a script call the API as you, with exactly your permissions, without your password. Send it as {0}. Revoking one takes effect immediately.</value>
+  </data>
+  <data name="TwoFactor_DisableKeepsKeys" xml:space="preserve">
+    <value>Disabling 2FA does not change the keys used in authenticator apps. If you wish to change the key used in an authenticator app you should {0}</value>
+  </data>
+  <data name="TwoFactor_LoseCodesWarning" xml:space="preserve">
+    <value>If you lose your device and don&apos;t have the recovery codes you will lose access to your account. Generating new recovery codes does not change the keys used in authenticator apps. If you wish to change the key used in an authenticator app you should {0}</value>
+  </data>
+  <data name="TwoFactor_LoseDeviceWarning" xml:space="preserve">
+    <value>If you lose your device and don&apos;t have the recovery codes you will lose access to your account.</value>
+  </data>
+  <data name="TwoFactor_NewCodesKeepKeys" xml:space="preserve">
+    <value>Generating new recovery codes does not change the keys used in authenticator apps. If you wish to change the key used in an authenticator app you should {0}</value>
+  </data>
+  <data name="Account_InviteInvalid" xml:space="preserve">
+    <value>This invitation link is invalid, has expired, or has already been used. Ask an administrator for a new invitation.</value>
+  </data>
+  <data name="Account_ConfirmEmailFailed" xml:space="preserve">
+    <value>Your account was created, but the confirmation email could not be sent. Contact your administrator - the account cannot be used until it is confirmed.</value>
+  </data>
+  <data name="Account_TokensRevoked" xml:space="preserve">
+    <value>Any API tokens on the account have been revoked. Scripts using one will need a new token, which you can create under {0}.</value>
+  </data>
+  <data name="Files_DropHere" xml:space="preserve">
+    <value>Drop a file here, or choose one. .gcode, .bgcode, .gco or .bgc, up to {0}.</value>
+  </data>
+  <data name="Printers_AddIntro" xml:space="preserve">
+    <value>Provisions a printer and a token up front, for a USB stick - no need for the printer to contact this server first. The printer enrols itself the moment it connects using the token.</value>
+  </data>
+  <data name="Setup_NoAdminYet" xml:space="preserve">
+    <value>No administrator account exists yet. Create one below using the one-time setup token printed to the server console at startup.</value>
+  </data>
+  <data name="Printers_FreeSomeSpace" xml:space="preserve">
+    <value>Free some space on the printer and it will carry on by itself.</value>
+  </data>
+  <data name="TwoFactor_DownloadApp" xml:space="preserve">
+    <value>Download a two-factor authenticator app like Microsoft Authenticator for {0} and {1} or Google Authenticator for {2} and {3}.</value>
+  </data>
+  <data name="TwoFactor_AfterScanning" xml:space="preserve">
+    <value>Once you have scanned the QR code or input the key above, your two factor authentication app will provide you with a unique code. Enter the code in the confirmation box below.</value>
+  </data>
+  <data name="Account_ReadyNoMail" xml:space="preserve">
+    <value>Your account is ready to use. No confirmation is needed, because this server has no outgoing mail configured.</value>
+  </data>
+  <data name="Account_PasswordReset" xml:space="preserve">
+    <value>Your password has been reset. Please {0}.</value>
+  </data>
+  <data name="Cert_NoneIssued" xml:space="preserve">
+    <value>No certificate has been issued, so no printer can verify this server. One is normally created at startup - check the server log for why it was not.</value>
+  </data>
+  <data name="Invites_Created" xml:space="preserve">
+    <value>Invitation created.</value>
+  </data>
+  <data name="Printers_NoPublicAddress" xml:space="preserve">
+    <value>This server&apos;s public address is not configured ({0}), so a usable snippet cannot be produced yet. Ask your administrator to set it.</value>
+  </data>
+  <data name="Printers_ClaimSteps" xml:space="preserve">
+    <value>On the printer, go to {0}, then enter the code it displays.</value>
+  </data>
+  <data name="Cameras_Capturing" xml:space="preserve">
+    <value>Capturing…</value>
+  </data>
+  <data name="Printers_TemperatureTarget" xml:space="preserve">
+    <value>{0}° / target {1}°</value>
+  </data>
 </root>

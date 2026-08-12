@@ -5,13 +5,11 @@
 }
 
 <h1>@ViewData["Title"]</h1>
-<h2 id="external-login-title">Associate your @Model.ProviderDisplayName account.</h2>
+<h2 id="external-login-title">@Localiser["Account_AssociateAccount", Model.ProviderDisplayName]</h2>
 <hr />
 
 <p id="external-login-description" class="text-info">
-    You've successfully authenticated with <strong>@Model.ProviderDisplayName</strong>.
-    Please choose an email address and a username for this site below, then click the Register button
-    to finish logging in.
+    @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Account_ExternalAuthenticated"].Value, $"<strong>{Model.ProviderDisplayName}</strong>"))
 </p>
 
 <div class="row">
@@ -28,7 +26,7 @@
                 <label asp-for="Input.Username" class="form-label"></label>
                 <span asp-validation-for="Input.Username" class="text-danger"></span>
             </div>
-            <button type="submit" class="w-100 btn btn-lg btn-primary">Register</button>
+            <button type="submit" class="w-100 btn btn-lg btn-primary">@Localiser["Account_Register"]</button>
         </form>
     </div>
 </div>

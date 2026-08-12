@@ -2,8 +2,7 @@
 
 <div class="alert alert-success" role="alert">
     <p class="mb-1">
-        <strong>Download this now.</strong> The token inside it is shown once and cannot be retrieved
-        again - if the download is lost before the printer connects, use "Regenerate" to issue a new one.
+        <strong>@Localiser["Bundle_DownloadNow"]</strong> @Localiser["Bundle_TokenOnce"]
     </p>
 
     @if (Model.CanBuild)
@@ -15,7 +14,7 @@
 
             <div class="mb-2">
                 <label for="bundle-hostname" class="form-label">
-                    Address this printer should use
+                    @Localiser["Bundle_AddressLabel"]
                 </label>
                 <select id="bundle-hostname" name="Hostname" class="form-select">
                     @foreach (Homespool.Host.Certificates.PrinterAddressSuggestion name in Model.Names)
@@ -29,9 +28,7 @@
     read squeezed into a dropdown, and this is the one moment they are worth reading. *@
                 <div class="form-text">
                     <p class="mb-1">
-                        These are the names this server's printer certificate covers. An address that is
-                        not on the list cannot be verified by a printer, however reachable it looks from
-                        here.
+                        @Localiser["Bundle_AddressHelp"]
                     </p>
                     <ul class="mb-0">
                         @foreach (Homespool.Host.Certificates.PrinterAddressSuggestion name in Model.Names)
@@ -42,38 +39,32 @@
                 </div>
             </div>
 
-            <button type="submit" class="btn btn-primary">Download provisioning bundle</button>
+            <button type="submit" class="btn btn-primary">@Localiser["Bundle_Download"]</button>
         </form>
 
         <p class="mb-2">
-            Unzip it onto the <strong>root</strong> of a USB stick - not into a folder, or the printer
-            will not find the files - then load it from the printer's own menu:
-            <em>Prusa Connect &rarr; Load Settings</em>.
+            @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Bundle_UnzipToRoot"].Value, $"<strong>{Localiser["Bundle_Root"].Value}</strong>", "<em>Prusa Connect &rarr; Load Settings</em>"))
         </p>
 
         @if (Model.TlsEnabled)
         {
             <p class="mb-2">
-                The zip carries <code>connect.der</code> as well, and the ini sets
-                <code>custom_cert = 1</code>. That <strong>replaces</strong> the printer's trust store
-                rather than adding to it, so while it is set the printer cannot talk to Prusa Connect.
-                The same warning is written inside the ini, where it is read at the moment it matters.
+                @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Bundle_TrustStore"].Value, "<code>connect.der</code>", "<code>custom_cert = 1</code>", $"<strong>{Localiser["Bundle_Replaces"].Value}</strong>"))
             </p>
         }
         else
         {
             <p class="mb-2">
-                <strong>This deployment serves printers over plain HTTP</strong>
+                <strong>@Localiser["Bundle_PlainHttp"]</strong>
                 (<code>PrusaConnect:PrinterTls</code> is false), so the bundle carries no certificate
                 and this printer's token will cross the network in clear.
             </p>
         }
 
         <details class="mb-0">
-            <summary>Read the ini instead</summary>
+            <summary>@Localiser["Bundle_ReadIniInstead"]</summary>
             <p class="mt-2 mb-1">
-                What the file will contain, for <code>@Model.PreferredName</code>. Choosing a different
-                address above changes the <code>hostname</code> line to match.
+                @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Bundle_WhatFileContains"].Value, $"<code>{Model.PreferredName}</code>", "<code>hostname</code>"))
             </p>
             <textarea class="form-control font-monospace" rows="7" readonly onclick="this.select()">@Model.Snippet</textarea>
         </details>
@@ -85,10 +76,7 @@
             printer could actually reach.
         </p>
         <p class="mb-0">
-            In a container that usually means the certificate was issued before
-            <code>PrusaConnect:PrinterHost</code> was set, so it covers only addresses inside the
-            container - which work from in there and nowhere else. Set the address printers should use,
-            then reissue under <em>Admin &rarr; Printer certificate</em>.
+            @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Bundle_CertIssuedTooEarly"].Value, "<code>PrusaConnect:PrinterHost</code>", "<em>Admin &rarr; Printer certificate</em>"))
         </p>
     }
 </div>

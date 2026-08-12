@@ -12,11 +12,11 @@
     &nbsp;
     @if (Model.Connected)
     {
-        <span class="badge text-bg-success">Connected</span>
+        <span class="badge text-bg-success">@Localiser["PrinterStatus_Connected"]</span>
     }
     else
     {
-        <span class="badge border border-secondary text-body-secondary">Not connected</span>
+        <span class="badge border border-secondary text-body-secondary">@Localiser["Printers_NotConnected"]</span>
     }
 </p>
 
@@ -42,7 +42,7 @@
                            what "no picture yet" should look like - not a broken-image icon. *@
                         <img class="camera-image w-100 h-100 object-fit-contain d-none" alt="" />
                         <div class="camera-status d-flex align-items-center justify-content-center text-body-secondary small">
-                            Capturing…
+                            @Localiser["Cameras_Capturing"]
                         </div>
                     </div>
                     <figcaption class="d-flex justify-content-between small text-body-secondary mt-1">
@@ -55,58 +55,58 @@
     </div>
 }
 
-<a asp-page="Index">&larr; Back to printers</a></p>
+<a asp-page="Index">@Localiser["Printers_BackToList"]</a></p>
 
 @if (Model.StatusMessage is not null)
 {
     <div class="alert @(Model.StatusSuccess ? "alert-success" : "alert-danger")" role="alert">@Model.StatusMessage</div>
 }
 
-<h2>Current status</h2>
+<h2>@Localiser["Printers_CurrentStatus"]</h2>
 
 @{
     var liveState = Model.Statistics.LiveState;
 }
 @if (liveState is null)
 {
-    <p>No telemetry yet.</p>
+    <p>@Localiser["Printers_NoTelemetry"]</p>
 }
 else
 {
     <table class="table table-sm w-auto">
         <tbody>
-            <tr><th>Status</th><td>@liveState.Status</td></tr>
-            <tr><th>Progress</th><td>@(liveState.Progress is { } progress ? $"{progress}%" : "-")</td></tr>
-            <tr><th>Time printing</th><td>@(liveState.TimePrinting is { } tp ? TimeSpan.FromSeconds(tp).ToString("g") : "-")</td></tr>
-            <tr><th>Time remaining</th><td>@(liveState.TimeRemaining is { } tr ? TimeSpan.FromSeconds(tr).ToString("g") : "-")</td></tr>
+            <tr><th>@Localiser["Common_Status"]</th><td>@liveState.Status</td></tr>
+            <tr><th>@Localiser["Printers_Progress"]</th><td>@(liveState.Progress is { } progress ? $"{progress}%" : "-")</td></tr>
+            <tr><th>@Localiser["Printers_TimePrinting"]</th><td>@(liveState.TimePrinting is { } tp ? TimeSpan.FromSeconds(tp).ToString("g") : "-")</td></tr>
+            <tr><th>@Localiser["Printers_TimeRemaining"]</th><td>@(liveState.TimeRemaining is { } tr ? TimeSpan.FromSeconds(tr).ToString("g") : "-")</td></tr>
             @* Only rendered when the printer actually reports it: the firmware emits filament_change_in
                only while a pause is scheduled (render.cpp:164, gated on time_to_pause), so on a print
                with no M600 the field is absent rather than zero. A "-" row would imply "no swap due" on
                every ordinary print, which is noise. *@
             @if (liveState.TimeToFilamentChange is { } untilChange)
             {
-                <tr><th>Filament change in</th><td>@TimeSpan.FromSeconds(untilChange).ToString("g")</td></tr>
+                <tr><th>@Localiser["Printers_FilamentChangeIn"]</th><td>@TimeSpan.FromSeconds(untilChange).ToString("g")</td></tr>
             }
-            <tr><th>Nozzle temperature</th><td>@(liveState.NozzleTemperature?.ToString("0.0") ?? "-")&deg; / target @(liveState.TargetNozzleTemperature?.ToString("0.0") ?? "-")&deg;</td></tr>
-            <tr><th>Bed temperature</th><td>@(liveState.BedTemperature?.ToString("0.0") ?? "-")&deg; / target @(liveState.TargetBedTemperature?.ToString("0.0") ?? "-")&deg;</td></tr>
-            <tr><th>Material</th><td>@(liveState.Material ?? "-")</td></tr>
-            <tr><th>Speed</th><td>@(liveState.Speed is { } speed ? $"{speed}%" : "-")</td></tr>
-            <tr><th>Flow</th><td>@(liveState.Flow is { } flow ? $"{flow}%" : "-")</td></tr>
-            <tr><th>Last seen</th><td>@liveState.LastSeenAt</td></tr>
+            <tr><th>@Localiser["Printers_NozzleTemp"]</th><td>@Localiser["Printers_TemperatureTarget", liveState.NozzleTemperature?.ToString("0.0") ?? "-", liveState.TargetNozzleTemperature?.ToString("0.0") ?? "-"]</td></tr>
+            <tr><th>@Localiser["Printers_BedTemp"]</th><td>@Localiser["Printers_TemperatureTarget", liveState.BedTemperature?.ToString("0.0") ?? "-", liveState.TargetBedTemperature?.ToString("0.0") ?? "-"]</td></tr>
+            <tr><th>@Localiser["Printers_Material"]</th><td>@(liveState.Material ?? "-")</td></tr>
+            <tr><th>@Localiser["Printers_Speed"]</th><td>@(liveState.Speed is { } speed ? $"{speed}%" : "-")</td></tr>
+            <tr><th>@Localiser["Printers_Flow"]</th><td>@(liveState.Flow is { } flow ? $"{flow}%" : "-")</td></tr>
+            <tr><th>@Localiser["Printers_LastSeen"]</th><td>@liveState.LastSeenAt</td></tr>
         </tbody>
     </table>
 }
 
 @if (Model.ActivePrint is { } active)
 {
-    <h2>Printing now</h2>
+    <h2>@Localiser["Printers_PrintingNow"]</h2>
     <p>
         <strong>@active.FileName</strong>
         @* Starting is not yet printing - the printer has accepted the command and is heating. Saying
            "printing" through that window would be a small lie the page tells every single time. *@
         @if (active.State == Homespool.Model.PrintState.Starting)
         {
-            <span class="badge text-bg-secondary">starting</span>
+            <span class="badge text-bg-secondary">@Localiser["Printers_Starting"]</span>
         }
         <br />
         <span class="text-muted">
@@ -121,13 +121,13 @@ else
 @if (Model.HoldReason is { } hold)
 {
     <div class="alert alert-warning" role="alert">
-        <strong>The queue is held.</strong> @hold
+        <strong>@Localiser["Printers_QueueHeld"]</strong> @hold
         <br />
-        Free some space on the printer and it will carry on by itself.
+        @Localiser["Printers_FreeSomeSpace"]
     </div>
 }
 
-<h2>Queue</h2>
+<h2>@Localiser["Common_Queue"]</h2>
 
 @* Not a stall to worry about - it is the loop explaining itself. Absent when another part of this
    page already says it, which is why there is no message while a print is starting. *@
@@ -141,7 +141,12 @@ else
    the printer is Ready, which only a person sets. *@
 @if (Model.Queue.Count == 0)
 {
-    <p>Nothing queued. Send a file to this printer's queue from <a asp-page="/Files/Index">Files</a>.</p>
+    <p>
+        @Html.Raw(string.Format(
+            System.Globalization.CultureInfo.CurrentCulture,
+            Localiser["Printers_NothingQueued"].Value,
+            $"<a href=\"{Url.Page("/Files/Index")}\">{Localiser["Files_Title"].Value}</a>"))
+    </p>
 }
 else
 {
@@ -149,12 +154,12 @@ else
         <thead>
             <tr>
                 <th scope="col">#</th>
-                <th scope="col">File</th>
-                <th scope="col" class="text-end">Size</th>
-                <th scope="col">Queued</th>
+                <th scope="col">@Localiser["Common_File"]</th>
+                <th scope="col" class="text-end">@Localiser["Files_Size"]</th>
+                <th scope="col">@Localiser["Common_Queued"]</th>
                 @if (Model.CanUse)
                 {
-                    <th scope="col"><span class="visually-hidden">Actions</span></th>
+                    <th scope="col"><span class="visually-hidden">@Localiser["Common_Actions"]</span></th>
                 }
             </tr>
         </thead>
@@ -198,7 +203,7 @@ else
                                   class="d-inline">
                                 <input type="hidden" name="id" value="@job.TrackingId" />
                                 <button type="submit" class="btn btn-sm btn-outline-danger"
-                                        aria-label="Remove @(job.PrintFile?.Name) from the queue">Remove</button>
+                                        aria-label="Remove @(job.PrintFile?.Name) from the queue">@Localiser["Cameras_Remove"]</button>
                             </form>
                         </td>
                     }
@@ -213,21 +218,27 @@ else
    it. *@
 @if (Model.CanUse)
 {
-    <h2>Send from a slicer</h2>
+    <h2>@Localiser["Printers_SlicerHeading"]</h2>
 
+    @* PrusaSlicer's own menu labels stay English: they have to match what a person sees in the
+       slicer, which this application neither authors nor translates. Only the sentence around them
+       is ours. *@
     <p>
-        PrusaSlicer can send straight to this printer. Under
-        <em>Printer Settings &rarr; Physical Printer</em>, set <strong>Host Type</strong> to
-        <strong>OctoPrint</strong>, paste this as the hostname, and use a
-        <a asp-page="/Account/Manage/ApiTokens">personal access token</a> as the API key.
-        <strong>Upload and Print</strong> adds the file to the queue above rather than starting it.
+        @Html.Raw(string.Format(
+            System.Globalization.CultureInfo.CurrentCulture,
+            Localiser["Printers_SlicerHelp"].Value,
+            "<em>Printer Settings &rarr; Physical Printer</em>",
+            "<strong>Host Type</strong>",
+            "<strong>OctoPrint</strong>",
+            $"<a href=\"{Url.Page("/Account/Manage/ApiTokens")}\">{Localiser["Printers_ApiTokenLink"].Value}</a>",
+            "<strong>Upload and Print</strong>"))
     </p>
 
     <div class="input-group mb-3" data-copy>
         <input type="text" class="form-control font-monospace" readonly
                value="@Model.SlicerUrl" aria-label="Print host address for this printer"
                data-copy-source />
-        <button type="button" class="btn btn-outline-secondary" data-copy-button>Copy</button>
+        <button type="button" class="btn btn-outline-secondary" data-copy-button>@Localiser["Common_Copy"]</button>
     </div>
 
     @* Announced politely rather than shouted, and empty until something happens, so a screen reader
@@ -240,7 +251,7 @@ else
    quietly. Hidden entirely without CanUse, like every other control on this page. *@
 @if (Model.CanUse)
 {
-    <h2>Temperature</h2>
+    <h2>@Localiser["Printers_Temperature"]</h2>
 
     <p class="text-body-secondary">
         Heats the nozzle and bed together, to the same targets the printer's own preheat menu uses.
@@ -250,16 +261,17 @@ else
        looks like a safety control and is not one. Said on the page rather than only in the refusal,
        so nobody has to press it to find out. *@
     <p class="text-body-secondary">
-        Both are refused while the printer is busy, <strong>cooling included</strong>: changing a
-        heater mid-print ruins the print without ending it, and the printer will not refuse it on
-        your behalf. To stop a print, use the controls on the
-        <a asp-page="Index">printers list</a>.
+        @Html.Raw(string.Format(
+            System.Globalization.CultureInfo.CurrentCulture,
+            Localiser["Printers_PreheatWarning"].Value,
+            $"<strong>{Localiser["Printers_CoolingIncluded"].Value}</strong>",
+            $"<a href=\"{Url.Page("Index")}\">{Localiser["Printers_PrintersListLink"].Value}</a>"))
     </p>
 
     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
         <form method="post" asp-page-handler="Preheat" asp-route-uuid="@Model.Statistics.Printer.Uuid"
               class="d-flex align-items-center gap-2">
-            <label class="form-label mb-0" for="filament">Preheat for</label>
+            <label class="form-label mb-0" for="filament">@Localiser["Printers_PreheatFor"]</label>
 
             <select class="form-select w-auto" id="filament" name="filament">
                 @foreach (FilamentPreset preset in Model.Presets)
@@ -270,28 +282,28 @@ else
                 }
             </select>
 
-            <button type="submit" class="btn btn-outline-primary">Preheat</button>
+            <button type="submit" class="btn btn-outline-primary">@Localiser["Printers_Preheat"]</button>
         </form>
 
         <form method="post" asp-page-handler="Cooldown" asp-route-uuid="@Model.Statistics.Printer.Uuid">
-            <button type="submit" class="btn btn-outline-secondary">Cool down</button>
+            <button type="submit" class="btn btn-outline-secondary">@Localiser["Printers_CoolDown"]</button>
         </form>
     </div>
 }
 
-<h2>Print history</h2>
+<h2>@Localiser["Printers_PrintHistory"]</h2>
 
 @if (Model.History.Count == 0)
 {
-    <p>Nothing has finished printing yet.</p>
+    <p>@Localiser["Printers_NothingFinished"]</p>
 }
 else
 {
     <table class="table table-sm w-auto">
         <thead>
             <tr>
-                <th scope="col">File</th>
-                <th scope="col">Started</th>
+                <th scope="col">@Localiser["Common_File"]</th>
+                <th scope="col">@Localiser["Common_Started"]</th>
 
                 @* "Outcome", though the property is PrintState.State - and deliberately, not left
                    over from the rename. This table is filtered to EndedAt != null, and Close() sets
@@ -302,7 +314,7 @@ else
                    Same reason Close(PrintJob, PrintState outcome, ...) keeps "outcome" for its
                    parameter. The type is named for the whole lifecycle because it spans it; this
                    column only ever sees the end of it. *@
-                <th scope="col">Outcome</th>
+                <th scope="col">@Localiser["Common_Outcome"]</th>
             </tr>
         </thead>
         <tbody>
@@ -337,23 +349,23 @@ else
     </table>
 }
 
-<h2>Recent telemetry</h2>
+<h2>@Localiser["Printers_RecentTelemetry"]</h2>
 
 @if (Model.Statistics.RecentSamples.Count == 0)
 {
-    <p>No telemetry history yet.</p>
+    <p>@Localiser["Printers_NoTelemetryHistory"]</p>
 }
 else
 {
     <table class="table table-sm">
         <thead>
             <tr>
-                <th>Time</th>
-                <th>Status</th>
-                <th>Progress</th>
-                <th>Nozzle</th>
-                <th>Bed</th>
-                <th>Speed</th>
+                <th>@Localiser["Common_Time"]</th>
+                <th>@Localiser["Common_Status"]</th>
+                <th>@Localiser["Printers_Progress"]</th>
+                <th>@Localiser["Printers_Nozzle"]</th>
+                <th>@Localiser["Printers_Bed"]</th>
+                <th>@Localiser["Printers_Speed"]</th>
             </tr>
         </thead>
         <tbody>
@@ -372,21 +384,21 @@ else
     </table>
 }
 
-<h2>Recent events</h2>
+<h2>@Localiser["Printers_RecentEvents"]</h2>
 
 @if (Model.Statistics.RecentEvents.Count == 0)
 {
-    <p>No events yet.</p>
+    <p>@Localiser["Printers_NoEvents"]</p>
 }
 else
 {
     <table class="table table-sm">
         <thead>
             <tr>
-                <th>Time</th>
-                <th>Event</th>
-                <th>Reason</th>
-                <th>Job</th>
+                <th>@Localiser["Common_Time"]</th>
+                <th>@Localiser["Common_Event"]</th>
+                <th>@Localiser["Common_Reason"]</th>
+                <th>@Localiser["Common_Job"]</th>
             </tr>
         </thead>
         <tbody>

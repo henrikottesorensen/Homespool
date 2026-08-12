@@ -1,10 +1,10 @@
 @page
 @model Homespool.Host.Pages.Cameras.IndexModel
 @{
-    ViewData["Title"] = "Cameras";
+    ViewData["Title"] = Localiser["Cameras_Title"].Value;
 }
 
-<h1>Cameras</h1>
+<h1>@ViewData["Title"]</h1>
 
 @if (Model.Message is not null)
 {
@@ -21,7 +21,7 @@
 
 @if (Model.Cameras.Count == 0)
 {
-    <p class="text-body-secondary">No cameras yet.</p>
+    <p class="text-body-secondary">@Localiser["Cameras_None"]</p>
 }
 else
 {
@@ -29,11 +29,11 @@ else
         <table class="table align-middle">
             <thead>
                 <tr>
-                    <th scope="col">Name</th>
-                    <th scope="col">Source</th>
-                    <th scope="col">Printer</th>
-                    <th scope="col">Picture</th>
-                    <th scope="col"><span class="visually-hidden">Actions</span></th>
+                    <th scope="col">@Localiser["Common_Name"]</th>
+                    <th scope="col">@Localiser["Cameras_Source"]</th>
+                    <th scope="col">@Localiser["Common_Printer"]</th>
+                    <th scope="col">@Localiser["Cameras_Picture"]</th>
+                    <th scope="col"><span class="visually-hidden">@Localiser["Cameras_Actions"]</span></th>
                 </tr>
             </thead>
             <tbody>
@@ -47,7 +47,7 @@ else
                             {
                                 @* Attached cameras are the server's, not a team's - worth saying so
                                    where somebody is deciding whether they may remove one. *@
-                                <span class="badge border border-secondary text-body-secondary ms-1">attached</span>
+                                <span class="badge border border-secondary text-body-secondary ms-1">@Localiser["Cameras_Attached"]</span>
                             }
                         </td>
                         <td><code class="small">@camera.Source</code></td>
@@ -55,19 +55,19 @@ else
                         <td>
                             @if (age is null)
                             {
-                                <span class="text-body-secondary">no picture yet</span>
+                                <span class="text-body-secondary">@Localiser["Cameras_NoPictureYet"]</span>
                             }
                             else
                             {
-                                <span>seen @age</span>
+                                <span>@Localiser["Cameras_Seen", age]</span>
                             }
                         </td>
                         <td class="text-end">
                             <a class="btn btn-sm btn-outline-secondary"
-                               asp-page="/Cameras/Index" asp-route-edit="@camera.Uuid">Edit</a>
+                               asp-page="/Cameras/Index" asp-route-edit="@camera.Uuid">@Localiser["Cameras_Edit"]</a>
                             <form method="post" asp-page-handler="Delete" class="d-inline">
                                 <input type="hidden" name="uuid" value="@camera.Uuid" />
-                                <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                                <button type="submit" class="btn btn-sm btn-outline-danger">@Localiser["Cameras_Remove"]</button>
                             </form>
                         </td>
                     </tr>
@@ -79,24 +79,24 @@ else
 
 @if (Model.Editing is not null)
 {
-    <h2 class="h5 mt-4">Edit camera</h2>
+    <h2 class="h5 mt-4">@Localiser["Cameras_EditHeading"]</h2>
     <form method="post" asp-page-handler="Edit" class="row g-2 align-items-end">
         <input type="hidden" name="uuid" value="@Model.Editing.Uuid" />
 
         <div class="col-md-3">
-            <label class="form-label" for="edit-name">Name</label>
+            <label class="form-label" for="edit-name">@Localiser["Common_Name"]</label>
             <input class="form-control" id="edit-name" name="name" value="@Model.Editing.Name" />
         </div>
 
         <div class="col-md-5">
-            <label class="form-label" for="edit-source">Source</label>
+            <label class="form-label" for="edit-source">@Localiser["Cameras_Source"]</label>
             <input class="form-control" id="edit-source" name="source" value="@Model.Editing.Source" required />
         </div>
 
         <div class="col-md-2">
-            <label class="form-label" for="edit-printer">Printer</label>
+            <label class="form-label" for="edit-printer">@Localiser["Common_Printer"]</label>
             <select class="form-select" id="edit-printer" name="printerId">
-                <option value="">None</option>
+                <option value="">@Localiser["Common_None"]</option>
                 @foreach (var printer in Model.Printers)
                 {
                     <option value="@printer.Id" selected="@(printer.Id == Model.Editing.PrinterId)">
@@ -107,34 +107,40 @@ else
         </div>
 
         <div class="col-md-2">
-            <button type="submit" class="btn btn-primary">Save</button>
-            <a class="btn btn-link" asp-page="/Cameras/Index">Cancel</a>
+            <button type="submit" class="btn btn-primary">@Localiser["Common_Save"]</button>
+            <a class="btn btn-link" asp-page="/Cameras/Index">@Localiser["Common_Cancel"]</a>
         </div>
     </form>
 }
 
 @if (Model.Teams.Count > 0)
 {
-    <h2 class="h5 mt-4">Add a camera on the network</h2>
+    <h2 class="h5 mt-4">@Localiser["Cameras_AddNetwork"]</h2>
+    @* Formatted rather than split into "before" and "after" keys: a sentence broken around its
+       own markup only reassembles correctly in languages that share English word order. The raw
+       write is safe because both halves are ours - a resource string and a literal - and neither
+       comes from a request. *@
     <p class="text-body-secondary small">
-        An RTSP or HTTP address, for example <code>rtsp://192.168.1.50/live</code>. Homespool
-        registers it with the stream server for you.
+        @Html.Raw(string.Format(
+            System.Globalization.CultureInfo.CurrentCulture,
+            Localiser["Cameras_NetworkHelp"].Value,
+            "<code>rtsp://192.168.1.50/live</code>"))
     </p>
 
     <form method="post" asp-page-handler="AddNetwork" class="row g-2 align-items-end">
         <div class="col-md-3">
-            <label class="form-label" for="add-name">Name</label>
+            <label class="form-label" for="add-name">@Localiser["Common_Name"]</label>
             <input class="form-control" id="add-name" name="name" placeholder="Core One" />
         </div>
 
         <div class="col-md-4">
-            <label class="form-label" for="add-source">Address</label>
+            <label class="form-label" for="add-source">@Localiser["Cameras_Address"]</label>
             <input class="form-control" id="add-source" name="source"
                    placeholder="rtsp://192.168.1.50/live" required />
         </div>
 
         <div class="col-md-2">
-            <label class="form-label" for="add-team">Team</label>
+            <label class="form-label" for="add-team">@Localiser["Common_Team"]</label>
             <select class="form-select" id="add-team" name="teamId">
                 @foreach (var team in Model.Teams)
                 {
@@ -144,9 +150,9 @@ else
         </div>
 
         <div class="col-md-2">
-            <label class="form-label" for="add-printer">Printer</label>
+            <label class="form-label" for="add-printer">@Localiser["Common_Printer"]</label>
             <select class="form-select" id="add-printer" name="printerId">
-                <option value="">None</option>
+                <option value="">@Localiser["Common_None"]</option>
                 @foreach (var printer in Model.Printers)
                 {
                     <option value="@printer.Id">@(printer.Name ?? printer.Model ?? printer.Uuid.ToString())</option>
@@ -155,7 +161,7 @@ else
         </div>
 
         <div class="col-md-1">
-            <button type="submit" class="btn btn-primary">Add</button>
+            <button type="submit" class="btn btn-primary">@Localiser["Common_Add"]</button>
         </div>
     </form>
 }
@@ -164,20 +170,17 @@ else
    claim - a control that cannot act explains nothing. *@
 @if (Model.IsAdministrator && Model.AvailableDevices.Count > 0)
 {
-    <h2 class="h5 mt-4">Add a camera plugged into this server</h2>
-    <p class="text-body-secondary small">
-        Only cameras nobody has claimed are listed. A camera attached to the server belongs to the
-        machine rather than to a team, so only an administrator can set one up.
-    </p>
+    <h2 class="h5 mt-4">@Localiser["Cameras_AddAttached"]</h2>
+    <p class="text-body-secondary small">@Localiser["Cameras_AttachedHelp"]</p>
 
     <form method="post" asp-page-handler="AddAttached" class="row g-2 align-items-end">
         <div class="col-md-3">
-            <label class="form-label" for="attach-name">Name</label>
+            <label class="form-label" for="attach-name">@Localiser["Common_Name"]</label>
             <input class="form-control" id="attach-name" name="name" placeholder="Workshop" />
         </div>
 
         <div class="col-md-4">
-            <label class="form-label" for="attach-device">Camera</label>
+            <label class="form-label" for="attach-device">@Localiser["Cameras_Device"]</label>
             <select class="form-select" id="attach-device" name="device" required>
                 @foreach (var device in Model.AvailableDevices)
                 {
@@ -187,7 +190,7 @@ else
         </div>
 
         <div class="col-md-2">
-            <label class="form-label" for="attach-team">Team</label>
+            <label class="form-label" for="attach-team">@Localiser["Common_Team"]</label>
             <select class="form-select" id="attach-team" name="teamId">
                 @foreach (var team in Model.Teams)
                 {
@@ -197,9 +200,9 @@ else
         </div>
 
         <div class="col-md-2">
-            <label class="form-label" for="attach-printer">Printer</label>
+            <label class="form-label" for="attach-printer">@Localiser["Common_Printer"]</label>
             <select class="form-select" id="attach-printer" name="printerId">
-                <option value="">None</option>
+                <option value="">@Localiser["Common_None"]</option>
                 @foreach (var printer in Model.Printers)
                 {
                     <option value="@printer.Id">@(printer.Name ?? printer.Model ?? printer.Uuid.ToString())</option>
@@ -208,7 +211,7 @@ else
         </div>
 
         <div class="col-md-1">
-            <button type="submit" class="btn btn-primary">Add</button>
+            <button type="submit" class="btn btn-primary">@Localiser["Common_Add"]</button>
         </div>
     </form>
 }
@@ -216,6 +219,6 @@ else if (Model.IsAdministrator)
 {
     <p class="text-body-secondary small mt-4">
         No unclaimed cameras are attached to this server. If you have just plugged one in, it also
-        needs a <code>devices:</code> line in <code>compose.yaml</code> for the go2rtc service.
+        @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Cameras_DeviceLineIn"].Value, "<code>devices:</code>", "<code>compose.yaml</code>"))
     </p>
 }

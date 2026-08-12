@@ -149,7 +149,10 @@ public static class Program
             // Add services to the container.
             builder.Services.AddAuthorization(Authorisation.Builder.Build);
 
-            builder.Services.AddRazorPages();
+            builder.Services.AddRazorPages()
+                            .AddDataAnnotationsLocalization(options =>
+                                options.DataAnnotationLocalizerProvider = (_, factory) =>
+                                    factory.Create(typeof(Localisation.SharedResource)));
 
             builder.Services.AddHomespoolLocalisation();
 

@@ -2,10 +2,10 @@
 @model IndexModel
 
 @{
-    ViewData["Title"] = "Home";
+    ViewData["Title"] = Localiser["Home_Title"].Value;
 }
 
 <div class="text-center">
     <h1 class="display-4">Homespool</h1>
-    <p>A self-hosted 3D printer spooler. Your models stay on your own server.</p>
+    <p>@Localiser["Home_Tagline"]</p>
 </div>

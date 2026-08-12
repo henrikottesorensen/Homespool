@@ -8,10 +8,12 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using Homespool.Host.Certificates;
+using Homespool.Host.Localisation;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Services;
 
@@ -45,12 +47,14 @@ public class CertificateModel : PageModel
     private readonly CertificateOptions _certificates;
     private readonly IHostAddressResolver _resolver;
     private readonly ILogger<CertificateModel> _logger;
+    private readonly IStringLocalizer<SharedResource> _localiser;
 
     public CertificateModel(PrinterCertificateAuthority authority,
                             IOptions<PrusaConnectOptions> connect,
                             IOptions<CertificateOptions> certificates,
                             IHostAddressResolver resolver,
-                            ILogger<CertificateModel> logger)
+                            ILogger<CertificateModel> logger,
+                            IStringLocalizer<SharedResource> localiser)
     {
         ArgumentNullException.ThrowIfNull(connect);
         ArgumentNullException.ThrowIfNull(certificates);
@@ -60,6 +64,7 @@ public class CertificateModel : PageModel
         _certificates = certificates.Value;
         _resolver = resolver;
         _logger = logger;
+        _localiser = localiser;
     }
 
     /// <summary>Whether printers use TLS at all. With it off there is no certificate to show.</summary>
@@ -149,7 +154,7 @@ public class CertificateModel : PageModel
         {
             // Nothing serves a certificate in this configuration, so issuing one would leave a file
             // on disk that no listener reads and no printer sees.
-            StatusMessage = "Printers connect over plain HTTP in this deployment, so there is no certificate to reissue.";
+            StatusMessage = _localiser["Cert_NoTlsNoReissue"];
 
             return RedirectToPage();
         }
@@ -188,8 +193,7 @@ public class CertificateModel : PageModel
 
         if (names.Length == 0)
         {
-            StatusMessage = "No usable address could be detected and PrusaConnect:PrinterHost is not set, so a new "
-                            + "certificate would cover nothing a printer could verify. Set the address first.";
+            StatusMessage = _localiser["Cert_NoAddressToCover"];
 
             return RedirectToPage();
         }

@@ -69,7 +69,7 @@ public class CreateModel : PageModel
         [Display(Name = "Team")]
         public int? TeamId { get; set; }
 
-        [Range(1, 8760, ErrorMessage = "Expiry must be between 1 and 8760 hours.")]
+        [Range(1, 8760, ErrorMessage = "Validation_ExpiryRange")]
         [Display(Name = "Expires in (hours, optional)")]
         public int? ExpiresInHours { get; set; }
     }

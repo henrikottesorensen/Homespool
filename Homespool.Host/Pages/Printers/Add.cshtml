@@ -7,8 +7,7 @@
 <h1>@ViewData["Title"]</h1>
 
 <p>
-    Provisions a printer and a token up front, for a USB stick - no need for the printer to
-    contact this server first. The printer enrolls itself the moment it connects using the token.
+    @Localiser["Printers_AddIntro"]
 </p>
 
 @if (Model.Offer is not null)
@@ -19,8 +18,7 @@
 @if (!Model.PrinterAddressConfigured)
 {
     <div class="alert alert-warning" role="alert">
-        This server's public address is not configured (<code>PrusaConnect:PrinterHost</code>), so a
-        usable snippet cannot be produced yet. Ask your administrator to set it.
+        @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Printers_NoPublicAddress"].Value, "<code>PrusaConnect:PrinterHost</code>"))
     </div>
 }
 
@@ -46,7 +44,7 @@
             <button type="submit" class="btn btn-primary" disabled="@(!Model.PrinterAddressConfigured)">
                 Provision printer
             </button>
-            <a class="btn btn-link" asp-page="Index">Back to printers</a>
+            <a class="btn btn-link" asp-page="Index">@Localiser["Printers_BackToList"]</a>
         </form>
     </div>
 </div>

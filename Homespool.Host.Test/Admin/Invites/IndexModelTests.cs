@@ -33,7 +33,7 @@ public sealed class IndexModelTests : IDisposable
 
     private static IndexModel NewModel(HomespoolDbContext context)
     {
-        return new(NewInvitationService(context), new TeamService(context));
+        return new(NewInvitationService(context), new TeamService(context), TestLocaliser.Shared());
     }
 
     private HomespoolDbContext NewContext()
@@ -205,7 +205,7 @@ public sealed class IndexModelTests : IDisposable
 
         (Invitation second, _) = await invitationService.CreateAsync("second@example.com", null, 1, null, CancellationToken.None);
 
-        IndexModel model = new(invitationService, new TeamService(context));
+        IndexModel model = new(invitationService, new TeamService(context), TestLocaliser.Shared());
 
         // Act
         await model.OnGetAsync(CancellationToken.None);
@@ -227,7 +227,7 @@ public sealed class IndexModelTests : IDisposable
         (Invitation invitation, string plaintext) = await invitationService.CreateAsync(
             "invitee@example.com", null, 1, null, CancellationToken.None);
 
-        IndexModel model = new(invitationService, new TeamService(context));
+        IndexModel model = new(invitationService, new TeamService(context), TestLocaliser.Shared());
 
         // Act
         IActionResult result = await model.OnPostRevokeAsync(invitation.Id, CancellationToken.None);

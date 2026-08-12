@@ -6,11 +6,13 @@
 using System;
 using System.Threading.Tasks;
 
+using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.Pages.Account.Manage;
@@ -19,12 +21,15 @@ public class Disable2faModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly ILogger<Disable2faModel> _logger;
+    private readonly IStringLocalizer<SharedResource> _localiser;
 
     public Disable2faModel(UserManager<HSUser> userManager,
-                           ILogger<Disable2faModel> logger)
+                           ILogger<Disable2faModel> logger,
+                           IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
         _logger = logger;
+        _localiser = localiser;
     }
 
     /// <summary>
@@ -65,7 +70,7 @@ public class Disable2faModel : PageModel
         }
 
         _logger.LogInformation("User with ID '{UserId}' has disabled 2fa.", _userManager.GetUserId(User));
-        StatusMessage = "2fa has been disabled. You can reenable 2fa when you setup an authenticator app";
+        StatusMessage = _localiser["TwoFactor_Disabled"];
         return RedirectToPage("./TwoFactorAuthentication");
     }
 }

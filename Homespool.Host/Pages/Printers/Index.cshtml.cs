@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Options;
 
 using Homespool.Host.Exceptions;
@@ -38,6 +39,7 @@ public class IndexModel : PageModel
     private readonly PrinterCommandService _printerCommandService;
     private readonly PrintStopService _printStopService;
     private readonly PrinterStatusText _statusText;
+    private readonly IStringLocalizer<SharedResource> _localiser;
 
     public IndexModel(PrinterQueryService printerQueryService,
                       PrusaConnectService prusaConnectService,
@@ -48,7 +50,8 @@ public class IndexModel : PageModel
                       PrinterConnectionRegistry connectionRegistry,
                       PrinterCommandService printerCommandService,
                       PrintStopService printStopService,
-                      PrinterStatusText statusText)
+                      PrinterStatusText statusText,
+                      IStringLocalizer<SharedResource> localiser)
     {
         _printerQueryService = printerQueryService;
         _prusaConnectService = prusaConnectService;
@@ -60,6 +63,7 @@ public class IndexModel : PageModel
         _printerCommandService = printerCommandService;
         _printStopService = printStopService;
         _statusText = statusText;
+        _localiser = localiser;
     }
 
     public IReadOnlyList<PrinterRow> Printers { get; private set; } = [];
@@ -169,15 +173,15 @@ public class IndexModel : PageModel
         }
         catch (PrinterNotFoundException)
         {
-            StatusMessage = "That printer no longer exists.";
+            StatusMessage = _localiser["Printers_NotFound"];
         }
         catch (TeamAccessDeniedException)
         {
-            StatusMessage = "You don't have permission to manage that printer.";
+            StatusMessage = _localiser["Printers_NotYours"];
         }
         catch (ProvisioningTokenNotFoundException)
         {
-            StatusMessage = "That printer was never set up with a USB key, so there is no token to reissue.";
+            StatusMessage = _localiser["Printers_NoUsbToken"];
         }
 
         // Not a redirect: the whole point of this handler is to show a secret exactly once, and a

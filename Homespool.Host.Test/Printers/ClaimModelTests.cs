@@ -96,7 +96,8 @@ public sealed class ClaimModelTests : IDisposable
         ClaimModel model = new(NewService(context), new TeamService(context), users, new UnitOfWork(context),
                                new ClaimAttemptLimiter(context, Options.Create(new PrusaConnectOptions()),
                                                        NullLogger<ClaimAttemptLimiter>.Instance),
-                               NullLogger<ClaimModel>.Instance)
+                               NullLogger<ClaimModel>.Instance,
+                               TestLocaliser.Shared())
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };

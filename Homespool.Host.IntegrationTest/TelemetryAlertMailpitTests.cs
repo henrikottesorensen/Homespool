@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 using Homespool.Data;
+using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
@@ -77,7 +78,7 @@ public sealed class TelemetryAlertMailpitTests : IAsyncLifetime, IDisposable
     /// Builds the slice of the host the alert service actually touches: a database with Identity in
     /// it, an SMTP sender pointed at Mailpit, and a health check reporting whatever this test wants.
     /// </summary>
-    private async Task<ServiceProvider> BuildAsync(HealthStatus status)
+    private async Task<ServiceProvider> BuildAsync(HealthStatus status, string? adminLanguage = null)
     {
         ServiceCollection services = new();
 
@@ -101,6 +102,14 @@ public sealed class TelemetryAlertMailpitTests : IAsyncLifetime, IDisposable
         services.AddSingleton<ISmtpTransportFactory, MailKitSmtpTransportFactory>();
         services.AddScoped<IEmailSender, SmtpEmailSender>();
 
+        // The alert composes each message in its recipient's own language, so it resolves a
+        // localiser and the culture lookup from the scope it sends in. Registered here rather than
+        // stubbed: the point of these tests is that a real send works, and a missing registration
+        // would be swallowed by the "a failure to report a failure must not take the reporter down"
+        // catch and read as silence.
+        services.AddLocalization();
+        services.AddScoped<UserCultures>();
+
         // A stand-in for the telemetry check, so this test controls health without needing a broken
         // database - what is under test is the alerting, not the diagnosis.
         services.AddHealthChecks()
@@ -118,7 +127,7 @@ public sealed class TelemetryAlertMailpitTests : IAsyncLifetime, IDisposable
             await roles.CreateAsync(new IdentityRole<long>(AdminBootstrap.AdminRole));
 
             UserManager<HSUser> users = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
-            HSUser admin = new("operator") { Email = AdminAddress, EmailConfirmed = true };
+            HSUser admin = new("operator") { Email = AdminAddress, EmailConfirmed = true, Language = adminLanguage };
 
             (await users.CreateAsync(admin, "Correct-Horse-Battery-1!")).Succeeded.Should().BeTrue();
             (await users.AddToRoleAsync(admin, AdminBootstrap.AdminRole)).Succeeded.Should().BeTrue();
@@ -159,6 +168,55 @@ public sealed class TelemetryAlertMailpitTests : IAsyncLifetime, IDisposable
             // The check's own description reaches the reader, rather than a second wording invented
             // by the alert path.
             message.HTML.Should().Contain("Nothing is reaching the database.");
+        }
+        finally
+        {
+            await alerts.StopAsync(CancellationToken.None);
+        }
+    }
+
+    /// <summary>
+    /// The alert arrives in the administrator's own language, from a service that has no request.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is what the stored language column exists for, proven end to end.</b>
+    /// <c>TelemetryAlertService</c> runs on a timer, so there is no <c>HttpContext</c> and no
+    /// <c>Accept-Language</c> anywhere in the path — the only way this message can be Danish is by
+    /// reading <c>HSUser.Language</c> and composing inside that culture.
+    /// </para>
+    /// <para>
+    /// The health check's own description is asserted to be <i>unchanged</i> beside it. That is the
+    /// machine-text boundary in the one place it is easiest to get wrong: the prose around the list
+    /// is ours to translate, the list is somebody else's text and reaches the banner and
+    /// <c>/health</c> untranslated.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AnAlertIsWrittenInTheAdministratorsLanguage()
+    {
+        // Arrange
+        ServiceProvider provider = await BuildAsync(HealthStatus.Unhealthy, adminLanguage: "da");
+        using TelemetryAlertService alerts = NewAlertService(provider);
+
+        // Act
+        await alerts.StartAsync(CancellationToken.None);
+
+        try
+        {
+            MailpitClient.MailpitMessageSummary summary = await _mailpit.AwaitMessageAsync(AdminAddress);
+            MailpitClient.MailpitMessage message = await _mailpit.GetMessageAsync(summary.ID);
+
+            // Assert
+            message.Subject.Should().Be("Homespool har et problem");
+            message.Subject.Should().NotContain("unhealthy");
+
+            message.HTML.Should().Contain("Homespool rapporterede et problem:");
+            message.HTML.Should().Contain("Print påvirkes ikke");
+
+            message.HTML.Should().Contain(
+                "Nothing is reaching the database.",
+                "the check's own description is not ours to translate - the banner and /health carry it untranslated");
         }
         finally
         {

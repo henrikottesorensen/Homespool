@@ -7,8 +7,7 @@
 <h1>@ViewData["Title"]</h1>
 
 <p>
-    On the printer, go to <em>Settings &rarr; Network &rarr; Prusa Connect &rarr; Add Printer to
-    Connect</em>, then enter the code it displays.
+    @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Printers_ClaimSteps"].Value, "<em>Settings &rarr; Network &rarr; Prusa Connect &rarr; Add Printer to Connect</em>"))
 </p>
 
 @* The printer's registration dialog is hardcoded to Prusa's production instance - the QR URL and the
@@ -16,14 +15,12 @@
    every published firmware release (notes/protocol-reference.md, "The QR is not a gate"). So this
    warning is permanent, not a workaround for something Prusa might fix. *@
 <div class="alert alert-warning" role="alert">
-    <strong>Ignore the QR code and the <em>prusa.io/add</em> link on the printer's screen.</strong>
+    <strong>@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Printers_IgnoreQr"].Value, "<em>prusa.io/add</em>"))</strong>
     Both are built into the firmware and always point at Prusa's own servers, never at this one.
     Scanning the QR will take you to Prusa, where this code does not exist. Only the code printed
     underneath it is of any use here - type it in below.
     <hr />
-    This also assumes the printer is already pointed at this server (its
-    <code>prusa_printer_settings.ini</code> sets the hostname). If it still talks to Prusa Connect,
-    the code on its screen came from <em>them</em> and will never work here.
+    @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Printers_ClaimWrongServer"].Value, "<code>prusa_printer_settings.ini</code>", $"<em>{Localiser["Printers_ClaimThem"].Value}</em>"))
 </div>
 
 <div class="row">
@@ -56,8 +53,8 @@
                 <select asp-for="Input.TeamId" asp-items="@Model.TeamOptions" class="form-select"></select>
                 <span asp-validation-for="Input.TeamId" class="text-danger"></span>
             </div>
-            <button type="submit" class="btn btn-primary">Claim printer</button>
-            <a class="btn btn-link" asp-page="Index">Back to printers</a>
+            <button type="submit" class="btn btn-primary">@Localiser["Printers_ClaimHeading"]</button>
+            <a class="btn btn-link" asp-page="Index">@Localiser["Printers_BackToList"]</a>
         </form>
     </div>
 </div>

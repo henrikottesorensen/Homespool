@@ -10,14 +10,14 @@
 {
     <div class="alert alert-success" role="alert">
         <p class="mb-1">
-            Invitation created.
+            @Localiser["Invites_Created"]
             @if (Model.EmailSent)
             {
-                <text>An email with the accept link was sent.</text>
+                <text>@Localiser["Invites_EmailSent"]</text>
             }
             else
             {
-                <text>No email was sent (mail is not configured, or the send failed) — copy the link below.</text>
+                <text>@Localiser["Invites_NoEmailSent"]</text>
             }
         </p>
         <div class="input-group">
@@ -52,8 +52,8 @@
                 <label asp-for="Input.ExpiresInHours" class="form-label"></label>
                 <span asp-validation-for="Input.ExpiresInHours" class="text-danger"></span>
             </div>
-            <button type="submit" class="btn btn-primary">Create invitation</button>
-            <a class="btn btn-link" asp-page="Index">Back to invitations</a>
+            <button type="submit" class="btn btn-primary">@Localiser["Invites_Create"]</button>
+            <a class="btn btn-link" asp-page="Index">@Localiser["Invites_BackToList"]</a>
         </form>
     </div>
 </div>

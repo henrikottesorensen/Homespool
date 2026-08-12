@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 
+using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
@@ -15,6 +16,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Localization;
 
 namespace Homespool.Host.Pages.Account.Manage;
 
@@ -23,14 +25,17 @@ public class EmailModel : PageModel
     private readonly UserManager<HSUser> _userManager;
     private readonly SignInManager<HSUser> _signInManager;
     private readonly IEmailSender _emailSender;
+    private readonly IStringLocalizer<SharedResource> _localiser;
 
     public EmailModel(UserManager<HSUser> userManager,
                       SignInManager<HSUser> signInManager,
-                      IEmailSender emailSender)
+                      IEmailSender emailSender,
+                      IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _emailSender = emailSender;
+        _localiser = localiser;
     }
 
     /// <summary>
@@ -136,7 +141,7 @@ public class EmailModel : PageModel
             return RedirectToPage();
         }
 
-        StatusMessage = "Your email is unchanged.";
+        StatusMessage = _localiser["Manage_EmailUnchanged"];
         return RedirectToPage();
     }
 

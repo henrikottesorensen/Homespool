@@ -7,11 +7,13 @@ using System;
 using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
 
+using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 
 namespace Homespool.Host.Pages.Account.Manage;
 
@@ -19,12 +21,15 @@ public class IndexModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly SignInManager<HSUser> _signInManager;
+    private readonly IStringLocalizer<SharedResource> _localiser;
 
     public IndexModel(UserManager<HSUser> userManager,
-                      SignInManager<HSUser> signInManager)
+                      SignInManager<HSUser> signInManager,
+                      IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
         _signInManager = signInManager;
+        _localiser = localiser;
     }
 
     /// <summary>
@@ -118,7 +123,7 @@ public class IndexModel : PageModel
         // header - and every other reader of the sign-in identity - keeps the old name until the next
         // sign-in.
         await _signInManager.RefreshSignInAsync(user);
-        StatusMessage = "Your profile has been updated";
+        StatusMessage = _localiser["Manage_ProfileUpdated"];
         return RedirectToPage();
     }
 }

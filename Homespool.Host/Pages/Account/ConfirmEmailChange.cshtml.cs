@@ -3,6 +3,7 @@
 using System.Text;
 using System.Threading.Tasks;
 
+using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;
@@ -10,6 +11,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Options;
 
 namespace Homespool.Host.Pages.Account;
@@ -36,14 +38,17 @@ public class ConfirmEmailChangeModel : PageModel
     private readonly UserManager<HSUser> _userManager;
     private readonly SignInManager<HSUser> _signInManager;
     private readonly IOptions<Services.SmtpOptions> _smtp;
+    private readonly IStringLocalizer<SharedResource> _localiser;
 
     public ConfirmEmailChangeModel(UserManager<HSUser> userManager,
                                    SignInManager<HSUser> signInManager,
-                                   IOptions<Services.SmtpOptions> smtp)
+                                   IOptions<Services.SmtpOptions> smtp,
+                                   IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _smtp = smtp;
+        _localiser = localiser;
     }
 
     [TempData]
@@ -91,7 +96,7 @@ public class ConfirmEmailChangeModel : PageModel
 
         if (!result.Succeeded)
         {
-            StatusMessage = "Error changing email.";
+            StatusMessage = _localiser["Account_EmailChangeError"];
 
             return Page();
         }
@@ -100,7 +105,7 @@ public class ConfirmEmailChangeModel : PageModel
         // against a principal that no longer matches the user.
         await _signInManager.RefreshSignInAsync(user);
 
-        StatusMessage = "Thank you for confirming your email change." + AlertRecipientNotice(await IsAlertRecipientAsync(user));
+        StatusMessage = _localiser["Account_EmailChangeThanks"].Value + AlertRecipientNotice(await IsAlertRecipientAsync(user));
 
         return Page();
     }

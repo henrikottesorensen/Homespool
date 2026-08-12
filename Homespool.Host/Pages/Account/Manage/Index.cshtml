@@ -15,7 +15,10 @@
                 <input asp-for="Input.Username" class="form-control" autocomplete="username" placeholder="@Localiser["Manage_ChooseUsernamePlaceholder"]"/>
                 <label asp-for="Input.Username" class="form-label"></label>
                 <span asp-validation-for="Input.Username" class="text-danger"></span>
-                <div class="form-text">@Localiser["Account_UsernameCharsPre"] <code>-</code> <code>.</code> <code>_</code>@Localiser["Account_UsernameCharsPost"]</div>
+                <div class="form-text">@Html.Raw(string.Format(
+                        System.Globalization.CultureInfo.CurrentCulture,
+                        Localiser["Account_UsernameChars"].Value,
+                        "<code>-</code>", "<code>.</code>", "<code>_</code>"))</div>
             </div>
             <button id="update-profile-button" type="submit" class="w-100 btn btn-lg btn-primary">@Localiser["Common_Save"]</button>
         </form>

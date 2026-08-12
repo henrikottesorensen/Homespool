@@ -538,11 +538,9 @@
   <data name="Account_ConfirmPassword" xml:space="preserve">
     <value>Confirm Password</value>
   </data>
-  <data name="Account_UsernameCharsPre" xml:space="preserve">
-    <value>Letters, digits, and</value>
-  </data>
-  <data name="Account_UsernameCharsPost" xml:space="preserve">
-    <value>. You sign in with this or your email address.</value>
+  <data name="Account_UsernameChars" xml:space="preserve">
+    <value>Letters, digits, and {0} {1} {2}. You sign in with this or your email address.</value>
+    <comment>{0}, {1} and {2} are the three punctuation marks, each wrapped in &amp;lt;code&amp;gt;. One key rather than a before/after pair: the pair only reassembles in a language that puts the list where English does, and it left the second half starting with a full stop.</comment>
   </data>
   <data name="Nav_Login" xml:space="preserve">
     <value>Login</value>

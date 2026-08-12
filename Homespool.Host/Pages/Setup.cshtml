@@ -24,7 +24,10 @@
                     <input asp-for="Input.Username" class="form-control" autocomplete="username" aria-required="true" placeholder="@Localiser["Common_UsernamePlaceholder"]" />
                     <label asp-for="Input.Username" class="form-label"></label>
                     <span asp-validation-for="Input.Username" class="text-danger"></span>
-                    <div class="form-text">@Localiser["Account_UsernameCharsPre"] <code>-</code> <code>.</code> <code>_</code>@Localiser["Account_UsernameCharsPost"]</div>
+                    <div class="form-text">@Html.Raw(string.Format(
+                        System.Globalization.CultureInfo.CurrentCulture,
+                        Localiser["Account_UsernameChars"].Value,
+                        "<code>-</code>", "<code>.</code>", "<code>_</code>"))</div>
                 </div>
                 <div class="form-floating mb-3">
                     <input asp-for="Input.Password" class="form-control" autocomplete="new-password" aria-required="true" placeholder="@Localiser["Common_PasswordPlaceholder"]" />

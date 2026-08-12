@@ -524,11 +524,8 @@
   <data name="Account_ConfirmPassword" xml:space="preserve">
     <value>Bekræft adgangskode</value>
   </data>
-  <data name="Account_UsernameCharsPre" xml:space="preserve">
-    <value>Bogstaver, tal og</value>
-  </data>
-  <data name="Account_UsernameCharsPost" xml:space="preserve">
-    <value>. Du logger ind med dette eller din e-mailadresse.</value>
+  <data name="Account_UsernameChars" xml:space="preserve">
+    <value>Bogstaver, tal og {0} {1} {2}. Du logger ind med dette eller din e-mailadresse.</value>
   </data>
   <data name="Nav_Login" xml:space="preserve">
     <value>Log ind</value>

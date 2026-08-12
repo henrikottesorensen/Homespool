@@ -338,13 +338,13 @@
     <value>Dyse</value>
   </data>
   <data name="Printers_Bed" xml:space="preserve">
-    <value>Plade</value>
+    <value>Byggeplade</value>
   </data>
   <data name="Printers_NozzleTemp" xml:space="preserve">
     <value>Dysetemperatur</value>
   </data>
   <data name="Printers_BedTemp" xml:space="preserve">
-    <value>Pladetemperatur</value>
+    <value>Byggepladetemperatur</value>
   </data>
   <data name="Printers_Temperature" xml:space="preserve">
     <value>Temperatur</value>

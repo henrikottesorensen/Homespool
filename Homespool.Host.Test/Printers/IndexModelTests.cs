@@ -123,6 +123,12 @@ public sealed class IndexModelTests : IDisposable
         // may offer - and whether it can offer a bundle at all.
         authority.EnsureLeaf([options.PrinterHost]);
 
+        // One localiser for both the page and its status seam - the application resolves a single
+        // scoped instance, and two here would let them disagree about what is registered.
+        IStringLocalizer<SharedResource> localiser =
+            new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider()
+                                   .GetRequiredService<IStringLocalizer<SharedResource>>();
+
         IndexModel model = new(
             new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System),
             new PrusaConnectService(context, new CodeGenerator(), new TokenService(), new TeamService(context),
@@ -136,9 +142,8 @@ public sealed class IndexModelTests : IDisposable
             new PrinterCommandService(new PrinterAccessService(context), connectionRegistry),
             new PrintStopService(context, new PrinterCommandService(new PrinterAccessService(context), connectionRegistry),
                                  NullLogger<PrintStopService>.Instance),
-            new PrinterStatusText(
-                new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider()
-                                       .GetRequiredService<IStringLocalizer<SharedResource>>()))
+            new PrinterStatusText(localiser),
+            localiser)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };

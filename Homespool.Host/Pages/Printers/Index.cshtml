@@ -1,7 +1,7 @@
 @page
 @model IndexModel
 @{
-    ViewData["Title"] = "Printers";
+    ViewData["Title"] = Localiser["Printers_Title"].Value;
 }
 
 <h1>@ViewData["Title"]</h1>
@@ -17,23 +17,23 @@
 }
 
 <p>
-    <a class="btn btn-outline-primary" asp-page="Claim">Claim printer (code)</a>
-    <a class="btn btn-primary" asp-page="Add">Add printer (USB key)</a>
+    <a class="btn btn-outline-primary" asp-page="Claim">@Localiser["Printers_Claim"]</a>
+    <a class="btn btn-primary" asp-page="Add">@Localiser["Printers_Add"]</a>
 </p>
 
 @if (Model.Printers.Count == 0)
 {
-    <p>No printers yet.</p>
+    <p>@Localiser["Printers_None"]</p>
 }
 else
 {
     <table class="table">
         <thead>
             <tr>
-                <th>Name</th>
-                <th>Location</th>
-                <th>Team</th>
-                <th>Status</th>
+                <th>@Localiser["Common_Name"]</th>
+                <th>@Localiser["Printers_Location"]</th>
+                <th>@Localiser["Common_Team"]</th>
+                <th>@Localiser["Common_Status"]</th>
                 <th></th>
                 <th></th>
             </tr>
@@ -58,17 +58,17 @@ else
                     {
                         @* Enrolled and absent. "Offline" is the actionable half; the reissue button
                            beside it already says the credential is in place. *@
-                        <span class="badge border border-secondary text-body-secondary">Offline</span>
+                        <span class="badge border border-secondary text-body-secondary">@Localiser["PrinterStatus_Offline"]</span>
                     }
                     else if (row.AwaitingUsbProvisioning)
                     {
                         @* Filled, unlike its two neighbours, because this one is the only absence with
                            something for a person to do: put the key in the printer. *@
-                        <span class="badge text-bg-warning">Awaiting USB connection</span>
+                        <span class="badge text-bg-warning">@Localiser["Printers_AwaitingUsb"]</span>
                     }
                     else
                     {
-                        <span class="badge border border-secondary text-body-secondary">Awaiting connection</span>
+                        <span class="badge border border-secondary text-body-secondary">@Localiser["Printers_AwaitingAny"]</span>
                     }
                 </td>
                 <td>
@@ -80,7 +80,7 @@ else
                     {
                         <form method="post" asp-page-handler="Regenerate" asp-route-printerId="@row.Printer.Id">
                             <button type="submit" class="btn btn-sm btn-outline-secondary">
-                                @(row.Enrolled ? "Reissue USB token" : "Regenerate USB token")
+                                @(row.Enrolled ? Localiser["Printers_ReissueToken"].Value : Localiser["Printers_RegenerateToken"].Value)
                             </button>
                         </form>
                     }
@@ -92,13 +92,13 @@ else
                     @if (row.Connected)
                     {
                         <form method="post" asp-page-handler="Pause" asp-route-printerId="@row.Printer.Id" class="d-inline">
-                            <button type="submit" class="btn btn-sm btn-outline-secondary">Pause</button>
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">@Localiser["Command_Pause"]</button>
                         </form>
                         <form method="post" asp-page-handler="Resume" asp-route-printerId="@row.Printer.Id" class="d-inline">
-                            <button type="submit" class="btn btn-sm btn-outline-secondary">Resume</button>
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">@Localiser["Command_Resume"]</button>
                         </form>
                         <form method="post" asp-page-handler="Stop" asp-route-printerId="@row.Printer.Id" class="d-inline">
-                            <button type="submit" class="btn btn-sm btn-outline-danger">Stop</button>
+                            <button type="submit" class="btn btn-sm btn-outline-danger">@Localiser["Command_Stop"]</button>
                         </form>
                     }
                 </td>

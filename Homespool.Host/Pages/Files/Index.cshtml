@@ -1,7 +1,7 @@
 @page
 @model IndexModel
 @{
-    ViewData["Title"] = "Files";
+    ViewData["Title"] = Localiser["Files_Title"].Value;
 }
 
 <h1>@ViewData["Title"]</h1>
@@ -16,20 +16,20 @@
     @* The bytes are already on disk, so answering this costs nothing more - which is the whole
        reason the upload is held rather than thrown away on a clash. *@
     <div class="alert alert-warning" role="alert">
-        <p>You already have a file named <strong>@Model.PendingName</strong>.</p>
+        <p>@Localiser["Files_DuplicateName"] <strong>@Model.PendingName</strong>.</p>
         <form method="post" asp-page-handler="Replace"
               asp-route-token="@Model.PendingToken"
               asp-route-sort="@Model.Sort"
               asp-route-desc="@Model.Descending"
               class="d-inline">
-            <button type="submit" class="btn btn-sm btn-warning">Replace it</button>
+            <button type="submit" class="btn btn-sm btn-warning">@Localiser["Files_Replace"]</button>
         </form>
         <form method="post" asp-page-handler="Discard"
               asp-route-token="@Model.PendingToken"
               asp-route-sort="@Model.Sort"
               asp-route-desc="@Model.Descending"
               class="d-inline">
-            <button type="submit" class="btn btn-sm btn-outline-secondary">Keep the one I have</button>
+            <button type="submit" class="btn btn-sm btn-outline-secondary">@Localiser["Files_KeepExisting"]</button>
         </form>
     </div>
 }
@@ -42,7 +42,7 @@
           asp-route-sort="@Model.Sort" asp-route-desc="@Model.Descending"
           class="d-flex align-items-center gap-2">
         <input type="file" name="file" accept=".gcode,.bgcode,.gco,.bgc" class="form-control" aria-label="File to upload" required />
-        <button type="submit" class="btn btn-primary text-nowrap">Upload</button>
+        <button type="submit" class="btn btn-primary text-nowrap">@Localiser["Files_Upload"]</button>
     </form>
     <p class="text-body-secondary small mb-0 mt-2">
         Drop a file here, or choose one. .gcode, .bgcode, .gco or .bgc, up to @IndexModel.FormatSize(Model.MaxUploadBytes).
@@ -51,7 +51,7 @@
 
 @if (Model.Files.Count == 0)
 {
-    <p>No files yet. Upload a sliced model to send it to a printer.</p>
+    <p>@Localiser["Files_None"]</p>
 }
 else
 {
@@ -65,21 +65,21 @@ else
                        asp-route-sort="@IndexModel.Columns.Name"
                        asp-route-desc="@Model.NextDescendingFor(IndexModel.Columns.Name)"
                        aria-sort="@(Model.Sort == IndexModel.Columns.Name ? (Model.Descending ? "descending" : "ascending") : "none")"
-                       class="link-body-emphasis text-decoration-none">Name@(Model.IndicatorFor(IndexModel.Columns.Name))</a>
+                       class="link-body-emphasis text-decoration-none">@Localiser["Common_Name"]@(Model.IndicatorFor(IndexModel.Columns.Name))</a>
                 </th>
                 <th class="text-end">
                     <a asp-page="./Index"
                        asp-route-sort="@IndexModel.Columns.Size"
                        asp-route-desc="@Model.NextDescendingFor(IndexModel.Columns.Size)"
                        aria-sort="@(Model.Sort == IndexModel.Columns.Size ? (Model.Descending ? "descending" : "ascending") : "none")"
-                       class="link-body-emphasis text-decoration-none">Size@(Model.IndicatorFor(IndexModel.Columns.Size))</a>
+                       class="link-body-emphasis text-decoration-none">@Localiser["Files_Size"]@(Model.IndicatorFor(IndexModel.Columns.Size))</a>
                 </th>
                 <th>
                     <a asp-page="./Index"
                        asp-route-sort="@IndexModel.Columns.Uploaded"
                        asp-route-desc="@Model.NextDescendingFor(IndexModel.Columns.Uploaded)"
                        aria-sort="@(Model.Sort == IndexModel.Columns.Uploaded ? (Model.Descending ? "descending" : "ascending") : "none")"
-                       class="link-body-emphasis text-decoration-none">Uploaded@(Model.IndicatorFor(IndexModel.Columns.Uploaded))</a>
+                       class="link-body-emphasis text-decoration-none">@Localiser["Files_Uploaded"]@(Model.IndicatorFor(IndexModel.Columns.Uploaded))</a>
                 </th>
                 <th></th>
             </tr>
@@ -98,9 +98,9 @@ else
                               class="d-flex gap-2">
                             <input type="text" name="newName" value="@file.FileName" class="form-control form-control-sm"
                                    aria-label="New file name" required />
-                            <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                            <button type="submit" class="btn btn-sm btn-primary">@Localiser["Common_Save"]</button>
                             <a asp-page="./Index" asp-route-sort="@Model.Sort" asp-route-desc="@Model.Descending"
-                               class="btn btn-sm btn-outline-secondary">Cancel</a>
+                               class="btn btn-sm btn-outline-secondary">@Localiser["Common_Cancel"]</a>
                         </form>
                     </td>
                 }
@@ -131,7 +131,7 @@ else
                                 }
                             </select>
                             <button type="submit" class="btn btn-sm btn-outline-primary"
-                                    title="Transfer the file to the printer now">Send</button>
+                                    title="@Localiser["Files_SendTitle"]">@Localiser["Files_Send"]</button>
                             @* Second submit on the same form so the two verbs share one printer
                                picker. asp-page-handler on a button emits formaction, which overrides
                                the form's - so the route values have to be repeated here. *@
@@ -140,25 +140,25 @@ else
                                     asp-route-name="@file.FileName"
                                     asp-route-sort="@Model.Sort"
                                     asp-route-desc="@Model.Descending"
-                                    title="Add to the printer's queue to print when it is free">Queue</button>
+                                    title="@Localiser["Files_QueueTitle"]">@Localiser["Files_Queue"]</button>
                         </form>
                     }
                     <a asp-page="./Index"
                        asp-route-sort="@Model.Sort"
                        asp-route-desc="@Model.Descending"
                        asp-route-rename="@file.FileName"
-                       class="btn btn-sm btn-outline-secondary">Rename</a>
+                       class="btn btn-sm btn-outline-secondary">@Localiser["Files_Rename"]</a>
                     @* Straight to the API, which already answers a cookie-authenticated GET - a second
                        copy of the same download here would be one more place to get ownership wrong. *@
                     <a href="/api/v1/files/@Uri.EscapeDataString(file.FileName)"
-                       class="btn btn-sm btn-outline-secondary">Download</a>
+                       class="btn btn-sm btn-outline-secondary">@Localiser["Files_Download"]</a>
                     <form method="post" asp-page-handler="Delete"
                           asp-route-name="@file.FileName"
                           asp-route-sort="@Model.Sort"
                           asp-route-desc="@Model.Descending"
                           class="d-inline"
                           onsubmit="return confirm('Delete @file.FileName?');">
-                        <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                        <button type="submit" class="btn btn-sm btn-outline-danger">@Localiser["Common_Delete"]</button>
                     </form>
                 </td>
             </tr>

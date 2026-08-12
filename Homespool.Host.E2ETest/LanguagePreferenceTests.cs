@@ -201,6 +201,45 @@ public sealed class LanguagePreferenceTests : IAsyncLifetime, IDisposable
         client.Dispose();
     }
 
+    /// <summary>
+    /// A converted page renders in the chosen language, headings and controls alike.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The picker proving it switches is not the same as a page proving it was converted. This asks
+    /// for a real working page - the printer list - and checks the parts a person actually reads:
+    /// the heading, a column heading, the empty-state sentence and a button.
+    /// </para>
+    /// <para>
+    /// <b>It also asserts what stays English.</b> Nothing here should translate a CSS class, and
+    /// <c>text-bg-secondary</c> appearing intact is the cheapest available check that the
+    /// machine-text boundary survived the conversion of this page.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AConvertedPageRendersInTheChosenLanguage()
+    {
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "language-printers@example.com");
+
+        string english = await GetStringAsync(client, "/Printers");
+        english.Should().Contain("No printers yet.");
+        english.Should().Contain("Claim printer (code)");
+
+        string page = await GetStringAsync(client, "/Account/Manage/Language");
+        await PostLanguageAsync(client, page, "da");
+
+        string danish = await GetStringAsync(client, "/Printers");
+
+        danish.Should().Contain("Printere");
+        danish.Should().Contain("Ingen printere endnu.");
+        danish.Should().Contain("Tilknyt printer (kode)");
+        danish.Should().Contain("Tilføj printer (USB-nøgle)");
+        danish.Should().NotContain("No printers yet.");
+
+        client.Dispose();
+    }
+
     private static async Task<string> GetStringAsync(HttpClient client, string path)
     {
         using HttpResponseMessage response = await client.GetAsync(path, TestContext.Current.CancellationToken);

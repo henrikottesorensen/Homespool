@@ -330,4 +330,146 @@
   <data name="Cameras_Seen" xml:space="preserve">
     <value>seen {0}</value>
   </data>
+  <data name="Printers_BackToList" xml:space="preserve">
+    <value>← Back to printers</value>
+  </data>
+  <data name="Printers_CurrentStatus" xml:space="preserve">
+    <value>Current status</value>
+  </data>
+  <data name="Printers_NotConnected" xml:space="preserve">
+    <value>Not connected</value>
+  </data>
+  <data name="Printers_LastSeen" xml:space="preserve">
+    <value>Last seen</value>
+  </data>
+  <data name="Printers_Nozzle" xml:space="preserve">
+    <value>Nozzle</value>
+  </data>
+  <data name="Printers_Bed" xml:space="preserve">
+    <value>Bed</value>
+  </data>
+  <data name="Printers_NozzleTemp" xml:space="preserve">
+    <value>Nozzle temperature</value>
+  </data>
+  <data name="Printers_BedTemp" xml:space="preserve">
+    <value>Bed temperature</value>
+  </data>
+  <data name="Printers_Temperature" xml:space="preserve">
+    <value>Temperature</value>
+  </data>
+  <data name="Printers_Material" xml:space="preserve">
+    <value>Material</value>
+  </data>
+  <data name="Printers_Speed" xml:space="preserve">
+    <value>Speed</value>
+  </data>
+  <data name="Printers_Flow" xml:space="preserve">
+    <value>Flow</value>
+  </data>
+  <data name="Printers_Progress" xml:space="preserve">
+    <value>Progress</value>
+  </data>
+  <data name="Printers_TimePrinting" xml:space="preserve">
+    <value>Time printing</value>
+  </data>
+  <data name="Printers_TimeRemaining" xml:space="preserve">
+    <value>Time remaining</value>
+  </data>
+  <data name="Printers_FilamentChangeIn" xml:space="preserve">
+    <value>Filament change in</value>
+  </data>
+  <data name="Printers_PrintingNow" xml:space="preserve">
+    <value>Printing now</value>
+  </data>
+  <data name="Printers_Starting" xml:space="preserve">
+    <value>starting</value>
+  </data>
+  <data name="Printers_PrintHistory" xml:space="preserve">
+    <value>Print history</value>
+  </data>
+  <data name="Printers_NothingFinished" xml:space="preserve">
+    <value>Nothing has finished printing yet.</value>
+  </data>
+  <data name="Printers_RecentEvents" xml:space="preserve">
+    <value>Recent events</value>
+  </data>
+  <data name="Printers_NoEvents" xml:space="preserve">
+    <value>No events yet.</value>
+  </data>
+  <data name="Printers_RecentTelemetry" xml:space="preserve">
+    <value>Recent telemetry</value>
+  </data>
+  <data name="Printers_NoTelemetry" xml:space="preserve">
+    <value>No telemetry yet.</value>
+  </data>
+  <data name="Printers_NoTelemetryHistory" xml:space="preserve">
+    <value>No telemetry history yet.</value>
+  </data>
+  <data name="Printers_QueueHeld" xml:space="preserve">
+    <value>The queue is held.</value>
+  </data>
+  <data name="Printers_Preheat" xml:space="preserve">
+    <value>Preheat</value>
+  </data>
+  <data name="Printers_PreheatFor" xml:space="preserve">
+    <value>Preheat for</value>
+  </data>
+  <data name="Printers_CoolDown" xml:space="preserve">
+    <value>Cool down</value>
+  </data>
+  <data name="Printers_SlicerHeading" xml:space="preserve">
+    <value>Send from a slicer</value>
+  </data>
+  <data name="Printers_ApiTokenLink" xml:space="preserve">
+    <value>personal access token</value>
+  </data>
+  <data name="Printers_PrintersListLink" xml:space="preserve">
+    <value>printers list</value>
+  </data>
+  <data name="Common_Event" xml:space="preserve">
+    <value>Event</value>
+  </data>
+  <data name="Common_Time" xml:space="preserve">
+    <value>Time</value>
+  </data>
+  <data name="Common_Reason" xml:space="preserve">
+    <value>Reason</value>
+  </data>
+  <data name="Common_Outcome" xml:space="preserve">
+    <value>Outcome</value>
+  </data>
+  <data name="Common_Started" xml:space="preserve">
+    <value>Started</value>
+  </data>
+  <data name="Common_File" xml:space="preserve">
+    <value>File</value>
+  </data>
+  <data name="Common_Job" xml:space="preserve">
+    <value>Job</value>
+  </data>
+  <data name="Common_Queued" xml:space="preserve">
+    <value>Queued</value>
+  </data>
+  <data name="Common_Queue" xml:space="preserve">
+    <value>Queue</value>
+  </data>
+  <data name="Common_Actions" xml:space="preserve">
+    <value>Actions</value>
+  </data>
+  <data name="Common_Copy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="Printers_SlicerHelp" xml:space="preserve">
+    <value>PrusaSlicer can send straight to this printer. Under {0}, set {1} to {2}, paste this as the hostname, and use a {3} as the API key. {4} adds the file to the queue above rather than starting it.</value>
+    <comment>The braces are PrusaSlicer's own menu labels and a link, kept English: they have to match what a person sees in the slicer, which this application does not author.</comment>
+  </data>
+  <data name="Printers_PreheatWarning" xml:space="preserve">
+    <value>Both are refused while the printer is busy, {0}: changing a heater mid-print ruins the print without ending it, and the printer will not refuse it on your behalf. To stop a print, use the controls on the {1}.</value>
+  </data>
+  <data name="Printers_CoolingIncluded" xml:space="preserve">
+    <value>cooling included</value>
+  </data>
+  <data name="Printers_NothingQueued" xml:space="preserve">
+    <value>Nothing queued. Send a file to this printer&apos;s queue from {0}.</value>
+  </data>
 </root>

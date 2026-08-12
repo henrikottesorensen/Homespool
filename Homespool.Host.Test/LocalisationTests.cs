@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Xml.Linq;
 
 using AwesomeAssertions;
 
@@ -294,6 +297,62 @@ public sealed class LocalisationTests
 
         SupportedLanguages.Resolve("en-US").Should().Be("en-US");
         SupportedLanguages.CultureNames.Should().Equal("en-GB", "en-US", "da");
+    }
+
+    /// <summary>
+    /// Every English string has a Danish one, and both files are well-formed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A key added to one file and not the other is invisible until somebody reads that page in
+    /// Danish</b>, and Phase B adds them in batches - which is exactly the shape of drift that
+    /// accumulates quietly. This compares the two files directly rather than going through the
+    /// localiser, because the localiser's fallback is what would hide the gap.
+    /// </para>
+    /// <para>
+    /// It also parses both as XML, which catches the one mistake a resource file invites: writing an
+    /// HTML entity into it. <c>&amp;larr;</c> is not one of XML's five, and it took the build down
+    /// with a stack trace naming neither the file's line nor the entity.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void EveryEnglishStringHasADanishOne()
+    {
+        IReadOnlyDictionary<string, string> english = ReadResources("SharedResource.resx");
+        IReadOnlyDictionary<string, string> danish = ReadResources("SharedResource.da.resx");
+
+        english.Should().NotBeEmpty("the neutral file is what everything falls back to");
+
+        string[] untranslated = english.Keys.Except(danish.Keys).OrderBy(key => key, StringComparer.Ordinal).ToArray();
+        untranslated.Should().BeEmpty("every shipped string is translated, so no page is half Danish");
+
+        string[] orphaned = danish.Keys.Except(english.Keys).OrderBy(key => key, StringComparer.Ordinal).ToArray();
+        orphaned.Should().BeEmpty("a Danish key with no English one can never be reached");
+    }
+
+    /// <summary>
+    /// Reads a resource file from the source tree rather than the compiled assembly, which is what
+    /// lets this compare the two files as files.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string> ReadResources(string fileName)
+    {
+        string directory = AppContext.BaseDirectory;
+
+        while (directory is not null && !Directory.Exists(Path.Combine(directory, "Homespool.Host", "Localisation")))
+        {
+            directory = Path.GetDirectoryName(directory)!;
+        }
+
+        string path = Path.Combine(directory!, "Homespool.Host", "Localisation", fileName);
+        File.Exists(path).Should().BeTrue($"{fileName} is where the strings live");
+
+        return XDocument.Load(path)
+                        .Root!
+                        .Elements("data")
+                        .ToDictionary(
+                            element => element.Attribute("name")!.Value,
+                            element => element.Element("value")?.Value ?? string.Empty,
+                            StringComparer.Ordinal);
     }
 
     /// <summary>

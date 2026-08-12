@@ -1005,4 +1005,88 @@
   <data name="Printers_TemperatureTarget" xml:space="preserve">
     <value>{0}° / target {1}°</value>
   </data>
+  <data name="Account_AccessDeniedTitle" xml:space="preserve">
+    <value>Access denied</value>
+  </data>
+  <data name="Account_ConfirmEmailTitle" xml:space="preserve">
+    <value>Confirm email</value>
+  </data>
+  <data name="Account_ConfirmEmailChangeTitle" xml:space="preserve">
+    <value>Confirm email change</value>
+  </data>
+  <data name="Account_ForgotPasswordConfirmTitle" xml:space="preserve">
+    <value>Forgot password confirmation</value>
+  </data>
+  <data name="Account_LockoutTitle" xml:space="preserve">
+    <value>Locked out</value>
+  </data>
+  <data name="Account_RecoveryCodeTitle" xml:space="preserve">
+    <value>Recovery code verification</value>
+  </data>
+  <data name="Account_LogOutTitle" xml:space="preserve">
+    <value>Log out</value>
+  </data>
+  <data name="Account_RegisterConfirmTitle" xml:space="preserve">
+    <value>Register confirmation</value>
+  </data>
+  <data name="Account_ResendConfirmTitle" xml:space="preserve">
+    <value>Resend email confirmation</value>
+  </data>
+  <data name="Account_ResetPasswordConfirmTitle" xml:space="preserve">
+    <value>Reset password confirmation</value>
+  </data>
+  <data name="Manage_EmailTitle" xml:space="preserve">
+    <value>Manage email</value>
+  </data>
+  <data name="Manage_ProfileTitle" xml:space="preserve">
+    <value>Profile</value>
+  </data>
+  <data name="TwoFactor_ConfigureAppTitle" xml:space="preserve">
+    <value>Configure authenticator app</value>
+  </data>
+  <data name="TwoFactor_DisableTitle" xml:space="preserve">
+    <value>Disable two-factor authentication</value>
+  </data>
+  <data name="TwoFactor_GenerateCodesTitle" xml:space="preserve">
+    <value>Generate two-factor recovery codes</value>
+  </data>
+  <data name="Setup_Title" xml:space="preserve">
+    <value>First-time setup</value>
+  </data>
+  <data name="Printers_PreheatBoth" xml:space="preserve">
+    <value>Heats the nozzle and bed together, to the same targets the printer&apos;s own preheat menu uses.</value>
+  </data>
+  <data name="Cameras_NoneUnclaimed" xml:space="preserve">
+    <value>No unclaimed cameras are attached to this server. If you have just plugged one in, it also</value>
+  </data>
+  <data name="Printers_ClaimQrWarning" xml:space="preserve">
+    <value>Both are built into the firmware and always point at Prusa&apos;s own servers, never at this one. Scanning the QR will take you to Prusa, where this code does not exist. Only the code printed underneath it is of any use here - type it in below.</value>
+  </data>
+  <data name="Bundle_NoCertInBundle" xml:space="preserve">
+    <value>({0} is false), so the bundle carries no certificate and this printer&apos;s token will cross the network in clear.</value>
+  </data>
+  <data name="Bundle_NoReachableAddress" xml:space="preserve">
+    <value>This printer is provisioned, but no bundle can be built: the certificate carries no address a printer could actually reach.</value>
+  </data>
+  <data name="Cert_AuthorityReplaceCost" xml:space="preserve">
+    <value>Replacing this one means a USB visit to every printer - it is their entire trust store and cannot be sent over the network. Plan it well ahead.</value>
+  </data>
+  <data name="Cert_AddressNotCovered" xml:space="preserve">
+    <value>The address printers are told to use is not in the certificate, so no provisioning bundle can be produced for it and any printer connecting to it cannot verify this server.</value>
+  </data>
+  <data name="Cert_UncoveredAddresses" xml:space="preserve">
+    <value>This machine has addresses the certificate does not cover. That is only a problem for printers told to use one of them - the ones using a covered address are unaffected.</value>
+  </data>
+  <data name="Cert_DroppingExplanation" xml:space="preserve">
+    <value>These names are covered today and this machine no longer answers on them, so they would not be carried over. That is usually right - a certificate should only vouch for what a printer can reach. But</value>
+  </data>
+  <data name="Cert_DroppingConsequence" xml:space="preserve">
+    <value>once the new certificate is served, reporting a bare TLS error that names nothing, and putting it back means a USB visit to repoint it.</value>
+  </data>
+  <data name="Cert_Keep" xml:space="preserve">
+    <value>keep {0}</value>
+  </data>
+  <data name="Cert_ReloadExplanation" xml:space="preserve">
+    <value>because the proxy is what presents this certificate to printers, and it read the current one when it started. The application itself keeps running. A printer that is already connected keeps meeting the old certificate until it next reconnects, since the reload is graceful and does not interrupt live connections. Nothing is needed at the printers either: both certificates are signed by the authority, which this does not touch.</value>
+  </data>
 </root>

@@ -317,7 +317,7 @@
     <value>En RTSP- eller HTTP-adresse, for eksempel {0}. Homespool registrerer den for dig hos streamserveren.</value>
   </data>
   <data name="Cameras_AttachedHelp" xml:space="preserve">
-    <value>Kun kameraer, som ingen har taget, vises. Et kamera, der er tilkoblet serveren, tilhører maskinen frem for et team, så kun en administrator kan sætte det op.</value>
+    <value>Kun utilknyttede kameraer vises. Et kamera, der er tilkoblet direkte til serveren, kan kun tildeles af en administrator.</value>
   </data>
   <data name="Cameras_Seen" xml:space="preserve">
     <value>set {0}</value>
@@ -985,7 +985,7 @@
     <value>Invitationen er oprettet.</value>
   </data>
   <data name="Printers_NoPublicAddress" xml:space="preserve">
-    <value>Serverens offentlige adresse er ikke konfigureret ({0}), så der kan endnu ikke laves et brugbart uddrag. Bed din administrator om at sætte den.</value>
+    <value>Serverens offentlige adresse er ikke konfigureret ({0}), så der kan ikke laves et brugbart uddrag. Bed din administrator om at sætte den.</value>
   </data>
   <data name="Printers_ClaimSteps" xml:space="preserve">
     <value>På printeren gå til {0}, og indtast derefter den kode, den viser.</value>
@@ -995,5 +995,89 @@
   </data>
   <data name="Printers_TemperatureTarget" xml:space="preserve">
     <value>{0}° / mål {1}°</value>
+  </data>
+  <data name="Account_AccessDeniedTitle" xml:space="preserve">
+    <value>Adgang nægtet</value>
+  </data>
+  <data name="Account_ConfirmEmailTitle" xml:space="preserve">
+    <value>Bekræft e-mail</value>
+  </data>
+  <data name="Account_ConfirmEmailChangeTitle" xml:space="preserve">
+    <value>Bekræft ændring af e-mail</value>
+  </data>
+  <data name="Account_ForgotPasswordConfirmTitle" xml:space="preserve">
+    <value>Bekræftelse af glemt adgangskode</value>
+  </data>
+  <data name="Account_LockoutTitle" xml:space="preserve">
+    <value>Konto låst</value>
+  </data>
+  <data name="Account_RecoveryCodeTitle" xml:space="preserve">
+    <value>Bekræftelse med gendannelseskode</value>
+  </data>
+  <data name="Account_LogOutTitle" xml:space="preserve">
+    <value>Log ud</value>
+  </data>
+  <data name="Account_RegisterConfirmTitle" xml:space="preserve">
+    <value>Bekræftelse af registrering</value>
+  </data>
+  <data name="Account_ResendConfirmTitle" xml:space="preserve">
+    <value>Send bekræftelsesmail igen</value>
+  </data>
+  <data name="Account_ResetPasswordConfirmTitle" xml:space="preserve">
+    <value>Bekræftelse af nulstillet adgangskode</value>
+  </data>
+  <data name="Manage_EmailTitle" xml:space="preserve">
+    <value>Administrér e-mail</value>
+  </data>
+  <data name="Manage_ProfileTitle" xml:space="preserve">
+    <value>Profil</value>
+  </data>
+  <data name="TwoFactor_ConfigureAppTitle" xml:space="preserve">
+    <value>Opsæt tofaktorapp</value>
+  </data>
+  <data name="TwoFactor_DisableTitle" xml:space="preserve">
+    <value>Slå tofaktorgodkendelse fra</value>
+  </data>
+  <data name="TwoFactor_GenerateCodesTitle" xml:space="preserve">
+    <value>Generér gendannelseskoder til tofaktorgodkendelse</value>
+  </data>
+  <data name="Setup_Title" xml:space="preserve">
+    <value>Førstegangsopsætning</value>
+  </data>
+  <data name="Printers_PreheatBoth" xml:space="preserve">
+    <value>Varmer dyse og byggeplade op samtidig, til de samme temperaturer som printerens egen forvarmningsmenu bruger.</value>
+  </data>
+  <data name="Cameras_NoneUnclaimed" xml:space="preserve">
+    <value>Der er ingen ledige kameraer tilsluttet denne server. Har du lige sat et til, </value>
+  </data>
+  <data name="Printers_ClaimQrWarning" xml:space="preserve">
+    <value>Begge er indbygget i firmwaren og peger altid på Prusas egne servere, aldrig på denne. Scanner du QR-koden, havner du hos Prusa, hvor denne kode ikke findes. Kun koden, der står under den, kan bruges her - indtast den nedenfor.</value>
+  </data>
+  <data name="Bundle_NoCertInBundle" xml:space="preserve">
+    <value>({0} er false), så pakken indeholder intet certifikat, og denne printers token sendes i klartekst over netværket.</value>
+  </data>
+  <data name="Bundle_NoReachableAddress" xml:space="preserve">
+    <value>Denne printer er klargjort, men der kan ikke bygges nogen pakke: certifikatet indeholder ingen adresse, som en printer rent faktisk kan nå.</value>
+  </data>
+  <data name="Cert_AuthorityReplaceCost" xml:space="preserve">
+    <value>At udskifte det betyder et USB-besøg hos hver eneste printer - det er hele deres trust store og kan ikke sendes over netværket. Planlæg det i god tid.</value>
+  </data>
+  <data name="Cert_AddressNotCovered" xml:space="preserve">
+    <value>Den adresse, printere får besked på at bruge, står ikke i certifikatet, så der kan ikke laves nogen klargøringspakke til den, og en printer, der forbinder til den, kan ikke verificere denne server.</value>
+  </data>
+  <data name="Cert_UncoveredAddresses" xml:space="preserve">
+    <value>Denne maskine har adresser, som certifikatet ikke dækker. Det er kun et problem for printere, der får besked på at bruge en af dem - de printere, der bruger en dækket adresse, er upåvirkede.</value>
+  </data>
+  <data name="Cert_DroppingExplanation" xml:space="preserve">
+    <value>Disse navne er dækket i dag, og maskinen svarer ikke længere på dem, så de ville ikke blive ført med over. Det er som regel rigtigt - et certifikat bør kun indestå for det, en printer kan nå. Men</value>
+  </data>
+  <data name="Cert_DroppingConsequence" xml:space="preserve">
+    <value>så snart det nye certifikat serveres, med en nøgen TLS-fejl der ikke nævner noget, og at få det tilbage kræver et USB-besøg for at pege printeren om.</value>
+  </data>
+  <data name="Cert_Keep" xml:space="preserve">
+    <value>behold {0}</value>
+  </data>
+  <data name="Cert_ReloadExplanation" xml:space="preserve">
+    <value>fordi det er proxyen, der viser dette certifikat til printere, og den læste det nuværende, da den startede. Selve programmet kører videre. En printer, der allerede er forbundet, møder fortsat det gamle certifikat, indtil den forbinder igen, da genindlæsningen er nænsom og ikke afbryder aktive forbindelser. Der skal heller ikke gøres noget ved printerne: begge certifikater er signeret af udstederen, som dette ikke rører.</value>
   </data>
 </root>

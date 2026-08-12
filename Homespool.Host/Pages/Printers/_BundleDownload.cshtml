@@ -56,8 +56,7 @@
         {
             <p class="mb-2">
                 <strong>@Localiser["Bundle_PlainHttp"]</strong>
-                (<code>PrusaConnect:PrinterTls</code> is false), so the bundle carries no certificate
-                and this printer's token will cross the network in clear.
+                @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Bundle_NoCertInBundle"].Value, "<code>PrusaConnect:PrinterTls</code>"))
             </p>
         }
 
@@ -72,8 +71,7 @@
     else
     {
         <p class="mb-1">
-            This printer is provisioned, but no bundle can be built: the certificate carries no address a
-            printer could actually reach.
+            @Localiser["Bundle_NoReachableAddress"]
         </p>
         <p class="mb-0">
             @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Bundle_CertIssuedTooEarly"].Value, "<code>PrusaConnect:PrinterHost</code>", "<em>Admin &rarr; Printer certificate</em>"))

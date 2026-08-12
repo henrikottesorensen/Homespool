@@ -21,8 +21,8 @@
             </p>
         </li>
         <li>
-            <p>Scan the QR Code or enter this key <kbd>@Model.SharedKey</kbd> into your two factor authenticator app. Spaces and casing do not matter.</p>
-            <div class="alert alert-info">Learn how to <a href="https://go.microsoft.com/fwlink/?Linkid=852423">enable QR code generation</a>.</div>
+            <p>@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["TwoFactor_ScanKeyInto"].Value, $"<kbd>{Model.SharedKey}</kbd>"))</p>
+            <div class="alert alert-info">@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["TwoFactor_LearnQr"].Value, $"<a href=\"https://go.microsoft.com/fwlink/?Linkid=852423\">{Localiser["TwoFactor_EnableQrLink"].Value}</a>"))</div>
             <div id="qrCode"></div>
             <div id="qrCodeData" data-url="@Model.AuthenticatorUri"></div>
         </li>

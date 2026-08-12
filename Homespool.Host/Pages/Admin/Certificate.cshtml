@@ -1,7 +1,7 @@
 @page
 @model CertificateModel
 @{
-    ViewData["Title"] = "Printer certificate";
+    ViewData["Title"] = Localiser["Cert_Title"].Value;
 }
 
 <h1>@ViewData["Title"]</h1>
@@ -15,12 +15,11 @@
 {
     <div class="alert alert-warning" role="alert">
         <p class="mb-1">
-            <strong>Printers connect over plain HTTP in this deployment</strong>
+            <strong>@Localiser["Cert_PlainHttpHeading"]</strong>
             (<code>PrusaConnect:PrinterTls</code> is false), so no certificate is issued or served.
         </p>
         <p class="mb-0">
-            That is a setting for reading the protocol on the wire or running a test rig. Every printer
-            token crosses the network in clear while it is off.
+            @Localiser["Cert_PlainHttpBody"]
         </p>
     </div>
 
@@ -28,10 +27,10 @@
 }
 
 <p>
-    Printers verify this server against a certificate it mints for itself. The certificate is issued
-    <strong>once</strong> and then left alone - reissuing it automatically would drop every live printer
-    connection each time an interface appeared, and quietly change what this server claims to be. So
-    when this machine's addresses move, the fix is here rather than automatic.
+    @Html.Raw(string.Format(
+        System.Globalization.CultureInfo.CurrentCulture,
+        Localiser["Cert_Explanation"].Value,
+        $"<strong>{Localiser["Cert_Once"].Value}</strong>"))
 </p>
 
 @if (Model.Covered.Count == 0)
@@ -47,11 +46,11 @@
         <table class="table">
             <tbody>
                 <tr>
-                    <th scope="row">The certificate covers</th>
+                    <th scope="row">@Localiser["Cert_Covers"]</th>
                     <td>
                         @if (Model.Covered.Count == 0)
                         {
-                            <em>nothing</em>
+                            <em>@Localiser["Cert_Nothing"]</em>
                         }
                         else
                         {
@@ -61,7 +60,7 @@
                                     <code>@name</code>
                                     @if (Model.Dropping.Contains(name))
                                     {
-                                        <span class="badge text-bg-warning ms-1">a reissue would drop this</span>
+                                        <span class="badge text-bg-warning ms-1">@Localiser["Cert_WouldDrop"]</span>
                                     }
                                 </div>
                             }
@@ -69,11 +68,11 @@
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row">This machine now answers on</th>
+                    <th scope="row">@Localiser["Cert_MachineAnswersOn"]</th>
                     <td>
                         @if (Model.Current.Count == 0)
                         {
-                            <em>no usable address was detected</em>
+                            <em>@Localiser["Cert_NoUsableAddress"]</em>
                         }
                         else
                         {
@@ -83,7 +82,7 @@
                                     <code>@name</code>
                                     @if (Model.Uncovered.Contains(name))
                                     {
-                                        <span class="badge text-bg-warning">not in the certificate</span>
+                                        <span class="badge text-bg-warning">@Localiser["Cert_NotInCertificate"]</span>
                                     }
                                 </div>
                             }
@@ -91,28 +90,28 @@
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row">Printers are told to use</th>
+                    <th scope="row">@Localiser["Cert_PrintersToldToUse"]</th>
                     <td>
                         @if (Model.ConfiguredHost is null)
                         {
-                            <em>not configured (<code>PrusaConnect:PrinterHost</code>)</em>
+                            <em>@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Cert_NotConfiguredFor"].Value, "<code>PrusaConnect:PrinterHost</code>"))</em>
                         }
                         else
                         {
                             <code>@Model.ConfiguredHost</code>
                             @if (Model.ConfiguredHostUncovered)
                             {
-                                <span class="badge text-bg-danger">not in the certificate</span>
+                                <span class="badge text-bg-danger">@Localiser["Cert_NotInCertificate"]</span>
                             }
                         }
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row">Certificate expires</th>
+                    <th scope="row">@Localiser["Cert_Expires"]</th>
                     <td>@(Model.LeafExpires?.ToString("yyyy-MM-dd") ?? "-")</td>
                 </tr>
                 <tr>
-                    <th scope="row">Authority expires</th>
+                    <th scope="row">@Localiser["Cert_AuthorityExpires"]</th>
                     <td>
                         @(Model.AuthorityExpires?.ToString("yyyy-MM-dd") ?? "-")
                         <div class="form-text">
@@ -145,13 +144,13 @@ else if (Model.Uncovered.Count > 0)
     @if (Model.Dropping.Count > 0)
     {
         <div class="alert alert-warning" role="alert">
-            <strong>Reissuing would narrow this certificate.</strong> These names are covered today
+            <strong>@Localiser["Cert_WouldNarrow"]</strong> These names are covered today
             and this machine no longer answers on them, so they would not be carried over. That is
             usually right - a certificate should only vouch for what a printer can reach. But
-            <strong>any printer whose ini tells it to use one of these will stop connecting</strong>
+            <strong>@Localiser["Cert_WouldStopConnecting"]</strong>
             once the new certificate is served, reporting a bare TLS error that names nothing, and
             putting it back means a USB visit to repoint it.
-            <p class="mt-2 mb-1">Tick any name a printer is still connecting to and it will be kept:</p>
+            <p class="mt-2 mb-1">@Localiser["Cert_KeepTicked"]</p>
             @foreach (string name in Model.Dropping)
             {
                 <div class="form-check">
@@ -165,12 +164,12 @@ else if (Model.Uncovered.Count > 0)
         </div>
     }
 
-    <button type="submit" class="btn btn-primary">Reissue for this machine's current addresses</button>
-    <a class="btn btn-link" asp-page="/Index">Back</a>
+    <button type="submit" class="btn btn-primary">@Localiser["Cert_Reissue"]</button>
+    <a class="btn btn-link" asp-page="/Index">@Localiser["Common_Back"]</a>
 </form>
 
 <p class="form-text mt-2">
-    A reissue needs the <strong>proxy reloaded</strong> to take effect - <code>docker compose exec
+    @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Cert_ReissueNeedsReload"].Value, $"<strong>{Localiser["Cert_ProxyReloaded"].Value}</strong>"))<code>docker compose exec
     proxy nginx -s reload</code> - because the proxy is what presents this certificate to printers,
     and it read the current one when it started. The application itself keeps running. A printer that
     is already connected keeps meeting the old certificate until it next reconnects, since the reload

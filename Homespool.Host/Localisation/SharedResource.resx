@@ -679,4 +679,157 @@
   <data name="Account_CheckEmail" xml:space="preserve">
     <value>Please check your email to confirm your account.</value>
   </data>
+  <data name="Account_AccessDenied" xml:space="preserve">
+    <value>You do not have access to this resource.</value>
+  </data>
+  <data name="Account_LockedOut" xml:space="preserve">
+    <value>This account has been locked out, please try again later.</value>
+  </data>
+  <data name="Account_LoggedOut" xml:space="preserve">
+    <value>You have successfully logged out of the application.</value>
+  </data>
+  <data name="Account_ResetPasswordTitle" xml:space="preserve">
+    <value>Reset Password</value>
+  </data>
+  <data name="Account_ClickToLogIn" xml:space="preserve">
+    <value>click here to log in</value>
+  </data>
+  <data name="Manage_AccountTitle" xml:space="preserve">
+    <value>Manage your account</value>
+  </data>
+  <data name="Manage_AccountSubtitle" xml:space="preserve">
+    <value>Change your account settings</value>
+  </data>
+  <data name="Cert_Title" xml:space="preserve">
+    <value>Printer certificate</value>
+  </data>
+  <data name="Cert_PlainHttpHeading" xml:space="preserve">
+    <value>Printers connect over plain HTTP in this deployment</value>
+  </data>
+  <data name="Cert_PlainHttpBody" xml:space="preserve">
+    <value>That is a setting for reading the protocol on the wire or running a test rig. Every printer token crosses the network in clear while it is off.</value>
+  </data>
+  <data name="Cert_Explanation" xml:space="preserve">
+    <value>Printers verify this server against a certificate it mints for itself. The certificate is issued {0} and then left alone - reissuing it automatically would drop every live printer connection each time an interface appeared, and quietly change what this server claims to be. So when this machine&apos;s addresses move, the fix is here rather than automatic.</value>
+  </data>
+  <data name="Cert_Once" xml:space="preserve">
+    <value>once</value>
+  </data>
+  <data name="Cert_Covers" xml:space="preserve">
+    <value>The certificate covers</value>
+  </data>
+  <data name="Cert_MachineAnswersOn" xml:space="preserve">
+    <value>This machine now answers on</value>
+  </data>
+  <data name="Cert_PrintersToldToUse" xml:space="preserve">
+    <value>Printers are told to use</value>
+  </data>
+  <data name="Cert_AuthorityExpires" xml:space="preserve">
+    <value>Authority expires</value>
+  </data>
+  <data name="Cert_Expires" xml:space="preserve">
+    <value>Certificate expires</value>
+  </data>
+  <data name="Cert_Reissue" xml:space="preserve">
+    <value>Reissue for this machine&apos;s current addresses</value>
+  </data>
+  <data name="Cert_WouldNarrow" xml:space="preserve">
+    <value>Reissuing would narrow this certificate.</value>
+  </data>
+  <data name="Cert_KeepTicked" xml:space="preserve">
+    <value>Tick any name a printer is still connecting to and it will be kept:</value>
+  </data>
+  <data name="Cert_WouldDrop" xml:space="preserve">
+    <value>a reissue would drop this</value>
+  </data>
+  <data name="Cert_NotInCertificate" xml:space="preserve">
+    <value>not in the certificate</value>
+  </data>
+  <data name="Cert_WouldStopConnecting" xml:space="preserve">
+    <value>any printer whose ini tells it to use one of these will stop connecting</value>
+  </data>
+  <data name="Cert_NoUsableAddress" xml:space="preserve">
+    <value>no usable address was detected</value>
+  </data>
+  <data name="Cert_NotConfigured" xml:space="preserve">
+    <value>not configured (</value>
+  </data>
+  <data name="Cert_Nothing" xml:space="preserve">
+    <value>nothing</value>
+  </data>
+  <data name="Cert_ProxyReloaded" xml:space="preserve">
+    <value>proxy reloaded</value>
+  </data>
+  <data name="Cert_ToTakeEffect" xml:space="preserve">
+    <value>to take effect -</value>
+  </data>
+  <data name="TwoFactor_MustGenerate" xml:space="preserve">
+    <value>You must {0} before you can log in with a recovery code.</value>
+  </data>
+  <data name="TwoFactor_CanGenerate" xml:space="preserve">
+    <value>You can {0}.</value>
+  </data>
+  <data name="TwoFactor_ShouldGenerate" xml:space="preserve">
+    <value>You should {0}.</value>
+  </data>
+  <data name="TwoFactor_GenerateLink" xml:space="preserve">
+    <value>generate a new set of recovery codes</value>
+  </data>
+  <data name="TwoFactor_OneCodeLeft" xml:space="preserve">
+    <value>You have 1 recovery code left.</value>
+  </data>
+  <data name="TwoFactor_MustAcceptPolicy" xml:space="preserve">
+    <value>You must accept the policy before you can enable two factor authentication.</value>
+  </data>
+  <data name="TwoFactor_PolicyNotAccepted" xml:space="preserve">
+    <value>Privacy and cookie policy have not been accepted.</value>
+  </data>
+  <data name="TwoFactor_ScanKeyInto" xml:space="preserve">
+    <value>Scan the QR Code or enter this key {0} into your two factor authenticator app. Spaces and casing do not matter.</value>
+  </data>
+  <data name="TwoFactor_LearnQr" xml:space="preserve">
+    <value>Learn how to {0}.</value>
+  </data>
+  <data name="TwoFactor_EnableQrLink" xml:space="preserve">
+    <value>enable QR code generation</value>
+  </data>
+  <data name="Bundle_DownloadNow" xml:space="preserve">
+    <value>Download this now.</value>
+  </data>
+  <data name="Bundle_TokenOnce" xml:space="preserve">
+    <value>The token inside it is shown once and cannot be retrieved again - if the download is lost before the printer connects, use &quot;Regenerate&quot; to issue a new one.</value>
+  </data>
+  <data name="Bundle_AddressLabel" xml:space="preserve">
+    <value>Address this printer should use</value>
+  </data>
+  <data name="Bundle_AddressHelp" xml:space="preserve">
+    <value>These are the names this server&apos;s printer certificate covers. An address that is not on the list cannot be verified by a printer, however reachable it looks from here.</value>
+  </data>
+  <data name="Bundle_Download" xml:space="preserve">
+    <value>Download provisioning bundle</value>
+  </data>
+  <data name="Bundle_ReadIniInstead" xml:space="preserve">
+    <value>Read the ini instead</value>
+  </data>
+  <data name="Bundle_PlainHttp" xml:space="preserve">
+    <value>This deployment serves printers over plain HTTP</value>
+  </data>
+  <data name="TwoFactor_RecoveryCodeLink" xml:space="preserve">
+    <value>log in with a recovery code</value>
+  </data>
+  <data name="TwoFactor_ResetKeysLink" xml:space="preserve">
+    <value>reset your authenticator keys.</value>
+  </data>
+  <data name="Cert_NotConfiguredFor" xml:space="preserve">
+    <value>not configured ({0})</value>
+  </data>
+  <data name="Cert_ReissueNeedsReload" xml:space="preserve">
+    <value>A reissue needs the {0} to take effect - </value>
+  </data>
+  <data name="Cameras_DeviceLineIn" xml:space="preserve">
+    <value>needs a {0} line in {1} for the go2rtc service.</value>
+  </data>
+  <data name="Printers_IgnoreQr" xml:space="preserve">
+    <value>Ignore the QR code and the {0} link on the printer&apos;s screen.</value>
+  </data>
 </root>

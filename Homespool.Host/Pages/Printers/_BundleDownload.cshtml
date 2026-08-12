@@ -2,8 +2,7 @@
 
 <div class="alert alert-success" role="alert">
     <p class="mb-1">
-        <strong>Download this now.</strong> The token inside it is shown once and cannot be retrieved
-        again - if the download is lost before the printer connects, use "Regenerate" to issue a new one.
+        <strong>@Localiser["Bundle_DownloadNow"]</strong> @Localiser["Bundle_TokenOnce"]
     </p>
 
     @if (Model.CanBuild)
@@ -15,7 +14,7 @@
 
             <div class="mb-2">
                 <label for="bundle-hostname" class="form-label">
-                    Address this printer should use
+                    @Localiser["Bundle_AddressLabel"]
                 </label>
                 <select id="bundle-hostname" name="Hostname" class="form-select">
                     @foreach (Homespool.Host.Certificates.PrinterAddressSuggestion name in Model.Names)
@@ -29,9 +28,7 @@
     read squeezed into a dropdown, and this is the one moment they are worth reading. *@
                 <div class="form-text">
                     <p class="mb-1">
-                        These are the names this server's printer certificate covers. An address that is
-                        not on the list cannot be verified by a printer, however reachable it looks from
-                        here.
+                        @Localiser["Bundle_AddressHelp"]
                     </p>
                     <ul class="mb-0">
                         @foreach (Homespool.Host.Certificates.PrinterAddressSuggestion name in Model.Names)
@@ -42,7 +39,7 @@
                 </div>
             </div>
 
-            <button type="submit" class="btn btn-primary">Download provisioning bundle</button>
+            <button type="submit" class="btn btn-primary">@Localiser["Bundle_Download"]</button>
         </form>
 
         <p class="mb-2">
@@ -63,14 +60,14 @@
         else
         {
             <p class="mb-2">
-                <strong>This deployment serves printers over plain HTTP</strong>
+                <strong>@Localiser["Bundle_PlainHttp"]</strong>
                 (<code>PrusaConnect:PrinterTls</code> is false), so the bundle carries no certificate
                 and this printer's token will cross the network in clear.
             </p>
         }
 
         <details class="mb-0">
-            <summary>Read the ini instead</summary>
+            <summary>@Localiser["Bundle_ReadIniInstead"]</summary>
             <p class="mt-2 mb-1">
                 What the file will contain, for <code>@Model.PreferredName</code>. Choosing a different
                 address above changes the <code>hostname</code> line to match.

@@ -671,4 +671,157 @@
   <data name="Account_CheckEmail" xml:space="preserve">
     <value>Tjek din e-mail for at bekræfte din konto.</value>
   </data>
+  <data name="Account_AccessDenied" xml:space="preserve">
+    <value>Du har ikke adgang til denne ressource.</value>
+  </data>
+  <data name="Account_LockedOut" xml:space="preserve">
+    <value>Denne konto er låst. Prøv igen senere.</value>
+  </data>
+  <data name="Account_LoggedOut" xml:space="preserve">
+    <value>Du er nu logget ud.</value>
+  </data>
+  <data name="Account_ResetPasswordTitle" xml:space="preserve">
+    <value>Nulstil adgangskode</value>
+  </data>
+  <data name="Account_ClickToLogIn" xml:space="preserve">
+    <value>klik her for at logge ind</value>
+  </data>
+  <data name="Manage_AccountTitle" xml:space="preserve">
+    <value>Administrér din konto</value>
+  </data>
+  <data name="Manage_AccountSubtitle" xml:space="preserve">
+    <value>Skift dine kontoindstillinger</value>
+  </data>
+  <data name="Cert_Title" xml:space="preserve">
+    <value>Printercertifikat</value>
+  </data>
+  <data name="Cert_PlainHttpHeading" xml:space="preserve">
+    <value>Printere forbinder over almindelig HTTP i denne installation</value>
+  </data>
+  <data name="Cert_PlainHttpBody" xml:space="preserve">
+    <value>Den indstilling er til at læse protokollen på ledningen eller køre en testopstilling. Hver eneste printertoken sendes i klartekst over netværket, så længe den er slået fra.</value>
+  </data>
+  <data name="Cert_Explanation" xml:space="preserve">
+    <value>Printere verificerer denne server mod et certifikat, den udsteder til sig selv. Certifikatet udstedes {0} og lades derefter i fred - at genudstede det automatisk ville afbryde hver eneste aktive printerforbindelse, hver gang et netværkskort dukkede op, og i det stille ændre, hvad serveren udgiver sig for at være. Så når maskinens adresser flytter sig, sker rettelsen her frem for automatisk.</value>
+  </data>
+  <data name="Cert_Once" xml:space="preserve">
+    <value>én gang</value>
+  </data>
+  <data name="Cert_Covers" xml:space="preserve">
+    <value>Certifikatet dækker</value>
+  </data>
+  <data name="Cert_MachineAnswersOn" xml:space="preserve">
+    <value>Denne maskine svarer nu på</value>
+  </data>
+  <data name="Cert_PrintersToldToUse" xml:space="preserve">
+    <value>Printere får besked på at bruge</value>
+  </data>
+  <data name="Cert_AuthorityExpires" xml:space="preserve">
+    <value>Udstederen udløber</value>
+  </data>
+  <data name="Cert_Expires" xml:space="preserve">
+    <value>Certifikatet udløber</value>
+  </data>
+  <data name="Cert_Reissue" xml:space="preserve">
+    <value>Genudsted for maskinens nuværende adresser</value>
+  </data>
+  <data name="Cert_WouldNarrow" xml:space="preserve">
+    <value>En genudstedelse ville indsnævre dette certifikat.</value>
+  </data>
+  <data name="Cert_KeepTicked" xml:space="preserve">
+    <value>Sæt flueben ved ethvert navn, en printer stadig forbinder til, så bevares det:</value>
+  </data>
+  <data name="Cert_WouldDrop" xml:space="preserve">
+    <value>en genudstedelse ville fjerne dette</value>
+  </data>
+  <data name="Cert_NotInCertificate" xml:space="preserve">
+    <value>ikke i certifikatet</value>
+  </data>
+  <data name="Cert_WouldStopConnecting" xml:space="preserve">
+    <value>enhver printer, hvis ini beder den bruge en af disse, holder op med at forbinde</value>
+  </data>
+  <data name="Cert_NoUsableAddress" xml:space="preserve">
+    <value>ingen brugbar adresse blev fundet</value>
+  </data>
+  <data name="Cert_NotConfigured" xml:space="preserve">
+    <value>ikke konfigureret (</value>
+  </data>
+  <data name="Cert_Nothing" xml:space="preserve">
+    <value>intet</value>
+  </data>
+  <data name="Cert_ProxyReloaded" xml:space="preserve">
+    <value>proxy genindlæst</value>
+  </data>
+  <data name="Cert_ToTakeEffect" xml:space="preserve">
+    <value>for at træde i kraft -</value>
+  </data>
+  <data name="TwoFactor_MustGenerate" xml:space="preserve">
+    <value>Du skal {0}, før du kan logge ind med en gendannelseskode.</value>
+  </data>
+  <data name="TwoFactor_CanGenerate" xml:space="preserve">
+    <value>Du kan {0}.</value>
+  </data>
+  <data name="TwoFactor_ShouldGenerate" xml:space="preserve">
+    <value>Du bør {0}.</value>
+  </data>
+  <data name="TwoFactor_GenerateLink" xml:space="preserve">
+    <value>generere et nyt sæt gendannelseskoder</value>
+  </data>
+  <data name="TwoFactor_OneCodeLeft" xml:space="preserve">
+    <value>Du har 1 gendannelseskode tilbage.</value>
+  </data>
+  <data name="TwoFactor_MustAcceptPolicy" xml:space="preserve">
+    <value>Du skal acceptere politikken, før du kan slå tofaktorgodkendelse til.</value>
+  </data>
+  <data name="TwoFactor_PolicyNotAccepted" xml:space="preserve">
+    <value>Privatlivs- og cookiepolitikken er ikke accepteret.</value>
+  </data>
+  <data name="TwoFactor_ScanKeyInto" xml:space="preserve">
+    <value>Scan QR-koden, eller indtast denne nøgle {0} i din godkendelsesapp. Mellemrum og store/små bogstaver betyder ikke noget.</value>
+  </data>
+  <data name="TwoFactor_LearnQr" xml:space="preserve">
+    <value>Læs hvordan du {0}.</value>
+  </data>
+  <data name="TwoFactor_EnableQrLink" xml:space="preserve">
+    <value>slår QR-kodegenerering til</value>
+  </data>
+  <data name="Bundle_DownloadNow" xml:space="preserve">
+    <value>Download den nu.</value>
+  </data>
+  <data name="Bundle_TokenOnce" xml:space="preserve">
+    <value>Den token, der ligger i den, vises kun én gang og kan ikke hentes igen - mister du filen, før printeren forbinder, så brug &quot;Generer&quot; til at udstede en ny.</value>
+  </data>
+  <data name="Bundle_AddressLabel" xml:space="preserve">
+    <value>Adresse denne printer skal bruge</value>
+  </data>
+  <data name="Bundle_AddressHelp" xml:space="preserve">
+    <value>Dette er de navne, serverens printercertifikat dækker. En adresse, der ikke står på listen, kan ikke verificeres af en printer, uanset hvor tilgængelig den ser ud herfra.</value>
+  </data>
+  <data name="Bundle_Download" xml:space="preserve">
+    <value>Download klargøringspakke</value>
+  </data>
+  <data name="Bundle_ReadIniInstead" xml:space="preserve">
+    <value>Læs ini-filen i stedet</value>
+  </data>
+  <data name="Bundle_PlainHttp" xml:space="preserve">
+    <value>Denne installation betjener printere over almindelig HTTP</value>
+  </data>
+  <data name="TwoFactor_RecoveryCodeLink" xml:space="preserve">
+    <value>logge ind med en gendannelseskode</value>
+  </data>
+  <data name="TwoFactor_ResetKeysLink" xml:space="preserve">
+    <value>nulstille dine godkendelsesnøgler.</value>
+  </data>
+  <data name="Cert_NotConfiguredFor" xml:space="preserve">
+    <value>ikke konfigureret ({0})</value>
+  </data>
+  <data name="Cert_ReissueNeedsReload" xml:space="preserve">
+    <value>En genudstedelse kræver, at {0}, før den træder i kraft - </value>
+  </data>
+  <data name="Cameras_DeviceLineIn" xml:space="preserve">
+    <value>kræver en {0}-linje i {1} for go2rtc-tjenesten.</value>
+  </data>
+  <data name="Printers_IgnoreQr" xml:space="preserve">
+    <value>Ignorér QR-koden og {0}-linket på printerens skærm.</value>
+  </data>
 </root>

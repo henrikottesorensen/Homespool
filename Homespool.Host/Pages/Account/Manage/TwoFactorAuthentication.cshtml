@@ -18,21 +18,21 @@
             {
                 <div class="alert alert-danger">
                     <strong>@Localiser["TwoFactor_NoCodesLeft"]</strong>
-                    <p>You must <a asp-page="./GenerateRecoveryCodes">generate a new set of recovery codes</a> before you can log in with a recovery code.</p>
+                    <p>@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["TwoFactor_MustGenerate"].Value, $"<a href=\"{Url.Page("./GenerateRecoveryCodes")}\">{Localiser["TwoFactor_GenerateLink"].Value}</a>"))</p>
                 </div>
             }
             else if (Model.RecoveryCodesLeft == 1)
             {
                 <div class="alert alert-danger">
-                    <strong>You have 1 recovery code left.</strong>
-                    <p>You can <a asp-page="./GenerateRecoveryCodes">generate a new set of recovery codes</a>.</p>
+                    <strong>@Localiser["TwoFactor_OneCodeLeft"]</strong>
+                    <p>@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["TwoFactor_CanGenerate"].Value, $"<a href=\"{Url.Page("./GenerateRecoveryCodes")}\">{Localiser["TwoFactor_GenerateLink"].Value}</a>"))</p>
                 </div>
             }
             else if (Model.RecoveryCodesLeft <= 3)
             {
                 <div class="alert alert-warning">
                     <strong>You have @Model.RecoveryCodesLeft recovery codes left.</strong>
-                    <p>You should <a asp-page="./GenerateRecoveryCodes">generate a new set of recovery codes</a>.</p>
+                    <p>@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["TwoFactor_ShouldGenerate"].Value, $"<a href=\"{Url.Page("./GenerateRecoveryCodes")}\">{Localiser["TwoFactor_GenerateLink"].Value}</a>"))</p>
                 </div>
             }
 
@@ -60,8 +60,8 @@
     else
     {
         <div class="alert alert-danger">
-            <strong>Privacy and cookie policy have not been accepted.</strong>
-            <p>You must accept the policy before you can enable two factor authentication.</p>
+            <strong>@Localiser["TwoFactor_PolicyNotAccepted"]</strong>
+            <p>@Localiser["TwoFactor_MustAcceptPolicy"]</p>
         </div>
     }
 }

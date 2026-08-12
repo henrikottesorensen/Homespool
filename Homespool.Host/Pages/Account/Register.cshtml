@@ -29,22 +29,22 @@ else
                 <input type="hidden" asp-for="Code" />
                 <div class="form-floating mb-3">
                     <input class="form-control" value="@Model.Email" readonly autocomplete="email" aria-label="Email" />
-                    <label class="form-label">Email</label>
+                    <label class="form-label">@Localiser["Account_Email"]</label>
                 </div>
                 <div class="form-floating mb-3">
                     <input asp-for="Input.Username" class="form-control" autocomplete="username" aria-required="true" placeholder="username" />
-                    <label asp-for="Input.Username">Username</label>
+                    <label asp-for="Input.Username">@Localiser["Account_Username"]</label>
                     <span asp-validation-for="Input.Username" class="text-danger"></span>
                     <div class="form-text">@Localiser["Account_UsernameCharsPre"] <code>-</code> <code>.</code> <code>_</code>@Localiser["Account_UsernameCharsPost"]</div>
                 </div>
                 <div class="form-floating mb-3">
                     <input asp-for="Input.Password" class="form-control" autocomplete="new-password" aria-required="true" placeholder="password" />
-                    <label asp-for="Input.Password">Password</label>
+                    <label asp-for="Input.Password">@Localiser["Account_Password"]</label>
                     <span asp-validation-for="Input.Password" class="text-danger"></span>
                 </div>
                 <div class="form-floating mb-3">
                     <input asp-for="Input.ConfirmPassword" class="form-control" autocomplete="new-password" aria-required="true" placeholder="password" />
-                    <label asp-for="Input.ConfirmPassword">Confirm Password</label>
+                    <label asp-for="Input.ConfirmPassword">@Localiser["Account_ConfirmPassword"]</label>
                     <span asp-validation-for="Input.ConfirmPassword" class="text-danger"></span>
                 </div>
                 <button id="registerSubmit" type="submit" class="w-100 btn btn-lg btn-primary">@Localiser["Account_CreateAccount"]</button>

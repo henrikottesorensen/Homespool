@@ -524,7 +524,7 @@
     <value>Privacy</value>
   </data>
   <data name="Home_Tagline" xml:space="preserve">
-    <value>A self-hosted 3D printer spooler. Your models stay on your own server.</value>
+    <value>A self-hosted 3D printer spooler. Your models never leave your machines.</value>
   </data>
   <data name="Account_AcceptInvitation" xml:space="preserve">
     <value>Accept invitation</value>

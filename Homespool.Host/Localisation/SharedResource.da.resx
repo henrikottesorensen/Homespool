@@ -516,7 +516,7 @@
     <value>Privatliv</value>
   </data>
   <data name="Home_Tagline" xml:space="preserve">
-    <value>En selvhostet 3D-printerspooler. Dine modeller bliver på din egen server.</value>
+    <value>Din egen printserver til 3D-print. Modellerne forlader aldrig din maskine.</value>
   </data>
   <data name="Account_AcceptInvitation" xml:space="preserve">
     <value>Acceptér invitation</value>

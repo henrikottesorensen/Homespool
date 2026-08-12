@@ -331,6 +331,67 @@ public sealed class LocalisationTests
     }
 
     /// <summary>
+    /// American English overrides only what actually differs, and nothing it overrides is invented.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The opposite assertion to the Danish one, deliberately.</b> Danish must be complete, since
+    /// a gap there leaves a page half English. <c>en-US</c> must be <i>nearly empty</i>: it shares
+    /// almost every string with <c>en-GB</c>, and a file holding copies would only give the next
+    /// edit somewhere to update one and not the other. So this asserts smallness rather than
+    /// completeness.
+    /// </para>
+    /// <para>
+    /// The bound is a smell test rather than a rule. If American English ever needs more than a
+    /// handful of strings, something has been copied that should have been shared, and this failing
+    /// is the cheapest place to notice.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AmericanEnglishOverridesOnlyWhatDiffers()
+    {
+        IReadOnlyDictionary<string, string> english = ReadResources("SharedResource.resx");
+        IReadOnlyDictionary<string, string> american = ReadResources("SharedResource.en-US.resx");
+
+        american.Keys.Except(english.Keys).Should()
+                .BeEmpty("an en-US key with no neutral one overrides nothing");
+
+        american.Should().HaveCountLessThan(10,
+            "en-US exists for the strings that genuinely differ, not as a copy of the neutral file");
+
+        foreach ((string key, string value) in american)
+        {
+            value.Should().NotBe(english[key], $"{key} is in en-US only because it differs");
+        }
+    }
+
+    /// <summary>
+    /// The one string that differs, doing what it exists for.
+    /// </summary>
+    /// <remarks>
+    /// A reader in the United States does not assume Celsius, and 215 °F is a plausible-looking bed
+    /// temperature and a wrong nozzle one - so the unit is stated there and left off where the
+    /// assumption is safe.
+    /// </remarks>
+    [Fact]
+    public void AmericanEnglishStatesTheTemperatureUnit()
+    {
+        IStringLocalizer<SharedResource> localiser = Localiser();
+
+        InCulture("en-US", () =>
+            localiser["Printers_TemperatureTarget", "215.0", "215.0"].Value
+                     .Should().Be("215.0 °C / target 215.0 °C"));
+
+        InCulture("en-GB", () =>
+            localiser["Printers_TemperatureTarget", "215.0", "215.0"].Value
+                     .Should().Be("215.0° / target 215.0°"));
+
+        InCulture("da", () =>
+            localiser["Printers_TemperatureTarget", "215,0", "215,0"].Value
+                     .Should().Be("215,0° / mål 215,0°"));
+    }
+
+    /// <summary>
     /// Reads a resource file from the source tree rather than the compiled assembly, which is what
     /// lets this compare the two files as files.
     /// </summary>

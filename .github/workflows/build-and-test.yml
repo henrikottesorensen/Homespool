@@ -21,8 +21,11 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          # No global.json pins this, so the version lives here. Directory.Build.props targets
-          # net10.0; the project is developed against 10.0.302.
+          # `global.json` sets a floor - 10.0.302, rolling forward to the newest feature band a
+          # machine has - because Roslyn ships inside the SDK, so an older band silently enforces
+          # fewer analysers than this repo thinks it enforces. Keeping the newest 10.0 here
+          # satisfies that floor. Deliberately *not* `global-json-file`: that installs the floor
+          # version itself, pinning CI to a band the repo only ever meant as a minimum.
           dotnet-version: '10.0.x'
 
       # Client-side assets are gitignored rather than committed, and the static-asset pipeline wants

@@ -41,7 +41,7 @@
     <form method="post" asp-page-handler="Upload" enctype="multipart/form-data"
           asp-route-sort="@Model.Sort" asp-route-desc="@Model.Descending"
           class="d-flex align-items-center gap-2">
-        <input type="file" name="file" accept=".gcode,.bgcode,.gco,.bgc" class="form-control" aria-label="File to upload" required />
+        <input type="file" name="file" accept=".gcode,.bgcode,.gco,.bgc" class="form-control" aria-label="@Localiser["Files_UploadLabel"]" required />
         <button type="submit" class="btn btn-primary text-nowrap">@Localiser["Files_Upload"]</button>
     </form>
     <p class="text-body-secondary small mb-0 mt-2">
@@ -97,7 +97,7 @@ else
                               asp-route-desc="@Model.Descending"
                               class="d-flex gap-2">
                             <input type="text" name="newName" value="@file.FileName" class="form-control form-control-sm"
-                                   aria-label="New file name" required />
+                                   aria-label="@Localiser["Files_NewNameLabel"]" required />
                             <button type="submit" class="btn btn-sm btn-primary">@Localiser["Common_Save"]</button>
                             <a asp-page="./Index" asp-route-sort="@Model.Sort" asp-route-desc="@Model.Descending"
                                class="btn btn-sm btn-outline-secondary">@Localiser["Common_Cancel"]</a>
@@ -124,7 +124,7 @@ else
                               asp-route-desc="@Model.Descending"
                               class="d-inline-flex align-items-center gap-1 me-2">
                             <select name="printerId" class="form-select form-select-sm w-auto"
-                                    aria-label="Printer to send @file.FileName to">
+                                    aria-label="@Localiser["Files_SendToPrinterLabel", file.FileName]">
                                 @foreach (var printer in Model.Printers)
                                 {
                                     <option value="@printer.Id">@(printer.Name ?? printer.Model ?? printer.Uuid.ToString())</option>

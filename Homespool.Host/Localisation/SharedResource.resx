@@ -1125,4 +1125,114 @@
   <data name="Cert_ReloadExplanation" xml:space="preserve">
     <value>because the proxy is what presents this certificate to printers, and it read the current one when it started. The application itself keeps running. A printer that is already connected keeps meeting the old certificate until it next reconnects, since the reload is graceful and does not interrupt live connections. Nothing is needed at the printers either: both certificates are signed by the authority, which this does not touch.</value>
   </data>
+  <data name="Nav_CertificateTitle" xml:space="preserve">
+    <value>Printer certificate</value>
+    <comment>Tooltip on the Certificate nav link. Kept because it says which certificate; the sibling links&apos; tooltips only repeated their own text and were removed.</comment>
+  </data>
+  <data name="Nav_ManageAccount" xml:space="preserve">
+    <value>Manage your account</value>
+    <comment>The manage link&apos;s visible text is the signed-in username, so a screen reader would otherwise announce a bare name.</comment>
+  </data>
+  <data name="Nav_ToggleNavigation" xml:space="preserve">
+    <value>Toggle navigation</value>
+  </data>
+  <data name="Nav_GitHub" xml:space="preserve">
+    <value>Homespool on GitHub</value>
+  </data>
+  <data name="Common_Close" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="Common_UsernamePlaceholder" xml:space="preserve">
+    <value>username</value>
+    <comment>Placeholder, lower case: it echoes the field rather than instructing.</comment>
+  </data>
+  <data name="Common_PasswordPlaceholder" xml:space="preserve">
+    <value>password</value>
+  </data>
+  <data name="Setup_TokenPlaceholder" xml:space="preserve">
+    <value>setup token</value>
+  </data>
+  <data name="Invites_AcceptLinkLabel" xml:space="preserve">
+    <value>Accept link</value>
+  </data>
+  <data name="Printers_NamePlaceholder" xml:space="preserve">
+    <value>Bench printer</value>
+    <comment>An example of what somebody might call a printer, so it is translated rather than kept: a placeholder is a suggestion, and an English one suggests nothing to a Danish reader.</comment>
+  </data>
+  <data name="Common_TeamPlaceholder" xml:space="preserve">
+    <value>Workshop</value>
+    <comment>An example team name.</comment>
+  </data>
+  <data name="Cameras_NamePlaceholder" xml:space="preserve">
+    <value>Workshop</value>
+    <comment>An example camera name - where the camera is, rather than what it is. Same word as the team example by coincidence, and separate keys because the two can diverge.</comment>
+  </data>
+  <data name="Account_RecoveryCodePlaceholder" xml:space="preserve">
+    <value>Recovery code</value>
+    <comment>Was the literal string "RecoveryCode" - the property name, leaked into the page.</comment>
+  </data>
+  <data name="Account_EnterPasswordPlaceholder" xml:space="preserve">
+    <value>Please enter your password.</value>
+  </data>
+  <data name="Account_ConfirmPasswordPlaceholder" xml:space="preserve">
+    <value>Please confirm your password.</value>
+  </data>
+  <data name="Account_EnterCodePlaceholder" xml:space="preserve">
+    <value>Please enter the code.</value>
+  </data>
+  <data name="Account_EnterEmailPlaceholder" xml:space="preserve">
+    <value>Please enter your email.</value>
+  </data>
+  <data name="Account_ChooseUsernamePlaceholder" xml:space="preserve">
+    <value>Please choose a username.</value>
+  </data>
+  <data name="Manage_EnterOldPasswordPlaceholder" xml:space="preserve">
+    <value>Please enter your old password.</value>
+  </data>
+  <data name="Manage_EnterNewPasswordPlaceholder" xml:space="preserve">
+    <value>Please enter your new password.</value>
+  </data>
+  <data name="Manage_ConfirmNewPasswordPlaceholder" xml:space="preserve">
+    <value>Please confirm your new password.</value>
+  </data>
+  <data name="Manage_EnterNewEmailPlaceholder" xml:space="preserve">
+    <value>Please enter new email.</value>
+  </data>
+  <data name="Manage_ChooseUsernamePlaceholder" xml:space="preserve">
+    <value>Please choose your username.</value>
+  </data>
+  <data name="Manage_TokenNamePlaceholder" xml:space="preserve">
+    <value>Which machine or script is this for?</value>
+  </data>
+  <data name="Files_UploadLabel" xml:space="preserve">
+    <value>File to upload</value>
+  </data>
+  <data name="Files_NewNameLabel" xml:space="preserve">
+    <value>New file name</value>
+  </data>
+  <data name="Files_SendToPrinterLabel" xml:space="preserve">
+    <value>Printer to send {0} to</value>
+    <comment>{0} is the file name.</comment>
+  </data>
+  <data name="Printers_MoveUp" xml:space="preserve">
+    <value>Move up</value>
+  </data>
+  <data name="Printers_MoveDown" xml:space="preserve">
+    <value>Move down</value>
+  </data>
+  <data name="Printers_MoveJobUp" xml:space="preserve">
+    <value>Move {0} up</value>
+    <comment>{0} is the queued file&apos;s name.</comment>
+  </data>
+  <data name="Printers_MoveJobDown" xml:space="preserve">
+    <value>Move {0} down</value>
+    <comment>{0} is the queued file&apos;s name.</comment>
+  </data>
+  <data name="Printers_RemoveJob" xml:space="preserve">
+    <value>Remove {0} from the queue</value>
+    <comment>{0} is the queued file&apos;s name.</comment>
+  </data>
+  <data name="Printers_SlicerAddressLabel" xml:space="preserve">
+    <value>Print host address for this printer</value>
+  </data>
 </root>

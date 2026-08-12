@@ -1110,4 +1110,103 @@
   <data name="Cert_ReloadExplanation" xml:space="preserve">
     <value>fordi det er proxyen, der viser dette certifikat til printere, og den læste det nuværende, da den startede. Selve programmet kører videre. En printer, der allerede er forbundet, møder fortsat det gamle certifikat, indtil den forbinder igen, da genindlæsningen er nænsom og ikke afbryder aktive forbindelser. Der skal heller ikke gøres noget ved printerne: begge certifikater er signeret af udstederen, som dette ikke rører.</value>
   </data>
+  <data name="Nav_CertificateTitle" xml:space="preserve">
+    <value>Printercertifikat</value>
+  </data>
+  <data name="Nav_ManageAccount" xml:space="preserve">
+    <value>Administrer din konto</value>
+  </data>
+  <data name="Nav_ToggleNavigation" xml:space="preserve">
+    <value>Vis eller skjul menuen</value>
+  </data>
+  <data name="Nav_GitHub" xml:space="preserve">
+    <value>Homespool på GitHub</value>
+  </data>
+  <data name="Common_Close" xml:space="preserve">
+    <value>Luk</value>
+  </data>
+  <data name="Common_UsernamePlaceholder" xml:space="preserve">
+    <value>brugernavn</value>
+  </data>
+  <data name="Common_PasswordPlaceholder" xml:space="preserve">
+    <value>adgangskode</value>
+  </data>
+  <data name="Setup_TokenPlaceholder" xml:space="preserve">
+    <value>opsætningstoken</value>
+  </data>
+  <data name="Invites_AcceptLinkLabel" xml:space="preserve">
+    <value>Invitationslink</value>
+  </data>
+  <data name="Printers_NamePlaceholder" xml:space="preserve">
+    <value>Bordprinter</value>
+  </data>
+  <data name="Common_TeamPlaceholder" xml:space="preserve">
+    <value>Værksted</value>
+  </data>
+  <data name="Cameras_NamePlaceholder" xml:space="preserve">
+    <value>Værksted</value>
+  </data>
+  <data name="Account_RecoveryCodePlaceholder" xml:space="preserve">
+    <value>Gendannelseskode</value>
+  </data>
+  <data name="Account_EnterPasswordPlaceholder" xml:space="preserve">
+    <value>Indtast din adgangskode.</value>
+  </data>
+  <data name="Account_ConfirmPasswordPlaceholder" xml:space="preserve">
+    <value>Bekræft din adgangskode.</value>
+  </data>
+  <data name="Account_EnterCodePlaceholder" xml:space="preserve">
+    <value>Indtast koden.</value>
+  </data>
+  <data name="Account_EnterEmailPlaceholder" xml:space="preserve">
+    <value>Indtast din e-mailadresse.</value>
+  </data>
+  <data name="Account_ChooseUsernamePlaceholder" xml:space="preserve">
+    <value>Vælg et brugernavn.</value>
+  </data>
+  <data name="Manage_EnterOldPasswordPlaceholder" xml:space="preserve">
+    <value>Indtast din gamle adgangskode.</value>
+  </data>
+  <data name="Manage_EnterNewPasswordPlaceholder" xml:space="preserve">
+    <value>Indtast din nye adgangskode.</value>
+  </data>
+  <data name="Manage_ConfirmNewPasswordPlaceholder" xml:space="preserve">
+    <value>Bekræft din nye adgangskode.</value>
+  </data>
+  <data name="Manage_EnterNewEmailPlaceholder" xml:space="preserve">
+    <value>Indtast den nye e-mailadresse.</value>
+  </data>
+  <data name="Manage_ChooseUsernamePlaceholder" xml:space="preserve">
+    <value>Vælg dit brugernavn.</value>
+  </data>
+  <data name="Manage_TokenNamePlaceholder" xml:space="preserve">
+    <value>Hvilken maskine eller hvilket script er den til?</value>
+  </data>
+  <data name="Files_UploadLabel" xml:space="preserve">
+    <value>Fil, der skal uploades</value>
+  </data>
+  <data name="Files_NewNameLabel" xml:space="preserve">
+    <value>Nyt filnavn</value>
+  </data>
+  <data name="Files_SendToPrinterLabel" xml:space="preserve">
+    <value>Printer, som {0} skal sendes til</value>
+  </data>
+  <data name="Printers_MoveUp" xml:space="preserve">
+    <value>Flyt op</value>
+  </data>
+  <data name="Printers_MoveDown" xml:space="preserve">
+    <value>Flyt ned</value>
+  </data>
+  <data name="Printers_MoveJobUp" xml:space="preserve">
+    <value>Flyt {0} op</value>
+  </data>
+  <data name="Printers_MoveJobDown" xml:space="preserve">
+    <value>Flyt {0} ned</value>
+  </data>
+  <data name="Printers_RemoveJob" xml:space="preserve">
+    <value>Fjern {0} fra køen</value>
+  </data>
+  <data name="Printers_SlicerAddressLabel" xml:space="preserve">
+    <value>Adresse til print-host for denne printer</value>
+  </data>
 </root>

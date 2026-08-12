@@ -16,8 +16,8 @@
 @if (Model.CreatedToken is not null)
 {
     <div class="alert alert-success" role="alert">
-        <h4 class="alert-heading">Copy this now</h4>
-        <p>It is stored only as a hash, so this is the only time it can be shown. If you lose it, revoke it and make another.</p>
+        <h4 class="alert-heading">@Localiser["Tokens_CopyNow"]</h4>
+        <p>@Localiser["Tokens_ShownOnce"]</p>
         <pre class="mb-0"><code id="created-token">@Model.CreatedToken</code></pre>
     </div>
 }
@@ -31,24 +31,24 @@
                 <label asp-for="Input.Name" class="form-label"></label>
                 <span asp-validation-for="Input.Name" class="text-danger"></span>
             </div>
-            <button type="submit" class="w-100 btn btn-lg btn-primary">Create token</button>
+            <button type="submit" class="w-100 btn btn-lg btn-primary">@Localiser["Tokens_Create"]</button>
         </form>
     </div>
 </div>
 
-<h4 class="mt-4">Your tokens</h4>
+<h4 class="mt-4">@Localiser["Tokens_Yours"]</h4>
 
 @if (Model.Tokens.Count == 0)
 {
-    <p class="text-muted">You have no tokens.</p>
+    <p class="text-muted">@Localiser["Tokens_None"]</p>
 }
 else
 {
     <table class="table">
         <thead>
             <tr>
-                <th scope="col">Name</th>
-                <th scope="col">Created</th>
+                <th scope="col">@Localiser["Common_Name"]</th>
+                <th scope="col">@Localiser["Tokens_Created"]</th>
                 <th scope="col"></th>
             </tr>
         </thead>
@@ -61,7 +61,7 @@ else
                 <td class="text-end">
                     <form method="post" asp-page-handler="Revoke">
                         <input type="hidden" name="id" value="@token.Id" />
-                        <button type="submit" class="btn btn-sm btn-outline-danger">Revoke</button>
+                        <button type="submit" class="btn btn-sm btn-outline-danger">@Localiser["Tokens_Revoke"]</button>
                     </form>
                 </td>
             </tr>

@@ -15,9 +15,9 @@
                 <input asp-for="Input.Username" class="form-control" autocomplete="username" placeholder="Please choose your username."/>
                 <label asp-for="Input.Username" class="form-label"></label>
                 <span asp-validation-for="Input.Username" class="text-danger"></span>
-                <div class="form-text">Letters, digits, and <code>-</code> <code>.</code> <code>_</code>. You sign in with this or your email address.</div>
+                <div class="form-text">@Localiser["Account_UsernameCharsPre"] <code>-</code> <code>.</code> <code>_</code>@Localiser["Account_UsernameCharsPost"]</div>
             </div>
-            <button id="update-profile-button" type="submit" class="w-100 btn btn-lg btn-primary">Save</button>
+            <button id="update-profile-button" type="submit" class="w-100 btn btn-lg btn-primary">@Localiser["Common_Save"]</button>
         </form>
     </div>
 </div>

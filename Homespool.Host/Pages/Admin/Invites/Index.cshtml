@@ -12,23 +12,23 @@
 }
 
 <p>
-    <a class="btn btn-primary" asp-page="Create">Create invitation</a>
+    <a class="btn btn-primary" asp-page="Create">@Localiser["Invites_Create"]</a>
 </p>
 
 @if (Model.Invitations.Count == 0)
 {
-    <p>No invitations yet.</p>
+    <p>@Localiser["Invites_None"]</p>
 }
 else
 {
     <table class="table">
         <thead>
             <tr>
-                <th>Email</th>
-                <th>Target</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th>Expires</th>
+                <th>@Localiser["Account_Email"]</th>
+                <th>@Localiser["Invites_Target"]</th>
+                <th>@Localiser["Common_Status"]</th>
+                <th>@Localiser["Common_Created"]</th>
+                <th>@Localiser["Common_Expires"]</th>
                 <th></th>
             </tr>
         </thead>
@@ -49,7 +49,7 @@ else
                     @if (status == "Outstanding")
                     {
                         <form method="post" asp-page-handler="Revoke" asp-route-id="@invite.Id">
-                            <button type="submit" class="btn btn-sm btn-outline-danger">Revoke</button>
+                            <button type="submit" class="btn btn-sm btn-outline-danger">@Localiser["Tokens_Revoke"]</button>
                         </form>
                     }
                 </td>

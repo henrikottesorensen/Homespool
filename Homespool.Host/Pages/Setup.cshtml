@@ -25,7 +25,7 @@
                     <input asp-for="Input.Username" class="form-control" autocomplete="username" aria-required="true" placeholder="username" />
                     <label asp-for="Input.Username" class="form-label"></label>
                     <span asp-validation-for="Input.Username" class="text-danger"></span>
-                    <div class="form-text">Letters, digits, and <code>-</code> <code>.</code> <code>_</code>. You sign in with this or your email address.</div>
+                    <div class="form-text">@Localiser["Account_UsernameCharsPre"] <code>-</code> <code>.</code> <code>_</code>@Localiser["Account_UsernameCharsPost"]</div>
                 </div>
                 <div class="form-floating mb-3">
                     <input asp-for="Input.Password" class="form-control" autocomplete="new-password" aria-required="true" placeholder="password" />
@@ -43,7 +43,7 @@
                     <span asp-validation-for="Input.Token" class="text-danger"></span>
                 </div>
                 <div>
-                    <button id="setup-submit" type="submit" class="w-100 btn btn-lg btn-primary">Create administrator</button>
+                    <button id="setup-submit" type="submit" class="w-100 btn btn-lg btn-primary">@Localiser["Setup_CreateAdmin"]</button>
                 </div>
             </form>
         </section>

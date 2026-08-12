@@ -17,7 +17,7 @@
             if (Model.RecoveryCodesLeft == 0)
             {
                 <div class="alert alert-danger">
-                    <strong>You have no recovery codes left.</strong>
+                    <strong>@Localiser["TwoFactor_NoCodesLeft"]</strong>
                     <p>You must <a asp-page="./GenerateRecoveryCodes">generate a new set of recovery codes</a> before you can log in with a recovery code.</p>
                 </div>
             }
@@ -39,22 +39,22 @@
             if (Model.IsMachineRemembered)
             {
                 <form method="post" style="display: inline-block">
-                    <button type="submit" class="btn btn-primary">Forget this browser</button>
+                    <button type="submit" class="btn btn-primary">@Localiser["TwoFactor_ForgetBrowser"]</button>
                 </form>
             }
-            <a asp-page="./Disable2fa" class="btn btn-primary">Disable 2FA</a>
-            <a asp-page="./GenerateRecoveryCodes" class="btn btn-primary">Reset recovery codes</a>
+            <a asp-page="./Disable2fa" class="btn btn-primary">@Localiser["TwoFactor_Disable"]</a>
+            <a asp-page="./GenerateRecoveryCodes" class="btn btn-primary">@Localiser["TwoFactor_ResetRecoveryCodes"]</a>
         }
 
-        <h4>Authenticator app</h4>
+        <h4>@Localiser["TwoFactor_AuthenticatorApp"]</h4>
         @if (!Model.HasAuthenticator)
         {
-            <a id="enable-authenticator" asp-page="./EnableAuthenticator" class="btn btn-primary">Add authenticator app</a>
+            <a id="enable-authenticator" asp-page="./EnableAuthenticator" class="btn btn-primary">@Localiser["TwoFactor_AddApp"]</a>
         }
         else
         {
-            <a id="enable-authenticator" asp-page="./EnableAuthenticator" class="btn btn-primary">Set up authenticator app</a>
-            <a id="reset-authenticator" asp-page="./ResetAuthenticator" class="btn btn-primary">Reset authenticator app</a>
+            <a id="enable-authenticator" asp-page="./EnableAuthenticator" class="btn btn-primary">@Localiser["TwoFactor_SetUpApp"]</a>
+            <a id="reset-authenticator" asp-page="./ResetAuthenticator" class="btn btn-primary">@Localiser["TwoFactor_ResetApp"]</a>
         }
     }
     else

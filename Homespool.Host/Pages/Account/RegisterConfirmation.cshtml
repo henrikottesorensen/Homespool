@@ -15,7 +15,7 @@
 }
 else if (Model.SmtpConfigured)
 {
-    <p>Please check your email to confirm your account.</p>
+    <p>@Localiser["Account_CheckEmail"]</p>
 }
 else
 {
@@ -23,5 +23,5 @@ else
         Your account is ready to use. No confirmation is needed, because this server has no
         outgoing mail configured.
     </p>
-    <p><a asp-page="./Login">Sign in</a></p>
+    <p><a asp-page="./Login">@Localiser["Account_SignIn"]</a></p>
 }

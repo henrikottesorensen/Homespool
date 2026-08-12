@@ -472,4 +472,211 @@
   <data name="Printers_NothingQueued" xml:space="preserve">
     <value>Nothing queued. Send a file to this printer&apos;s queue from {0}.</value>
   </data>
+  <data name="Account_LogIn" xml:space="preserve">
+    <value>Log in</value>
+  </data>
+  <data name="Account_LogInHelp" xml:space="preserve">
+    <value>Use a local account to log in.</value>
+  </data>
+  <data name="Account_ForgotPassword" xml:space="preserve">
+    <value>Forgot your password?</value>
+  </data>
+  <data name="Account_ResendConfirmation" xml:space="preserve">
+    <value>Resend email confirmation</value>
+  </data>
+  <data name="Account_CreateAccount" xml:space="preserve">
+    <value>Create account</value>
+  </data>
+  <data name="Account_CreateAccountHelp" xml:space="preserve">
+    <value>Create your account.</value>
+  </data>
+  <data name="Account_Username" xml:space="preserve">
+    <value>Username</value>
+  </data>
+  <data name="Account_Email" xml:space="preserve">
+    <value>Email</value>
+  </data>
+  <data name="Account_Password" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="Account_ConfirmPassword" xml:space="preserve">
+    <value>Confirm Password</value>
+  </data>
+  <data name="Account_UsernameCharsPre" xml:space="preserve">
+    <value>Letters, digits, and</value>
+  </data>
+  <data name="Account_UsernameCharsPost" xml:space="preserve">
+    <value>. You sign in with this or your email address.</value>
+  </data>
+  <data name="Nav_Login" xml:space="preserve">
+    <value>Login</value>
+  </data>
+  <data name="Nav_Logout" xml:space="preserve">
+    <value>Logout</value>
+  </data>
+  <data name="Nav_Invites" xml:space="preserve">
+    <value>Invites</value>
+  </data>
+  <data name="Nav_Certificate" xml:space="preserve">
+    <value>Certificate</value>
+  </data>
+  <data name="Nav_Privacy" xml:space="preserve">
+    <value>Privacy</value>
+  </data>
+  <data name="Home_Tagline" xml:space="preserve">
+    <value>A self-hosted 3D printer spooler. Your models stay on your own server.</value>
+  </data>
+  <data name="Account_AcceptInvitation" xml:space="preserve">
+    <value>Accept invitation</value>
+  </data>
+  <data name="Home_Title" xml:space="preserve">
+    <value>Home</value>
+  </data>
+  <data name="Manage_Profile" xml:space="preserve">
+    <value>Profile</value>
+  </data>
+  <data name="Manage_ExternalLogins" xml:space="preserve">
+    <value>External logins</value>
+  </data>
+  <data name="Manage_TwoFactor" xml:space="preserve">
+    <value>Two-factor authentication</value>
+  </data>
+  <data name="Manage_ApiTokens" xml:space="preserve">
+    <value>API tokens</value>
+  </data>
+  <data name="Manage_ChangeEmail" xml:space="preserve">
+    <value>Change email</value>
+  </data>
+  <data name="Manage_SendVerification" xml:space="preserve">
+    <value>Send verification email</value>
+  </data>
+  <data name="Manage_UpdatePassword" xml:space="preserve">
+    <value>Update password</value>
+  </data>
+  <data name="Tokens_Yours" xml:space="preserve">
+    <value>Your tokens</value>
+  </data>
+  <data name="Tokens_None" xml:space="preserve">
+    <value>You have no tokens.</value>
+  </data>
+  <data name="Tokens_Create" xml:space="preserve">
+    <value>Create token</value>
+  </data>
+  <data name="Tokens_Revoke" xml:space="preserve">
+    <value>Revoke</value>
+  </data>
+  <data name="Tokens_Created" xml:space="preserve">
+    <value>Created</value>
+  </data>
+  <data name="Tokens_CopyNow" xml:space="preserve">
+    <value>Copy this now</value>
+  </data>
+  <data name="Tokens_ShownOnce" xml:space="preserve">
+    <value>It is stored only as a hash, so this is the only time it can be shown. If you lose it, revoke it and make another.</value>
+  </data>
+  <data name="Invites_Create" xml:space="preserve">
+    <value>Create invitation</value>
+  </data>
+  <data name="Invites_None" xml:space="preserve">
+    <value>No invitations yet.</value>
+  </data>
+  <data name="Invites_Target" xml:space="preserve">
+    <value>Target</value>
+  </data>
+  <data name="Invites_Expires" xml:space="preserve">
+    <value>Expires</value>
+  </data>
+  <data name="Invites_BackToList" xml:space="preserve">
+    <value>Back to invitations</value>
+  </data>
+  <data name="Invites_EmailSent" xml:space="preserve">
+    <value>An email with the accept link was sent.</value>
+  </data>
+  <data name="Invites_NoEmailSent" xml:space="preserve">
+    <value>No email was sent (mail is not configured, or the send failed) — copy the link below.</value>
+  </data>
+  <data name="Setup_CreateAdmin" xml:space="preserve">
+    <value>Create administrator</value>
+  </data>
+  <data name="Printers_ClaimHeading" xml:space="preserve">
+    <value>Claim printer</value>
+  </data>
+  <data name="Common_Back" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="Common_Created" xml:space="preserve">
+    <value>Created</value>
+  </data>
+  <data name="Common_Expires" xml:space="preserve">
+    <value>Expires</value>
+  </data>
+  <data name="TwoFactor_AuthenticatorApp" xml:space="preserve">
+    <value>Authenticator app</value>
+  </data>
+  <data name="TwoFactor_AddApp" xml:space="preserve">
+    <value>Add authenticator app</value>
+  </data>
+  <data name="TwoFactor_SetUpApp" xml:space="preserve">
+    <value>Set up authenticator app</value>
+  </data>
+  <data name="TwoFactor_ResetApp" xml:space="preserve">
+    <value>Reset authenticator app</value>
+  </data>
+  <data name="TwoFactor_Disable" xml:space="preserve">
+    <value>Disable 2FA</value>
+  </data>
+  <data name="TwoFactor_ForgetBrowser" xml:space="preserve">
+    <value>Forget this browser</value>
+  </data>
+  <data name="TwoFactor_ResetRecoveryCodes" xml:space="preserve">
+    <value>Reset recovery codes</value>
+  </data>
+  <data name="TwoFactor_GenerateCodes" xml:space="preserve">
+    <value>Generate Recovery Codes</value>
+  </data>
+  <data name="TwoFactor_KeepCodesSafe" xml:space="preserve">
+    <value>Put these codes in a safe place.</value>
+  </data>
+  <data name="TwoFactor_DisableOnly" xml:space="preserve">
+    <value>This action only disables 2FA.</value>
+  </data>
+  <data name="TwoFactor_NoCodesLeft" xml:space="preserve">
+    <value>You have no recovery codes left.</value>
+  </data>
+  <data name="TwoFactor_VerificationCode" xml:space="preserve">
+    <value>Verification Code</value>
+  </data>
+  <data name="TwoFactor_Verify" xml:space="preserve">
+    <value>Verify</value>
+  </data>
+  <data name="TwoFactor_ScanQr" xml:space="preserve">
+    <value>Scan the QR Code or enter this key</value>
+  </data>
+  <data name="TwoFactor_Steps" xml:space="preserve">
+    <value>To use an authenticator app go through the following steps:</value>
+  </data>
+  <data name="TwoFactor_LoginHelp" xml:space="preserve">
+    <value>Your login is protected with an authenticator app. Enter your authenticator code below.</value>
+  </data>
+  <data name="Account_ResetPassword" xml:space="preserve">
+    <value>Reset</value>
+  </data>
+  <data name="Account_ResetPasswordHelp" xml:space="preserve">
+    <value>Reset your password.</value>
+  </data>
+  <data name="Account_EnterEmail" xml:space="preserve">
+    <value>Enter your email.</value>
+  </data>
+  <data name="Account_Resend" xml:space="preserve">
+    <value>Resend</value>
+  </data>
+  <data name="Account_Register" xml:space="preserve">
+    <value>Register</value>
+  </data>
+  <data name="Account_SignIn" xml:space="preserve">
+    <value>Sign in</value>
+  </data>
+  <data name="Account_CheckEmail" xml:space="preserve">
+    <value>Please check your email to confirm your account.</value>
+  </data>
 </root>

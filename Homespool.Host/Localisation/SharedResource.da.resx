@@ -464,4 +464,211 @@
   <data name="Printers_NothingQueued" xml:space="preserve">
     <value>Intet i kø. Send en fil til denne printers kø fra {0}.</value>
   </data>
+  <data name="Account_LogIn" xml:space="preserve">
+    <value>Log ind</value>
+  </data>
+  <data name="Account_LogInHelp" xml:space="preserve">
+    <value>Brug en lokal konto til at logge ind.</value>
+  </data>
+  <data name="Account_ForgotPassword" xml:space="preserve">
+    <value>Har du glemt din adgangskode?</value>
+  </data>
+  <data name="Account_ResendConfirmation" xml:space="preserve">
+    <value>Send bekræftelsesmail igen</value>
+  </data>
+  <data name="Account_CreateAccount" xml:space="preserve">
+    <value>Opret konto</value>
+  </data>
+  <data name="Account_CreateAccountHelp" xml:space="preserve">
+    <value>Opret din konto.</value>
+  </data>
+  <data name="Account_Username" xml:space="preserve">
+    <value>Brugernavn</value>
+  </data>
+  <data name="Account_Email" xml:space="preserve">
+    <value>E-mail</value>
+  </data>
+  <data name="Account_Password" xml:space="preserve">
+    <value>Adgangskode</value>
+  </data>
+  <data name="Account_ConfirmPassword" xml:space="preserve">
+    <value>Bekræft adgangskode</value>
+  </data>
+  <data name="Account_UsernameCharsPre" xml:space="preserve">
+    <value>Bogstaver, tal og</value>
+  </data>
+  <data name="Account_UsernameCharsPost" xml:space="preserve">
+    <value>. Du logger ind med dette eller din e-mailadresse.</value>
+  </data>
+  <data name="Nav_Login" xml:space="preserve">
+    <value>Log ind</value>
+  </data>
+  <data name="Nav_Logout" xml:space="preserve">
+    <value>Log ud</value>
+  </data>
+  <data name="Nav_Invites" xml:space="preserve">
+    <value>Invitationer</value>
+  </data>
+  <data name="Nav_Certificate" xml:space="preserve">
+    <value>Certifikat</value>
+  </data>
+  <data name="Nav_Privacy" xml:space="preserve">
+    <value>Privatliv</value>
+  </data>
+  <data name="Home_Tagline" xml:space="preserve">
+    <value>En selvhostet 3D-printerspooler. Dine modeller bliver på din egen server.</value>
+  </data>
+  <data name="Account_AcceptInvitation" xml:space="preserve">
+    <value>Acceptér invitation</value>
+  </data>
+  <data name="Home_Title" xml:space="preserve">
+    <value>Forside</value>
+  </data>
+  <data name="Manage_Profile" xml:space="preserve">
+    <value>Profil</value>
+  </data>
+  <data name="Manage_ExternalLogins" xml:space="preserve">
+    <value>Eksterne logins</value>
+  </data>
+  <data name="Manage_TwoFactor" xml:space="preserve">
+    <value>Tofaktorgodkendelse</value>
+  </data>
+  <data name="Manage_ApiTokens" xml:space="preserve">
+    <value>API-tokens</value>
+  </data>
+  <data name="Manage_ChangeEmail" xml:space="preserve">
+    <value>Skift e-mail</value>
+  </data>
+  <data name="Manage_SendVerification" xml:space="preserve">
+    <value>Send bekræftelsesmail</value>
+  </data>
+  <data name="Manage_UpdatePassword" xml:space="preserve">
+    <value>Opdatér adgangskode</value>
+  </data>
+  <data name="Tokens_Yours" xml:space="preserve">
+    <value>Dine tokens</value>
+  </data>
+  <data name="Tokens_None" xml:space="preserve">
+    <value>Du har ingen tokens.</value>
+  </data>
+  <data name="Tokens_Create" xml:space="preserve">
+    <value>Opret token</value>
+  </data>
+  <data name="Tokens_Revoke" xml:space="preserve">
+    <value>Tilbagekald</value>
+  </data>
+  <data name="Tokens_Created" xml:space="preserve">
+    <value>Oprettet</value>
+  </data>
+  <data name="Tokens_CopyNow" xml:space="preserve">
+    <value>Kopiér den nu</value>
+  </data>
+  <data name="Tokens_ShownOnce" xml:space="preserve">
+    <value>Den gemmes kun som et hash, så dette er eneste gang, den kan vises. Mister du den, så tilbagekald den og opret en ny.</value>
+  </data>
+  <data name="Invites_Create" xml:space="preserve">
+    <value>Opret invitation</value>
+  </data>
+  <data name="Invites_None" xml:space="preserve">
+    <value>Ingen invitationer endnu.</value>
+  </data>
+  <data name="Invites_Target" xml:space="preserve">
+    <value>Modtager</value>
+  </data>
+  <data name="Invites_Expires" xml:space="preserve">
+    <value>Udløber</value>
+  </data>
+  <data name="Invites_BackToList" xml:space="preserve">
+    <value>Tilbage til invitationer</value>
+  </data>
+  <data name="Invites_EmailSent" xml:space="preserve">
+    <value>Der er sendt en e-mail med accept-linket.</value>
+  </data>
+  <data name="Invites_NoEmailSent" xml:space="preserve">
+    <value>Der blev ikke sendt nogen e-mail (mail er ikke konfigureret, eller afsendelsen mislykkedes) — kopiér linket nedenfor.</value>
+  </data>
+  <data name="Setup_CreateAdmin" xml:space="preserve">
+    <value>Opret administrator</value>
+  </data>
+  <data name="Printers_ClaimHeading" xml:space="preserve">
+    <value>Tilknyt printer</value>
+  </data>
+  <data name="Common_Back" xml:space="preserve">
+    <value>Tilbage</value>
+  </data>
+  <data name="Common_Created" xml:space="preserve">
+    <value>Oprettet</value>
+  </data>
+  <data name="Common_Expires" xml:space="preserve">
+    <value>Udløber</value>
+  </data>
+  <data name="TwoFactor_AuthenticatorApp" xml:space="preserve">
+    <value>Godkendelsesapp</value>
+  </data>
+  <data name="TwoFactor_AddApp" xml:space="preserve">
+    <value>Tilføj godkendelsesapp</value>
+  </data>
+  <data name="TwoFactor_SetUpApp" xml:space="preserve">
+    <value>Opsæt godkendelsesapp</value>
+  </data>
+  <data name="TwoFactor_ResetApp" xml:space="preserve">
+    <value>Nulstil godkendelsesapp</value>
+  </data>
+  <data name="TwoFactor_Disable" xml:space="preserve">
+    <value>Slå tofaktor fra</value>
+  </data>
+  <data name="TwoFactor_ForgetBrowser" xml:space="preserve">
+    <value>Glem denne browser</value>
+  </data>
+  <data name="TwoFactor_ResetRecoveryCodes" xml:space="preserve">
+    <value>Nulstil gendannelseskoder</value>
+  </data>
+  <data name="TwoFactor_GenerateCodes" xml:space="preserve">
+    <value>Generér gendannelseskoder</value>
+  </data>
+  <data name="TwoFactor_KeepCodesSafe" xml:space="preserve">
+    <value>Opbevar disse koder et sikkert sted.</value>
+  </data>
+  <data name="TwoFactor_DisableOnly" xml:space="preserve">
+    <value>Denne handling slår kun tofaktor fra.</value>
+  </data>
+  <data name="TwoFactor_NoCodesLeft" xml:space="preserve">
+    <value>Du har ingen gendannelseskoder tilbage.</value>
+  </data>
+  <data name="TwoFactor_VerificationCode" xml:space="preserve">
+    <value>Bekræftelseskode</value>
+  </data>
+  <data name="TwoFactor_Verify" xml:space="preserve">
+    <value>Bekræft</value>
+  </data>
+  <data name="TwoFactor_ScanQr" xml:space="preserve">
+    <value>Scan QR-koden eller indtast denne nøgle</value>
+  </data>
+  <data name="TwoFactor_Steps" xml:space="preserve">
+    <value>Følg disse trin for at bruge en godkendelsesapp:</value>
+  </data>
+  <data name="TwoFactor_LoginHelp" xml:space="preserve">
+    <value>Dit login er beskyttet med en godkendelsesapp. Indtast din kode nedenfor.</value>
+  </data>
+  <data name="Account_ResetPassword" xml:space="preserve">
+    <value>Nulstil</value>
+  </data>
+  <data name="Account_ResetPasswordHelp" xml:space="preserve">
+    <value>Nulstil din adgangskode.</value>
+  </data>
+  <data name="Account_EnterEmail" xml:space="preserve">
+    <value>Indtast din e-mail.</value>
+  </data>
+  <data name="Account_Resend" xml:space="preserve">
+    <value>Send igen</value>
+  </data>
+  <data name="Account_Register" xml:space="preserve">
+    <value>Registrér</value>
+  </data>
+  <data name="Account_SignIn" xml:space="preserve">
+    <value>Log ind</value>
+  </data>
+  <data name="Account_CheckEmail" xml:space="preserve">
+    <value>Tjek din e-mail for at bekræfte din konto.</value>
+  </data>
 </root>

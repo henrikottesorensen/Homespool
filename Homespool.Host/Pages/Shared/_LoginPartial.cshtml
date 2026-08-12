@@ -8,22 +8,22 @@
     @if (User.IsInRole(AdminBootstrap.AdminRole))
     {
         <li class="nav-item">
-            <a id="invites" class="nav-link" asp-page="/Admin/Invites/Index" title="Invitations">Invites</a>
+            <a id="invites" class="nav-link" asp-page="/Admin/Invites/Index" title="Invitations">@Localiser["Nav_Invites"]</a>
         </li>
 @*  The certificate banner tells an administrator to come here, so there has to be a here to come to.
     Admin-only, like Invites: it is the one page that can reissue what printers verify against. *@
         <li class="nav-item">
-            <a id="certificate" class="nav-link" asp-page="/Admin/Certificate" title="Printer certificate">Certificate</a>
+            <a id="certificate" class="nav-link" asp-page="/Admin/Certificate" title="Printer certificate">@Localiser["Nav_Certificate"]</a>
         </li>
     }
     <li class="nav-item">
-        <a id="printers" class="nav-link" asp-page="/Printers/Index" title="Printers">Printers</a>
+        <a id="printers" class="nav-link" asp-page="/Printers/Index" title="Printers">@Localiser["Printers_Title"]</a>
     </li>
     <li class="nav-item">
-        <a id="files" class="nav-link" asp-page="/Files/Index" title="Files">Files</a>
+        <a id="files" class="nav-link" asp-page="/Files/Index" title="Files">@Localiser["Files_Title"]</a>
     </li>
     <li class="nav-item">
-        <a id="cameras" class="nav-link" asp-page="/Cameras/Index" title="Cameras">Cameras</a>
+        <a id="cameras" class="nav-link" asp-page="/Cameras/Index" title="Cameras">@Localiser["Cameras_Title"]</a>
     </li>
     <li class="nav-item">
 @*  The username is already in the cookie - Identity writes it as ClaimTypes.Name - so naming the
@@ -36,14 +36,14 @@
     </li>
     <li class="nav-item">
         <form id="logoutForm" class="form-inline" asp-page="/Account/Logout" asp-route-returnUrl="@Url.Action("Index", "Home", new { area = "" })">
-            <button id="logout" type="submit" class="nav-link btn btn-link border-0">Logout</button>
+            <button id="logout" type="submit" class="nav-link btn btn-link border-0">@Localiser["Nav_Logout"]</button>
         </form>
     </li>
 }
 else
 {
     <li class="nav-item">
-        <a class="nav-link" id="login" asp-page="/Account/Login">Login</a>
+        <a class="nav-link" id="login" asp-page="/Account/Login">@Localiser["Nav_Login"]</a>
     </li>
 }
 </ul>

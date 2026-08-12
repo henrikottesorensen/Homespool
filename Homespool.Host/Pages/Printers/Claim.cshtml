@@ -56,8 +56,8 @@
                 <select asp-for="Input.TeamId" asp-items="@Model.TeamOptions" class="form-select"></select>
                 <span asp-validation-for="Input.TeamId" class="text-danger"></span>
             </div>
-            <button type="submit" class="btn btn-primary">Claim printer</button>
-            <a class="btn btn-link" asp-page="Index">Back to printers</a>
+            <button type="submit" class="btn btn-primary">@Localiser["Printers_ClaimHeading"]</button>
+            <a class="btn btn-link" asp-page="Index">@Localiser["Printers_BackToList"]</a>
         </form>
     </div>
 </div>

@@ -150,6 +150,52 @@ mmdebstrap:
 
     - |-
       #
+      # A console font you can actually read. The default is Fixed 8x16, which on a 4K panel is 480
+      # columns of ants - and the console is exactly the thing you are looking at when something has
+      # gone wrong badly enough that SSH is not an option, so it being unreadable costs most when it
+      # matters most.
+      #
+      # 16x32 glyphs, the largest Terminus shipped. The trade is real and was weighed rather than
+      # waved through: it gives 240x67 at 2160p and 120x33 at 1080p, but only 80x22 at 720p - three
+      # rows short of a VGA console's 80x25. Henrik's call, and the right one, since a smaller-panel
+      # user loses three rows while a 4K user currently loses the display entirely.
+      #
+      # CODESET stays "guess", which adapts to the locale where pinning Lat15 would impose a Western
+      # European assumption on an image anyone can flash.
+      #
+      # Terminus does not cover every codeset at this size, and the exact list matters more than the
+      # generalisation: 32x16 exists for Lat15, Lat2, Lat7, Lat38, Uni2, Uni3, Vietnamese, Hebrew,
+      # Greek and the Cyrillic sets - and NOT for Uni1, Arabic, Armenian, Ethiopic, Georgian, Lao or
+      # Thai. Terminus is a Latin/Greek/Cyrillic typeface, so that is a property of the font rather
+      # than an oversight.
+      #
+      # This image ships LANG=C.UTF-8, so the guess lands on a Latin set and the font is present. A
+      # user who switches to one of those seven locales would not get it. What setupcon does then -
+      # fall back quietly or complain - is NOT verified here, and is worth finding out before anyone
+      # claims this is safe for all locales rather than merely for the one we ship.
+      #
+      # Uni2 is Latin + Slavic Cyrillic + Greek; Uni3 is Latin + Slavic and non-Slavic Cyrillic.
+      # Either would be a defensible pin if "guess" ever proves troublesome.
+      #
+      # sed on the file rather than debconf-set-selections: console-setup's postinst has already run
+      # by the time customize-hooks execute, so it has already written this file from its debconf
+      # answers - setting them now would need a dpkg-reconfigure to have any effect. Nothing at image
+      # generation regenerates /etc/default/*, unlike the fstab and hostname traps above. Verified in
+      # the built image regardless, because that is the rule this layer learned twice.
+      #
+      # No existence guard on purpose. If the file is ever absent, sed fails, set -e aborts the build
+      # and somebody finds out - which is strictly better than a hook that silently does nothing, the
+      # failure mode that hid the resize bug for a day.
+      #
+      # console-setup.service is already enabled by the package (multi-user.target.wants), as is
+      # keyboard-setup.service (sysinit.target.wants) - checked, not assumed, because rpi-resize
+      # taught us that shipping a unit and enabling it are different things.
+      set -eu
+      sed -i 's/^FONTFACE=.*/FONTFACE="TerminusBold"/; s/^FONTSIZE=.*/FONTSIZE="32x16"/' \
+          $1/etc/default/console-setup
+
+    - |-
+      #
       # Turn the root-partition resize on. raspberrypi-sys-mods' initramfs script is gated on the
       # word "resize" being on the kernel command line, and does nothing without it.
       #
@@ -174,7 +220,7 @@ mmdebstrap:
       # the right order relative to the rest of the build - it is idempotent, and a missing script
       # here fails by quietly never resizing.
       set -eu
-      chroot $1 update-initramfs -u
+      chroot $1 update-initramfs -u -k all
 
     - |-
       #
@@ -193,7 +239,7 @@ mmdebstrap:
     # "${device_class}-<six random letters>" - so a hook that writes the name we want runs *before*
     # that and is silently overwritten, which is how the first build shipped a board called
     # "pi3-pjgxel" with a README promising homespool.local. It is set as device.hostname in
-    # config/homespool-pi3.yaml instead, which is the variable that layer actually reads.
+    # config/homespool.yaml instead, which is the variable that layer actually reads.
 
     - |-
       #

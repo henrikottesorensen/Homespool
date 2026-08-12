@@ -1,0 +1,60 @@
+# METABEGIN
+# X-Env-Layer-Name: homespool-rpi-all
+# X-Env-Layer-Category: device
+# X-Env-Layer-Desc: Every 64-bit Raspberry Pi from one card, carrying both kernels so the firmware
+#  picks the right one per board.
+#  .
+#  rpi-image-gen ships no such device layer - its own six are one board each, and the two families
+#  disagree about the kernel: pi3/pi4/cm4/zero2w require rpi-generic64, which is rpi-device-base plus
+#  rpi-linux-v8, while pi5/cm5 require rpi-device-base plus rpi-linux-2712. Nothing forbids requiring
+#  both, and Raspberry Pi OS is the existence proof - one image, kernel8.img and kernel_2712.img side
+#  by side, the firmware choosing by SoC.
+#  .
+#  That choice needs no configuration and is why this works at all. The generated config.txt carries
+#  no kernel= line, so the bootloader applies its own board-keyed default - kernel8.img on
+#  BCM2710/2711, kernel_2712.img on BCM2712 - and auto_initramfs=1 loads the matching initramfs by
+#  substituting the filename prefix. Four files, four distinct names, no collision.
+#  .
+#  The trap this layer exists to defuse is the ext4 block size, and it fails on the *older* board.
+#  rpi-linux-2712 declares page_size 16384 with policy force; image-rpios lazily derives
+#  fs_ext4_mkfs_args as "-F -b ${IGconf_linux_page_size}" from it. So requiring both kernels silently
+#  yields a 16K-block root filesystem - and ext4 cannot mount a filesystem whose block size exceeds
+#  the mounting kernel's page size, so every 4K-page board would fail at root mount while a Pi 5
+#  booted perfectly. pi/build.sh therefore pins "-F -b 4096" when this layer is selected. 4096 is <=
+#  16384, so a Pi 5's 16K-page kernel mounts it happily; the reverse is what cannot work.
+#  .
+#  Note the pin costs nothing in memory: page_size still forces 16384, so a Pi 5 still runs 16K MMU
+#  pages and keeps whatever the larger granule buys. Only the filesystem geometry changes, and 4K
+#  blocks are the better fit here anyway - 78% of this image's files are under 16 KiB, where 16K
+#  blocks waste ~235 MiB to internal fragmentation.
+# X-Env-Layer-Version: 1.0.0
+# X-Env-Layer-Requires: rpi-device-base,rpi-linux-v8,rpi-linux-2712
+# X-Env-Layer-Provides: rpi-device
+#
+# X-Env-VarPrefix: device
+#
+# X-Env-Var-class: pi5
+# X-Env-Var-class-Desc: Device class. Arbitrary for a multi-board image and deliberately so - it must
+#  be one of rpi-device-base's six keywords, and nothing it drives applies here. Its documented uses
+#  are the default hostname, which config/homespool.yaml overrides; a requirement of the gpt
+#  ab_userdata image layer, where we use mbr/simple_dual; and a luks2 cipher condition we do not
+#  enable. pi5 rather than pi3 only because it is the least constrained of the six on storage_type.
+# X-Env-Var-class-Required: n
+# X-Env-Var-class-Valid: keywords:pi5
+# X-Env-Var-class-Set: y
+#
+# X-Env-Var-storage_type: sd
+# X-Env-Var-storage_type-Desc: Storage media the image is intended for, as seen by the OS.
+# X-Env-Var-storage_type-Required: n
+# X-Env-Var-storage_type-Valid: sd,nvme,usb
+# X-Env-Var-storage_type-Set: y
+#
+# X-Env-Var-assetdir: ${DIRECTORY}
+# X-Env-Var-assetdir-Desc: Device specific asset directory. Empty here, as it is for every board
+#  rpi-image-gen ships - their device directories hold only the layer definition and its docs, so
+#  there are no per-board boot files a combined image would have to choose between.
+# X-Env-Var-assetdir-Required: n
+# X-Env-Var-assetdir-Valid: dir
+# X-Env-Var-assetdir-Set: y
+# METAEND
+---

@@ -1209,4 +1209,46 @@
   <data name="Printers_SlicerAddressLabel" xml:space="preserve">
     <value>Adresse til print-host for denne printer</value>
   </data>
+  <data name="Setup_Token" xml:space="preserve">
+    <value>Opsætningstoken</value>
+  </data>
+  <data name="Invites_ExpiresIn" xml:space="preserve">
+    <value>Udløber om (timer, valgfrit)</value>
+  </data>
+  <data name="Printers_RegistrationCode" xml:space="preserve">
+    <value>Registreringskode</value>
+  </data>
+  <data name="Account_RecoveryCode" xml:space="preserve">
+    <value>Gendannelseskode</value>
+  </data>
+  <data name="Account_AuthenticatorCode" xml:space="preserve">
+    <value>Kode fra tofaktorapp</value>
+  </data>
+  <data name="Account_RememberMachine" xml:space="preserve">
+    <value>Husk denne maskine</value>
+  </data>
+  <data name="Account_EmailOrUsername" xml:space="preserve">
+    <value>E-mail eller brugernavn</value>
+  </data>
+  <data name="Account_RememberMe" xml:space="preserve">
+    <value>Husk mig?</value>
+  </data>
+  <data name="Manage_CurrentPassword" xml:space="preserve">
+    <value>Nuværende adgangskode</value>
+  </data>
+  <data name="Manage_NewPassword" xml:space="preserve">
+    <value>Ny adgangskode</value>
+  </data>
+  <data name="Manage_ConfirmNewPassword" xml:space="preserve">
+    <value>Bekræft ny adgangskode</value>
+  </data>
+  <data name="Manage_VerificationCode" xml:space="preserve">
+    <value>Bekræftelseskode</value>
+  </data>
+  <data name="Manage_NewEmail" xml:space="preserve">
+    <value>Ny e-mailadresse</value>
+  </data>
+  <data name="Manage_TokenName" xml:space="preserve">
+    <value>Navn på token</value>
+  </data>
 </root>

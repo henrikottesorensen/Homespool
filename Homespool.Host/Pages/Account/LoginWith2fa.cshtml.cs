@@ -45,10 +45,10 @@ public class LoginWith2faModel : PageModel
         [Required]
         [StringLength(7, ErrorMessage = "Validation_Length", MinimumLength = 6)]
         [DataType(DataType.Text)]
-        [Display(Name = "Authenticator code")]
+        [Display(Name = "Account_AuthenticatorCode")]
         public string TwoFactorCode { get; set; }
 
-        [Display(Name = "Remember this machine")]
+        [Display(Name = "Account_RememberMachine")]
         public bool RememberMachine { get; set; }
     }
 

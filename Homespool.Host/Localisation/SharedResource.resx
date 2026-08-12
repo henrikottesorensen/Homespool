@@ -1235,4 +1235,46 @@
   <data name="Printers_SlicerAddressLabel" xml:space="preserve">
     <value>Print host address for this printer</value>
   </data>
+  <data name="Setup_Token" xml:space="preserve">
+    <value>Setup token</value>
+  </data>
+  <data name="Invites_ExpiresIn" xml:space="preserve">
+    <value>Expires in (hours, optional)</value>
+  </data>
+  <data name="Printers_RegistrationCode" xml:space="preserve">
+    <value>Registration code</value>
+  </data>
+  <data name="Account_RecoveryCode" xml:space="preserve">
+    <value>Recovery code</value>
+  </data>
+  <data name="Account_AuthenticatorCode" xml:space="preserve">
+    <value>Authenticator code</value>
+  </data>
+  <data name="Account_RememberMachine" xml:space="preserve">
+    <value>Remember this machine</value>
+  </data>
+  <data name="Account_EmailOrUsername" xml:space="preserve">
+    <value>Email or username</value>
+  </data>
+  <data name="Account_RememberMe" xml:space="preserve">
+    <value>Remember me?</value>
+  </data>
+  <data name="Manage_CurrentPassword" xml:space="preserve">
+    <value>Current password</value>
+  </data>
+  <data name="Manage_NewPassword" xml:space="preserve">
+    <value>New password</value>
+  </data>
+  <data name="Manage_ConfirmNewPassword" xml:space="preserve">
+    <value>Confirm new password</value>
+  </data>
+  <data name="Manage_VerificationCode" xml:space="preserve">
+    <value>Verification code</value>
+  </data>
+  <data name="Manage_NewEmail" xml:space="preserve">
+    <value>New email</value>
+  </data>
+  <data name="Manage_TokenName" xml:space="preserve">
+    <value>Token name</value>
+  </data>
 </root>

@@ -43,7 +43,7 @@ public class LoginWithRecoveryCodeModel : PageModel
         [BindProperty]
         [Required]
         [DataType(DataType.Text)]
-        [Display(Name = "Recovery Code")]
+        [Display(Name = "Account_RecoveryCode")]
         public string RecoveryCode { get; set; }
     }
 

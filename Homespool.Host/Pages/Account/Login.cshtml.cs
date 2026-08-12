@@ -52,14 +52,14 @@ public class LoginModel : PageModel
         /// this field mean "address", and it would now reject every username typed into it.
         /// </remarks>
         [Required]
-        [Display(Name = "Email or username")]
+        [Display(Name = "Account_EmailOrUsername")]
         public string Login { get; set; }
 
         [Required]
         [DataType(DataType.Password)]
         public string Password { get; set; }
 
-        [Display(Name = "Remember me?")]
+        [Display(Name = "Account_RememberMe")]
         public bool RememberMe { get; set; }
     }
 

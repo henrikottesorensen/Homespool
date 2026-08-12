@@ -73,7 +73,7 @@ public class ResetPasswordModel : PageModel
         ///     directly from your code. This API may change or be removed in future releases.
         /// </summary>
         [DataType(DataType.Password)]
-        [Display(Name = "Confirm password")]
+        [Display(Name = "Account_ConfirmPassword")]
         [Compare("Password", ErrorMessage = "Validation_PasswordMismatch")]
         public string ConfirmPassword { get; set; }
 

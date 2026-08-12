@@ -68,14 +68,14 @@ public class CreateModel : PageModel
     {
         [Required]
         [EmailAddress]
-        [Display(Name = "Email")]
+        [Display(Name = "Account_Email")]
         public string Email { get; set; } = string.Empty;
 
-        [Display(Name = "Team")]
+        [Display(Name = "Common_Team")]
         public int? TeamId { get; set; }
 
         [Range(1, 8760, ErrorMessage = "Validation_ExpiryRange")]
-        [Display(Name = "Expires in (hours, optional)")]
+        [Display(Name = "Invites_ExpiresIn")]
         public int? ExpiresInHours { get; set; }
     }
 

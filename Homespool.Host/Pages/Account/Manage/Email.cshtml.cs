@@ -76,7 +76,7 @@ public class EmailModel : PageModel
         /// </summary>
         [Required]
         [EmailAddress]
-        [Display(Name = "New email")]
+        [Display(Name = "Manage_NewEmail")]
         public string NewEmail { get; set; }
     }
 

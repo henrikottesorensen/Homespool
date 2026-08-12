@@ -65,7 +65,7 @@ public class ChangePasswordModel : PageModel
         /// </summary>
         [Required]
         [DataType(DataType.Password)]
-        [Display(Name = "Current password")]
+        [Display(Name = "Manage_CurrentPassword")]
         public string OldPassword { get; set; }
 
         /// <summary>
@@ -75,7 +75,7 @@ public class ChangePasswordModel : PageModel
         [Required]
         [StringLength(100, ErrorMessage = "Validation_Length", MinimumLength = 6)]
         [DataType(DataType.Password)]
-        [Display(Name = "New password")]
+        [Display(Name = "Manage_NewPassword")]
         public string NewPassword { get; set; }
 
         /// <summary>
@@ -83,7 +83,7 @@ public class ChangePasswordModel : PageModel
         ///     directly from your code. This API may change or be removed in future releases.
         /// </summary>
         [DataType(DataType.Password)]
-        [Display(Name = "Confirm new password")]
+        [Display(Name = "Manage_ConfirmNewPassword")]
         [Compare("NewPassword", ErrorMessage = "Validation_NewPasswordMismatch")]
         public string ConfirmPassword { get; set; }
     }

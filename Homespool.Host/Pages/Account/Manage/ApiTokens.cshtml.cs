@@ -64,7 +64,7 @@ public class ApiTokensModel : PageModel
     {
         [Required]
         [StringLength(ApiToken.NameMaxLength, MinimumLength = 1)]
-        [Display(Name = "Token name")]
+        [Display(Name = "Manage_TokenName")]
         public string Name { get; set; } = string.Empty;
     }
 

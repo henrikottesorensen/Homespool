@@ -95,7 +95,7 @@ public class EnableAuthenticatorModel : PageModel
         [Required]
         [StringLength(7, ErrorMessage = "Validation_Length", MinimumLength = 6)]
         [DataType(DataType.Text)]
-        [Display(Name = "Verification Code")]
+        [Display(Name = "Manage_VerificationCode")]
         public string Code { get; set; }
     }
 

@@ -106,7 +106,7 @@ public class ExternalLoginModel : PageModel
         /// </summary>
         [Required]
         [StringLength(HSUser.UsernameMaxLength)]
-        [Display(Name = "Username")]
+        [Display(Name = "Account_Username")]
         public string Username { get; set; }
     }
 

@@ -99,17 +99,17 @@ public class RegisterModel : PageModel
         /// </remarks>
         [Required]
         [StringLength(HSUser.UsernameMaxLength)]
-        [Display(Name = "Username")]
+        [Display(Name = "Account_Username")]
         public string Username { get; set; }
 
         [Required]
         [StringLength(100, ErrorMessage = "Validation_Length", MinimumLength = 6)]
         [DataType(DataType.Password)]
-        [Display(Name = "Password")]
+        [Display(Name = "Account_Password")]
         public string Password { get; set; }
 
         [DataType(DataType.Password)]
-        [Display(Name = "Confirm password")]
+        [Display(Name = "Account_ConfirmPassword")]
         [Compare(nameof(Password), ErrorMessage = "Validation_PasswordMismatch")]
         public string ConfirmPassword { get; set; }
     }

@@ -87,18 +87,18 @@ public class ClaimModel : PageModel
         /// </remarks>
         [Required(ErrorMessage = "Validation_ClaimCodeRequired")]
         [StringLength(32, ErrorMessage = "Validation_ClaimCodeShape")]
-        [Display(Name = "Registration code")]
+        [Display(Name = "Printers_RegistrationCode")]
         public string Code { get; set; } = string.Empty;
 
         [StringLength(200)]
-        [Display(Name = "Name")]
+        [Display(Name = "Common_Name")]
         public string? Name { get; set; }
 
         [StringLength(200)]
-        [Display(Name = "Location")]
+        [Display(Name = "Printers_Location")]
         public string? Location { get; set; }
 
-        [Display(Name = "Team")]
+        [Display(Name = "Common_Team")]
         public int? TeamId { get; set; }
     }
 

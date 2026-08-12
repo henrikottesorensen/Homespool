@@ -7,10 +7,13 @@
     of them, because the two dialects differ in spelling far less than they differ in formatting. A
     file holding copies would only give the next edit somewhere to update one and not the other.
 
-    What belongs here is exactly the strings that differ, and nothing else. Right now that is one:
-    an American reading "215.0" degrees assumes Fahrenheit, where a British or Danish reader assumes
-    Celsius. 215 F is a plausible-looking bed temperature and a wrong nozzle one, so the ambiguity
-    is not merely untidy - it reads as a real number.
+    What belongs here is exactly the strings that differ, and nothing else. Right now that is one,
+    and it is there because the failure has been watched happening rather than reasoned about:
+    Americans turning up in support channels saying they set it to 215 degrees "like it said" and
+    the print will not stick, because their OctoPrint was showing Fahrenheit (Henrik, 2026-08-12).
+
+    215 F is a plausible-looking bed temperature and a badly wrong nozzle one, so an unqualified
+    degree sign does not read as a missing unit - it reads as a number the reader already believes.
   -->
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
@@ -73,6 +76,6 @@
 
   <data name="Printers_TemperatureTarget" xml:space="preserve">
     <value>{0} °C / target {1} °C</value>
-    <comment>The unit is stated because the reader cannot be assumed to default to Celsius. en-GB and da leave it off, where the assumption is safe.</comment>
+    <comment>The unit is stated because the reader cannot be assumed to default to Celsius - this has been seen going wrong in support channels, with 215 read as Fahrenheit. en-GB and da leave it off, where the assumption is safe.</comment>
   </data>
 </root>

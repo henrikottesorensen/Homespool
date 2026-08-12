@@ -888,4 +888,31 @@
   <data name="Cameras_SavedWithPicture" xml:space="preserve">
     <value>Kameraet er gemt, og det sendte et billede.</value>
   </data>
+  <data name="Cert_NoAddressToCover" xml:space="preserve">
+    <value>Der blev ikke fundet nogen brugbar adresse, og PrusaConnect:PrinterHost er ikke sat, så et nyt certifikat ville dække intet, en printer kunne verificere. Sæt adressen først.</value>
+  </data>
+  <data name="Bundle_UnzipToRoot" xml:space="preserve">
+    <value>Pak den ud i {0} af en USB-nøgle - ikke i en mappe, ellers finder printeren ikke filerne - og indlæs den derefter fra printerens egen menu: {1}.</value>
+  </data>
+  <data name="Bundle_Root" xml:space="preserve">
+    <value>roden</value>
+  </data>
+  <data name="Bundle_TrustStore" xml:space="preserve">
+    <value>Zip-filen indeholder også {0}, og ini-filen sætter {1}. Det {2} printerens trust store frem for at føje til den, så mens den er sat, kan printeren ikke tale med Prusa Connect. Den samme advarsel står inde i ini-filen, hvor den læses i det øjeblik, den betyder noget.</value>
+  </data>
+  <data name="Bundle_Replaces" xml:space="preserve">
+    <value>erstatter</value>
+  </data>
+  <data name="Bundle_WhatFileContains" xml:space="preserve">
+    <value>Hvad filen kommer til at indeholde, for {0}. Vælger du en anden adresse ovenfor, ændres {1}-linjen tilsvarende.</value>
+  </data>
+  <data name="Bundle_CertIssuedTooEarly" xml:space="preserve">
+    <value>I en container betyder det som regel, at certifikatet blev udstedt, før {0} var sat, så det dækker kun adresser inde i containeren - som virker derindefra og ingen andre steder. Sæt den adresse, printere skal bruge, og genudsted derefter under {1}.</value>
+  </data>
+  <data name="Printers_ClaimWrongServer" xml:space="preserve">
+    <value>Dette forudsætter også, at printeren allerede peger på denne server (dens {0} sætter værtsnavnet). Taler den stadig med Prusa Connect, kom koden på skærmen fra {1} og vil aldrig virke her.</value>
+  </data>
+  <data name="Printers_ClaimThem" xml:space="preserve">
+    <value>dem</value>
+  </data>
 </root>

@@ -193,8 +193,7 @@ public class CertificateModel : PageModel
 
         if (names.Length == 0)
         {
-            StatusMessage = "No usable address could be detected and PrusaConnect:PrinterHost is not set, so a new "
-                            + "certificate would cover nothing a printer could verify. Set the address first.";
+            StatusMessage = _localiser["Cert_NoAddressToCover"];
 
             return RedirectToPage();
         }

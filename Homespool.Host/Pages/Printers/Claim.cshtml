@@ -21,9 +21,7 @@
     Scanning the QR will take you to Prusa, where this code does not exist. Only the code printed
     underneath it is of any use here - type it in below.
     <hr />
-    This also assumes the printer is already pointed at this server (its
-    <code>prusa_printer_settings.ini</code> sets the hostname). If it still talks to Prusa Connect,
-    the code on its screen came from <em>them</em> and will never work here.
+    @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Printers_ClaimWrongServer"].Value, "<code>prusa_printer_settings.ini</code>", $"<em>{Localiser["Printers_ClaimThem"].Value}</em>"))
 </div>
 
 <div class="row">

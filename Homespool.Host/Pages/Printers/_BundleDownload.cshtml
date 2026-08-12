@@ -43,18 +43,13 @@
         </form>
 
         <p class="mb-2">
-            Unzip it onto the <strong>root</strong> of a USB stick - not into a folder, or the printer
-            will not find the files - then load it from the printer's own menu:
-            <em>Prusa Connect &rarr; Load Settings</em>.
+            @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Bundle_UnzipToRoot"].Value, $"<strong>{Localiser["Bundle_Root"].Value}</strong>", "<em>Prusa Connect &rarr; Load Settings</em>"))
         </p>
 
         @if (Model.TlsEnabled)
         {
             <p class="mb-2">
-                The zip carries <code>connect.der</code> as well, and the ini sets
-                <code>custom_cert = 1</code>. That <strong>replaces</strong> the printer's trust store
-                rather than adding to it, so while it is set the printer cannot talk to Prusa Connect.
-                The same warning is written inside the ini, where it is read at the moment it matters.
+                @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Bundle_TrustStore"].Value, "<code>connect.der</code>", "<code>custom_cert = 1</code>", $"<strong>{Localiser["Bundle_Replaces"].Value}</strong>"))
             </p>
         }
         else
@@ -69,8 +64,7 @@
         <details class="mb-0">
             <summary>@Localiser["Bundle_ReadIniInstead"]</summary>
             <p class="mt-2 mb-1">
-                What the file will contain, for <code>@Model.PreferredName</code>. Choosing a different
-                address above changes the <code>hostname</code> line to match.
+                @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Bundle_WhatFileContains"].Value, $"<code>{Model.PreferredName}</code>", "<code>hostname</code>"))
             </p>
             <textarea class="form-control font-monospace" rows="7" readonly onclick="this.select()">@Model.Snippet</textarea>
         </details>
@@ -82,10 +76,7 @@
             printer could actually reach.
         </p>
         <p class="mb-0">
-            In a container that usually means the certificate was issued before
-            <code>PrusaConnect:PrinterHost</code> was set, so it covers only addresses inside the
-            container - which work from in there and nowhere else. Set the address printers should use,
-            then reissue under <em>Admin &rarr; Printer certificate</em>.
+            @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Bundle_CertIssuedTooEarly"].Value, "<code>PrusaConnect:PrinterHost</code>", "<em>Admin &rarr; Printer certificate</em>"))
         </p>
     }
 </div>

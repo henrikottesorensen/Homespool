@@ -896,4 +896,31 @@
   <data name="Cameras_SavedWithPicture" xml:space="preserve">
     <value>Camera saved, and it sent a picture.</value>
   </data>
+  <data name="Cert_NoAddressToCover" xml:space="preserve">
+    <value>No usable address could be detected and PrusaConnect:PrinterHost is not set, so a new certificate would cover nothing a printer could verify. Set the address first.</value>
+  </data>
+  <data name="Bundle_UnzipToRoot" xml:space="preserve">
+    <value>Unzip it onto the {0} of a USB stick - not into a folder, or the printer will not find the files - then load it from the printer&apos;s own menu: {1}.</value>
+  </data>
+  <data name="Bundle_Root" xml:space="preserve">
+    <value>root</value>
+  </data>
+  <data name="Bundle_TrustStore" xml:space="preserve">
+    <value>The zip carries {0} as well, and the ini sets {1}. That {2} the printer&apos;s trust store rather than adding to it, so while it is set the printer cannot talk to Prusa Connect. The same warning is written inside the ini, where it is read at the moment it matters.</value>
+  </data>
+  <data name="Bundle_Replaces" xml:space="preserve">
+    <value>replaces</value>
+  </data>
+  <data name="Bundle_WhatFileContains" xml:space="preserve">
+    <value>What the file will contain, for {0}. Choosing a different address above changes the {1} line to match.</value>
+  </data>
+  <data name="Bundle_CertIssuedTooEarly" xml:space="preserve">
+    <value>In a container that usually means the certificate was issued before {0} was set, so it covers only addresses inside the container - which work from in there and nowhere else. Set the address printers should use, then reissue under {1}.</value>
+  </data>
+  <data name="Printers_ClaimWrongServer" xml:space="preserve">
+    <value>This also assumes the printer is already pointed at this server (its {0} sets the hostname). If it still talks to Prusa Connect, the code on its screen came from {1} and will never work here.</value>
+  </data>
+  <data name="Printers_ClaimThem" xml:space="preserve">
+    <value>them</value>
+  </data>
 </root>

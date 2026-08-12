@@ -707,7 +707,8 @@
     <value>Printers connect over plain HTTP in this deployment</value>
   </data>
   <data name="Cert_PlainHttpBody" xml:space="preserve">
-    <value>That is a setting for reading the protocol on the wire or running a test rig. Every printer token crosses the network in clear while it is off.</value>
+    <value>This setting exists only to help a developer read the traffic between Homespool and a printer. Every printer token, every file and every printer&apos;s PrusaLink password crosses the network in clear while it is off.</value>
+    <comment>The password is not a figure of speech: firmware sends the printer&apos;s PrusaLink password in its INFO event (InfoEventDataDTO), the credential its own HTTP server accepts as X-Api-Key, and TelemetryWriter masks it in logs for that reason. Do not weaken this back to "token" - it was written from the wire.</comment>
   </data>
   <data name="Cert_Explanation" xml:space="preserve">
     <value>Printers verify this server against a certificate it mints for itself. The certificate is issued {0} and then left alone - reissuing it automatically would drop every live printer connection each time an interface appeared, and quietly change what this server claims to be. So when this machine&apos;s addresses move, the fix is here rather than automatic.</value>
@@ -897,7 +898,7 @@
     <value>Camera saved, and it sent a picture.</value>
   </data>
   <data name="Cert_NoAddressToCover" xml:space="preserve">
-    <value>No usable address could be detected and PrusaConnect:PrinterHost is not set, so a new certificate would cover nothing a printer could verify. Set the address first.</value>
+    <value>Set the address first. No usable address could be detected and PrusaConnect:PrinterHost is not set, so a printer could not verify a new certificate.</value>
   </data>
   <data name="Bundle_UnzipToRoot" xml:space="preserve">
     <value>Unzip it onto the {0} of a USB stick - not into a folder, or the printer will not find the files - then load it from the printer&apos;s own menu: {1}.</value>

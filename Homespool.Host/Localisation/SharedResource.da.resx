@@ -699,7 +699,7 @@
     <value>Printere forbinder over almindelig HTTP i denne installation</value>
   </data>
   <data name="Cert_PlainHttpBody" xml:space="preserve">
-    <value>Denne indstilling er kun ment som en hjælp for udviklere til at læse kommunikationen mellem Homespool og printer. Hver eneste printertoken, fil og kodeord sendes i klartekst over netværket, så længe den er slået fra.</value>
+    <value>Denne indstilling er kun ment som en hjælp for udviklere til at læse kommunikationen mellem Homespool og printer. Hver eneste printertoken, fil og PrusaLink-kodeord sendes i klartekst over netværket, så længe den er slået fra.</value>
   </data>
   <data name="Cert_Explanation" xml:space="preserve">
     <value>Printere verificerer denne server mod et certifikat, den udsteder til sig selv. Certifikatet udstedes {0} og lades derefter i fred - at genudstede det automatisk ville afbryde hver eneste aktive printerforbindelse, hver gang et netværkskort dukkede op, og i det stille ændre, hvad serveren udgiver sig for at være. Så når maskinens adresser flytter sig, sker rettelsen her frem for automatisk.</value>

@@ -84,7 +84,8 @@ public sealed class CreateModelTests : IDisposable
         InvitationService invitationService = new(context, new TokenService(), Options.Create(new InvitationOptions()));
         CapturingEmailSender emailSender = new();
 
-        CreateModel model = new(invitationService, new TeamService(context), users, emailSender, NullLogger<CreateModel>.Instance)
+        CreateModel model = new(invitationService, new TeamService(context), users, emailSender,
+                                TestLocaliser.Shared(), NullLogger<CreateModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
             Url = IdentityTestHarness.NewUrlHelper(httpContext),

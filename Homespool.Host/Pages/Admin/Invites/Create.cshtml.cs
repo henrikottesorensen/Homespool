@@ -13,8 +13,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
@@ -33,18 +35,21 @@ public class CreateModel : PageModel
     private readonly TeamService _teamService;
     private readonly UserManager<HSUser> _userManager;
     private readonly IEmailSender _emailSender;
+    private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<CreateModel> _logger;
 
     public CreateModel(InvitationService invitationService,
                        TeamService teamService,
                        UserManager<HSUser> userManager,
                        IEmailSender emailSender,
+                       IStringLocalizer<SharedResource> localiser,
                        ILogger<CreateModel> logger)
     {
         _invitationService = invitationService;
         _teamService = teamService;
         _userManager = userManager;
         _emailSender = emailSender;
+        _localiser = localiser;
         _logger = logger;
     }
 
@@ -107,12 +112,19 @@ public class CreateModel : PageModel
             values: new { inviteId = invitation.Id, code },
             protocol: Request.Scheme);
 
+        // Composed in the administrator's language, which is the request's, because an invitee has no
+        // account and therefore nothing stored to read. That is a limit of the invitation rather than
+        // an oversight: the only way to do better is to let the inviter say which language to write in.
+        //
+        // The expiry is formatted in that same culture rather than InvariantCulture as before. It is
+        // read by a person, not parsed by anything, so a Dane should see 09-03-2026 14:30.
         EmailSendResult sendResult = await _emailSender.SendEmailAsync(
             Input.Email,
-            "You're invited to Homespool",
-            $"You have been invited. Accept by <a href='{HtmlEncoder.Default.Encode(AcceptLink!)}'>clicking here</a>. " +
-            $"This invitation expires {invitation.ExpiresAt.ToLocalTime()
-                                                 .ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)}.");
+            _localiser["Email_InviteSubject"],
+            _localiser[
+                "Email_InviteBody",
+                HtmlEncoder.Default.Encode(AcceptLink!),
+                invitation.ExpiresAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)]);
 
         EmailSent = sendResult == EmailSendResult.Sent;
 

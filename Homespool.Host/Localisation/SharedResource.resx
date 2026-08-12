@@ -160,6 +160,42 @@
   <data name="Alert_RecoveredBody" xml:space="preserve">
     <value>The problems reported earlier have cleared. All health checks are passing again.</value>
   </data>
+  <data name="Email_ConfirmSubject" xml:space="preserve">
+    <value>Confirm your email</value>
+    <comment>Email subject.</comment>
+  </data>
+  <data name="Email_ConfirmBody" xml:space="preserve">
+    <value>Please confirm your account by &lt;a href=&apos;{0}&apos;&gt;clicking here&lt;/a&gt;.</value>
+    <comment>{0} is the confirmation URL, already HTML-encoded. The anchor is inside the string rather than passed in, so a translator can move it and reword the link text - a language that puts the verb last cannot use a fragment fixed at the end.</comment>
+  </data>
+  <data name="Email_ResetPasswordSubject" xml:space="preserve">
+    <value>Reset your password</value>
+    <comment>Email subject.</comment>
+  </data>
+  <data name="Email_ResetPasswordBody" xml:space="preserve">
+    <value>Please reset your password by &lt;a href=&apos;{0}&apos;&gt;clicking here&lt;/a&gt;.</value>
+    <comment>{0} is the reset URL, already HTML-encoded.</comment>
+  </data>
+  <data name="Email_InviteSubject" xml:space="preserve">
+    <value>You are invited to Homespool</value>
+    <comment>Email subject. Written in the inviting administrator&apos;s language, because an invitee has no account yet and so nothing stored to read.</comment>
+  </data>
+  <data name="Email_InviteBody" xml:space="preserve">
+    <value>You have been invited. Accept by &lt;a href=&apos;{0}&apos;&gt;clicking here&lt;/a&gt;. This invitation expires {1}.</value>
+    <comment>{0} is the acceptance URL, already HTML-encoded. {1} is the expiry, formatted in the composing culture.</comment>
+  </data>
+  <data name="Account_VerificationSent" xml:space="preserve">
+    <value>Verification email sent. Please check your email.</value>
+  </data>
+  <data name="Manage_EmailChangeSent" xml:space="preserve">
+    <value>Confirmation link to change email sent. Please check your email.</value>
+  </data>
+  <data name="Manage_EmailChangeSendFailed" xml:space="preserve">
+    <value>Could not send the confirmation link. Your email is unchanged - contact your administrator.</value>
+  </data>
+  <data name="Manage_VerificationSendFailed" xml:space="preserve">
+    <value>Could not send the verification email - contact your administrator.</value>
+  </data>
   <data name="Account_InvalidUserName" xml:space="preserve">
     <value>&apos;{0}&apos; is not a usable username. Use letters, digits, and - . _ only; an email address cannot be a username.</value>
     <comment>Replaces Identity&apos;s own wording, which describes a rule this application does not apply. The three punctuation marks are listed literally and must survive translation.</comment>

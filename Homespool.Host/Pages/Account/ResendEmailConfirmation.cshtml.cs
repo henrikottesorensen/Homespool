@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 
+using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
@@ -16,6 +17,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Localization;
 
 namespace Homespool.Host.Pages.Account;
 
@@ -24,11 +26,16 @@ public class ResendEmailConfirmationModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly IEmailSender _emailSender;
+    private readonly IStringLocalizer<SharedResource> _localiser;
 
-    public ResendEmailConfirmationModel(UserManager<HSUser> userManager, IEmailSender emailSender)
+    public ResendEmailConfirmationModel(
+        UserManager<HSUser> userManager,
+        IEmailSender emailSender,
+        IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
         _emailSender = emailSender;
+        _localiser = localiser;
     }
 
     /// <summary>
@@ -67,7 +74,7 @@ public class ResendEmailConfirmationModel : PageModel
         HSUser user = await _userManager.FindByEmailAsync(Input.Email);
         if (user == null)
         {
-            ModelState.AddModelError(string.Empty, "Verification email sent. Please check your email.");
+            ModelState.AddModelError(string.Empty, _localiser["Account_VerificationSent"]);
             return Page();
         }
 
@@ -80,14 +87,17 @@ public class ResendEmailConfirmationModel : PageModel
             values: new { userId = userId, code = code },
             protocol: Request.Scheme);
 
+        // The account's language, not the request's: this page is anonymous, so the browser asking
+        // may not belong to the person who reads what it sends.
+        (string subject, string body) = UserCultures.InCulture(user.Language, () => (
+            _localiser["Email_ConfirmSubject"].Value,
+            _localiser["Email_ConfirmBody", HtmlEncoder.Default.Encode(callbackUrl)].Value));
+
         // Result deliberately discarded, for the same reason as ForgotPassword: this is only reached when the
         // account exists, so reporting a send failure would confirm its existence.
-        _ = await _emailSender.SendEmailAsync(
-            Input.Email,
-            "Confirm your email",
-            $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+        _ = await _emailSender.SendEmailAsync(Input.Email, subject, body);
 
-        ModelState.AddModelError(string.Empty, "Verification email sent. Please check your email.");
+        ModelState.AddModelError(string.Empty, _localiser["Account_VerificationSent"]);
         return Page();
     }
 }

@@ -153,6 +153,36 @@
   <data name="Alert_RecoveredBody" xml:space="preserve">
     <value>De problemer, der blev rapporteret tidligere, er væk. Alle helbredstjek består igen.</value>
   </data>
+  <data name="Email_ConfirmSubject" xml:space="preserve">
+    <value>Bekræft din e-mailadresse</value>
+  </data>
+  <data name="Email_ConfirmBody" xml:space="preserve">
+    <value>Bekræft din konto ved at &lt;a href=&apos;{0}&apos;&gt;klikke her&lt;/a&gt;.</value>
+  </data>
+  <data name="Email_ResetPasswordSubject" xml:space="preserve">
+    <value>Nulstil din adgangskode</value>
+  </data>
+  <data name="Email_ResetPasswordBody" xml:space="preserve">
+    <value>Nulstil din adgangskode ved at &lt;a href=&apos;{0}&apos;&gt;klikke her&lt;/a&gt;.</value>
+  </data>
+  <data name="Email_InviteSubject" xml:space="preserve">
+    <value>Du er inviteret til Homespool</value>
+  </data>
+  <data name="Email_InviteBody" xml:space="preserve">
+    <value>Du er blevet inviteret. Tag imod invitationen ved at &lt;a href=&apos;{0}&apos;&gt;klikke her&lt;/a&gt;. Invitationen udløber {1}.</value>
+  </data>
+  <data name="Account_VerificationSent" xml:space="preserve">
+    <value>Bekræftelsesmailen er sendt. Se efter i din indbakke.</value>
+  </data>
+  <data name="Manage_EmailChangeSent" xml:space="preserve">
+    <value>Linket til at bekræfte den nye e-mailadresse er sendt. Se efter i din indbakke.</value>
+  </data>
+  <data name="Manage_EmailChangeSendFailed" xml:space="preserve">
+    <value>Linket kunne ikke sendes. Din e-mailadresse er uændret - kontakt din administrator.</value>
+  </data>
+  <data name="Manage_VerificationSendFailed" xml:space="preserve">
+    <value>Bekræftelsesmailen kunne ikke sendes - kontakt din administrator.</value>
+  </data>
   <data name="Account_InvalidUserName" xml:space="preserve">
     <value>&apos;{0}&apos; kan ikke bruges som brugernavn. Brug kun bogstaver, tal og - . _ ; en e-mailadresse kan ikke være et brugernavn.</value>
   </data>

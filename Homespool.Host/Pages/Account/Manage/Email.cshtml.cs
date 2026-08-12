@@ -130,14 +130,18 @@ public class EmailModel : PageModel
                 pageHandler: null,
                 values: new { userId = userId, email = Input.NewEmail, code = code },
                 protocol: Request.Scheme);
+
+            // The request's culture, and correct without a lookup: the signed-in user is changing
+            // their own address, so the account culture provider has already resolved their
+            // preference for this request.
             EmailSendResult sendResult = await _emailSender.SendEmailAsync(
                 Input.NewEmail,
-                "Confirm your email",
-                $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+                _localiser["Email_ConfirmSubject"],
+                _localiser["Email_ConfirmBody", HtmlEncoder.Default.Encode(callbackUrl)]);
 
             StatusMessage = sendResult == EmailSendResult.Failed ?
-                "Could not send the confirmation link. Your email is unchanged - contact your administrator." :
-                "Confirmation link to change email sent. Please check your email.";
+                _localiser["Manage_EmailChangeSendFailed"] :
+                _localiser["Manage_EmailChangeSent"];
             return RedirectToPage();
         }
 
@@ -170,12 +174,12 @@ public class EmailModel : PageModel
             protocol: Request.Scheme);
         EmailSendResult sendResult = await _emailSender.SendEmailAsync(
             email,
-            "Confirm your email",
-            $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+            _localiser["Email_ConfirmSubject"],
+            _localiser["Email_ConfirmBody", HtmlEncoder.Default.Encode(callbackUrl)]);
 
         StatusMessage = sendResult == EmailSendResult.Failed ?
-            "Could not send the verification email - contact your administrator." :
-            "Verification email sent. Please check your email.";
+            _localiser["Manage_VerificationSendFailed"] :
+            _localiser["Account_VerificationSent"];
         return RedirectToPage();
     }
 }

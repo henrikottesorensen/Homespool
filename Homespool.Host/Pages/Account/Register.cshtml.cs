@@ -10,6 +10,7 @@ using System.Text.Encodings.Web;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
@@ -19,6 +20,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.Pages.Account;
@@ -40,6 +42,7 @@ public class RegisterModel : PageModel
     private readonly InvitationService _invitationService;
     private readonly TeamService _teamService;
     private readonly UnitOfWork _unitOfWork;
+    private readonly IStringLocalizer<SharedResource> _localiser;
 
     public RegisterModel(UserManager<HSUser> userManager,
                          IUserStore<HSUser> userStore,
@@ -49,7 +52,8 @@ public class RegisterModel : PageModel
                          AccountConfirmationPolicy accountConfirmationPolicy,
                          InvitationService invitationService,
                          TeamService teamService,
-                         UnitOfWork unitOfWork)
+                         UnitOfWork unitOfWork,
+                         IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
         _userStore = userStore;
@@ -58,6 +62,7 @@ public class RegisterModel : PageModel
         _logger = logger;
         _emailSender = emailSender;
         _accountConfirmationPolicy = accountConfirmationPolicy;
+        _localiser = localiser;
         _invitationService = invitationService;
         _teamService = teamService;
         _unitOfWork = unitOfWork;
@@ -207,8 +212,12 @@ public class RegisterModel : PageModel
                 values: new { userId, code = confirmToken, returnUrl },
                 protocol: Request.Scheme);
 
-            EmailSendResult sendResult = await _emailSender.SendEmailAsync(invitation.Email, "Confirm your email",
-                                                                           $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+            // The request's culture, and correct: whoever accepted the invitation is whoever reads
+            // this. The account exists by now but has chosen no language yet.
+            EmailSendResult sendResult = await _emailSender.SendEmailAsync(
+                invitation.Email,
+                _localiser["Email_ConfirmSubject"],
+                _localiser["Email_ConfirmBody", HtmlEncoder.Default.Encode(callbackUrl)]);
 
             bool emailFailed = sendResult == EmailSendResult.Failed;
 

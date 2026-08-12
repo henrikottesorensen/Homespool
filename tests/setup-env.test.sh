@@ -53,6 +53,14 @@ real_path="$PATH"
 system_path="/usr/bin:/bin:/usr/sbin:/sbin"
 PATH="$system_path"
 
+# English, always. Every prose assertion below matches the strings as written in the script, and the
+# script is translatable now - so on a machine whose locale has a catalogue the suite would compare
+# Danish output against English expectations and go red for no reason. C also switches bash's $"..."
+# off entirely, so this pins the behaviour rather than merely the language.
+export LC_ALL=C
+export LANGUAGE=
+unset TEXTDOMAINDIR 2>/dev/null || true
+
 # Docker alone is added back, wherever it lives - a machine running this stack has it, and it is not
 # part of what is being stripped. Symlinked into a directory of its own rather than by putting its
 # whole parent on PATH, which on an Intel Mac would drag Homebrew back in through /usr/local/bin.
@@ -1173,6 +1181,30 @@ if test_case "no command is missing from the sandbox"; then
         *"command not found"*) fail "a tool is missing from sandbox_path on the interactive path" ;;
         *) passed=$((passed + 1)) ;;
     esac
+fi
+
+if test_case "every string a person reads is translatable"; then
+    # A lint, not a behaviour test. New prose gets added by writing say "..." like all the lines
+    # around it, and an unmarked string is invisible - it works perfectly and is simply never
+    # translated. Nothing else would ever catch that, so it is caught here.
+    unmarked="$(grep -nE '^[[:space:]]+(say|warn|ask|ask_yes_no|ask_secret) "' "$repo_root/setup-env.sh" \
+        | grep -v '\$(' || true)"
+    if [ -n "$unmarked" ]; then
+        fail "user-facing strings not marked for translation: $(printf '%s' "$unmarked" | head -3 | tr '\n' ' ')"
+    else
+        passed=$((passed + 1))
+    fi
+fi
+
+if test_case "an untranslated build still speaks English"; then
+    # The fallback is what makes marking free: no catalogue, no locale, or a missing string, and the
+    # English written in the source is what appears. Asserted because it is the ordinary case for
+    # every user today, and would be the thing to break.
+    sandbox_path linux docker-collision
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/setup-env-e2e.XXXXXX")"
+    cp "$repo_root/.env.example" "$repo_root/setup-env.sh" "$dir/"
+    out="$(TEXTDOMAINDIR=/nonexistent "$BASH" "$dir/setup-env.sh" --no-prompt --no-overwrite --dry-run 2>&1)"
+    assert_says "$out" "This will change" "English with no catalogue at all"
 fi
 
 # ------------------------------------------------------------------------------------------------

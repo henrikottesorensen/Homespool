@@ -172,7 +172,7 @@
     <value>Lokation</value>
   </data>
   <data name="Printers_AwaitingUsb" xml:space="preserve">
-    <value>Afventer USB-forbindelse</value>
+    <value>Afventer USB-klargøring</value>
   </data>
   <data name="Printers_AwaitingAny" xml:space="preserve">
     <value>Afventer forbindelse</value>

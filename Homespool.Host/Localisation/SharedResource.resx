@@ -180,7 +180,8 @@
     <value>Location</value>
   </data>
   <data name="Printers_AwaitingUsb" xml:space="preserve">
-    <value>Awaiting USB connection</value>
+    <value>Awaiting USB provisioning</value>
+    <comment>The printer has a provisioning token nobody has carried to it yet. Deliberately not "USB connection", which reads as a cable between the printer and this server - there is no such cable, and the USB key never touches the machine Homespool runs on.</comment>
   </data>
   <data name="Printers_AwaitingAny" xml:space="preserve">
     <value>Awaiting connection</value>

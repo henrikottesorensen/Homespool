@@ -282,7 +282,7 @@ If you would rather read the file than trust it, *Read the ini instead* on the s
 exactly what it will contain.
 
 The printer enrolls itself the moment it first connects, binding to that token. Until then
-it shows as *Awaiting USB connection*, and you can reissue the token if the stick was never
+it shows as *Awaiting USB provisioning*, and you can reissue the token if the stick was never
 written — the old one stops working immediately.
 
 Requires `PrusaConnect:PrinterHost` to be set; the page tells you if it is not.

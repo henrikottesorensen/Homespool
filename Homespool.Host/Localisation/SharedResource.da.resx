@@ -416,7 +416,7 @@
     <value>personligt adgangstoken</value>
   </data>
   <data name="Printers_PrintersListLink" xml:space="preserve">
-    <value>printerlisten</value>
+    <value>printeroversigten</value>
   </data>
   <data name="Common_Event" xml:space="preserve">
     <value>Hændelse</value>
@@ -699,7 +699,7 @@
     <value>Printere forbinder over almindelig HTTP i denne installation</value>
   </data>
   <data name="Cert_PlainHttpBody" xml:space="preserve">
-    <value>Den indstilling er til at læse protokollen på ledningen eller køre en testopstilling. Hver eneste printertoken sendes i klartekst over netværket, så længe den er slået fra.</value>
+    <value>Denne indstilling er kun ment som en hjælp for udviklere til at læse kommunikationen mellem Homespool og printer. Hver eneste printertoken, fil og kodeord sendes i klartekst over netværket, så længe den er slået fra.</value>
   </data>
   <data name="Cert_Explanation" xml:space="preserve">
     <value>Printere verificerer denne server mod et certifikat, den udsteder til sig selv. Certifikatet udstedes {0} og lades derefter i fred - at genudstede det automatisk ville afbryde hver eneste aktive printerforbindelse, hver gang et netværkskort dukkede op, og i det stille ændre, hvad serveren udgiver sig for at være. Så når maskinens adresser flytter sig, sker rettelsen her frem for automatisk.</value>
@@ -850,7 +850,7 @@
     <value>Printere forbinder over almindelig HTTP i denne installation, så der er intet certifikat at genudstede.</value>
   </data>
   <data name="Printers_Claimed" xml:space="preserve">
-    <value>Printeren er tilknyttet. Den vises som forbundet, når den melder sig næste gang.</value>
+    <value>Printeren er tilknyttet. Den vises som forbundet, når den forbinder næste gang.</value>
   </data>
   <data name="Account_ExternalLoginError" xml:space="preserve">
     <value>Kunne ikke indlæse oplysninger om eksternt login.</value>
@@ -889,7 +889,7 @@
     <value>Kameraet er gemt, og det sendte et billede.</value>
   </data>
   <data name="Cert_NoAddressToCover" xml:space="preserve">
-    <value>Der blev ikke fundet nogen brugbar adresse, og PrusaConnect:PrinterHost er ikke sat, så et nyt certifikat ville dække intet, en printer kunne verificere. Sæt adressen først.</value>
+    <value>Sæt adressen først. Der blev ikke fundet nogen brugbar adresse, og PrusaConnect:PrinterHost er ikke sat, så en printer ville ikke kunne verificere et nyt certifikat.</value>
   </data>
   <data name="Bundle_UnzipToRoot" xml:space="preserve">
     <value>Pak den ud i {0} af en USB-nøgle - ikke i en mappe, ellers finder printeren ikke filerne - og indlæs den derefter fra printerens egen menu: {1}.</value>
@@ -964,7 +964,7 @@
     <value>Der findes endnu ingen administratorkonto. Opret en nedenfor med den engangskode, der blev skrevet til serverkonsollen ved opstart.</value>
   </data>
   <data name="Printers_FreeSomeSpace" xml:space="preserve">
-    <value>Frigør plads på printeren, så fortsætter den af sig selv.</value>
+    <value>Frigør plads på printeren, så vil den fortsætte af sig selv.</value>
   </data>
   <data name="TwoFactor_DownloadApp" xml:space="preserve">
     <value>Hent en tofaktorapp, for eksempel Microsoft Authenticator til {0} og {1} eller Google Authenticator til {2} og {3}.</value>
@@ -973,7 +973,7 @@
     <value>Når du har scannet QR-koden eller indtastet nøglen ovenfor, giver din tofaktorapp dig en unik kode. Indtast koden i bekræftelsesfeltet nedenfor.</value>
   </data>
   <data name="Account_ReadyNoMail" xml:space="preserve">
-    <value>Din konto er klar til brug. Der kræves ingen bekræftelse, fordi denne server ikke har udgående mail konfigureret.</value>
+    <value>Din konto er klar til brug. Der kræves ingen bekræftelse, fordi denne server ikke har afsending af mail konfigureret.</value>
   </data>
   <data name="Account_PasswordReset" xml:space="preserve">
     <value>Din adgangskode er nulstillet. {0}.</value>
@@ -988,7 +988,7 @@
     <value>Serverens offentlige adresse er ikke konfigureret ({0}), så der kan endnu ikke laves et brugbart uddrag. Bed din administrator om at sætte den.</value>
   </data>
   <data name="Printers_ClaimSteps" xml:space="preserve">
-    <value>Gå på printeren til {0}, og indtast derefter den kode, den viser.</value>
+    <value>På printeren gå til {0}, og indtast derefter den kode, den viser.</value>
   </data>
   <data name="Cameras_Capturing" xml:space="preserve">
     <value>Henter billede…</value>

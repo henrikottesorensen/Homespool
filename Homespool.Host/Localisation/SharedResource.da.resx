@@ -208,7 +208,7 @@
     <value>Du har ikke rettigheder til at administrere denne printer.</value>
   </data>
   <data name="Printers_NoUsbToken" xml:space="preserve">
-    <value>Denne printer blev aldrig sat op med en USB-nøgle, så der er ingen token at genudstede.</value>
+    <value>Denne printer blev aldrig sat op med en USB-nøgle, så der er intet token at genudstede.</value>
   </data>
   <data name="Files_Title" xml:space="preserve">
     <value>Filer</value>
@@ -413,7 +413,7 @@
     <value>Send fra en slicer</value>
   </data>
   <data name="Printers_ApiTokenLink" xml:space="preserve">
-    <value>personlig adgangstoken</value>
+    <value>personligt adgangstoken</value>
   </data>
   <data name="Printers_PrintersListLink" xml:space="preserve">
     <value>printerlisten</value>
@@ -452,7 +452,7 @@
     <value>Kopiér</value>
   </data>
   <data name="Printers_SlicerHelp" xml:space="preserve">
-    <value>PrusaSlicer kan sende direkte til denne printer. Under {0} skal du sætte {1} til {2}, indsætte dette som værtsnavn og bruge en {3} som API-nøgle. {4} lægger filen i køen ovenfor i stedet for at starte den.</value>
+    <value>PrusaSlicer kan sende direkte til denne printer. Under {0} skal du sætte {1} til {2}, indsætte dette som værtsnavn og bruge et {3} som API-nøgle. {4} lægger filen i køen ovenfor i stedet for at starte den.</value>
     <comment>The braces are PrusaSlicer's own menu labels and a link, kept English: they have to match what a person sees in the slicer, which this application does not author.</comment>
   </data>
   <data name="Printers_PreheatWarning" xml:space="preserve">
@@ -561,10 +561,10 @@
     <value>Oprettet</value>
   </data>
   <data name="Tokens_CopyNow" xml:space="preserve">
-    <value>Kopiér den nu</value>
+    <value>Kopiér det nu</value>
   </data>
   <data name="Tokens_ShownOnce" xml:space="preserve">
-    <value>Den gemmes kun som et hash, så dette er eneste gang, den kan vises. Mister du den, så tilbagekald den og opret en ny.</value>
+    <value>Det gemmes kun som et hash, så dette er eneste gang, det kan vises. Mister du det, så tilbagekald det og opret et nyt.</value>
   </data>
   <data name="Invites_Create" xml:space="preserve">
     <value>Opret invitation</value>
@@ -789,7 +789,7 @@
     <value>Download den nu.</value>
   </data>
   <data name="Bundle_TokenOnce" xml:space="preserve">
-    <value>Den token, der ligger i den, vises kun én gang og kan ikke hentes igen - mister du filen, før printeren forbinder, så brug &quot;Generer&quot; til at udstede en ny.</value>
+    <value>Det token, der ligger i den, vises kun én gang og kan ikke hentes igen - mister du filen, før printeren forbinder, så brug &quot;Generer&quot; til at udstede et nyt.</value>
   </data>
   <data name="Bundle_AddressLabel" xml:space="preserve">
     <value>Adresse denne printer skal bruge</value>
@@ -931,7 +931,7 @@
     <value>Har du ikke adgang til din godkendelsesenhed? Du kan {0}.</value>
   </data>
   <data name="Tokens_Explanation" xml:space="preserve">
-    <value>En token lader et script kalde API&apos;et som dig, med præcis dine rettigheder, uden din adgangskode. Send den som {0}. En tilbagekaldelse træder i kraft med det samme.</value>
+    <value>Et token lader et script kalde API&apos;et som dig, med præcis dine rettigheder, uden din adgangskode. Send det som {0}. En tilbagekaldelse træder i kraft med det samme.</value>
   </data>
   <data name="TwoFactor_DisableKeepsKeys" xml:space="preserve">
     <value>At slå tofaktorgodkendelse fra ændrer ikke de nøgler, der bruges i godkendelsesapps. Vil du skifte den nøgle, en godkendelsesapp bruger, bør du {0}</value>
@@ -952,16 +952,16 @@
     <value>Din konto blev oprettet, men bekræftelsesmailen kunne ikke sendes. Kontakt din administrator - kontoen kan ikke bruges, før den er bekræftet.</value>
   </data>
   <data name="Account_TokensRevoked" xml:space="preserve">
-    <value>Alle API-tokens på kontoen er tilbagekaldt. Scripts, der bruger en, skal have en ny token, som du kan oprette under {0}.</value>
+    <value>Alle API-tokens på kontoen er tilbagekaldt. Scripts, der bruger et, skal have et nyt token, som du kan oprette under {0}.</value>
   </data>
   <data name="Files_DropHere" xml:space="preserve">
     <value>Slip en fil her, eller vælg en. .gcode, .bgcode, .gco eller .bgc, op til {0}.</value>
   </data>
   <data name="Printers_AddIntro" xml:space="preserve">
-    <value>Klargør en printer og en token på forhånd, til en USB-nøgle - printeren behøver ikke kontakte serveren først. Printeren tilmelder sig selv, i det øjeblik den forbinder med sin token.</value>
+    <value>Klargør en printer og et token på forhånd, til en USB-nøgle - printeren behøver ikke kontakte serveren først. Printeren tilmelder sig selv, i det øjeblik den forbinder med sit token.</value>
   </data>
   <data name="Setup_NoAdminYet" xml:space="preserve">
-    <value>Der findes endnu ingen administratorkonto. Opret en nedenfor med den engangs-opsætningstoken, der blev skrevet til serverkonsollen ved opstart.</value>
+    <value>Der findes endnu ingen administratorkonto. Opret en nedenfor med det engangs-opsætningstoken, der blev skrevet til serverkonsollen ved opstart.</value>
   </data>
   <data name="Printers_FreeSomeSpace" xml:space="preserve">
     <value>Frigør plads på printeren, så fortsætter den af sig selv.</value>

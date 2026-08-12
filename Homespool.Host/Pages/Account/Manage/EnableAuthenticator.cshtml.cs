@@ -13,6 +13,7 @@ using System.Text.Encodings.Web;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
@@ -20,6 +21,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.Pages.Account.Manage;
@@ -32,16 +34,19 @@ public class EnableAuthenticatorModel : PageModel
     private readonly UnitOfWork _unitOfWork;
     private readonly ILogger<EnableAuthenticatorModel> _logger;
     private readonly UrlEncoder _urlEncoder;
+    private readonly IStringLocalizer<SharedResource> _localiser;
 
     public EnableAuthenticatorModel(UserManager<HSUser> userManager,
                                     UnitOfWork unitOfWork,
                                     ILogger<EnableAuthenticatorModel> logger,
-                                    UrlEncoder urlEncoder)
+                                    UrlEncoder urlEncoder,
+                                    IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
         _unitOfWork = unitOfWork;
         _logger = logger;
         _urlEncoder = urlEncoder;
+        _localiser = localiser;
     }
 
     /// <summary>
@@ -88,7 +93,7 @@ public class EnableAuthenticatorModel : PageModel
         ///     directly from your code. This API may change or be removed in future releases.
         /// </summary>
         [Required]
-        [StringLength(7, ErrorMessage = "The {0} must be at least {2} and at max {1} characters long.", MinimumLength = 6)]
+        [StringLength(7, ErrorMessage = "Validation_Length", MinimumLength = 6)]
         [DataType(DataType.Text)]
         [Display(Name = "Verification Code")]
         public string Code { get; set; }
@@ -158,7 +163,7 @@ public class EnableAuthenticatorModel : PageModel
 
         _logger.LogInformation("User with ID '{UserId}' has enabled 2FA with an authenticator app.", userId);
 
-        StatusMessage = "Your authenticator app has been verified.";
+        StatusMessage = _localiser["TwoFactor_AppVerified"];
 
         // The redirect happens only after the commit, so nobody is ever sent to a page showing
         // recovery codes that were rolled back.

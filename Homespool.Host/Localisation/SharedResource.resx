@@ -832,4 +832,68 @@
   <data name="Printers_IgnoreQr" xml:space="preserve">
     <value>Ignore the QR code and the {0} link on the printer&apos;s screen.</value>
   </data>
+  <data name="Validation_Length" xml:space="preserve">
+    <value>The {0} must be at least {2} and at max {1} characters long.</value>
+    <comment>Used as the resource key by AddDataAnnotationsLocalization: the attribute argument names this key rather than carrying the sentence, so the wording can change without touching every model.</comment>
+  </data>
+  <data name="Validation_PasswordMismatch" xml:space="preserve">
+    <value>The password and confirmation password do not match.</value>
+  </data>
+  <data name="Validation_NewPasswordMismatch" xml:space="preserve">
+    <value>The new password and confirmation password do not match.</value>
+  </data>
+  <data name="Validation_ClaimCodeRequired" xml:space="preserve">
+    <value>Enter the code shown on the printer&apos;s screen.</value>
+  </data>
+  <data name="Validation_ClaimCodeShape" xml:space="preserve">
+    <value>That doesn&apos;t look like a registration code.</value>
+  </data>
+  <data name="Validation_ExpiryRange" xml:space="preserve">
+    <value>Expiry must be between 1 and 8760 hours.</value>
+  </data>
+  <data name="Invites_Revoked" xml:space="preserve">
+    <value>Invitation revoked.</value>
+  </data>
+  <data name="Cert_NoTlsNoReissue" xml:space="preserve">
+    <value>Printers connect over plain HTTP in this deployment, so there is no certificate to reissue.</value>
+  </data>
+  <data name="Printers_Claimed" xml:space="preserve">
+    <value>Printer claimed. It will show as connected once it completes its next check-in.</value>
+  </data>
+  <data name="Account_ExternalLoginError" xml:space="preserve">
+    <value>Error loading external login information.</value>
+  </data>
+  <data name="Account_ExternalLoginConfirmError" xml:space="preserve">
+    <value>Error loading external login information during confirmation.</value>
+  </data>
+  <data name="Account_EmailChangeError" xml:space="preserve">
+    <value>Error changing email.</value>
+  </data>
+  <data name="Account_EmailChangeThanks" xml:space="preserve">
+    <value>Thank you for confirming your email change.</value>
+  </data>
+  <data name="Manage_ProfileUpdated" xml:space="preserve">
+    <value>Your profile has been updated</value>
+  </data>
+  <data name="Manage_EmailUnchanged" xml:space="preserve">
+    <value>Your email is unchanged.</value>
+  </data>
+  <data name="TwoFactor_CodesGenerated" xml:space="preserve">
+    <value>You have generated new recovery codes.</value>
+  </data>
+  <data name="TwoFactor_AppVerified" xml:space="preserve">
+    <value>Your authenticator app has been verified.</value>
+  </data>
+  <data name="TwoFactor_Disabled" xml:space="preserve">
+    <value>2fa has been disabled. You can reenable 2fa when you setup an authenticator app</value>
+  </data>
+  <data name="Cameras_Removed" xml:space="preserve">
+    <value>Camera removed.</value>
+  </data>
+  <data name="Cameras_NotYours" xml:space="preserve">
+    <value>That camera does not exist, or is not yours to remove.</value>
+  </data>
+  <data name="Cameras_SavedWithPicture" xml:space="preserve">
+    <value>Camera saved, and it sent a picture.</value>
+  </data>
 </root>

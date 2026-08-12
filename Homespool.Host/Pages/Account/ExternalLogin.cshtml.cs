@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 
 using Duende.IdentityModel;
 
+using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
@@ -22,6 +23,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
 using SignInResult = Microsoft.AspNetCore.Identity.SignInResult;
@@ -38,13 +40,15 @@ public class ExternalLoginModel : PageModel
     private readonly IEmailSender _emailSender;
     private readonly ILogger<ExternalLoginModel> _logger;
     private readonly AccountConfirmationPolicy _accountConfirmationPolicy;
+    private readonly IStringLocalizer<SharedResource> _localiser;
 
     public ExternalLoginModel(SignInManager<HSUser> signInManager,
                               UserManager<HSUser> userManager,
                               IUserStore<HSUser> userStore,
                               ILogger<ExternalLoginModel> logger,
                               IEmailSender emailSender,
-                              AccountConfirmationPolicy accountConfirmationPolicy)
+                              AccountConfirmationPolicy accountConfirmationPolicy,
+                              IStringLocalizer<SharedResource> localiser)
     {
         _signInManager = signInManager;
         _userManager = userManager;
@@ -53,6 +57,7 @@ public class ExternalLoginModel : PageModel
         _logger = logger;
         _emailSender = emailSender;
         _accountConfirmationPolicy = accountConfirmationPolicy;
+        _localiser = localiser;
     }
 
     /// <summary>
@@ -130,7 +135,7 @@ public class ExternalLoginModel : PageModel
         ExternalLoginInfo info = await _signInManager.GetExternalLoginInfoAsync();
         if (info == null)
         {
-            ErrorMessage = "Error loading external login information.";
+            ErrorMessage = _localiser["Account_ExternalLoginError"];
             return RedirectToPage("./Login", new { ReturnUrl = returnUrl });
         }
 
@@ -174,7 +179,7 @@ public class ExternalLoginModel : PageModel
         ExternalLoginInfo info = await _signInManager.GetExternalLoginInfoAsync();
         if (info == null)
         {
-            ErrorMessage = "Error loading external login information during confirmation.";
+            ErrorMessage = _localiser["Account_ExternalLoginConfirmError"];
             return RedirectToPage("./Login", new { ReturnUrl = returnUrl });
         }
 

@@ -824,4 +824,68 @@
   <data name="Printers_IgnoreQr" xml:space="preserve">
     <value>Ignorér QR-koden og {0}-linket på printerens skærm.</value>
   </data>
+  <data name="Validation_Length" xml:space="preserve">
+    <value>{0} skal være mellem {2} og {1} tegn langt.</value>
+    <comment>Used as the resource key by AddDataAnnotationsLocalization: the attribute argument names this key rather than carrying the sentence, so the wording can change without touching every model.</comment>
+  </data>
+  <data name="Validation_PasswordMismatch" xml:space="preserve">
+    <value>Adgangskoden og bekræftelsen er ikke ens.</value>
+  </data>
+  <data name="Validation_NewPasswordMismatch" xml:space="preserve">
+    <value>Den nye adgangskode og bekræftelsen er ikke ens.</value>
+  </data>
+  <data name="Validation_ClaimCodeRequired" xml:space="preserve">
+    <value>Indtast koden, der vises på printerens skærm.</value>
+  </data>
+  <data name="Validation_ClaimCodeShape" xml:space="preserve">
+    <value>Det ligner ikke en registreringskode.</value>
+  </data>
+  <data name="Validation_ExpiryRange" xml:space="preserve">
+    <value>Udløb skal være mellem 1 og 8760 timer.</value>
+  </data>
+  <data name="Invites_Revoked" xml:space="preserve">
+    <value>Invitationen er tilbagekaldt.</value>
+  </data>
+  <data name="Cert_NoTlsNoReissue" xml:space="preserve">
+    <value>Printere forbinder over almindelig HTTP i denne installation, så der er intet certifikat at genudstede.</value>
+  </data>
+  <data name="Printers_Claimed" xml:space="preserve">
+    <value>Printeren er tilknyttet. Den vises som forbundet, når den melder sig næste gang.</value>
+  </data>
+  <data name="Account_ExternalLoginError" xml:space="preserve">
+    <value>Kunne ikke indlæse oplysninger om eksternt login.</value>
+  </data>
+  <data name="Account_ExternalLoginConfirmError" xml:space="preserve">
+    <value>Kunne ikke indlæse oplysninger om eksternt login under bekræftelsen.</value>
+  </data>
+  <data name="Account_EmailChangeError" xml:space="preserve">
+    <value>E-mailen kunne ikke ændres.</value>
+  </data>
+  <data name="Account_EmailChangeThanks" xml:space="preserve">
+    <value>Tak fordi du bekræftede ændringen af din e-mail.</value>
+  </data>
+  <data name="Manage_ProfileUpdated" xml:space="preserve">
+    <value>Din profil er opdateret</value>
+  </data>
+  <data name="Manage_EmailUnchanged" xml:space="preserve">
+    <value>Din e-mail er uændret.</value>
+  </data>
+  <data name="TwoFactor_CodesGenerated" xml:space="preserve">
+    <value>Du har genereret nye gendannelseskoder.</value>
+  </data>
+  <data name="TwoFactor_AppVerified" xml:space="preserve">
+    <value>Din godkendelsesapp er bekræftet.</value>
+  </data>
+  <data name="TwoFactor_Disabled" xml:space="preserve">
+    <value>Tofaktorgodkendelse er slået fra. Du kan slå den til igen, når du opsætter en godkendelsesapp</value>
+  </data>
+  <data name="Cameras_Removed" xml:space="preserve">
+    <value>Kameraet er fjernet.</value>
+  </data>
+  <data name="Cameras_NotYours" xml:space="preserve">
+    <value>Det kamera findes ikke, eller det er ikke dit at fjerne.</value>
+  </data>
+  <data name="Cameras_SavedWithPicture" xml:space="preserve">
+    <value>Kameraet er gemt, og det sendte et billede.</value>
+  </data>
 </root>

@@ -8,9 +8,11 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 
 using Homespool.Host.Authorisation;
 using Homespool.Host.Cameras;
+using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
@@ -43,6 +45,7 @@ public class IndexModel : PageModel
     private readonly PrinterQueryService _printers;
     private readonly CameraDisplayNames _names;
     private readonly UserManager<HSUser> _userManager;
+    private readonly IStringLocalizer<SharedResource> _localiser;
 
     public IndexModel(CameraService cameras,
                       CameraAccessService access,
@@ -50,7 +53,8 @@ public class IndexModel : PageModel
                       CameraFrameCache frames,
                       PrinterQueryService printers,
                       CameraDisplayNames names,
-                      UserManager<HSUser> userManager)
+                      UserManager<HSUser> userManager,
+                      IStringLocalizer<SharedResource> localiser)
     {
         _cameras = cameras;
         _access = access;
@@ -59,6 +63,7 @@ public class IndexModel : PageModel
         _printers = printers;
         _names = names;
         _userManager = userManager;
+        _localiser = localiser;
     }
 
     /// <summary>The cameras this account may see.</summary>
@@ -202,11 +207,11 @@ public class IndexModel : PageModel
 
         if (removed)
         {
-            Message = "Camera removed.";
+            Message = _localiser["Cameras_Removed"];
         }
         else
         {
-            Error = "That camera does not exist, or is not yours to remove.";
+            Error = _localiser["Cameras_NotYours"];
         }
 
         return RedirectToPage();
@@ -255,7 +260,7 @@ public class IndexModel : PageModel
             return;
         }
 
-        Message = "Camera saved, and it sent a picture.";
+        Message = _localiser["Cameras_SavedWithPicture"];
     }
 
     private long? UserId()

@@ -6,7 +6,9 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 
+using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
@@ -21,11 +23,14 @@ public class IndexModel : PageModel
 {
     private readonly InvitationService _invitationService;
     private readonly TeamService _teamService;
+    private readonly IStringLocalizer<SharedResource> _localiser;
 
-    public IndexModel(InvitationService invitationService, TeamService teamService)
+    public IndexModel(InvitationService invitationService, TeamService teamService,
+                      IStringLocalizer<SharedResource> localiser)
     {
         _invitationService = invitationService;
         _teamService = teamService;
+        _localiser = localiser;
     }
 
     public IReadOnlyList<Invitation> Invitations { get; private set; } = [];
@@ -62,7 +67,7 @@ public class IndexModel : PageModel
     public async Task<IActionResult> OnPostRevokeAsync(int id, CancellationToken cancellationToken)
     {
         await _invitationService.RevokeAsync(id, cancellationToken);
-        StatusMessage = "Invitation revoked.";
+        StatusMessage = _localiser["Invites_Revoked"];
 
         return RedirectToPage();
     }

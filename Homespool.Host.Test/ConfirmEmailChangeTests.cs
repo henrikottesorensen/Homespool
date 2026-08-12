@@ -88,7 +88,7 @@ public sealed class ConfirmEmailChangeTests : IDisposable
                                                     SignInManager<HSUser> signIn,
                                                     DefaultHttpContext httpContext)
     {
-        return new ConfirmEmailChangeModel(users, signIn, Options.Create(new SmtpOptions()))
+        return new ConfirmEmailChangeModel(users, signIn, Options.Create(new SmtpOptions()), TestLocaliser.Shared())
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };

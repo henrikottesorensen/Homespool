@@ -42,7 +42,7 @@
                 <span asp-validation-for="Input.TeamId" class="text-danger"></span>
             </div>
             <button type="submit" class="btn btn-primary" disabled="@(!Model.PrinterAddressConfigured)">
-                Provision printer
+                @Localiser["Printers_ProvisionButton"]
             </button>
             <a class="btn btn-link" asp-page="Index">@Localiser["Printers_BackToList"]</a>
         </form>

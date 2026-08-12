@@ -2,7 +2,9 @@ using System.Collections.Generic;
 using System.Linq;
 
 using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.Extensions.Localization;
 
+using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Services;
@@ -22,11 +24,16 @@ public static class TeamOptionSelectListBuilder
     /// both provisioning and claiming. The default team (<see cref="TeamMember.IsDefault"/>) is
     /// pre-selected.
     /// </summary>
-    public static IReadOnlyList<SelectListItem> BuildManageableOptions(IReadOnlyList<TeamMember> memberships)
+    public static IReadOnlyList<SelectListItem> BuildManageableOptions(
+        IReadOnlyList<TeamMember> memberships,
+        IStringLocalizer<SharedResource> localiser)
     {
         return memberships
                .Where(m => m.CanManage)
-               .Select(m => new SelectListItem(m.Team?.Name ?? $"Team #{m.TeamId}", m.TeamId.ToString(), m.IsDefault))
+               .Select(m => new SelectListItem(
+                            m.Team?.Name ?? localiser["Common_TeamNumbered", m.TeamId].Value,
+                            m.TeamId.ToString(),
+                            m.IsDefault))
                .ToList();
     }
 }

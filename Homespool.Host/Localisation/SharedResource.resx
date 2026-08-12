@@ -1478,4 +1478,36 @@
   <data name="Printers_StoppedFromHere" xml:space="preserve">
     <value>from here</value>
   </data>
+  <data name="Common_TeamNumbered" xml:space="preserve">
+    <value>Team #{0}</value>
+    <comment>The fallback name for a team nobody has named. The word is kept in Danish - IT Danish borrows it, and "hold" reads as a sports team.</comment>
+  </data>
+  <data name="Invites_NewAccount" xml:space="preserve">
+    <value>New account</value>
+  </data>
+  <data name="Invites_NewAccountOwnTeam" xml:space="preserve">
+    <value>New account (its own team)</value>
+  </data>
+  <data name="Cameras_JustNow" xml:space="preserve">
+    <value>just now</value>
+  </data>
+  <data name="Cameras_SecondsAgo" xml:space="preserve">
+    <value>{0}s ago</value>
+  </data>
+  <data name="Cameras_Numbered" xml:space="preserve">
+    <value>Camera {0}</value>
+    <comment>The last-resort name for a camera with no name and no device description.</comment>
+  </data>
+  <data name="Health_ServiceProblem" xml:space="preserve">
+    <value>Service problem:</value>
+  </data>
+  <data name="Health_InsecureConnection" xml:space="preserve">
+    <value>Insecure connection:</value>
+  </data>
+  <data name="Printers_ProvisionButton" xml:space="preserve">
+    <value>Provision printer</value>
+  </data>
+  <data name="Printers_TeamLabel" xml:space="preserve">
+    <value>Team:</value>
+  </data>
 </root>

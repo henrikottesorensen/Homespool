@@ -232,7 +232,9 @@ public class IndexModel : PageModel
 
         TimeSpan age = frame.AgeAt(DateTimeOffset.UtcNow);
 
-        return age.TotalSeconds < 2 ? "just now" : string.Create(CultureInfo.InvariantCulture, $"{(int)age.TotalSeconds}s ago");
+        return age.TotalSeconds < 2 ?
+            _localiser["Cameras_JustNow"] :
+            _localiser["Cameras_SecondsAgo", (int)age.TotalSeconds];
     }
 
     private async Task LoadAsync(long userId, CancellationToken cancellationToken)

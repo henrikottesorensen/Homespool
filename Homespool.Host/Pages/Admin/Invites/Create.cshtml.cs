@@ -143,12 +143,13 @@ public class CreateModel : PageModel
     {
         List<SelectListItem> options =
         [
-            new SelectListItem("New account (its own team)", string.Empty),
+            new SelectListItem(_localiser["Invites_NewAccountOwnTeam"], string.Empty),
         ];
 
         foreach (Team team in await _teamService.GetAllTeamsAsync(cancellationToken))
         {
-            options.Add(new SelectListItem(team.Name ?? $"Team #{team.Id}", team.Id.ToString()));
+            options.Add(new SelectListItem(
+                            team.Name ?? _localiser["Common_TeamNumbered", team.Id].Value, team.Id.ToString()));
         }
 
         TeamOptions = options;

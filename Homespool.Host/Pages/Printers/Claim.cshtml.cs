@@ -235,6 +235,6 @@ public class ClaimModel : PageModel
 
         IReadOnlyList<TeamMember> memberships = await _teamService.GetTeamsForUserAsync(user.Id, cancellationToken);
 
-        TeamOptions = TeamOptionSelectListBuilder.BuildManageableOptions(memberships);
+        TeamOptions = TeamOptionSelectListBuilder.BuildManageableOptions(memberships, _localiser);
     }
 }

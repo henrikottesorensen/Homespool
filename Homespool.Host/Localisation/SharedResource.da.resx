@@ -1452,4 +1452,34 @@
   <data name="Printers_StoppedFromHere" xml:space="preserve">
     <value>herfra</value>
   </data>
+  <data name="Common_TeamNumbered" xml:space="preserve">
+    <value>Team #{0}</value>
+  </data>
+  <data name="Invites_NewAccount" xml:space="preserve">
+    <value>Ny konto</value>
+  </data>
+  <data name="Invites_NewAccountOwnTeam" xml:space="preserve">
+    <value>Ny konto (sit eget team)</value>
+  </data>
+  <data name="Cameras_JustNow" xml:space="preserve">
+    <value>lige nu</value>
+  </data>
+  <data name="Cameras_SecondsAgo" xml:space="preserve">
+    <value>for {0}s siden</value>
+  </data>
+  <data name="Cameras_Numbered" xml:space="preserve">
+    <value>Kamera {0}</value>
+  </data>
+  <data name="Health_ServiceProblem" xml:space="preserve">
+    <value>Driftsproblem:</value>
+  </data>
+  <data name="Health_InsecureConnection" xml:space="preserve">
+    <value>Usikker forbindelse:</value>
+  </data>
+  <data name="Printers_ProvisionButton" xml:space="preserve">
+    <value>Klargør printer</value>
+  </data>
+  <data name="Printers_TeamLabel" xml:space="preserve">
+    <value>Team:</value>
+  </data>
 </root>

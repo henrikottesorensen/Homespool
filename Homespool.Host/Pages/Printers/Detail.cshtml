@@ -8,7 +8,8 @@
 <h1>@ViewData["Title"]</h1>
 
 <p>
-    Team: @(Model.Statistics.Printer.Team?.Name ?? $"Team #{Model.Statistics.Printer.TeamId}")
+    @Localiser["Printers_TeamLabel"] @(Model.Statistics.Printer.Team?.Name
+                                       ?? Localiser["Common_TeamNumbered", Model.Statistics.Printer.TeamId].Value)
     &nbsp;
     @if (Model.Connected)
     {

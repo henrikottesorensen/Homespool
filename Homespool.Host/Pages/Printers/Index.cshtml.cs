@@ -325,7 +325,9 @@ public class IndexModel : PageModel
         IReadOnlyList<TeamMember> memberships = await _teamService.GetTeamsForUserAsync(user.Id, cancellationToken);
         Dictionary<int, string> teamNames = memberships
                                             .Where(m => m.Team is not null)
-                                            .ToDictionary(m => m.TeamId, m => m.Team!.Name ?? $"Team #{m.TeamId}");
+                                            .ToDictionary(
+                                                m => m.TeamId,
+                                                m => m.Team!.Name ?? _localiser["Common_TeamNumbered", m.TeamId].Value);
 
         PrinterEnrolmentStatus status = await _prusaConnectService.GetEnrolmentStatusAsync(
             printers.Select(row => row.Printer.Id).ToList(), cancellationToken);
@@ -333,7 +335,9 @@ public class IndexModel : PageModel
         Printers = printers
                    .Select(row => new PrinterRow(
                                row.Printer,
-                               teamNames.TryGetValue(row.Printer.TeamId, out string? name) ? name : $"Team #{row.Printer.TeamId}",
+                               teamNames.TryGetValue(row.Printer.TeamId, out string? name) ?
+                                   name :
+                                   _localiser["Common_TeamNumbered", row.Printer.TeamId].Value,
                                status.Enrolled.Contains(row.Printer.Id),
                                status.AwaitingUsbProvisioning.Contains(row.Printer.Id),
                                _connectionRegistry.IsConnected(row.Printer.Id),

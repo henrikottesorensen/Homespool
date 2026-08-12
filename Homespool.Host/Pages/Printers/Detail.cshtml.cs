@@ -186,7 +186,7 @@ public class DetailModel : PageModel
     /// </remarks>
     public string CameraName(Camera camera, int index)
     {
-        return _cameraNames.For(camera, $"Camera {index + 1}");
+        return _cameraNames.For(camera, _localiser["Cameras_Numbered", index + 1]);
     }
 
     public async Task<IActionResult> OnGetAsync(Guid uuid, CancellationToken cancellationToken)

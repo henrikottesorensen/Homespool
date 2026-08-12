@@ -359,7 +359,7 @@
     <value>Flow</value>
   </data>
   <data name="Printers_Progress" xml:space="preserve">
-    <value>Fremgang</value>
+    <value>Fremskridt</value>
   </data>
   <data name="Printers_TimePrinting" xml:space="preserve">
     <value>Printtid</value>

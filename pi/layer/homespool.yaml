@@ -258,37 +258,6 @@ mmdebstrap:
 
     - |-
       #
-      # Take back the VideoCore's memory on the boards that are short of it. Measured on a Pi 3:
-      # 926 MiB total at the default, 955 MiB at gpu_mem=16, so 29 MiB reclaimed.
-      #
-      # Only the small boards, and the reason is that the default is NOT uniform - a Pi 5 already
-      # reports gpu=4M, so setting 16 there would *raise* its allocation and cost 12 MiB. The
-      # assumption that every board defaults to 64 M was wrong twice before this was measured; the
-      # Pi 3's own default turned out not to be 64 M either, since the unaccounted memory includes
-      # CMA and firmware reservations rather than the split alone. Pi 4 is left out deliberately: its
-      # default is unknown here and an unknown default is exactly how the Pi 5 mistake happened.
-      #
-      # 16 on both, rather than the 32 originally proposed for the Pi 3, because 16 with a display
-      # attached is the configuration actually booted and read back (gpu=16M). 32 would be a value
-      # nothing has run.
-      #
-      # The console is not at risk, which was the first objection to this and was wrong: with
-      # dtoverlay=vc4-kms-v3d the framebuffer comes from CMA, not from this pool. The proof is that a
-      # Pi 5 drives a 4K console on 4 MB - a 4K framebuffer alone is ~33 MB, so it plainly is not
-      # allocated here.
-      #
-      # >> is safe on config.txt where it would not be on cmdline.txt: this file is line-oriented and
-      # section-filtered, where cmdline.txt is a single line whose second line is ignored in silence.
-      # The trailing [all] resets scope so anything appended after this is unfiltered. Guarded so a
-      # re-run cannot duplicate the block.
-      set -eu
-      CONFIG=$1/boot/firmware/config.txt
-      if ! grep -q '^gpu_mem=16' "$CONFIG" ; then
-         printf '%s\n' '' '[pi02]' 'gpu_mem=16' '' '[pi3]' 'gpu_mem=16' '' '[all]' >> "$CONFIG"
-      fi
-
-    - |-
-      #
       # Turn the root-partition resize on. raspberrypi-sys-mods' initramfs script is gated on the
       # word "resize" being on the kernel command line, and does nothing without it.
       #

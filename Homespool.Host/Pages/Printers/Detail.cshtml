@@ -291,6 +291,108 @@ else
     </div>
 }
 
+@* Setting ready is a person asserting the sheet is clear, which is why the walk to the machine was
+   never pure friction - it forced somebody to look. Off unless this printer has been judged one whose
+   sheet can be read from here, so the control is absent rather than refusing. *@
+@if (Model.CanUse && Model.Statistics.Printer.RemoteReadyAllowed)
+{
+    string readyPrinterName = Model.Statistics.Printer.Name
+                              ?? Model.Statistics.Printer.Model
+                              ?? Model.Statistics.Printer.Uuid.ToString();
+
+    <div class="mb-3">
+        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#set-ready">
+            @Localiser["Printers_SetReady"]
+        </button>
+    </div>
+
+    <div class="modal fade" id="set-ready" tabindex="-1" aria-labelledby="set-ready-heading" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="set-ready-heading">
+                        @string.Format(System.Globalization.CultureInfo.CurrentCulture,
+                                       Localiser["Printers_ReadyHeading"].Value,
+                                       readyPrinterName)
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"
+                            aria-label="@Localiser["Common_Cancel"]"></button>
+                </div>
+
+                <div class="modal-body">
+                    @* The same polled frame the top of the page uses, not a second snapshot path -
+                       camera.js binds every [data-camera-frame] it finds. Seeing the sheet is what
+                       makes answering the question honest rather than a guess. *@
+                    @if (Model.Cameras.Count > 0)
+                    {
+                        <div class="camera-view ratio ratio-16x9 border rounded bg-body-tertiary overflow-hidden mb-3"
+                             data-camera-frame="@Url.Action("Frame", "Camera", new { uuid = Model.Cameras[0].Uuid })">
+                            <img class="camera-image w-100 h-100 object-fit-contain d-none" alt="" />
+                            <div class="camera-status d-flex align-items-center justify-content-center text-body-secondary small">
+                                @Localiser["Cameras_Capturing"]
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        @* Said out loud rather than left as an absent picture: without a feed this is
+                           an assertion made blind, and the walk it replaces was annoying precisely
+                           because it forced a look. *@
+                        <p class="text-body-secondary">
+                            @string.Format(System.Globalization.CultureInfo.CurrentCulture,
+                                           Localiser["Printers_ReadyNoCamera"].Value,
+                                           readyPrinterName)
+                        </p>
+                    }
+
+                    <p class="fw-semibold mb-2">@Localiser["Printers_ReadyChecklist"]</p>
+
+                    <p class="text-body-secondary mb-0">@Localiser["Printers_ReadyConsequence"]</p>
+                </div>
+
+                @* The confirm carries the assertion rather than agreement. A button saying "OK" can be
+                   cleared while telling yourself you are dismissing a dialog; one saying what you are
+                   claiming has to be read to be pressed. *@
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                        @Localiser["Common_Cancel"]
+                    </button>
+
+                    <form method="post" asp-page-handler="Ready" asp-route-uuid="@Model.Statistics.Printer.Uuid">
+                        <button type="submit" class="btn btn-primary">@Localiser["Printers_ReadyConfirm"]</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* Whether the prompt above can be answered honestly for this printer is a standing judgement about
+   the machine, so it sits behind CanManage rather than CanUse: decided once by somebody who has seen
+   it, inherited by everyone who has not. *@
+@if (Model.CanManage)
+{
+    <div class="mb-3">
+        <form method="post" asp-page-handler="RemoteReady" asp-route-uuid="@Model.Statistics.Printer.Uuid">
+            <input type="hidden" name="allowed" value="@((!Model.Statistics.Printer.RemoteReadyAllowed).ToString().ToLowerInvariant())" />
+
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" role="switch" id="remote-ready" disabled
+                       @(Model.Statistics.Printer.RemoteReadyAllowed ? "checked" : null) />
+                <label class="form-check-label" for="remote-ready">@Localiser["Printers_RemoteReadyLabel"]</label>
+            </div>
+
+            <p class="text-body-secondary small mt-1">@Localiser["Printers_RemoteReadyHelp"]</p>
+
+            <button type="submit" class="btn btn-outline-secondary btn-sm">
+                @(Model.Statistics.Printer.RemoteReadyAllowed
+                    ? Localiser["Printers_RemoteReadyDisable"]
+                    : Localiser["Printers_RemoteReadyEnable"])
+            </button>
+        </form>
+    </div>
+}
+
 <h2>@Localiser["Printers_PrintHistory"]</h2>
 
 @if (Model.History.Count == 0)

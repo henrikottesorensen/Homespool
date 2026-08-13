@@ -7,11 +7,14 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 
 using Homespool.Host.Authorisation;
 using Homespool.Host.Cameras;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Localisation;
 using Homespool.Host.PrusaConnect;
+using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.Queue;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
@@ -24,10 +27,17 @@ namespace Homespool.Host.Pages.Printers;
 /// <see cref="Model.Entities.PrinterEvent"/> anywhere in the app - and its print queue.
 /// </summary>
 /// <remarks>
+/// <para>
 /// <b>The queue lives here rather than on a page of its own</b> because it belongs to one printer and
-/// reads as part of its status: what it is doing, then what it will do next. Nothing on this page
-/// sends the printer a command - reordering and cancelling are edits to a list, and the producer loop
-/// is what turns an entry into a transfer and a print later.
+/// reads as part of its status: what it is doing, then what it will do next. Reordering and
+/// cancelling are edits to a list, and the producer loop is what turns an entry into a transfer and
+/// a print later.
+/// </para>
+/// <para>
+/// <b>The queue's own buttons send nothing; three other controls here do</b> - preheat, cool down and
+/// Set ready. The distinction worth keeping is not page-versus-service but queue-versus-printer: an
+/// edit to the list changes what will happen, and these three change what the machine is doing now.
+/// </para>
 /// </remarks>
 [Authorize]
 public class DetailModel : PageModel
@@ -41,6 +51,8 @@ public class DetailModel : PageModel
     private readonly CameraAccessService _cameraAccess;
     private readonly CameraDisplayNames _cameraNames;
     private readonly PrinterConnectionRegistry _connectionRegistry;
+    private readonly PrinterCommandService _commands;
+    private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly UserManager<HSUser> _userManager;
 
     public DetailModel(PrinterQueryService printerQueryService,
@@ -52,8 +64,12 @@ public class DetailModel : PageModel
                        CameraAccessService cameraAccess,
                        CameraDisplayNames cameraNames,
                        PrinterConnectionRegistry connectionRegistry,
+                       PrinterCommandService commands,
+                       IStringLocalizer<SharedResource> localiser,
                        UserManager<HSUser> userManager)
     {
+        _commands = commands;
+        _localiser = localiser;
         _printerQueryService = printerQueryService;
         _queueService = queueService;
         _preheat = preheat;
@@ -126,6 +142,19 @@ public class DetailModel : PageModel
     /// every post. This only keeps buttons off a page where pressing them could only fail.
     /// </remarks>
     public bool CanUse { get; private set; }
+
+    /// <summary>
+    /// Whether the caller may change this printer's settings - today, only whether it can be marked
+    /// ready from here.
+    /// </summary>
+    /// <remarks>
+    /// <b>A different permission from <see cref="CanUse"/>, and deliberately so.</b> Pressing Set
+    /// ready is a printer control; deciding that pressing it is honest for this machine is a standing
+    /// judgement about the machine, which is <c>CanManage</c>'s business. So somebody who has stood in
+    /// the garage decides once, and members who never have inherit that decision rather than being
+    /// asked to make it about a printer they cannot see.
+    /// </remarks>
+    public bool CanManage { get; private set; }
 
     /// <summary>
     /// The address to paste into a slicer's print-host field for this printer.
@@ -206,6 +235,9 @@ public class DetailModel : PageModel
         CanUse = await _access.AllowsAsync(statistics.Printer.Id, user.Id, PrinterOperation.ChangeQueue,
                                            cancellationToken);
 
+        CanManage = await _access.AllowsAsync(statistics.Printer.Id, user.Id, PrinterOperation.ManagePrinter,
+                                              cancellationToken);
+
         SlicerUrl = $"{Request.Scheme}://{Request.Host}/compat/octoprint/{statistics.Printer.Uuid}/";
 
         Presets = FilamentPreset.For(statistics.Printer.Model);
@@ -280,6 +312,54 @@ public class DetailModel : PageModel
 
             return ($"Heating to {preset.NozzleTemperature} °C nozzle and {preset.BedTemperature} °C bed for {preset.Name}.",
                 true);
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Marks the printer ready, on the assertion made in the confirm dialog that its print sheet is
+    /// clear.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The flag is re-checked here, not merely consulted when rendering.</b> A button that is not
+    /// rendered is not a permission check - the same rule <see cref="ActAsync"/> states for
+    /// <c>CanRead</c> - and this one guards a physical outcome rather than a page.
+    /// </para>
+    /// <para>
+    /// <b>Nothing in the post carries the answer to the prompt.</b> There is no "I confirmed"
+    /// parameter to forge, because a caller able to forge it is a caller posting directly, and for
+    /// them the dialog was never the control - <see cref="Printer.RemoteReadyAllowed"/> is. The
+    /// prompt's job is to make a person look, and only a person can be made to.
+    /// </para>
+    /// </remarks>
+    public Task<IActionResult> OnPostReadyAsync(Guid uuid, CancellationToken cancellationToken)
+    {
+        return ActAsync(uuid, async (userId, printer) =>
+        {
+            if (!printer.RemoteReadyAllowed)
+            {
+                return (_localiser["Printers_ReadyNotAllowed"].Value, false);
+            }
+
+            await _commands.SendCommandAsync(printer.Id, new SetPrinterReady(), userId, cancellationToken);
+
+            return (_localiser["Printers_ReadySent"].Value, true);
+        }, cancellationToken);
+    }
+
+    /// <summary>Turns setting-ready-from-this-page on or off for this printer.</summary>
+    /// <remarks>
+    /// Through <see cref="PrinterQueryService"/> rather than writing the column here, so the
+    /// <c>ManagePrinter</c> check cannot be skipped by a later caller - see
+    /// <c>notes/printer-authorisation.md</c> on why the gate lives in the service.
+    /// </remarks>
+    public Task<IActionResult> OnPostRemoteReadyAsync(Guid uuid, bool allowed, CancellationToken cancellationToken)
+    {
+        return ActAsync(uuid, async (userId, printer) =>
+        {
+            await _printerQueryService.SetRemoteReadyAllowedAsync(printer.Uuid, userId, allowed, cancellationToken);
+
+            return (_localiser[allowed ? "Printers_RemoteReadySaved" : "Printers_RemoteReadyCleared"].Value, true);
         }, cancellationToken);
     }
 

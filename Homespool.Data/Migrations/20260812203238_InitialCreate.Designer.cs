@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20260811120235_InitialCreate")]
+    [Migration("20260812203238_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -355,6 +355,9 @@ namespace Homespool.Data.Migrations
 
                     b.Property<float?>("NozzleDiameter")
                         .HasColumnType("REAL");
+
+                    b.Property<bool>("RemoteReadyAllowed")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("SerialNumber")
                         .HasColumnType("TEXT");

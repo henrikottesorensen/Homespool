@@ -116,6 +116,12 @@ public sealed class DetailModelTests : IDisposable
                                         NullLogger<LocalCameraDevices>.Instance,
                                         new UsbDeviceNames(NullLogger<UsbDeviceNames>.Instance))),
                                 connectionRegistry,
+
+                                // Null for the same reason the preheat service above takes one: these
+                                // cases never press Set ready, and a page that would refuse anyway is
+                                // the honest backdrop.
+                                commands: null!,
+                                TestLocaliser.Shared(),
                                 users)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),

@@ -353,6 +353,9 @@ namespace Homespool.Data.Migrations
                     b.Property<float?>("NozzleDiameter")
                         .HasColumnType("REAL");
 
+                    b.Property<bool>("RemoteReadyAllowed")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("SerialNumber")
                         .HasColumnType("TEXT");
 

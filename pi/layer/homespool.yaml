@@ -108,6 +108,30 @@ mmdebstrap:
     - iw
     - rfkill
 
+    # Compressed swap in RAM, and the alternative it rules out is the point: a swapfile on the card
+    # would be the worst possible place for it. Measured on the cards this project actually uses -
+    # ~500 random write IOPS with 51-107 ms stalls at p99.9, and over a second on one of them
+    # (notes/sd-card-performance.md) - and swap is the most latency-sensitive random I/O a system
+    # does. That buys "does not OOM" at the price of "unusable", while grinding write cycles into an
+    # SD card. zram never touches the card.
+    #
+    # Proven rather than proposed: on a 2 GB Pi 5 it holds 172.5 MB of data in 87.9 MB of RAM, a 3.8x
+    # compression ratio on .NET heaps and container metadata, and it is what makes `dotnet build` fit
+    # on that board without the OOM killer intervening.
+    #
+    # Unconditional rather than gated on a memory size, which was considered and is worse on every
+    # axis. An idle zram device allocates almost nothing - it is not a reservation, it fills only as
+    # pages are compressed into it - so there is no cost on a large board to gate against. And the
+    # gate would be awkward to express: config.txt filters are by *model*, and [pi5] covers 1 GB
+    # through 16 GB alike, so it would need runtime detection - more machinery, and a new failure
+    # mode, than the thing it gates. `zram-size = ram` self-scales instead.
+    #
+    # It matters most where the failure is ugliest, which is the small board rather than the big one:
+    # a build that OOMs annoys somebody at a keyboard, while an appliance that OOMs goes quiet in a
+    # cupboard - and with no memory cgroup controller here the kernel picks its victim by badness
+    # score, so it may take sshd and leave a board nobody can reach to find out why.
+    - systemd-zram-generator
+
   customize-hooks:
     # The stack itself: compose file, the nginx configuration it bind-mounts, and the saved images.
     # /opt rather than /home, because this is not the device user's to lose.
@@ -147,6 +171,44 @@ mmdebstrap:
       # policy is the sort of thing that quietly stops working.
       set -eu
       printf '%s\n' 'options rfkill default_state=1' > $1/etc/modprobe.d/zz-homespool-rfkill.conf
+
+    - |-
+      #
+      # zram's configuration, copied from the board it was proven on rather than invented here.
+      #
+      # zram-size = ram is the whole of RAM, which sounds reckless and is not: the device fills only
+      # as pages are compressed into it, and those pages are accounted as used memory, so the
+      # kernel's own pressure feedback still applies. It self-scales across every board this image
+      # supports, which is why no per-model condition is needed.
+      #
+      # zstd rather than lz4 or lzo, for the ratio - 3.8x measured on this workload. Stated
+      # explicitly even though CONFIG_ZRAM_DEF_COMP is already "zstd" in both the v8 and 2712
+      # kernels (checked, both carry CONFIG_ZRAM_BACKEND_ZSTD), because a config that silently
+      # depends on a kernel default is a config that breaks when the default moves.
+      set -eu
+      printf '%s\n' \
+        '[zram0]' \
+        'zram-size = ram' \
+        'compression-algorithm = zstd' \
+        > $1/etc/systemd/zram-generator.conf
+
+    - |-
+      #
+      # The two sysctls that make zram behave, and both are the opposite of what you would set for
+      # disk-backed swap.
+      #
+      # swappiness = 150 - well above the default 60, on a scale to 200 - because the usual reason to
+      # discourage swapping is that the backing store is slow. Here it is RAM, so being eager is
+      # correct: a compressed cold page is strictly better than an evicted one.
+      #
+      # page-cluster = 0 disables swap readahead entirely. Readahead exists to amortise seek latency,
+      # zram has none, and reading ahead means decompressing pages nobody asked for - pure CPU cost
+      # on the boards least able to afford it.
+      set -eu
+      printf '%s\n' \
+        'vm.swappiness = 150' \
+        'vm.page-cluster = 0' \
+        > $1/etc/sysctl.d/99-zram.conf
 
     - |-
       #

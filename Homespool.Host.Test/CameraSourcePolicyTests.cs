@@ -29,6 +29,8 @@ public class CameraSourcePolicyTests
     [InlineData("http://192.168.1.50/snapshot.jpg")]
     [InlineData("https://cam.example/snapshot")]
     [InlineData("rtmp://192.168.1.50/stream")]
+    [InlineData("onvif://192.168.1.50")]
+    [InlineData("onvif://user:pass@cam.example")]
     public async Task AnOrdinaryCameraAddressIsAccepted(string source)
     {
         CameraSourcePolicy policy = Build();
@@ -102,6 +104,23 @@ public class CameraSourcePolicyTests
 
         check.IsAcceptable.Should().BeFalse();
         check.Error.Should().Contain(resolvesTo, "the refusal should say what it resolved to");
+    }
+
+    /// <summary>
+    /// The same refusal through <c>onvif</c>, which is worth its own test rather than another row
+    /// above: .NET has no registered parser for that scheme, so whether it populates
+    /// <c>Uri.Host</c> at all is what decides if the check above applies to it or silently passes
+    /// everything. An empty host would resolve to nothing and accept a loopback address.
+    /// </summary>
+    [Fact]
+    public async Task AnOnvifHostResolvingToThisServerIsRefused()
+    {
+        CameraSourcePolicy policy = Build("127.0.0.1");
+
+        CameraSourceCheck check = await policy.CheckAsync("onvif://sneaky.example", CancellationToken.None);
+
+        check.IsAcceptable.Should().BeFalse();
+        check.Error.Should().Contain("sneaky.example", "the host has to be parsed for the check to bite");
     }
 
     /// <summary>

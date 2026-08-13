@@ -1479,4 +1479,10 @@
   <data name="Printers_TeamLabel" xml:space="preserve">
     <value>Team:</value>
   </data>
+  <data name="Account_AlertRecipientNotice" xml:space="preserve">
+    <value>Advarsler om driften bliver ved med at gå til din tidligere adresse, indtil tjenesten genstartes.</value>
+  </data>
+  <data name="Cert_Reissued" xml:space="preserve">
+    <value>Genudstedt til {0}, gyldigt til {1}. GENINDLÆS PROXYEN for at tage det i brug - kør &quot;docker compose exec proxy nginx -s reload&quot;. Nye forbindelser får det med det samme; en printer, der allerede er forbundet, møder fortsat det gamle certifikat, indtil den forbinder igen, hvilket er harmløst, da begge er signeret af den samme udsteder. Der skal ikke gøres noget ved printerne selv: udstederen er uændret.</value>
+  </data>
 </root>

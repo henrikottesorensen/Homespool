@@ -1508,4 +1508,12 @@
   <data name="Printers_TeamLabel" xml:space="preserve">
     <value>Team:</value>
   </data>
+  <data name="Account_AlertRecipientNotice" xml:space="preserve">
+    <value>Service health alerts will continue to go to your previous address until the service is restarted.</value>
+    <comment>Appended after Account_EmailChangeThanks, as a whole sentence rather than a fragment - the two are joined with a space by the page.</comment>
+  </data>
+  <data name="Cert_Reissued" xml:space="preserve">
+    <value>Reissued for {0}, valid until {1}. RELOAD THE PROXY to serve it - run &quot;docker compose exec proxy nginx -s reload&quot;. New connections get it immediately; a printer that is already connected keeps meeting the previous certificate until it next reconnects, which is harmless because both are signed by the same authority. Nothing is needed at the printers themselves: that authority has not changed.</value>
+    <comment>{0} is the list of names, {1} the expiry date. The command stays as it is - it is typed into a shell. Plain text with no markup: this renders as-is, and literal asterisks around the important sentence would undermine it.</comment>
+  </data>
 </root>

@@ -1485,4 +1485,52 @@
   <data name="Cert_Reissued" xml:space="preserve">
     <value>Genudstedt til {0}, gyldigt til {1}. GENINDLÆS PROXYEN for at tage det i brug - kør &quot;docker compose exec proxy nginx -s reload&quot;. Nye forbindelser får det med det samme; en printer, der allerede er forbundet, møder fortsat det gamle certifikat, indtil den forbinder igen, hvilket er harmløst, da begge er signeret af den samme udsteder. Der skal ikke gøres noget ved printerne selv: udstederen er uændret.</value>
   </data>
+  <data name="Error_FileNameConflict" xml:space="preserve">
+    <value>Der findes allerede en fil, der hedder ‘{0}’. Bed om at overskrive den, hvis det er meningen.</value>
+  </data>
+  <data name="Error_FileNameConflictAny" xml:space="preserve">
+    <value>Der findes allerede en fil med det navn.</value>
+  </data>
+  <data name="Error_NoSuchFile" xml:space="preserve">
+    <value>Du har ingen fil, der hedder ‘{0}’.</value>
+  </data>
+  <data name="Error_NoSuchFileAny" xml:space="preserve">
+    <value>Du har ingen fil med det navn.</value>
+  </data>
+  <data name="Error_FileUnreadable" xml:space="preserve">
+    <value>{0} kunne ikke læses - den kan lige være blevet slettet.</value>
+  </data>
+  <data name="Error_FileUnreadableAny" xml:space="preserve">
+    <value>Filen kunne ikke læses - den kan lige være blevet slettet.</value>
+  </data>
+  <data name="Error_FileNameRejected" xml:space="preserve">
+    <value>‘{0}’ er ikke en fil, en printer vil tage imod.</value>
+  </data>
+  <data name="Error_FileNameUnusable" xml:space="preserve">
+    <value>Filnavnet er tomt eller peger på en mappe, når mappedelen er fjernet.</value>
+  </data>
+  <data name="Error_PrinterNotConnected" xml:space="preserve">
+    <value>Den printer er ikke forbundet.</value>
+  </data>
+  <data name="Error_CommandInFlight" xml:space="preserve">
+    <value>Den printer er stadig i gang med en tidligere kommando.</value>
+  </data>
+  <data name="Error_CommandNoAnswer" xml:space="preserve">
+    <value>Printeren svarede ikke på kommandoen i tide.</value>
+  </data>
+  <data name="Error_CommandSendTimedOut" xml:space="preserve">
+    <value>Kommandoen kunne ikke sendes i tide, så det vides ikke, om printeren modtog den. Forbindelsen er lukket.</value>
+  </data>
+  <data name="Error_PrinterRefused" xml:space="preserve">
+    <value>Printeren afviste den: {0}</value>
+  </data>
+  <data name="Error_PrinterRefusedEvent" xml:space="preserve">
+    <value>Printeren afviste den ({0}).</value>
+  </data>
+  <data name="Error_PrinterBusy" xml:space="preserve">
+    <value>Printeren er {0} - varmelegemer kan kun ændres, når printeren ikke er optaget.</value>
+  </data>
+  <data name="Error_PrinterStateUnknown" xml:space="preserve">
+    <value>Printerens tilstand kendes ikke endnu - den melder ind kort efter, den forbinder.</value>
+  </data>
 </root>

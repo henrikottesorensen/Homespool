@@ -117,6 +117,7 @@ public sealed class DetailModelTests : IDisposable
                                         new UsbDeviceNames(NullLogger<UsbDeviceNames>.Instance))),
                                 connectionRegistry,
                                 TestLocaliser.Shared(),
+                                TestLocaliser.Errors(),
                                 users)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),

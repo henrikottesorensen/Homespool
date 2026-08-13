@@ -44,6 +44,7 @@ public class DetailModel : PageModel
     private readonly CameraDisplayNames _cameraNames;
     private readonly PrinterConnectionRegistry _connectionRegistry;
     private readonly IStringLocalizer<SharedResource> _localiser;
+    private readonly ErrorText _errors;
     private readonly UserManager<HSUser> _userManager;
 
     public DetailModel(PrinterQueryService printerQueryService,
@@ -56,6 +57,7 @@ public class DetailModel : PageModel
                        CameraDisplayNames cameraNames,
                        PrinterConnectionRegistry connectionRegistry,
                        IStringLocalizer<SharedResource> localiser,
+                       ErrorText errors,
                        UserManager<HSUser> userManager)
     {
         _printerQueryService = printerQueryService;
@@ -69,6 +71,7 @@ public class DetailModel : PageModel
         _connectionRegistry = connectionRegistry;
         _userManager = userManager;
         _localiser = localiser;
+        _errors = errors;
     }
 
     public PrinterStatistics Statistics { get; private set; } = null!;
@@ -347,18 +350,18 @@ public class DetailModel : PageModel
         {
             // Not an error page: the printer is doing something, which is an answer rather than a
             // fault, and the page is where the person already is.
-            (StatusMessage, StatusSuccess) = (e.Message, false);
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
         catch (PrinterRefusedException e)
         {
             // The printer's own words. Without this the page reported success for a command the
             // printer had declined, which is worse than reporting nothing.
-            (StatusMessage, StatusSuccess) = (e.Message, false);
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
                                       or CommandResponseTimedOutException or CommandSendTimedOutException)
         {
-            (StatusMessage, StatusSuccess) = (e.Message, false);
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
 
         return RedirectToPage(new { uuid });

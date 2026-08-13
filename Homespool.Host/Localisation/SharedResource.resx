@@ -1516,4 +1516,57 @@
     <value>Reissued for {0}, valid until {1}. RELOAD THE PROXY to serve it - run &quot;docker compose exec proxy nginx -s reload&quot;. New connections get it immediately; a printer that is already connected keeps meeting the previous certificate until it next reconnects, which is harmless because both are signed by the same authority. Nothing is needed at the printers themselves: that authority has not changed.</value>
     <comment>{0} is the list of names, {1} the expiry date. The command stays as it is - it is typed into a shell. Plain text with no markup: this renders as-is, and literal asterisks around the important sentence would undermine it.</comment>
   </data>
+  <data name="Error_FileNameConflict" xml:space="preserve">
+    <value>A file named ‘{0}’ already exists. Ask to overwrite it if that is intended.</value>
+  </data>
+  <data name="Error_FileNameConflictAny" xml:space="preserve">
+    <value>A file of that name already exists.</value>
+  </data>
+  <data name="Error_NoSuchFile" xml:space="preserve">
+    <value>You have no file named ‘{0}’.</value>
+  </data>
+  <data name="Error_NoSuchFileAny" xml:space="preserve">
+    <value>You have no file by that name.</value>
+  </data>
+  <data name="Error_FileUnreadable" xml:space="preserve">
+    <value>{0} could not be read - it may have just been deleted.</value>
+  </data>
+  <data name="Error_FileUnreadableAny" xml:space="preserve">
+    <value>That file could not be read - it may have just been deleted.</value>
+  </data>
+  <data name="Error_FileNameRejected" xml:space="preserve">
+    <value>‘{0}’ is not a file a printer would accept.</value>
+  </data>
+  <data name="Error_FileNameUnusable" xml:space="preserve">
+    <value>File name is empty, or is a directory reference, once its directory part is removed.</value>
+  </data>
+  <data name="Error_PrinterNotConnected" xml:space="preserve">
+    <value>That printer is not connected.</value>
+  </data>
+  <data name="Error_CommandInFlight" xml:space="preserve">
+    <value>That printer is still processing a previous command.</value>
+  </data>
+  <data name="Error_CommandNoAnswer" xml:space="preserve">
+    <value>The printer did not respond to the command in time.</value>
+  </data>
+  <data name="Error_CommandSendTimedOut" xml:space="preserve">
+    <value>The command could not be sent in time, so whether the printer received it is unknown. The connection has been closed.</value>
+    <comment>Deliberately says the outcome is unknown rather than that it failed - the frame may be partly in the printer&apos;s buffer.</comment>
+  </data>
+  <data name="Error_PrinterRefused" xml:space="preserve">
+    <value>The printer refused it: {0}</value>
+    <comment>{0} is the printer&apos;s own reason, in its own words, and is not translated.</comment>
+  </data>
+  <data name="Error_PrinterRefusedEvent" xml:space="preserve">
+    <value>The printer refused it ({0}).</value>
+    <comment>{0} is the answering event name from firmware - Rejected or Failed - and stays as firmware spells it.</comment>
+  </data>
+  <data name="Error_PrinterBusy" xml:space="preserve">
+    <value>The printer is {0} - heaters can only be changed when the printer is not busy.</value>
+    <comment>{0} is the printer status, put through PrinterStatusText so it reads in the same language as the sentence around it.</comment>
+  </data>
+  <data name="Error_PrinterStateUnknown" xml:space="preserve">
+    <value>The printer’s current state isn’t known yet - it reports one shortly after connecting.</value>
+    <comment>Not the printer being busy: this application has not merged its first telemetry yet. Says wait, where the busy sentence says stop.</comment>
+  </data>
 </root>

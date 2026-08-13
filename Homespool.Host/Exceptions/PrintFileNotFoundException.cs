@@ -10,7 +10,7 @@ namespace Homespool.Host.Exceptions;
 /// to a user id and neither case can confirm the other's existence. That is the ownership check, and
 /// it is structural rather than a comparison somebody has to remember to write.
 /// </remarks>
-public class PrintFileNotFoundException : Exception
+public class PrintFileNotFoundException : Exception, ILocalisableError
 {
     public PrintFileNotFoundException(string fileName)
         : base($"You have no file named '{fileName}'.")
@@ -30,4 +30,10 @@ public class PrintFileNotFoundException : Exception
 
     /// <summary>The name that was asked for, when the exception was raised for a specific one.</summary>
     public string? FileName { get; }
+
+    /// <inheritdoc />
+    public string ResourceKey => FileName is null ? "Error_NoSuchFileAny" : "Error_NoSuchFile";
+
+    /// <inheritdoc />
+    public object[] ResourceArguments => FileName is null ? [] : [FileName];
 }

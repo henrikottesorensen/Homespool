@@ -56,6 +56,7 @@ public class IndexModel : PageModel
     private readonly PrintFileSender _sender;
     private readonly PrintQueueService _queue;
     private readonly IStringLocalizer<SharedResource> _localiser;
+    private readonly ErrorText _errors;
     private readonly ILogger<IndexModel> _logger;
 
     public IndexModel(PrintFileCatalog files,
@@ -65,6 +66,7 @@ public class IndexModel : PageModel
                       PrintFileSender sender,
                       PrintQueueService queue,
                       IStringLocalizer<SharedResource> localiser,
+                      ErrorText errors,
                       ILogger<IndexModel> logger)
     {
         _files = files;
@@ -74,6 +76,7 @@ public class IndexModel : PageModel
         _sender = sender;
         _queue = queue;
         _localiser = localiser;
+        _errors = errors;
         _logger = logger;
     }
 
@@ -243,7 +246,7 @@ public class IndexModel : PageModel
         }
         catch (ArgumentException e)
         {
-            (StatusMessage, StatusSuccess) = (e.Message, false);
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
 
             return RedirectToSelf(sort, desc);
         }
@@ -361,7 +364,7 @@ public class IndexModel : PageModel
         }
         catch (PrintFileNotFoundException e)
         {
-            (StatusMessage, StatusSuccess) = (e.Message, false);
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
         catch (TeamAccessDeniedException)
         {
@@ -425,7 +428,7 @@ public class IndexModel : PageModel
         }
         catch (PrintFileUnreadableException e)
         {
-            (StatusMessage, StatusSuccess) = (e.Message, false);
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
         catch (PrinterNotConnectedException)
         {
@@ -481,11 +484,11 @@ public class IndexModel : PageModel
         }
         catch (PrintFileNameConflictException e)
         {
-            (StatusMessage, StatusSuccess) = (e.Message, false);
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
         catch (ArgumentException e)
         {
-            (StatusMessage, StatusSuccess) = (e.Message, false);
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
 
         return RedirectToSelf(sort, desc);

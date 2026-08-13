@@ -57,6 +57,10 @@ public static class Registration
         // Scoped for no reason of its own - it holds a scoped localiser and nothing else.
         services.AddScoped<PrinterStatusText>();
 
+        // Same, and it holds the one above so that a status inside an error sentence reads in the
+        // language of the sentence around it.
+        services.AddScoped<ErrorText>();
+
         return services;
     }
 

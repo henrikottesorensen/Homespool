@@ -7,7 +7,7 @@ namespace Homespool.Host.Exceptions;
 /// command buffer at a time (Prusa-Firmware-Buddy connect.cpp:469-476 at the pinned ref); this
 /// mirrors that limit on our side so a second click fails fast rather than racing it.
 /// </summary>
-public class CommandAlreadyInFlightException : Exception
+public class CommandAlreadyInFlightException : Exception, ILocalisableError
 {
     /// <summary>The one callers actually use - the message is not worth restating at each throw.</summary>
     public CommandAlreadyInFlightException(int printerId)
@@ -30,4 +30,10 @@ public class CommandAlreadyInFlightException : Exception
         : base(message, innerException)
     {
     }
+
+    /// <inheritdoc />
+    public string ResourceKey => "Error_CommandInFlight";
+
+    /// <inheritdoc />
+    public object[] ResourceArguments => [];
 }

@@ -3,7 +3,7 @@ using System;
 namespace Homespool.Host.Exceptions;
 
 /// <summary>The printer has no live WebSocket connection right now, so a command can't be sent.</summary>
-public class PrinterNotConnectedException : Exception
+public class PrinterNotConnectedException : Exception, ILocalisableError
 {
     /// <summary>The one callers actually use - the message is not worth restating at each throw.</summary>
     public PrinterNotConnectedException(int printerId)
@@ -27,4 +27,10 @@ public class PrinterNotConnectedException : Exception
         : base(message, innerException)
     {
     }
+
+    /// <inheritdoc />
+    public string ResourceKey => "Error_PrinterNotConnected";
+
+    /// <inheritdoc />
+    public object[] ResourceArguments => [];
 }

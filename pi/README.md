@@ -99,29 +99,31 @@ settings are written and then **silently ignored**, which looks exactly like a w
 With neither, the account is locked: the stack still comes up and serves pages, but there is no way
 in. That is `rpi-image-gen`'s default and `build.sh` warns about it.
 
-## Wi-Fi, and why WPA3 does not work
+## Wi-Fi, and which networks work
 
 Put your SSID and passphrase in `homespool-wifi.txt` on the card's FAT32 partition — the only
 partition a desktop machine can read — and the Pi joins on first boot. The passphrase line is blanked
 once applied, because FAT32 has no file permissions and anyone who later reads the card would
 otherwise have your wi-fi password.
 
-**WPA3 does not work with the firmware and software this image ships**, and has been unreliable on
-Raspberry Pi built-in wi-fi for years. **How much it costs you depends on the board**, which took two
-days on real hardware to establish:
+**WPA3-only networks do not work on any Raspberry Pi with this image**, and WPA3 has been unreliable
+on Raspberry Pi built-in wi-fi for years. **Mixed mode is the dividing line, and which side you land
+on depends on the board** — established over two days on real hardware:
 
-| your network | Pi 4 | Pi 3B |
+| your network | Pi 4 / Pi 5 | Pi 3B |
 |---|---|---|
 | WPA2 | works | works |
 | WPA2/WPA3 mixed ("transition mode") | works — the Pi uses the WPA2 half | **will not connect** |
 | WPA3-only | **will not connect** | **will not connect** |
 
-**On a Pi 4**, setting your router's network to **WPA2/WPA3 mixed** fixes it and costs nothing for
-your other devices — they carry on using WPA3, only the Pi drops to WPA2.
+**On a Pi 4 or Pi 5**, setting your router's network to **WPA2/WPA3 mixed** fixes it and costs nothing
+for your other devices — they carry on using WPA3, only the Pi drops to WPA2. Those two boards share
+the same wi-fi chipset, which is what puts them on the same side of the table.
 
 **On a Pi 3B, mixed mode is not enough.** That board needs a network offering **WPA2 and nothing
 else**, or a wired connection. Mixed mode fails there even though the Pi is only trying to use the
-WPA2 half — see "Why" below.
+WPA2 half — see "Why" below. The difference is the chipset and its firmware, not the supplicant and
+not anything this image does.
 
 Either way, the alternatives are the same: plug it in, or add a second WPA2-only SSID for older
 devices. Most routers can broadcast several, and the Pi is going to sit next to a printer forever.
@@ -145,7 +147,8 @@ advertising H2E, which most modern ones do. The fix is an iwd patch still under 
 
 So the image sets `SaeDisable` in `/etc/iwd/main.conf`, which tells iwd not to attempt SAE at all.
 Without it you get no error worth reading — just a connection that never completes. With it, mixed
-networks work immediately **on a Pi 4**.
+networks work immediately **on a Pi 4, and on a Pi 5** — the measurements above are from a Pi 4, and
+a Pi 5 has since been confirmed to join a mixed AP too, which is what the shared chipset predicts.
 
 ### Why a Pi 3B is worse, and `SaeDisable` does not rescue it
 

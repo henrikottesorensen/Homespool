@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Builds a Raspberry Pi 3 SD-card image with the Homespool stack baked in.
+# Builds a Raspberry Pi SD-card image with the Homespool stack baked in.
 #
 #   pi/build.sh --ssh-key ~/.ssh/id_ed25519.pub
-#   pi/build.sh --ssh-key ~/.ssh/id_ed25519.pub --device pi4 --dev
+#   pi/build.sh --ssh-key ~/.ssh/id_ed25519.pub --device pi5 --dev
 #
-# --dev adds the .NET SDK, Claude Code and debugging tools on top of the appliance, and names the
-# image homespool-<board>-dev. It wants a Pi 4 or better; building this solution on a 1 GB Pi 3 is
-# not a good time.
+# The artefact is homespool-rpi-arm64.img, one card carrying both kernels so any 64-bit Pi boots it -
+# see the --device block below. --dev adds the .NET SDK, Claude Code and debugging tools on top of
+# the appliance and suffixes the name; it wants a Pi 4 or better.
 #
 # Two builds happen here, and the order matters. First the application's own container images, built
 # natively for arm64 on this machine - which is why an Apple Silicon Mac is the easy host and an x86
@@ -28,11 +28,34 @@ ssh_key=""
 password=""
 device_user="pi"
 
-# The board. Everything in this build is board-agnostic except the device layer, so retargeting is
-# genuinely one word - rpi-image-gen ships pi3, pi4, pi5, cm4, cm5 and zero2w, all on the same
-# rpi-generic64 base. The config file names pi3; this overrides it, and names the image to match so
-# two boards' images can sit in the same directory without one quietly overwriting the other.
-board="pi3"
+# The board, and it decides only the kernel flavour. rpi-image-gen ships pi3, pi4, cm4 and zero2w on
+# a shared rpi-generic64 base - the v8 kernel, 4K pages - while pi5 and cm5 require rpi-linux-2712
+# instead, which is 16K pages and therefore a 16K ext4 block size derived from them.
+#
+# The four v8 boards produce a byte-identical card, verified 2026-08-11 rather than assumed: diffing
+# a pi4 build against a pi5 one found only the kernel and initramfs pair differing by name, with all
+# 421 shared boot files matching byte for byte. So they share one artefact rather than being four
+# identically-shaped copies under four names.
+#
+# A v8 card also runs a Pi 5, verified on hardware 2026-08-11: the firmware falls back to kernel8.img
+# when kernel_2712.img is absent, and the board came up to `uname -r` = 6.18.39+rpt-rpi-v8 with
+# 4K pages, ethernet, SSH and the whole stack healthy. Ethernet is the part that matters, since the
+# Pi 5's MAC lives inside RP1 behind PCIe - there is no reaching that shell without the southbridge.
+#
+# Which makes 2712 an optimisation rather than a requirement: it is not a hardware-specific kernel,
+# calls itself -v8-16k, and differs from v8 in 35 of 9857 config lines, every one the page size or
+# its arithmetic. What it buys is Raspberry Pi's ~7% on random memory access; what it costs is a 16K
+# ext4 block size, which wastes ~235 MiB here because 78% of this tree's files are under 16 KiB.
+#
+# So the default is "all", which is neither of those two cards but a third carrying *both* kernels -
+# layer/homespool-rpi-all.yaml, and the firmware picks per board with no configuration involved. That
+# is strictly better than choosing for people: an older board gets v8, a Pi 5 gets its 16K pages and
+# the 7%, and nobody has to know which card they need.
+#
+# The single-board targets stay for the two cases that still want them - measuring one kernel against
+# the other, and building the smallest card for a board you have in your hand. Each keeps a distinct
+# artefact name so three differently-shaped cards cannot overwrite each other in work/out.
+board="all"
 
 # The appliance, or the appliance plus a toolchain. --dev swaps the custom layer for homespool-dev,
 # which requires homespool rather than replacing it, so a dev card is this same image with the .NET
@@ -58,18 +81,25 @@ done
 # "rpi-cm4" and device/zero2w declares "rpizero2w". Guessing "r$board" works for three of the six and
 # fails the rest several minutes into a build, saying only that a layer was not found.
 case "$board" in
+    all)    device_layer=homespool-rpi-all ;;
     pi3)    device_layer=rpi3 ;;
     pi4)    device_layer=rpi4 ;;
     pi5)    device_layer=rpi5 ;;
     cm4)    device_layer=rpi-cm4 ;;
     cm5)    device_layer=rpi-cm5 ;;
     zero2w) device_layer=rpizero2w ;;
-    *) echo "unknown --device: $board (pi3, pi4, pi5, cm4, cm5, zero2w)" >&2; exit 2 ;;
+    *) echo "unknown --device: $board (all, pi3, pi4, pi5, cm4, cm5, zero2w)" >&2; exit 2 ;;
 esac
 
-# Suffixed for the same reason the board is in the name: two images that differ in what is on them
-# must not land on the same path in work/out, where the second would silently overwrite the first.
-image_name="homespool-$board"
+# Named for the kernel flavour rather than the board, because that is the only thing that varies. The
+# v8 boards deliberately share one name - they are one artefact, and four names for it invite picking
+# "the pi3 one" for a Pi 3 as though the others would not do. Pi 5 and CM5 genuinely differ, so they
+# get their own and cannot silently overwrite the v8 card in work/out.
+case "$board" in
+    all)     image_name="homespool-rpi-arm64" ;;
+    pi5|cm5) image_name="homespool-rpi-arm64-2712" ;;
+    *)       image_name="homespool-rpi-arm64-v8" ;;
+esac
 if [ "$custom_layer" = "homespool-dev" ]; then
     # An if rather than a one-line [ ... ] && ..., which under set -e is a trap: the test returns 1
     # on an appliance build and takes the whole script down with it.
@@ -87,9 +117,15 @@ fi
 # that is not indented as a continuation makes the *whole layer* fail to parse, and the build then
 # says "Layer 'homespool' not found" several minutes in - naming neither the file nor the line, and
 # reading like a missing file rather than a punctuation error. It cost two build cycles to learn.
+#
+# The key pattern allows underscores, and that was a bug here until 2026-08-11: written as
+# [A-Za-z0-9-]* it rejected X-Env-Var-storage_type, which is rpi-image-gen's *own* spelling in every
+# device layer it ships. Our layers had simply never used an underscore, so a lint that would refuse
+# valid upstream metadata sat here looking correct - and it failed the first layer that followed the
+# tool's conventions rather than ours, reporting five good lines as malformed.
 for layer in "$pi_dir"/layer/*.yaml; do
     bad=$(awk '/^# METABEGIN/{f=1;next} /^# METAEND/{f=0} f{
-              if ($0 ~ /^#$/ || $0 ~ /^#  / || $0 ~ /^# [A-Za-z][A-Za-z0-9-]*:/) next
+              if ($0 ~ /^#$/ || $0 ~ /^#  / || $0 ~ /^# [A-Za-z][A-Za-z0-9_-]*:/) next
               printf "  line %d: %s\n", NR, $0
            }' "$layer")
     if [ -n "$bad" ]; then
@@ -170,6 +206,24 @@ overrides=(
     "IGconf_image_name=$image_name"
     "IGconf_layer_custom=$custom_layer"
 )
+
+# The combined card must be built at a 4K ext4 block size, and getting this wrong produces a card
+# that boots a Pi 5 perfectly and cannot mount root on anything older - which is the worst shape of
+# bug available here, since the build is silent and only half the hardware shows it.
+#
+# The mechanism: rpi-linux-2712 declares page_size 16384 with policy *force*, and image-rpios lazily
+# derives fs_ext4_mkfs_args as "-F -b ${IGconf_linux_page_size}". Requiring both kernels therefore
+# inherits the force and mkfs runs with -b 16384. ext4 refuses to mount a filesystem whose block size
+# exceeds the mounting kernel's page size, so every 4K-page board - pi3, pi4, cm4, zero2w - dies at
+# root mount. Observed directly, not reasoned: loop-mounting a 2712-built image on a 4K-page kernel
+# gives "EXT4-fs: bad block size 16384".
+#
+# So the derived variable is overridden rather than page_size, which cannot be - force wins over an
+# override. That leaves the Pi 5 still running 16K MMU pages, since the kernel's granule is compiled
+# in and no IGconf variable rebuilds it; only the filesystem geometry changes.
+if [ "$board" = "all" ]; then
+    overrides+=("IGconf_fs_ext4_mkfs_args=-F -b 4096")
+fi
 # A hash rather than the plain variable, because rpi-image-gen validates plain passwords against a
 # regex demanding upper, lower, digit and punctuation - which "homespool" is not, and which is the
 # wrong trade for a credential whose whole job is to be typed once and replaced. The hash path has
@@ -194,7 +248,7 @@ run_imagegen() {
         -v "$repo_root:/repo" \
         -v homespool-ig-work:/opt/rpi-image-gen/work \
         homespool-imagegen \
-        ./rpi-image-gen build "$1" -S /repo/pi -c homespool-pi3.yaml -- "${overrides[@]}"
+        ./rpi-image-gen build "$1" -S /repo/pi -c homespool.yaml -- "${overrides[@]}"
 }
 
 # ------------------------------------------------------------------------------------------------
@@ -265,13 +319,60 @@ run_imagegen -i
 # ------------------------------------------------------------------------------------------------
 # 5. Out of the volume and onto the host, where rpi-imager can see it.
 # ------------------------------------------------------------------------------------------------
+# The *uncompressed* image out of the volume, not the .img.zst the deploy step produced beside it.
+# We modify the image below, so taking the compressed copy would mean either shipping a .zst that
+# disagrees with the .img next to it - a trap for anyone who keeps the archive and flashes it later -
+# or decompressing, editing and recompressing, which is a third pass over 2.3 GB to reach the same
+# place. genimage leaves the raw image in work/image-<name>/, so we take that and compress it once
+# ourselves, after the edit.
 echo "==> Extracting the image"
 mkdir -p "$work_dir/out"
 docker run --rm \
     -v homespool-ig-work:/work \
     -v "$work_dir/out:/out" \
     homespool-imagegen \
-    sh -c "cp -v /work/deploy-*/${image_name}.img.zst /out/"
+    sh -c "cp -v /work/image-${image_name}/${image_name}.img /out/"
+
+# ------------------------------------------------------------------------------------------------
+# 6. noatime, which can only be done here.
+#
+# Root otherwise mounts rw,relatime,errors=remount-ro,commit=30. Those options are a *literal* inside
+# a heredoc in image/mbr/simple_dual/setup.sh - no variable, nothing configurable - and that script
+# writes /etc/fstab with a truncating `>` during image generation, so it destroys whatever the rootfs
+# stage put there. That is why this was written off as unreachable: a customize-hook cannot win a race
+# against a later stage that overwrites the file wholesale.
+#
+# Editing the finished image happens *after* that write, so nothing regenerates it. The two routes the
+# notes had considered - forking the image layer into pi/image/, which then drifts on every upstream
+# pin bump, or a first-boot sed on the running board, which is permanent machinery on every card -
+# both cost more than this.
+#
+# The offset is read from the partition table rather than hardcoded. It moved once already: the
+# combined image's boot partition grew 104 MB -> 152 MB to hold the second kernel and initramfs,
+# taking root from sector 229376 to 327680, and a stale constant reports that as
+# "Bad magic number in super-block" - which reads like a corrupt image rather than arithmetic.
+#
+# --privileged for loop devices, the same reason the image build needs it. The sed is anchored on the
+# by-slot device so it cannot touch the /boot/firmware line, and the result is grepped back: a silent
+# no-op here would ship the default and nobody would notice until they measured card wear.
+echo "==> Setting noatime on the root filesystem"
+docker run --rm --privileged \
+    -v "$work_dir/out:/out" \
+    homespool-imagegen \
+    bash -euc "
+        img=/out/${image_name}.img
+        # \$1 ~ /img2\$/ rather than a bare /img2\$/ pattern: the latter anchors to the end of the
+        # *line*, which is the start sector, not the device name - so it silently matches nothing.
+        start=\$(fdisk -l -o Device,Start \"\$img\" | awk '\$1 ~ /img2\$/ {print \$2}')
+        [ -n \"\$start\" ] || { echo 'could not find partition 2 in the image' >&2; exit 1; }
+        dev=\$(losetup -o \$((start * 512)) -f --show \"\$img\")
+        trap 'umount /mnt 2>/dev/null || true; losetup -d \"\$dev\" 2>/dev/null || true' EXIT
+        mount -t ext4 \"\$dev\" /mnt
+        sed -i 's|^\(/dev/disk/by-slot/system  */  *ext4 [^ ]*\)relatime|\1noatime|' /mnt/etc/fstab
+        grep -q 'by-slot/system.*noatime' /mnt/etc/fstab \
+            || { echo 'noatime was not applied - fstab format changed?' >&2; exit 1; }
+        grep '^/dev' /mnt/etc/fstab | sed 's/^/    /'
+    "
 
 # Decompressed here rather than left to whoever flashes it, because Raspberry Pi Imager's "Use
 # custom" option accepts a .img and nothing else - the dialog says so in as many words. Its source
@@ -282,9 +383,13 @@ docker run --rm \
 # image written uncompressed booted. Imager reported "Write Successful" each time, and was telling
 # the truth: it verifies the card against what it decided to write, which stays correct when what it
 # read was compressed bytes.
-echo "==> Decompressing (the .img is the artefact to flash - see the comment above)"
+#
+# Compressed *from the edited image*, which is the whole reason the raw one was taken out of the
+# volume above: the .zst here is an archive of what we actually ship, not of what genimage produced
+# before the fstab edit. -T0 for every core, since this is now the last slow step.
+echo "==> Compressing an archive copy (the .img is the artefact to flash - see the comment above)"
 docker run --rm -v "$work_dir/out:/out" homespool-imagegen \
-    sh -c "zstd -d -f /out/${image_name}.img.zst -o /out/${image_name}.img" >/dev/null 2>&1
+    sh -c "zstd -q -f -T0 /out/${image_name}.img -o /out/${image_name}.img.zst"
 
 echo
 echo "Done. Written to pi/work/out:"

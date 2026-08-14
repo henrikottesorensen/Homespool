@@ -32,7 +32,19 @@ public class PrinterEvent
     /// <summary>When the event was received by the server.</summary>
     public DateTimeOffset Timestamp { get; set; }
 
-    public Events EventType { get; set; }
+    public PrinterEventType EventType { get; set; }
+
+    /// <summary>
+    /// The wire's own word for this event, verbatim — <c>"TRANSFER_INFO"</c>, not
+    /// <see cref="PrinterEventType.TransferInfo"/>'s name. Null means the event was synthesised by
+    /// Homespool rather than heard from a printer.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="EventType"/> is Homespool's vocabulary and the mapping into it is lossy by
+    /// design; this column is what keeps history honest about what the printer actually said,
+    /// whichever protocol said it.
+    /// </remarks>
+    public string? WireType { get; set; }
 
     /// <summary>Printer state at the time of the event; every observed event carries one.</summary>
     public PrinterStatus Status { get; set; }

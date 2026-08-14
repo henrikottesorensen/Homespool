@@ -182,7 +182,7 @@ public class PrinterConnectionActorTests
     }
 
     private static InboundEventMessage EventAnswering(uint commandId,
-                                                      Events eventType = Events.Finished,
+                                                      PrinterEventType eventType = PrinterEventType.Finished,
                                                       string? reason = null,
                                                       string? dataJson = null,
                                                       string? machineReason = null)
@@ -237,7 +237,7 @@ public class PrinterConnectionActorTests
 
         // Assert
         result.Outcome.Should().Be(CommandSendOutcome.Completed);
-        result.Response!.EventType.Should().Be(Events.Finished);
+        result.Response!.EventType.Should().Be(PrinterEventType.Finished);
         sentFrames.Should().ContainSingle();
 
         // Answering a command doesn't consume the event: it must still reach the sink and be
@@ -266,12 +266,12 @@ public class PrinterConnectionActorTests
         await WaitUntilAsync(() => sentFrames.Count == 1);
 
         // Act
-        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), Events.Rejected, "Can't set idle now"),
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.Rejected, "Can't set idle now"),
                               CancellationToken.None);
         CommandSendResult result = await Eventually(sendTask);
 
         // Assert
-        result.Response!.EventType.Should().Be(Events.Rejected);
+        result.Response!.EventType.Should().Be(PrinterEventType.Rejected);
         result.Response.Reason.Should().Be("Can't set idle now");
         result.Data.Should().BeNull("an event that carried no data must not invent one");
 
@@ -295,7 +295,7 @@ public class PrinterConnectionActorTests
 
         // Act - a transfer refusal's shape: the busy-slot case, which is the one that is transient.
         await actor.PostAsync(
-            EventAnswering(CommandIdOf(sentFrames[0]), Events.Rejected, "Another transfer in progress",
+            EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.Rejected, "Another transfer in progress",
                            machineReason: "TRANSFER_IN_PROGRESS"),
             CancellationToken.None);
         CommandSendResult result = await Eventually(sendTask);
@@ -322,7 +322,7 @@ public class PrinterConnectionActorTests
         Task<CommandSendResult> sendTask = actor.SendCommandAsync(new SetPrinterIdle(), CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 1);
 
-        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), Events.Rejected, "Can't set idle now"),
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.Rejected, "Can't set idle now"),
                               CancellationToken.None);
         CommandSendResult result = await Eventually(sendTask);
 
@@ -359,7 +359,7 @@ public class PrinterConnectionActorTests
                                """;
 
         // Act
-        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), Events.FileInfo, dataJson: listing),
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.FileInfo, dataJson: listing),
                               CancellationToken.None);
         CommandSendResult result = await Eventually(sendTask);
 
@@ -978,7 +978,7 @@ public class PrinterConnectionActorTests
 
         // Act
         uint commandId = CommandIdOf(sentFrames[0]);
-        await actor.PostAsync(EventAnswering(commandId, Events.Finished, null), CancellationToken.None);
+        await actor.PostAsync(EventAnswering(commandId, PrinterEventType.Finished, null), CancellationToken.None);
         await Eventually(sendTask);
 
         // Assert
@@ -1015,7 +1015,7 @@ public class PrinterConnectionActorTests
         await WaitUntilAsync(() => sentFrames.Count == 1);
 
         // Act
-        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), Events.Rejected, "Can't set idle now"),
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.Rejected, "Can't set idle now"),
                               CancellationToken.None);
         await Eventually(sendTask);
 

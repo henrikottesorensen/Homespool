@@ -616,8 +616,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             return;
         }
 
-        if (eventDto.EventType is not (Model.Events.TransferFinished or Model.Events.TransferAborted
-            or Model.Events.TransferStopped))
+        if (eventDto.EventType is not (Model.PrinterEventType.TransferFinished or Model.PrinterEventType.TransferAborted
+            or Model.PrinterEventType.TransferStopped))
         {
             return;
         }

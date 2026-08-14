@@ -374,7 +374,7 @@ public sealed class QueueAdvancer : BackgroundService
                                                    .AsNoTracking()
                                                    .Where(printerEvent => printerEvent.PrinterId == printerId
                                                                           && printerEvent.Id > watermark
-                                                                          && printerEvent.EventType == Events.FileInfo)
+                                                                          && printerEvent.EventType == PrinterEventType.FileInfo)
                                                    .OrderBy(printerEvent => printerEvent.Id)
                                                    .ToListAsync(cancellationToken);
 
@@ -587,7 +587,7 @@ public sealed class QueueAdvancer : BackgroundService
         {
             CommandOutcome? outcome = await sender.SendAsync(printer, file, head.QueuedByUserId, cancellationToken);
 
-            if (outcome?.EventType is Events.Rejected or Events.Failed)
+            if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {
                 // Classified on MachineReason, not on the prose: the code is a fixed vocabulary and
                 // the wording is free to change between releases.
@@ -857,7 +857,7 @@ public sealed class QueueAdvancer : BackgroundService
                                                                       new StartPrint { Path = printerPath }, head.QueuedByUserId,
                                                                       cancellationToken);
 
-            if (outcome?.EventType is Events.Rejected or Events.Failed)
+            if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {
                 HandleRefusal(printerId, dbContext, head, outcome.Reason);
                 await dbContext.SaveChangesAsync(cancellationToken);

@@ -161,7 +161,7 @@ public class PrinterController : ControllerBase
         {
             CommandOutcome? outcome = await _sender.SendAsync(printer, file, caller.Id, cancellationToken);
 
-            return outcome?.EventType is Events.Rejected or Events.Failed ?
+            return outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed ?
                 this.CommandFailure(StatusCodes.Status409Conflict, wireName,
                                     outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString()) :
                 NoContent();
@@ -284,7 +284,7 @@ public class PrinterController : ControllerBase
             CommandOutcome<FileInfoEventDataDTO>? outcome =
                 await _commands.AskAsync(printer.Id, command, user.Id, cancellationToken);
 
-            if (outcome?.EventType is Events.Rejected or Events.Failed)
+            if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {
                 // Firmware answers a path that does not exist and a path it will not touch with the
                 // same event, distinguished only by reason text - so this stays one status code and
@@ -509,7 +509,7 @@ public class PrinterController : ControllerBase
             // A null outcome is a command the printer cannot answer, written successfully - nothing
             // to inspect, and 204 is the honest result. None of this controller's commands are of
             // that kind today.
-            if (outcome?.EventType is Events.Rejected or Events.Failed)
+            if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {
                 onFailure?.Invoke();
 

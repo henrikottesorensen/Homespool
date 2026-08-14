@@ -83,7 +83,7 @@ public class PrintStopService
 
         CommandOutcome? outcome = await _commands.SendCommandAsync(printerId, new StopPrint(), userId, cancellationToken);
 
-        if (outcome?.EventType is Events.Rejected or Events.Failed)
+        if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
         {
             return outcome;
         }

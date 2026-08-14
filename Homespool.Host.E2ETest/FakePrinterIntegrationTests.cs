@@ -166,7 +166,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         {
             CommandOutcome outcome = await SendCommandAsync(printerId, userId, new PausePrint());
 
-            outcome.EventType.Should().Be(Events.Finished);
+            outcome.EventType.Should().Be(PrinterEventType.Finished);
             fake.Device.State.Should().Be(DeviceState.Paused, "the command must actually have executed");
             fake.ReceivedCommands.Should().ContainSingle().Which.Kind.Should().Be(ServerCommandKind.Json);
 
@@ -245,7 +245,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
             // What the printer answered, not merely that a frame arrived. Asserting receipt alone is
             // what let a refused command pass for a successful one.
-            outcome.Answer!.EventType.Should().NotBe(Events.Rejected);
+            outcome.Answer!.EventType.Should().NotBe(PrinterEventType.Rejected);
 
             await EndRunAsync(fake, run);
         }
@@ -264,7 +264,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         {
             CommandOutcome outcome = await SendCommandAsync(printerId, userId, new PausePrint());
 
-            outcome.EventType.Should().Be(Events.Rejected);
+            outcome.EventType.Should().Be(PrinterEventType.Rejected);
             outcome.Reason.Should().Be("No print to pause", "the JC macro's reason string must reach the caller verbatim");
 
             await EndRunAsync(fake, run);
@@ -326,11 +326,11 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         await using (fake)
         {
             CommandOutcome first = await SendCommandAsync(printerId, userId, new PausePrint());
-            first.EventType.Should().Be(Events.Finished);
+            first.EventType.Should().Be(PrinterEventType.Finished);
 
             // The connection must still be fully usable after the surplus ack arrived.
             CommandOutcome second = await SendCommandAsync(printerId, userId, new ResumePrint());
-            second.EventType.Should().Be(Events.Finished);
+            second.EventType.Should().Be(PrinterEventType.Finished);
 
             _logs.Failures.Should().BeEmpty("a surplus ack is survived, not treated as a fault");
 
@@ -394,7 +394,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
         CommandOutcome outcome = await SendCommandAsync(printerId, userId, new PausePrint());
 
-        outcome.EventType.Should().Be(Events.Finished, "the surviving registration must be the live socket");
+        outcome.EventType.Should().Be(PrinterEventType.Finished, "the surviving registration must be the live socket");
         _logs.Failures.Should().BeEmpty("reconnect churn is ordinary printer behaviour, not an error path");
 
         await EndRunAsync(last, lastRun);
@@ -420,7 +420,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             OriginalSize = content.Length,
         });
 
-        outcome.EventType.Should().Be(Events.TransferInfo, "a download is acknowledged with TRANSFER_INFO");
+        outcome.EventType.Should().Be(PrinterEventType.TransferInfo, "a download is acknowledged with TRANSFER_INFO");
 
         FakeTransfer transfer = await WaitForTransferAsync(fake);
 
@@ -514,7 +514,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         });
 
         CommandOutcome outcome = await SendCommandAsync(printerId, userId, new PausePrint());
-        outcome.EventType.Should().Be(Events.Finished, "a command must not be starved by a running transfer");
+        outcome.EventType.Should().Be(PrinterEventType.Finished, "a command must not be starved by a running transfer");
 
         FakeTransfer transfer = await WaitForTransferAsync(fake);
         transfer.Content.ToArray().Should().Equal(content, "and the transfer must not be disturbed by the command");

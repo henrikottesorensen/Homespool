@@ -140,7 +140,7 @@ public class PrinterPreheatService
 
         // The printer's own answer decides, not the fact that a frame was written. Reporting success
         // here regardless is what let a refusal be shown to a user as "both heaters switched off".
-        if (answer is not null && answer.EventType is Events.Rejected or Events.Failed)
+        if (answer is not null && answer.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
         {
             throw new PrinterRefusedException(answer.EventType, answer.Reason);
         }

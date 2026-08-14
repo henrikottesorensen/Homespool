@@ -359,7 +359,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             return null;
         }
 
-        if (dto.EventType == Model.Events.Info && element.ValueKind == JsonValueKind.Object)
+        if (dto.EventType == Model.PrinterEventType.Info && element.ValueKind == JsonValueKind.Object)
         {
             return RedactCredentials(element);
         }
@@ -367,7 +367,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         // Scoped to FILE_INFO deliberately. Every other event type has its own field set, and the
         // allowlist above describes this one only - applying it anywhere else would silently empty
         // payloads that are entirely firmware's own work.
-        if (dto.EventType != Model.Events.FileInfo || element.ValueKind != JsonValueKind.Object)
+        if (dto.EventType != Model.PrinterEventType.FileInfo || element.ValueKind != JsonValueKind.Object)
         {
             return element.GetRawText();
         }
@@ -1033,7 +1033,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     {
         EventDTO dto = item.Data;
 
-        if (dto.EventType == Model.Events.Info && dto.Data is { } data)
+        if (dto.EventType == Model.PrinterEventType.Info && dto.Data is { } data)
         {
             // INFO is the only message carrying what the printer *is* rather than what it is doing,
             // and it arrives on connection. Recorded here and applied at flush time, so it commits
@@ -1064,6 +1064,11 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             PrinterId = item.PrinterId,
             Timestamp = item.ReceivedAt,
             EventType = dto.EventType,
+
+            // Formatting back through the bijective table reproduces the received word exactly -
+            // see PrusaEventWireMapping's remarks. Never null here: everything on this path was
+            // heard from a printer, and null is reserved for events Homespool synthesises itself.
+            WireType = PrusaEventWireMapping.Format(dto.EventType),
             Status = PrinterStatusExtensions.ParseWireState(dto.Status),
             JobId = dto.JobId,
             CommandId = dto.CommandId,

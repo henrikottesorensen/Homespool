@@ -159,7 +159,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         public string? Path { get; set; }
     }
 
-    private static CommandSendResult Answered(string? dataJson, Events eventType = Events.FileInfo, string? reason = null)
+    private static CommandSendResult Answered(string? dataJson, PrinterEventType eventType = PrinterEventType.FileInfo, string? reason = null)
     {
         return new(CommandSendOutcome.Completed,
                    new CommandOutcome(eventType, reason),
@@ -204,7 +204,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
         (PrinterConnectionRegistry registry, _) =
-            RegistryWithActor(printer.Id, Answered(null, Events.Rejected, "Won't execute the same command multiple times"));
+            RegistryWithActor(printer.Id, Answered(null, PrinterEventType.Rejected, "Won't execute the same command multiple times"));
         PrinterCommandService service = new(new PrinterAccessService(context), registry);
 
         // Act
@@ -212,7 +212,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
             await service.AskAsync(printer.Id, new AskSomething(), 1, CancellationToken.None);
 
         // Assert
-        outcome!.EventType.Should().Be(Events.Rejected);
+        outcome!.EventType.Should().Be(PrinterEventType.Rejected);
         outcome.Reason.Should().Be("Won't execute the same command multiple times");
         outcome.Answer.Should().BeNull();
     }
@@ -277,7 +277,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
 
         (PrinterConnectionRegistry registry, IPrinterConnectionActor actor) =
             RegistryWithActor(
-                printer.Id, new CommandSendResult(CommandSendOutcome.Completed, new CommandOutcome(Events.Finished, null)));
+                printer.Id, new CommandSendResult(CommandSendOutcome.Completed, new CommandOutcome(PrinterEventType.Finished, null)));
         PrinterCommandService service = new(new PrinterAccessService(context), registry);
         PausePrint command = new();
 
@@ -286,7 +286,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
 
         // Assert
         outcome.Should().NotBeNull("PAUSE_PRINT is answered - only unanswerable commands report null");
-        outcome!.EventType.Should().Be(Events.Finished);
+        outcome!.EventType.Should().Be(PrinterEventType.Finished);
         await actor.Received(1).SendCommandAsync(command, Arg.Any<CancellationToken>());
     }
 

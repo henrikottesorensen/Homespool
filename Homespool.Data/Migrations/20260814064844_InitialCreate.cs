@@ -353,6 +353,7 @@ namespace Homespool.Data.Migrations
                     PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
                     Timestamp = table.Column<long>(type: "INTEGER", nullable: false),
                     EventType = table.Column<string>(type: "TEXT", nullable: false),
+                    WireType = table.Column<string>(type: "TEXT", nullable: true),
                     Status = table.Column<int>(type: "INTEGER", nullable: false),
                     JobId = table.Column<int>(type: "INTEGER", nullable: true),
                     CommandId = table.Column<long>(type: "INTEGER", nullable: true),

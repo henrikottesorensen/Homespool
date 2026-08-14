@@ -147,7 +147,7 @@ public class TransferRequestHandlingTests
             new InboundEventMessage(DateTimeOffset.UtcNow, new EventDTO
             {
                 Status = "IDLE",
-                EventType = Events.TransferFinished,
+                EventType = PrinterEventType.TransferFinished,
                 TransferId = 4242,
             }),
             CancellationToken.None);
@@ -177,7 +177,7 @@ public class TransferRequestHandlingTests
             new InboundEventMessage(DateTimeOffset.UtcNow, new EventDTO
             {
                 Status = "IDLE",
-                EventType = Events.TransferFinished,
+                EventType = PrinterEventType.TransferFinished,
                 TransferId = 9999,
             }),
             CancellationToken.None);

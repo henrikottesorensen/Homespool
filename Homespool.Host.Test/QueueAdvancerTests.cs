@@ -391,7 +391,7 @@ public sealed class QueueAdvancerTests : IDisposable
         actor.IsOpen.Returns(true);
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
              .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
-                                                            new CommandOutcome(Events.Rejected, reason))));
+                                                            new CommandOutcome(PrinterEventType.Rejected, reason))));
 
         _registry.Register(PrinterId, actor);
     }
@@ -416,12 +416,12 @@ public sealed class QueueAdvancerTests : IDisposable
                          $"{{\"path\":\"{existingPath}\"}}";
 
                      return Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
-                                                                  new CommandOutcome(Events.FileInfo, null),
+                                                                  new CommandOutcome(PrinterEventType.FileInfo, null),
                                                                   JsonSerializer.Deserialize<JsonElement>(json)));
                  }
 
                  return Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
-                                                              new CommandOutcome(Events.Rejected, "File already exists")
+                                                              new CommandOutcome(PrinterEventType.Rejected, "File already exists")
                                                                   { MachineReason = "FILE_EXISTS" }));
              });
 

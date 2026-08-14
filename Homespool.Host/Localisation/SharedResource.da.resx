@@ -1549,7 +1549,7 @@
     <value>Du kan ikke tilføje et kamera til dette team.</value>
   </data>
   <data name="Cameras_StreamServerRefused" xml:space="preserve">
-    <value>Gemt, men streamserveren ville ikke tage imod denne kilde. Tjek adressen, eller om go2rtc-tjenesten kører.</value>
+    <value>Gemt, men streamserveren ville ikke tage imod denne kilde. Tjek adressen, og om go2rtc-tjenesten stadig kører.</value>
   </data>
   <data name="Cameras_NoPictureLocal" xml:space="preserve">
     <value>Gemt, men der kom intet billede tilbage. Streamserveren har måske ikke adgang til dette kamera: tjek, at go2rtc-tjenesten i compose.yaml kan nå videoenheder, og at intet andet på denne maskine allerede bruger det.</value>

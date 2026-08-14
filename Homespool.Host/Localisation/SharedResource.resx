@@ -1587,7 +1587,7 @@
     <value>You cannot add a camera to that team.</value>
   </data>
   <data name="Cameras_StreamServerRefused" xml:space="preserve">
-    <value>Saved, but the stream server would not accept this source. Check the address, or that the go2rtc service is running.</value>
+    <value>Saved, but the stream server would not accept this source. Check the address, and that the go2rtc service is still running.</value>
     <comment>go2rtc is the service&apos;s own name and stays as it is.</comment>
   </data>
   <data name="Cameras_NoPictureLocal" xml:space="preserve">

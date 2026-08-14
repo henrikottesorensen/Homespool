@@ -500,7 +500,7 @@
     <comment>The braces are PrusaSlicer's own menu labels and a link, kept English: they have to match what a person sees in the slicer, which this application does not author.</comment>
   </data>
   <data name="Printers_PreheatWarning" xml:space="preserve">
-    <value>Both are refused while the printer is busy, {0}: changing a heater mid-print ruins the print without ending it, and the printer will not refuse it on your behalf. To stop a print, use the controls on the {1}.</value>
+    <value>Both are refused while the printer is busy, {0}: changing a heater&apos;s target mid-print ruins the print without ending it, and the printer will not refuse it on your behalf. To stop a print, use the controls on the {1}.</value>
   </data>
   <data name="Printers_CoolingIncluded" xml:space="preserve">
     <value>cooling included</value>

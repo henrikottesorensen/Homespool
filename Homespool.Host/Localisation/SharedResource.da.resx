@@ -602,9 +602,6 @@
   <data name="Invites_Target" xml:space="preserve">
     <value>Modtager</value>
   </data>
-  <data name="Invites_Expires" xml:space="preserve">
-    <value>Udløber</value>
-  </data>
   <data name="Invites_BackToList" xml:space="preserve">
     <value>Tilbage til invitationer</value>
   </data>
@@ -667,9 +664,6 @@
   </data>
   <data name="TwoFactor_Verify" xml:space="preserve">
     <value>Bekræft</value>
-  </data>
-  <data name="TwoFactor_ScanQr" xml:space="preserve">
-    <value>Scan QR-koden eller indtast denne nøgle</value>
   </data>
   <data name="TwoFactor_Steps" xml:space="preserve">
     <value>Følg disse trin for at bruge en tofaktorapp:</value>
@@ -770,17 +764,11 @@
   <data name="Cert_NoUsableAddress" xml:space="preserve">
     <value>ingen brugbar adresse blev fundet</value>
   </data>
-  <data name="Cert_NotConfigured" xml:space="preserve">
-    <value>ikke konfigureret (</value>
-  </data>
   <data name="Cert_Nothing" xml:space="preserve">
     <value>intet</value>
   </data>
   <data name="Cert_ProxyReloaded" xml:space="preserve">
     <value>proxy genindlæst</value>
-  </data>
-  <data name="Cert_ToTakeEffect" xml:space="preserve">
-    <value>for at træde i kraft -</value>
   </data>
   <data name="TwoFactor_MustGenerate" xml:space="preserve">
     <value>Du skal {0}, før du kan logge ind med en gendannelseskode.</value>
@@ -962,9 +950,6 @@
   </data>
   <data name="TwoFactor_DisableKeepsKeys" xml:space="preserve">
     <value>At slå tofaktorgodkendelse fra ændrer ikke de nøgler, der bruges i tofaktorapps. Vil du skifte den nøgle, en tofaktorapp bruger, bør du {0}</value>
-  </data>
-  <data name="TwoFactor_LoseCodesWarning" xml:space="preserve">
-    <value>Mister du din enhed og ikke har gendannelseskoderne, mister du adgangen til din konto. At generere nye gendannelseskoder ændrer ikke de nøgler, der bruges i tofaktorapps. Vil du skifte den nøgle, en tofaktorapp bruger, bør du {0}</value>
   </data>
   <data name="TwoFactor_LoseDeviceWarning" xml:space="preserve">
     <value>Mister du din enhed og ikke har gendannelseskoderne, mister du adgangen til din konto.</value>

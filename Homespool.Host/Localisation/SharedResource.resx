@@ -617,9 +617,6 @@
   <data name="Invites_Target" xml:space="preserve">
     <value>Target</value>
   </data>
-  <data name="Invites_Expires" xml:space="preserve">
-    <value>Expires</value>
-  </data>
   <data name="Invites_BackToList" xml:space="preserve">
     <value>Back to invitations</value>
   </data>
@@ -682,9 +679,6 @@
   </data>
   <data name="TwoFactor_Verify" xml:space="preserve">
     <value>Verify</value>
-  </data>
-  <data name="TwoFactor_ScanQr" xml:space="preserve">
-    <value>Scan the QR Code or enter this key</value>
   </data>
   <data name="TwoFactor_Steps" xml:space="preserve">
     <value>To use an authenticator app go through the following steps:</value>
@@ -786,17 +780,11 @@
   <data name="Cert_NoUsableAddress" xml:space="preserve">
     <value>no usable address was detected</value>
   </data>
-  <data name="Cert_NotConfigured" xml:space="preserve">
-    <value>not configured (</value>
-  </data>
   <data name="Cert_Nothing" xml:space="preserve">
     <value>nothing</value>
   </data>
   <data name="Cert_ProxyReloaded" xml:space="preserve">
     <value>proxy reloaded</value>
-  </data>
-  <data name="Cert_ToTakeEffect" xml:space="preserve">
-    <value>to take effect -</value>
   </data>
   <data name="TwoFactor_MustGenerate" xml:space="preserve">
     <value>You must {0} before you can log in with a recovery code.</value>
@@ -978,9 +966,6 @@
   </data>
   <data name="TwoFactor_DisableKeepsKeys" xml:space="preserve">
     <value>Disabling 2FA does not change the keys used in authenticator apps. If you wish to change the key used in an authenticator app you should {0}</value>
-  </data>
-  <data name="TwoFactor_LoseCodesWarning" xml:space="preserve">
-    <value>If you lose your device and don&apos;t have the recovery codes you will lose access to your account. Generating new recovery codes does not change the keys used in authenticator apps. If you wish to change the key used in an authenticator app you should {0}</value>
   </data>
   <data name="TwoFactor_LoseDeviceWarning" xml:space="preserve">
     <value>If you lose your device and don&apos;t have the recovery codes you will lose access to your account.</value>

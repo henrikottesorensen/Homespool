@@ -417,7 +417,6 @@ public sealed class LocalisationTests
         [
             "Actions",                  // a table heading and a shared label
             "Created",                  // ditto
-            "Expires",                  // ditto
             "Save",                     // a form button and the language picker's own
             "Profile",                  // the nav entry and the page's heading
             "Manage your account",      // the nav tooltip and the page title
@@ -447,10 +446,59 @@ public sealed class LocalisationTests
     }
 
     /// <summary>
-    /// Reads a resource file from the source tree rather than the compiled assembly, which is what
-    /// lets this compare the two files as files.
+    /// A key nothing names is a sentence nobody reads, translated at somebody's expense.
     /// </summary>
-    private static IReadOnlyDictionary<string, string> ReadResources(string fileName)
+    /// <remarks>
+    /// <para>
+    /// <b>Written after finding three.</b> <c>TwoFactor_ScanQr</c> and
+    /// <c>TwoFactor_LoseCodesWarning</c> were superseded when their pages were reworded;
+    /// <c>Cert_ToTakeEffect</c> — <i>"to take effect -"</i> — was half of a sentence, left behind when
+    /// the two halves were merged into one key. All three were fully translated, and a translator
+    /// coming to this file next would have had no way to tell they were dead.
+    /// </para>
+    /// <para>
+    /// <b>Two families are named rather than searched for, and cannot be found by this.</b>
+    /// <see cref="PrinterStatusText"/> builds its keys from a prefix and an enum member, and
+    /// <see cref="Plural"/> from a prefix and One/Other - so their keys appear nowhere as literals.
+    /// They are matched by shape below. A third such family would need adding here, which is the
+    /// price of constructing key names at all.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void EveryKeyIsNamedBySomething()
+    {
+        string root = SourceRoot();
+
+        string code = string.Concat(
+            Directory.EnumerateFiles(Path.Combine(root, "Homespool.Host"), "*.cs", SearchOption.AllDirectories)
+                     .Concat(Directory.EnumerateFiles(Path.Combine(root, "Homespool.Host"), "*.cshtml", SearchOption.AllDirectories))
+                     .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                                    && !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+                     .Select(File.ReadAllText));
+
+        // Built from a prefix at run time, so they are never written out in full anywhere.
+        string[] constructed = ["PrinterStatus_"];
+        string[] constructedSuffixes = ["_One", "_Other"];
+
+        List<string> orphans = ReadResources("SharedResource.resx")
+                               .Keys
+                               .Where(key => !constructed.Any(prefix => key.StartsWith(prefix, StringComparison.Ordinal)))
+                               .Where(key => !constructedSuffixes.Any(suffix => key.EndsWith(suffix, StringComparison.Ordinal)))
+                               .Where(key => !code.Contains($"\"{key}\"", StringComparison.Ordinal))
+                               .ToList();
+
+        orphans.Should().BeEmpty(
+            "a key nothing names is dead weight that still gets translated - delete it, or find the "
+            + "page that lost it");
+    }
+
+    /// <summary>The repository root, walked up from the test binary.</summary>
+    /// <remarks>
+    /// These tests read the source tree rather than the compiled assembly, because what they are
+    /// checking is the files - a resource baked into a satellite assembly has already lost the
+    /// distinction between "absent" and "empty".
+    /// </remarks>
+    private static string SourceRoot()
     {
         string directory = AppContext.BaseDirectory;
 
@@ -459,7 +507,18 @@ public sealed class LocalisationTests
             directory = Path.GetDirectoryName(directory)!;
         }
 
-        string path = Path.Combine(directory!, "Homespool.Host", "Localisation", fileName);
+        directory.Should().NotBeNull("the tests run from inside the repository");
+
+        return directory!;
+    }
+
+    /// <summary>
+    /// Reads a resource file from the source tree rather than the compiled assembly, which is what
+    /// lets this compare the two files as files.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string> ReadResources(string fileName)
+    {
+        string path = Path.Combine(SourceRoot(), "Homespool.Host", "Localisation", fileName);
         File.Exists(path).Should().BeTrue($"{fileName} is where the strings live");
 
         return XDocument.Load(path)

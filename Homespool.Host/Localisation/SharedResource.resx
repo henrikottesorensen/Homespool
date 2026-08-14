@@ -1555,7 +1555,7 @@
     <comment>{0} is the answering event name from firmware - Rejected or Failed - and stays as firmware spells it.</comment>
   </data>
   <data name="Error_PrinterBusy" xml:space="preserve">
-    <value>The printer is {0} - heaters can only be changed when the printer is not busy.</value>
+    <value>The printer is {0} - heater targets can only be changed when the printer is not busy.</value>
     <comment>{0} is the printer status, put through PrinterStatusText so it reads in the same language as the sentence around it.</comment>
   </data>
   <data name="Error_PrinterStateUnknown" xml:space="preserve">

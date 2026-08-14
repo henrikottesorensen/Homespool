@@ -106,9 +106,9 @@ public sealed class ErrorTextTests
         PrinterBusyException error = new(PrinterStatus.Printing);
 
         Describe(error, "en-GB").Should().Be(
-            "The printer is Printing - heaters can only be changed when the printer is not busy.");
+            "The printer is Printing - heater targets can only be changed when the printer is not busy.");
         Describe(error, "da").Should().Be(
-            "Printeren er Printer - varmelegemer kan kun ændres, når printeren ikke er optaget.");
+            "Printeren er Printer - varmelegemernes temperaturmål kan kun ændres, når printeren ikke er optaget.");
     }
 
     /// <summary>

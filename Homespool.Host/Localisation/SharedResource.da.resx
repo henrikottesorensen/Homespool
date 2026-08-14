@@ -1522,7 +1522,7 @@
     <value>Printeren afviste den ({0}).</value>
   </data>
   <data name="Error_PrinterBusy" xml:space="preserve">
-    <value>Printeren er {0} - varmelegemer kan kun ændres, når printeren ikke er optaget.</value>
+    <value>Printeren er {0} - varmelegemernes temperaturmål kan kun ændres, når printeren ikke er optaget.</value>
   </data>
   <data name="Error_PrinterStateUnknown" xml:space="preserve">
     <value>Printerens tilstand kendes ikke endnu - den melder ind kort efter, den forbinder.</value>

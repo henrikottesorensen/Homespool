@@ -756,7 +756,7 @@
     <value>En genudstedelse ville indsnævre dette certifikat.</value>
   </data>
   <data name="Cert_KeepTicked" xml:space="preserve">
-    <value>Sæt flueben ved ethvert navn, en printer stadigt forbinder til, så bevares det:</value>
+    <value>Sæt flueben ved ethvert navn, en printer stadig forbinder til, så bevares det:</value>
   </data>
   <data name="Cert_WouldDrop" xml:space="preserve">
     <value>en genudstedelse ville fjerne dette</value>
@@ -937,7 +937,7 @@
     <value>I en container betyder det som regel, at certifikatet blev udstedt, før {0} var sat, så det dækker kun adresser inde i containeren - som virker derindefra og ingen andre steder. Sæt den adresse, printere skal bruge, og genudsted derefter under {1}.</value>
   </data>
   <data name="Printers_ClaimWrongServer" xml:space="preserve">
-    <value>Dette forudsætter også, at printeren allerede peger på denne server (dens {0} sætter værtsnavnet). Taler den stadigt med Prusa Connect, kom koden på skærmen fra {1} og vil aldrig virke her.</value>
+    <value>Dette forudsætter også, at printeren allerede peger på denne server (dens {0} sætter værtsnavnet). Taler den stadig med Prusa Connect, kom koden på skærmen fra {1} og vil aldrig virke her.</value>
   </data>
   <data name="Printers_ClaimThem" xml:space="preserve">
     <value>dem</value>
@@ -1288,7 +1288,7 @@
     <value>{0} er ikke forbundet lige nu.</value>
   </data>
   <data name="Files_PrinterBusy" xml:space="preserve">
-    <value>{0} er stadigt optaget af en tidligere kommando.</value>
+    <value>{0} er stadig optaget af en tidligere kommando.</value>
   </data>
   <data name="Files_PrinterNoAnswer" xml:space="preserve">
     <value>{0} svarede ikke i tide.</value>
@@ -1321,7 +1321,7 @@
     <value>Printeren er ikke forbundet lige nu.</value>
   </data>
   <data name="Printers_StillBusy" xml:space="preserve">
-    <value>Printeren er stadigt i gang med en tidligere kommando.</value>
+    <value>Printeren er stadig i gang med en tidligere kommando.</value>
   </data>
   <data name="Printers_NoResponse" xml:space="preserve">
     <value>Printeren svarede ikke i tide.</value>
@@ -1330,7 +1330,7 @@
     <value>Noget gik galt, da kommandoen blev afsendt.</value>
   </data>
   <data name="Printers_ClaimLockedOut" xml:space="preserve">
-    <value>For mange ukendte koder. Prøv igen om {0}. Printerens egen kode er upåvirket - den venter stadigt.</value>
+    <value>For mange ukendte koder. Prøv igen om {0}. Printerens egen kode er upåvirket - den venter stadig.</value>
   </data>
   <data name="Printers_ClaimWaitSeconds" xml:space="preserve">
     <value>{0} sekunder</value>
@@ -1507,7 +1507,7 @@
     <value>Denne printer er ikke forbundet.</value>
   </data>
   <data name="Error_CommandInFlight" xml:space="preserve">
-    <value>Printeren er stadigt i gang med en tidligere kommando.</value>
+    <value>Printeren er stadig i gang med en tidligere kommando.</value>
   </data>
   <data name="Error_CommandNoAnswer" xml:space="preserve">
     <value>Printeren svarede ikke på kommandoen i tide.</value>
@@ -1549,7 +1549,7 @@
     <value>Du kan ikke tilføje et kamera til dette team.</value>
   </data>
   <data name="Cameras_StreamServerRefused" xml:space="preserve">
-    <value>Gemt, men streamserveren ville ikke tage imod denne kilde. Tjek adressen, og om go2rtc-tjenesten stadigt kører.</value>
+    <value>Gemt, men streamserveren ville ikke tage imod denne kilde. Tjek adressen, og om go2rtc-tjenesten stadig kører.</value>
   </data>
   <data name="Cameras_NoPictureLocal" xml:space="preserve">
     <value>Gemt, men der kom intet billede tilbage. Streamserveren har måske ikke adgang til dette kamera: tjek, at go2rtc-tjenesten i compose.yaml kan nå videoenheder, og at intet andet på denne maskine allerede bruger det.</value>

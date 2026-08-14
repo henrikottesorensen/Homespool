@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect.Commands;
 
 namespace Homespool.Host.PrusaConnect;
@@ -70,8 +71,28 @@ public class PrinterCommandService
     }
 
     /// <summary>
+    /// Sends a domain intent - the protocol-free entry point, and what callers outside the wire
+    /// layer use. Identical contract to the <see cref="ISendableCommand"/> overload, which remains
+    /// for the callers that are legitimately wire-typed (queries whose answers are wire DTOs, and
+    /// the transfer machinery).
+    /// </summary>
+    /// <param name="printerId">The printer to send to.</param>
+    /// <param name="intent">What the caller wants done, translated to this printer's protocol here.</param>
+    /// <param name="userId">The caller, checked for <c>CanUse</c> on the printer's team.</param>
+    /// <param name="cancellationToken">The caller's own cancellation.</param>
+    public Task<CommandOutcome?> SendCommandAsync(int printerId,
+                                                  IPrinterIntent intent,
+                                                  long userId,
+                                                  CancellationToken cancellationToken)
+    {
+        // One protocol exists, so translation is unconditional. A second PrinterType turns this
+        // line into per-type dispatch - this is where it lands, not on the actor's loop.
+        return SendCommandAsync(printerId, PrusaIntentTranslator.ToCommand(intent), userId, cancellationToken);
+    }
+
+    /// <summary>
     /// Asks a printer a question and hands back the answer already parsed into
-    /// <typeparamref name="TAnswer"/> - the counterpart to <see cref="SendCommandAsync"/>, for the
+    /// <typeparamref name="TAnswer"/> - the counterpart to <see cref="SendCommandAsync(int, ISendableCommand, long, System.Threading.CancellationToken)"/>, for the
     /// commands whose answer is a payload rather than a verdict.
     /// </summary>
     /// <typeparam name="TAnswer">Declared by the command itself, via <see cref="ISendableCommand{TAnswer}"/>.</typeparam>
@@ -97,7 +118,7 @@ public class PrinterCommandService
     /// without a payload - a <c>Rejected</c> being the ordinary case, where
     /// <see cref="CommandOutcome{TAnswer}.Reason"/> is what the caller wants. Null overall only for
     /// a command declaring <see cref="ISendableCommand.ExpectsReply"/> false, as
-    /// <see cref="SendCommandAsync"/>.
+    /// <see cref="SendCommandAsync(int, ISendableCommand, long, System.Threading.CancellationToken)"/>.
     /// </returns>
     public async Task<CommandOutcome<TAnswer>?> AskAsync<TAnswer>(int printerId,
                                                                   ISendableCommand<TAnswer> commandData,

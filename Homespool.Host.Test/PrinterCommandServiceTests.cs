@@ -243,7 +243,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The permission gate is shared with <see cref="PrinterCommandService.SendCommandAsync"/> rather
+    /// The permission gate is shared with <see cref="PrinterCommandService.SendCommandAsync(int, ISendableCommand, long, System.Threading.CancellationToken)"/> rather
     /// than reimplemented - which is exactly what extracting the common half could have broken
     /// silently, since nothing else asks a question yet.
     /// </summary>

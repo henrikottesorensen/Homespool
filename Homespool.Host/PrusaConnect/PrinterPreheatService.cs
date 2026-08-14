@@ -4,7 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Homespool.Host.Exceptions;
-using Homespool.Host.PrusaConnect.Commands;
+using Homespool.Host.Printing;
 using Homespool.Host.Queue;
 using Homespool.Model;
 
@@ -69,7 +69,7 @@ public class PrinterPreheatService
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>An allow-set, not a denylist</b> - the same reasoning as <see cref="GcodeAllowList"/>. A
+    /// <b>An allow-set, not a denylist</b> - the same reasoning as <see cref="Commands.GcodeAllowList"/>. A
     /// list of forbidden states fails open on the one nobody thought of, and the enum has thirteen
     /// members of which several mean "mid-something".
     /// </para>

@@ -73,7 +73,7 @@ public interface ISendableCommand : ICommand
 /// <para>
 /// Commands answered by their event type alone - <c>Finished</c> or <c>Rejected</c>, which is all
 /// twelve sendable ones today - implement plain <see cref="ISendableCommand"/> and go through
-/// <see cref="PrinterCommandService.SendCommandAsync"/> unchanged.
+/// <see cref="PrinterCommandService.SendCommandAsync(int, ISendableCommand, long, System.Threading.CancellationToken)"/> unchanged.
 /// </para>
 /// </remarks>
 public interface ISendableCommand<TAnswer> : ISendableCommand;

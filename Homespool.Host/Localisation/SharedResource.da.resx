@@ -1135,9 +1135,9 @@
     <value>Invitationslink</value>
   </data>
   <data name="Printers_NamePlaceholder" xml:space="preserve">
-    <value>Bordprinter</value>
+    <value>Den store</value>
   </data>
-  <data name="Common_TeamPlaceholder" xml:space="preserve">
+  <data name="Common_LocationPlaceholder" xml:space="preserve">
     <value>Værksted</value>
   </data>
   <data name="Cameras_NamePlaceholder" xml:space="preserve">

@@ -1154,12 +1154,12 @@
     <value>Accept link</value>
   </data>
   <data name="Printers_NamePlaceholder" xml:space="preserve">
-    <value>Bench printer</value>
-    <comment>An example of what somebody might call a printer, so it is translated rather than kept: a placeholder is a suggestion, and an English one suggests nothing to a Danish reader.</comment>
+    <value>The big one</value>
+    <comment>An example of what somebody might call a printer. It suggests a nickname rather than a place because the Location field sits directly beneath it and takes the place - which is what &quot;Bench printer&quot; used to say twice over.</comment>
   </data>
-  <data name="Common_TeamPlaceholder" xml:space="preserve">
+  <data name="Common_LocationPlaceholder" xml:space="preserve">
     <value>Workshop</value>
-    <comment>An example team name.</comment>
+    <comment>An example location, on the Location field of Claim and Add. Named Common_TeamPlaceholder until 2026-08-14, which it never was.</comment>
   </data>
   <data name="Cameras_NamePlaceholder" xml:space="preserve">
     <value>Workshop</value>

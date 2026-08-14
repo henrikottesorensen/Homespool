@@ -1480,16 +1480,16 @@
     <value>Genudstedt til {0}, gyldigt til {1}. GENINDLÆS PROXYEN for at tage det i brug - kør &quot;docker compose exec proxy nginx -s reload&quot;. Nye forbindelser får det med det samme; en printer, der allerede er forbundet, møder fortsat det gamle certifikat, indtil den forbinder igen, hvilket er harmløst, da begge er signeret af den samme udsteder. Der skal ikke gøres noget ved printerne selv: udstederen er uændret.</value>
   </data>
   <data name="Error_FileNameConflict" xml:space="preserve">
-    <value>Der findes allerede en fil, der hedder ‘{0}’. Bed om at overskrive den, hvis det er meningen.</value>
+    <value>Der findes allerede en fil, der hedder ‘{0}’. Bed om at overskrive den, hvis det var din intention.</value>
   </data>
   <data name="Error_FileNameConflictAny" xml:space="preserve">
-    <value>Der findes allerede en fil med det navn.</value>
+    <value>Der findes allerede en fil med dette navn.</value>
   </data>
   <data name="Error_NoSuchFile" xml:space="preserve">
     <value>Du har ingen fil, der hedder ‘{0}’.</value>
   </data>
   <data name="Error_NoSuchFileAny" xml:space="preserve">
-    <value>Du har ingen fil med det navn.</value>
+    <value>Du har ingen fil med dette navn.</value>
   </data>
   <data name="Error_FileUnreadable" xml:space="preserve">
     <value>{0} kunne ikke læses - den kan lige være blevet slettet.</value>

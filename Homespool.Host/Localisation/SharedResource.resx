@@ -1603,7 +1603,8 @@
     <value>This looks like a Docker address, which is this container’s own - printers on your network cannot reach it. Use the address of the machine running Docker instead.</value>
   </data>
   <data name="Bundle_AddressUntilLeaseMoves" xml:space="preserve">
-    <value>Works immediately and needs no DNS, but stops working if this machine’s address changes. A static lease or DHCP reservation avoids that.</value>
+    <value>Works immediately and needs no DNS, but stops working if this machine’s address changes. A DHCP reservation, or a static address set on the machine itself, stops it changing.</value>
+    <comment>Two genuinely different fixes, which the wording used to state as one and a synonym: a &quot;static lease&quot; is another name for a DHCP reservation, not a third option. A static address is set on the machine and does not involve DHCP at all.</comment>
   </data>
   <data name="Bundle_AddressUnclassified" xml:space="preserve">
     <value>Not classified.</value>

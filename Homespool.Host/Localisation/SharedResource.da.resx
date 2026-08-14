@@ -1357,7 +1357,7 @@
     <value>Noget gik galt, da printeren blev tilknyttet. Prøv igen.</value>
   </data>
   <data name="Printers_AddNoPublicAddress" xml:space="preserve">
-    <value>Serverens offentlige adresse er ikke konfigureret ({0}). Bed din administrator om at sætte den, før printere klargøres på den måde.</value>
+    <value>Serverens offentlige adresse er ikke konfigureret ({0}). Bed din administrator om at sætte den, før printere klargøres på denne måde.</value>
   </data>
   <data name="Printers_AddNoTeamPermission" xml:space="preserve">
     <value>Du har ikke rettigheder til at tilføje en printer til dette team.</value>
@@ -1564,7 +1564,7 @@
     <value>Det ligner en Docker-adresse, som er containerens egen - printere på dit netværk kan ikke nå den. Brug i stedet adressen på den maskine, der kører Docker.</value>
   </data>
   <data name="Bundle_AddressUntilLeaseMoves" xml:space="preserve">
-    <value>Virker med det samme og kræver ingen DNS, men holder op med at virke, hvis denne maskines adresse ændrer sig. En statisk lease eller DHCP-reservation undgår at IP-adressen ændrer sig.</value>
+    <value>Virker med det samme og kræver ingen DNS, men holder op med at virke, hvis denne maskines adresse ændrer sig. En DHCP-reservation eller en statisk adresse sat på maskinen selv forhindrer, at IP-adressen ændrer sig.</value>
   </data>
   <data name="Bundle_AddressUnclassified" xml:space="preserve">
     <value>Ikke klassificeret.</value>

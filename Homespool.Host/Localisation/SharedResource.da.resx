@@ -910,7 +910,7 @@
     <value>Kameraet er fjernet.</value>
   </data>
   <data name="Cameras_NotYours" xml:space="preserve">
-    <value>Det kamera findes ikke, eller du må ikke fjerne det.</value>
+    <value>Dette kamera findes ikke, eller du må ikke fjerne det.</value>
   </data>
   <data name="Cameras_SavedWithPicture" xml:space="preserve">
     <value>Kameraet er gemt, og det sendte et billede.</value>
@@ -1246,7 +1246,7 @@
     <value>Navn på token</value>
   </data>
   <data name="Files_ChooseFile" xml:space="preserve">
-    <value>Vælg en fil, der skal uploades.</value>
+    <value>Vælg hvilken fil, der skal uploades.</value>
   </data>
   <data name="Files_TooLarge" xml:space="preserve">
     <value>Filen er større end grænsen på {0}.</value>
@@ -1261,7 +1261,7 @@
     <value>{0} er erstattet.</value>
   </data>
   <data name="Files_Discarded" xml:space="preserve">
-    <value>Uploaden er kasseret.</value>
+    <value>Upload er kasseret.</value>
   </data>
   <data name="Files_PrinterNotYours" xml:space="preserve">
     <value>Denne printer er ikke en af dine.</value>
@@ -1297,7 +1297,7 @@
     <value>Du har ikke rettigheder til at bruge denne printer.</value>
   </data>
   <data name="Files_SendFailed" xml:space="preserve">
-    <value>Noget gik galt, da filen blev sendt.</value>
+    <value>Noget gik galt, da filen blev afsendt.</value>
   </data>
   <data name="Files_Renamed" xml:space="preserve">
     <value>Omdøbt til {0}.</value>
@@ -1456,7 +1456,7 @@
     <value>lige nu</value>
   </data>
   <data name="Cameras_SecondsAgo" xml:space="preserve">
-    <value>for {0}s siden</value>
+    <value>for {0} sek. siden</value>
   </data>
   <data name="Cameras_Numbered" xml:space="preserve">
     <value>Kamera {0}</value>
@@ -1531,19 +1531,19 @@
     <value>Et kamera skal have en kildeadresse.</value>
   </data>
   <data name="Cameras_SourceIncomplete" xml:space="preserve">
-    <value>Det er ikke en fuldstændig adresse. Et kamera ser ud som rtsp://192.168.1.50/live eller http://192.168.1.50/snapshot.jpg.</value>
+    <value>Det er ikke en fuldstændig adresse. En kameraadresse ligner noget som f.eks. rtsp://192.168.1.50/live eller http://192.168.1.50/snapshot.jpg.</value>
   </data>
   <data name="Cameras_SourceScheme" xml:space="preserve">
-    <value>Homespool kan ikke læse kameraer over {0}. Brug rtsp, rtsps, http, https eller rtmp.</value>
+    <value>Homespool kan ikke læse kameraer over {0}. Brug rtsp, rtsps, onvif, http, https eller rtmp.</value>
   </data>
   <data name="Cameras_SourceIsThisServer" xml:space="preserve">
     <value>{0} slår op til {1}, som er selve denne server og ikke et kamera på dit netværk.</value>
   </data>
   <data name="Cameras_NotFoundOrNotYours" xml:space="preserve">
-    <value>Det kamera findes ikke, eller du må ikke ændre det.</value>
+    <value>Dette kamera findes ikke, eller du må ikke ændre på dets opsætning.</value>
   </data>
   <data name="Cameras_AttachedNeedsAdministrator" xml:space="preserve">
-    <value>Et kamera, der er tilkoblet denne server, kan kun sættes op af en administrator. Et kamera, der kan nås over netværket, kræver ikke en.</value>
+    <value>Et kamera, der er tilkoblet direkte til denne server, kan kun sættes op af en administrator. Et kamera, der kan nås over netværket, kræver ikke en.</value>
   </data>
   <data name="Cameras_NotYourTeam" xml:space="preserve">
     <value>Du kan ikke tilføje et kamera til dette team.</value>

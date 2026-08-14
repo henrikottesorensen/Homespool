@@ -1566,11 +1566,11 @@
     <value>A camera needs a source address.</value>
   </data>
   <data name="Cameras_SourceIncomplete" xml:space="preserve">
-    <value>That is not a complete address. A camera looks like rtsp://192.168.1.50/live or http://192.168.1.50/snapshot.jpg.</value>
+    <value>That is not a complete address. A camera address looks something like rtsp://192.168.1.50/live or http://192.168.1.50/snapshot.jpg.</value>
     <comment>The two example addresses stay as they are - they are literals somebody copies.</comment>
   </data>
   <data name="Cameras_SourceScheme" xml:space="preserve">
-    <value>Homespool does not read cameras over {0}. Use rtsp, rtsps, http, https or rtmp.</value>
+    <value>Homespool does not read cameras over {0}. Use rtsp, rtsps, onvif, http, https or rtmp.</value>
     <comment>{0} is the URI scheme as typed. The list of accepted schemes is protocol vocabulary and is not translated.</comment>
   </data>
   <data name="Cameras_SourceIsThisServer" xml:space="preserve">

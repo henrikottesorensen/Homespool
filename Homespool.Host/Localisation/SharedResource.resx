@@ -1701,7 +1701,7 @@
     <value>the settings your printer reads, including a token that enrols it</value>
   </data>
   <data name="Readme_RowDer" xml:space="preserve">
-    <value>the certificate authority your printer will check this server against</value>
+    <value>the certificate authority your printer will validate this server&apos;s certificate against</value>
   </data>
   <data name="Readme_RowReadme" xml:space="preserve">
     <value>this file, which the printer ignores</value>
@@ -1727,7 +1727,7 @@ A stick that already works with your printer is the right stick. If you are form
     <value>3. Both files, or neither</value>
   </data>
   <data name="Readme_Step3TlsBody" xml:space="preserve">
-    <value>`connect.der` is the certificate your printer will check this server against, and the ini tells it to use that file and nothing else. One without the other does not work: the ini alone leaves the printer with no way to verify the server, and the certificate alone is never read.</value>
+    <value>`connect.der` is the certificate authority your printer will validate this server&apos;s certificate against, and the ini tells it to use that file and nothing else. One without the other does not work: the ini alone leaves the printer with no way to verify the server, and the certificate alone is never read.</value>
   </data>
   <data name="Readme_Step3PlainHeading" xml:space="preserve">
     <value>3. This bundle has no certificate, deliberately</value>

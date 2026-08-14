@@ -1345,7 +1345,7 @@
     <value>1 minut</value>
   </data>
   <data name="Printers_ClaimNoSuchCode" xml:space="preserve">
-    <value>Ingen printer venter med den kode. Tjek den mod printerens skærm - koder udløber, så den kan allerede være skiftet ud. Bogstaverne O, I og L læses som 0, 1 og 1, så dem er det ufarligt at tage fejl af.</value>
+    <value>Ingen printer venter med denne kode. Tjek den mod printerens skærm - koder udløber, så den kan allerede være skiftet ud. Bogstaverne O, I og L læses som 0, 1 og 1, så dem er det ufarligt at tage fejl af.</value>
   </data>
   <data name="Printers_ClaimAlreadyClaimed" xml:space="preserve">
     <value>Denne kode er allerede blevet brugt. Var det ikke dig, så sørg for at kopiere den kode, der står på printerens skærm nu.</value>
@@ -1564,7 +1564,7 @@
     <value>Det ligner en Docker-adresse, som er containerens egen - printere på dit netværk kan ikke nå den. Brug i stedet adressen på den maskine, der kører Docker.</value>
   </data>
   <data name="Bundle_AddressUntilLeaseMoves" xml:space="preserve">
-    <value>Virker med det samme og kræver ingen DNS, men holder op med at virke, hvis denne maskines adresse ændrer sig. En statisk lease eller DHCP-reservation undgår det.</value>
+    <value>Virker med det samme og kræver ingen DNS, men holder op med at virke, hvis denne maskines adresse ændrer sig. En statisk lease eller DHCP-reservation undgår at IP-adressen ændrer sig.</value>
   </data>
   <data name="Bundle_AddressUnclassified" xml:space="preserve">
     <value>Ikke klassificeret.</value>

@@ -78,11 +78,34 @@ public class PrintFileOnPrinter
     /// one that visibly stops with a reason attached.
     /// </para>
     /// <para>
-    /// The reason is a sentence for a person, not a code: today the only writer is the free-space
-    /// check, which puts the two numbers in it.
+    /// <b>A code, not a sentence.</b> It used to hold finished English, which meant the column could
+    /// not be translated and that the free-space check had to recognise its own holds by matching
+    /// its own opening words. <see cref="PrintHoldReason"/> carries what happened; the words are
+    /// chosen when somebody reads the page, in whatever language they read.
     /// </para>
     /// </remarks>
-    public string? BlockedReason { get; set; }
+    public PrintHoldReason? HoldReason { get; set; }
+
+    /// <summary>
+    /// Free space the printer reported when the hold was set, in bytes. Null unless
+    /// <see cref="HoldReason"/> is <see cref="PrintHoldReason.InsufficientSpace"/>.
+    /// </summary>
+    /// <remarks>
+    /// Stored rather than re-asked, because it is an observation made at the moment of the hold. A
+    /// fresh question would cost a round trip and could answer differently from the hold the reader
+    /// is looking at, which would make the page contradict itself.
+    /// </remarks>
+    public long? HoldPrinterFreeBytes { get; set; }
+
+    /// <summary>
+    /// The size of the colliding file as the printer reported it, in bytes. Null unless
+    /// <see cref="HoldReason"/> is <see cref="PrintHoldReason.FileExistsDifferentSize"/>.
+    /// </summary>
+    /// <remarks>
+    /// <b>Our own size is not stored beside it</b> - it is on the <see cref="PrintFile"/> this row
+    /// already points at, and duplicating it would let the two disagree.
+    /// </remarks>
+    public long? HoldPrinterFileBytes { get; set; }
 
     /// <summary>When the block was last confirmed - so a held queue need not re-ask every tick.</summary>
     /// <remarks>

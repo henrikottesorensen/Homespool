@@ -432,7 +432,9 @@ namespace Homespool.Data.Migrations
                     PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
                     PrintFileId = table.Column<long>(type: "INTEGER", nullable: false),
                     TransferStartedAt = table.Column<long>(type: "INTEGER", nullable: true),
-                    BlockedReason = table.Column<string>(type: "TEXT", nullable: true),
+                    HoldReason = table.Column<string>(type: "TEXT", nullable: true),
+                    HoldPrinterFreeBytes = table.Column<long>(type: "INTEGER", nullable: true),
+                    HoldPrinterFileBytes = table.Column<long>(type: "INTEGER", nullable: true),
                     BlockedAt = table.Column<long>(type: "INTEGER", nullable: true),
                     ArrivedAt = table.Column<long>(type: "INTEGER", nullable: true),
                     PrinterPath = table.Column<string>(type: "TEXT", nullable: true)

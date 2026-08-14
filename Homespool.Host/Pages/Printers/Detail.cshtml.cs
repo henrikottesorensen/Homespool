@@ -224,12 +224,20 @@ public class DetailModel : PageModel
         ActivePrint = await _historyService.GetActiveAsync(statistics.Printer.Id, user.Id, cancellationToken);
         History = await _historyService.ListAsync(statistics.Printer.Id, user.Id, cancellationToken);
         StopperNames = await _historyService.GetStopperNamesAsync(History, cancellationToken);
-        HoldReason = await _historyService.GetHoldReasonAsync(statistics.Printer.Id, user.Id, cancellationToken);
+
+        // Both of these arrive as keys and are said here, which is the only place that knows who is
+        // reading. The loop that recorded the hold had no request to take a culture from.
+        MessageKey? hold = await _historyService.GetHoldReasonAsync(
+            statistics.Printer.Id, user.Id, cancellationToken);
+
+        HoldReason = hold is null ? null : _errors.For(hold);
 
         Cameras = await _cameraAccess.ListForPrinterAsync(statistics.Printer.Id, user.Id, cancellationToken);
 
         QueueSnapshot snapshot = await _snapshots.ReadAsync(statistics.Printer.Id, cancellationToken);
-        WaitingOn = QueueWaitDescription.For(QueueRules.Decide(snapshot), snapshot.Head?.FileName);
+        MessageKey? waiting = QueueWaitDescription.For(QueueRules.Decide(snapshot), snapshot.Head?.FileName);
+
+        WaitingOn = waiting is null ? null : _errors.For(waiting);
 
         return Page();
     }

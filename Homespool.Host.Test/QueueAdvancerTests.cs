@@ -451,7 +451,7 @@ public sealed class QueueAdvancerTests : IDisposable
         row.ArrivedAt.Should().NotBeNull("the file is on the drive, whoever put it there");
         row.PrinterPath.Should().Be("/usb/SHAPE-~1.BGC",
                                     "the alias the printer answered with is what START_PRINT has to use, and it is unguessable from here");
-        row.BlockedReason.Should().BeNull("nothing is in the way");
+        row.HoldReason.Should().BeNull("nothing is in the way");
     }
 
     /// <summary>
@@ -475,7 +475,10 @@ public sealed class QueueAdvancerTests : IDisposable
         PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.ArrivedAt.Should().BeNull("a matching name is not matching content");
-        row.BlockedReason.Should().NotBeNull("the reason has to reach a person, or the queue stalls silently");
+        row.HoldReason.Should().Be(PrintHoldReason.FileExistsDifferentSize,
+                                   "the reason has to reach a person, or the queue stalls silently");
+        row.HoldPrinterFileBytes.Should().Be(OnDiskLength + 4096,
+                                             "the page states both sizes, and this is the one only the printer knows");
         row.BlockedAt.Should().NotBeNull("the hold is re-checked on a clock, not every tick");
 
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,

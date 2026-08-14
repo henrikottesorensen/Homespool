@@ -1616,4 +1616,30 @@
     <value>Not classified.</value>
     <comment>The Undefined arm. Unreachable in practice - Describe assigns one of the three real values - and present so that adding a durability without adding words for it shows up as a bland line rather than a missing key.</comment>
   </data>
+  <data name="Queue_HoldInsufficientSpace" xml:space="preserve">
+    <value>Not enough space on the printer: {0} needs {1} bytes, and {2} are free.</value>
+    <comment>{0} is the file name, {1} its size, {2} the free space the printer reported when the queue was held. The numbers are bytes because that is what the printer said - rounding them here would make the two figures stop adding up against what its own screen shows.</comment>
+  </data>
+  <data name="Queue_HoldFileExists" xml:space="preserve">
+    <value>The printer already has a different file called {0}: {1} bytes there, {2} here. Delete it at the printer, or rename this one.</value>
+    <comment>{0} is the file name, {1} the size on the printer, {2} the size here.</comment>
+  </data>
+  <data name="Queue_HoldFileExistsUnknownSize" xml:space="preserve">
+    <value>The printer already has a file called {0} and would not say how big it is, so it cannot be confirmed as this one. Delete it at the printer, or rename this one.</value>
+    <comment>Deliberately not merged with Queue_HoldFileExists: one says the file is demonstrably not ours, this one says it cannot be confirmed either way, and a reader acts differently on each.</comment>
+  </data>
+  <data name="Queue_WaitTransferring" xml:space="preserve">
+    <value>Sending {0} to the printer.</value>
+  </data>
+  <data name="Queue_WaitTransferringUnnamed" xml:space="preserve">
+    <value>Sending the next file to the printer.</value>
+    <comment>A separate key rather than a placeholder filled with a stand-in phrase, so a translator sees the whole sentence.</comment>
+  </data>
+  <data name="Queue_WaitAwaitingPath" xml:space="preserve">
+    <value>Waiting for the printer to confirm the file.</value>
+  </data>
+  <data name="Queue_WaitPrinterNotReady" xml:space="preserve">
+    <value>Waiting for the printer to be made ready.</value>
+    <comment>States a rule nothing else on the page does - only a person offers a printer up for work - and that rule is what makes a correctly-working queue look broken to somebody who does not know it.</comment>
+  </data>
 </root>

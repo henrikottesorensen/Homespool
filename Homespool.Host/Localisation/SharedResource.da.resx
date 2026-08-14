@@ -1575,4 +1575,25 @@
   <data name="Bundle_AddressUnclassified" xml:space="preserve">
     <value>Ikke klassificeret.</value>
   </data>
+  <data name="Queue_HoldInsufficientSpace" xml:space="preserve">
+    <value>Ikke plads nok på printeren: {0} kræver {1} byte, og der er {2} ledige.</value>
+  </data>
+  <data name="Queue_HoldFileExists" xml:space="preserve">
+    <value>Printeren har allerede en anden fil, der hedder {0}: {1} byte der, {2} her. Slet den på printeren, eller omdøb denne.</value>
+  </data>
+  <data name="Queue_HoldFileExistsUnknownSize" xml:space="preserve">
+    <value>Printeren har allerede en fil, der hedder {0}, og ville ikke oplyse dens størrelse, så det kan ikke bekræftes, at det er den samme. Slet den på printeren, eller omdøb denne.</value>
+  </data>
+  <data name="Queue_WaitTransferring" xml:space="preserve">
+    <value>Sender {0} til printeren.</value>
+  </data>
+  <data name="Queue_WaitTransferringUnnamed" xml:space="preserve">
+    <value>Sender den næste fil til printeren.</value>
+  </data>
+  <data name="Queue_WaitAwaitingPath" xml:space="preserve">
+    <value>Venter på, at printeren bekræfter filen.</value>
+  </data>
+  <data name="Queue_WaitPrinterNotReady" xml:space="preserve">
+    <value>Venter på, at printeren bliver gjort klar.</value>
+  </data>
 </root>

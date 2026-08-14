@@ -196,7 +196,8 @@ public sealed class ProvisioningBundleUnreachableNameTests : IDisposable
             Options.Create(new PrusaConnectOptions { PrinterHost = "192.168.13.238", PrinterPort = 15443, PrinterTls = true }),
             Options.Create(new CertificateOptions { ContainerNetworks = ["172.16.0.0/12"] }),
             authority,
-            resolver);
+            resolver,
+            TestLocaliser.Shared());
     }
 
     private PrinterCertificateAuthority NewAuthority()

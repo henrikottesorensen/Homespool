@@ -1611,4 +1611,135 @@
   <data name="Queue_WaitPrinterNotReady" xml:space="preserve">
     <value>Afventer at printeren bliver meldt klargjort.</value>
   </data>
+  <data name="Ini_HowToLoad" xml:space="preserve">
+    <value>Klargøring fra Homespool. Kopiér denne fil til roden af en USB-nøgle - ikke ned i en mappe, ellers finder printeren den ikke - og indlæs den fra printerens egen menu:</value>
+  </data>
+  <data name="Ini_TokenIsAPassword" xml:space="preserve">
+    <value>Denne fil indeholder et token, der tilmelder denne printer. Behandl det som en adgangskode, og slet filen fra nøglen, når printeren har forbundet.</value>
+  </data>
+  <data name="Ini_CustomCertNote" xml:space="preserve">
+    <value>custom_cert = 1 gør connect.der, som ligger ved siden af denne fil, til printerens HELE trust store - den erstatter de certifikater, printeren kom med, i stedet for at lægge sig oveni. Så længe det er sat, kan denne printer ikke tale med Prusa Connect. Sæt custom_cert = 0 for at fortryde.</value>
+  </data>
+  <data name="Ini_PlainHttpNote" xml:space="preserve">
+    <value>tls = False: denne printers token sendes i klartekst over netværket, og det samme gør alt, hvad den siger bagefter. Det er en indstilling til at aflytte trafikken på et netværk, du selv styrer.</value>
+  </data>
+  <data name="Ini_SectionScope" xml:space="preserve">
+    <value>Kun [service::connect] skrives her. Din [network]-sektion og dine wifi-oplysninger er dine egne - denne server har aldrig haft dem.</value>
+  </data>
+  <data name="Readme_Title" xml:space="preserve">
+    <value>Klargøringspakke til {0}</value>
+  </data>
+  <data name="Readme_APrinter" xml:space="preserve">
+    <value>en printer</value>
+  </data>
+  <data name="Readme_Intro" xml:space="preserve">
+    <value>Denne zip sætter en Prusa-printer op til at tale med **din** Homespool-server i stedet for Prusa Connect. Den er lavet til én printer og én server; den kan hverken genbruges eller gives videre.</value>
+  </data>
+  <data name="Readme_ContentsHeading" xml:space="preserve">
+    <value>Hvad ligger der her</value>
+  </data>
+  <data name="Readme_ColumnFile" xml:space="preserve">
+    <value>fil</value>
+  </data>
+  <data name="Readme_ColumnWhat" xml:space="preserve">
+    <value>hvad det er</value>
+  </data>
+  <data name="Readme_RowIni" xml:space="preserve">
+    <value>de indstillinger, din printer læser, herunder et token, der tilmelder den</value>
+  </data>
+  <data name="Readme_RowDer" xml:space="preserve">
+    <value>den certifikatudsteder, din printer vil kontrollere denne server op imod</value>
+  </data>
+  <data name="Readme_RowReadme" xml:space="preserve">
+    <value>denne fil, som printeren ser bort fra</value>
+  </data>
+  <data name="Readme_OnThePrinterHeading" xml:space="preserve">
+    <value>Sådan får du det over på printeren</value>
+  </data>
+  <data name="Readme_Step1Heading" xml:space="preserve">
+    <value>1. Pak ud på en USB-nøgle</value>
+  </data>
+  <data name="Readme_Step1Body" xml:space="preserve">
+    <value>Kopiér filerne til **øverste niveau** på nøglen - ikke ned i en mappe. Ender du med en mappe på nøglen, finder printeren ingenting og fortæller dig ikke hvorfor.
+
+En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer du en ny, så brug FAT32.</value>
+  </data>
+  <data name="Readme_Step2Heading" xml:space="preserve">
+    <value>2. Sæt nøglen i printeren</value>
+  </data>
+  <data name="Readme_Step2Body" xml:space="preserve">
+    <value>Den USB-port, den plejer at bruge.</value>
+  </data>
+  <data name="Readme_Step3TlsHeading" xml:space="preserve">
+    <value>3. Begge filer, eller ingen af dem</value>
+  </data>
+  <data name="Readme_Step3TlsBody" xml:space="preserve">
+    <value>`connect.der` er det certifikat, din printer vil kontrollere denne server op imod, og ini-filen fortæller den, at den skal bruge netop den fil og ikke andet. Den ene uden den anden virker ikke: ini-filen alene efterlader printeren uden nogen måde at verificere serveren på, og certifikatet alene bliver aldrig læst.</value>
+  </data>
+  <data name="Readme_Step3PlainHeading" xml:space="preserve">
+    <value>3. Denne pakke indeholder med vilje intet certifikat</value>
+  </data>
+  <data name="Readme_Step3PlainBody" xml:space="preserve">
+    <value>Denne server er sat op til at tale med printere over almindelig HTTP, så der er intet for printeren at verificere og ingen `connect.der` i zip-filen. Tokenet nedenfor sendes i klartekst over dit netværk. Det er en indstilling til test, ikke til en printer, du er afhængig af.</value>
+  </data>
+  <data name="Readme_Step4Heading" xml:space="preserve">
+    <value>4. Indlæs indstillingerne</value>
+  </data>
+  <data name="Readme_Step4Body" xml:space="preserve">
+    <value>På printeren: **{0}**, eller på noget firmware blot **{1}**. Printeren læser filen, genstarter sin forbindelse, og bør inden for få sekunder vise sig som online.</value>
+  </data>
+  <data name="Readme_Step5Heading" xml:space="preserve">
+    <value>5. Kig på serveren</value>
+  </data>
+  <data name="Readme_Step5Body" xml:space="preserve">
+    <value>Printeren dukker op under **{0}** i Homespool. Den tilmelder sig selv ved første kontakt, så der er ikke mere at trykke på.</value>
+  </data>
+  <data name="Readme_DeleteHeading" xml:space="preserve">
+    <value>Slet filen, når det har virket</value>
+  </data>
+  <data name="Readme_DeleteBody" xml:space="preserve">
+    <value>`prusa_printer_settings.ini` indeholder et token, der er denne printers adgangskode til din server. Når printeren har forbundet, så slet filen fra nøglen. Intet får brug for den igen - printeren har gemt det, den skal bruge.</value>
+  </data>
+  <data name="Readme_NoConnectHeading" xml:space="preserve">
+    <value>Så længe denne pakke er indlæst, kan printeren ikke bruge Prusa Connect</value>
+  </data>
+  <data name="Readme_NoConnectBody" xml:space="preserve">
+    <value>`custom_cert = 1` **erstatter** de certifikater, din printer kom med, i stedet for at lægge sig oveni. Det er dét, der gør, at den kan stole på din server, og det er også derfor, den ikke længere kan verificere Prusas. Vil du fortryde, så indlæs en ini med `custom_cert = 0` og de Prusa Connect-indstillinger, du vil have tilbage.</value>
+  </data>
+  <data name="Readme_TroubleHeading" xml:space="preserve">
+    <value>Hvis det ikke virker</value>
+  </data>
+  <data name="Readme_TroubleConfigFailed" xml:space="preserve">
+    <value>**Printeren siger, at konfigurationen ikke kunne indlæses.** Noget har redigeret filen. Den er nærtagende med kommentartegn (kun `#`, aldrig `;`) og med at være komplet - hver eneste nøgle skal være der. Hent pakken igen frem for at reparere den i hånden; det er hele grunden til, at den bliver genereret.</value>
+  </data>
+  <data name="Readme_TroubleTls" xml:space="preserve">
+    <value>**Printeren melder om en TLS- eller certifikatfejl.** Tre sædvanlige årsager, efter sandsynlighed: `connect.der` blev ikke kopieret med ved siden af ini-filen; serverens certifikat er blevet genudstedt, siden denne pakke blev hentet, så hent en ny; eller printerens ur går så meget forkert, at den afviser certifikatet, hvilket retter sig selv, når den har været på et netværk med internetadgang et minuts tid.</value>
+  </data>
+  <data name="Readme_TroubleNothing" xml:space="preserve">
+    <value>**Der sker ingenting overhovedet.** Tjek, at printeren kan nå `{0}` på port `{1}` derfra, hvor den står - et andet wifi-netværk eller en firewall imellem de to er det sædvanlige svar.</value>
+  </data>
+  <data name="Readme_TroubleStopped" xml:space="preserve">
+    <value>**Det virkede i ugevis og holdt så op.** Sandsynligvis har denne servers adresse ændret sig. Din router uddeler den på en lease, og en genstart eller et travlt netværk kan flytte den. Giv denne server en **statisk lease** - også kaldet en DHCP-reservation eller adressebinding - i din routers indstillinger. Det tager et minut, og det er den ene ændring, der stopper gentagelserne; uden den betyder hvert eneste skift, at du skal gå rundt med en nøgle til hver eneste printer igen.</value>
+  </data>
+  <data name="Readme_TroubleLostDownload" xml:space="preserve">
+    <value>**Du mistede filen, før printeren nåede at forbinde.** Intet er i stykker. I Homespool bruger du **{0}** på printerens række og henter en ny pakke; det gamle token holder op med at virke i samme øjeblik.</value>
+  </data>
+  <data name="Readme_PointsAtHeading" xml:space="preserve">
+    <value>Hvad denne pakke peger på</value>
+  </data>
+  <data name="Readme_RowServerAddress" xml:space="preserve">
+    <value>serveradresse</value>
+  </data>
+  <data name="Readme_RowPort" xml:space="preserve">
+    <value>port</value>
+  </data>
+  <data name="Readme_RowConnection" xml:space="preserve">
+    <value>forbindelse</value>
+  </data>
+  <data name="Readme_ConnectionTls" xml:space="preserve">
+    <value>TLS - den samme kryptering, som din browser kalder HTTPS. Det er linjen `tls = True` i ini-filen.</value>
+  </data>
+  <data name="Readme_ConnectionPlain" xml:space="preserve">
+    <value>almindelig HTTP, **ikke krypteret**. Det er linjen `tls = False` i ini-filen, og den er kun til test.</value>
+  </data>
 </root>

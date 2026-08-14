@@ -1661,4 +1661,142 @@
     <value>Waiting for the printer to be made ready.</value>
     <comment>States a rule nothing else on the page does - only a person offers a printer up for work - and that rule is what makes a correctly-working queue look broken to somebody who does not know it.</comment>
   </data>
+  <data name="Ini_HowToLoad" xml:space="preserve">
+    <value>Homespool provisioning. Copy this file to the root of a USB stick - not into a folder, or the printer will not find it - and load it from the printer&apos;s own menu:</value>
+    <comment>Ends at the colon. The menu path follows on a line of its own, unwrapped and in English, because it names a menu in the printer&apos;s firmware and is the one thing in this comment somebody will hunt for. Same class as the PrusaSlicer paths - see notes/localisation.md.</comment>
+  </data>
+  <data name="Ini_TokenIsAPassword" xml:space="preserve">
+    <value>This file carries a token that enrols this printer. Treat it as you would a password, and delete it from the stick once the printer has connected.</value>
+  </data>
+  <data name="Ini_CustomCertNote" xml:space="preserve">
+    <value>custom_cert = 1 makes connect.der, beside this file, the printer&apos;s ENTIRE trust store - replacing the certificates it shipped with rather than adding to them. While that is set, this printer cannot talk to Prusa Connect. Set custom_cert = 0 to undo it.</value>
+    <comment>The key names are firmware&apos;s and stay as they are. &quot;trust store&quot; stays too - it is the term the firmware documentation uses.</comment>
+  </data>
+  <data name="Ini_PlainHttpNote" xml:space="preserve">
+    <value>tls = False: this printer&apos;s token crosses the network in clear, and so does everything it says afterwards. That is a setting for reading the wire on a network you control.</value>
+  </data>
+  <data name="Ini_SectionScope" xml:space="preserve">
+    <value>Only [service::connect] is written here. Your [network] section and wifi credentials are yours - this server has never had them.</value>
+  </data>
+  <data name="Readme_Title" xml:space="preserve">
+    <value>Provisioning bundle for {0}</value>
+    <comment>{0} is the printer&apos;s name, or Readme_APrinter.</comment>
+  </data>
+  <data name="Readme_APrinter" xml:space="preserve">
+    <value>a printer</value>
+  </data>
+  <data name="Readme_Intro" xml:space="preserve">
+    <value>This zip sets a Prusa printer up to talk to **your** Homespool server instead of Prusa Connect. It was generated for one printer and one server; it is not reusable and not transferable.</value>
+  </data>
+  <data name="Readme_ContentsHeading" xml:space="preserve">
+    <value>What is in here</value>
+  </data>
+  <data name="Readme_ColumnFile" xml:space="preserve">
+    <value>file</value>
+  </data>
+  <data name="Readme_ColumnWhat" xml:space="preserve">
+    <value>what it is</value>
+  </data>
+  <data name="Readme_RowIni" xml:space="preserve">
+    <value>the settings your printer reads, including a token that enrols it</value>
+  </data>
+  <data name="Readme_RowDer" xml:space="preserve">
+    <value>the certificate authority your printer will check this server against</value>
+  </data>
+  <data name="Readme_RowReadme" xml:space="preserve">
+    <value>this file, which the printer ignores</value>
+  </data>
+  <data name="Readme_OnThePrinterHeading" xml:space="preserve">
+    <value>Putting it on the printer</value>
+  </data>
+  <data name="Readme_Step1Heading" xml:space="preserve">
+    <value>1. Unzip onto a USB stick</value>
+  </data>
+  <data name="Readme_Step1Body" xml:space="preserve">
+    <value>Copy the files to the **top level** of the stick - not into a folder. If you end up with a folder on the stick, the printer will not find anything and will not tell you why.
+
+A stick that already works with your printer is the right stick. If you are formatting a new one, use FAT32.</value>
+  </data>
+  <data name="Readme_Step2Heading" xml:space="preserve">
+    <value>2. Put the stick in the printer</value>
+  </data>
+  <data name="Readme_Step2Body" xml:space="preserve">
+    <value>Any USB port it normally uses.</value>
+  </data>
+  <data name="Readme_Step3TlsHeading" xml:space="preserve">
+    <value>3. Both files, or neither</value>
+  </data>
+  <data name="Readme_Step3TlsBody" xml:space="preserve">
+    <value>`connect.der` is the certificate your printer will check this server against, and the ini tells it to use that file and nothing else. One without the other does not work: the ini alone leaves the printer with no way to verify the server, and the certificate alone is never read.</value>
+  </data>
+  <data name="Readme_Step3PlainHeading" xml:space="preserve">
+    <value>3. This bundle has no certificate, deliberately</value>
+  </data>
+  <data name="Readme_Step3PlainBody" xml:space="preserve">
+    <value>This server is configured to talk to printers over plain HTTP, so there is nothing for the printer to verify and no `connect.der` in the zip. The token below crosses your network in clear text. That is a setting for testing, not for a printer you rely on.</value>
+  </data>
+  <data name="Readme_Step4Heading" xml:space="preserve">
+    <value>4. Load the settings</value>
+  </data>
+  <data name="Readme_Step4Body" xml:space="preserve">
+    <value>On the printer: **{0}**, or on some firmware simply **{1}**. The printer reads the file, restarts its connection, and within a few seconds should show as online.</value>
+    <comment>{0} and {1} are the printer&apos;s own menu paths, left in English for the same reason as Ini_HowToLoad.</comment>
+  </data>
+  <data name="Readme_Step5Heading" xml:space="preserve">
+    <value>5. Check the server</value>
+  </data>
+  <data name="Readme_Step5Body" xml:space="preserve">
+    <value>The printer appears under **{0}** in Homespool. It enrols itself on first contact, so there is nothing else to press.</value>
+    <comment>{0} is Homespool&apos;s own navigation label and is therefore translated - unlike the printer&apos;s menu paths.</comment>
+  </data>
+  <data name="Readme_DeleteHeading" xml:space="preserve">
+    <value>When it has worked, delete the file</value>
+  </data>
+  <data name="Readme_DeleteBody" xml:space="preserve">
+    <value>`prusa_printer_settings.ini` contains a token that is this printer&apos;s password to your server. Once the printer has connected, delete it from the stick. Nothing needs it again - the printer has kept what it needs.</value>
+  </data>
+  <data name="Readme_NoConnectHeading" xml:space="preserve">
+    <value>While this bundle is loaded, the printer cannot use Prusa Connect</value>
+  </data>
+  <data name="Readme_NoConnectBody" xml:space="preserve">
+    <value>`custom_cert = 1` **replaces** the certificates your printer shipped with, rather than adding to them. That is what lets it trust your server, and it is also why it can no longer verify Prusa&apos;s. To undo it, load an ini with `custom_cert = 0` and the Prusa Connect settings you want back.</value>
+  </data>
+  <data name="Readme_TroubleHeading" xml:space="preserve">
+    <value>If it does not work</value>
+  </data>
+  <data name="Readme_TroubleConfigFailed" xml:space="preserve">
+    <value>**The printer says the config failed to load.** Something edited the file. It is sensitive about comment characters (`#` only, never `;`) and about being complete - every key has to be there. Re-download the bundle rather than repairing it by hand; that is the entire reason it is generated.</value>
+  </data>
+  <data name="Readme_TroubleTls" xml:space="preserve">
+    <value>**The printer says there is a TLS or certificate error.** Three usual causes, in order of likelihood: `connect.der` was not copied alongside the ini; the server&apos;s certificate has been reissued since this bundle was downloaded, so download a fresh one; or the printer&apos;s clock is far enough out to reject the certificate, which fixes itself once it has been on a network with internet access for a minute.</value>
+  </data>
+  <data name="Readme_TroubleNothing" xml:space="preserve">
+    <value>**Nothing happens at all.** Check the printer can reach `{0}` on port `{1}` from where it sits - a different wifi network or a firewall between the two is the usual answer.</value>
+  </data>
+  <data name="Readme_TroubleStopped" xml:space="preserve">
+    <value>**It worked for weeks and then stopped.** Most likely this server&apos;s address changed. Your router hands it out on a lease, and a reboot or a busy network can move it. Give this server a **static lease** - sometimes called a DHCP reservation, or address binding - in your router&apos;s settings. It takes a minute and it is the one change that stops this recurring; without it, every move means walking a stick to every printer again.</value>
+    <comment>Correctly says a static lease is also called a DHCP reservation. Bundle_AddressUntilLeaseMoves used to offer the two as alternatives, which they are not.</comment>
+  </data>
+  <data name="Readme_TroubleLostDownload" xml:space="preserve">
+    <value>**You lost the download before the printer connected.** Nothing is broken. In Homespool, use **{0}** on the printer&apos;s row and download a new bundle; the old token stops working the moment you do.</value>
+    <comment>{0} is Homespool&apos;s own button label and is translated with it.</comment>
+  </data>
+  <data name="Readme_PointsAtHeading" xml:space="preserve">
+    <value>What this bundle points at</value>
+  </data>
+  <data name="Readme_RowServerAddress" xml:space="preserve">
+    <value>server address</value>
+  </data>
+  <data name="Readme_RowPort" xml:space="preserve">
+    <value>port</value>
+  </data>
+  <data name="Readme_RowConnection" xml:space="preserve">
+    <value>connection</value>
+  </data>
+  <data name="Readme_ConnectionTls" xml:space="preserve">
+    <value>TLS - the same encryption your browser calls HTTPS. This is the `tls = True` line in the ini.</value>
+  </data>
+  <data name="Readme_ConnectionPlain" xml:space="preserve">
+    <value>plain HTTP, **not encrypted**. This is the `tls = False` line in the ini, and it is for testing only.</value>
+  </data>
 </root>

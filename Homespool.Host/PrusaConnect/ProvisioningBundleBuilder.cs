@@ -9,9 +9,11 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Options;
 
 using Homespool.Host.Certificates;
+using Homespool.Host.Localisation;
 
 namespace Homespool.Host.PrusaConnect;
 
@@ -44,14 +46,26 @@ public sealed class ProvisioningBundleBuilder
     private readonly PrinterCertificateAuthority _authority;
     private readonly IHostAddressResolver _resolver;
 
+    /// <summary>
+    /// Reads the ini's comments and the README in the culture of whoever asked for the bundle.
+    /// </summary>
+    /// <remarks>
+    /// <b>Safe to hold in a singleton</b>, because a localiser resolves against the ambient culture
+    /// on each call rather than at construction - so one instance answers every request in that
+    /// request's own language.
+    /// </remarks>
+    private readonly IStringLocalizer<SharedResource> _localiser;
+
     public ProvisioningBundleBuilder(IOptions<PrusaConnectOptions> options,
                                      IOptions<CertificateOptions> certificates,
                                      PrinterCertificateAuthority authority,
-                                     IHostAddressResolver resolver)
+                                     IHostAddressResolver resolver,
+                                     IStringLocalizer<SharedResource> localiser)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(certificates);
 
+        _localiser = localiser;
         _options = options.Value;
         _certificates = certificates.Value;
         _authority = authority;
@@ -207,7 +221,7 @@ public sealed class ProvisioningBundleBuilder
             // UTF-8 with no BOM, and LF endings. A BOM ahead of the first section header is not a
             // comment to an ini parser, it is three bytes of rubbish before '[' - the same class of
             // silent, unexplained parse failure that generating this file exists to remove.
-            string ini = ConnectIni.BuildFile(_options, name, token).ReplaceLineEndings("\n");
+            string ini = ConnectIni.BuildFile(_options, name, token, _localiser).ReplaceLineEndings("\n");
 
             WriteEntry(archive, ConnectIni.FileName, new UTF8Encoding(false).GetBytes(ini));
 
@@ -217,7 +231,7 @@ public sealed class ProvisioningBundleBuilder
             WriteEntry(archive,
                        ProvisioningReadme.FileName,
                        new UTF8Encoding(false).GetBytes(
-                           ProvisioningReadme.Build(_options, name, printerName).ReplaceLineEndings("\n")));
+                           ProvisioningReadme.Build(_options, name, printerName, _localiser).ReplaceLineEndings("\n")));
 
             // No anchor when nothing is verified: with tls off the ini says custom_cert = 0, and a der
             // beside it would be a file the printer never opens and the operator has to wonder about.

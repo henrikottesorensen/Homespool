@@ -1,5 +1,9 @@
 using System;
 
+using Microsoft.Extensions.Localization;
+
+using Homespool.Host.Localisation;
+
 namespace Homespool.Host.PrusaConnect;
 
 /// <summary>
@@ -29,128 +33,123 @@ public static class ProvisioningReadme
     /// <param name="options">Supplies the port and whether TLS is in use.</param>
     /// <param name="hostname">The address written into the ini — what this printer will connect to.</param>
     /// <param name="printerName">The printer this was provisioned for, or null if it was left unnamed.</param>
-    public static string Build(PrusaConnectOptions options, string hostname, string? printerName)
+    /// <param name="localiser">Reads the document in the culture of whoever asked for the bundle.</param>
+    /// <remarks>
+    /// <b>Localised per block rather than per sentence.</b> A paragraph is the smallest unit a
+    /// translator can rearrange freely; splitting further would produce the before/after keys this
+    /// project has spent two rounds removing. Markdown structure, code spans and the printer's own
+    /// menu paths stay here rather than travelling into the resources.
+    /// </remarks>
+    public static string Build(PrusaConnectOptions options,
+                               string hostname,
+                               string? printerName,
+                               IStringLocalizer<SharedResource> localiser)
     {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(localiser);
 
-        string forPrinter = string.IsNullOrWhiteSpace(printerName) ? "a printer" : $"**{printerName.Trim()}**";
+        string forPrinter = string.IsNullOrWhiteSpace(printerName) ?
+            localiser["Readme_APrinter"].Value :
+            $"**{printerName.Trim()}**";
 
         string certificateStep = options.PrinterTls ?
-            """
-            ### 3. Both files, or neither
+            $"""
+            ### {localiser["Readme_Step3TlsHeading"].Value}
 
-            `connect.der` is the certificate your printer will check this server against, and the ini
-            tells it to use that file and nothing else. One without the other does not work: the ini
-            alone leaves the printer with no way to verify the server, and the certificate alone is
-            never read.
+            {localiser["Readme_Step3TlsBody"].Value}
             """ :
-            """
-            ### 3. This bundle has no certificate, deliberately
+            $"""
+            ### {localiser["Readme_Step3PlainHeading"].Value}
 
-            This server is configured to talk to printers over plain HTTP, so there is nothing for the
-            printer to verify and no `connect.der` in the zip. The token below crosses your network in
-            clear text. That is a setting for testing, not for a printer you rely on.
+            {localiser["Readme_Step3PlainBody"].Value}
             """;
 
         string afterwards = options.PrinterTls ?
-            """
-            ## While this bundle is loaded, the printer cannot use Prusa Connect
+            $"""
+            ## {localiser["Readme_NoConnectHeading"].Value}
 
-            `custom_cert = 1` **replaces** the certificates your printer shipped with, rather than
-            adding to them. That is what lets it trust your server, and it is also why it can no
-            longer verify Prusa's. To undo it, load an ini with `custom_cert = 0` and the Prusa
-            Connect settings you want back.
+            {localiser["Readme_NoConnectBody"].Value}
             """ :
             string.Empty;
 
+        string certificateRow = options.PrinterTls ?
+            $"| `{ProvisioningBundleBuilder.AuthorityFileName}` | {localiser["Readme_RowDer"].Value} |" :
+            string.Empty;
+
+        string connection = options.PrinterTls ?
+            localiser["Readme_ConnectionTls"].Value :
+            localiser["Readme_ConnectionPlain"].Value;
+
         return $"""
-                # Provisioning bundle for {forPrinter}
+                # {localiser["Readme_Title", forPrinter].Value}
 
-                This zip sets a Prusa printer up to talk to **your** Homespool server instead of Prusa
-                Connect. It was generated for one printer and one server; it is not reusable and not
-                transferable.
+                {localiser["Readme_Intro"].Value}
 
-                ## What is in here
+                ## {localiser["Readme_ContentsHeading"].Value}
 
-                | file | what it is |
+                | {localiser["Readme_ColumnFile"].Value} | {localiser["Readme_ColumnWhat"].Value} |
                 |---|---|
-                | `prusa_printer_settings.ini` | the settings your printer reads, including a token that enrols it |
-                {(options.PrinterTls ? "| `connect.der` | the certificate authority your printer will check this server against |" : string.Empty)}
-                | `README.Bundle.md` | this file, which the printer ignores |
+                | `{ConnectIni.FileName}` | {localiser["Readme_RowIni"].Value} |
+                {certificateRow}
+                | `{FileName}` | {localiser["Readme_RowReadme"].Value} |
 
-                ## Putting it on the printer
+                ## {localiser["Readme_OnThePrinterHeading"].Value}
 
-                ### 1. Unzip onto a USB stick
+                ### {localiser["Readme_Step1Heading"].Value}
 
-                Copy the files to the **top level** of the stick — not into a folder. If you end up with
-                a folder on the stick, the printer will not find anything and will not tell you why.
+                {localiser["Readme_Step1Body"].Value}
 
-                A stick that already works with your printer is the right stick. If you are formatting a
-                new one, use FAT32.
+                ### {localiser["Readme_Step2Heading"].Value}
 
-                ### 2. Put the stick in the printer
-
-                Any USB port it normally uses.
+                {localiser["Readme_Step2Body"].Value}
 
                 {certificateStep}
 
-                ### 4. Load the settings
+                ### {localiser["Readme_Step4Heading"].Value}
 
-                On the printer: **Settings → Network → Prusa Connect → Load Settings**, or on some
-                firmware simply **Prusa Connect → Load Settings**. The printer reads the file, restarts
-                its connection, and within a few seconds should show as online.
+                {localiser["Readme_Step4Body", LongMenuPath, ShortMenuPath].Value}
 
-                ### 5. Check the server
+                ### {localiser["Readme_Step5Heading"].Value}
 
-                The printer appears under **Printers** in Homespool. It enrols itself on first contact,
-                so there is nothing else to press.
+                {localiser["Readme_Step5Body", localiser["Printers_Title"].Value].Value}
 
-                ## When it has worked, delete the file
+                ## {localiser["Readme_DeleteHeading"].Value}
 
-                `prusa_printer_settings.ini` contains a token that is this printer's password to your
-                server. Once the printer has connected, delete it from the stick. Nothing needs it
-                again — the printer has kept what it needs.
+                {localiser["Readme_DeleteBody"].Value}
 
                 {afterwards}
 
-                ## If it does not work
+                ## {localiser["Readme_TroubleHeading"].Value}
 
-                **The printer says the config failed to load.** Something edited the file. It is
-                sensitive about comment characters (`#` only, never `;`) and about being complete —
-                every key has to be there. Re-download the bundle rather than repairing it by hand;
-                that is the entire reason it is generated.
+                {localiser["Readme_TroubleConfigFailed"].Value}
 
-                **The printer says there is a TLS or certificate error.** Three usual causes, in order
-                of likelihood: `connect.der` was not copied alongside the ini; the server's certificate
-                has been reissued since this bundle was downloaded, so download a fresh one; or the
-                printer's clock is far enough out to reject the certificate, which fixes itself once it
-                has been on a network with internet access for a minute.
+                {localiser["Readme_TroubleTls"].Value}
 
-                **Nothing happens at all.** Check the printer can reach `{hostname}` on port
-                `{options.PrinterPort}` from where it sits — a different wifi network or a firewall
-                between the two is the usual answer.
+                {localiser["Readme_TroubleNothing", hostname, options.PrinterPort].Value}
 
-                **It worked for weeks and then stopped.** Most likely this server's address changed.
-                Your router hands it out on a lease, and a reboot or a busy network can move it. Give
-                this server a **static lease** — sometimes called a DHCP reservation, or address
-                binding — in your router's settings. It takes a minute and it is the one change that
-                stops this recurring; without it, every move means walking a stick to every printer
-                again.
+                {localiser["Readme_TroubleStopped"].Value}
 
-                **You lost the download before the printer connected.** Nothing is broken. In Homespool,
-                use **Reissue USB token** on the printer's row and download a new bundle; the old token
-                stops working the moment you do.
+                {localiser["Readme_TroubleLostDownload", localiser["Printers_ReissueToken"].Value].Value}
 
-                ## What this bundle points at
+                ## {localiser["Readme_PointsAtHeading"].Value}
 
                 | | |
                 |---|---|
-                | server address | `{hostname}` |
-                | port | `{options.PrinterPort}` |
-                | connection | {(options.PrinterTls
-                    ? "TLS — the same encryption your browser calls HTTPS. This is the `tls = True` line in the ini."
-                    : "plain HTTP, **not encrypted**. This is the `tls = False` line in the ini, and it is for testing only.")} |
+                | {localiser["Readme_RowServerAddress"].Value} | `{hostname}` |
+                | {localiser["Readme_RowPort"].Value} | `{options.PrinterPort}` |
+                | {localiser["Readme_RowConnection"].Value} | {connection} |
 
                 """;
     }
+
+    /// <summary>The printer's own menu paths, in firmware's wording rather than ours.</summary>
+    /// <remarks>
+    /// Kept out of the resources for the same reason as <see cref="ConnectIni"/>'s: they name
+    /// something on another screen, spelled the way that screen spells it. See
+    /// <c>notes/localisation.md</c> on why that is right for Danish by accident rather than by rule.
+    /// </remarks>
+    private const string LongMenuPath = "Settings → Network → Prusa Connect → Load Settings";
+
+    /// <inheritdoc cref="LongMenuPath"/>
+    private const string ShortMenuPath = "Prusa Connect → Load Settings";
 }

@@ -80,7 +80,7 @@ public sealed class AddModelTests : IDisposable
         }
 
         return new ProvisioningBundleBuilder(Options.Create(options), Options.Create(new CertificateOptions()), authority,
-                                             new DnsHostAddressResolver());
+                                             new DnsHostAddressResolver(), TestLocaliser.Shared());
     }
 
     /// <summary>

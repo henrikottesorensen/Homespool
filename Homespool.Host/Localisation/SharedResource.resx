@@ -358,7 +358,7 @@
     <value>Printer</value>
   </data>
   <data name="Cameras_NetworkHelp" xml:space="preserve">
-    <value>An RTSP or HTTP address, for example {0}. Homespool registers it with the stream server for you.</value>
+    <value>An RTSP or HTTP address, for example {0}. Homespool registers it with the go2rtc service for you.</value>
   </data>
   <data name="Cameras_AttachedHelp" xml:space="preserve">
     <value>Only cameras nobody has claimed are listed. A camera attached to the server belongs to the machine rather than to a team, so only an administrator can set one up.</value>
@@ -1587,11 +1587,11 @@
     <value>You cannot add a camera to that team.</value>
   </data>
   <data name="Cameras_StreamServerRefused" xml:space="preserve">
-    <value>Saved, but the stream server would not accept this source. Check the address, and that the go2rtc service is still running.</value>
+    <value>Saved, but the go2rtc service would not accept this source. Check the address, and that it is still running.</value>
     <comment>go2rtc is the service&apos;s own name and stays as it is.</comment>
   </data>
   <data name="Cameras_NoPictureLocal" xml:space="preserve">
-    <value>Saved, but no picture came back. The stream server may not have access to this camera: check that the go2rtc service in compose.yaml can reach video devices, and that nothing else on this machine is already using it.</value>
+    <value>Saved, but no picture came back. Check that the go2rtc service in compose.yaml can reach video devices, and that nothing else on this machine is already using it.</value>
   </data>
   <data name="Cameras_NoPictureNetwork" xml:space="preserve">
     <value>Saved, but no picture came back yet. If the camera is switched on and reachable, try the page again in a moment - some cameras take a few seconds to answer.</value>

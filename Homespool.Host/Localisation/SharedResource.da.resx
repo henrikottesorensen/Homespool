@@ -344,7 +344,7 @@
     <value>Printer</value>
   </data>
   <data name="Cameras_NetworkHelp" xml:space="preserve">
-    <value>En RTSP- eller HTTP-adresse, for eksempel {0}. Homespool registrerer den for dig hos streamserveren.</value>
+    <value>En RTSP- eller HTTP-adresse, for eksempel {0}. Homespool registrerer den for dig hos go2rtc-tjenesten.</value>
   </data>
   <data name="Cameras_AttachedHelp" xml:space="preserve">
     <value>Kun utilknyttede kameraer vises. Et kamera, der er tilkoblet direkte til serveren, kan kun tildeles af en administrator.</value>
@@ -1549,10 +1549,10 @@
     <value>Du kan ikke tilføje et kamera til dette team.</value>
   </data>
   <data name="Cameras_StreamServerRefused" xml:space="preserve">
-    <value>Gemt, men streamserveren ville ikke tage imod denne kilde. Tjek adressen, og om go2rtc-tjenesten stadig kører.</value>
+    <value>Gemt, men go2rtc-tjenesten ville ikke tage imod denne kilde. Tjek adressen, og om den stadig kører.</value>
   </data>
   <data name="Cameras_NoPictureLocal" xml:space="preserve">
-    <value>Gemt, men der kom intet billede tilbage. Streamserveren har måske ikke adgang til dette kamera: tjek, at go2rtc-tjenesten i compose.yaml kan nå videoenheder, og at intet andet på denne maskine allerede bruger det.</value>
+    <value>Gemt, men der kom intet billede tilbage. Tjek, at go2rtc-tjenesten i compose.yaml kan nå videoenheder, og at intet andet på denne maskine allerede bruger det.</value>
   </data>
   <data name="Cameras_NoPictureNetwork" xml:space="preserve">
     <value>Gemt, men der kom endnu intet billede tilbage. Er kameraet tændt og kan nås, så prøv siden igen om lidt - nogle kameraer er et par sekunder om at svare.</value>

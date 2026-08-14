@@ -59,8 +59,14 @@ public sealed class CameraSourcePolicy
     /// <summary>
     /// Schemes a camera source may use. Everything else is refused.
     /// </summary>
+    /// <remarks>
+    /// <b><c>onvif</c> is here because go2rtc resolves it to a stream itself</b>, which is the whole
+    /// reason the sidecar exists — an ONVIF camera is one address rather than a discovery step the
+    /// person adding it has to perform by hand. It names a host like the others, so the
+    /// reachability check below applies to it unchanged.
+    /// </remarks>
     private static readonly HashSet<string> AllowedSchemes =
-        new(StringComparer.OrdinalIgnoreCase) { "rtsp", "rtsps", "http", "https", "rtmp" };
+        new(StringComparer.OrdinalIgnoreCase) { "rtsp", "rtsps", "http", "https", "rtmp", "onvif" };
 
     private readonly IHostAddressResolver _resolver;
     private readonly IOptions<CameraOptions> _options;
@@ -139,7 +145,8 @@ public sealed class CameraSourcePolicy
         if (!AllowedSchemes.Contains(uri.Scheme))
         {
             return CameraSourceCheck.Refused(
-                $"Homespool does not read cameras over {uri.Scheme}. Use rtsp, rtsps, http, https or rtmp.");
+                $"Homespool does not read cameras over {uri.Scheme}. Use rtsp, rtsps, http, https, "
+                + "rtmp or onvif.");
         }
 
         if (!_options.Value.RefuseLoopbackAndLinkLocal)

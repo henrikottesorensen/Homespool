@@ -477,14 +477,14 @@
     <comment>{0} is the printer's name. Naming it guards against readying the machine you are not looking at.</comment>
   </data>
   <data name="Printers_ReadyChecklist" xml:space="preserve">
-    <value>Is the print sheet in place, empty and clean?</value>
+    <value>Is the print sheet in place, empty and cleaned?</value>
     <comment>One sentence and one key on purpose: the three conditions must be free to reorder in a language that wants them in another order.</comment>
   </data>
   <data name="Printers_ReadyConsequence" xml:space="preserve">
     <value>Confirming lets the next queued print start. The printer will print onto whatever is on the sheet, including a finished part, and it will not refuse on your behalf.</value>
   </data>
   <data name="Printers_ReadyNoCamera" xml:space="preserve">
-    <value>No camera is attached to {0}, so you are answering this without seeing it.</value>
+    <value>No camera is attached to {0}, so you are answering without being able to see the printer from Homespool.</value>
     <comment>{0} is the printer's name. Shown only when no camera points at this printer.</comment>
   </data>
   <data name="Printers_ReadyConfirm" xml:space="preserve">
@@ -498,7 +498,7 @@
     <value>Allow setting ready from this page</value>
   </data>
   <data name="Printers_RemoteReadyHelp" xml:space="preserve">
-    <value>Turn this on only if whoever reads this page can tell whether the print sheet is clear. A camera that does not show the sheet is a reason to leave it off. With it off, marking ready means going to the printer.</value>
+    <value>Turn this on only if anyone reading this page can tell whether the print sheet is clear. A camera that does not show the sheet is a reason to leave it off. With it off, marking ready means going to the printer and doing it at its own panel.</value>
   </data>
   <data name="Printers_RemoteReadySaved" xml:space="preserve">
     <value>Setting ready from this page is now allowed.</value>
@@ -508,13 +508,6 @@
   </data>
   <data name="Printers_ReadyNotAllowed" xml:space="preserve">
     <value>This printer is not set up to be marked ready from here.</value>
-  </data>
-  <data name="Printers_RemoteReadyEnable" xml:space="preserve">
-    <value>Allow it</value>
-  </data>
-  <data name="Printers_RemoteReadyDisable" xml:space="preserve">
-    <value>Require going to the printer</value>
-    <comment>Turning the setting off. Says what it costs rather than "disable", because that is the thing being chosen.</comment>
   </data>
   <data name="Printers_NothingQueued" xml:space="preserve">
     <value>Nothing queued. Send a file to this printer&apos;s queue from {0}.</value>

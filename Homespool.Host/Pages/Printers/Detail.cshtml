@@ -373,21 +373,21 @@ else
 @if (Model.CanManage)
 {
     <div class="mb-3">
+        @* The switch is the control, not a picture of one. An unchecked checkbox posts nothing, so
+           the handler's bool binds false on its own and no hidden field is needed to carry the
+           flipped value. The Save button is the no-script path and toggle-submit.js hides it. *@
         <form method="post" asp-page-handler="RemoteReady" asp-route-uuid="@Model.Statistics.Printer.Uuid">
-            <input type="hidden" name="allowed" value="@((!Model.Statistics.Printer.RemoteReadyAllowed).ToString().ToLowerInvariant())" />
-
             <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" role="switch" id="remote-ready" disabled
+                <input class="form-check-input" type="checkbox" role="switch" id="remote-ready"
+                       name="allowed" value="true" data-submit-on-change
                        @(Model.Statistics.Printer.RemoteReadyAllowed ? "checked" : null) />
                 <label class="form-check-label" for="remote-ready">@Localiser["Printers_RemoteReadyLabel"]</label>
             </div>
 
             <p class="text-body-secondary small mt-1">@Localiser["Printers_RemoteReadyHelp"]</p>
 
-            <button type="submit" class="btn btn-outline-secondary btn-sm">
-                @(Model.Statistics.Printer.RemoteReadyAllowed
-                    ? Localiser["Printers_RemoteReadyDisable"]
-                    : Localiser["Printers_RemoteReadyEnable"])
+            <button type="submit" class="btn btn-outline-secondary btn-sm" data-submit-fallback>
+                @Localiser["Common_Save"]
             </button>
         </form>
     </div>
@@ -519,4 +519,5 @@ else
 
 @section Scripts {
     <script src="~/js/camera.js" asp-append-version="true"></script>
+    <script src="~/js/toggle-submit.js" asp-append-version="true"></script>
 }

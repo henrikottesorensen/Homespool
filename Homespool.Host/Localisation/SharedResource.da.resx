@@ -1561,7 +1561,7 @@
     <value>Overlever en adresseændring, men kun hvis din router offentliggør navne i sin egen DNS. Afprøv det, før du regner med det.</value>
   </data>
   <data name="Bundle_AddressIsTheContainers" xml:space="preserve">
-    <value>Det ligner en Docker-adresse, som er containerens egen - printere på dit netværk kan ikke nå den. Brug i stedet adressen på den maskine, der kører Docker.</value>
+    <value>Dette ligner en Docker-adresse, som er containerens egen - printere på dit netværk kan ikke nå den. Brug i stedet adressen på den maskine, der kører Docker.</value>
   </data>
   <data name="Bundle_AddressUntilLeaseMoves" xml:space="preserve">
     <value>Virker med det samme og kræver ingen DNS, men holder op med at virke, hvis denne maskines adresse ændrer sig. En DHCP-reservation eller en statisk adresse sat på maskinen selv forhindrer, at IP-adressen ændrer sig.</value>

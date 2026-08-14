@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using Homespool.Host.PrusaConnect.Transfers;
+using Homespool.Host.Telemetry;
 
 namespace Homespool.Host.PrusaConnect;
 

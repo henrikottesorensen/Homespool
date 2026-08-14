@@ -15,12 +15,13 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using Homespool.Data;
+using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.DTO.App;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.PrusaConnect.DTO.Telemetry;
 using Homespool.Model.Entities;
 
-namespace Homespool.Host.PrusaConnect;
+namespace Homespool.Host.Telemetry;
 
 /// <summary>
 /// Persists what <see cref="MessageDispatcher"/> parses: merges telemetry into a per-printer
@@ -395,7 +396,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// <summary>
     /// An <c>INFO</c> payload with every <see cref="RedactedInfoFields"/> entry masked. Today that is
     /// <c>api_key</c> alone - <b>the printer's PrusaLink password</b>, which firmware volunteers in
-    /// every one of these (<see cref="DTO.EventMessages.InfoEventDataDTO.ApiKey"/> says why it is a
+    /// every one of these (<see cref="InfoEventDataDTO.ApiKey"/> says why it is a
     /// credential and what it unlocks).
     /// </summary>
     /// <remarks>

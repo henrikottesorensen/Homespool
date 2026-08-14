@@ -22,7 +22,7 @@ namespace Homespool.Host.PrusaConnect;
 /// to.
 /// </para>
 /// <para>
-/// <b>The table is bijective, and <see cref="TelemetryWriter"/> depends on that</b>: it stores
+/// <b>The table is bijective, and <see cref="Telemetry.TelemetryWriter"/> depends on that</b>: it stores
 /// <see cref="Homespool.Model.Entities.PrinterEvent.WireType"/> by formatting the parsed value
 /// back through <see cref="Format"/>, which reproduces the received word byte-for-byte precisely
 /// because each value maps to exactly one word. An unknown word throws in <see cref="Parse"/> —

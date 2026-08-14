@@ -17,6 +17,7 @@ using NSubstitute;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Queue;
+using Homespool.Host.Telemetry;
 
 namespace Homespool.Host.Test;
 

@@ -233,13 +233,13 @@ public static class Program
             builder.Services.AddSingleton<Services.SetupGateMiddleware>();
 
             builder.Services.AddScoped<PrusaConnect.PrusaConnectService>()
-                   .AddScoped<PrusaConnect.WebSocketHandler>()
-                   .AddScoped<PrusaConnect.TokenService>()
-                   .AddScoped<PrusaConnect.CodeGenerator>()
-                   .AddScoped<PrusaConnect.ClaimAttemptLimiter>()
-                   .AddScoped<PrusaConnect.MessageDispatcher>()
-                   .AddScoped<PrusaConnect.PrinterCommandService>()
-                   .AddScoped<PrusaConnect.PrinterPreheatService>();
+                            .AddScoped<PrusaConnect.WebSocketHandler>()
+                            .AddScoped<PrusaConnect.TokenService>()
+                            .AddScoped<PrusaConnect.CodeGenerator>()
+                            .AddScoped<PrusaConnect.ClaimAttemptLimiter>()
+                            .AddScoped<PrusaConnect.MessageDispatcher>()
+                            .AddScoped<PrusaConnect.PrinterCommandService>()
+                            .AddScoped<PrusaConnect.PrinterPreheatService>();
 
             // Plain singletons, not TelemetryWriter's singleton-with-IServiceScopeFactory pattern below:
             // neither touches HomespoolDbContext, only in-memory state (the directory of live connection
@@ -308,12 +308,10 @@ public static class Program
             // hold - and calling CreateScope() fresh in HydrateAsync and FlushAsync, each wrapped
             // in a `using` that disposes the scope (and its HomespoolDbContext) the moment that one
             // read or write finishes. No HomespoolDbContext field ever exists on TelemetryWriter itself.
-            builder.Services.AddSingleton<PrusaConnect.TelemetryWriter>();
-            builder.Services.AddSingleton<PrusaConnect.ITelemetrySink>(sp => sp.GetRequiredService<PrusaConnect.TelemetryWriter>());
-            builder.Services.AddSingleton<PrusaConnect.ITelemetryHealthSource>(sp => sp
-                                                                                   .GetRequiredService<
-                                                                                       PrusaConnect.TelemetryWriter>());
-            builder.Services.AddHostedService(sp => sp.GetRequiredService<PrusaConnect.TelemetryWriter>());
+            builder.Services.AddSingleton<Telemetry.TelemetryWriter>();
+            builder.Services.AddSingleton<Telemetry.ITelemetrySink>(sp => sp.GetRequiredService<Telemetry.TelemetryWriter>());
+            builder.Services.AddSingleton<Telemetry.ITelemetryHealthSource>(sp => sp.GetRequiredService<Telemetry.TelemetryWriter>());
+            builder.Services.AddHostedService(sp => sp.GetRequiredService<Telemetry.TelemetryWriter>());
 
             // The middle link in a three-part budget that no single file used to own: the writer's
             // shutdown flush must finish inside this, and this must finish inside the container
@@ -332,10 +330,9 @@ public static class Program
 
             builder.Services.Configure<HostOptions>(options =>
                                                         options.ShutdownTimeout =
-                                                            PrusaConnect.TelemetryWriter.MaxShutdownFlushDuration
-                                                            + TimeSpan.FromMilliseconds(
-                                                                shutdownStorageOptions.BusyTimeoutMilliseconds)
-                                                            + TimeSpan.FromSeconds(1.5));
+                                                            Telemetry.TelemetryWriter.MaxShutdownFlushDuration +
+                                                            TimeSpan.FromMilliseconds(shutdownStorageOptions.BusyTimeoutMilliseconds) +
+                                                            TimeSpan.FromSeconds(1.5));
 
             // The process answering requests says nothing about whether it is still recording
             // anything - a flush bug once made every write fail permanently while the service looked
@@ -344,8 +341,8 @@ public static class Program
             // tagged "live" answer /health/live, and only a fault a restart would fix may carry that
             // tag - see TelemetryWriterLivenessHealthCheck.
             builder.Services.AddHealthChecks()
-                   .AddCheck<PrusaConnect.TelemetryPersistenceHealthCheck>("telemetry-persistence")
-                   .AddCheck<PrusaConnect.TelemetryWriterLivenessHealthCheck>("telemetry-writer-alive", tags: [LivenessTag])
+                   .AddCheck<Telemetry.TelemetryPersistenceHealthCheck>("telemetry-persistence")
+                   .AddCheck<Telemetry.TelemetryWriterLivenessHealthCheck>("telemetry-writer-alive", tags: [LivenessTag])
 
                    // Deliberately untagged: a certificate that no longer matches this machine is not a
                    // fault a restart fixes, and the banner picks it up from the report either way.
@@ -765,11 +762,11 @@ public static class Program
             // Plaintext, so the wire can be read. Nothing else in this project can produce a legible
             // capture of the printer protocol: TLS is the point of the path, and a capture of it is
             // ciphertext.
-            Log.Warning("Printers reach this deployment in PLAINTEXT because PrusaConnect:PrinterTls is false, and no "
-                        + "certificate is issued while it is off. Every printer token crosses the network in clear, in "
-                        + "both directions - the one on the USB stick and the one issued at claim. This is for a capture "
-                        + "or a rig on a network you control; it is not a deployment setting. The proxy has no printer "
-                        + "certificate to serve either, so publish Listeners:PrinterPort directly.");
+            Log.Warning("Printers reach this deployment in PLAINTEXT because PrusaConnect:PrinterTls is false, and no " +
+                        "certificate is issued while it is off. Every printer token crosses the network in clear, in " +
+                        "both directions - the one on the USB stick and the one issued at claim. This is for a capture " +
+                        "or a rig on a network you control; it is not a deployment setting. The proxy has no printer " +
+                        "certificate to serve either, so publish Listeners:PrinterPort directly.");
 
             return;
         }

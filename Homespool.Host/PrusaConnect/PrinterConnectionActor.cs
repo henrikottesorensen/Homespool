@@ -12,6 +12,7 @@ using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.DTO.Transfers;
 using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Services;
+using Homespool.Host.Telemetry;
 
 namespace Homespool.Host.PrusaConnect;
 

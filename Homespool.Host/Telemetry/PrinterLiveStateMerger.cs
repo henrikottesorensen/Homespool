@@ -7,7 +7,7 @@ using Homespool.Host.PrusaConnect.DTO.App;
 using Homespool.Host.PrusaConnect.DTO.Telemetry;
 using Homespool.Model.Entities;
 
-namespace Homespool.Host.PrusaConnect;
+namespace Homespool.Host.Telemetry;
 
 /// <summary>
 /// Merges a <see cref="TelemetryDTO"/> into a <see cref="PrinterLiveState"/>, and projects the

@@ -10,7 +10,7 @@ namespace Homespool.Host.PrusaConnect;
 /// The single-threaded owner of one printer's live connection - the socket write side, command-id
 /// allocation, the in-flight command and its ack correlation, and (once built) the transfer state
 /// machine. Everything arrives as a <see cref="ConnectionMessage"/> and is processed strictly in
-/// order, so none of that state needs a lock: same shape as <see cref="TelemetryWriter"/>, per
+/// order, so none of that state needs a lock: same shape as <see cref="Telemetry.TelemetryWriter"/>, per
 /// notes/concurrency-model.md.
 /// </summary>
 public interface IPrinterConnectionActor
@@ -19,7 +19,7 @@ public interface IPrinterConnectionActor
     bool IsOpen { get; }
 
     /// <summary>Completes once the mailbox has been completed <b>and</b> drained - the actor's
-    /// equivalent of <see cref="TelemetryWriter"/>'s shutdown-by-completion.</summary>
+    /// equivalent of <see cref="Telemetry.TelemetryWriter"/>'s shutdown-by-completion.</summary>
     Task Completion { get; }
 
     /// <summary>Posts an inbound message from the read loop. Waits when the mailbox is full, which

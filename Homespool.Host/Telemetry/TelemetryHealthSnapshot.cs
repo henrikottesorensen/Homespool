@@ -1,6 +1,6 @@
 using System;
 
-namespace Homespool.Host.PrusaConnect;
+namespace Homespool.Host.Telemetry;
 
 /// <summary>
 /// What <see cref="TelemetryWriter"/> knows about its own ability to persist, read by

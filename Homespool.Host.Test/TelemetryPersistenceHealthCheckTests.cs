@@ -10,6 +10,7 @@ using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.PrusaConnect;
+using Homespool.Host.Telemetry;
 
 namespace Homespool.Host.Test;
 

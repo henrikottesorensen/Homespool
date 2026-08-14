@@ -4,8 +4,8 @@ using System.Text.Json;
 
 using AwesomeAssertions;
 
-using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.DTO.Telemetry;
+using Homespool.Host.Telemetry;
 using Homespool.Model;
 using Homespool.Model.Entities;
 

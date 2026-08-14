@@ -3,7 +3,7 @@ using System;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.PrusaConnect.DTO.Telemetry;
 
-namespace Homespool.Host.PrusaConnect;
+namespace Homespool.Host.Telemetry;
 
 /// <summary>
 /// One message queued for <see cref="TelemetryWriter"/> to persist. A closed hierarchy rather than

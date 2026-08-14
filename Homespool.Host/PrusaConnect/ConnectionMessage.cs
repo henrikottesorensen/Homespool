@@ -49,11 +49,11 @@ public sealed record SendCommandMessage(
 
 /// <summary>
 /// An event parsed off the wire. May answer the in-flight command (matching <c>command_id</c>)
-/// before being handed to <see cref="ITelemetrySink"/> either way.
+/// before being handed to <see cref="Telemetry.ITelemetrySink"/> either way.
 /// </summary>
 public sealed record InboundEventMessage(DateTimeOffset ReceivedAt, EventDTO Event) : ConnectionMessage;
 
-/// <summary>Telemetry parsed off the wire, forwarded to <see cref="ITelemetrySink"/> unchanged.</summary>
+/// <summary>Telemetry parsed off the wire, forwarded to <see cref="Telemetry.ITelemetrySink"/> unchanged.</summary>
 public sealed record InboundTelemetryMessage(DateTimeOffset ReceivedAt, TelemetryDTO Telemetry) : ConnectionMessage;
 
 /// <summary>

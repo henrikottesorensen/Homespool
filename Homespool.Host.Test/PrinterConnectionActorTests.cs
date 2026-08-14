@@ -22,6 +22,7 @@ using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.PrusaConnect.DTO.Telemetry;
 using Homespool.Host.PrusaConnect.DTO.Transfers;
 using Homespool.Host.PrusaConnect.Transfers;
+using Homespool.Host.Telemetry;
 using Homespool.Model;
 
 namespace Homespool.Host.Test;

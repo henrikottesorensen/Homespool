@@ -1742,4 +1742,7 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Readme_ConnectionPlain" xml:space="preserve">
     <value>almindelig HTTP, **ikke krypteret**. Det er linjen `tls = False` i ini-filen, og den er kun til test.</value>
   </data>
+  <data name="Readme_FileName" xml:space="preserve">
+    <value>LÆSMIG.Pakke.md</value>
+  </data>
 </root>

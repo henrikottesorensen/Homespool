@@ -1799,4 +1799,8 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Readme_ConnectionPlain" xml:space="preserve">
     <value>plain HTTP, **not encrypted**. This is the `tls = False` line in the ini, and it is for testing only.</value>
   </data>
+  <data name="Readme_FileName" xml:space="preserve">
+    <value>README.Bundle.md</value>
+    <comment>The name of the file, which is a word rather than a format. Nothing parses it - the printer ignores this file entirely - so unlike prusa_printer_settings.ini and connect.der it is free to be translated. The extension stays, being a format.</comment>
+  </data>
 </root>

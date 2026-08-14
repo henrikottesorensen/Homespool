@@ -229,7 +229,7 @@ public sealed class ProvisioningBundleBuilder
             // where the two things most likely to go wrong are decided: the files belong at the root of
             // the stick, and custom_cert takes this printer away from Prusa Connect until it is undone.
             WriteEntry(archive,
-                       ProvisioningReadme.FileName,
+                       ProvisioningReadme.FileNameFor(_localiser),
                        new UTF8Encoding(false).GetBytes(
                            ProvisioningReadme.Build(_options, name, printerName, _localiser).ReplaceLineEndings("\n")));
 

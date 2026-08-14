@@ -125,6 +125,39 @@ public sealed class BundleLanguageTests
         danish.Should().Contain("tls = False", "and the key is still the key");
     }
 
+    /// <summary>
+    /// The one file in the bundle whose name is a word gets translated; the two that are looked up
+    /// by name do not.
+    /// </summary>
+    /// <remarks>
+    /// <b>Danish computing says LÆSMIG where English says README</b>, and the person opening the zip
+    /// should meet the word they know. Safe to do because nothing parses it - the printer ignores
+    /// this file - and because .NET writes a non-ASCII entry name as UTF-8 with bit 11 of the
+    /// general-purpose flag set, which is the standard signal every modern unzip honours. That was
+    /// checked rather than assumed.
+    /// </remarks>
+    [Fact]
+    public void OnlyTheFileNobodyParsesIsRenamed()
+    {
+        InCulture("en-GB", () => ProvisioningReadme.FileNameFor(TestLocaliser.Shared()))
+            .Should().Be("README.Bundle.md");
+        InCulture("da", () => ProvisioningReadme.FileNameFor(TestLocaliser.Shared()))
+            .Should().Be("LÆSMIG.Pakke.md");
+
+        ConnectIni.FileName.Should().Be("prusa_printer_settings.ini",
+                                        "firmware looks for this by name and has never heard of Danish");
+    }
+
+    /// <summary>
+    /// The README's own contents table names the file it is, whatever that is called.
+    /// </summary>
+    [Fact]
+    public void TheContentsTableNamesTheFileItIs()
+    {
+        InCulture("da", () => ProvisioningReadme.Build(Options(), "printers.example.com", "Bænken", TestLocaliser.Shared()))
+            .Should().Contain("`LÆSMIG.Pakke.md`").And.NotContain("README.Bundle.md");
+    }
+
     private static T InCulture<T>(string cultureName, Func<T> body)
     {
         CultureInfo culture = CultureInfo.GetCultureInfo(cultureName);

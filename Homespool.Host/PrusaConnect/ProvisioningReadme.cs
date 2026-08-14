@@ -24,8 +24,23 @@ namespace Homespool.Host.PrusaConnect;
 /// </remarks>
 public static class ProvisioningReadme
 {
-    /// <summary>What the file is called in the zip.</summary>
-    public const string FileName = "README.Bundle.md";
+    /// <summary>
+    /// What the file is called in the zip, in the reader's language.
+    /// </summary>
+    /// <remarks>
+    /// <b>A name, not a format.</b> The printer ignores this file entirely, so nothing parses the
+    /// name and it is free to be translated - unlike <c>prusa_printer_settings.ini</c> and
+    /// <c>connect.der</c>, which firmware looks for by name. Danish computing says
+    /// <c>LÆSMIG</c> where English says <c>README</c>, and somebody opening the zip should see the
+    /// word they know. The extension stays: <c>.md</c> is a format.
+    /// </remarks>
+    /// <param name="localiser">Supplies the name in the culture of whoever asked for the bundle.</param>
+    public static string FileNameFor(IStringLocalizer<SharedResource> localiser)
+    {
+        ArgumentNullException.ThrowIfNull(localiser);
+
+        return localiser["Readme_FileName"].Value;
+    }
 
     /// <summary>
     /// The instructions, filled in for this bundle.
@@ -91,7 +106,7 @@ public static class ProvisioningReadme
                 |---|---|
                 | `{ConnectIni.FileName}` | {localiser["Readme_RowIni"].Value} |
                 {certificateRow}
-                | `{FileName}` | {localiser["Readme_RowReadme"].Value} |
+                | `{FileNameFor(localiser)}` | {localiser["Readme_RowReadme"].Value} |
 
                 ## {localiser["Readme_OnThePrinterHeading"].Value}
 

@@ -163,7 +163,8 @@ public sealed class ProvisioningBundleUnreachableNameTests : IDisposable
 
         // And it says what choosing a name costs: it outlives a lease, if something resolves it.
         offered[0].Durability.Should().Be(AddressDurability.SurvivesALeaseChange);
-        offered[0].Note.Should().Contain("router publishes names");
+        TestLocaliser.Shared()[offered[0].NoteKey].Value
+                     .Should().Contain("router publishes names");
     }
 
     /// <summary>

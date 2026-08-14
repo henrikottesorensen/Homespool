@@ -71,7 +71,9 @@ public class CameraSourcePolicyTests
         CameraSourceCheck check = await policy.CheckAsync(source, CancellationToken.None);
 
         check.IsAcceptable.Should().BeFalse();
-        check.Error.Should().NotBeNullOrWhiteSpace();
+        check.Error.Should().NotBeNull();
+        TestLocaliser.Errors().For(check.Error!).Should().NotBeNullOrWhiteSpace(
+            "a refusal that names no resource would render as a bare key");
     }
 
     [Theory]
@@ -101,7 +103,8 @@ public class CameraSourcePolicyTests
         CameraSourceCheck check = await policy.CheckAsync("rtsp://sneaky.example/live", CancellationToken.None);
 
         check.IsAcceptable.Should().BeFalse();
-        check.Error.Should().Contain(resolvesTo, "the refusal should say what it resolved to");
+        TestLocaliser.Errors().For(check.Error!)
+                     .Should().Contain(resolvesTo, "the refusal should say what it resolved to");
     }
 
     /// <summary>

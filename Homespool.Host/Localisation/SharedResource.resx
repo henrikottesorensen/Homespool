@@ -1569,4 +1569,51 @@
     <value>The printer’s current state isn’t known yet - it reports one shortly after connecting.</value>
     <comment>Not the printer being busy: this application has not merged its first telemetry yet. Says wait, where the busy sentence says stop.</comment>
   </data>
+  <data name="Cameras_SourceMissing" xml:space="preserve">
+    <value>A camera needs a source address.</value>
+  </data>
+  <data name="Cameras_SourceIncomplete" xml:space="preserve">
+    <value>That is not a complete address. A camera looks like rtsp://192.168.1.50/live or http://192.168.1.50/snapshot.jpg.</value>
+    <comment>The two example addresses stay as they are - they are literals somebody copies.</comment>
+  </data>
+  <data name="Cameras_SourceScheme" xml:space="preserve">
+    <value>Homespool does not read cameras over {0}. Use rtsp, rtsps, http, https or rtmp.</value>
+    <comment>{0} is the URI scheme as typed. The list of accepted schemes is protocol vocabulary and is not translated.</comment>
+  </data>
+  <data name="Cameras_SourceIsThisServer" xml:space="preserve">
+    <value>{0} resolves to {1}, which is this server itself rather than a camera on your network.</value>
+    <comment>{0} is the host as typed, {1} the address it resolved to.</comment>
+  </data>
+  <data name="Cameras_NotFoundOrNotYours" xml:space="preserve">
+    <value>That camera does not exist, or is not yours to change.</value>
+  </data>
+  <data name="Cameras_AttachedNeedsAdministrator" xml:space="preserve">
+    <value>A camera plugged into this server can only be set up by an administrator. A camera reachable over the network does not need one.</value>
+  </data>
+  <data name="Cameras_NotYourTeam" xml:space="preserve">
+    <value>You cannot add a camera to that team.</value>
+  </data>
+  <data name="Cameras_StreamServerRefused" xml:space="preserve">
+    <value>Saved, but the stream server would not accept this source. Check the address, or that the go2rtc service is running.</value>
+    <comment>go2rtc is the service&apos;s own name and stays as it is.</comment>
+  </data>
+  <data name="Cameras_NoPictureLocal" xml:space="preserve">
+    <value>Saved, but no picture came back. The stream server may not have access to this camera: check that the go2rtc service in compose.yaml can reach video devices, and that nothing else on this machine is already using it.</value>
+  </data>
+  <data name="Cameras_NoPictureNetwork" xml:space="preserve">
+    <value>Saved, but no picture came back yet. If the camera is switched on and reachable, try the page again in a moment - some cameras take a few seconds to answer.</value>
+  </data>
+  <data name="Bundle_AddressSurvivesLease" xml:space="preserve">
+    <value>Survives a change of address, but only if your router publishes names to its own DNS. Test it before relying on it.</value>
+  </data>
+  <data name="Bundle_AddressIsTheContainers" xml:space="preserve">
+    <value>This looks like a Docker address, which is this container’s own - printers on your network cannot reach it. Use the address of the machine running Docker instead.</value>
+  </data>
+  <data name="Bundle_AddressUntilLeaseMoves" xml:space="preserve">
+    <value>Works immediately and needs no DNS, but stops working if this machine’s address changes. A static lease or DHCP reservation avoids that.</value>
+  </data>
+  <data name="Bundle_AddressUnclassified" xml:space="preserve">
+    <value>Not classified.</value>
+    <comment>The Undefined arm. Unreachable in practice - Describe assigns one of the three real values - and present so that adding a durability without adding words for it shows up as a bland line rather than a missing key.</comment>
+  </data>
 </root>

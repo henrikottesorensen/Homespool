@@ -282,7 +282,9 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
 
         // Each carries what it costs, which is the difference between surviving a moved lease and
         // breaking silently one day - the only thing distinguishing these options to a reader.
-        names.Should().AllSatisfy(suggestion => suggestion.Note.Should().NotBeNullOrWhiteSpace());
+        names.Should().AllSatisfy(suggestion =>
+                                      TestLocaliser.Shared()[suggestion.NoteKey]
+                                                   .ResourceNotFound.Should().BeFalse());
         names.Single(suggestion => suggestion.Value == "192.168.13.238").Durability
              .Should().Be(AddressDurability.UntilTheLeaseMoves);
     }

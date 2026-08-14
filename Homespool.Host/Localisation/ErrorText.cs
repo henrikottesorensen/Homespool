@@ -38,6 +38,21 @@ public sealed class ErrorText
     }
 
     /// <summary>
+    /// What to show for a sentence a service chose but did not say.
+    /// </summary>
+    /// <remarks>
+    /// The same journey as <see cref="For(Exception)"/> without a throw in it: a result carrying a
+    /// <see cref="MessageKey"/> is a service saying <i>which</i> sentence, leaving <i>in what
+    /// language</i> to whoever renders it.
+    /// </remarks>
+    public string For(MessageKey message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+
+        return _localiser[message.Key, Translated(message.Arguments)].Value;
+    }
+
+    /// <summary>
     /// What to show for an error, in the current culture.
     /// </summary>
     /// <remarks>
@@ -46,13 +61,6 @@ public sealed class ErrorText
     /// message, because that is strictly better than nothing and the alternative is a page that goes
     /// silent about a failure. It also means adding the interface to one more type is the whole
     /// change, with no call site to revisit.
-    /// </para>
-    /// <para>
-    /// <b>Enum arguments go through the display seam.</b> A <see cref="PrinterStatus"/> handed
-    /// straight to <c>string.Format</c> renders its English member name inside a Danish sentence -
-    /// "Printeren er Printing" - which is worse than either language on its own. This is the only
-    /// argument type given special treatment, and it is given it because the seam for translating
-    /// one already exists.
     /// </para>
     /// </remarks>
     public string For(Exception error)
@@ -64,11 +72,23 @@ public sealed class ErrorText
             return error.Message;
         }
 
-        object[] arguments = [.. localisable.ResourceArguments
-                                            .Select(argument => argument is PrinterStatus status ?
-                                                        _statuses.For(status) :
-                                                        argument)];
+        return _localiser[localisable.ResourceKey, Translated(localisable.ResourceArguments)].Value;
+    }
 
-        return _localiser[localisable.ResourceKey, arguments].Value;
+    /// <summary>
+    /// Arguments as they should appear in a sentence, which for an enum is not its name.
+    /// </summary>
+    /// <remarks>
+    /// <b>The one argument type given special treatment.</b> A <see cref="PrinterStatus"/> handed
+    /// straight to <c>string.Format</c> renders its English member name inside a Danish sentence -
+    /// "Printeren er Printing" - which is worse than either language on its own. It gets the
+    /// treatment because a seam for translating one already exists; everything else is data and is
+    /// reproduced as it stands.
+    /// </remarks>
+    private object[] Translated(object[] arguments)
+    {
+        return [.. arguments.Select(argument => argument is PrinterStatus status ?
+                                        _statuses.For(status) :
+                                        argument)];
     }
 }

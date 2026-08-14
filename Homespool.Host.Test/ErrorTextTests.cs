@@ -3,7 +3,9 @@ using System.Globalization;
 
 using AwesomeAssertions;
 
+using Homespool.Host.Certificates;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Localisation;
 using Homespool.Model;
 
 namespace Homespool.Host.Test;
@@ -132,6 +134,84 @@ public sealed class ErrorTextTests
     {
         Describe(new InvalidOperationException("Something specific went wrong."), "da")
             .Should().Be("Something specific went wrong.");
+    }
+
+    /// <summary>
+    /// A sentence a service chose, said in the reader's language.
+    /// </summary>
+    /// <remarks>
+    /// The same journey without a throw. <c>CameraService</c> and <c>CameraSourcePolicy</c> used to
+    /// write finished English into their return values; they now name a key, which is only an
+    /// improvement if something checks the key resolves.
+    /// </remarks>
+    [Fact]
+    public void AServicesChosenSentenceIsSaidInTheReadersLanguage()
+    {
+        MessageKey chosen = MessageKey.For("Cameras_SourceScheme", "ftp");
+
+        InCulture("en-GB", () => TestLocaliser.Errors().For(chosen))
+            .Should().Be("Homespool does not read cameras over ftp. Use rtsp, rtsps, http, https or rtmp.");
+        InCulture("da", () => TestLocaliser.Errors().For(chosen))
+            .Should().Be("Homespool kan ikke læse kameraer over ftp. Brug rtsp, rtsps, http, https eller rtmp.");
+    }
+
+    /// <summary>
+    /// Every key a service or a classifier can name has words behind it, in both languages.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The failure this design introduces.</b> Moving a sentence out of a service and into a key
+    /// means the two can now be separated: rename the key, or add an arm to
+    /// <c>PrinterAddressSuggestion.NoteKey</c> without adding words, and the page renders
+    /// <c>Cameras_NotYourTeam</c> at somebody. Nothing else in the suite would notice, because the
+    /// page still returns 200 and the parity test only compares the two resource files with each
+    /// other — both would be equally missing it.
+    /// </para>
+    /// <para>
+    /// Listed by hand rather than discovered, deliberately. A test that reflects over the keys a
+    /// codebase happens to contain asserts that what is there is there.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void EveryKeyAServiceCanNameHasWordsBehindIt()
+    {
+        string[] keys =
+        [
+            "Cameras_SourceMissing", "Cameras_SourceIncomplete", "Cameras_SourceScheme",
+            "Cameras_SourceIsThisServer", "Cameras_NotFoundOrNotYours",
+            "Cameras_AttachedNeedsAdministrator", "Cameras_NotYourTeam", "Cameras_StreamServerRefused",
+            "Cameras_NoPictureLocal", "Cameras_NoPictureNetwork",
+            "Bundle_AddressSurvivesLease", "Bundle_AddressIsTheContainers",
+            "Bundle_AddressUntilLeaseMoves", "Bundle_AddressUnclassified",
+        ];
+
+        foreach (string key in keys)
+        {
+            foreach (string culture in new[] { "en-GB", "da" })
+            {
+                InCulture(culture, () => TestLocaliser.Shared()[key])
+                    .ResourceNotFound.Should().BeFalse($"{key} is named in code and must have words in {culture}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Every durability a classifier can produce says something.
+    /// </summary>
+    /// <remarks>
+    /// Drives the mapping from the enum rather than from the key list above, so adding a member
+    /// without adding words fails here rather than on somebody's setup page.
+    /// </remarks>
+    [Fact]
+    public void EveryAddressDurabilityHasANote()
+    {
+        foreach (AddressDurability durability in Enum.GetValues<AddressDurability>())
+        {
+            PrinterAddressSuggestion suggestion = new("192.168.1.5", durability);
+
+            InCulture("da", () => TestLocaliser.Shared()[suggestion.NoteKey])
+                .ResourceNotFound.Should().BeFalse($"{durability} is reachable and needs words");
+        }
     }
 
     private static string Describe(Exception error, string cultureName)

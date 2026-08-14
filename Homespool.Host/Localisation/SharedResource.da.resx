@@ -1533,4 +1533,46 @@
   <data name="Error_PrinterStateUnknown" xml:space="preserve">
     <value>Printerens tilstand kendes ikke endnu - den melder ind kort efter, den forbinder.</value>
   </data>
+  <data name="Cameras_SourceMissing" xml:space="preserve">
+    <value>Et kamera skal have en kildeadresse.</value>
+  </data>
+  <data name="Cameras_SourceIncomplete" xml:space="preserve">
+    <value>Det er ikke en fuldstændig adresse. Et kamera ser ud som rtsp://192.168.1.50/live eller http://192.168.1.50/snapshot.jpg.</value>
+  </data>
+  <data name="Cameras_SourceScheme" xml:space="preserve">
+    <value>Homespool kan ikke læse kameraer over {0}. Brug rtsp, rtsps, http, https eller rtmp.</value>
+  </data>
+  <data name="Cameras_SourceIsThisServer" xml:space="preserve">
+    <value>{0} slår op til {1}, som er selve denne server og ikke et kamera på dit netværk.</value>
+  </data>
+  <data name="Cameras_NotFoundOrNotYours" xml:space="preserve">
+    <value>Det kamera findes ikke, eller du må ikke ændre det.</value>
+  </data>
+  <data name="Cameras_AttachedNeedsAdministrator" xml:space="preserve">
+    <value>Et kamera, der er tilkoblet denne server, kan kun sættes op af en administrator. Et kamera, der kan nås over netværket, kræver ikke en.</value>
+  </data>
+  <data name="Cameras_NotYourTeam" xml:space="preserve">
+    <value>Du kan ikke tilføje et kamera til det team.</value>
+  </data>
+  <data name="Cameras_StreamServerRefused" xml:space="preserve">
+    <value>Gemt, men streamserveren ville ikke tage imod denne kilde. Tjek adressen, eller om go2rtc-tjenesten kører.</value>
+  </data>
+  <data name="Cameras_NoPictureLocal" xml:space="preserve">
+    <value>Gemt, men der kom intet billede tilbage. Streamserveren har måske ikke adgang til dette kamera: tjek, at go2rtc-tjenesten i compose.yaml kan nå videoenheder, og at intet andet på denne maskine allerede bruger det.</value>
+  </data>
+  <data name="Cameras_NoPictureNetwork" xml:space="preserve">
+    <value>Gemt, men der kom endnu intet billede tilbage. Er kameraet tændt og kan nås, så prøv siden igen om lidt - nogle kameraer er et par sekunder om at svare.</value>
+  </data>
+  <data name="Bundle_AddressSurvivesLease" xml:space="preserve">
+    <value>Overlever en adresseændring, men kun hvis din router offentliggør navne i sin egen DNS. Afprøv det, før du regner med det.</value>
+  </data>
+  <data name="Bundle_AddressIsTheContainers" xml:space="preserve">
+    <value>Det ligner en Docker-adresse, som er containerens egen - printere på dit netværk kan ikke nå den. Brug i stedet adressen på den maskine, der kører Docker.</value>
+  </data>
+  <data name="Bundle_AddressUntilLeaseMoves" xml:space="preserve">
+    <value>Virker med det samme og kræver ingen DNS, men holder op med at virke, hvis denne maskines adresse ændrer sig. En statisk lease eller DHCP-reservation undgår det.</value>
+  </data>
+  <data name="Bundle_AddressUnclassified" xml:space="preserve">
+    <value>Ikke klassificeret.</value>
+  </data>
 </root>

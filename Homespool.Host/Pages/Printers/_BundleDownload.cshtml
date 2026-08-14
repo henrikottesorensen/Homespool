@@ -33,7 +33,7 @@
                     <ul class="mb-0">
                         @foreach (Homespool.Host.Certificates.PrinterAddressSuggestion name in Model.Names)
                         {
-                            <li><code>@name.Value</code> &mdash; @name.Note</li>
+                            <li><code>@name.Value</code> &mdash; @Localiser[name.NoteKey]</li>
                         }
                     </ul>
                 </div>

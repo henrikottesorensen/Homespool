@@ -12,8 +12,7 @@ namespace Homespool.Host.Certificates;
 /// </summary>
 /// <param name="Value">The literal to put in the printer's <c>hostname</c> and the certificate's SAN.</param>
 /// <param name="Durability">What is likely to break it.</param>
-/// <param name="Note">One line of plain English for the setup page.</param>
-public record PrinterAddressSuggestion(string Value, AddressDurability Durability, string Note)
+public record PrinterAddressSuggestion(string Value, AddressDurability Durability)
 {
     /// <summary>
     /// Classifies candidates for the setup page, most-likely-useful first.
@@ -100,24 +99,12 @@ public record PrinterAddressSuggestion(string Value, AddressDurability Durabilit
 
         if (!IPAddress.TryParse(value, out IPAddress? address))
         {
-            return new PrinterAddressSuggestion(
-                value,
-                AddressDurability.SurvivesALeaseChange,
-                "Survives a change of address, but only if your router publishes names to its own DNS. "
-                + "Test it before relying on it.");
+            return new PrinterAddressSuggestion(value, AddressDurability.SurvivesALeaseChange);
         }
 
         return IsProbablyTheContainersOwn(address, containerNetworks) ?
-            new PrinterAddressSuggestion(
-                value,
-                AddressDurability.ProbablyTheContainersOwn,
-                "This looks like a Docker address, which is this container's own - printers on your "
-                + "network cannot reach it. Use the address of the machine running Docker instead.") :
-            new PrinterAddressSuggestion(
-                value,
-                AddressDurability.UntilTheLeaseMoves,
-                "Works immediately and needs no DNS, but stops working if this machine's address "
-                + "changes. A static lease or DHCP reservation avoids that.");
+            new PrinterAddressSuggestion(value, AddressDurability.ProbablyTheContainersOwn) :
+            new PrinterAddressSuggestion(value, AddressDurability.UntilTheLeaseMoves);
     }
 
     /// <summary>
@@ -178,4 +165,27 @@ public record PrinterAddressSuggestion(string Value, AddressDurability Durabilit
 
         return Classify(addresses, hostName, containerNetworks);
     }
+
+    /// <summary>
+    /// The resource key for the one line of prose shown beside this address on the setup page.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Derived from <see cref="Durability"/> rather than carried alongside it</b>, because the
+    /// note only ever said what the durability already means. Carrying both invited them to
+    /// disagree, and the class's own remarks promise the wording exists in one place — which is now
+    /// true in a stronger sense than when the sentence lived here.
+    /// </para>
+    /// <para>
+    /// A key rather than a sentence because this record is built by classification code with no
+    /// request and no culture, and read by a view that has both.
+    /// </para>
+    /// </remarks>
+    public string NoteKey => Durability switch
+    {
+        AddressDurability.SurvivesALeaseChange => "Bundle_AddressSurvivesLease",
+        AddressDurability.ProbablyTheContainersOwn => "Bundle_AddressIsTheContainers",
+        AddressDurability.UntilTheLeaseMoves => "Bundle_AddressUntilLeaseMoves",
+        _ => "Bundle_AddressUnclassified",
+    };
 }

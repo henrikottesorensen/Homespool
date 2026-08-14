@@ -50,6 +50,31 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# ------------------------------------------------------------------------------------------------
+# Translation
+#
+# Every string a person reads is marked $"..." - bash's gettext form, which looks the message up in
+# the catalogue for the current locale and falls back to the English written here when there is no
+# translation, no catalogue, or no locale. That fallback is why marking the strings costs nothing:
+# with no po/locale directory at all this behaves exactly as it did before.
+#
+# To add a language:
+#
+#     bash --dump-po-strings setup-env.sh > po/setup-env.pot     # refresh the template
+#     msginit -i po/setup-env.pot -l da_DK -o po/da.po           # start a translation
+#     msgfmt -o po/locale/da/LC_MESSAGES/homespool-setup.mo po/da.po
+#
+# The compiled .mo files are committed, because this script is run straight from a clone and there is
+# no build step to compile them at install time.
+#
+# KNOWN NOT TO WORK IN THE CONTAINER, deliberately. The image has only the C, C.utf8 and POSIX
+# locales, and glibc ignores LANGUAGE under C - so the Windows path, which runs this inside the
+# image, is English whatever the catalogue says. Generating a locale there costs 19 MB and was
+# judged not worth it: WSL2 is the documented route for that machine anyway, and there the host's
+# own locale applies normally.
+export TEXTDOMAIN=homespool-setup
+export TEXTDOMAINDIR="$repo_root/po/locale"
 env_file="$repo_root/.env"
 example_file="$repo_root/.env.example"
 
@@ -497,13 +522,9 @@ unreachable_ranges() {
         # Windows path this script runs INSIDE a container, which has no docker CLI and no socket,
         # so of course it cannot ask - while Docker is plainly working, since it is running this.
         if in_container; then
-            say "  Running inside a container, so Docker's own ranges cannot be listed from"
-            say "  here. Excluding 172.16.0.0/12 instead, which covers them. If your LAN"
-            say "  genuinely lives there, type the address rather than picking from the list."
+            say $"  Running inside a container, so Docker's own ranges cannot be listed from here. Excluding 172.16.0.0/12 instead, which covers them. If your LAN genuinely lives there, type the address rather than picking from the list."
         else
-            warn "Could not ask Docker which ranges it has allocated - is it installed and"
-            warn "running? Falling back to excluding 172.16.0.0/12 entirely. If your LAN"
-            warn "genuinely lives there, type the address rather than picking from the list."
+            warn $"Could not ask Docker which ranges it has allocated - is it installed and running? Falling back to excluding 172.16.0.0/12 entirely. If your LAN genuinely lives there, type the address rather than picking from the list."
         fi
     fi
     echo "172.16.0.0/12"
@@ -668,8 +689,67 @@ ask_yes_no() {
     done
 }
 
-say() { echo "$@" >&2; }
-warn() { echo "  ! $*" >&2; }
+# How wide to wrap. Asked once, because tput spawns a process and these are called per paragraph.
+#
+# COLUMNS is not exported to scripts by most shells, so tput is the real source and 80 is the
+# fallback for a pipe, a CI log or a terminal too odd to ask. Clamped at both ends: below 40 the
+# output is unreadable whatever we do, and above 100 long prose lines are harder to follow than
+# short ones, so a very wide terminal is not filled edge to edge.
+terminal_width_cache=""
+
+terminal_width() {
+    if [ -z "$terminal_width_cache" ]; then
+        terminal_width_cache="${COLUMNS:-}"
+        [ -n "$terminal_width_cache" ] || terminal_width_cache="$(tput cols 2>/dev/null || true)"
+        case "$terminal_width_cache" in
+            ''|*[!0-9]*) terminal_width_cache=80 ;;
+        esac
+        [ "$terminal_width_cache" -ge 40 ] || terminal_width_cache=80
+        [ "$terminal_width_cache" -le 100 ] || terminal_width_cache=100
+    fi
+    echo "$terminal_width_cache"
+}
+
+# Prose, wrapped where it is printed rather than where it is written.
+#
+# Every message used to be hand-wrapped to 80 columns, which was wrong twice over: it assumed the
+# reader's terminal, and it made the LINE the unit instead of the paragraph. That second one matters
+# for translation - a translated sentence is a different length, so line breaks decided in the source
+# cannot survive it - and it is why this exists now rather than when the catalogue arrives.
+#
+# Leading spaces in the text are the paragraph's indent and are kept on every wrapped line, so the
+# indented explanations under a question stay indented.
+say() {
+    if [ $# -eq 0 ]; then
+        echo >&2
+        return 0
+    fi
+
+    local text="$*" indent width
+    indent="${text%%[! ]*}"
+    text="${text#"$indent"}"
+
+    width=$(( $(terminal_width) - ${#indent} ))
+    [ "$width" -ge 20 ] || width=20
+
+    # fold -s breaks at spaces and leaves them at the break, hence the trim. Both are POSIX and
+    # present everywhere this runs, including the container and trixie-minbase.
+    printf '%s\n' "$text" | fold -s -w "$width" | sed "s/^/$indent/; s/[[:space:]]*\$//" >&2
+}
+
+# For things that must NOT be re-flowed: a path, or anything already laid out in columns. fold has
+# no word to break on in /a/very/long/path, so it breaks mid-path - and a path split across lines
+# cannot be read or selected. Letting the terminal soft-wrap it is the lesser evil.
+say_raw() {
+    printf '%s\n' "$*" >&2
+}
+
+warn() {
+    local width
+    width=$(( $(terminal_width) - 4 ))
+    [ "$width" -ge 20 ] || width=20
+    printf '%s\n' "$*" | fold -s -w "$width" | sed 's/^/  ! /; s/[[:space:]]*$//' >&2
+}
 
 # ------------------------------------------------------------------------------------------------
 # The questions
@@ -677,13 +757,9 @@ warn() { echo "  ! $*" >&2; }
 
 ask_printer_host() {
     say
-    say "The address printers use to reach this server."
+    say $"The address printers use to reach this server."
     say
-    say "  This is the one setting with no sensible default, and the one that is"
-    say "  expensive to get wrong: it is written into every USB provisioning bundle, and"
-    say "  the printer certificate is issued once - on the first start - covering this"
-    say "  address and every address the machine can see. Set it now and it is covered"
-    say "  by construction."
+    say $"  This is the one setting with no sensible default, and the one that is expensive to get wrong: it is written into every USB provisioning bundle, and the printer certificate is issued once - on the first start - covering this address and every address the machine can see. Set it now and it is covered by construction."
     say
 
     local current candidates choice n line addr iface name_line
@@ -697,7 +773,7 @@ ask_printer_host() {
 $name_line"
 
     if [ -n "$candidates" ]; then
-        say "  Addresses on this machine that a printer could reach:"
+        say $"  Addresses on this machine that a printer could reach:"
         n=0
         while IFS= read -r line; do
             [ -n "$line" ] || continue
@@ -708,7 +784,7 @@ $name_line"
             addr="${line%%	*}"
             iface="${line#*	}"
             if [ "$iface" = "$line" ]; then
-                say "    $n) $addr"
+                say $"    $n) $addr"
             else
                 say "$(printf '    %d) %-16s %s' "$n" "$addr" "$iface")"
             fi
@@ -716,9 +792,7 @@ $name_line"
         say "    $((n + 1))) something else - a name, or an address not listed"
         if [ -n "$name_line" ]; then
             say
-            say "  A name keeps working when this machine's address changes - an address does"
-            say "  not - but only while your router keeps publishing it, which is not checked"
-            say "  here. Test it from another machine before relying on it."
+            say $"  A name keeps working when this machine's address changes - an address does not - but only while your router keeps publishing it, which is not checked here. Test it from another machine before relying on it."
         fi
         say
 
@@ -739,9 +813,7 @@ $name_line"
                 ;;
         esac
     else
-        warn "No usable address detected on this machine. Loopback, link-local and"
-        warn "Docker's own ranges are excluded - a printer cannot reach any of them, and"
-        warn "one baked into the certificate cannot be corrected without a reissue."
+        warn $"No usable address detected on this machine. Loopback, link-local and Docker's own ranges are excluded - a printer cannot reach any of them, and one baked into the certificate cannot be corrected without a reissue."
         choice="$(ask "  Address or name" "$current")"
     fi
 
@@ -753,15 +825,14 @@ validate_printer_host() {
     local host="$1" resolved hit
 
     if [ -z "$host" ]; then
-        warn "Left unset. USB-key provisioning will refuse to produce a snippet until it"
-        warn "is."
+        warn $"Left unset. USB-key provisioning will refuse to produce a snippet until it is."
         return 1
     fi
 
     case "$host" in
         localhost|127.*|0.0.0.0)
-            warn "$host is this machine talking to itself - no printer can reach it."
-            ask_yes_no "  Use it anyway" n || return 1
+            warn $"$host is this machine talking to itself - no printer can reach it."
+            ask_yes_no $"  Use it anyway" n || return 1
             ;;
     esac
 
@@ -780,23 +851,15 @@ validate_printer_host() {
             resolves_in_dns "$host"
             case $? in
                 0)
-                    say "  $host is served by ordinary DNS, not mDNS - a printer can resolve it."
+                    say $"  $host is served by ordinary DNS, not mDNS - a printer can resolve it."
                     ;;
                 2)
-                    warn "$host is probably an mDNS name, and Prusa firmware announces itself over"
-                    warn "mDNS but cannot resolve it - so a printer would never find this server,"
-                    warn "however well the name works from your own machine. There is no dig,"
-                    warn "nslookup or host here to check whether your network serves .local from real"
-                    warn "DNS instead, which some older ones do."
-                    ask_yes_no "  Use it anyway" n || return 1
+                    warn $"$host is probably an mDNS name, and Prusa firmware announces itself over mDNS but cannot resolve it - so a printer would never find this server, however well the name works from your own machine. There is no dig, nslookup or host here to check whether your network serves .local from real DNS instead, which some older ones do."
+                    ask_yes_no $"  Use it anyway" n || return 1
                     ;;
                 *)
-                    warn "$host is an mDNS name - it does not resolve in DNS, only by multicast."
-                    warn "Prusa firmware announces itself over mDNS but cannot resolve it, so a"
-                    warn "printer given this name will never find this server, even though it"
-                    warn "resolves perfectly from your own machine. Use the address, or a name your"
-                    warn "router publishes in DNS."
-                    ask_yes_no "  Use it anyway" n || return 1
+                    warn $"$host is an mDNS name - it does not resolve in DNS, only by multicast. Prusa firmware announces itself over mDNS but cannot resolve it, so a printer given this name will never find this server, even though it resolves perfectly from your own machine. Use the address, or a name your router publishes in DNS."
+                    ask_yes_no $"  Use it anyway" n || return 1
                     ;;
             esac
             ;;
@@ -809,11 +872,10 @@ validate_printer_host() {
         *[!0-9.]*)
             resolved="$(resolve_host "$host")"
             if [ -z "$resolved" ]; then
-                warn "$host does not resolve from here. The certificate will cover the name, but"
-                warn "a printer that cannot resolve it either will have nothing to connect to."
-                ask_yes_no "  Use it anyway" y || return 1
+                warn $"$host does not resolve from here. The certificate will cover the name, but a printer that cannot resolve it either will have nothing to connect to."
+                ask_yes_no $"  Use it anyway" y || return 1
             else
-                say "  $host resolves to $resolved - the certificate will cover both."
+                say $"  $host resolves to $resolved - the certificate will cover both."
             fi
             ;;
     esac
@@ -822,9 +884,8 @@ validate_printer_host() {
     # rule a picked one already passed.
     hit="$(overlaps_any "${resolved:-$host}/32" <<< "$(unreachable_ranges)" | head -1)"
     if [ -n "$hit" ]; then
-        warn "$host is inside $hit, which printers on your network cannot route to. It"
-        warn "would be minted into the certificate and frozen there."
-        ask_yes_no "  Use it anyway" n || return 1
+        warn $"$host is inside $hit, which printers on your network cannot route to. It would be minted into the certificate and frozen there."
+        ask_yes_no $"  Use it anyway" n || return 1
     fi
 
     return 0
@@ -882,17 +943,13 @@ ask_user_host() {
     say
     local suggestion
     suggestion="$(suggested_user_host)"
-    say "The name people type in a browser. Cosmetic - it names the self-signed"
-    say "certificate, and a browser warns about that certificate whatever name it"
-    say "carries."
+    say $"The name people type in a browser. Cosmetic - it names the self-signed certificate, and a browser warns about that certificate whatever name it carries."
     plan_set USER_HOST "$(ask "  Name" "$suggestion")"
 }
 
 ask_timezone() {
     say
-    say "The zone timestamps are shown in. The conversion happens on the server, so this"
-    say "decides what print history reads and what an invitation email says its expiry"
-    say "is."
+    say $"The zone timestamps are shown in. The conversion happens on the server, so this decides what print history reads and what an invitation email says its expiry is."
     plan_set TZ "$(ask "  Timezone" "$(prefer_current TZ "$(detect_timezone)")")"
 }
 
@@ -1127,17 +1184,13 @@ ask_ports() {
         suffix=":$https"
     fi
     say
-    say "  Plain-HTTP visitors are redirected to HTTPS, and the redirect has to name the"
-    say "  port a BROWSER should ask for - which is not necessarily the one published"
-    say "  here, if anything forwards to this machine."
+    say $"  Plain-HTTP visitors are redirected to HTTPS, and the redirect has to name the port a BROWSER should ask for - which is not necessarily the one published here, if anything forwards to this machine."
     plan_set HTTPS_PORT_SUFFIX "$(ask "  Port suffix in the redirect" "$suffix")"
 }
 
 ask_smtp() {
     say
-    say "Outgoing mail is optional. Without it, new accounts are created already"
-    say "confirmed and password reset is unavailable - invitations still work, you just"
-    say "pass the link on yourself."
+    say $"Outgoing mail is optional. Without it, new accounts are created already confirmed and password reset is unavailable - invitations still work, you just pass the link on yourself."
     say
 
     local current_host
@@ -1158,8 +1211,7 @@ ask_smtp() {
     # there, and the error says "connection refused" about a server that is plainly running.
     case "$host" in
         localhost|127.0.0.1|::1)
-            warn "Homespool runs in a container, so $host is the container itself - not this"
-            warn "machine."
+            warn $"Homespool runs in a container, so $host is the container itself - not this machine."
             if ask_yes_no "  Use host.docker.internal, which reaches the host" y; then
                 host="host.docker.internal"
             fi
@@ -1181,11 +1233,8 @@ ask_smtp() {
             # Mailpit on 1025 fails at send time with "does not support the STARTTLS extension" -
             # long after this question, when the connection is the last thing anyone suspects.
             say
-            say "  Port $port is not one of the three well-known ones, so it does not say how"
-            say "  the connection is encrypted. It has to match what the server offers."
-            say "    1) STARTTLS - upgraded after connecting 2) implicit TLS - encrypted from"
-            say "    the first byte 3) none - only for a server on this machine; sends the"
-            say "    password in the clear"
+            say $"  Port $port is not one of the three well-known ones, so it does not say how the connection is encrypted. It has to match what the server offers."
+            say $"    1) STARTTLS - upgraded after connecting 2) implicit TLS - encrypted from the first byte 3) none - only for a server on this machine; sends the password in the clear"
             case "$(ask "  Which" 1)" in
                 2) implicit=true;  disable=false ;;
                 3) implicit=false; disable=true  ;;
@@ -1225,8 +1274,7 @@ ensure_go2rtc_credential() {
 
     password="$(random_password)"
     if [ -z "$password" ]; then
-        warn "No source of randomness found - leaving the camera sidecar unauthenticated,"
-        warn "which is what this deployment already had. Its port is not published."
+        warn $"No source of randomness found - leaving the camera sidecar unauthenticated, which is what this deployment already had. Its port is not published."
         return 0
     fi
 
@@ -1234,7 +1282,7 @@ ensure_go2rtc_credential() {
     # authentication on with an empty key and locks Homespool out along with everyone else.
     plan_set GO2RTC_USERNAME homespool
     plan_set GO2RTC_PASSWORD "$password"
-    say "Generated a credential for the camera sidecar."
+    say $"Generated a credential for the camera sidecar."
 }
 
 random_password() {
@@ -1274,7 +1322,7 @@ auto_answer() {
         exit 1
     fi
 
-    say "Detected $address as the address printers reach this server on."
+    say $"Detected $address as the address printers reach this server on."
     plan_set PRINTER_HOST "$address"
     plan_set USER_HOST "$(suggested_user_host)"
     plan_set TZ "$(detect_timezone)"
@@ -1300,13 +1348,12 @@ auto_move_subnet() {
     candidate="$(free_subnet)"
     if [ -z "$candidate" ]; then
         warn "The compose network $subnet collides with $(echo "$colliding" | tr '\n' ' ')and every"
-        warn "/16 from 172.16 to 172.31 is taken. Set PROXY_SUBNET and PROXY_NETWORK by"
-        warn "hand."
+        warn $"/16 from 172.16 to 172.31 is taken. Set PROXY_SUBNET and PROXY_NETWORK by hand."
         return 0
     fi
 
     say "The compose network $subnet collides with $(echo "$colliding" | tr '\n' ' ')- using"
-    say "$candidate instead."
+    say $"$candidate instead."
     plan_set PROXY_SUBNET "$candidate"
     plan_set PROXY_NETWORK "$candidate"
 }
@@ -1327,15 +1374,13 @@ check_subnet_collision() {
     colliding="$(echo "$colliding" | tr '\n' ' ' | sed 's/ *$//; s/^/ /')"
 
     say
-    warn "The compose network $subnet collides with:$colliding"
+    warn $"The compose network $subnet collides with:$colliding"
     say
-    warn "A collision with another Docker network fails loudly at startup. A"
-    warn "collision with a route this machine already has does not: the stack comes"
-    warn "up, and that network stops being reachable from here."
+    warn $"A collision with another Docker network fails loudly at startup. A collision with a route this machine already has does not: the stack comes up, and that network stops being reachable from here."
 
     candidate="$(free_subnet)"
     if [ -z "$candidate" ]; then
-        warn "Every /16 from 172.16 to 172.31 is in use here - pick a range by hand."
+        warn $"Every /16 from 172.16 to 172.31 is in use here - pick a range by hand."
         return 0
     fi
 
@@ -1379,10 +1424,7 @@ warn_if_already_started() {
                 --filter label=com.docker.compose.volume=homespool-data 2>/dev/null)" ] || return 0
 
     say
-    warn "This stack has run before, so the printer certificate has already been"
-    warn "issued - and it is issued once. Changing PRINTER_HOST in .env does not"
-    warn "change what that certificate covers. Reissue it afterwards from Admin ->"
-    warn "Printer certificate, or printers will fail to verify."
+    warn $"This stack has run before, so the printer certificate has already been issued - and it is issued once. Changing PRINTER_HOST in .env does not change what that certificate covers. Reissue it afterwards from Admin -> Printer certificate, or printers will fail to verify."
 }
 
 # ------------------------------------------------------------------------------------------------
@@ -1408,9 +1450,20 @@ display_value() {
 }
 
 summarise() {
-    local key value before
+    local key value before after line key_width
+
+    # Padded to the longest key actually being changed rather than a fixed 24, so a narrow terminal
+    # is not made narrower by columns nothing occupies.
+    key_width=0
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        key="${line%%=*}"
+        [ "${#key}" -le "$key_width" ] || key_width="${#key}"
+    done <<< "$pending"
+    [ "$key_width" -ge 8 ] || key_width=8
     say
-    say "This will change $env_file:"
+    say $"This will change:"
+    say_raw "    $env_file"
     say
     while IFS= read -r line; do
         [ -n "$line" ] || continue
@@ -1429,11 +1482,20 @@ summarise() {
         else
             before="$(display_value "$key" "$before")"
         fi
-        printf '    %-24s %s  ->  %s\n' "$key" "$before" "$(display_value "$key" "$value")" >&2
+        # A table, so it is NOT word-wrapped - breaking a value across lines would make the one
+        # screen that has to be read carefully the hardest to read. Instead the columns adapt, and
+        # an entry that still will not fit is split over two lines rather than overflowing.
+        after="$(display_value "$key" "$value")"
+        line="$(printf '    %-*s %s  ->  %s' "$key_width" "$key" "$before" "$after")"
+        if [ "${#line}" -le "$(terminal_width)" ]; then
+            printf '%s\n' "$line" >&2
+        else
+            printf '    %s\n' "$key" >&2
+            printf '        %s  ->  %s\n' "$before" "$after" >&2
+        fi
     done <<< "$pending"
     say
-    say "Every other line - comments, blank lines, and any key not listed - is left as"
-    say "it is."
+    say $"Every other line - comments, blank lines, and any key not listed - is left as it is."
 }
 
 apply() {
@@ -1441,7 +1503,7 @@ apply() {
     # later still finds the documentation for the twenty-odd settings the wizard never asked about.
     if [ ! -f "$env_file" ]; then
         cp "$example_file" "$env_file"
-        say "Created $env_file from .env.example."
+        say $"Created $env_file from .env.example."
     fi
 
     # A copy before anything is written, because .env is the one file here with nothing behind it:
@@ -1603,13 +1665,13 @@ main() {
             exit 1
         fi
 
-        say "Homespool - .env setup"
+        say $"Homespool - .env setup"
         say
         if [ -f "$env_file" ]; then
-            say "Editing the existing $env_file. Only the settings below are touched."
+            say $"Editing the existing file, and only the settings below are touched:"
+        say_raw "    $env_file"
         else
-            say "No .env yet. One will be created from .env.example, with these settings filled"
-            say "in."
+            say $"No .env yet. One will be created from .env.example, with these settings filled in."
         fi
 
         ask_printer_host
@@ -1623,7 +1685,7 @@ main() {
 
     if [ -z "$pending" ]; then
         say
-        say "Nothing to change."
+        say $"Nothing to change."
         exit 0
     fi
 
@@ -1632,13 +1694,13 @@ main() {
 
     if $dry_run; then
         say
-        say "--dry-run: nothing written."
+        say $"--dry-run: nothing written."
         exit 0
     fi
 
     if ! $non_interactive && ! $no_prompt; then
         say
-        ask_yes_no "Write these" y || { say "Nothing written."; exit 0; }
+        ask_yes_no $"Write these" y || { say "Nothing written."; exit 0; }
     fi
 
     apply
@@ -1647,9 +1709,9 @@ main() {
     # unit that runs --no-prompt brings the stack up itself, on the line after this one.
     if ! $no_prompt; then
         say
-        say "Written. Bring the stack up with:"
+        say $"Written. Bring the stack up with:"
         say
-        say "    docker compose up -d"
+        say $"    docker compose up -d"
         say
     fi
 

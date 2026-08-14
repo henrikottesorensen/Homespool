@@ -491,6 +491,42 @@
   <data name="Printers_CoolingIncluded" xml:space="preserve">
     <value>nedkøling inkluderet</value>
   </data>
+  <data name="Printers_SetReady" xml:space="preserve">
+    <value>Markér klargjort</value>
+  </data>
+  <data name="Printers_ReadyHeading" xml:space="preserve">
+    <value>Er {0} klar til næste print?</value>
+  </data>
+  <data name="Printers_ReadyChecklist" xml:space="preserve">
+    <value>Er byggepladen på plads, tom og rengjort?</value>
+  </data>
+  <data name="Printers_ReadyConsequence" xml:space="preserve">
+    <value>Bekræfter du, kan næste print i køen starte. Printeren printer på hvad der end ligger på byggepladen, også et færdigt emne, og den afviser det ikke for dig.</value>
+  </data>
+  <data name="Printers_ReadyNoCamera" xml:space="preserve">
+    <value>Der er ikke tilsluttet et kamera til {0}, så du svarer uden at kunne se printeren fra Homespool.</value>
+  </data>
+  <data name="Printers_ReadyConfirm" xml:space="preserve">
+    <value>Byggepladen er ryddet</value>
+  </data>
+  <data name="Printers_ReadySent" xml:space="preserve">
+    <value>Markeret klargjort. Næste print i køen kan starte.</value>
+  </data>
+  <data name="Printers_RemoteReadyLabel" xml:space="preserve">
+    <value>Tillad at markere klargjort fra denne side</value>
+  </data>
+  <data name="Printers_RemoteReadyHelp" xml:space="preserve">
+    <value>Slå kun dette til, hvis man kan se, om byggepladen er ryddet. Et kamera, der ikke viser byggepladen, er en grund til at lade være. Er det slået fra, kræver det, at man går hen til printeren og markerer den klargjort på panelet.</value>
+  </data>
+  <data name="Printers_RemoteReadySaved" xml:space="preserve">
+    <value>Det er nu tilladt at markere klargjort fra denne side.</value>
+  </data>
+  <data name="Printers_RemoteReadyCleared" xml:space="preserve">
+    <value>Det er ikke længere tilladt at markere klargjort fra denne side.</value>
+  </data>
+  <data name="Printers_ReadyNotAllowed" xml:space="preserve">
+    <value>Denne printer er ikke sat op til at blive markeret klargjort herfra.</value>
+  </data>
   <data name="Printers_NothingQueued" xml:space="preserve">
     <value>Intet i kø. Send en fil til denne printers kø fra {0}.</value>
   </data>
@@ -1519,7 +1555,7 @@
     <value>Det er ikke en fuldstændig adresse. En kameraadresse ligner noget som f.eks. rtsp://192.168.1.50/live eller http://192.168.1.50/snapshot.jpg.</value>
   </data>
   <data name="Cameras_SourceScheme" xml:space="preserve">
-    <value>Homespool kan ikke læse kameraer over {0}. Brug rtsp, rtsps, onvif, http, https eller rtmp.</value>
+    <value>Homespool kan ikke læse kameraer over {0}. Brug rtsp, rtsps, http, https, rtmp eller onvif.</value>
   </data>
   <data name="Cameras_SourceIsThisServer" xml:space="preserve">
     <value>{0} slår op til {1}, som er selve denne server og ikke et kamera på dit netværk.</value>

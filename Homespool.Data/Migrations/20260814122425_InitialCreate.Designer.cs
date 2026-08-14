@@ -11,14 +11,14 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20260814061009_InitialCreate")]
+    [Migration("20260814122425_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
 
             modelBuilder.Entity("Homespool.Model.Entities.ApiToken", b =>
                 {
@@ -361,6 +361,9 @@ namespace Homespool.Data.Migrations
 
                     b.Property<float?>("NozzleDiameter")
                         .HasColumnType("REAL");
+
+                    b.Property<bool>("RemoteReadyAllowed")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("SerialNumber")
                         .HasColumnType("TEXT");

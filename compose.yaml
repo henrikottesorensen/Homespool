@@ -256,8 +256,7 @@ services:
     hostname: go2rtc
 
     # Cameras plugged into this machine, granted as a class rather than named one at a time
-    # (Henrik, 2026-08-08: "B for Pis at least"). Major 81 is video4linux - verified on this
-    # project's own board, where it covers both USB webcams and the Pi's built-in codec nodes.
+    # Major 81 is video4linux, where it covers both USB webcams and the Pi's built-in codec nodes.
     #
     # Why not `devices:` naming each camera: an entry naming a device that does not exist stops the
     # container from starting, so it could never ship enabled - and Homespool's camera picker would

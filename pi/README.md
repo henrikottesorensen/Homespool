@@ -7,8 +7,40 @@ container images already on the card. Boot it, wait, browse to `http://homespool
 pi/build.sh --ssh-key ~/.ssh/id_ed25519.pub
 ```
 
-The result lands in `pi/work/out/homespool-pi3.img.zst`. Flash it with Raspberry Pi Imager
-("Use Custom"), or decompress it and `dd` it yourself.
+The result lands in `pi/work/out/homespool-rpi-arm64.img`. Flash **that**, not the `.img.zst` beside
+it — Raspberry Pi Imager's "Use Custom" accepts a `.img` and only a `.img`, and handed a `.zst` it
+writes compressed bytes to the card and then cheerfully verifies them.
+
+## Which board it runs on
+
+**One card, every 64-bit board.** The image is named for the architecture rather than a board because
+the four v8 boards — Pi 3, Pi 4, CM4, Zero 2 W — produce a byte-identical card: only the kernel and
+initramfs pair differs across `rpi-image-gen`'s device layers, and all 421 other boot files match
+byte for byte.
+
+| board | status |
+|---|---|
+| Pi 3B | **booted** |
+| Pi 4 | **booted** |
+| CM4 | untested — Pi 4 silicon, same kernel, DTB and firmware |
+| Zero 2 W | untested, and the doubt is the **512 MB**, not the image: three containers plus SQLite against a measured 308 MiB idle floor |
+| Pi 5 | **booted** — v8 kernel, 4K pages, ethernet and the full stack |
+| CM5 | untested — Pi 5 silicon, same kernel and firmware |
+
+**A Pi 5 runs this card.** Its firmware defaults to `kernel_2712.img` and falls back to `kernel8.img`
+when that is absent, which is what this image ships; the boot partition carries every device tree
+including `bcm2712-rpi-5-b.dtb`; and the v8 kernel is built with the Pi 5's silicon support
+(`CONFIG_MFD_RP1`, `CONFIG_PCIE_BRCMSTB`, `CONFIG_BCM2712_IOMMU`), so the RP1 southbridge is driven
+rather than merely tolerated. Confirmed on hardware — `6.18.39+rpt-rpi-v8`, 4K pages, root resized to
+fill the card, ethernet up and all three containers healthy. Ethernet is the meaningful half: the
+Pi 5's network MAC is inside RP1, behind PCIe.
+
+`kernel_2712` is **not** a hardware-specific kernel. It calls itself `-v8-16k` and differs from v8 in
+35 of 9857 config lines, every one of them the page size or its arithmetic.
+
+So `--device pi5` is an optimisation, not a requirement. It builds a genuine 2712 card as
+`homespool-rpi-arm64-2712.img`, buying Raspberry Pi's ~7% on random memory access and costing a 16K
+ext4 block size — which wastes ~235 MiB here, because 78% of this image's files are under 16 KiB.
 
 ## What you need
 
@@ -23,7 +55,8 @@ afternoon in qemu.
 |---|---|
 | `build.sh` | the entry point: builds the app images, stages the payload, drives the image build |
 | `Dockerfile.builder` | Debian trixie + `rpi-image-gen`, pinned to a SHA. Its supported host is Debian arm64, which macOS is not — hence a container |
-| `config/homespool-pi3.yaml` | the image definition: board, partition sizes, which layers |
+| `config/homespool.yaml` | the image definition: device layer, partition sizes, keyboard, which layers |
+| `layer/homespool-rpi-all.yaml` | the device layer that puts **both** kernels on one card |
 | `layer/homespool.yaml` | our layer — puts the stack at `/opt/homespool` and enables the boot unit |
 | `files/homespool-firstboot.service` | what runs on the board: `setup-env.sh --no-prompt --no-overwrite`, then `compose up` |
 
@@ -66,29 +99,31 @@ settings are written and then **silently ignored**, which looks exactly like a w
 With neither, the account is locked: the stack still comes up and serves pages, but there is no way
 in. That is `rpi-image-gen`'s default and `build.sh` warns about it.
 
-## Wi-Fi, and why WPA3 does not work
+## Wi-Fi, and which networks work
 
 Put your SSID and passphrase in `homespool-wifi.txt` on the card's FAT32 partition — the only
 partition a desktop machine can read — and the Pi joins on first boot. The passphrase line is blanked
 once applied, because FAT32 has no file permissions and anyone who later reads the card would
 otherwise have your wi-fi password.
 
-**WPA3 does not work with the firmware and software this image ships**, and has been unreliable on
-Raspberry Pi built-in wi-fi for years. **How much it costs you depends on the board**, which took two
-days on real hardware to establish:
+**WPA3-only networks do not work on any Raspberry Pi with this image**, and WPA3 has been unreliable
+on Raspberry Pi built-in wi-fi for years. **Mixed mode is the dividing line, and which side you land
+on depends on the board** — established over two days on real hardware:
 
-| your network | Pi 4 | Pi 3B |
+| your network | Pi 4 / Pi 5 | Pi 3B |
 |---|---|---|
 | WPA2 | works | works |
 | WPA2/WPA3 mixed ("transition mode") | works — the Pi uses the WPA2 half | **will not connect** |
 | WPA3-only | **will not connect** | **will not connect** |
 
-**On a Pi 4**, setting your router's network to **WPA2/WPA3 mixed** fixes it and costs nothing for
-your other devices — they carry on using WPA3, only the Pi drops to WPA2.
+**On a Pi 4 or Pi 5**, setting your router's network to **WPA2/WPA3 mixed** fixes it and costs nothing
+for your other devices — they carry on using WPA3, only the Pi drops to WPA2. Those two boards share
+the same wi-fi chipset, which is what puts them on the same side of the table.
 
 **On a Pi 3B, mixed mode is not enough.** That board needs a network offering **WPA2 and nothing
 else**, or a wired connection. Mixed mode fails there even though the Pi is only trying to use the
-WPA2 half — see "Why" below.
+WPA2 half — see "Why" below. The difference is the chipset and its firmware, not the supplicant and
+not anything this image does.
 
 Either way, the alternatives are the same: plug it in, or add a second WPA2-only SSID for older
 devices. Most routers can broadcast several, and the Pi is going to sit next to a printer forever.
@@ -112,7 +147,8 @@ advertising H2E, which most modern ones do. The fix is an iwd patch still under 
 
 So the image sets `SaeDisable` in `/etc/iwd/main.conf`, which tells iwd not to attempt SAE at all.
 Without it you get no error worth reading — just a connection that never completes. With it, mixed
-networks work immediately **on a Pi 4**.
+networks work immediately **on a Pi 4, and on a Pi 5** — the measurements above are from a Pi 4, and
+a Pi 5 has since been confirmed to join a mixed AP too, which is what the shared chipset predicts.
 
 ### Why a Pi 3B is worse, and `SaeDisable` does not rescue it
 

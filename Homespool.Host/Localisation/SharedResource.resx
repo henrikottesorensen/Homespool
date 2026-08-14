@@ -505,6 +505,46 @@
   <data name="Printers_CoolingIncluded" xml:space="preserve">
     <value>cooling included</value>
   </data>
+  <data name="Printers_SetReady" xml:space="preserve">
+    <value>Set ready</value>
+  </data>
+  <data name="Printers_ReadyHeading" xml:space="preserve">
+    <value>Is {0} ready for the next print?</value>
+    <comment>{0} is the printer's name. Naming it guards against readying the machine you are not looking at.</comment>
+  </data>
+  <data name="Printers_ReadyChecklist" xml:space="preserve">
+    <value>Is the print sheet in place, empty and cleaned?</value>
+    <comment>One sentence and one key on purpose: the three conditions must be free to reorder in a language that wants them in another order.</comment>
+  </data>
+  <data name="Printers_ReadyConsequence" xml:space="preserve">
+    <value>Confirming lets the next queued print start. The printer will print onto whatever is on the sheet, including a finished part, and it will not refuse on your behalf.</value>
+  </data>
+  <data name="Printers_ReadyNoCamera" xml:space="preserve">
+    <value>No camera is attached to {0}, so you are answering without being able to see the printer from Homespool.</value>
+    <comment>{0} is the printer's name. Shown only when no camera points at this printer.</comment>
+  </data>
+  <data name="Printers_ReadyConfirm" xml:space="preserve">
+    <value>The print sheet is clear</value>
+    <comment>The confirm button carries the assertion rather than agreement, so it cannot be cleared as if dismissing a dialog.</comment>
+  </data>
+  <data name="Printers_ReadySent" xml:space="preserve">
+    <value>Marked ready. The next queued print can start.</value>
+  </data>
+  <data name="Printers_RemoteReadyLabel" xml:space="preserve">
+    <value>Allow setting ready from this page</value>
+  </data>
+  <data name="Printers_RemoteReadyHelp" xml:space="preserve">
+    <value>Turn this on only if anyone reading this page can tell whether the print sheet is clear. A camera that does not show the sheet is a reason to leave it off. With it off, marking ready means going to the printer and doing it at its own panel.</value>
+  </data>
+  <data name="Printers_RemoteReadySaved" xml:space="preserve">
+    <value>Setting ready from this page is now allowed.</value>
+  </data>
+  <data name="Printers_RemoteReadyCleared" xml:space="preserve">
+    <value>Setting ready from this page is no longer allowed.</value>
+  </data>
+  <data name="Printers_ReadyNotAllowed" xml:space="preserve">
+    <value>This printer is not set up to be marked ready from here.</value>
+  </data>
   <data name="Printers_NothingQueued" xml:space="preserve">
     <value>Nothing queued. Send a file to this printer&apos;s queue from {0}.</value>
   </data>
@@ -1555,7 +1595,7 @@
     <comment>The two example addresses stay as they are - they are literals somebody copies.</comment>
   </data>
   <data name="Cameras_SourceScheme" xml:space="preserve">
-    <value>Homespool does not read cameras over {0}. Use rtsp, rtsps, onvif, http, https or rtmp.</value>
+    <value>Homespool does not read cameras over {0}. Use rtsp, rtsps, http, https, rtmp or onvif.</value>
     <comment>{0} is the URI scheme as typed. The list of accepted schemes is protocol vocabulary and is not translated.</comment>
   </data>
   <data name="Cameras_SourceIsThisServer" xml:space="preserve">

@@ -273,6 +273,7 @@ namespace Homespool.Data.Migrations
                     NozzleDiameter = table.Column<float>(type: "REAL", nullable: true),
                     HasMmuEnabled = table.Column<bool>(type: "INTEGER", nullable: false),
                     Location = table.Column<string>(type: "TEXT", nullable: true),
+                    RemoteReadyAllowed = table.Column<bool>(type: "INTEGER", nullable: false),
                     Firmware = table.Column<string>(type: "TEXT", nullable: true),
                     Status = table.Column<int>(type: "INTEGER", nullable: false),
                     LoadedMaterial = table.Column<string>(type: "TEXT", nullable: true),

@@ -29,8 +29,8 @@ unimplemented.
 - **Telemetry persistence** — live state, history samples and events, batched into SQLite,
   with a retention sweep that ages samples out and a shutdown path that drains rather than
   drops what it is holding.
-- **A per-printer page** — live state, the queue, print history, and the most recent samples
-  and events.
+- **A per-printer page** — live state, the queue, print history, any cameras pointed at it, and
+  the most recent samples and events.
 - **A print queue** — one shared queue per printer, advanced by a loop that sends the next file,
   waits for the printer to take it, and starts the print. When it cannot proceed it **holds and
   says why** rather than skipping ahead. It has run unattended on an MK3.5: a person set the
@@ -44,8 +44,12 @@ unimplemented.
 - **Sending from PrusaSlicer** — its OctoPrint host type uploads straight into a printer's queue.
 - **Preheat and cool down** from a printer's page, per filament type, using the same temperatures the
   printer's own preheat menu would choose.
+- **Cameras** — a webcam plugged into the server, or an RTSP, ONVIF or HTTP camera on your
+  network, shown on the printer's page and kept current while somebody is watching it.
 - **Health checks and alerting** — `/health`, an administrator banner, and email when a check
   starts failing.
+- **Three languages** — British English, American English and Danish, chosen per account or
+  taken from your browser.
 
 **What does not work yet**
 
@@ -57,17 +61,19 @@ unimplemented.
   room that a bed you cannot see is empty is not something this should make easy.
 - **The queue is new.** It has produced real prints, but a handful rather than a season's worth.
   Treat a long unattended run as something to watch the first few times.
-- **Most commands are implemented but out of reach.** Of thirty-nine command types, sixteen can
-  be put on the wire — but only six are exposed anywhere: `pause`, `resume`, `stop`, `ready`,
-  `unready` and `idle` over the API, three of those as buttons. The others, `GCode` and the bed
-  and nozzle temperature commands among them, have no caller yet. Nothing maps arbitrary
-  *incoming* JSON to a command type either, so there is no dialog handling.
+- **Most commands are implemented but out of reach.** Of thirty-nine command types, seventeen can
+  be put on the wire, and seven are exposed anywhere: `pause`, `resume`, `stop`, `ready`, `unready`
+  and `idle` over the API, three of those as buttons, plus the paired temperature command behind
+  preheat and cool down, which is page-only. The rest have no caller — `GCode` among them, and the
+  single-heater temperature commands, which exist because the protocol has them rather than because
+  anything asks for one heater alone. Nothing maps arbitrary *incoming* JSON to a command type
+  either, so there is no dialog handling.
 - **Sending gcode is deliberately narrow.** When it is reachable it will go through an allowlist
   rather than a passthrough, because firmware's `M997` reflashes the mainboard from a file on
   `/usb/` and validates nothing — so "upload a file" plus "send arbitrary gcode" would add up to
   arbitrary firmware on someone's printer.
-- **No charts, and nothing updates itself.** The per-printer page renders on load and stays
-  as it is until you reload it.
+- **No charts, and only the cameras update themselves.** A camera panel refreshes while you watch
+  it; everything else on the per-printer page renders on load and stays as it is until you reload.
 - **No password reset without SMTP.** With no mail server configured, a forgotten password
   needs manual intervention, and there is no admin-side reset yet.
 
@@ -128,9 +134,12 @@ never reach — install WSL2 and Docker Engine inside the distro, then run `./se
 normally. It recognises WSL and asks Windows for the addresses itself, because detection inside WSL
 would otherwise answer about the NAT'd virtual machine rather than your network.
 
-That brings up two containers: the application, and an nginx that terminates TLS for both of its
-audiences. The database lives in a named volume (`homespool-data`) so it survives container
-replacement.
+That brings up three containers: the application, an nginx that terminates TLS for both of its
+audiences, and a [go2rtc](https://github.com/AlexxIT/go2rtc) sidecar that talks to cameras. The
+database lives in a named volume (`homespool-data`) so it survives container replacement.
+
+The sidecar costs nothing when no camera is configured — it publishes no port, and idles at 0% of
+a core with nobody watching. [Cameras](#cameras) covers what it is for.
 
 **Everything is served over TLS from the first start, and the two audiences are kept apart.**
 
@@ -188,7 +197,9 @@ in particular cannot serve that port at all.
 
 ### From source
 
-Requires the **.NET 10 SDK** (developed against 10.0.302).
+Requires the **.NET 10 SDK**, 10.0.302 or newer. `global.json` sets that as a floor and rolls
+forward to the newest feature band installed, so an older SDK fails outright rather than building
+against a different set of analysers.
 
 ```bash
 dotnet tool restore
@@ -427,6 +438,45 @@ file that may since have been renamed or deleted.
 
 ---
 
+## Cameras
+
+**Cameras** in the navigation adds a camera and points it at a printer; its picture then appears on
+that printer's page. A $10 USB webcam works. So does Prusa's own Buddy Camera, but as an ordinary
+`rtsp://` source like any other — there is no special handling for it, and none is needed.
+
+Two kinds, because they are acquired differently:
+
+- **A network camera** is an address you type — `rtsp://`, `rtsps://`, `http://`, `https://`,
+  `rtmp://` or `onvif://`, and nothing else. An ONVIF camera is given as
+  `onvif://user:pass@192.168.1.50`, and the stream behind it is found for you rather than looked
+  up by hand. It needs `CanManage` on the team it belongs to.
+- **An attached camera** is chosen from what is plugged into the server, and needs
+  **administrator** — a device is the machine's rather than any one team's, and `CanManage` is
+  per-team, so two teams could otherwise each claim the same webcam. The picker lists only devices
+  nobody has claimed, and deleting a camera hands its device back.
+
+A [go2rtc](https://github.com/AlexxIT/go2rtc) sidecar does the talking to cameras; Homespool
+configures it for you when you add one, so there is no second place to describe a camera. Its port
+is not published, and every viewing path is proxied through Homespool so the camera's own
+permission check applies. Set `GO2RTC_USERNAME` and `GO2RTC_PASSWORD` in `.env` — `setup-env.sh`
+generates them — and set **both or neither**: a username with an empty password turns its
+authentication on with an empty key and locks Homespool out along with everyone else.
+
+**Frames are fetched only while somebody is looking.** A request is what schedules the next fetch,
+so a page left open stays current and a camera nobody is watching costs nothing at all.
+
+> **A frame past `MaxAgeSeconds` is thrown away rather than captioned**, and this is a safety
+> property rather than a cache policy. A day-old photograph of a clear print bed looks exactly like
+> a current one, and an age label is no protection because people look at the picture. Past that age
+> the page says it is capturing, and shows nothing.
+
+An attached camera is grabbed at roughly half a second, a 1080p H.264 network camera at two to
+three — an H.264 client cannot decode anything until the next keyframe, so that wait is paid every
+time. Neither is a live stream, and neither is meant to be: this is "is the print still all right",
+not video.
+
+---
+
 ## API access
 
 `/api/v1` is this application's own API. Only `/p/*` owes Prusa's protocol anything; everything
@@ -481,6 +531,17 @@ invitation email states its expiry the same way — so without it, a print start
 
 Presentation only. Times are stored as an absolute instant, so setting this later re-renders
 existing history correctly rather than shifting it.
+
+### Language
+
+Nothing to configure. Homespool ships **English (UK)**, **English (US)** and **Dansk**, and picks
+one per request: an account's own choice under **Account → Language** first, then this browser's
+memory of the last choice made here, then `Accept-Language`. Signing out therefore does not throw
+the language away.
+
+The two Englishes differ in formatting rather than words — `09/03/2026` and a 24-hour clock
+against `3/9/2026` and a 12-hour one. British English is what the resources are written in, so
+an unqualified `Accept-Language: en` lands there rather than on American formatting.
 
 ### `PrusaConnect`
 
@@ -607,6 +668,21 @@ Where uploaded gcode lives.
 The same warning as the database applies: do not put this directory on NFS, CIFS or a NAS
 share. Files are read on the printer connection's own loop.
 
+### `Cameras`
+
+Cameras themselves are added in the app, not here. This is the sidecar's address and the handful of
+limits around it — see [Cameras](#cameras).
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `StreamServerBaseUrl` | `http://go2rtc:1984` | The sidecar, by service name on the Compose network. Right unless you renamed the service. |
+| `ApiUsername` / `ApiPassword` | *(empty)* | Credential for the sidecar's API. **Both or neither** — a username with an empty password turns its authentication on with an empty key and answers 401 to everything, Homespool included. Defence in depth, not the access control: go2rtc has one credential for its whole API and no notion of which cameras a caller may see, which is why Homespool proxies every viewing path. |
+| `RefreshFloorSeconds` | `2` | Shortest gap between two fetches of one camera. A page asking for a frame is what triggers the next fetch, so without a floor a browser would drive the camera as fast as it can answer. Chosen to sit just under a typical RTSP camera's own acquisition time, so the camera is the limit rather than this. |
+| `MaxAgeSeconds` | `60` | How old a frame may be and still be shown. Past this it is **discarded**, not labelled — see the warning under [Cameras](#cameras). |
+| `TimeoutSeconds` | `15` | How long to wait for a camera to answer. Generous against a measured 4.6 s worst case, bounded so a dead camera cannot hold a connection open. |
+| `MaxFrameBytes` | `4194304` (4 MiB) | Largest response accepted from a camera. Measured frames are 40–190 KB; an unbounded read from something you do not control is a memory hazard whatever it claims its length is. |
+| `RefuseLoopbackAndLinkLocal` | `true` | Refuses camera addresses pointing at loopback or link-local. Nothing a real camera serves lives there, so it costs nothing; everything else is allowed deliberately, because reaching a camera on your own LAN is the entire point. |
+
 ### `XForwarded`
 
 Which proxy this deployment trusts, and what it is allowed to say about the client. The shipped
@@ -709,9 +785,18 @@ Flash it, boot it, browse to `http://homespool.local`.
 pi/build.sh --ssh-key ~/.ssh/id_ed25519.pub
 ```
 
+**One card runs every 64-bit Pi.** It carries both kernels, so the same image has booted a 3B, a
+4 and a 5; CM4, CM5 and the Zero 2 W share silicon with boards that have, and are untested rather
+than excluded.
+
 It needs an **Apple Silicon Mac or an arm64 Linux box** with Docker; `build.sh` refuses to run
 on x86 rather than quietly spending an afternoon in qemu. [`pi/README.md`](pi/README.md) covers
 how it fits together, and what a Pi 3B's radio will and will not do.
+
+**Cameras are the asterisk on the smaller boards.** Everything else here is comfortable on a Pi 3,
+but one 1080p H.264 camera costs about 90% of a core there and falls behind realtime — measured,
+not estimated. A Pi 4 pays 41% of a core for the same camera, a Pi 5 about 18%. `pi/decode-bench.sh`
+runs the measurement on a board in front of you and prints those figures beside its own.
 
 ---
 

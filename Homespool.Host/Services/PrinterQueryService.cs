@@ -125,6 +125,46 @@ public class PrinterQueryService
     /// next <c>GET</c> will - a PATCH answering <c>UNKNOWN</c> while a GET one second later says
     /// <c>PRINTING</c> would look like the edit had reset something.
     /// </remarks>
+    /// <summary>
+    /// Sets whether this printer may be marked ready from its page - see
+    /// <see cref="Printer.RemoteReadyAllowed"/> for what the flag asserts.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A method of its own rather than another parameter on <see cref="UpdatePrinterAsync"/></b>,
+    /// which serves <c>PATCH /api/v1/printers</c>: name and location are labels, and this is a
+    /// standing judgement about whether a safety prompt can be answered honestly from a screen.
+    /// Folding it in would put it on that surface as one more editable field, and the two want
+    /// different callers.
+    /// </para>
+    /// <para>
+    /// Same two refusal shapes as its neighbour, in the same order and for the same reason: a caller
+    /// who cannot read the printer gets <c>null</c>, because naming a refusal would confirm the UUID
+    /// exists, and one who can read but not manage has already been shown it.
+    /// </para>
+    /// </remarks>
+    public async Task<bool?> SetRemoteReadyAllowedAsync(Guid uuid,
+                                                        long userId,
+                                                        bool allowed,
+                                                        CancellationToken cancellationToken)
+    {
+        if (await _access.FindAsync(uuid, userId, PrinterOperation.ViewPrinter, cancellationToken) is null)
+        {
+            return null;
+        }
+
+        Printer printer = await _dbContext.Printers.SingleAsync(p => p.Uuid == uuid, cancellationToken);
+
+        await _access.RequireAsync(printer.Id, userId, PrinterOperation.ManagePrinter, cancellationToken);
+
+        printer.RemoteReadyAllowed = allowed;
+        printer.UpdatedAt = _timeProvider.GetUtcNow();
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return allowed;
+    }
+
     public async Task<PrinterWithState?> UpdatePrinterAsync(Guid uuid,
                                                             long userId,
                                                             string? name,

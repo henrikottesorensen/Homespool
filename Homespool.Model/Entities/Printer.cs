@@ -151,6 +151,35 @@ public class Printer
     public string? Location { get; set; }
 
     /// <summary>
+    /// Whether this printer may be marked ready from its page, rather than only at the machine or
+    /// through the API. <b>Off unless somebody turns it on</b>, which is where the safety of it lives.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This does not record whether a camera is attached.</b> That is already a fact
+    /// <see cref="Camera.PrinterId"/> answers, and answering it twice is how two settings for one
+    /// fact end up disagreeing with neither value being wrong. What this asserts is the judgement
+    /// nothing can derive: <b>that somebody reading this printer's page can tell whether its print
+    /// sheet is clear.</b> A camera pointed at the spool holder leaves the feed present and this
+    /// false, which is the case the setting exists for.
+    /// </para>
+    /// <para>
+    /// <b>What it guards is printing onto a finished part</b>, which firmware will do without
+    /// complaint - the same property that makes the preheat control refuse to retarget a heater
+    /// mid-print. Readying a printer is a person asserting the sheet is clear; the physical walk to
+    /// the machine forces that person to look, and this is what replaces it.
+    /// </para>
+    /// <para>
+    /// <b>It gates the page and not the API.</b> <c>PUT /api/v1/printers/{uuid}/command/ready</c>
+    /// answers whatever this says, because writing a script is already the deliberate act the walk
+    /// stood in for, and the failure this guards needs a person who did not look. So this is a policy
+    /// on a button rather than an enforced boundary - re-open that if a caller ever puts a person
+    /// behind the API.
+    /// </para>
+    /// </remarks>
+    public bool RemoteReadyAllowed { get; set; }
+
+    /// <summary>
     /// Firmware version, e.g. <c>6.4.0+11974</c>. From the <c>INFO</c> event; null until the
     /// first one arrives, and refreshed automatically when the printer is upgraded.
     /// </summary>

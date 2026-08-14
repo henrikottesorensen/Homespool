@@ -50,10 +50,16 @@ public sealed record SendCommandMessage(
 /// <summary>
 /// An event parsed off the wire. May answer the in-flight command (matching <c>command_id</c>)
 /// before being handed to <see cref="Telemetry.ITelemetrySink"/> either way.
+/// <c>Identity</c> is the parsed identity payload when the event carried one (an <c>INFO</c>) -
+/// extracted by <see cref="MessageDispatcher"/>, which owns the unknown-field accounting the parse
+/// feeds, and carried here so the actor's enqueue can hand the sink a complete record.
 /// </summary>
-public sealed record InboundEventMessage(DateTimeOffset ReceivedAt, EventDTO Event) : ConnectionMessage;
+public sealed record InboundEventMessage(DateTimeOffset ReceivedAt,
+                                         EventDTO Event,
+                                         Telemetry.PrinterIdentityUpdate? Identity = null) : ConnectionMessage;
 
-/// <summary>Telemetry parsed off the wire, forwarded to <see cref="Telemetry.ITelemetrySink"/> unchanged.</summary>
+/// <summary>Telemetry parsed off the wire, converted to the neutral currency at the actor's
+/// enqueue - the last point that knows this is the Prusa edge.</summary>
 public sealed record InboundTelemetryMessage(DateTimeOffset ReceivedAt, TelemetryDTO Telemetry) : ConnectionMessage;
 
 /// <summary>

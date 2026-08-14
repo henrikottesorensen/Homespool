@@ -1,9 +1,6 @@
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -15,24 +12,22 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using Homespool.Data;
-using Homespool.Host.PrusaConnect;
-using Homespool.Host.PrusaConnect.DTO.App;
-using Homespool.Host.PrusaConnect.DTO.EventMessages;
-using Homespool.Host.PrusaConnect.DTO.Telemetry;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Telemetry;
 
 /// <summary>
-/// Persists what <see cref="MessageDispatcher"/> parses: merges telemetry into a per-printer
-/// live-state cache, snapshots dense <see cref="TelemetrySample"/> rows from the merged result, and
-/// buffers <see cref="PrinterEvent"/> rows — all through one bounded channel, batched, so socket
-/// handlers never open a <see cref="HomespoolDbContext"/> themselves.
+/// Persists what the protocol edges hand it - the neutral <see cref="TelemetryUpdate"/> and
+/// <see cref="PrinterEventRecord"/> currency, already mapped and already policy-decided. Merges
+/// telemetry into a per-printer live-state cache, snapshots dense <see cref="TelemetrySample"/>
+/// rows from the merged result, and buffers <see cref="PrinterEvent"/> rows — all through one
+/// bounded channel, batched, so connection handlers never open a
+/// <see cref="HomespoolDbContext"/> themselves, and nothing here knows which protocol spoke.
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>Singleton with one reader.</b> Registered as both the sole <see cref="ITelemetrySink"/> and
-/// the hosted <see cref="BackgroundService"/>, so <see cref="Enqueue(int,DateTimeOffset,TelemetryDTO)"/>
+/// the hosted <see cref="BackgroundService"/>, so <see cref="Enqueue(int,DateTimeOffset,TelemetryUpdate)"/>
 /// only ever does a non-blocking channel write; every merge, throttle decision and flush happens on
 /// this one draining loop, which is what lets the live-state cache be a plain
 /// <see cref="Dictionary{TKey,TValue}"/> with no locking.
@@ -53,11 +48,12 @@ namespace Homespool.Host.Telemetry;
 /// (notes/fake-printer-harness.md, the blast run).
 /// </para>
 /// <para>
-/// <b>One bad message must not stop persistence for every other printer.</b>
-/// <see cref="PrinterStatusExtensions.ParseWireState"/> throws on a wire value outside the known
-/// vocabulary; an uncaught throw from the drain loop would end this <see cref="BackgroundService"/>
-/// permanently; nothing restarts it. Each item is processed in its own try/catch for exactly this
-/// reason — logged and skipped, rather than risking the whole writer.
+/// <b>One bad message must not stop persistence for every other printer.</b> An uncaught throw
+/// from the drain loop would end this <see cref="BackgroundService"/> permanently; nothing
+/// restarts it. Each item is processed in its own try/catch for exactly this reason — logged and
+/// skipped, rather than risking the whole writer. Wire parsing itself no longer happens here (the
+/// edges map before enqueueing, and catch their own mapping throws with the same one-message
+/// blast radius), so this catch is the loop's last line of defence, not its routine path.
 /// </para>
 /// <para>
 /// <b>Two independent safety nets guard against unbounded growth, for two different failure modes.</b>
@@ -144,65 +140,6 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     // beat three that get the process SIGKILLed before the loss is even reported.
     private const int FinalFlushAttempts = 2;
 
-    /// <summary>
-    /// What replaces a redacted value - a value, not an absence, so the redaction is legible.
-    /// </summary>
-    private const string RedactedMarker = "[redacted]";
-
-    /// <summary>
-    /// Every field a <c>FILE_INFO</c>'s <c>data</c> carries that <b>firmware itself renders</b>. Read
-    /// straight off render.cpp:466-498 at the pinned ref, where the branch is six fixed fields plus
-    /// one variant chunk - and the variant's only non-gcode alternative is the directory listing,
-    /// hence <c>children</c> and <c>file_count</c>.
-    /// </summary>
-    /// <remarks>
-    /// An allowlist, not a blacklist, and the asymmetry is the whole argument - see
-    /// <see cref="FormatPayload"/>. Note <c>preview</c> is firmware-rendered and still absent: it is
-    /// the one field firmware produces that is pure gcode content.
-    /// </remarks>
-    private static readonly string[] FirmwareRenderedFileInfoFields =
-        ["size", "m_timestamp", "read_only", "display_name", "type", "path", "children", "file_count"];
-
-    /// <summary>
-    /// Every <c>INFO</c> field masked before the payload reaches a row, as a dotted path from the
-    /// object's root. See <see cref="RedactCredentials"/> for why this is a blacklist where its
-    /// neighbour above is an allowlist.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>Paths, not bare names</b>, so a same-named field elsewhere in the object is not redacted by
-    /// accident - and because two of these are nested and a flat match would never have reached them.
-    /// </para>
-    /// <para>
-    /// <b><c>api_key</c> is the credential</b>: the printer's PrusaLink password, which with the
-    /// address beside it grants full authenticated access to its HTTP API. That one is the security
-    /// fix. The other two are privacy, and the argument is different.
-    /// </para>
-    /// <para>
-    /// <b>The wifi fields are here because an SSID can leak where someone lives</b> (Henrik,
-    /// 2026-07-31). It is user-authored free text naming a home - often a surname or a street - and
-    /// SSIDs are searchable in public wardriving databases in a way a printer serial is not. Nothing
-    /// in this codebase reads either field; they were stored only because the payload was stored
-    /// verbatim. The one real diagnostic use - spotting a printer that joined the wrong SSID on a
-    /// multi-SSID network - is a question about <i>now</i>, answered by the current <c>INFO</c> or by
-    /// walking up to the printer and reading its screen. This table is history, and history of it buys
-    /// nothing.
-    /// </para>
-    /// <para>
-    /// <b>Weighed and deliberately kept:</b> <c>sn</c> identifies the user's own device to the user
-    /// and is what anyone would quote in a support conversation; <c>fingerprint</c> is how a
-    /// connection is tied to a printer at all. Neither is a bearer credential, and both earn their
-    /// place.
-    /// </para>
-    /// <para>
-    /// <b>Limit worth knowing:</b> matching descends into nested <i>objects</i> but not into arrays,
-    /// so a field inside <c>storages[]</c> could not be named here today. Nothing in <c>INFO</c> needs
-    /// it; if that changes, <see cref="RedactCredentials"/> is where it changes.
-    /// </para>
-    /// </remarks>
-    private static readonly string[] RedactedInfoFields =
-        ["api_key", "network_info.wifi_ssid", "network_info.wifi_mac"];
-
     private static readonly TimeSpan FinalFlushRetryDelay = TimeSpan.FromMilliseconds(250);
 
     /// <summary>
@@ -233,7 +170,6 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     private readonly StorageOptions _options;
     private readonly ILogger<TelemetryWriter> _logger;
     private readonly TimeProvider _timeProvider;
-    private readonly UnknownFieldTracker _unknownFields;
 
     // Both wire-rate log sites in this class go through a LogThrottle: drops are recorded on
     // whatever producer thread hit the full channel, processing failures on the drain loop, and
@@ -259,14 +195,12 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     public TelemetryWriter(IServiceScopeFactory scopeFactory,
                            IOptions<StorageOptions> options,
                            ILogger<TelemetryWriter> logger,
-                           TimeProvider timeProvider,
-                           UnknownFieldTracker unknownFields)
+                           TimeProvider timeProvider)
     {
         _scopeFactory = scopeFactory;
         _options = options.Value;
         _logger = logger;
         _timeProvider = timeProvider;
-        _unknownFields = unknownFields;
 
         // itemDropped fires synchronously, on the producer's thread, exactly when DropOldest
         // actually discards something - not an approximation from watching queue depth. Logged as
@@ -315,173 +249,6 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     }
 
     /// <summary>
-    /// The event's <c>data</c> as it goes into the row - verbatim, except that a <c>FILE_INFO</c> is
-    /// reduced to <see cref="FirmwareRenderedFileInfoFields"/> and an <c>INFO</c> has its
-    /// <c>api_key</c> masked.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>Everything else in a <c>FILE_INFO</c> is the uploaded gcode's own header</b>, relayed by
-    /// firmware rather than produced by it. Measured on a real transfer: of 407 keys, 7 were
-    /// firmware-rendered, <b>396 appeared verbatim in the gcode we already store</b>, and the
-    /// remaining 4 were base64 thumbnail fragments the firmware's <c>key = value</c> split mangled
-    /// out of that same file - because base64 padding is <c>=</c>. Nothing was unaccounted for. An
-    /// event log should not carry a second copy of a file we hold, and a view that needs this wants
-    /// it from somewhere built to serve it (Henrik, 2026-07-27).
-    /// </para>
-    /// <para>
-    /// <b>Why an allowlist rather than a blacklist</b>, which was weighed and rejected: the two sets
-    /// have different shapes. Firmware's is <i>closed</i> - render.cpp's FileInfo branch is six fixed
-    /// fields plus one variant chunk, with no other producer, so it can be enumerated exactly from
-    /// source. The gcode's is <i>unbounded and attacker-influenced</i>: 400 keys from one ordinary
-    /// six-cube print, four of them unpredictable base64 strings that no blacklist could have named in
-    /// advance. A crafted file chooses its own key names and count.
-    /// </para>
-    /// <para>
-    /// The residual risk is real and deliberately accepted: <b>a future firmware field would be
-    /// dropped silently</b>, because a new firmware field and a new gcode header arrive
-    /// indistinguishably. It is bounded - the wire contract is verified stable across 6.5.7 to 6.6.3 -
-    /// and recoverable, since a <c>SEND_FILE_INFO</c> re-requests the full object and the fix is one
-    /// string in the list above. The blacklist's failure mode is not recoverable: unbounded content
-    /// already written to a table that retention never sweeps. <b>When the pinned firmware ref moves,
-    /// re-read render.cpp's FileInfo branch</b> - that check is the safeguard here, not anything in
-    /// this code.
-    /// </para>
-    /// <para>
-    /// Size, for scale: 3 x <c>FILE_INFO</c> per transferred file at ~18 KB each, none of them pruned,
-    /// against ~493 bytes for all three under this rule. And the two large ones differed in exactly one
-    /// field - <c>read_only</c> - so 17 538 bytes were being stored twice to record a boolean flipping.
-    /// </para>
-    /// </remarks>
-    private static string? FormatPayload(EventDTO dto)
-    {
-        if (dto.Data is not { } element)
-        {
-            return null;
-        }
-
-        if (dto.EventType == Model.PrinterEventType.Info && element.ValueKind == JsonValueKind.Object)
-        {
-            return RedactCredentials(element);
-        }
-
-        // Scoped to FILE_INFO deliberately. Every other event type has its own field set, and the
-        // allowlist above describes this one only - applying it anywhere else would silently empty
-        // payloads that are entirely firmware's own work.
-        if (dto.EventType != Model.PrinterEventType.FileInfo || element.ValueKind != JsonValueKind.Object)
-        {
-            return element.GetRawText();
-        }
-
-        ArrayBufferWriter<byte> buffer = new();
-
-        using (Utf8JsonWriter writer = new(buffer))
-        {
-            writer.WriteStartObject();
-
-            foreach (JsonProperty property in element.EnumerateObject())
-            {
-                if (Array.IndexOf(FirmwareRenderedFileInfoFields, property.Name) >= 0)
-                {
-                    property.WriteTo(writer);
-                }
-            }
-
-            writer.WriteEndObject();
-        }
-
-        return Encoding.UTF8.GetString(buffer.WrittenSpan);
-    }
-
-    /// <summary>
-    /// An <c>INFO</c> payload with every <see cref="RedactedInfoFields"/> entry masked. Today that is
-    /// <c>api_key</c> alone - <b>the printer's PrusaLink password</b>, which firmware volunteers in
-    /// every one of these (<see cref="InfoEventDataDTO.ApiKey"/> says why it is a
-    /// credential and what it unlocks).
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>Found in a live events table, 2026-07-31</b>, sitting in clear text beside the printer's
-    /// address - which is the pair that grants full authenticated access to its HTTP API, including
-    /// reading any file off the drive. Rotating the password on the printer does not remove earlier
-    /// copies, and this table is append-only with no retention sweep, so every reconnection since
-    /// enrolment had left one.
-    /// </para>
-    /// <para>
-    /// <b>A blacklist here, and an allowlist for <c>FILE_INFO</c> - deliberately opposite</b>, because
-    /// the risks are opposite. That one guards against <i>unbounded, attacker-influenced</i> gcode
-    /// headers, where nothing can be enumerated in advance. This one guards named fields in a small,
-    /// closed, firmware-rendered object that <see cref="UnknownFieldTracker"/> exists to watch for
-    /// changes - and an allowlist would silently drop the new firmware fields that tracker is meant to
-    /// surface. The residual risk is a *future* credential field arriving unnamed; that is what
-    /// re-reading render.cpp at a new pinned ref is for.
-    /// </para>
-    /// <para>
-    /// <b>Masked rather than dropped</b>, so the field's presence stays visible. A silently absent key
-    /// reads as "firmware stopped sending it" to whoever looks next, which is the sort of ambiguity
-    /// that costs an afternoon.
-    /// </para>
-    /// <para>
-    /// <b>This does not scrub rows already written.</b> Existing payloads keep whatever key was
-    /// current when they were stored; a deployment that cares needs to clear them out of band. Said
-    /// plainly here rather than left for someone to discover.
-    /// </para>
-    /// </remarks>
-    private static string RedactCredentials(JsonElement element)
-    {
-        ArrayBufferWriter<byte> buffer = new();
-
-        using (Utf8JsonWriter writer = new(buffer))
-        {
-            WriteRedacted(writer, element, prefix: null);
-        }
-
-        return Encoding.UTF8.GetString(buffer.WrittenSpan);
-    }
-
-    /// <summary>
-    /// Copies one object through, masking any property whose dotted path appears in
-    /// <see cref="RedactedInfoFields"/>, and recursing so nested ones are reachable.
-    /// </summary>
-    /// <param name="writer">Where the copy goes.</param>
-    /// <param name="element">The object being copied. Must be <see cref="JsonValueKind.Object"/>.</param>
-    /// <param name="prefix">
-    /// The dotted path of <paramref name="element"/> itself, or null at the root.
-    /// </param>
-    /// <remarks>
-    /// <b>Objects only, not arrays.</b> An array is copied whole, so a field inside one cannot be
-    /// named in the list. Nothing in <c>INFO</c> needs it - <c>storages</c> carries mount points and
-    /// free space - and descending into arrays would need an index or a wildcard in the path syntax,
-    /// which is more machinery than a list of three earns. The limit is stated on the list too, since
-    /// that is where someone will be looking when it matters.
-    /// </remarks>
-    private static void WriteRedacted(Utf8JsonWriter writer, JsonElement element, string? prefix)
-    {
-        writer.WriteStartObject();
-
-        foreach (JsonProperty property in element.EnumerateObject())
-        {
-            string path = prefix is null ? property.Name : $"{prefix}.{property.Name}";
-
-            if (Array.IndexOf(RedactedInfoFields, path) >= 0)
-            {
-                writer.WriteString(property.Name, RedactedMarker);
-            }
-            else if (property.Value.ValueKind == JsonValueKind.Object)
-            {
-                writer.WritePropertyName(property.Name);
-                WriteRedacted(writer, property.Value, path);
-            }
-            else
-            {
-                property.WriteTo(writer);
-            }
-        }
-
-        writer.WriteEndObject();
-    }
-
-    /// <summary>
     /// First sighting of a printer since this process started: reads its current
     /// <see cref="PrinterLiveState"/> (if any) so the merge has a real starting point instead of
     /// treating "never seen this process lifetime" as "never enrolled". A short-lived scope for the
@@ -514,14 +281,14 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             window.Count, window.Elapsed.TotalSeconds, kind, dropped.PrinterId, window.Total);
     }
 
-    public void Enqueue(int printerId, DateTimeOffset receivedAt, TelemetryDTO telemetry)
+    public void Enqueue(int printerId, DateTimeOffset receivedAt, TelemetryUpdate telemetry)
     {
         _channel.Writer.TryWrite(new TelemetryWriteItem.TelemetryItem(printerId, receivedAt, telemetry));
     }
 
-    public void Enqueue(int printerId, DateTimeOffset receivedAt, EventDTO eventDto)
+    public void Enqueue(int printerId, DateTimeOffset receivedAt, PrinterEventRecord eventRecord)
     {
-        _channel.Writer.TryWrite(new TelemetryWriteItem.EventItem(printerId, receivedAt, eventDto));
+        _channel.Writer.TryWrite(new TelemetryWriteItem.EventItem(printerId, receivedAt, eventRecord));
     }
 
     /// <summary>
@@ -555,7 +322,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// the channel is completed <em>and</em> empty, so everything queued at this moment is processed
     /// and flushed first. Ordered before <c>base.StopAsync</c> deliberately - that is what cancels
     /// <c>stoppingToken</c> and then awaits the loop, so the channel has to be closed before the wait
-    /// begins or the loop would have no reason to end. <see cref="Enqueue(int,DateTimeOffset,TelemetryDTO)"/>
+    /// begins or the loop would have no reason to end. <see cref="Enqueue(int,DateTimeOffset,TelemetryUpdate)"/>
     /// silently no-ops after this point, which is correct: a socket handler mid-message during
     /// shutdown has nowhere to put its data anyway.
     /// </remarks>
@@ -611,7 +378,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
         // Identity learned from INFO events, applied to the Printer row at flush time. Keyed by
         // printer, so a reconnecting printer that sends INFO twice before a flush costs one update.
-        Dictionary<int, InfoEventDataDTO> pendingPrinterInfo = [];
+        Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo = [];
 
         using PeriodicTimer flushTimer = new(TimeSpan.FromSeconds(Math.Max(_options.WriteFlushIntervalSeconds, 0.05)));
 
@@ -734,7 +501,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                                         List<TelemetrySample> pendingSamples,
                                         List<PrinterEvent> pendingEvents,
                                         HashSet<int> dirtyPrinterIds,
-                                        Dictionary<int, InfoEventDataDTO> pendingPrinterInfo,
+                                        Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo,
                                         CancellationToken cancellationToken)
     {
         try
@@ -784,12 +551,12 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             cache[item.PrinterId] = entry;
         }
 
-        PrinterLiveStateMerger.Merge(entry.State, item.Data, item.ReceivedAt);
+        PrinterLiveStateMerger.Apply(entry.State, item.Data, item.ReceivedAt);
         dirtyPrinterIds.Add(item.PrinterId);
 
         // Printer.LoadedMaterial lives on a different table from PrinterLiveState, so it can't ride
         // along in the merge above; carried on the cache entry instead and applied at flush.
-        if (item.Data.Material is { } material)
+        if (item.Data.Material is { IsPresent: true, Value: { } material })
         {
             entry.PendingLoadedMaterial = material;
         }
@@ -938,7 +705,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// </para>
     /// </remarks>
     private async Task ApplyPrinterInfoAsync(HomespoolDbContext context,
-                                             Dictionary<int, InfoEventDataDTO> pendingPrinterInfo,
+                                             Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo,
                                              CancellationToken cancellationToken)
     {
         // Which printers already have a serial, read untracked and projected to two columns. It has
@@ -959,14 +726,16 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                                          .ToDictionaryAsync(p => p.Id, p => p.SerialNumber, cancellationToken);
         }
 
-        foreach ((int printerId, InfoEventDataDTO info) in pendingPrinterInfo)
+        foreach ((int printerId, PrinterIdentityUpdate info) in pendingPrinterInfo)
         {
-            bool hasFirmware = !string.IsNullOrWhiteSpace(info.Firmware);
-            bool hasModel = !string.IsNullOrWhiteSpace(info.PrinterType);
-            bool hasNozzle = info.NozzleDiameter is > 0;
-            bool hasMmuBlock = info.Mmu is not null;
+            // The edge already normalised absence to null - whitespace, a zero nozzle and a missing
+            // MMU block never reach here as values. See PrinterIdentityUpdate.
+            bool hasFirmware = info.Firmware is not null;
+            bool hasModel = info.Model is not null;
+            bool hasNozzle = info.NozzleDiameter is not null;
+            bool hasMmuBlock = info.HasMmu is not null;
 
-            bool fillsSerial = !string.IsNullOrWhiteSpace(info.SerialNumber)
+            bool fillsSerial = info.SerialNumber is not null
                                && string.IsNullOrWhiteSpace(storedSerials.GetValueOrDefault(printerId));
 
             if (!hasFirmware && !hasModel && !hasNozzle && !hasMmuBlock && !fillsSerial)
@@ -990,7 +759,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
             if (hasModel)
             {
-                printer.Model = info.PrinterType;
+                printer.Model = info.Model;
                 context.Entry(printer).Property(p => p.Model).IsModified = true;
             }
 
@@ -1008,7 +777,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             // INFO clear a genuine true.
             if (hasMmuBlock)
             {
-                printer.HasMmuEnabled = info.Mmu!.Enabled;
+                printer.HasMmuEnabled = info.HasMmu!.Value;
                 context.Entry(printer).Property(p => p.HasMmuEnabled).IsModified = true;
             }
 
@@ -1030,51 +799,28 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
     private void ProcessEvent(TelemetryWriteItem.EventItem item,
                               List<PrinterEvent> pendingEvents,
-                              Dictionary<int, InfoEventDataDTO> pendingPrinterInfo)
+                              Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo)
     {
-        EventDTO dto = item.Data;
+        PrinterEventRecord record = item.Data;
 
-        if (dto.EventType == Model.PrinterEventType.Info && dto.Data is { } data)
+        if (record.Identity is { } identity)
         {
-            // INFO is the only message carrying what the printer *is* rather than what it is doing,
-            // and it arrives on connection. Recorded here and applied at flush time, so it commits
+            // An identity report arrives on connection and is applied at flush time, so it commits
             // with everything else in the batch - see FlushAsync.
-            try
-            {
-                if (data.Deserialize<InfoEventDataDTO>() is { } info)
-                {
-                    // The one unknown-field site outside MessageDispatcher, because this is the one
-                    // place an event's typed data is read at all. INFO's key set is firmware-rendered
-                    // and closed, unlike the FILE_INFO payload two methods down - which is why that
-                    // one gets an allowlist and this one gets noticed.
-                    _unknownFields.Record(item.PrinterId, "event:Info.data", info.Unknown);
-
-                    pendingPrinterInfo[item.PrinterId] = info;
-                }
-            }
-            catch (JsonException e)
-            {
-                // Off the wire and attacker-shaped, so a malformed INFO must not take the drain loop
-                // down. The event row itself is still written below, payload and all.
-                _logger.LogWarning(e, "Printer {PrinterId} sent an INFO event whose data could not be read.", item.PrinterId);
-            }
+            pendingPrinterInfo[item.PrinterId] = identity;
         }
 
         pendingEvents.Add(new PrinterEvent
         {
             PrinterId = item.PrinterId,
             Timestamp = item.ReceivedAt,
-            EventType = dto.EventType,
-
-            // Formatting back through the bijective table reproduces the received word exactly -
-            // see PrusaEventWireMapping's remarks. Never null here: everything on this path was
-            // heard from a printer, and null is reserved for events Homespool synthesises itself.
-            WireType = PrusaEventWireMapping.Format(dto.EventType),
-            Status = PrinterStatusExtensions.ParseWireState(dto.Status),
-            JobId = dto.JobId,
-            CommandId = dto.CommandId,
-            Reason = dto.Reason,
-            Payload = FormatPayload(dto),
+            EventType = record.EventType,
+            WireType = record.WireType,
+            Status = record.Status,
+            JobId = record.JobId,
+            CommandId = record.CommandId,
+            Reason = record.Reason,
+            Payload = record.Payload,
         });
 
         TrimExcessPendingEvents(pendingEvents);
@@ -1211,7 +957,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                                       List<TelemetrySample> pendingSamples,
                                       List<PrinterEvent> pendingEvents,
                                       HashSet<int> dirtyPrinterIds,
-                                      Dictionary<int, InfoEventDataDTO> pendingPrinterInfo,
+                                      Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo,
                                       CancellationToken cancellationToken,
                                       TimeSpan? commandBudget = null)
     {
@@ -1281,7 +1027,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                                   List<TelemetrySample> pendingSamples,
                                   List<PrinterEvent> pendingEvents,
                                   HashSet<int> dirtyPrinterIds,
-                                  Dictionary<int, InfoEventDataDTO> pendingPrinterInfo,
+                                  Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo,
                                   CancellationToken cancellationToken,
                                   TimeSpan? commandBudget = null)
     {

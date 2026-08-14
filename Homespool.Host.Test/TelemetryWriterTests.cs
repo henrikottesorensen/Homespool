@@ -12,7 +12,6 @@ using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
 
@@ -193,8 +192,7 @@ public sealed class TelemetryWriterTests : IDisposable
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
                                       Options.Create(options),
                                       _fakeLogger,
-                                      TimeProvider.System,
-                                      new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance))
+                                      TimeProvider.System)
         {
             SampleTrimWarningInterval = trimWarningInterval ?? TimeSpan.FromSeconds(10),
             EventTrimWarningInterval = trimWarningInterval ?? TimeSpan.FromSeconds(10),
@@ -1640,42 +1638,6 @@ public sealed class TelemetryWriterTests : IDisposable
     }
 
     /// <summary>
-    /// A stream of unprocessable messages logs one throttled Error, not one per message. A normal
-    /// printer never sends these; an attacker can, at wire rate - and this is the heaviest log site
-    /// in the class, a full stack trace per entry. <c>"UNKNOWN"</c> is the probe because it is both
-    /// the attacker shape and a real possibility: the firmware's <c>to_str</c> default arm can
-    /// genuinely emit it, while <c>ParseWireState</c> rejects it.
-    /// </summary>
-    [Fact]
-    public async Task ABurstOfUnprocessableMessagesLogsOneErrorNotOnePerMessage()
-    {
-        // Arrange
-        await SeedPrinterAsync();
-        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 500, flushIntervalSeconds: 0.05));
-
-        // Act - five failures, then a good message behind them: once its sample lands, FIFO
-        // guarantees all five failures were consumed (and logged or throttled) before we count.
-        for (int i = 0; i < 5; i++)
-        {
-            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "UNKNOWN" });
-        }
-
-        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
-
-        bool flushed = await WaitUntilAsync(async () =>
-        {
-            await using HomespoolDbContext context = NewVerificationContext();
-
-            return await context.TelemetrySamples.CountAsync() == 1;
-        }, TimeSpan.FromSeconds(5));
-
-        // Assert
-        flushed.Should().BeTrue($"the good message must land, proving the bad ones were consumed. Log:\n{LogDump()}");
-        LogRecords.Count(record => record.Level == LogLevel.Error && record.Message.Contains("failed to process"))
-                  .Should().Be(1, $"five failures inside one window must produce one Error, not five. Log:\n{LogDump()}");
-    }
-
-    /// <summary>
     /// Builds a writer without starting its drain loop, so the channel never empties and drop
     /// behaviour is deterministic: with batch size 1 the capacity is exactly 4, and every enqueue
     /// past that is a synchronous drop on the calling thread.
@@ -1689,8 +1651,7 @@ public sealed class TelemetryWriterTests : IDisposable
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
                                       Options.Create(options),
                                       _fakeLogger,
-                                      TimeProvider.System,
-                                      new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance))
+                                      TimeProvider.System)
         {
             DropWarningInterval = dropWarningInterval,
         };
@@ -1836,5 +1797,33 @@ public sealed class TelemetryWriterTests : IDisposable
             TimeSpan.FromSeconds(30));
 
         trimmed.Should().BeTrue($"the pending event buffer must have a ceiling too, even a distant one. Log:\n{LogDump()}");
+    }
+}
+
+/// <summary>
+/// The wire-shaped entry this suite was written against, preserved as composition: the Prusa
+/// edge's mapping (including the identity extraction the dispatcher does in production), then the
+/// writer's neutral <c>Enqueue</c>. Every end-to-end assertion here - the job clear, the INFO
+/// application, the payload reduction - still bites through the real mapper, so a mutation in
+/// either half fails exactly the tests that guarded it when parsing lived in the writer.
+/// </summary>
+file static class WireEnqueueExtensions
+{
+    public static void Enqueue(this TelemetryWriter writer, int printerId, DateTimeOffset receivedAt, TelemetryDTO telemetry)
+    {
+        writer.Enqueue(printerId, receivedAt, PrusaTelemetryMapping.ToUpdate(telemetry));
+    }
+
+    public static void Enqueue(this TelemetryWriter writer, int printerId, DateTimeOffset receivedAt, EventDTO eventDto)
+    {
+        PrinterIdentityUpdate? identity = null;
+
+        if (eventDto.EventType == PrinterEventType.Info && eventDto.Data is { } data
+            && data.Deserialize<InfoEventDataDTO>() is { } info)
+        {
+            identity = PrusaTelemetryMapping.ToIdentity(info);
+        }
+
+        writer.Enqueue(printerId, receivedAt, PrusaTelemetryMapping.ToRecord(eventDto, identity));
     }
 }

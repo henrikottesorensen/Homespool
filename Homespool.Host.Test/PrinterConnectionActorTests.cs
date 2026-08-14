@@ -654,7 +654,7 @@ public class PrinterConnectionActorTests
         // Assert
         sink.TelemetryCalls[0].printerId.Should().Be(7);
         sink.TelemetryCalls[0].receivedAt.Should().Be(receivedAt);
-        sink.TelemetryCalls[0].telemetry.Status.Should().Be("PRINTING");
+        sink.TelemetryCalls[0].telemetry.Status.Should().Be(PrinterStatus.Printing);
 
         actor.Complete();
         await Eventually(actor.Completion);
@@ -861,6 +861,44 @@ public class PrinterConnectionActorTests
     }
 
     /// <summary>
+    /// A wire state outside the known vocabulary costs one message, never the connection. The
+    /// deliberate throw moved here with the edge mapping (<c>ParseWireState</c>'s loud rejection,
+    /// <c>notes/protocol-vocabulary-boundary.md</c>), and it is the loop's throttled catch-all
+    /// that absorbs it - a burst logs one aggregated Error, and the messages behind the bad ones
+    /// still flow. <c>"UNKNOWN"</c> is the probe because it is both the attacker shape and a real
+    /// possibility: firmware's <c>to_str</c> default arm can genuinely emit it.
+    /// </summary>
+    [Fact]
+    public async Task AnUnmappedWireStateCostsOneMessageNotTheConnection()
+    {
+        // Arrange
+        RecordingTelemetrySink sink = new();
+        FakeLogger<PrinterConnectionActor> logger = new();
+        PrinterConnectionActor actor = NewActor(OpenConnection(), sink, logger: logger);
+
+        // Act - five unmappable messages, then a good one behind them: once it reaches the sink,
+        // mailbox FIFO guarantees all five were consumed (and logged or throttled) before we count.
+        for (int i = 0; i < 5; i++)
+        {
+            await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "UNKNOWN" }),
+                                  CancellationToken.None);
+        }
+
+        await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }),
+                              CancellationToken.None);
+        await WaitUntilAsync(() => sink.TelemetryCalls.Count == 1);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+
+        // Assert - only the good message was persisted, and the burst produced one Error, not five.
+        sink.TelemetryCalls.Should().ContainSingle()
+            .Which.telemetry.Status.Should().Be(PrinterStatus.Printing);
+        logger.Collector.GetSnapshot().Count(record => record.Level == LogLevel.Error)
+              .Should().Be(1, "five unmappable messages inside one throttle window must produce one Error, not five");
+    }
+
+    /// <summary>
     /// A stream of messages whose handling throws logs one throttled Error, not one per message.
     /// The catch-all guards the unforeseen - no known message type throws today - but if a crafted
     /// message ever finds a throwing path, an attacker could otherwise drive an Error-with-stack at
@@ -872,7 +910,7 @@ public class PrinterConnectionActorTests
         // Arrange - a sink that rejects everything stands in for whatever unforeseen throw the
         // catch-all exists to survive.
         ITelemetrySink sink = Substitute.For<ITelemetrySink>();
-        sink.WhenForAnyArgs(s => s.Enqueue(default, default, (TelemetryDTO)null!))
+        sink.WhenForAnyArgs(s => s.Enqueue(default, default, (TelemetryUpdate)null!))
             .Do(_ => throw new InvalidOperationException("poison"));
 
         FakeLogger<PrinterConnectionActor> logger = new();
@@ -895,7 +933,7 @@ public class PrinterConnectionActorTests
     }
 
     /// <summary>
-    /// Blocks the actor's loop on demand. <see cref="ITelemetrySink.Enqueue(int,DateTimeOffset,TelemetryDTO)"/> is synchronous and
+    /// Blocks the actor's loop on demand. <see cref="ITelemetrySink.Enqueue(int,DateTimeOffset,TelemetryUpdate)"/> is synchronous and
     /// called from the loop, which makes it the one place a test can hold the loop still without
     /// guessing at timing.
     /// </summary>
@@ -932,7 +970,7 @@ public class PrinterConnectionActorTests
             _gate.Set();
         }
 
-        public void Enqueue(int printerId, DateTimeOffset receivedAt, TelemetryDTO telemetry)
+        public void Enqueue(int printerId, DateTimeOffset receivedAt, TelemetryUpdate telemetry)
         {
             lock (_sync)
             {
@@ -947,7 +985,7 @@ public class PrinterConnectionActorTests
             }
         }
 
-        public void Enqueue(int printerId, DateTimeOffset receivedAt, EventDTO eventDto)
+        public void Enqueue(int printerId, DateTimeOffset receivedAt, PrinterEventRecord eventRecord)
         {
         }
 
@@ -1117,18 +1155,18 @@ public class PrinterConnectionActorTests
     /// <c>Arg.Is&lt;&gt;</c> lambda, which is why this stays a class rather than a substitute.</summary>
     private sealed class RecordingTelemetrySink : ITelemetrySink
     {
-        public List<(int printerId, DateTimeOffset receivedAt, TelemetryDTO telemetry)> TelemetryCalls { get; } = [];
+        public List<(int printerId, DateTimeOffset receivedAt, TelemetryUpdate telemetry)> TelemetryCalls { get; } = [];
 
-        public List<(int printerId, DateTimeOffset receivedAt, EventDTO eventDto)> EventCalls { get; } = [];
+        public List<(int printerId, DateTimeOffset receivedAt, PrinterEventRecord eventRecord)> EventCalls { get; } = [];
 
-        public void Enqueue(int printerId, DateTimeOffset receivedAt, TelemetryDTO telemetry)
+        public void Enqueue(int printerId, DateTimeOffset receivedAt, TelemetryUpdate telemetry)
         {
             TelemetryCalls.Add((printerId, receivedAt, telemetry));
         }
 
-        public void Enqueue(int printerId, DateTimeOffset receivedAt, EventDTO eventDto)
+        public void Enqueue(int printerId, DateTimeOffset receivedAt, PrinterEventRecord eventRecord)
         {
-            EventCalls.Add((printerId, receivedAt, eventDto));
+            EventCalls.Add((printerId, receivedAt, eventRecord));
         }
     }
 }

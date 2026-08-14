@@ -312,7 +312,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                 break;
 
             case InboundTelemetryMessage telemetry:
-                _sink.Enqueue(_printerId, telemetry.ReceivedAt, telemetry.Telemetry);
+                EnqueueTelemetry(telemetry);
                 break;
 
             case InboundTransferRequestMessage transferRequest:
@@ -468,8 +468,25 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         EndTransferIfTerminal(eventDto);
 
         // Answering a command doesn't consume the event - it is still an ordinary event
-        // (Finished/Rejected/StateChanged) and is persisted like any other.
-        _sink.Enqueue(_printerId, message.ReceivedAt, eventDto);
+        // (Finished/Rejected/StateChanged) and is persisted like any other. Mapping happens here,
+        // at the last point that knows this connection speaks Prusa Connect; an unmapped wire
+        // value's throw is the loop's throttled catch-all's business, costing one message and one
+        // aggregated log line, never the connection. The ack correlation above already ran, so a
+        // command's caller is unaffected either way.
+        _sink.Enqueue(_printerId, message.ReceivedAt, PrusaTelemetryMapping.ToRecord(eventDto, message.Identity));
+    }
+
+    /// <summary>
+    /// Converts at the edge and hands the sink the neutral currency - the last point that knows
+    /// this connection speaks Prusa Connect. Deliberately no try/catch of its own: an unmapped
+    /// wire state (ParseWireState's loud throw, <c>notes/protocol-vocabulary-boundary.md</c>) is
+    /// handled by the loop's throttled catch-all, which drops the one message and aggregates the
+    /// logging - a local catch here would log unthrottled at wire rate, the exact flood
+    /// <see cref="Services.LogThrottle"/> exists to prevent.
+    /// </summary>
+    private void EnqueueTelemetry(InboundTelemetryMessage telemetry)
+    {
+        _sink.Enqueue(_printerId, telemetry.ReceivedAt, PrusaTelemetryMapping.ToUpdate(telemetry.Telemetry));
     }
 
     /// <summary>

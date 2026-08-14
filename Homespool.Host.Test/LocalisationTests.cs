@@ -392,6 +392,61 @@ public sealed class LocalisationTests
     }
 
     /// <summary>
+    /// Two keys holding the same English sentence, which is how a corrected string gets uncorrected.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Written after exactly that happened.</b> Henrik corrected "That printer no longer exists."
+    /// to <c>Denne printer findes ikke længere.</c> in round one. In round two I added a second key
+    /// carrying the same English, translated it again, and got it wrong again — and nothing noticed,
+    /// because both keys had a Danish value and the parity test only asks whether one exists. The
+    /// two call sites were in the same file.
+    /// </para>
+    /// <para>
+    /// <b>The allowlist is the point, not an escape hatch.</b> Some duplicates are legitimate: a nav
+    /// label and a page title say the same words today and may not tomorrow, and separating them is
+    /// what allows that. Each entry here is a decision that they should be able to diverge. Adding
+    /// one because a test went red is how this stops working.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void NoTwoKeysCarryTheSameEnglish()
+    {
+        // Pairs that may say the same thing today and diverge later. Each is deliberate.
+        string[] sanctioned =
+        [
+            "Actions",                  // a table heading and a shared label
+            "Created",                  // ditto
+            "Expires",                  // ditto
+            "Save",                     // a form button and the language picker's own
+            "Profile",                  // the nav entry and the page's heading
+            "Manage your account",      // the nav tooltip and the page title
+            "Printer certificate",      // the nav tooltip and the page title
+            "Resend email confirmation", // the link and the page it leads to
+            "Workshop",                 // an example team name and an example camera name
+            "That printer is still processing a previous command.", // a page message and an exception
+
+            // A verb and a noun that English spells identically. Files_Queue is the button that puts
+            // a file in the queue (da: "Sæt i kø"); Common_Queue is the heading over one (da: "Kø").
+            // Danish had to tell them apart and did. The English arguably should too - "Add to queue"
+            // on the button - which is a UI change rather than a translation one.
+            "Queue",
+        ];
+
+        IReadOnlyDictionary<string, string> english = ReadResources("SharedResource.resx");
+
+        List<string> collisions = english.GroupBy(entry => entry.Value.Trim(), StringComparer.Ordinal)
+                                .Where(group => group.Count() > 1)
+                                .Where(group => !sanctioned.Contains(group.Key, StringComparer.Ordinal))
+                                .Select(group => $"“{group.Key}” is on {string.Join(" and ", group.Select(e => e.Key))}")
+                                .ToList();
+
+        collisions.Should().BeEmpty(
+            "two keys with one sentence drift apart in translation - merge them, or add the pair to "
+            + "the sanctioned list with a reason");
+    }
+
+    /// <summary>
     /// Reads a resource file from the source tree rather than the compiled assembly, which is what
     /// lets this compare the two files as files.
     /// </summary>

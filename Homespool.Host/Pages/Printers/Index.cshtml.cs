@@ -269,7 +269,7 @@ public class IndexModel : PageModel
         }
         catch (PrinterNotFoundException)
         {
-            (StatusMessage, StatusSuccess) = (_localiser["Printers_GoneNow"], false);
+            (StatusMessage, StatusSuccess) = (_localiser["Printers_NotFound"], false);
         }
         catch (TeamAccessDeniedException)
         {

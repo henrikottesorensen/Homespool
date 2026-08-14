@@ -1143,9 +1143,6 @@
   <data name="Cameras_NamePlaceholder" xml:space="preserve">
     <value>Værksted</value>
   </data>
-  <data name="Account_RecoveryCodePlaceholder" xml:space="preserve">
-    <value>Gendannelseskode</value>
-  </data>
   <data name="Account_EnterPasswordPlaceholder" xml:space="preserve">
     <value>Indtast din adgangskode.</value>
   </data>
@@ -1258,7 +1255,7 @@
     <value>{0} er uploadet.</value>
   </data>
   <data name="Files_UploadGone" xml:space="preserve">
-    <value>Den upload venter ikke længere - den kan være blevet ryddet op. Prøv igen.</value>
+    <value>Denne upload venter ikke længere - den kan være blevet ryddet op. Prøv igen.</value>
   </data>
   <data name="Files_Replaced" xml:space="preserve">
     <value>{0} er erstattet.</value>
@@ -1267,7 +1264,7 @@
     <value>Uploaden er kasseret.</value>
   </data>
   <data name="Files_PrinterNotYours" xml:space="preserve">
-    <value>Den printer er ikke en af dine.</value>
+    <value>Denne printer er ikke en af dine.</value>
   </data>
   <data name="Files_Queued" xml:space="preserve">
     <value>{0} er lagt i køen.</value>
@@ -1300,7 +1297,7 @@
     <value>Du har ikke rettigheder til at bruge den printer.</value>
   </data>
   <data name="Files_SendFailed" xml:space="preserve">
-    <value>Noget gik galt, da filen skulle sendes.</value>
+    <value>Noget gik galt, da filen blev sendt.</value>
   </data>
   <data name="Files_Renamed" xml:space="preserve">
     <value>Omdøbt til {0}.</value>
@@ -1317,23 +1314,20 @@
   <data name="Printers_CommandSent" xml:space="preserve">
     <value>{0} er sendt.</value>
   </data>
-  <data name="Printers_GoneNow" xml:space="preserve">
-    <value>Den printer findes ikke længere.</value>
-  </data>
   <data name="Printers_NoControlPermission" xml:space="preserve">
     <value>Du har ikke rettigheder til at styre den printer.</value>
   </data>
   <data name="Printers_NotConnectedNow" xml:space="preserve">
-    <value>Den printer er ikke forbundet lige nu.</value>
+    <value>Denne printer er ikke forbundet lige nu.</value>
   </data>
   <data name="Printers_StillBusy" xml:space="preserve">
-    <value>Den printer er stadig i gang med en tidligere kommando.</value>
+    <value>Denne printer er stadig i gang med en tidligere kommando.</value>
   </data>
   <data name="Printers_NoResponse" xml:space="preserve">
-    <value>Den printer svarede ikke i tide.</value>
+    <value>Denne printer svarede ikke i tide.</value>
   </data>
   <data name="Printers_CommandFailed" xml:space="preserve">
-    <value>Noget gik galt, da kommandoen skulle sendes.</value>
+    <value>Noget gik galt, da kommandoen blev afsendt.</value>
   </data>
   <data name="Printers_ClaimLockedOut" xml:space="preserve">
     <value>For mange ukendte koder. Prøv igen om {0}. Printerens egen kode er upåvirket - den venter stadig.</value>
@@ -1354,13 +1348,13 @@
     <value>Ingen printer venter med den kode. Tjek den mod printerens skærm - koder udløber, så den kan allerede være skiftet ud. Bogstaverne O, I og L læses som 0, 1 og 1, så dem er det ufarligt at tage fejl af.</value>
   </data>
   <data name="Printers_ClaimAlreadyClaimed" xml:space="preserve">
-    <value>Den kode er allerede blevet brugt. Var det ikke dig, så sørg for at kopiere den kode, der står på printerens skærm nu.</value>
+    <value>Denne kode er allerede blevet brugt. Var det ikke dig, så sørg for at kopiere den kode, der står på printerens skærm nu.</value>
   </data>
   <data name="Printers_ClaimNoTeamPermission" xml:space="preserve">
     <value>Du har ikke rettigheder til at tilknytte en printer til det team.</value>
   </data>
   <data name="Printers_ClaimFailed" xml:space="preserve">
-    <value>Noget gik galt, da printeren skulle tilknyttes. Prøv igen.</value>
+    <value>Noget gik galt, da printeren blev tilknyttet. Prøv igen.</value>
   </data>
   <data name="Printers_AddNoPublicAddress" xml:space="preserve">
     <value>Serverens offentlige adresse er ikke konfigureret ({0}). Bed din administrator om at sætte den, før printere klargøres på den måde.</value>
@@ -1369,7 +1363,7 @@
     <value>Du har ikke rettigheder til at tilføje en printer til det team.</value>
   </data>
   <data name="Printers_AddFailed" xml:space="preserve">
-    <value>Noget gik galt, da printeren skulle klargøres. Prøv igen.</value>
+    <value>Noget gik galt, da printeren blev klargjort. Prøv igen.</value>
   </data>
   <data name="Printers_StoppedAtPrinter" xml:space="preserve">
     <value>på printeren</value>
@@ -1378,7 +1372,7 @@
     <value>Køen er omordnet.</value>
   </data>
   <data name="Printers_JobGone" xml:space="preserve">
-    <value>Det print står ikke længere i køen.</value>
+    <value>Dette print står ikke længere i køen.</value>
   </data>
   <data name="Printers_JobRemoved" xml:space="preserve">
     <value>Fjernet fra køen.</value>
@@ -1426,7 +1420,7 @@
     <value>Tokenet er tilbagekaldt.</value>
   </data>
   <data name="Manage_TokenGone" xml:space="preserve">
-    <value>Det token findes ikke længere.</value>
+    <value>Dette token findes ikke længere.</value>
   </data>
   <data name="Manage_PasswordChanged" xml:space="preserve">
     <value>Din adgangskode er ændret.</value>
@@ -1510,10 +1504,10 @@
     <value>Filnavnet er tomt eller peger på en mappe, når mappedelen er fjernet.</value>
   </data>
   <data name="Error_PrinterNotConnected" xml:space="preserve">
-    <value>Den printer er ikke forbundet.</value>
+    <value>Denne printer er ikke forbundet.</value>
   </data>
   <data name="Error_CommandInFlight" xml:space="preserve">
-    <value>Den printer er stadig i gang med en tidligere kommando.</value>
+    <value>Denne printer er stadig i gang med en tidligere kommando.</value>
   </data>
   <data name="Error_CommandNoAnswer" xml:space="preserve">
     <value>Printeren svarede ikke på kommandoen i tide.</value>

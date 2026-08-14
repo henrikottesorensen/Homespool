@@ -1165,10 +1165,6 @@
     <value>Workshop</value>
     <comment>An example camera name - where the camera is, rather than what it is. Same word as the team example by coincidence, and separate keys because the two can diverge.</comment>
   </data>
-  <data name="Account_RecoveryCodePlaceholder" xml:space="preserve">
-    <value>Recovery code</value>
-    <comment>Was the literal string "RecoveryCode" - the property name, leaked into the page.</comment>
-  </data>
   <data name="Account_EnterPasswordPlaceholder" xml:space="preserve">
     <value>Please enter your password.</value>
   </data>
@@ -1343,9 +1339,6 @@
   </data>
   <data name="Printers_CommandSent" xml:space="preserve">
     <value>{0} sent.</value>
-  </data>
-  <data name="Printers_GoneNow" xml:space="preserve">
-    <value>That printer no longer exists.</value>
   </data>
   <data name="Printers_NoControlPermission" xml:space="preserve">
     <value>You don’t have permission to control that printer.</value>

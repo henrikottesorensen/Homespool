@@ -62,7 +62,7 @@ public sealed class QueueHoldLanguageTests : IDisposable
             .Should().Be("Not enough space on the printer: bracket.gcode needs 4210688 bytes, and 1048576 are free.");
 
         InCulture("da", () => TestLocaliser.Errors().For(hold))
-            .Should().Be("Ikke plads nok på printeren: bracket.gcode kræver 4210688 byte, og der er 1048576 ledige.");
+            .Should().Be("Ikke plads nok på printeren: bracket.gcode kræver 4210688 bytes, og der er 1048576 ledige.");
     }
 
     /// <summary>

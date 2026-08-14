@@ -1270,7 +1270,7 @@
     <value>{0} er lagt i køen.</value>
   </data>
   <data name="Files_PrinterReadOnly" xml:space="preserve">
-    <value>Du må se den printer, men ikke bruge den.</value>
+    <value>Du må se denne printer, men ikke bruge den.</value>
   </data>
   <data name="Files_NoSuchFile" xml:space="preserve">
     <value>Der findes ingen fil, der hedder {0}.</value>
@@ -1294,7 +1294,7 @@
     <value>{0} svarede ikke i tide.</value>
   </data>
   <data name="Files_NoPermission" xml:space="preserve">
-    <value>Du har ikke rettigheder til at bruge den printer.</value>
+    <value>Du har ikke rettigheder til at bruge denne printer.</value>
   </data>
   <data name="Files_SendFailed" xml:space="preserve">
     <value>Noget gik galt, da filen blev sendt.</value>
@@ -1312,19 +1312,19 @@
     <value>{0} blev afvist: {1}</value>
   </data>
   <data name="Printers_CommandSent" xml:space="preserve">
-    <value>{0} er sendt.</value>
+    <value>{0} er afsendt.</value>
   </data>
   <data name="Printers_NoControlPermission" xml:space="preserve">
-    <value>Du har ikke rettigheder til at styre den printer.</value>
+    <value>Du har ikke rettigheder til at styre denne printer.</value>
   </data>
   <data name="Printers_NotConnectedNow" xml:space="preserve">
-    <value>Denne printer er ikke forbundet lige nu.</value>
+    <value>Printeren er ikke forbundet lige nu.</value>
   </data>
   <data name="Printers_StillBusy" xml:space="preserve">
-    <value>Denne printer er stadig i gang med en tidligere kommando.</value>
+    <value>Printeren er stadig i gang med en tidligere kommando.</value>
   </data>
   <data name="Printers_NoResponse" xml:space="preserve">
-    <value>Denne printer svarede ikke i tide.</value>
+    <value>Printeren svarede ikke i tide.</value>
   </data>
   <data name="Printers_CommandFailed" xml:space="preserve">
     <value>Noget gik galt, da kommandoen blev afsendt.</value>
@@ -1351,7 +1351,7 @@
     <value>Denne kode er allerede blevet brugt. Var det ikke dig, så sørg for at kopiere den kode, der står på printerens skærm nu.</value>
   </data>
   <data name="Printers_ClaimNoTeamPermission" xml:space="preserve">
-    <value>Du har ikke rettigheder til at tilknytte en printer til det team.</value>
+    <value>Du har ikke rettigheder til at tilknytte en printer til dette team.</value>
   </data>
   <data name="Printers_ClaimFailed" xml:space="preserve">
     <value>Noget gik galt, da printeren blev tilknyttet. Prøv igen.</value>
@@ -1360,7 +1360,7 @@
     <value>Serverens offentlige adresse er ikke konfigureret ({0}). Bed din administrator om at sætte den, før printere klargøres på den måde.</value>
   </data>
   <data name="Printers_AddNoTeamPermission" xml:space="preserve">
-    <value>Du har ikke rettigheder til at tilføje en printer til det team.</value>
+    <value>Du har ikke rettigheder til at tilføje en printer til dette team.</value>
   </data>
   <data name="Printers_AddFailed" xml:space="preserve">
     <value>Noget gik galt, da printeren blev klargjort. Prøv igen.</value>
@@ -1378,7 +1378,7 @@
     <value>Fjernet fra køen.</value>
   </data>
   <data name="Printers_NoSuchFilament" xml:space="preserve">
-    <value>‘{0}’ er ikke et filament, som denne printer har en forudindstilling til.</value>
+    <value>‘{0}’ er ikke et filament, som denne printer har en indstilling til.</value>
   </data>
   <data name="Printers_HeatingTo" xml:space="preserve">
     <value>Varmer op til {0} °C i dysen og {1} °C på byggepladen til {2}.</value>
@@ -1507,7 +1507,7 @@
     <value>Denne printer er ikke forbundet.</value>
   </data>
   <data name="Error_CommandInFlight" xml:space="preserve">
-    <value>Denne printer er stadig i gang med en tidligere kommando.</value>
+    <value>Printeren er stadig i gang med en tidligere kommando.</value>
   </data>
   <data name="Error_CommandNoAnswer" xml:space="preserve">
     <value>Printeren svarede ikke på kommandoen i tide.</value>
@@ -1546,7 +1546,7 @@
     <value>Et kamera, der er tilkoblet denne server, kan kun sættes op af en administrator. Et kamera, der kan nås over netværket, kræver ikke en.</value>
   </data>
   <data name="Cameras_NotYourTeam" xml:space="preserve">
-    <value>Du kan ikke tilføje et kamera til det team.</value>
+    <value>Du kan ikke tilføje et kamera til dette team.</value>
   </data>
   <data name="Cameras_StreamServerRefused" xml:space="preserve">
     <value>Gemt, men streamserveren ville ikke tage imod denne kilde. Tjek adressen, eller om go2rtc-tjenesten kører.</value>
@@ -1570,10 +1570,10 @@
     <value>Ikke klassificeret.</value>
   </data>
   <data name="Queue_HoldInsufficientSpace" xml:space="preserve">
-    <value>Ikke plads nok på printeren: {0} kræver {1} byte, og der er {2} ledige.</value>
+    <value>Ikke plads nok på printeren: {0} kræver {1} bytes, og der er {2} ledige.</value>
   </data>
   <data name="Queue_HoldFileExists" xml:space="preserve">
-    <value>Printeren har allerede en anden fil, der hedder {0}: {1} byte der, {2} her. Slet den på printeren, eller omdøb denne.</value>
+    <value>Der eksisterer allerede en fil, der hedder {0} ({1} bytes), på printeren. Vores er {2} bytes. Slet den på printeren, eller omdøb filen.</value>
   </data>
   <data name="Queue_HoldFileExistsUnknownSize" xml:space="preserve">
     <value>Printeren har allerede en fil, der hedder {0}, og ville ikke oplyse dens størrelse, så det kan ikke bekræftes, at det er den samme. Slet den på printeren, eller omdøb denne.</value>
@@ -1585,9 +1585,9 @@
     <value>Sender den næste fil til printeren.</value>
   </data>
   <data name="Queue_WaitAwaitingPath" xml:space="preserve">
-    <value>Venter på, at printeren bekræfter filen.</value>
+    <value>Afventer at printeren bekræfter filens navn.</value>
   </data>
   <data name="Queue_WaitPrinterNotReady" xml:space="preserve">
-    <value>Venter på, at printeren bliver gjort klar.</value>
+    <value>Afventer at printeren bliver meldt klargjort.</value>
   </data>
 </root>

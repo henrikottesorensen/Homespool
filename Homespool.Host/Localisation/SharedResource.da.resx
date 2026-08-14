@@ -211,7 +211,7 @@
     <value>Genudsted USB-token</value>
   </data>
   <data name="Printers_RegenerateToken" xml:space="preserve">
-    <value>Generer USB-token</value>
+    <value>Generér USB-token</value>
   </data>
   <data name="Common_Name" xml:space="preserve">
     <value>Navn</value>
@@ -816,7 +816,7 @@
     <value>Download den nu.</value>
   </data>
   <data name="Bundle_TokenOnce" xml:space="preserve">
-    <value>Det token, der ligger i den, vises kun én gang og kan ikke hentes igen - mister du filen, før printeren forbinder, så brug &quot;Generer&quot; til at udstede et nyt.</value>
+    <value>Det token, der ligger i den, vises kun én gang og kan ikke hentes igen - mister du filen, før printeren forbinder, så brug &quot;Generér&quot; til at udstede et nyt.</value>
   </data>
   <data name="Bundle_AddressLabel" xml:space="preserve">
     <value>Adresse denne printer skal bruge</value>
@@ -1174,7 +1174,7 @@
     <value>Vælg dit brugernavn.</value>
   </data>
   <data name="Manage_TokenNamePlaceholder" xml:space="preserve">
-    <value>Hvilken maskine eller hvilket script er den til?</value>
+    <value>Hvilken maskine eller hvilket script er det til?</value>
   </data>
   <data name="Files_UploadLabel" xml:space="preserve">
     <value>Fil, der skal uploades</value>

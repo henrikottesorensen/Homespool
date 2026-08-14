@@ -1,12 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -28,6 +28,7 @@ using Serilog.Formatting.Compact;
 using Homespool.Data;
 using Homespool.Host.Authentication;
 using Homespool.Host.Cameras;
+using Homespool.Host.Certificates;
 using Homespool.Host.Listeners;
 using Homespool.Host.Localisation;
 using Homespool.Host.Queue;
@@ -118,8 +119,7 @@ public static class Program
 
             builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
-            builder.Services.AddDataProtection()
-                   .PersistKeysToDbContext<HomespoolDbContext>();
+            builder.Services.AddHomespoolDataProtection(builder.Configuration, builder.Environment);
 
             builder.Services.AddAuthentication()
                    .AddPrusaConnectPrinterAuthentication()

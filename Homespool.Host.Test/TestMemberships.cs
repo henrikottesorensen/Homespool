@@ -1,3 +1,5 @@
+using System.Linq;
+
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -29,11 +31,21 @@ internal static class TestMemberships
     /// written against it.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <b>Additive, not graded</b>, so the odd combinations survive translation. Several tests turn
     /// <i>read</i> off while leaving the others on - which the three booleans allowed and no preset
     /// does - and those tests are the ones checking that a printer stays invisible without it. A
     /// grade-shaped translation quietly grants the missing capability back and the test passes for
     /// the wrong reason.
+    /// </para>
+    /// <para>
+    /// <b>Written literally rather than through <see cref="CapabilitySet.Format"/></b>, because those
+    /// same combinations are no longer <i>writable</i>: an act implies the base view, so formatting
+    /// <c>Print</c> without <c>ViewPrinter</c> puts <c>ViewPrinter</c> back. A literal row is what a
+    /// column written before the closure rule looks like - so the two tests go on proving what they
+    /// were written to prove, and now also prove the closure is applied on the way <i>in</i> rather
+    /// than on the way out.
+    /// </para>
     /// </remarks>
     public static string Graded(bool canRead, bool canUse, bool canManage)
     {
@@ -56,7 +68,8 @@ internal static class TestMemberships
             capabilities.Add(Capability.ManageCamera);
         }
 
-        return CapabilitySet.Format(capabilities);
+        // Deliberately not CapabilitySet.Format - see the remarks above.
+        return string.Join(' ', capabilities.Distinct().OrderBy(capability => capability));
     }
 
     public static TeamMember With(int teamId, long userId, params Capability[] capabilities)

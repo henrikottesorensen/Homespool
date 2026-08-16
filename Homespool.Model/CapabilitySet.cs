@@ -81,20 +81,77 @@ public sealed class CapabilitySet
         return new(granted.ToImmutable(), unrecognised.ToImmutable());
     }
 
-    /// <summary>The stored form: names separated by single spaces, in enum order so rows compare.</summary>
+    /// <summary>
+    /// What <paramref name="capability"/> cannot meaningfully be held without, or <c>null</c> where it
+    /// stands alone. <b>An act on a resource implies the base view of that resource</b> — you cannot
+    /// print on a printer you cannot see, and you cannot judge a camera's configuration without
+    /// looking at its picture.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Capability.ViewQueue"/> and <see cref="Capability.ViewHistory"/> imply nothing: they
+    /// are separate views rather than acts. Nor does any printer capability reach a camera, which is a
+    /// different resource.
+    /// </remarks>
+    public static Capability? ImpliedBy(Capability capability)
+    {
+        return capability switch
+        {
+            Capability.Print or Capability.ControlPrinter or Capability.ManagePrinter => Capability.ViewPrinter,
+            Capability.ManageCamera => Capability.ViewCamera,
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// The stored form: names separated by single spaces, in enum order so rows compare, <b>with every
+    /// implication added</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The closure is applied here, on the way in, and nowhere else.</b> A stored column therefore
+    /// carries its own implications and says what it grants — no decoder ring needed by whoever is
+    /// reading query output at the wrong end of a bad day. It also makes the incoherent combination
+    /// <i>unrepresentable</i> rather than merely rejected: there is no write path that can produce a
+    /// <see cref="Capability.Print"/> grant without <see cref="Capability.ViewPrinter"/>, so no
+    /// validation rule for a second write path to forget.
+    /// </para>
+    /// <para>
+    /// <b>Deliberately not applied in <see cref="Parse"/>.</b> Closing on the way out would let a row
+    /// grant something it does not contain, which is the failing-open direction; a column written
+    /// before this rule existed keeps exactly what it says.
+    /// </para>
+    /// </remarks>
     /// <exception cref="ArgumentException"><c>Undefined</c> is not a grant and cannot be stored.</exception>
     public static string Format(IEnumerable<Capability> capabilities)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
 
-        Capability[] ordered = capabilities.Distinct().OrderBy(capability => capability).ToArray();
+        HashSet<Capability> closed = [.. capabilities];
 
-        if (Array.IndexOf(ordered, Capability.Undefined) >= 0)
+        if (closed.Contains(Capability.Undefined))
         {
             throw new ArgumentException("Undefined is not a capability and cannot be stored.", nameof(capabilities));
         }
 
-        return string.Join(' ', ordered);
+        // A fixpoint rather than one pass. Implications are one level deep today - the base views
+        // imply nothing - so a single pass would do; this cannot be wrong the day one of them gains an
+        // implication of its own.
+        while (true)
+        {
+            Capability[] additions = closed.Select(ImpliedBy)
+                                           .Where(implied => implied is not null && !closed.Contains(implied.Value))
+                                           .Select(implied => implied!.Value)
+                                           .ToArray();
+
+            if (additions.Length == 0)
+            {
+                break;
+            }
+
+            closed.UnionWith(additions);
+        }
+
+        return string.Join(' ', closed.OrderBy(capability => capability));
     }
 
     /// <summary>Whether this set grants <paramref name="capability"/>.</summary>
@@ -127,9 +184,15 @@ public sealed class CapabilitySet
         return new(_granted.Intersect(other._granted), []);
     }
 
-    /// <summary>The stored form of this set.</summary>
+    /// <summary>What this set grants, in the stored spelling.</summary>
+    /// <remarks>
+    /// <b>Renders what is here, and does not call <see cref="Format"/>.</b> A set that came from
+    /// <see cref="Parse"/> need not be closed — a column written before the closure rule, or edited by
+    /// hand — and formatting it would show implications this set does not actually grant. A debugging
+    /// aid that lies about a permission is worse than none.
+    /// </remarks>
     public override string ToString()
     {
-        return Format(_granted);
+        return string.Join(' ', _granted.OrderBy(capability => capability));
     }
 }

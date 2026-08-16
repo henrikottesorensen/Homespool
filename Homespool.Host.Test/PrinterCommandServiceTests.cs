@@ -341,6 +341,60 @@ public sealed class PrinterCommandServiceTests : IDisposable
                      .ThrowAsync<TeamAccessDeniedException>("PausePrint requires ControlPrinter, which it does not");
     }
 
+    /// <summary>
+    /// <b>Readying is <see cref="Capability.Print"/>, not <see cref="Capability.ControlPrinter"/>.</b>
+    /// The queue gates on the printer being ready and readying is per print, so a contributor who
+    /// could queue work but not ready the bed could never start it - and whoever just cleared the
+    /// sheet is the best-informed person to assert it is clear.
+    /// </summary>
+    /// <remarks>
+    /// Mutation check: remove the <c>RequiredCapability</c> override from either intent and it falls
+    /// back to <c>ControlPrinter</c>, which this membership does not hold, and this test fails.
+    /// <see cref="Printing.SetPrinterIdle"/> is asserted alongside precisely because it did
+    /// <i>not</i> move - it is a machine-state act rather than a job-shaped one.
+    /// </remarks>
+    [Fact]
+    public async Task ReadyingAPrinterNeedsPrintRatherThanControlPrinter()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        Team team = new() { CreatedBy = 1, CreatedAt = DateTimeOffset.UtcNow };
+        context.Teams.Add(team);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // A contributor: may put work on the printer, may not steer it.
+        context.TeamMembers.Add(TestMemberships.With(team.Id, 1, [.. CapabilityPresets.Contributor]));
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        Printer printer = await AddPrinterAsync(context, team.Id);
+
+        (PrinterConnectionRegistry registry, IPrinterConnectionActor _) =
+            RegistryWithActor(
+                printer.Id,
+                new CommandSendResult(CommandSendOutcome.Completed, new CommandOutcome(PrinterEventType.Finished, null)));
+        PrinterCommandService service = new(new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
+                                            registry);
+
+        // Act
+        CommandOutcome? readying = await service.SendCommandAsync(
+            printer.Id, new Printing.SetPrinterReady(), 1, CancellationToken.None);
+
+        CommandOutcome? unreadying = await service.SendCommandAsync(
+            printer.Id, new Printing.CancelPrinterReady(), 1, CancellationToken.None);
+
+        Func<Task> idling = () =>
+            service.SendCommandAsync(printer.Id, new Printing.SetPrinterIdle(), 1, CancellationToken.None);
+
+        // Assert
+        readying.Should().NotBeNull("a contributor must be able to ready the bed for their own print");
+        unreadying.Should().NotBeNull("withdrawing an assertion they were entitled to make");
+
+        await idling.Should()
+                    .ThrowAsync<TeamAccessDeniedException>(
+                        "SetPrinterIdle is a machine-state act and stayed at ControlPrinter");
+    }
+
     [Fact]
     public async Task SendCommandAsyncThrowsAccessDeniedWhenTheCallerCanReadButNotUse()
     {

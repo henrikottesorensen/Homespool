@@ -507,7 +507,7 @@
     <value>Der er ikke tilsluttet et kamera til {0}, så du svarer uden at kunne se printeren fra Homespool.</value>
   </data>
   <data name="Printers_ReadyConfirm" xml:space="preserve">
-    <value>Byggepladen er ryddet</value>
+    <value>Byggepladen er tom</value>
   </data>
   <data name="Printers_ReadySent" xml:space="preserve">
     <value>Markeret klargjort. Næste print i køen kan starte.</value>
@@ -516,7 +516,7 @@
     <value>Tillad at markere klargjort fra denne side</value>
   </data>
   <data name="Printers_RemoteReadyHelp" xml:space="preserve">
-    <value>Slå kun dette til, hvis man kan se, om byggepladen er ryddet. Et kamera, der ikke viser byggepladen, er en grund til at lade være. Er det slået fra, kræver det, at man går hen til printeren og markerer den klargjort på panelet.</value>
+    <value>Slå kun dette til, hvis man kan se, om byggepladen er tom. Et kamera, der ikke viser byggepladen, er en grund til at lade være. Er det slået fra, kræver det, at man går hen til printeren og markerer den klargjort på panelet.</value>
   </data>
   <data name="Printers_RemoteReadySaved" xml:space="preserve">
     <value>Det er nu tilladt at markere klargjort fra denne side.</value>

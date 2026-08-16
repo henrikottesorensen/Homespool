@@ -525,7 +525,7 @@
     <comment>{0} is the printer's name. Shown only when no camera points at this printer.</comment>
   </data>
   <data name="Printers_ReadyConfirm" xml:space="preserve">
-    <value>The print sheet is clear</value>
+    <value>The print sheet is empty</value>
     <comment>The confirm button carries the assertion rather than agreement, so it cannot be cleared as if dismissing a dialog.</comment>
   </data>
   <data name="Printers_ReadySent" xml:space="preserve">
@@ -535,7 +535,7 @@
     <value>Allow setting ready from this page</value>
   </data>
   <data name="Printers_RemoteReadyHelp" xml:space="preserve">
-    <value>Turn this on only if anyone reading this page can tell whether the print sheet is clear. A camera that does not show the sheet is a reason to leave it off. With it off, marking ready means going to the printer and doing it at its own panel.</value>
+    <value>Turn this on only if anyone reading this page can tell whether the print sheet is empty. A camera that does not show the sheet is a reason to leave it off. With it off, marking ready means going to the printer and doing it at its own panel.</value>
   </data>
   <data name="Printers_RemoteReadySaved" xml:space="preserve">
     <value>Setting ready from this page is now allowed.</value>

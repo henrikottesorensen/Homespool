@@ -55,7 +55,7 @@ else
         @foreach (var token in Model.Tokens)
         {
             <tr>
-                <td>@token.Name</td>
+                <td class="typed-name">@token.Name</td>
                 <td>@token.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
                 <td class="text-end">
                     <form method="post" asp-page-handler="Revoke">

@@ -123,6 +123,7 @@ public sealed class DetailModelTests : IDisposable
                                 // the honest backdrop.
                                 commands: null!,
                                 TestLocaliser.Shared(),
+                                TestLocaliser.Errors(),
                                 users)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),

@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
 using Homespool.Host.Authorisation;
+using Homespool.Host.Localisation;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -130,15 +131,22 @@ public class PrintHistoryService
     }
 
     /// <summary>
-    /// Why this printer's queue is held, or null when nothing is in the way.
+    /// Why this printer's queue is held, as a sentence to be said rather than one already said.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Read from the <i>(file, printer)</i> row of whatever sits at the head, because that is where
     /// the loop records a block - <see cref="QueuedPrint"/> stays property-less. Only the head can
     /// hold a queue: the loop never looks past it, which is the spooler behaviour the design chose
     /// over skipping.
+    /// </para>
+    /// <para>
+    /// <b>Returns a key rather than prose</b>, because the row records what happened and nothing
+    /// else. The loop that wrote it had no reader and no culture; this has neither either, and the
+    /// page that calls it has both. See <see cref="MessageKey"/>.
+    /// </para>
     /// </remarks>
-    public async Task<string?> GetHoldReasonAsync(int printerId, long userId, CancellationToken cancellationToken)
+    public async Task<MessageKey?> GetHoldReasonAsync(int printerId, long userId, CancellationToken cancellationToken)
     {
         await _access.RequireAsync(printerId, userId, Capability.ViewQueue, cancellationToken);
 
@@ -154,10 +162,33 @@ public class PrintHistoryService
             return null;
         }
 
-        return await _dbContext.PrintFilesOnPrinters
-                               .AsNoTracking()
-                               .Where(row => row.PrinterId == printerId && row.PrintFileId == head.PrintFileId)
-                               .Select(row => row.BlockedReason)
-                               .SingleOrDefaultAsync(cancellationToken);
+        var hold = await _dbContext.PrintFilesOnPrinters
+                                   .AsNoTracking()
+                                   .Where(row => row.PrinterId == printerId && row.PrintFileId == head.PrintFileId)
+                                   .Select(row => new
+                                   {
+                                       row.HoldReason,
+                                       row.HoldPrinterFreeBytes,
+                                       row.HoldPrinterFileBytes,
+                                       FileName = row.PrintFile!.Name,
+                                       OurBytes = row.PrintFile!.Size,
+                                   })
+                                   .SingleOrDefaultAsync(cancellationToken);
+
+        return hold?.HoldReason switch
+        {
+            PrintHoldReason.InsufficientSpace => MessageKey.For(
+                "Queue_HoldInsufficientSpace", hold.FileName, hold.OurBytes, hold.HoldPrinterFreeBytes ?? 0),
+
+            PrintHoldReason.FileExistsDifferentSize => MessageKey.For(
+                "Queue_HoldFileExists", hold.FileName, hold.HoldPrinterFileBytes ?? 0, hold.OurBytes),
+
+            PrintHoldReason.FileExistsUnknownSize => MessageKey.For(
+                "Queue_HoldFileExistsUnknownSize", hold.FileName),
+
+            // Undefined is not a hold, and neither is null. Both answer "nothing is in the way"
+            // rather than inventing a sentence for a value nothing writes.
+            _ => null,
+        };
     }
 }

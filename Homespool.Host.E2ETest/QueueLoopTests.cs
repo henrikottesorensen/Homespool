@@ -19,6 +19,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Homespool.Data;
 using Homespool.FakePrinter;
 using Homespool.Host.Controllers;
+using Homespool.Host.Localisation;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Queue;
 using Homespool.Host.Services;
@@ -549,13 +550,22 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
                                                  TestContext.Current.CancellationToken);
     }
 
-    /// <summary>What a person looking at the printer would be told about the hold.</summary>
+    /// <summary>
+    /// What a person looking at the printer would be told about the hold, in English.
+    /// </summary>
+    /// <remarks>
+    /// Resolved here rather than asserted as a key, because what these tests are about is whether a
+    /// held queue explains itself - and a key proves the row was written, not that it says anything.
+    /// </remarks>
     private async Task<string?> HoldReasonAsync(int printerId, long userId)
     {
         using IServiceScope scope = _factory.Services.CreateScope();
+        IServiceProvider services = scope.ServiceProvider;
 
-        return await scope.ServiceProvider.GetRequiredService<PrintHistoryService>()
-                          .GetHoldReasonAsync(printerId, userId, TestContext.Current.CancellationToken);
+        MessageKey? hold = await services.GetRequiredService<PrintHistoryService>()
+                                         .GetHoldReasonAsync(printerId, userId, TestContext.Current.CancellationToken);
+
+        return hold is null ? null : services.GetRequiredService<ErrorText>().For(hold);
     }
 
     /// <summary>What the loop would do right now - the same question the page and the API ask.</summary>

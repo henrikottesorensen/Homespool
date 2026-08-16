@@ -95,7 +95,7 @@ public class EnableAuthenticatorModel : PageModel
         [Required]
         [StringLength(7, ErrorMessage = "Validation_Length", MinimumLength = 6)]
         [DataType(DataType.Text)]
-        [Display(Name = "Verification Code")]
+        [Display(Name = "Manage_VerificationCode")]
         public string Code { get; set; }
     }
 
@@ -134,7 +134,7 @@ public class EnableAuthenticatorModel : PageModel
 
         if (!is2faTokenValid)
         {
-            ModelState.AddModelError("Input.Code", "Verification code is invalid.");
+            ModelState.AddModelError("Input.Code", _localiser["Manage_VerificationCodeInvalid"]);
             await LoadSharedKeyAndQrCodeUriAsync(user);
             return Page();
         }

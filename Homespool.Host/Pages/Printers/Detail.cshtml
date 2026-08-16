@@ -8,7 +8,8 @@
 <h1>@ViewData["Title"]</h1>
 
 <p>
-    Team: @(Model.Statistics.Printer.Team?.Name ?? $"Team #{Model.Statistics.Printer.TeamId}")
+    @Localiser["Printers_TeamLabel"] @(Model.Statistics.Printer.Team?.Name
+                                       ?? Localiser["Common_TeamNumbered", Model.Statistics.Printer.TeamId].Value)
     &nbsp;
     @if (Model.Connected)
     {
@@ -188,7 +189,7 @@ else
                                 <input type="hidden" name="id" value="@job.TrackingId" />
                                 <input type="hidden" name="position" value="@(index - 1)" />
                                 <button type="submit" class="btn btn-sm btn-outline-secondary"
-                                        title="Move up" aria-label="Move @(job.PrintFile?.Name) up"
+                                        title="@Localiser["Printers_MoveUp"]" aria-label="@Localiser["Printers_MoveJobUp", job.PrintFile?.Name ?? string.Empty]"
                                         @(index == 0 ? "disabled" : string.Empty)>&uarr;</button>
                             </form>
                             <form method="post" asp-page-handler="Move" asp-route-uuid="@Model.Statistics.Printer.Uuid"
@@ -196,14 +197,14 @@ else
                                 <input type="hidden" name="id" value="@job.TrackingId" />
                                 <input type="hidden" name="position" value="@(index + 1)" />
                                 <button type="submit" class="btn btn-sm btn-outline-secondary"
-                                        title="Move down" aria-label="Move @(job.PrintFile?.Name) down"
+                                        title="@Localiser["Printers_MoveDown"]" aria-label="@Localiser["Printers_MoveJobDown", job.PrintFile?.Name ?? string.Empty]"
                                         @(index == Model.Queue.Count - 1 ? "disabled" : string.Empty)>&darr;</button>
                             </form>
                             <form method="post" asp-page-handler="Cancel" asp-route-uuid="@Model.Statistics.Printer.Uuid"
                                   class="d-inline">
                                 <input type="hidden" name="id" value="@job.TrackingId" />
                                 <button type="submit" class="btn btn-sm btn-outline-danger"
-                                        aria-label="Remove @(job.PrintFile?.Name) from the queue">@Localiser["Cameras_Remove"]</button>
+                                        aria-label="@Localiser["Printers_RemoveJob", job.PrintFile?.Name ?? string.Empty]">@Localiser["Cameras_Remove"]</button>
                             </form>
                         </td>
                     }
@@ -236,7 +237,7 @@ else
 
     <div class="input-group mb-3" data-copy>
         <input type="text" class="form-control font-monospace" readonly
-               value="@Model.SlicerUrl" aria-label="Print host address for this printer"
+               value="@Model.SlicerUrl" aria-label="@Localiser["Printers_SlicerAddressLabel"]"
                data-copy-source />
         <button type="button" class="btn btn-outline-secondary" data-copy-button>@Localiser["Common_Copy"]</button>
     </div>
@@ -254,7 +255,7 @@ else
     <h2>@Localiser["Printers_Temperature"]</h2>
 
     <p class="text-body-secondary">
-        Heats the nozzle and bed together, to the same targets the printer's own preheat menu uses.
+        @Localiser["Printers_PreheatBoth"]
     </p>
 
     @* Cooling is refused mid-print too, which reads as arbitrary unless it is said: the button
@@ -302,7 +303,7 @@ else
 
     <div class="mb-3">
         <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#set-ready">
-            @Localiser["Printers_SetReady"]
+            @Localiser["Intent_SetPrinterReady"]
         </button>
     </div>
 

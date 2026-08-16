@@ -73,7 +73,8 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
         return new(Options.Create(new PrusaConnectOptions { PrinterHost = host, PrinterPort = 15443, PrinterTls = tls }),
                    Options.Create(new CertificateOptions { ContainerNetworks = ["172.16.0.0/12"] }),
                    authority,
-                   resolver ?? new FakeResolver());
+                   resolver ?? new FakeResolver(),
+                   TestLocaliser.Shared());
     }
 
     /// <summary>
@@ -282,7 +283,9 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
 
         // Each carries what it costs, which is the difference between surviving a moved lease and
         // breaking silently one day - the only thing distinguishing these options to a reader.
-        names.Should().AllSatisfy(suggestion => suggestion.Note.Should().NotBeNullOrWhiteSpace());
+        names.Should().AllSatisfy(suggestion =>
+                                      TestLocaliser.Shared()[suggestion.NoteKey]
+                                                   .ResourceNotFound.Should().BeFalse());
         names.Single(suggestion => suggestion.Value == "192.168.13.238").Durability
              .Should().Be(AddressDurability.UntilTheLeaseMoves);
     }

@@ -106,7 +106,7 @@ public class ExternalLoginModel : PageModel
         /// </summary>
         [Required]
         [StringLength(HSUser.UsernameMaxLength)]
-        [Display(Name = "Username")]
+        [Display(Name = "Account_Username")]
         public string Username { get; set; }
     }
 
@@ -128,7 +128,7 @@ public class ExternalLoginModel : PageModel
         returnUrl = returnUrl ?? Url.Content("~/");
         if (remoteError != null)
         {
-            ErrorMessage = $"Error from external provider: {remoteError}";
+            ErrorMessage = _localiser["Account_ExternalProviderError", remoteError];
             return RedirectToPage("./Login", new { ReturnUrl = returnUrl });
         }
 
@@ -209,8 +209,13 @@ public class ExternalLoginModel : PageModel
                         values: new { userId = userId, code = code },
                         protocol: Request.Scheme);
 
-                    EmailSendResult sendResult = await _emailSender.SendEmailAsync(Input.Email, "Confirm your email",
-                                                                                   $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+                    // The request's culture, and correct: the person registering is the person who
+                    // reads this. There is also nothing stored to consult - the account was created
+                    // a few lines above with no language chosen.
+                    EmailSendResult sendResult = await _emailSender.SendEmailAsync(
+                        Input.Email,
+                        _localiser["Email_ConfirmSubject"],
+                        _localiser["Email_ConfirmBody", HtmlEncoder.Default.Encode(callbackUrl)]);
 
                     // Own address, just supplied by the external provider - safe to report. See RegisterModel.
                     bool emailFailed = sendResult == EmailSendResult.Failed;

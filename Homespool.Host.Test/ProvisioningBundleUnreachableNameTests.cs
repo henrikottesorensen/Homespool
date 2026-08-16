@@ -163,7 +163,8 @@ public sealed class ProvisioningBundleUnreachableNameTests : IDisposable
 
         // And it says what choosing a name costs: it outlives a lease, if something resolves it.
         offered[0].Durability.Should().Be(AddressDurability.SurvivesALeaseChange);
-        offered[0].Note.Should().Contain("router publishes names");
+        TestLocaliser.Shared()[offered[0].NoteKey].Value
+                     .Should().Contain("router publishes names");
     }
 
     /// <summary>
@@ -195,7 +196,8 @@ public sealed class ProvisioningBundleUnreachableNameTests : IDisposable
             Options.Create(new PrusaConnectOptions { PrinterHost = "192.168.13.238", PrinterPort = 15443, PrinterTls = true }),
             Options.Create(new CertificateOptions { ContainerNetworks = ["172.16.0.0/12"] }),
             authority,
-            resolver);
+            resolver,
+            TestLocaliser.Shared());
     }
 
     private PrinterCertificateAuthority NewAuthority()

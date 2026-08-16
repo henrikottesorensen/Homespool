@@ -58,7 +58,7 @@ public sealed class HealthBannerViewComponent : ViewComponent
         {
             // First, and in the loudest style available: everything else on this page is being read
             // over the same connection, including whatever the reader is about to do about it.
-            items.Insert(0, new HealthBannerItem(session.Description, "alert-danger", "Insecure connection:"));
+            items.Insert(0, new HealthBannerItem(session.Description, "alert-danger", "Health_InsecureConnection"));
         }
 
         return View(items);

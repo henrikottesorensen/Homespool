@@ -14,7 +14,7 @@ namespace Homespool.Host.Exceptions;
 /// have happened" - for an idempotent command like Pause that is harmless, and for anything else it
 /// is a genuine ambiguity rather than a shortcoming of the message.
 /// </remarks>
-public class CommandSendTimedOutException : Exception
+public class CommandSendTimedOutException : Exception, ILocalisableError
 {
     /// <summary>The one callers actually use - the message is not worth restating at each throw.</summary>
     public CommandSendTimedOutException(int printerId)
@@ -39,4 +39,10 @@ public class CommandSendTimedOutException : Exception
         : base(message, innerException)
     {
     }
+
+    /// <inheritdoc />
+    public string ResourceKey => "Error_CommandSendTimedOut";
+
+    /// <inheritdoc />
+    public object[] ResourceArguments => [];
 }

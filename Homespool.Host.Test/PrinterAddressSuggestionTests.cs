@@ -57,7 +57,8 @@ public class PrinterAddressSuggestionTests
 
         // Assert
         Find(suggestions, address)!.Durability.Should().Be(AddressDurability.ProbablyTheContainersOwn);
-        Find(suggestions, address)!.Note.Should().Contain("Docker");
+        TestLocaliser.Shared()[Find(suggestions, address)!.NoteKey].Value
+                     .Should().Contain("Docker");
     }
 
     /// <summary>

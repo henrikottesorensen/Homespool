@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
 
+using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authentication;
@@ -14,6 +15,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.Pages.Account;
@@ -23,12 +25,15 @@ public class LoginModel : PageModel
 {
     private readonly SignInManager<HSUser> _signInManager;
     private readonly UserManager<HSUser> _userManager;
+    private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<LoginModel> _logger;
 
-    public LoginModel(SignInManager<HSUser> signInManager, UserManager<HSUser> userManager, ILogger<LoginModel> logger)
+    public LoginModel(SignInManager<HSUser> signInManager, UserManager<HSUser> userManager, ILogger<LoginModel> logger,
+                      IStringLocalizer<SharedResource> localiser)
     {
         _signInManager = signInManager;
         _userManager = userManager;
+        _localiser = localiser;
         _logger = logger;
     }
 
@@ -52,14 +57,14 @@ public class LoginModel : PageModel
         /// this field mean "address", and it would now reject every username typed into it.
         /// </remarks>
         [Required]
-        [Display(Name = "Email or username")]
+        [Display(Name = "Account_EmailOrUsername")]
         public string Login { get; set; }
 
         [Required]
         [DataType(DataType.Password)]
         public string Password { get; set; }
 
-        [Display(Name = "Remember me?")]
+        [Display(Name = "Account_RememberMe")]
         public bool RememberMe { get; set; }
     }
 
@@ -112,7 +117,7 @@ public class LoginModel : PageModel
                 // Deliberately the same message and the same page as a wrong password: telling an
                 // anonymous caller which addresses and usernames exist is the enumeration this form is
                 // exposed enough to care about (notes/internet-exposure.md).
-                ModelState.AddModelError(string.Empty, "Invalid login attempt.");
+                ModelState.AddModelError(string.Empty, _localiser["Account_InvalidLogin"]);
 
                 return Page();
             }
@@ -140,7 +145,7 @@ public class LoginModel : PageModel
                 return RedirectToPage("./Lockout");
             }
 
-            ModelState.AddModelError(string.Empty, "Invalid login attempt.");
+            ModelState.AddModelError(string.Empty, _localiser["Account_InvalidLogin"]);
 
             return Page();
         }

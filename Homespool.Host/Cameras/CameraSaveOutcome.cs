@@ -1,3 +1,4 @@
+using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Cameras;
@@ -17,13 +18,19 @@ namespace Homespool.Host.Cameras;
 /// perfectly well and produces nothing. Refusing to save it would be wrong - it may be unplugged
 /// while it is being set up - and reporting success would be a lie. So it saves and says so.
 /// </remarks>
-public sealed record CameraSaveOutcome(Camera? Camera, string? Error, string? Warning)
+public sealed record CameraSaveOutcome(Camera? Camera, MessageKey? Error, MessageKey? Warning)
 {
     /// <summary>Whether anything was written.</summary>
     public bool Saved => Camera is not null;
 
     /// <summary>Nothing was saved, and this is why.</summary>
-    public static CameraSaveOutcome Refused(string error)
+    public static CameraSaveOutcome Refused(string key, params object[] arguments)
+    {
+        return new CameraSaveOutcome(null, MessageKey.For(key, arguments), null);
+    }
+
+    /// <summary>Nothing was saved, and a policy check already decided the wording.</summary>
+    public static CameraSaveOutcome Refused(MessageKey error)
     {
         return new CameraSaveOutcome(null, error, null);
     }
@@ -35,8 +42,8 @@ public sealed record CameraSaveOutcome(Camera? Camera, string? Error, string? Wa
     }
 
     /// <summary>Saved, but no picture yet.</summary>
-    public static CameraSaveOutcome Silent(Camera camera, string warning)
+    public static CameraSaveOutcome Silent(Camera camera, string key, params object[] arguments)
     {
-        return new CameraSaveOutcome(camera, null, warning);
+        return new CameraSaveOutcome(camera, null, MessageKey.For(key, arguments));
     }
 }

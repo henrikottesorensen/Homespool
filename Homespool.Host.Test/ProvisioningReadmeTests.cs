@@ -26,7 +26,7 @@ public class ProvisioningReadmeTests
     [Fact]
     public void ItCarriesTheTwoWarningsThatMatterAtThePrinter()
     {
-        string readme = ProvisioningReadme.Build(Options(), "printers.example.com", "Bench printer");
+        string readme = ProvisioningReadme.Build(Options(), "printers.example.com", "Bench printer", TestLocaliser.Shared());
 
         readme.Should().Contain("top level").And.Contain("not into a folder");
         readme.Should().Contain("cannot use Prusa Connect").And.Contain("custom_cert = 0");
@@ -38,7 +38,7 @@ public class ProvisioningReadmeTests
     [Fact]
     public void ItNamesThePrinterAndTheAddress()
     {
-        string readme = ProvisioningReadme.Build(Options(), "192.168.13.238", "Bench printer");
+        string readme = ProvisioningReadme.Build(Options(), "192.168.13.238", "Bench printer", TestLocaliser.Shared());
 
         readme.Should().Contain("Bench printer")
               .And.Contain("192.168.13.238")
@@ -58,7 +58,7 @@ public class ProvisioningReadmeTests
     [InlineData(false, "plain HTTP", "not encrypted", "tls = False")]
     public void ItNamesTheTransportInTermsPeopleKnow(bool tls, string first, string second, string iniLine)
     {
-        string readme = ProvisioningReadme.Build(Options(tls), "192.168.13.238", "Bench printer");
+        string readme = ProvisioningReadme.Build(Options(tls), "192.168.13.238", "Bench printer", TestLocaliser.Shared());
 
         readme.Should().Contain(first).And.Contain(second).And.Contain(iniLine);
         readme.Should().NotContain("| encrypted |", "that row said nothing a reader could use");
@@ -68,7 +68,7 @@ public class ProvisioningReadmeTests
     [Fact]
     public void AnUnnamedPrinterStillReadsProperly()
     {
-        ProvisioningReadme.Build(Options(), "192.168.13.238", printerName: null)
+        ProvisioningReadme.Build(Options(), "192.168.13.238", printerName: null, TestLocaliser.Shared())
                           .Should().Contain("for a printer").And.NotContain("****");
     }
 
@@ -79,7 +79,7 @@ public class ProvisioningReadmeTests
     [Fact]
     public void WithoutTlsItExplainsTheAbsentCertificate()
     {
-        string readme = ProvisioningReadme.Build(Options(tls: false), "192.168.13.238", "Bench printer");
+        string readme = ProvisioningReadme.Build(Options(tls: false), "192.168.13.238", "Bench printer", TestLocaliser.Shared());
 
         readme.Should().Contain("no certificate").And.Contain("clear text");
 

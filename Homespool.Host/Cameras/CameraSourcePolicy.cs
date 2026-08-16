@@ -123,7 +123,7 @@ public sealed class CameraSourcePolicy
     {
         if (string.IsNullOrWhiteSpace(source))
         {
-            return CameraSourceCheck.Refused("A camera needs a source address.");
+            return CameraSourceCheck.Refused("Cameras_SourceMissing");
         }
 
         string trimmed = source.Trim();
@@ -137,16 +137,12 @@ public sealed class CameraSourcePolicy
 
         if (!Uri.TryCreate(trimmed, UriKind.Absolute, out Uri? uri))
         {
-            return CameraSourceCheck.Refused(
-                "That is not a complete address. A camera looks like rtsp://192.168.1.50/live or "
-                + "http://192.168.1.50/snapshot.jpg.");
+            return CameraSourceCheck.Refused("Cameras_SourceIncomplete");
         }
 
         if (!AllowedSchemes.Contains(uri.Scheme))
         {
-            return CameraSourceCheck.Refused(
-                $"Homespool does not read cameras over {uri.Scheme}. Use rtsp, rtsps, http, https, "
-                + "rtmp or onvif.");
+            return CameraSourceCheck.Refused("Cameras_SourceScheme", uri.Scheme);
         }
 
         if (!_options.Value.RefuseLoopbackAndLinkLocal)
@@ -165,9 +161,7 @@ public sealed class CameraSourcePolicy
         {
             if (!IsReachableAddress(address))
             {
-                return CameraSourceCheck.Refused(
-                    $"{uri.Host} resolves to {address}, which is this server itself rather than a "
-                    + "camera on your network.");
+                return CameraSourceCheck.Refused("Cameras_SourceIsThisServer", uri.Host, address);
             }
         }
 

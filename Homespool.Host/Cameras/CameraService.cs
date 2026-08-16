@@ -143,7 +143,7 @@ public class CameraService
 
         if (camera is null)
         {
-            return CameraSaveOutcome.Refused("That camera does not exist, or is not yours to change.");
+            return CameraSaveOutcome.Refused("Cameras_NotFoundOrNotYours");
         }
 
         CameraSaveOutcome? refusal = await CheckPermittedAsync(userId, camera.TeamId, source, cancellationToken)
@@ -221,9 +221,7 @@ public class CameraService
 
             return isAdministrator ?
                 null :
-                CameraSaveOutcome.Refused(
-                    "A camera plugged into this server can only be set up by an administrator. "
-                    + "A camera reachable over the network does not need one.");
+                CameraSaveOutcome.Refused("Cameras_AttachedNeedsAdministrator");
         }
 
         TeamMember? membership = await _dbContext.TeamMembers
@@ -234,7 +232,7 @@ public class CameraService
 
         return membership is not null && CapabilitySet.Parse(membership.Capabilities).Allows(Capability.ManageCamera) ?
             null :
-            CameraSaveOutcome.Refused("You cannot add a camera to that team.");
+            CameraSaveOutcome.Refused("Cameras_NotYourTeam");
     }
 
     /// <summary>
@@ -254,10 +252,7 @@ public class CameraService
 
         if (!registered)
         {
-            return CameraSaveOutcome.Silent(
-                camera,
-                "Saved, but the stream server would not accept this source. Check the address, or "
-                + "that the go2rtc service is running.");
+            return CameraSaveOutcome.Silent(camera, "Cameras_StreamServerRefused");
         }
 
         CameraFrame? frame = await _fetcher
@@ -275,10 +270,7 @@ public class CameraService
         return CameraSaveOutcome.Silent(
             camera,
             CameraSourcePolicy.IsLocalDevice(camera.Source) ?
-                "Saved, but no picture came back. The stream server may not have access to this "
-                + "camera: check that the go2rtc service in compose.yaml can reach video devices, "
-                + "and that nothing else on this machine is already using it." :
-                "Saved, but no picture came back yet. If the camera is switched on and reachable, "
-                + "try the page again in a moment - some cameras take a few seconds to answer.");
+                "Cameras_NoPictureLocal" :
+                "Cameras_NoPictureNetwork");
     }
 }

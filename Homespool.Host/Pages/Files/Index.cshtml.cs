@@ -11,10 +11,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using Homespool.Host.Exceptions;
+using Homespool.Host.Localisation;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
 using Homespool.Host.Queue;
@@ -53,6 +55,8 @@ public class IndexModel : PageModel
     private readonly PrinterQueryService _printers;
     private readonly PrintFileSender _sender;
     private readonly PrintQueueService _queue;
+    private readonly IStringLocalizer<SharedResource> _localiser;
+    private readonly ErrorText _errors;
     private readonly ILogger<IndexModel> _logger;
 
     public IndexModel(PrintFileCatalog files,
@@ -61,6 +65,8 @@ public class IndexModel : PageModel
                       PrinterQueryService printers,
                       PrintFileSender sender,
                       PrintQueueService queue,
+                      IStringLocalizer<SharedResource> localiser,
+                      ErrorText errors,
                       ILogger<IndexModel> logger)
     {
         _files = files;
@@ -69,6 +75,8 @@ public class IndexModel : PageModel
         _printers = printers;
         _sender = sender;
         _queue = queue;
+        _localiser = localiser;
+        _errors = errors;
         _logger = logger;
     }
 
@@ -213,7 +221,7 @@ public class IndexModel : PageModel
 
         if (file is null || file.Length == 0)
         {
-            (StatusMessage, StatusSuccess) = ("Choose a file to upload.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Files_ChooseFile"], false);
 
             return RedirectToSelf(sort, desc);
         }
@@ -223,7 +231,7 @@ public class IndexModel : PageModel
             // Known before a byte is copied, because the request has already been buffered - so this
             // refuses without writing anything, which the streaming version could not have done.
             (StatusMessage, StatusSuccess) =
-                ($"That file is larger than the {FormatSize(_options.MaxUploadBytes)} limit.", false);
+                (_localiser["Files_TooLarge", FormatSize(_options.MaxUploadBytes)], false);
 
             return RedirectToSelf(sort, desc);
         }
@@ -238,7 +246,7 @@ public class IndexModel : PageModel
         }
         catch (ArgumentException e)
         {
-            (StatusMessage, StatusSuccess) = (e.Message, false);
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
 
             return RedirectToSelf(sort, desc);
         }
@@ -248,7 +256,7 @@ public class IndexModel : PageModel
             StoredFile? stored = await _files.PublishAsync(userId.Value, staged.Token, overwrite: false,
                                                            cancellationToken, UserName());
 
-            (StatusMessage, StatusSuccess) = ($"Uploaded {stored!.FileName}.", true);
+            (StatusMessage, StatusSuccess) = (_localiser["Files_UploadedFile", stored!.FileName], true);
         }
         catch (PrintFileNameConflictException)
         {
@@ -277,8 +285,8 @@ public class IndexModel : PageModel
                                                        UserName());
 
         (StatusMessage, StatusSuccess) = stored is null ?
-            ("That upload is no longer waiting - it may have been cleared up. Try again.", false) :
-            ($"Replaced {stored.FileName}.", true);
+            (_localiser["Files_UploadGone"], false) :
+            (_localiser["Files_Replaced", stored.FileName], true);
 
         return RedirectToSelf(sort, desc);
     }
@@ -294,7 +302,7 @@ public class IndexModel : PageModel
         }
 
         _files.Discard(userId.Value, token);
-        (StatusMessage, StatusSuccess) = ("Upload discarded.", true);
+        (StatusMessage, StatusSuccess) = (_localiser["Files_Discarded"], true);
 
         return RedirectToSelf(sort, desc);
     }
@@ -343,7 +351,7 @@ public class IndexModel : PageModel
 
         if (!Printers.Any(candidate => candidate.Id == printerId))
         {
-            (StatusMessage, StatusSuccess) = ("That printer is not one of yours.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Files_PrinterNotYours"], false);
 
             return RedirectToSelf(sort, desc);
         }
@@ -352,15 +360,15 @@ public class IndexModel : PageModel
         {
             await _queue.EnqueueAsync(printerId, userId.Value, name, cancellationToken);
 
-            (StatusMessage, StatusSuccess) = ($"Queued {name}.", true);
+            (StatusMessage, StatusSuccess) = (_localiser["Files_Queued", name], true);
         }
         catch (PrintFileNotFoundException e)
         {
-            (StatusMessage, StatusSuccess) = (e.Message, false);
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
         catch (TeamAccessDeniedException)
         {
-            (StatusMessage, StatusSuccess) = ("You may read that printer but not use it.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Files_PrinterReadOnly"], false);
         }
 
         return RedirectToSelf(sort, desc);
@@ -383,7 +391,7 @@ public class IndexModel : PageModel
 
         if (file is null)
         {
-            (StatusMessage, StatusSuccess) = ($"There is no file named {name}.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Files_NoSuchFile", name], false);
 
             return RedirectToSelf(sort, desc);
         }
@@ -391,7 +399,7 @@ public class IndexModel : PageModel
         if (file.Length >= uint.MaxValue)
         {
             // orig_size is uint32 on the wire; a file this large cannot be described at all.
-            (StatusMessage, StatusSuccess) = ("That file is over 4 GiB - a printer cannot be sent anything larger.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Files_OverFourGiB"], false);
 
             return RedirectToSelf(sort, desc);
         }
@@ -405,7 +413,7 @@ public class IndexModel : PageModel
 
         if (printer is null)
         {
-            (StatusMessage, StatusSuccess) = ("That printer is not one of yours.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Files_PrinterNotYours"], false);
 
             return RedirectToSelf(sort, desc);
         }
@@ -414,29 +422,30 @@ public class IndexModel : PageModel
         {
             CommandOutcome? outcome = await _sender.SendAsync(printer, file, userId.Value, cancellationToken);
 
-            (StatusMessage, StatusSuccess) = outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed ?
-                ($"{PrinterName(printer)} refused it: {outcome!.Reason}", false) :
-                ($"Sending {file.FileName} to {PrinterName(printer)}. It moves at the printer's pace.", true);
+            (StatusMessage, StatusSuccess) =
+                outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed ?
+                    (_localiser["Files_Refused", PrinterName(printer), outcome!.Reason ?? string.Empty], false) :
+                    (_localiser["Files_Sending", file.FileName, PrinterName(printer)], true);
         }
         catch (PrintFileUnreadableException e)
         {
-            (StatusMessage, StatusSuccess) = (e.Message, false);
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
         catch (PrinterNotConnectedException)
         {
-            (StatusMessage, StatusSuccess) = ($"{PrinterName(printer)} isn't connected right now.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Files_PrinterNotConnected", PrinterName(printer)], false);
         }
         catch (CommandAlreadyInFlightException)
         {
-            (StatusMessage, StatusSuccess) = ($"{PrinterName(printer)} is still busy with a previous command.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Files_PrinterBusy", PrinterName(printer)], false);
         }
         catch (CommandResponseTimedOutException)
         {
-            (StatusMessage, StatusSuccess) = ($"{PrinterName(printer)} didn't answer in time.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Files_PrinterNoAnswer", PrinterName(printer)], false);
         }
         catch (TeamAccessDeniedException)
         {
-            (StatusMessage, StatusSuccess) = ("You don't have permission to use that printer.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Files_NoPermission"], false);
         }
         catch (Exception e) when (!cancellationToken.IsCancellationRequested)
         {
@@ -445,7 +454,7 @@ public class IndexModel : PageModel
             // of the typed exceptions above, and an unhandled 500 is a worse answer than a sentence.
             _logger.LogWarning(e, "Sending {FileName} to printer {PrinterId} failed unexpectedly", file.FileName, printer.Id);
 
-            (StatusMessage, StatusSuccess) = ("Something went wrong sending that file.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Files_SendFailed"], false);
         }
 
         return RedirectToSelf(sort, desc);
@@ -471,16 +480,16 @@ public class IndexModel : PageModel
                 await _files.RenameAsync(userId.Value, name, newName ?? string.Empty, cancellationToken);
 
             (StatusMessage, StatusSuccess) = renamed is null ?
-                ($"There is no file named {name}.", false) :
-                ($"Renamed to {renamed.FileName}.", true);
+                (_localiser["Files_NoSuchFile", name], false) :
+                (_localiser["Files_Renamed", renamed.FileName], true);
         }
         catch (PrintFileNameConflictException e)
         {
-            (StatusMessage, StatusSuccess) = (e.Message, false);
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
         catch (ArgumentException e)
         {
-            (StatusMessage, StatusSuccess) = (e.Message, false);
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
 
         return RedirectToSelf(sort, desc);
@@ -508,9 +517,9 @@ public class IndexModel : PageModel
 
         (StatusMessage, StatusSuccess) = await _files.DeleteAsync(userId.Value, name, cancellationToken) switch
         {
-            PrintFileDeletion.Deleted => ($"Deleted {name}.", true),
-            PrintFileDeletion.Queued => ($"{name} is queued to print. Cancel the queued print first.", false),
-            _ => ($"There is no file named {name}.", false),
+            PrintFileDeletion.Deleted => (_localiser["Files_Deleted", name], true),
+            PrintFileDeletion.Queued => (_localiser["Files_QueuedCannotDelete", name], false),
+            _ => (_localiser["Files_NoSuchFile", name], false),
         };
 
         return RedirectToSelf(sort, desc);

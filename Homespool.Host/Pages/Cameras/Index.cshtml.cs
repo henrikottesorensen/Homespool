@@ -47,6 +47,7 @@ public class IndexModel : PageModel
     private readonly CameraDisplayNames _names;
     private readonly UserManager<HSUser> _userManager;
     private readonly IStringLocalizer<SharedResource> _localiser;
+    private readonly ErrorText _errors;
 
     public IndexModel(CameraService cameras,
                       CameraAccessService access,
@@ -55,7 +56,8 @@ public class IndexModel : PageModel
                       PrinterQueryService printers,
                       CameraDisplayNames names,
                       UserManager<HSUser> userManager,
-                      IStringLocalizer<SharedResource> localiser)
+                      IStringLocalizer<SharedResource> localiser,
+                      ErrorText errors)
     {
         _cameras = cameras;
         _access = access;
@@ -65,6 +67,7 @@ public class IndexModel : PageModel
         _names = names;
         _userManager = userManager;
         _localiser = localiser;
+        _errors = errors;
     }
 
     /// <summary>The cameras this account may see.</summary>
@@ -233,7 +236,9 @@ public class IndexModel : PageModel
 
         TimeSpan age = frame.AgeAt(DateTimeOffset.UtcNow);
 
-        return age.TotalSeconds < 2 ? "just now" : string.Create(CultureInfo.InvariantCulture, $"{(int)age.TotalSeconds}s ago");
+        return age.TotalSeconds < 2 ?
+            _localiser["Cameras_JustNow"] :
+            _localiser["Cameras_SecondsAgo", (int)age.TotalSeconds];
     }
 
     private async Task LoadAsync(long userId, CancellationToken cancellationToken)
@@ -249,15 +254,17 @@ public class IndexModel : PageModel
 
     private void Report(CameraSaveOutcome outcome)
     {
+        // The service chose the sentence; this chooses the language. Splitting it that way is what
+        // lets CameraService and CameraSourcePolicy stay free of the resource system - see MessageKey.
         if (!outcome.Saved)
         {
-            Error = outcome.Error;
+            Error = outcome.Error is null ? null : _errors.For(outcome.Error);
             return;
         }
 
         if (outcome.Warning is not null)
         {
-            Warning = outcome.Warning;
+            Warning = _errors.For(outcome.Warning);
             return;
         }
 

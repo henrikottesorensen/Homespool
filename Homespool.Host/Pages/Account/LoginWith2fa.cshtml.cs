@@ -7,12 +7,14 @@ using System;
 using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
 
+using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.Pages.Account;
@@ -22,14 +24,17 @@ public class LoginWith2faModel : PageModel
 {
     private readonly SignInManager<HSUser> _signInManager;
     private readonly UserManager<HSUser> _userManager;
+    private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<LoginWith2faModel> _logger;
 
     public LoginWith2faModel(SignInManager<HSUser> signInManager,
                              UserManager<HSUser> userManager,
+                             IStringLocalizer<SharedResource> localiser,
                              ILogger<LoginWith2faModel> logger)
     {
         _signInManager = signInManager;
         _userManager = userManager;
+        _localiser = localiser;
         _logger = logger;
     }
 
@@ -45,10 +50,10 @@ public class LoginWith2faModel : PageModel
         [Required]
         [StringLength(7, ErrorMessage = "Validation_Length", MinimumLength = 6)]
         [DataType(DataType.Text)]
-        [Display(Name = "Authenticator code")]
+        [Display(Name = "Account_AuthenticatorCode")]
         public string TwoFactorCode { get; set; }
 
-        [Display(Name = "Remember this machine")]
+        [Display(Name = "Account_RememberMachine")]
         public bool RememberMachine { get; set; }
     }
 
@@ -105,7 +110,7 @@ public class LoginWith2faModel : PageModel
         }
 
         _logger.LogWarning("Invalid authenticator code entered for user with ID {UserId}.", userId);
-        ModelState.AddModelError(string.Empty, "Invalid authenticator code.");
+        ModelState.AddModelError(string.Empty, _localiser["Account_InvalidAuthenticatorCode"]);
 
         return Page();
     }

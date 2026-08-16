@@ -1,7 +1,7 @@
 @page
 @model ClaimModel
 @{
-    ViewData["Title"] = "Claim printer (code)";
+    ViewData["Title"] = Localiser["Printers_Claim"].Value;
 }
 
 <h1>@ViewData["Title"]</h1>
@@ -16,9 +16,7 @@
    warning is permanent, not a workaround for something Prusa might fix. *@
 <div class="alert alert-warning" role="alert">
     <strong>@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Printers_IgnoreQr"].Value, "<em>prusa.io/add</em>"))</strong>
-    Both are built into the firmware and always point at Prusa's own servers, never at this one.
-    Scanning the QR will take you to Prusa, where this code does not exist. Only the code printed
-    underneath it is of any use here - type it in below.
+    @Localiser["Printers_ClaimQrWarning"]
     <hr />
     @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Printers_ClaimWrongServer"].Value, "<code>prusa_printer_settings.ini</code>", $"<em>{Localiser["Printers_ClaimThem"].Value}</em>"))
 </div>
@@ -39,12 +37,12 @@
                 <span asp-validation-for="Input.Code" class="text-danger"></span>
             </div>
             <div class="form-floating mb-3">
-                <input asp-for="Input.Name" class="form-control" placeholder="Bench printer" />
+                <input asp-for="Input.Name" class="form-control" placeholder="@Localiser["Printers_NamePlaceholder"]" />
                 <label asp-for="Input.Name" class="form-label"></label>
                 <span asp-validation-for="Input.Name" class="text-danger"></span>
             </div>
             <div class="form-floating mb-3">
-                <input asp-for="Input.Location" class="form-control" placeholder="Workshop" />
+                <input asp-for="Input.Location" class="form-control" placeholder="@Localiser["Common_LocationPlaceholder"]" />
                 <label asp-for="Input.Location" class="form-label"></label>
                 <span asp-validation-for="Input.Location" class="text-danger"></span>
             </div>

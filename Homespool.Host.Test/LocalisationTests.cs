@@ -392,10 +392,113 @@ public sealed class LocalisationTests
     }
 
     /// <summary>
-    /// Reads a resource file from the source tree rather than the compiled assembly, which is what
-    /// lets this compare the two files as files.
+    /// Two keys holding the same English sentence, which is how a corrected string gets uncorrected.
     /// </summary>
-    private static IReadOnlyDictionary<string, string> ReadResources(string fileName)
+    /// <remarks>
+    /// <para>
+    /// <b>Written after exactly that happened.</b> Henrik corrected "That printer no longer exists."
+    /// to <c>Denne printer findes ikke længere.</c> in round one. In round two I added a second key
+    /// carrying the same English, translated it again, and got it wrong again — and nothing noticed,
+    /// because both keys had a Danish value and the parity test only asks whether one exists. The
+    /// two call sites were in the same file.
+    /// </para>
+    /// <para>
+    /// <b>The allowlist is the point, not an escape hatch.</b> Some duplicates are legitimate: a nav
+    /// label and a page title say the same words today and may not tomorrow, and separating them is
+    /// what allows that. Each entry here is a decision that they should be able to diverge. Adding
+    /// one because a test went red is how this stops working.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void NoTwoKeysCarryTheSameEnglish()
+    {
+        // Pairs that may say the same thing today and diverge later. Each is deliberate.
+        string[] sanctioned =
+        [
+            "Actions",                  // a table heading and a shared label
+            "Created",                  // ditto
+            "Save",                     // a form button and the language picker's own
+            "Profile",                  // the nav entry and the page's heading
+            "Manage your account",      // the nav tooltip and the page title
+            "Printer certificate",      // the nav tooltip and the page title
+            "Resend email confirmation", // the link and the page it leads to
+            "Workshop",                 // an example team name and an example camera name
+            "That printer is still processing a previous command.", // a page message and an exception
+
+            // A verb and a noun that English spells identically. Files_Queue is the button that puts
+            // a file in the queue (da: "Sæt i kø"); Common_Queue is the heading over one (da: "Kø").
+            // Danish had to tell them apart and did. The English arguably should too - "Add to queue"
+            // on the button - which is a UI change rather than a translation one.
+            "Queue",
+        ];
+
+        IReadOnlyDictionary<string, string> english = ReadResources("SharedResource.resx");
+
+        List<string> collisions = english.GroupBy(entry => entry.Value.Trim(), StringComparer.Ordinal)
+                                .Where(group => group.Count() > 1)
+                                .Where(group => !sanctioned.Contains(group.Key, StringComparer.Ordinal))
+                                .Select(group => $"“{group.Key}” is on {string.Join(" and ", group.Select(e => e.Key))}")
+                                .ToList();
+
+        collisions.Should().BeEmpty(
+            "two keys with one sentence drift apart in translation - merge them, or add the pair to "
+            + "the sanctioned list with a reason");
+    }
+
+    /// <summary>
+    /// A key nothing names is a sentence nobody reads, translated at somebody's expense.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Written after finding three.</b> <c>TwoFactor_ScanQr</c> and
+    /// <c>TwoFactor_LoseCodesWarning</c> were superseded when their pages were reworded;
+    /// <c>Cert_ToTakeEffect</c> — <i>"to take effect -"</i> — was half of a sentence, left behind when
+    /// the two halves were merged into one key. All three were fully translated, and a translator
+    /// coming to this file next would have had no way to tell they were dead.
+    /// </para>
+    /// <para>
+    /// <b>Two families are named rather than searched for, and cannot be found by this.</b>
+    /// <see cref="PrinterStatusText"/> builds its keys from a prefix and an enum member, and
+    /// <see cref="Plural"/> from a prefix and One/Other - so their keys appear nowhere as literals.
+    /// They are matched by shape below. A third such family would need adding here, which is the
+    /// price of constructing key names at all.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void EveryKeyIsNamedBySomething()
+    {
+        string root = SourceRoot();
+
+        string code = string.Concat(
+            Directory.EnumerateFiles(Path.Combine(root, "Homespool.Host"), "*.cs", SearchOption.AllDirectories)
+                     .Concat(Directory.EnumerateFiles(Path.Combine(root, "Homespool.Host"), "*.cshtml", SearchOption.AllDirectories))
+                     .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                                    && !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+                     .Select(File.ReadAllText));
+
+        // Built from a prefix at run time, so they are never written out in full anywhere.
+        string[] constructed = ["PrinterStatus_", "Intent_"];
+        string[] constructedSuffixes = ["_One", "_Other"];
+
+        List<string> orphans = ReadResources("SharedResource.resx")
+                               .Keys
+                               .Where(key => !constructed.Any(prefix => key.StartsWith(prefix, StringComparison.Ordinal)))
+                               .Where(key => !constructedSuffixes.Any(suffix => key.EndsWith(suffix, StringComparison.Ordinal)))
+                               .Where(key => !code.Contains($"\"{key}\"", StringComparison.Ordinal))
+                               .ToList();
+
+        orphans.Should().BeEmpty(
+            "a key nothing names is dead weight that still gets translated - delete it, or find the "
+            + "page that lost it");
+    }
+
+    /// <summary>The repository root, walked up from the test binary.</summary>
+    /// <remarks>
+    /// These tests read the source tree rather than the compiled assembly, because what they are
+    /// checking is the files - a resource baked into a satellite assembly has already lost the
+    /// distinction between "absent" and "empty".
+    /// </remarks>
+    private static string SourceRoot()
     {
         string directory = AppContext.BaseDirectory;
 
@@ -404,7 +507,18 @@ public sealed class LocalisationTests
             directory = Path.GetDirectoryName(directory)!;
         }
 
-        string path = Path.Combine(directory!, "Homespool.Host", "Localisation", fileName);
+        directory.Should().NotBeNull("the tests run from inside the repository");
+
+        return directory!;
+    }
+
+    /// <summary>
+    /// Reads a resource file from the source tree rather than the compiled assembly, which is what
+    /// lets this compare the two files as files.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string> ReadResources(string fileName)
+    {
+        string path = Path.Combine(SourceRoot(), "Homespool.Host", "Localisation", fileName);
         File.Exists(path).Should().BeTrue($"{fileName} is where the strings live");
 
         return XDocument.Load(path)

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
@@ -239,12 +240,10 @@ public class CertificateModel : PageModel
         //
         // Plain text, no markup: this is rendered as-is, and a page that shows an operator literal
         // asterisks around its most important sentence has undermined the sentence.
-        StatusMessage = $"Reissued for {string.Join(", ", names)}, valid until "
-                        + $"{issued.NotAfter.ToUniversalTime():yyyy-MM-dd}. RELOAD THE PROXY to serve it - run "
-                        + "\"docker compose exec proxy nginx -s reload\". New connections get it immediately; a printer "
-                        + "that is already connected keeps meeting the previous certificate until it next reconnects, "
-                        + "which is harmless because both are signed by the same authority. Nothing is needed at the "
-                        + "printers themselves: that authority has not changed.";
+        StatusMessage = _localiser[
+            "Cert_Reissued",
+            string.Join(", ", names),
+            issued.NotAfter.ToUniversalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)];
 
         return RedirectToPage();
     }

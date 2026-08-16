@@ -58,7 +58,7 @@ public class IndexModel : PageModel
         Dictionary<int, string> names = new();
         foreach (Team team in await _teamService.GetAllTeamsAsync(cancellationToken))
         {
-            names[team.Id] = team.Name ?? $"Team #{team.Id}";
+            names[team.Id] = team.Name ?? _localiser["Common_TeamNumbered", team.Id].Value;
         }
 
         _teamNames = names;
@@ -77,9 +77,11 @@ public class IndexModel : PageModel
     {
         if (invitation.TeamId is not int teamId)
         {
-            return "New account";
+            return _localiser["Invites_NewAccount"];
         }
 
-        return _teamNames.TryGetValue(teamId, out string? name) ? name : $"Team #{teamId}";
+        return _teamNames.TryGetValue(teamId, out string? name) ?
+            name :
+            _localiser["Common_TeamNumbered", teamId].Value;
     }
 }

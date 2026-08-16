@@ -240,6 +240,46 @@ public sealed class LanguagePreferenceTests : IAsyncLifetime, IDisposable
         client.Dispose();
     }
 
+    /// <summary>
+    /// Form labels and placeholders come from the resources too, and fail visibly when they do not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A <c>[Display(Name = "…")]</c> holding a resource key has one failure mode worth a test of
+    /// its own: with <c>AddDataAnnotationsLocalization</c> unregistered, misconfigured, or pointed at
+    /// a different resource type, the key renders as the label.</b> The page still returns 200, every
+    /// other assertion in this file still passes, and the form says <c>Manage_CurrentPassword</c> to
+    /// whoever opens it. Asserting the key is <i>absent</i> is what catches that, in either language.
+    /// </para>
+    /// <para>
+    /// The placeholder is checked alongside because it travels the other route - an ordinary
+    /// localiser lookup in the view - and the two are easy to get out of step now that the label is
+    /// no longer written next to it.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task FormLabelsAndPlaceholdersAreLocalisedRatherThanShowingTheirKeys()
+    {
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "language-labels@example.com");
+
+        string english = await GetStringAsync(client, "/Account/Manage/ChangePassword");
+        english.Should().Contain("Current password");
+        english.Should().Contain("Please enter your new password.");
+        english.Should().NotContain("Manage_CurrentPassword", "the key is a lookup, never a label");
+
+        string page = await GetStringAsync(client, "/Account/Manage/Language");
+        await PostLanguageAsync(client, page, "da");
+
+        string danish = await GetStringAsync(client, "/Account/Manage/ChangePassword");
+        danish.Should().Contain("Nuværende adgangskode");
+        danish.Should().Contain("Indtast din nye adgangskode.");
+        danish.Should().NotContain("Manage_CurrentPassword");
+        danish.Should().NotContain("Current password");
+
+        client.Dispose();
+    }
+
     private static async Task<string> GetStringAsync(HttpClient client, string path)
     {
         using HttpResponseMessage response = await client.GetAsync(path, TestContext.Current.CancellationToken);

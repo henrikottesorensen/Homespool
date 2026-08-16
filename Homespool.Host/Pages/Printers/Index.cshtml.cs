@@ -41,6 +41,11 @@ public class IndexModel : PageModel
     private readonly PrinterStatusText _statusText;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
+    /// <summary>
+    /// Names an intent for a person. <see cref="IPrinterIntent.Name"/> is the type name and says so.
+    /// </summary>
+    private readonly PrinterIntentText _intents;
+
     public IndexModel(PrinterQueryService printerQueryService,
                       PrusaConnectService prusaConnectService,
                       ProvisioningBundleBuilder bundles,
@@ -51,6 +56,7 @@ public class IndexModel : PageModel
                       PrinterCommandService printerCommandService,
                       PrintStopService printStopService,
                       PrinterStatusText statusText,
+                      PrinterIntentText intents,
                       IStringLocalizer<SharedResource> localiser)
     {
         _printerQueryService = printerQueryService;
@@ -63,6 +69,7 @@ public class IndexModel : PageModel
         _printerCommandService = printerCommandService;
         _printStopService = printStopService;
         _statusText = statusText;
+        _intents = intents;
         _localiser = localiser;
     }
 
@@ -263,29 +270,30 @@ public class IndexModel : PageModel
             // guard rather than a live case.
             (StatusMessage, StatusSuccess) = outcome?.EventType switch
             {
-                PrinterEventType.Rejected or PrinterEventType.Failed => ($"{command.Name} rejected: {outcome!.Reason}", false),
-                _ => ($"{command.Name} sent.", true),
+                PrinterEventType.Rejected or PrinterEventType.Failed =>
+                    (_localiser["Printers_CommandRejected", _intents.For(command), outcome!.Reason ?? string.Empty], false),
+                _ => (_localiser["Printers_CommandSent", _intents.For(command)], true),
             };
         }
         catch (PrinterNotFoundException)
         {
-            (StatusMessage, StatusSuccess) = ("That printer no longer exists.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Printers_NotFound"], false);
         }
         catch (TeamAccessDeniedException)
         {
-            (StatusMessage, StatusSuccess) = ("You don't have permission to control that printer.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Printers_NoControlPermission"], false);
         }
         catch (PrinterNotConnectedException)
         {
-            (StatusMessage, StatusSuccess) = ("That printer isn't connected right now.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Printers_NotConnectedNow"], false);
         }
         catch (CommandAlreadyInFlightException)
         {
-            (StatusMessage, StatusSuccess) = ("That printer is still processing a previous command.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Printers_StillBusy"], false);
         }
         catch (CommandResponseTimedOutException)
         {
-            (StatusMessage, StatusSuccess) = ("That printer didn't respond in time.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Printers_NoResponse"], false);
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
@@ -295,7 +303,7 @@ public class IndexModel : PageModel
             // the socket layer produced, rather than a typed exception).
             // Without this, that unlikely-but-real race surfaces as an unhandled 500 instead of a
             // message. Excluded when the request itself was cancelled - nothing will render anyway.
-            (StatusMessage, StatusSuccess) = ("Something went wrong sending the command.", false);
+            (StatusMessage, StatusSuccess) = (_localiser["Printers_CommandFailed"], false);
         }
 
         return RedirectToPage();
@@ -325,7 +333,9 @@ public class IndexModel : PageModel
         IReadOnlyList<TeamMember> memberships = await _teamService.GetTeamsForUserAsync(user.Id, cancellationToken);
         Dictionary<int, string> teamNames = memberships
                                             .Where(m => m.Team is not null)
-                                            .ToDictionary(m => m.TeamId, m => m.Team!.Name ?? $"Team #{m.TeamId}");
+                                            .ToDictionary(
+                                                m => m.TeamId,
+                                                m => m.Team!.Name ?? _localiser["Common_TeamNumbered", m.TeamId].Value);
 
         PrinterEnrolmentStatus status = await _prusaConnectService.GetEnrolmentStatusAsync(
             printers.Select(row => row.Printer.Id).ToList(), cancellationToken);
@@ -333,7 +343,9 @@ public class IndexModel : PageModel
         Printers = printers
                    .Select(row => new PrinterRow(
                                row.Printer,
-                               teamNames.TryGetValue(row.Printer.TeamId, out string? name) ? name : $"Team #{row.Printer.TeamId}",
+                               teamNames.TryGetValue(row.Printer.TeamId, out string? name) ?
+                                   name :
+                                   _localiser["Common_TeamNumbered", row.Printer.TeamId].Value,
                                status.Enrolled.Contains(row.Printer.Id),
                                status.AwaitingUsbProvisioning.Contains(row.Printer.Id),
                                _connectionRegistry.IsConnected(row.Printer.Id),

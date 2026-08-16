@@ -241,7 +241,13 @@ namespace Homespool.Data.Migrations
                     b.Property<long?>("BlockedAt")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("BlockedReason")
+                    b.Property<long?>("HoldPrinterFileBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("HoldPrinterFreeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("HoldReason")
                         .HasColumnType("TEXT");
 
                     b.Property<long>("PrintFileId")

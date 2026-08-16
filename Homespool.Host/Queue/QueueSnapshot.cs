@@ -22,9 +22,8 @@ namespace Homespool.Host.Queue;
 /// printer with a queue and command a second print into that gap.
 /// </para>
 /// </param>
-/// <param name="BlockedReason">
-/// Why the head cannot be sent at all, or null when nothing is in the way - today only a drive with
-/// no room for it.
+/// <param name="HoldReason">
+/// Why the head cannot be sent at all, or null when nothing is in the way.
 /// <para>
 /// <b>Here so the rules tell the whole truth.</b> The block is enforced where it is discovered, in
 /// the advancer's transfer path, which meant <see cref="QueueRules.Decide"/> still answered
@@ -39,4 +38,4 @@ public sealed record QueueSnapshot(
     QueueHead? Head,
     bool TransferInFlight,
     bool PrintInFlight = false,
-    string? BlockedReason = null);
+    PrintHoldReason? HoldReason = null);

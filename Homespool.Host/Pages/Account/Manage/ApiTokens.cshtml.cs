@@ -6,8 +6,10 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
@@ -36,12 +38,15 @@ public class ApiTokensModel : PageModel
 {
     private readonly ApiTokenService _tokens;
     private readonly UserManager<HSUser> _userManager;
+    private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<ApiTokensModel> _logger;
 
-    public ApiTokensModel(ApiTokenService tokens, UserManager<HSUser> userManager, ILogger<ApiTokensModel> logger)
+    public ApiTokensModel(ApiTokenService tokens, UserManager<HSUser> userManager, ILogger<ApiTokensModel> logger,
+                          IStringLocalizer<SharedResource> localiser)
     {
         _tokens = tokens;
         _userManager = userManager;
+        _localiser = localiser;
         _logger = logger;
     }
 
@@ -64,7 +69,7 @@ public class ApiTokensModel : PageModel
     {
         [Required]
         [StringLength(ApiToken.NameMaxLength, MinimumLength = 1)]
-        [Display(Name = "Token name")]
+        [Display(Name = "Manage_TokenName")]
         public string Name { get; set; } = string.Empty;
     }
 
@@ -128,7 +133,7 @@ public class ApiTokensModel : PageModel
             _logger.LogInformation("User {UserId} revoked API token {TokenId}.", user.Id, id);
         }
 
-        StatusMessage = revoked ? "Token revoked." : "That token no longer exists.";
+        StatusMessage = revoked ? _localiser["Manage_TokenRevoked"] : _localiser["Manage_TokenGone"];
 
         return RedirectToPage();
     }

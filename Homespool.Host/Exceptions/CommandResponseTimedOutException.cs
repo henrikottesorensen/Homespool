@@ -9,7 +9,7 @@ namespace Homespool.Host.Exceptions;
 /// <see cref="CommandSendTimedOutException"/>, where the write itself never completed and the
 /// connection is torn down as a result.
 /// </remarks>
-public class CommandResponseTimedOutException : Exception
+public class CommandResponseTimedOutException : Exception, ILocalisableError
 {
     /// <summary>The one callers actually use - the message is not worth restating at each throw.</summary>
     public CommandResponseTimedOutException(int printerId)
@@ -32,4 +32,10 @@ public class CommandResponseTimedOutException : Exception
         : base(message, innerException)
     {
     }
+
+    /// <inheritdoc />
+    public string ResourceKey => "Error_CommandNoAnswer";
+
+    /// <inheritdoc />
+    public object[] ResourceArguments => [];
 }

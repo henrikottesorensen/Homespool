@@ -153,6 +153,36 @@
   <data name="Alert_RecoveredBody" xml:space="preserve">
     <value>De problemer, der blev rapporteret tidligere, er væk. Alle helbredstjek består igen.</value>
   </data>
+  <data name="Email_ConfirmSubject" xml:space="preserve">
+    <value>Bekræft din e-mailadresse</value>
+  </data>
+  <data name="Email_ConfirmBody" xml:space="preserve">
+    <value>Bekræft din konto ved at &lt;a href=&apos;{0}&apos;&gt;klikke her&lt;/a&gt;.</value>
+  </data>
+  <data name="Email_ResetPasswordSubject" xml:space="preserve">
+    <value>Nulstil din adgangskode</value>
+  </data>
+  <data name="Email_ResetPasswordBody" xml:space="preserve">
+    <value>Nulstil din adgangskode ved at &lt;a href=&apos;{0}&apos;&gt;klikke her&lt;/a&gt;.</value>
+  </data>
+  <data name="Email_InviteSubject" xml:space="preserve">
+    <value>Du er inviteret til Homespool</value>
+  </data>
+  <data name="Email_InviteBody" xml:space="preserve">
+    <value>Du er blevet inviteret. Tag imod invitationen ved at &lt;a href=&apos;{0}&apos;&gt;klikke her&lt;/a&gt;. Invitationen udløber {1}.</value>
+  </data>
+  <data name="Account_VerificationSent" xml:space="preserve">
+    <value>Bekræftelsesmailen er sendt. Se efter i din indbakke.</value>
+  </data>
+  <data name="Manage_EmailChangeSent" xml:space="preserve">
+    <value>Linket til at bekræfte den nye e-mailadresse er sendt. Se efter i din indbakke.</value>
+  </data>
+  <data name="Manage_EmailChangeSendFailed" xml:space="preserve">
+    <value>Linket kunne ikke sendes. Din e-mailadresse er uændret - kontakt din administrator.</value>
+  </data>
+  <data name="Manage_VerificationSendFailed" xml:space="preserve">
+    <value>Bekræftelsesmailen kunne ikke sendes - kontakt din administrator.</value>
+  </data>
   <data name="Account_InvalidUserName" xml:space="preserve">
     <value>&apos;{0}&apos; kan ikke bruges som brugernavn. Brug kun bogstaver, tal og - . _ ; en e-mailadresse kan ikke være et brugernavn.</value>
   </data>
@@ -181,7 +211,7 @@
     <value>Genudsted USB-token</value>
   </data>
   <data name="Printers_RegenerateToken" xml:space="preserve">
-    <value>Generer USB-token</value>
+    <value>Generér USB-token</value>
   </data>
   <data name="Common_Name" xml:space="preserve">
     <value>Navn</value>
@@ -191,15 +221,6 @@
   </data>
   <data name="Common_Status" xml:space="preserve">
     <value>Status</value>
-  </data>
-  <data name="Command_Pause" xml:space="preserve">
-    <value>Pause</value>
-  </data>
-  <data name="Command_Resume" xml:space="preserve">
-    <value>Fortsæt</value>
-  </data>
-  <data name="Command_Stop" xml:space="preserve">
-    <value>Stop</value>
   </data>
   <data name="Printers_NotFound" xml:space="preserve">
     <value>Denne printer findes ikke længere.</value>
@@ -314,10 +335,10 @@
     <value>Printer</value>
   </data>
   <data name="Cameras_NetworkHelp" xml:space="preserve">
-    <value>En RTSP- eller HTTP-adresse, for eksempel {0}. Homespool registrerer den for dig hos streamserveren.</value>
+    <value>En RTSP- eller HTTP-adresse, for eksempel {0}. Homespool registrerer den for dig hos go2rtc-tjenesten.</value>
   </data>
   <data name="Cameras_AttachedHelp" xml:space="preserve">
-    <value>Kun kameraer, som ingen har taget, vises. Et kamera, der er tilkoblet serveren, tilhører maskinen frem for et team, så kun en administrator kan sætte det op.</value>
+    <value>Kun utilknyttede kameraer vises. Et kamera, der er tilkoblet direkte til serveren, kan kun tildeles af en administrator.</value>
   </data>
   <data name="Cameras_Seen" xml:space="preserve">
     <value>set {0}</value>
@@ -461,14 +482,11 @@
   <data name="Printers_CoolingIncluded" xml:space="preserve">
     <value>nedkøling inkluderet</value>
   </data>
-  <data name="Printers_SetReady" xml:space="preserve">
-    <value>Markér klargjort</value>
-  </data>
   <data name="Printers_ReadyHeading" xml:space="preserve">
     <value>Er {0} klar til næste print?</value>
   </data>
   <data name="Printers_ReadyChecklist" xml:space="preserve">
-    <value>Er byggepladen på plads, tom og rengjort?</value>
+    <value>Er byggepladen tom, på plads og rengjort?</value>
   </data>
   <data name="Printers_ReadyConsequence" xml:space="preserve">
     <value>Bekræfter du, kan næste print i køen starte. Printeren printer på hvad der end ligger på byggepladen, også et færdigt emne, og den afviser det ikke for dig.</value>
@@ -477,7 +495,7 @@
     <value>Der er ikke tilsluttet et kamera til {0}, så du svarer uden at kunne se printeren fra Homespool.</value>
   </data>
   <data name="Printers_ReadyConfirm" xml:space="preserve">
-    <value>Byggepladen er ryddet</value>
+    <value>Byggepladen er tom</value>
   </data>
   <data name="Printers_ReadySent" xml:space="preserve">
     <value>Markeret klargjort. Næste print i køen kan starte.</value>
@@ -486,7 +504,7 @@
     <value>Tillad at markere klargjort fra denne side</value>
   </data>
   <data name="Printers_RemoteReadyHelp" xml:space="preserve">
-    <value>Slå kun dette til, hvis man kan se, om byggepladen er ryddet. Et kamera, der ikke viser byggepladen, er en grund til at lade være. Er det slået fra, kræver det, at man går hen til printeren og markerer den klargjort på panelet.</value>
+    <value>Slå kun dette til, hvis man kan se, om byggepladen er tom. Et kamera, der ikke viser byggepladen, er en grund til at lade være. Er det slået fra, kræver det, at man går hen til printeren og markerer den klargjort på panelet.</value>
   </data>
   <data name="Printers_RemoteReadySaved" xml:space="preserve">
     <value>Det er nu tilladt at markere klargjort fra denne side.</value>
@@ -530,11 +548,8 @@
   <data name="Account_ConfirmPassword" xml:space="preserve">
     <value>Bekræft adgangskode</value>
   </data>
-  <data name="Account_UsernameCharsPre" xml:space="preserve">
-    <value>Bogstaver, tal og</value>
-  </data>
-  <data name="Account_UsernameCharsPost" xml:space="preserve">
-    <value>. Du logger ind med dette eller din e-mailadresse.</value>
+  <data name="Account_UsernameChars" xml:space="preserve">
+    <value>Bogstaver, tal og {0} {1} {2}. Du logger ind med dette eller din e-mailadresse.</value>
   </data>
   <data name="Nav_Login" xml:space="preserve">
     <value>Log ind</value>
@@ -611,9 +626,6 @@
   <data name="Invites_Target" xml:space="preserve">
     <value>Modtager</value>
   </data>
-  <data name="Invites_Expires" xml:space="preserve">
-    <value>Udløber</value>
-  </data>
   <data name="Invites_BackToList" xml:space="preserve">
     <value>Tilbage til invitationer</value>
   </data>
@@ -676,9 +688,6 @@
   </data>
   <data name="TwoFactor_Verify" xml:space="preserve">
     <value>Bekræft</value>
-  </data>
-  <data name="TwoFactor_ScanQr" xml:space="preserve">
-    <value>Scan QR-koden eller indtast denne nøgle</value>
   </data>
   <data name="TwoFactor_Steps" xml:space="preserve">
     <value>Følg disse trin for at bruge en tofaktorapp:</value>
@@ -779,17 +788,11 @@
   <data name="Cert_NoUsableAddress" xml:space="preserve">
     <value>ingen brugbar adresse blev fundet</value>
   </data>
-  <data name="Cert_NotConfigured" xml:space="preserve">
-    <value>ikke konfigureret (</value>
-  </data>
   <data name="Cert_Nothing" xml:space="preserve">
     <value>intet</value>
   </data>
   <data name="Cert_ProxyReloaded" xml:space="preserve">
     <value>proxy genindlæst</value>
-  </data>
-  <data name="Cert_ToTakeEffect" xml:space="preserve">
-    <value>for at træde i kraft -</value>
   </data>
   <data name="TwoFactor_MustGenerate" xml:space="preserve">
     <value>Du skal {0}, før du kan logge ind med en gendannelseskode.</value>
@@ -825,7 +828,7 @@
     <value>Download den nu.</value>
   </data>
   <data name="Bundle_TokenOnce" xml:space="preserve">
-    <value>Det token, der ligger i den, vises kun én gang og kan ikke hentes igen - mister du filen, før printeren forbinder, så brug &quot;Generer&quot; til at udstede et nyt.</value>
+    <value>Det token, der ligger i den, vises kun én gang og kan ikke hentes igen - mister du filen, før printeren forbinder, så brug &quot;Generér&quot; til at udstede et nyt.</value>
   </data>
   <data name="Bundle_AddressLabel" xml:space="preserve">
     <value>Adresse denne printer skal bruge</value>
@@ -919,7 +922,7 @@
     <value>Kameraet er fjernet.</value>
   </data>
   <data name="Cameras_NotYours" xml:space="preserve">
-    <value>Det kamera findes ikke, eller du må ikke fjerne det.</value>
+    <value>Dette kamera findes ikke, eller du må ikke fjerne det.</value>
   </data>
   <data name="Cameras_SavedWithPicture" xml:space="preserve">
     <value>Kameraet er gemt, og det sendte et billede.</value>
@@ -972,9 +975,6 @@
   <data name="TwoFactor_DisableKeepsKeys" xml:space="preserve">
     <value>At slå tofaktorgodkendelse fra ændrer ikke de nøgler, der bruges i tofaktorapps. Vil du skifte den nøgle, en tofaktorapp bruger, bør du {0}</value>
   </data>
-  <data name="TwoFactor_LoseCodesWarning" xml:space="preserve">
-    <value>Mister du din enhed og ikke har gendannelseskoderne, mister du adgangen til din konto. At generere nye gendannelseskoder ændrer ikke de nøgler, der bruges i tofaktorapps. Vil du skifte den nøgle, en tofaktorapp bruger, bør du {0}</value>
-  </data>
   <data name="TwoFactor_LoseDeviceWarning" xml:space="preserve">
     <value>Mister du din enhed og ikke har gendannelseskoderne, mister du adgangen til din konto.</value>
   </data>
@@ -1021,7 +1021,7 @@
     <value>Invitationen er oprettet.</value>
   </data>
   <data name="Printers_NoPublicAddress" xml:space="preserve">
-    <value>Serverens offentlige adresse er ikke konfigureret ({0}), så der kan endnu ikke laves et brugbart uddrag. Bed din administrator om at sætte den.</value>
+    <value>Serverens offentlige adresse er ikke konfigureret ({0}), så der kan ikke laves et brugbart uddrag. Bed din administrator om at sætte den.</value>
   </data>
   <data name="Printers_ClaimSteps" xml:space="preserve">
     <value>På printeren gå til {0}, og indtast derefter den kode, den viser.</value>
@@ -1031,5 +1031,730 @@
   </data>
   <data name="Printers_TemperatureTarget" xml:space="preserve">
     <value>{0}° / mål {1}°</value>
+  </data>
+  <data name="Account_AccessDeniedTitle" xml:space="preserve">
+    <value>Adgang nægtet</value>
+  </data>
+  <data name="Account_ConfirmEmailTitle" xml:space="preserve">
+    <value>Bekræft e-mail</value>
+  </data>
+  <data name="Account_ConfirmEmailChangeTitle" xml:space="preserve">
+    <value>Bekræft ændring af e-mail</value>
+  </data>
+  <data name="Account_ForgotPasswordConfirmTitle" xml:space="preserve">
+    <value>Bekræftelse af glemt adgangskode</value>
+  </data>
+  <data name="Account_LockoutTitle" xml:space="preserve">
+    <value>Konto låst</value>
+  </data>
+  <data name="Account_RecoveryCodeTitle" xml:space="preserve">
+    <value>Bekræftelse med gendannelseskode</value>
+  </data>
+  <data name="Account_LogOutTitle" xml:space="preserve">
+    <value>Log ud</value>
+  </data>
+  <data name="Account_RegisterConfirmTitle" xml:space="preserve">
+    <value>Bekræftelse af registrering</value>
+  </data>
+  <data name="Account_ResendConfirmTitle" xml:space="preserve">
+    <value>Send bekræftelsesmail igen</value>
+  </data>
+  <data name="Account_ResetPasswordConfirmTitle" xml:space="preserve">
+    <value>Bekræftelse af nulstillet adgangskode</value>
+  </data>
+  <data name="Manage_EmailTitle" xml:space="preserve">
+    <value>Administrér e-mail</value>
+  </data>
+  <data name="Manage_ProfileTitle" xml:space="preserve">
+    <value>Profil</value>
+  </data>
+  <data name="TwoFactor_ConfigureAppTitle" xml:space="preserve">
+    <value>Opsæt tofaktorapp</value>
+  </data>
+  <data name="TwoFactor_DisableTitle" xml:space="preserve">
+    <value>Slå tofaktorgodkendelse fra</value>
+  </data>
+  <data name="TwoFactor_GenerateCodesTitle" xml:space="preserve">
+    <value>Generér gendannelseskoder til tofaktorgodkendelse</value>
+  </data>
+  <data name="Setup_Title" xml:space="preserve">
+    <value>Førstegangsopsætning</value>
+  </data>
+  <data name="Printers_PreheatBoth" xml:space="preserve">
+    <value>Varmer dyse og byggeplade op samtidig, til de samme temperaturer som printerens egen forvarmningsmenu bruger.</value>
+  </data>
+  <data name="Cameras_NoneUnclaimed" xml:space="preserve">
+    <value>Der er ingen ledige kameraer tilsluttet denne server. Har du lige sat et til, </value>
+  </data>
+  <data name="Printers_ClaimQrWarning" xml:space="preserve">
+    <value>Begge er indbygget i firmwaren og peger altid på Prusas egne servere, aldrig på denne. Scanner du QR-koden, havner du hos Prusa, hvor denne kode ikke findes. Kun koden, der står under den, kan bruges her - indtast den nedenfor.</value>
+  </data>
+  <data name="Bundle_NoCertInBundle" xml:space="preserve">
+    <value>({0} er false), så pakken indeholder intet certifikat, og denne printers token sendes i klartekst over netværket.</value>
+  </data>
+  <data name="Bundle_NoReachableAddress" xml:space="preserve">
+    <value>Denne printer er klargjort, men der kan ikke bygges nogen pakke: certifikatet indeholder ingen adresse, som en printer rent faktisk kan nå.</value>
+  </data>
+  <data name="Cert_AuthorityReplaceCost" xml:space="preserve">
+    <value>At udskifte det betyder et USB-besøg hos hver eneste printer - det er hele deres trust store og kan ikke sendes over netværket. Planlæg det i god tid.</value>
+  </data>
+  <data name="Cert_AddressNotCovered" xml:space="preserve">
+    <value>Den adresse, printere får besked på at bruge, står ikke i certifikatet, så der kan ikke laves nogen klargøringspakke til den, og en printer, der forbinder til den, kan ikke verificere denne server.</value>
+  </data>
+  <data name="Cert_UncoveredAddresses" xml:space="preserve">
+    <value>Denne maskine har adresser, som certifikatet ikke dækker. Det er kun et problem for printere, der får besked på at bruge en af dem - de printere, der bruger en dækket adresse, er upåvirkede.</value>
+  </data>
+  <data name="Cert_DroppingExplanation" xml:space="preserve">
+    <value>Disse navne er dækket i dag, og maskinen svarer ikke længere på dem, så de ville ikke blive ført med over. Det er som regel rigtigt - et certifikat bør kun indestå for det, en printer kan nå. Men</value>
+  </data>
+  <data name="Cert_DroppingConsequence" xml:space="preserve">
+    <value>så snart det nye certifikat serveres, med en nøgen TLS-fejl der ikke nævner noget, og at få det tilbage kræver et USB-besøg for at pege printeren om.</value>
+  </data>
+  <data name="Cert_Keep" xml:space="preserve">
+    <value>behold {0}</value>
+  </data>
+  <data name="Cert_ReloadExplanation" xml:space="preserve">
+    <value>fordi det er proxyen, der viser dette certifikat til printere, og den læste det nuværende, da den startede. Selve programmet kører videre. En printer, der allerede er forbundet, møder fortsat det gamle certifikat, indtil den forbinder igen, da genindlæsningen er nænsom og ikke afbryder aktive forbindelser. Der skal heller ikke gøres noget ved printerne: begge certifikater er signeret af udstederen, som dette ikke rører.</value>
+  </data>
+  <data name="Nav_CertificateTitle" xml:space="preserve">
+    <value>Printercertifikat</value>
+  </data>
+  <data name="Nav_ManageAccount" xml:space="preserve">
+    <value>Administrér din konto</value>
+  </data>
+  <data name="Nav_ToggleNavigation" xml:space="preserve">
+    <value>Vis eller skjul menuen</value>
+  </data>
+  <data name="Nav_GitHub" xml:space="preserve">
+    <value>Homespool på GitHub</value>
+  </data>
+  <data name="Common_Close" xml:space="preserve">
+    <value>Luk</value>
+  </data>
+  <data name="Common_UsernamePlaceholder" xml:space="preserve">
+    <value>brugernavn</value>
+  </data>
+  <data name="Common_PasswordPlaceholder" xml:space="preserve">
+    <value>adgangskode</value>
+  </data>
+  <data name="Setup_TokenPlaceholder" xml:space="preserve">
+    <value>opsætningstoken</value>
+  </data>
+  <data name="Invites_AcceptLinkLabel" xml:space="preserve">
+    <value>Invitationslink</value>
+  </data>
+  <data name="Printers_NamePlaceholder" xml:space="preserve">
+    <value>Den store</value>
+  </data>
+  <data name="Common_LocationPlaceholder" xml:space="preserve">
+    <value>Værksted</value>
+  </data>
+  <data name="Cameras_NamePlaceholder" xml:space="preserve">
+    <value>Værksted</value>
+  </data>
+  <data name="Account_EnterPasswordPlaceholder" xml:space="preserve">
+    <value>Indtast din adgangskode.</value>
+  </data>
+  <data name="Account_ConfirmPasswordPlaceholder" xml:space="preserve">
+    <value>Bekræft din adgangskode.</value>
+  </data>
+  <data name="Account_EnterCodePlaceholder" xml:space="preserve">
+    <value>Indtast koden.</value>
+  </data>
+  <data name="Account_EnterEmailPlaceholder" xml:space="preserve">
+    <value>Indtast din e-mailadresse.</value>
+  </data>
+  <data name="Account_ChooseUsernamePlaceholder" xml:space="preserve">
+    <value>Vælg et brugernavn.</value>
+  </data>
+  <data name="Manage_EnterOldPasswordPlaceholder" xml:space="preserve">
+    <value>Indtast din gamle adgangskode.</value>
+  </data>
+  <data name="Manage_EnterNewPasswordPlaceholder" xml:space="preserve">
+    <value>Indtast din nye adgangskode.</value>
+  </data>
+  <data name="Manage_ConfirmNewPasswordPlaceholder" xml:space="preserve">
+    <value>Bekræft din nye adgangskode.</value>
+  </data>
+  <data name="Manage_EnterNewEmailPlaceholder" xml:space="preserve">
+    <value>Indtast den nye e-mailadresse.</value>
+  </data>
+  <data name="Manage_ChooseUsernamePlaceholder" xml:space="preserve">
+    <value>Vælg dit brugernavn.</value>
+  </data>
+  <data name="Manage_TokenNamePlaceholder" xml:space="preserve">
+    <value>Hvilken maskine eller hvilket script er det til?</value>
+  </data>
+  <data name="Files_UploadLabel" xml:space="preserve">
+    <value>Fil, der skal uploades</value>
+  </data>
+  <data name="Files_NewNameLabel" xml:space="preserve">
+    <value>Nyt filnavn</value>
+  </data>
+  <data name="Files_SendToPrinterLabel" xml:space="preserve">
+    <value>Printer, som {0} skal sendes til</value>
+  </data>
+  <data name="Printers_MoveUp" xml:space="preserve">
+    <value>Flyt op</value>
+  </data>
+  <data name="Printers_MoveDown" xml:space="preserve">
+    <value>Flyt ned</value>
+  </data>
+  <data name="Printers_MoveJobUp" xml:space="preserve">
+    <value>Flyt {0} op</value>
+  </data>
+  <data name="Printers_MoveJobDown" xml:space="preserve">
+    <value>Flyt {0} ned</value>
+  </data>
+  <data name="Printers_RemoveJob" xml:space="preserve">
+    <value>Fjern {0} fra køen</value>
+  </data>
+  <data name="Printers_SlicerAddressLabel" xml:space="preserve">
+    <value>Adresse til print-host for denne printer</value>
+  </data>
+  <data name="Setup_Token" xml:space="preserve">
+    <value>Opsætningstoken</value>
+  </data>
+  <data name="Invites_ExpiresIn" xml:space="preserve">
+    <value>Udløber om (timer, valgfrit)</value>
+  </data>
+  <data name="Printers_RegistrationCode" xml:space="preserve">
+    <value>Registreringskode</value>
+  </data>
+  <data name="Account_RecoveryCode" xml:space="preserve">
+    <value>Gendannelseskode</value>
+  </data>
+  <data name="Account_AuthenticatorCode" xml:space="preserve">
+    <value>Kode fra tofaktorapp</value>
+  </data>
+  <data name="Account_RememberMachine" xml:space="preserve">
+    <value>Husk denne maskine</value>
+  </data>
+  <data name="Account_EmailOrUsername" xml:space="preserve">
+    <value>E-mail eller brugernavn</value>
+  </data>
+  <data name="Account_RememberMe" xml:space="preserve">
+    <value>Husk mig?</value>
+  </data>
+  <data name="Manage_CurrentPassword" xml:space="preserve">
+    <value>Nuværende adgangskode</value>
+  </data>
+  <data name="Manage_NewPassword" xml:space="preserve">
+    <value>Ny adgangskode</value>
+  </data>
+  <data name="Manage_ConfirmNewPassword" xml:space="preserve">
+    <value>Bekræft ny adgangskode</value>
+  </data>
+  <data name="Manage_VerificationCode" xml:space="preserve">
+    <value>Bekræftelseskode</value>
+  </data>
+  <data name="Manage_NewEmail" xml:space="preserve">
+    <value>Ny e-mailadresse</value>
+  </data>
+  <data name="Manage_TokenName" xml:space="preserve">
+    <value>Navn på token</value>
+  </data>
+  <data name="Files_ChooseFile" xml:space="preserve">
+    <value>Vælg hvilken fil, der skal uploades.</value>
+  </data>
+  <data name="Files_TooLarge" xml:space="preserve">
+    <value>Filen er større end grænsen på {0}.</value>
+  </data>
+  <data name="Files_UploadedFile" xml:space="preserve">
+    <value>{0} er uploadet.</value>
+  </data>
+  <data name="Files_UploadGone" xml:space="preserve">
+    <value>Denne upload venter ikke længere - den kan være blevet ryddet op. Prøv igen.</value>
+  </data>
+  <data name="Files_Replaced" xml:space="preserve">
+    <value>{0} er erstattet.</value>
+  </data>
+  <data name="Files_Discarded" xml:space="preserve">
+    <value>Upload er kasseret.</value>
+  </data>
+  <data name="Files_PrinterNotYours" xml:space="preserve">
+    <value>Denne printer er ikke en af dine.</value>
+  </data>
+  <data name="Files_Queued" xml:space="preserve">
+    <value>{0} er lagt i køen.</value>
+  </data>
+  <data name="Files_PrinterReadOnly" xml:space="preserve">
+    <value>Du må se denne printer, men ikke bruge den.</value>
+  </data>
+  <data name="Files_NoSuchFile" xml:space="preserve">
+    <value>Der findes ingen fil, der hedder {0}.</value>
+  </data>
+  <data name="Files_OverFourGiB" xml:space="preserve">
+    <value>Filen er over 4 GiB - en printer kan ikke modtage noget større.</value>
+  </data>
+  <data name="Files_Refused" xml:space="preserve">
+    <value>{0} afviste den: {1}</value>
+  </data>
+  <data name="Files_Sending" xml:space="preserve">
+    <value>{0} sendes til {1}. Det går i printerens tempo.</value>
+  </data>
+  <data name="Files_PrinterNotConnected" xml:space="preserve">
+    <value>{0} er ikke forbundet lige nu.</value>
+  </data>
+  <data name="Files_PrinterBusy" xml:space="preserve">
+    <value>{0} er stadig optaget af en tidligere kommando.</value>
+  </data>
+  <data name="Files_PrinterNoAnswer" xml:space="preserve">
+    <value>{0} svarede ikke i tide.</value>
+  </data>
+  <data name="Files_NoPermission" xml:space="preserve">
+    <value>Du har ikke rettigheder til at bruge denne printer.</value>
+  </data>
+  <data name="Files_SendFailed" xml:space="preserve">
+    <value>Noget gik galt, da filen blev afsendt.</value>
+  </data>
+  <data name="Files_Renamed" xml:space="preserve">
+    <value>Omdøbt til {0}.</value>
+  </data>
+  <data name="Files_Deleted" xml:space="preserve">
+    <value>{0} er slettet.</value>
+  </data>
+  <data name="Files_QueuedCannotDelete" xml:space="preserve">
+    <value>{0} står i printkøen. Annullér det køede print først.</value>
+  </data>
+  <data name="Printers_CommandRejected" xml:space="preserve">
+    <value>{0} blev afvist: {1}</value>
+  </data>
+  <data name="Printers_CommandSent" xml:space="preserve">
+    <value>{0} er afsendt.</value>
+  </data>
+  <data name="Printers_NoControlPermission" xml:space="preserve">
+    <value>Du har ikke rettigheder til at styre denne printer.</value>
+  </data>
+  <data name="Printers_NotConnectedNow" xml:space="preserve">
+    <value>Printeren er ikke forbundet lige nu.</value>
+  </data>
+  <data name="Printers_StillBusy" xml:space="preserve">
+    <value>Printeren er stadig i gang med en tidligere kommando.</value>
+  </data>
+  <data name="Printers_NoResponse" xml:space="preserve">
+    <value>Printeren svarede ikke i tide.</value>
+  </data>
+  <data name="Printers_CommandFailed" xml:space="preserve">
+    <value>Noget gik galt, da kommandoen blev afsendt.</value>
+  </data>
+  <data name="Printers_ClaimLockedOut" xml:space="preserve">
+    <value>For mange ukendte koder. Prøv igen om {0}. Printerens egen kode er upåvirket - den venter stadig.</value>
+  </data>
+  <data name="Printers_ClaimWaitSeconds" xml:space="preserve">
+    <value>{0} sekunder</value>
+  </data>
+  <data name="Printers_ClaimWaitOneSecond" xml:space="preserve">
+    <value>1 sekund</value>
+  </data>
+  <data name="Printers_ClaimWaitMinutes" xml:space="preserve">
+    <value>{0} minutter</value>
+  </data>
+  <data name="Printers_ClaimWaitOneMinute" xml:space="preserve">
+    <value>1 minut</value>
+  </data>
+  <data name="Printers_ClaimNoSuchCode" xml:space="preserve">
+    <value>Ingen printer venter med denne kode. Tjek den mod printerens skærm - koder udløber, så den kan allerede være skiftet ud. Bogstaverne O, I og L læses som 0, 1 og 1, så dem er det ufarligt at tage fejl af.</value>
+  </data>
+  <data name="Printers_ClaimAlreadyClaimed" xml:space="preserve">
+    <value>Denne kode er allerede blevet brugt. Var det ikke dig, så sørg for at kopiere den kode, der står på printerens skærm nu.</value>
+  </data>
+  <data name="Printers_ClaimNoTeamPermission" xml:space="preserve">
+    <value>Du har ikke rettigheder til at tilknytte en printer til dette team.</value>
+  </data>
+  <data name="Printers_ClaimFailed" xml:space="preserve">
+    <value>Noget gik galt, da printeren blev tilknyttet. Prøv igen.</value>
+  </data>
+  <data name="Printers_AddNoPublicAddress" xml:space="preserve">
+    <value>Serverens offentlige adresse er ikke konfigureret ({0}). Bed din administrator om at sætte den, før printere klargøres på denne måde.</value>
+  </data>
+  <data name="Printers_AddNoTeamPermission" xml:space="preserve">
+    <value>Du har ikke rettigheder til at tilføje en printer til dette team.</value>
+  </data>
+  <data name="Printers_AddFailed" xml:space="preserve">
+    <value>Noget gik galt, da printeren blev klargjort. Prøv igen.</value>
+  </data>
+  <data name="Printers_StoppedAtPrinter" xml:space="preserve">
+    <value>på printeren</value>
+  </data>
+  <data name="Printers_QueueReordered" xml:space="preserve">
+    <value>Køen er omordnet.</value>
+  </data>
+  <data name="Printers_JobGone" xml:space="preserve">
+    <value>Dette print står ikke længere i køen.</value>
+  </data>
+  <data name="Printers_JobRemoved" xml:space="preserve">
+    <value>Fjernet fra køen.</value>
+  </data>
+  <data name="Printers_NoSuchFilament" xml:space="preserve">
+    <value>‘{0}’ er ikke et filament, som denne printer har en indstilling til.</value>
+  </data>
+  <data name="Printers_HeatingTo" xml:space="preserve">
+    <value>Varmer op til {0} °C i dysen og {1} °C på byggepladen til {2}.</value>
+  </data>
+  <data name="Printers_HeatersOff" xml:space="preserve">
+    <value>Begge varmelegemer er slukket.</value>
+  </data>
+  <data name="Setup_TokenInvalid" xml:space="preserve">
+    <value>Opsætningstokenet er ugyldigt, eller førstegangsopsætningen er allerede gennemført.</value>
+  </data>
+  <data name="Setup_Failed" xml:space="preserve">
+    <value>Opsætningen kunne ikke gennemføres. Prøv igen.</value>
+  </data>
+  <data name="Account_InvalidLogin" xml:space="preserve">
+    <value>Forkert brugernavn eller adgangskode.</value>
+  </data>
+  <data name="Account_InvalidAuthenticatorCode" xml:space="preserve">
+    <value>Forkert kode fra tofaktorappen.</value>
+  </data>
+  <data name="Account_InvalidRecoveryCode" xml:space="preserve">
+    <value>Forkert gendannelseskode.</value>
+  </data>
+  <data name="Account_RegistrationFailed" xml:space="preserve">
+    <value>Registreringen kunne ikke gennemføres. Prøv igen.</value>
+  </data>
+  <data name="Account_ResetNeedsCode" xml:space="preserve">
+    <value>Der skal følge en kode med for at nulstille adgangskoden.</value>
+  </data>
+  <data name="Account_EmailConfirmed" xml:space="preserve">
+    <value>Tak fordi du bekræftede din e-mailadresse.</value>
+  </data>
+  <data name="Account_EmailConfirmFailed" xml:space="preserve">
+    <value>E-mailadressen kunne ikke bekræftes.</value>
+  </data>
+  <data name="Account_ExternalProviderError" xml:space="preserve">
+    <value>Fejl fra ekstern udbyder: {0}</value>
+  </data>
+  <data name="Manage_TokenRevoked" xml:space="preserve">
+    <value>Tokenet er tilbagekaldt.</value>
+  </data>
+  <data name="Manage_TokenGone" xml:space="preserve">
+    <value>Dette token findes ikke længere.</value>
+  </data>
+  <data name="Manage_PasswordChanged" xml:space="preserve">
+    <value>Din adgangskode er ændret.</value>
+  </data>
+  <data name="Manage_PasswordChangedOneToken" xml:space="preserve">
+    <value>Din adgangskode er ændret. 1 API-token blev tilbagekaldt.</value>
+  </data>
+  <data name="Manage_PasswordChangedTokens" xml:space="preserve">
+    <value>Din adgangskode er ændret. {0} API-tokens blev tilbagekaldt.</value>
+  </data>
+  <data name="Manage_VerificationCodeInvalid" xml:space="preserve">
+    <value>Bekræftelseskoden er forkert.</value>
+  </data>
+  <data name="Manage_BrowserForgotten" xml:space="preserve">
+    <value>Denne browser er glemt. Næste gang du logger ind herfra, bliver du bedt om din tofaktorkode.</value>
+  </data>
+  <data name="Printers_StoppedByPerson" xml:space="preserve">
+    <value>af {0}</value>
+  </data>
+  <data name="Printers_StoppedFromHere" xml:space="preserve">
+    <value>herfra</value>
+  </data>
+  <data name="Common_TeamNumbered" xml:space="preserve">
+    <value>Team #{0}</value>
+  </data>
+  <data name="Invites_NewAccount" xml:space="preserve">
+    <value>Ny konto</value>
+  </data>
+  <data name="Invites_NewAccountOwnTeam" xml:space="preserve">
+    <value>Ny konto (sit eget team)</value>
+  </data>
+  <data name="Cameras_JustNow" xml:space="preserve">
+    <value>lige nu</value>
+  </data>
+  <data name="Cameras_SecondsAgo" xml:space="preserve">
+    <value>for {0} sek. siden</value>
+  </data>
+  <data name="Cameras_Numbered" xml:space="preserve">
+    <value>Kamera {0}</value>
+  </data>
+  <data name="Health_ServiceProblem" xml:space="preserve">
+    <value>Driftsproblem:</value>
+  </data>
+  <data name="Health_InsecureConnection" xml:space="preserve">
+    <value>Usikker forbindelse:</value>
+  </data>
+  <data name="Printers_ProvisionButton" xml:space="preserve">
+    <value>Klargør printer</value>
+  </data>
+  <data name="Printers_TeamLabel" xml:space="preserve">
+    <value>Team:</value>
+  </data>
+  <data name="Account_AlertRecipientNotice" xml:space="preserve">
+    <value>Advarsler om driften bliver ved med at gå til din tidligere adresse, indtil tjenesten genstartes.</value>
+  </data>
+  <data name="Cert_Reissued" xml:space="preserve">
+    <value>Genudstedt til {0}, gyldigt til {1}. GENINDLÆS PROXYEN for at tage det i brug - kør &quot;docker compose exec proxy nginx -s reload&quot;. Nye forbindelser får det med det samme; en printer, der allerede er forbundet, møder fortsat det gamle certifikat, indtil den forbinder igen, hvilket er harmløst, da begge er signeret af den samme udsteder. Der skal ikke gøres noget ved printerne selv: udstederen er uændret.</value>
+  </data>
+  <data name="Error_FileNameConflict" xml:space="preserve">
+    <value>Der findes allerede en fil, der hedder ‘{0}’. Bed om at overskrive den, hvis det var din intention.</value>
+  </data>
+  <data name="Error_FileNameConflictAny" xml:space="preserve">
+    <value>Der findes allerede en fil med dette navn.</value>
+  </data>
+  <data name="Error_NoSuchFile" xml:space="preserve">
+    <value>Du har ingen fil, der hedder ‘{0}’.</value>
+  </data>
+  <data name="Error_NoSuchFileAny" xml:space="preserve">
+    <value>Du har ingen fil med dette navn.</value>
+  </data>
+  <data name="Error_FileUnreadable" xml:space="preserve">
+    <value>{0} kunne ikke læses - den kan lige være blevet slettet.</value>
+  </data>
+  <data name="Error_FileUnreadableAny" xml:space="preserve">
+    <value>Filen kunne ikke læses - den kan lige være blevet slettet.</value>
+  </data>
+  <data name="Error_FileNameRejected" xml:space="preserve">
+    <value>‘{0}’ er ikke en fil, en printer vil tage imod.</value>
+  </data>
+  <data name="Error_FileNameUnusable" xml:space="preserve">
+    <value>Filnavnet er tomt eller peger på en mappe, når mappedelen er fjernet.</value>
+  </data>
+  <data name="Error_PrinterNotConnected" xml:space="preserve">
+    <value>Denne printer er ikke forbundet.</value>
+  </data>
+  <data name="Error_CommandInFlight" xml:space="preserve">
+    <value>Printeren er stadig i gang med en tidligere kommando.</value>
+  </data>
+  <data name="Error_CommandNoAnswer" xml:space="preserve">
+    <value>Printeren svarede ikke på kommandoen i tide.</value>
+  </data>
+  <data name="Error_CommandSendTimedOut" xml:space="preserve">
+    <value>Kommandoen kunne ikke sendes i tide, så det vides ikke, om printeren modtog den. Forbindelsen er lukket.</value>
+  </data>
+  <data name="Error_PrinterRefused" xml:space="preserve">
+    <value>Printeren afviste den: {0}</value>
+  </data>
+  <data name="Error_PrinterRefusedEvent" xml:space="preserve">
+    <value>Printeren afviste den ({0}).</value>
+  </data>
+  <data name="Error_PrinterBusy" xml:space="preserve">
+    <value>Printeren er {0} - varmelegemernes temperaturmål kan kun ændres, når printeren ikke er optaget.</value>
+  </data>
+  <data name="Error_PrinterStateUnknown" xml:space="preserve">
+    <value>Printerens tilstand kendes ikke endnu - den melder ind kort efter, den forbinder.</value>
+  </data>
+  <data name="Cameras_SourceMissing" xml:space="preserve">
+    <value>Et kamera skal have en kildeadresse.</value>
+  </data>
+  <data name="Cameras_SourceIncomplete" xml:space="preserve">
+    <value>Det er ikke en fuldstændig adresse. En kameraadresse ligner noget som f.eks. rtsp://192.168.1.50/live eller http://192.168.1.50/snapshot.jpg.</value>
+  </data>
+  <data name="Cameras_SourceScheme" xml:space="preserve">
+    <value>Homespool kan ikke læse kameraer over {0}. Brug rtsp, rtsps, http, https, rtmp eller onvif.</value>
+  </data>
+  <data name="Cameras_SourceIsThisServer" xml:space="preserve">
+    <value>{0} slår op til {1}, som er selve denne server og ikke et kamera på dit netværk.</value>
+  </data>
+  <data name="Cameras_NotFoundOrNotYours" xml:space="preserve">
+    <value>Dette kamera findes ikke, eller du må ikke ændre på dets opsætning.</value>
+  </data>
+  <data name="Cameras_AttachedNeedsAdministrator" xml:space="preserve">
+    <value>Et kamera, der er tilkoblet direkte til denne server, kan kun sættes op af en administrator. Et kamera, der kan nås over netværket, kræver ikke en.</value>
+  </data>
+  <data name="Cameras_NotYourTeam" xml:space="preserve">
+    <value>Du kan ikke tilføje et kamera til dette team.</value>
+  </data>
+  <data name="Cameras_StreamServerRefused" xml:space="preserve">
+    <value>Gemt, men go2rtc-tjenesten ville ikke tage imod denne kilde. Tjek adressen, og om den stadig kører.</value>
+  </data>
+  <data name="Cameras_NoPictureLocal" xml:space="preserve">
+    <value>Gemt, men der kom intet billede tilbage. Tjek, at go2rtc-tjenesten i compose.yaml kan nå videoenheder, og at intet andet på denne maskine allerede bruger det.</value>
+  </data>
+  <data name="Cameras_NoPictureNetwork" xml:space="preserve">
+    <value>Gemt, men der kom endnu intet billede tilbage. Er kameraet tændt og kan nås, så prøv siden igen om lidt - nogle kameraer er et par sekunder om at svare.</value>
+  </data>
+  <data name="Bundle_AddressSurvivesLease" xml:space="preserve">
+    <value>Overlever en adresseændring, men kun hvis din router offentliggør navne i sin egen DNS. Afprøv det, før du regner med det.</value>
+  </data>
+  <data name="Bundle_AddressIsTheContainers" xml:space="preserve">
+    <value>Dette ligner en Docker-adresse, som er containerens egen - printere på dit netværk kan ikke nå den. Brug i stedet adressen på den maskine, der kører Docker.</value>
+  </data>
+  <data name="Bundle_AddressUntilLeaseMoves" xml:space="preserve">
+    <value>Virker med det samme og kræver ingen DNS, men holder op med at virke, hvis denne maskines adresse ændrer sig. En DHCP-reservation eller en statisk adresse sat på maskinen selv forhindrer, at IP-adressen ændrer sig.</value>
+  </data>
+  <data name="Bundle_AddressUnclassified" xml:space="preserve">
+    <value>Ikke klassificeret.</value>
+  </data>
+  <data name="Queue_HoldInsufficientSpace" xml:space="preserve">
+    <value>Ikke plads nok på printeren: {0} kræver {1} bytes, og der er {2} ledige.</value>
+  </data>
+  <data name="Queue_HoldFileExists" xml:space="preserve">
+    <value>Der eksisterer allerede en fil, der hedder {0} ({1} bytes), på printeren. Vores er {2} bytes. Slet den på printeren, eller omdøb filen.</value>
+  </data>
+  <data name="Queue_HoldFileExistsUnknownSize" xml:space="preserve">
+    <value>Printeren har allerede en fil, der hedder {0}, og ville ikke oplyse dens størrelse, så det kan ikke bekræftes, at det er den samme. Slet den på printeren, eller omdøb denne.</value>
+  </data>
+  <data name="Queue_WaitTransferring" xml:space="preserve">
+    <value>Sender {0} til printeren.</value>
+  </data>
+  <data name="Queue_WaitTransferringUnnamed" xml:space="preserve">
+    <value>Sender den næste fil til printeren.</value>
+  </data>
+  <data name="Queue_WaitAwaitingPath" xml:space="preserve">
+    <value>Afventer at printeren bekræfter filens navn.</value>
+  </data>
+  <data name="Queue_WaitPrinterNotReady" xml:space="preserve">
+    <value>Afventer at printeren bliver meldt klargjort.</value>
+  </data>
+  <data name="Ini_HowToLoad" xml:space="preserve">
+    <value>Klargøring fra Homespool. Kopiér denne fil til roden af en USB-nøgle - ikke ned i en mappe, ellers finder printeren den ikke - og indlæs den fra printerens egen menu:</value>
+  </data>
+  <data name="Ini_TokenIsAPassword" xml:space="preserve">
+    <value>Denne fil indeholder et token, der tilmelder denne printer. Behandl det som en adgangskode, og slet filen fra nøglen, når printeren har forbundet.</value>
+  </data>
+  <data name="Ini_CustomCertNote" xml:space="preserve">
+    <value>custom_cert = 1 gør connect.der, som ligger ved siden af denne fil, til printerens HELE trust store - den erstatter de certifikater, printeren kom med, i stedet for at lægge sig oveni. Så længe det er sat, kan denne printer ikke tale med Prusa Connect. Sæt custom_cert = 0 for at fortryde.</value>
+  </data>
+  <data name="Ini_PlainHttpNote" xml:space="preserve">
+    <value>tls = False: denne printers token sendes i klartekst over netværket, og det samme gør alt, hvad den siger bagefter. Det er en indstilling til at aflytte trafikken på et netværk, du selv styrer.</value>
+  </data>
+  <data name="Ini_SectionScope" xml:space="preserve">
+    <value>Kun [service::connect] skrives her. Din [network]-sektion og dine wifi-oplysninger er dine egne - denne server har aldrig haft dem.</value>
+  </data>
+  <data name="Readme_Title" xml:space="preserve">
+    <value>Klargøringspakke til {0}</value>
+  </data>
+  <data name="Readme_APrinter" xml:space="preserve">
+    <value>en printer</value>
+  </data>
+  <data name="Readme_Intro" xml:space="preserve">
+    <value>Denne zip sætter en Prusa-printer op til at tale med **din** Homespool-server i stedet for Prusa Connect. Den er lavet til én printer og én server; den kan hverken genbruges eller gives videre.</value>
+  </data>
+  <data name="Readme_ContentsHeading" xml:space="preserve">
+    <value>Hvad ligger der her</value>
+  </data>
+  <data name="Readme_ColumnFile" xml:space="preserve">
+    <value>fil</value>
+  </data>
+  <data name="Readme_ColumnWhat" xml:space="preserve">
+    <value>hvad det er</value>
+  </data>
+  <data name="Readme_RowIni" xml:space="preserve">
+    <value>de indstillinger, din printer læser, herunder et token, der tilmelder den</value>
+  </data>
+  <data name="Readme_RowDer" xml:space="preserve">
+    <value>den certifikatudsteder, din printer vil validere denne servers certifikat imod</value>
+  </data>
+  <data name="Readme_RowReadme" xml:space="preserve">
+    <value>denne fil, som printeren ser bort fra</value>
+  </data>
+  <data name="Readme_OnThePrinterHeading" xml:space="preserve">
+    <value>Sådan får du det over på printeren</value>
+  </data>
+  <data name="Readme_Step1Heading" xml:space="preserve">
+    <value>1. Pak ud på en USB-nøgle</value>
+  </data>
+  <data name="Readme_Step1Body" xml:space="preserve">
+    <value>Kopiér filerne til **øverste niveau** på nøglen - ikke ned i en mappe. Ender du med en mappe på nøglen, finder printeren ingenting og fortæller dig ikke hvorfor.
+
+En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer du en ny, så brug FAT32.</value>
+  </data>
+  <data name="Readme_Step2Heading" xml:space="preserve">
+    <value>2. Sæt nøglen i printeren</value>
+  </data>
+  <data name="Readme_Step2Body" xml:space="preserve">
+    <value>Den USB-port, den plejer at bruge.</value>
+  </data>
+  <data name="Readme_Step3TlsHeading" xml:space="preserve">
+    <value>3. Begge filer, eller ingen af dem</value>
+  </data>
+  <data name="Readme_Step3TlsBody" xml:space="preserve">
+    <value>`connect.der` er den certifikatudsteder, din printer vil validere denne servers certifikat imod, og ini-filen fortæller den, at den skal bruge netop den fil og ikke andre. Den ene uden den anden virker ikke: ini-filen alene efterlader printeren uden nogen måde at verificere serveren på, og certifikatet alene bliver aldrig læst.</value>
+  </data>
+  <data name="Readme_Step3PlainHeading" xml:space="preserve">
+    <value>3. Denne pakke indeholder med vilje intet certifikat</value>
+  </data>
+  <data name="Readme_Step3PlainBody" xml:space="preserve">
+    <value>Denne server er sat op til at tale med printere over almindelig HTTP, så der er intet for printeren at verificere og ingen `connect.der` i zip-filen. Tokenet nedenfor sendes i klartekst over dit netværk. Det er en indstilling til test, ikke til en printer, du er afhængig af.</value>
+  </data>
+  <data name="Readme_Step4Heading" xml:space="preserve">
+    <value>4. Indlæs indstillingerne</value>
+  </data>
+  <data name="Readme_Step4Body" xml:space="preserve">
+    <value>På printeren: **{0}**, eller på noget firmware blot **{1}**. Printeren læser filen, genstarter sin forbindelse, og bør inden for få sekunder vise sig som online.</value>
+  </data>
+  <data name="Readme_Step5Heading" xml:space="preserve">
+    <value>5. Kig på serveren</value>
+  </data>
+  <data name="Readme_Step5Body" xml:space="preserve">
+    <value>Printeren dukker op under **{0}** i Homespool. Den tilmelder sig selv ved første kontakt, så der er ikke mere at trykke på.</value>
+  </data>
+  <data name="Readme_DeleteHeading" xml:space="preserve">
+    <value>Slet filen, når det har virket</value>
+  </data>
+  <data name="Readme_DeleteBody" xml:space="preserve">
+    <value>`prusa_printer_settings.ini` indeholder et token, der er denne printers adgangskode til din server. Når printeren har forbundet, så slet filen fra nøglen. Intet får brug for den igen - printeren har gemt det, den skal bruge.</value>
+  </data>
+  <data name="Readme_NoConnectHeading" xml:space="preserve">
+    <value>Så længe denne pakke er indlæst, kan printeren ikke bruge Prusa Connect</value>
+  </data>
+  <data name="Readme_NoConnectBody" xml:space="preserve">
+    <value>`custom_cert = 1` **erstatter** de certifikater, din printer kom med, i stedet for at lægge sig oveni. Det er dét, der gør, at den kan stole på din server, og det er også derfor, den ikke længere kan verificere Prusas. Vil du fortryde, så indlæs en ini med `custom_cert = 0` og de Prusa Connect-indstillinger, du vil have tilbage.</value>
+  </data>
+  <data name="Readme_TroubleHeading" xml:space="preserve">
+    <value>Hvis det ikke virker</value>
+  </data>
+  <data name="Readme_TroubleConfigFailed" xml:space="preserve">
+    <value>**Printeren siger, at konfigurationen ikke kunne indlæses.** Noget har redigeret filen. Den er nærtagende med kommentartegn (kun `#`, aldrig `;`) og med at være komplet - hver eneste nøgle skal være der. Hent pakken igen frem for at reparere den i hånden; det er hele grunden til, at den bliver genereret.</value>
+  </data>
+  <data name="Readme_TroubleTls" xml:space="preserve">
+    <value>**Printeren melder om en TLS- eller certifikatfejl.** Tre sædvanlige årsager, efter sandsynlighed: `connect.der` blev ikke kopieret med ved siden af ini-filen; serverens certifikat er blevet genudstedt, siden denne pakke blev hentet, så hent en ny; eller printerens ur går så meget forkert, at den afviser certifikatet, hvilket retter sig selv, når den har været på et netværk med internetadgang et minuts tid.</value>
+  </data>
+  <data name="Readme_TroubleNothing" xml:space="preserve">
+    <value>**Der sker ingenting overhovedet.** Tjek, at printeren kan nå `{0}` på port `{1}` derfra, hvor den står - et andet wifi-netværk eller en firewall imellem de to er det sædvanlige svar.</value>
+  </data>
+  <data name="Readme_TroubleStopped" xml:space="preserve">
+    <value>**Det virkede i ugevis og holdt så op.** Sandsynligvis har denne servers adresse ændret sig. Din router uddeler den på en lease, og en genstart eller et travlt netværk kan flytte den. Giv denne server en **statisk lease** - også kaldet en DHCP-reservation eller adressebinding - i din routers indstillinger. Det tager et minut, og det er den ene ændring, der stopper gentagelserne; uden den betyder hvert eneste skift, at du skal gå rundt med en nøgle til hver eneste printer igen.</value>
+  </data>
+  <data name="Readme_TroubleLostDownload" xml:space="preserve">
+    <value>**Du mistede filen, før printeren nåede at forbinde.** Intet er i stykker. I Homespool bruger du **{0}** på printerens række og henter en ny pakke; det gamle token holder op med at virke i samme øjeblik.</value>
+  </data>
+  <data name="Readme_PointsAtHeading" xml:space="preserve">
+    <value>Hvad denne pakke peger på</value>
+  </data>
+  <data name="Readme_RowServerAddress" xml:space="preserve">
+    <value>serveradresse</value>
+  </data>
+  <data name="Readme_RowPort" xml:space="preserve">
+    <value>port</value>
+  </data>
+  <data name="Readme_RowConnection" xml:space="preserve">
+    <value>forbindelse</value>
+  </data>
+  <data name="Readme_ConnectionTls" xml:space="preserve">
+    <value>TLS - den samme kryptering, som din browser kalder HTTPS. Det er linjen `tls = True` i ini-filen.</value>
+  </data>
+  <data name="Readme_ConnectionPlain" xml:space="preserve">
+    <value>almindelig HTTP, **ikke krypteret**. Det er linjen `tls = False` i ini-filen, og den er kun til test.</value>
+  </data>
+  <data name="Readme_FileName" xml:space="preserve">
+    <value>LÆSMIG.Pakke.md</value>
+  </data>
+  <data name="Intent_PausePrint" xml:space="preserve">
+    <value>Pause</value>
+  </data>
+  <data name="Intent_ResumePrint" xml:space="preserve">
+    <value>Fortsæt</value>
+  </data>
+  <data name="Intent_StopPrint" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="Intent_StartPrint" xml:space="preserve">
+    <value>Start print</value>
+  </data>
+  <data name="Intent_SetPrinterReady" xml:space="preserve">
+    <value>Markér klargjort</value>
+  </data>
+  <data name="Intent_SetPrinterIdle" xml:space="preserve">
+    <value>Markér ikke klargjort</value>
+  </data>
+  <data name="Intent_CancelPrinterReady" xml:space="preserve">
+    <value>Annullér klargjort</value>
+  </data>
+  <data name="Intent_SetTemperatures" xml:space="preserve">
+    <value>Sæt temperaturer</value>
   </data>
 </root>

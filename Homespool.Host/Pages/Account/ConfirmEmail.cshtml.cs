@@ -6,6 +6,7 @@
 using System.Text;
 using System.Threading.Tasks;
 
+using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;
@@ -13,6 +14,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Localization;
 
 namespace Homespool.Host.Pages.Account;
 
@@ -20,10 +22,12 @@ namespace Homespool.Host.Pages.Account;
 public class ConfirmEmailModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
+    private readonly IStringLocalizer<SharedResource> _localiser;
 
-    public ConfirmEmailModel(UserManager<HSUser> userManager)
+    public ConfirmEmailModel(UserManager<HSUser> userManager, IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
+        _localiser = localiser;
     }
 
     [TempData]
@@ -44,7 +48,9 @@ public class ConfirmEmailModel : PageModel
 
         code = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(code));
         IdentityResult result = await _userManager.ConfirmEmailAsync(user, code);
-        StatusMessage = result.Succeeded ? "Thank you for confirming your email." : "Error confirming your email.";
+        StatusMessage = result.Succeeded ?
+            _localiser["Account_EmailConfirmed"] :
+            _localiser["Account_EmailConfirmFailed"];
 
         return Page();
     }

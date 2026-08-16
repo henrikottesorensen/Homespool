@@ -97,7 +97,8 @@ public sealed class RegisterModelTests : IDisposable
             confirmationPolicy,
             invitationService,
             new TeamService(context),
-            new UnitOfWork(context))
+            new UnitOfWork(context),
+            TestLocaliser.Shared())
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
             Url = IdentityTestHarness.NewUrlHelper(httpContext),

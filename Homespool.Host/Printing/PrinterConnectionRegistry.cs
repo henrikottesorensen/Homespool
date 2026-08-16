@@ -3,17 +3,17 @@ using System.Collections.Generic;
 
 using Microsoft.Extensions.Logging;
 
-namespace Homespool.Host.PrusaConnect;
+namespace Homespool.Host.Printing;
 
 /// <summary>
-/// Maps a connected printer's id to its live <see cref="IPrinterConnectionActor"/>, so a command can
+/// Maps a connected printer's id to its live <see cref="IPrinterLink"/>, so a command can
 /// be sent from outside the request that accepted the WebSocket upgrade. A directory of actors,
-/// nothing more: registered/unregistered by <see cref="PrinterConnectionSession"/> for the lifetime
+/// nothing more: registered/unregistered by <see cref="PrusaConnect.PrinterConnectionSession"/> for the lifetime
 /// of the request that accepted the upgrade.
 /// </summary>
 public sealed class PrinterConnectionRegistry
 {
-    private readonly ConcurrentDictionary<int, IPrinterConnectionActor> _actors = new();
+    private readonly ConcurrentDictionary<int, IPrinterLink> _actors = new();
     private readonly ILogger<PrinterConnectionRegistry> _logger;
 
     public PrinterConnectionRegistry(ILogger<PrinterConnectionRegistry> logger)
@@ -52,9 +52,9 @@ public sealed class PrinterConnectionRegistry
     /// its read loop, which reaches the teardown that disposes its socket.
     /// </para>
     /// </remarks>
-    public void Register(int printerId, IPrinterConnectionActor actor)
+    public void Register(int printerId, IPrinterLink actor)
     {
-        IPrinterConnectionActor? displaced = Swap(printerId, actor);
+        IPrinterLink? displaced = Swap(printerId, actor);
 
         if (displaced is null)
         {
@@ -80,12 +80,12 @@ public sealed class PrinterConnectionRegistry
     /// is between two connection <i>lifetimes</i>, which the actor doesn't change - each connection
     /// still has a request that ends at its own pace.)
     /// </summary>
-    public void Unregister(int printerId, IPrinterConnectionActor actor)
+    public void Unregister(int printerId, IPrinterLink actor)
     {
-        _actors.TryRemove(new KeyValuePair<int, IPrinterConnectionActor>(printerId, actor));
+        _actors.TryRemove(new KeyValuePair<int, IPrinterLink>(printerId, actor));
     }
 
-    public bool TryGet(int printerId, out IPrinterConnectionActor? actor)
+    public bool TryGet(int printerId, out IPrinterLink? actor)
     {
         return _actors.TryGetValue(printerId, out actor);
     }
@@ -95,11 +95,11 @@ public sealed class PrinterConnectionRegistry
     /// simultaneous registrations for one printer cannot both report displacing the same actor, and
     /// no actor can be dropped from the map without being handed back to be shut down.
     /// </summary>
-    private IPrinterConnectionActor? Swap(int printerId, IPrinterConnectionActor actor)
+    private IPrinterLink? Swap(int printerId, IPrinterLink actor)
     {
         while (true)
         {
-            if (_actors.TryGetValue(printerId, out IPrinterConnectionActor? existing))
+            if (_actors.TryGetValue(printerId, out IPrinterLink? existing))
             {
                 if (_actors.TryUpdate(printerId, actor, existing))
                 {
@@ -115,6 +115,6 @@ public sealed class PrinterConnectionRegistry
 
     public bool IsConnected(int printerId)
     {
-        return _actors.TryGetValue(printerId, out IPrinterConnectionActor? actor) && actor.IsOpen;
+        return _actors.TryGetValue(printerId, out IPrinterLink? actor) && actor.IsOpen;
     }
 }

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 
 namespace Homespool.Host.PrusaConnect.Commands;

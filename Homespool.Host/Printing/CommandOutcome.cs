@@ -1,4 +1,4 @@
-namespace Homespool.Host.PrusaConnect;
+namespace Homespool.Host.Printing;
 
 /// <summary>
 /// The printer's answer to a sent command, e.g. <c>(Finished, null)</c> or
@@ -46,7 +46,7 @@ public sealed record CommandOutcome(Model.PrinterEventType EventType, string? Re
 /// </summary>
 /// <typeparam name="TAnswer">
 /// The answering event's <c>data</c>, from
-/// <see cref="Commands.ISendableCommand{TAnswer}"/>.
+/// <see cref="PrusaConnect.Commands.ISendableCommand{TAnswer}"/>.
 /// </typeparam>
 /// <param name="EventType">As <see cref="CommandOutcome.EventType"/>.</param>
 /// <param name="Reason">As <see cref="CommandOutcome.Reason"/>.</param>

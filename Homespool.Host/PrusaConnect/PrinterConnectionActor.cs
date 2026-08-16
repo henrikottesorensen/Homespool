@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.DTO.Transfers;
 using Homespool.Host.PrusaConnect.Transfers;
@@ -161,6 +162,16 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         return _mailbox.Writer.WriteAsync(message, cancellationToken);
     }
 
+    /// <summary>
+    /// The <see cref="IPrinterLink"/> entry: an intent, translated here into this protocol's
+    /// command because the connection is what knows it speaks Prusa Connect. An intent this
+    /// protocol cannot express throws from the translator, before anything is written.
+    /// </summary>
+    public Task<CommandSendResult> SendAsync(IPrinterIntent intent, CancellationToken cancellationToken)
+    {
+        return SendCommandAsync(PrusaIntentTranslator.ToCommand(intent), cancellationToken);
+    }
+
     public async Task<CommandSendResult> SendCommandAsync(ISendableCommand command, CancellationToken cancellationToken)
     {
         // RunContinuationsAsynchronously: the loop completes this while processing the printer's
@@ -184,6 +195,9 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         return await completion.Task.WaitAsync(cancellationToken);
     }
 
+    /// <summary>Completes the mailbox. The loop drains what is already queued, fails any in-flight
+    /// command as <see cref="CommandSendOutcome.NotConnected"/>, and exits - no cancellation token
+    /// is threaded into the work at all.</summary>
     public void Complete()
     {
         // Set before completing the writer, so the loop can never dequeue a command without knowing

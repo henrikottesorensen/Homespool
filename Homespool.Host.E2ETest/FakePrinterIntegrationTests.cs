@@ -22,6 +22,7 @@ using Homespool.Data;
 using Homespool.FakePrinter;
 using Homespool.Host.Controllers;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.Transfers;
@@ -164,7 +165,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
         await using (fake)
         {
-            CommandOutcome outcome = await SendCommandAsync(printerId, userId, new PausePrint());
+            CommandOutcome outcome = await SendCommandAsync(printerId, userId, new PrusaConnect.Commands.PausePrint());
 
             outcome.EventType.Should().Be(PrinterEventType.Finished);
             fake.Device.State.Should().Be(DeviceState.Paused, "the command must actually have executed");
@@ -262,7 +263,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
         await using (fake)
         {
-            CommandOutcome outcome = await SendCommandAsync(printerId, userId, new PausePrint());
+            CommandOutcome outcome = await SendCommandAsync(printerId, userId, new PrusaConnect.Commands.PausePrint());
 
             outcome.EventType.Should().Be(PrinterEventType.Rejected);
             outcome.Reason.Should().Be("No print to pause", "the JC macro's reason string must reach the caller verbatim");
@@ -283,7 +284,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
         await using (fake)
         {
-            Func<Task> act = async () => await SendCommandAsync(printerId, userId, new PausePrint());
+            Func<Task> act = async () => await SendCommandAsync(printerId, userId, new PrusaConnect.Commands.PausePrint());
 
             await act.Should().ThrowAsync<CommandResponseTimedOutException>();
             fake.ReceivedCommands.Should().ContainSingle("the frame reached the printer; only the answer is missing");
@@ -305,7 +306,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
         await using (fake)
         {
-            Func<Task> act = async () => await SendCommandAsync(printerId, userId, new PausePrint());
+            Func<Task> act = async () => await SendCommandAsync(printerId, userId, new PrusaConnect.Commands.PausePrint());
 
             await act.Should().ThrowAsync<CommandResponseTimedOutException>(
                 "a reply with a mismatched command_id must never complete the pending command");
@@ -325,11 +326,11 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
         await using (fake)
         {
-            CommandOutcome first = await SendCommandAsync(printerId, userId, new PausePrint());
+            CommandOutcome first = await SendCommandAsync(printerId, userId, new PrusaConnect.Commands.PausePrint());
             first.EventType.Should().Be(PrinterEventType.Finished);
 
             // The connection must still be fully usable after the surplus ack arrived.
-            CommandOutcome second = await SendCommandAsync(printerId, userId, new ResumePrint());
+            CommandOutcome second = await SendCommandAsync(printerId, userId, new PrusaConnect.Commands.ResumePrint());
             second.EventType.Should().Be(PrinterEventType.Finished);
 
             _logs.Failures.Should().BeEmpty("a surplus ack is survived, not treated as a fault");
@@ -350,7 +351,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
         await using (fake)
         {
-            Func<Task> act = async () => await SendCommandAsync(printerId, userId, new PausePrint());
+            Func<Task> act = async () => await SendCommandAsync(printerId, userId, new PrusaConnect.Commands.PausePrint());
 
             await act.Should().ThrowAsync<PrinterNotConnectedException>(
                 "teardown must fail the pending command, not leave it to the timeout");
@@ -392,7 +393,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         Task lastRun = last.RunAsync(lastCancellation.Token);
         await WaitUntilConnectedAsync(printerId);
 
-        CommandOutcome outcome = await SendCommandAsync(printerId, userId, new PausePrint());
+        CommandOutcome outcome = await SendCommandAsync(printerId, userId, new PrusaConnect.Commands.PausePrint());
 
         outcome.EventType.Should().Be(PrinterEventType.Finished, "the surviving registration must be the live socket");
         _logs.Failures.Should().BeEmpty("reconnect churn is ordinary printer behaviour, not an error path");
@@ -513,7 +514,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             OriginalSize = content.Length,
         });
 
-        CommandOutcome outcome = await SendCommandAsync(printerId, userId, new PausePrint());
+        CommandOutcome outcome = await SendCommandAsync(printerId, userId, new PrusaConnect.Commands.PausePrint());
         outcome.EventType.Should().Be(PrinterEventType.Finished, "a command must not be starved by a running transfer");
 
         FakeTransfer transfer = await WaitForTransferAsync(fake);

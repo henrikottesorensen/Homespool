@@ -14,6 +14,7 @@ using Microsoft.Extensions.Options;
 
 using NSubstitute;
 
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Queue;

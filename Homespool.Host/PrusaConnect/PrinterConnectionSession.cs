@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 
 using Homespool.Host.Exceptions;
+using Homespool.Host.Printing;
 using Homespool.Host.Queue;
 
 namespace Homespool.Host.PrusaConnect;

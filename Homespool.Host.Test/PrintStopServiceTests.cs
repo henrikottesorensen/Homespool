@@ -12,6 +12,7 @@ using NSubstitute;
 
 using Homespool.Data;
 using Homespool.Host.Authorisation;
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.Services;
@@ -201,6 +202,9 @@ public sealed class PrintStopServiceTests : IDisposable
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
              .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
                                                             new CommandOutcome(reply, reason))));
+        actor.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
+             .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
+                                                            new CommandOutcome(reply, reason))));
 
         _registry.Register(PrinterId, actor);
     }
@@ -213,7 +217,7 @@ public sealed class PrintStopServiceTests : IDisposable
     {
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
-        actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
+        actor.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
              .Returns(async _ =>
              {
                  await using HomespoolDbContext loopContext = NewContext();

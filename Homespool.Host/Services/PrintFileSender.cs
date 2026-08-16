@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
-using Homespool.Host.PrusaConnect;
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Model;

@@ -238,7 +238,7 @@ public static class Program
                             .AddScoped<PrusaConnect.CodeGenerator>()
                             .AddScoped<PrusaConnect.ClaimAttemptLimiter>()
                             .AddScoped<PrusaConnect.MessageDispatcher>()
-                            .AddScoped<PrusaConnect.PrinterCommandService>()
+                            .AddScoped<Printing.PrinterCommandService>()
                             .AddScoped<PrusaConnect.PrinterPreheatService>();
 
             // Plain singletons, not TelemetryWriter's singleton-with-IServiceScopeFactory pattern below:
@@ -246,7 +246,7 @@ public static class Program
             // actors, and the actors' own singleton dependencies), so there is no scoped dependency
             // to protect against capturing. The actors themselves are not registered at all - one is
             // created per accepted WebSocket by the factory and lives exactly as long as that request.
-            builder.Services.AddSingleton<PrusaConnect.PrinterConnectionRegistry>();
+            builder.Services.AddSingleton<Printing.PrinterConnectionRegistry>();
             builder.Services.AddSingleton<PrusaConnect.PrinterConnectionActorFactory>();
 
             // Singleton because its whole value is accumulating across connections and printers:

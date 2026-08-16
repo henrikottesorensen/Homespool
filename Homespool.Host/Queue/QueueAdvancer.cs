@@ -16,7 +16,6 @@ using Homespool.Data;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
-using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.Services;
 using Homespool.Model;

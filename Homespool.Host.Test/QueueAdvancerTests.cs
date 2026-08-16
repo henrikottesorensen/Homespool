@@ -16,6 +16,7 @@ using NSubstitute;
 using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.PrintFiles;
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.Transfers;
@@ -392,6 +393,9 @@ public sealed class QueueAdvancerTests : IDisposable
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
              .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
                                                             new CommandOutcome(PrinterEventType.Rejected, reason))));
+        actor.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
+             .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
+                                                            new CommandOutcome(PrinterEventType.Rejected, reason))));
 
         _registry.Register(PrinterId, actor);
     }
@@ -406,6 +410,12 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
+
+        // The print start travels as an intent; the transfer offer and the file-info query stay
+        // wire-typed, so this printer answers on both faces of the actor.
+        actor.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
+             .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
+                                                            new CommandOutcome(PrinterEventType.Finished, null))));
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
              .Returns(call =>
              {

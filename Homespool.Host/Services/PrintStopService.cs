@@ -7,7 +7,6 @@ using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
 using Homespool.Host.Printing;
-using Homespool.Host.PrusaConnect;
 using Homespool.Model;
 using Homespool.Model.Entities;
 

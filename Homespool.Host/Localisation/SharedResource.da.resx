@@ -1674,7 +1674,7 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>3. Begge filer, eller ingen af dem</value>
   </data>
   <data name="Readme_Step3TlsBody" xml:space="preserve">
-    <value>`connect.der` er den certifikatudsteder, din printer vil validere denne servers certifikat imod, og ini-filen fortæller den, at den skal bruge netop den fil og ikke andet. Den ene uden den anden virker ikke: ini-filen alene efterlader printeren uden nogen måde at verificere serveren på, og certifikatet alene bliver aldrig læst.</value>
+    <value>`connect.der` er den certifikatudsteder, din printer vil validere denne servers certifikat imod, og ini-filen fortæller den, at den skal bruge netop den fil og ikke andre. Den ene uden den anden virker ikke: ini-filen alene efterlader printeren uden nogen måde at verificere serveren på, og certifikatet alene bliver aldrig læst.</value>
   </data>
   <data name="Readme_Step3PlainHeading" xml:space="preserve">
     <value>3. Denne pakke indeholder med vilje intet certifikat</value>

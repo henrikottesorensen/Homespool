@@ -41,7 +41,7 @@ else
                 {
                     var age = Model.FrameAge(camera);
                     <tr>
-                        <td>
+                        <td class="typed-name">
                             @Model.DisplayName(camera)
                             @if (Homespool.Host.Pages.Cameras.IndexModel.IsAttached(camera))
                             {
@@ -51,7 +51,7 @@ else
                             }
                         </td>
                         <td><code class="small">@camera.Source</code></td>
-                        <td>@(camera.Printer?.Name ?? camera.Printer?.Model ?? "—")</td>
+                        <td class="typed-name">@(camera.Printer?.Name ?? camera.Printer?.Model ?? "—")</td>
                         <td>
                             @if (age is null)
                             {

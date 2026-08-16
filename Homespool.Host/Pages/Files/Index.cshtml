@@ -106,11 +106,14 @@ else
                 }
                 else
                 {
-                    <td>@file.FileName</td>
+                    <td class="typed-name">@file.FileName</td>
                     <td class="text-end font-monospace">@IndexModel.FormatSize(file.Length)</td>
-                    @* Fixed format rather than a culture-dependent one, so the column reads the same
-                       whatever the server's locale is - notes/floating-point.md records the same trap
-                       biting number rendering elsewhere. *@
+                    @* ISO, deliberately, and not because the reader's culture is unknown - it is known
+                       per request, and FormatSize beside this now follows it. A timestamp is the one
+                       value where following it would make the column worse: en-GB and en-US are both
+                       supported here and disagree silently about 01/02/2026, so a short date is only
+                       unambiguous to a reader who knows which of the two they are being shown. This
+                       also sorts, and matches what the logs and the printer's own events carry. *@
                     <td>@file.UploadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
                 }
                 <td class="text-end text-nowrap">

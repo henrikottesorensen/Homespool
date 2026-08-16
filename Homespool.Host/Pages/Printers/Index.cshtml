@@ -42,9 +42,9 @@ else
         @foreach (var row in Model.Printers)
         {
             <tr>
-                <td><a asp-page="Detail" asp-route-uuid="@row.Printer.Uuid">@(row.Printer.Name ?? row.Printer.Model ?? row.Printer.Uuid.ToString())</a></td>
-                <td>@row.Printer.Location</td>
-                <td>@row.TeamName</td>
+                <td class="typed-name"><a asp-page="Detail" asp-route-uuid="@row.Printer.Uuid">@(row.Printer.Name ?? row.Printer.Model ?? row.Printer.Uuid.ToString())</a></td>
+                <td class="typed-name">@row.Printer.Location</td>
+                <td class="typed-name">@row.TeamName</td>
                 @* What the printer is doing beats how it was set up, whenever we can know it. A
                    connected printer used to read "Enrolled", which is true, unchanging, and answers a
                    question nobody has once the thing is working. Enrolment still shows when it is the

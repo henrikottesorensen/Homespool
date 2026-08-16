@@ -147,11 +147,21 @@ public class IndexModel : PageModel
         }
 
         // No decimal on bytes, one everywhere else: "512 B" and "4.1 MB" both read better than the
-        // alternative. Invariant culture so the separator does not move with the server's locale -
-        // see notes/floating-point.md on the same hazard in Razor.
+        // alternative.
+        //
+        // The reader's culture, not the invariant one. This was invariant "so the separator does not
+        // move with the server's locale", which was the right instinct answered on the wrong axis:
+        // the danger was never that a Danish *server* would render 4,1 MB to an English reader, it
+        // was that the separator would follow the machine rather than the person. Now that a request
+        // carries the reader's culture, following it is what puts the separator where they read it -
+        // and 4,1 MB is simply how a number is written in Danish, so invariant here means being
+        // wrong for them on purpose.
+        //
+        // notes/floating-point.md records the hazard this replaced, and is about precision rather
+        // than culture; the two are separate questions on the same value.
         return unit == 0 ?
-            string.Create(CultureInfo.InvariantCulture, $"{bytes} B") :
-            string.Create(CultureInfo.InvariantCulture, $"{size:0.#} {units[unit]}");
+            string.Create(CultureInfo.CurrentCulture, $"{bytes} B") :
+            string.Create(CultureInfo.CurrentCulture, $"{size:0.#} {units[unit]}");
     }
 
     /// <summary>

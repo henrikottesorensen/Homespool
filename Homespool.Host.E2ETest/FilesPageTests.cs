@@ -565,6 +565,49 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         return await client.PostAsync("/Files?handler=Upload", form);
     }
 
+    /// <summary>
+    /// A file name somebody chose is the only string on this page with no length anybody promised,
+    /// and the cell holding it has to be allowed to break mid-word.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>What goes wrong without it is the whole page, not the cell.</b> A long name with no space
+    /// in it gives the browser nowhere to wrap, so the column cannot shrink below its own content,
+    /// the table grows past the viewport, and everything - navigation included - scrolls sideways.
+    /// </para>
+    /// <para>
+    /// <b>This asserts the class, not the geometry</b>, and that is the honest limit of it: these
+    /// tests parse HTML and never lay it out, so nothing here can see an overflow. What it does buy
+    /// is a guard on the plumbing - a rewritten row or a new column that drops <c>typed-name</c>
+    /// fails here rather than on somebody's phone. The rule itself lives in <c>site.css</c>, with
+    /// the reasoning for <c>anywhere</c> over <c>break-word</c>.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ALongFileNameIsAllowedToBreakSoTheTableDoesNot()
+    {
+        // Arrange
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "pagelongname@example.com");
+
+        // No space anywhere in it, which is what removes every break opportunity.
+        string unbroken = new string('n', 180) + ".gcode";
+        await UploadAsync(client, unbroken, 512);
+
+        // Act
+        string page =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
+
+        // Assert
+        page.Should().Contain(unbroken, "the name is rendered whole rather than cut short");
+        page.Should().Contain(
+            $"<td class=\"typed-name\">{unbroken}</td>",
+            "the cell carrying a name somebody chose has to be allowed to wrap inside a word");
+
+        client.Dispose();
+    }
+
     private static async Task UploadAsync(HttpClient client, string name, int bytes)
     {
         using StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes(new string('G', bytes))));

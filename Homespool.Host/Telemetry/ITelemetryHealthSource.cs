@@ -1,4 +1,4 @@
-namespace Homespool.Host.PrusaConnect;
+namespace Homespool.Host.Telemetry;
 
 /// <summary>
 /// Exposes <see cref="TelemetryWriter"/>'s persistence health without exposing the writer itself, so

@@ -23,6 +23,7 @@ using Homespool.Host.Authorisation;
 using Homespool.Host.Certificates;
 using Homespool.Host.Localisation;
 using Homespool.Host.Pages.Printers;
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.Services;

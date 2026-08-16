@@ -13,8 +13,8 @@ using Microsoft.Extensions.Options;
 
 using Homespool.Host.Exceptions;
 using Homespool.Host.Localisation;
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
-using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -233,7 +233,7 @@ public class IndexModel : PageModel
     /// unchanged either way.
     /// </remarks>
     private async Task<IActionResult> SendCommandAsync(int printerId,
-                                                       ISendableCommand command,
+                                                       IPrinterIntent command,
                                                        CancellationToken cancellationToken,
                                                        Func<int, long, CancellationToken, Task<CommandOutcome?>>? send = null)
     {
@@ -263,8 +263,8 @@ public class IndexModel : PageModel
             // guard rather than a live case.
             (StatusMessage, StatusSuccess) = outcome?.EventType switch
             {
-                Events.Rejected or Events.Failed => ($"{command.WireName} rejected: {outcome!.Reason}", false),
-                _ => ($"{command.WireName} sent.", true),
+                PrinterEventType.Rejected or PrinterEventType.Failed => ($"{command.Name} rejected: {outcome!.Reason}", false),
+                _ => ($"{command.Name} sent.", true),
             };
         }
         catch (PrinterNotFoundException)

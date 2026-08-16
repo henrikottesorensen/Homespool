@@ -7,8 +7,9 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 
 using Homespool.Data;
+using Homespool.Host.PrusaConnect;
 
-namespace Homespool.Host.PrusaConnect;
+namespace Homespool.Host.Telemetry;
 
 /// <summary>
 /// Reports whether telemetry is actually reaching the database, so a monitoring system can see a

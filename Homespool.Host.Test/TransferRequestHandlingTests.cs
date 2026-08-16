@@ -14,6 +14,7 @@ using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.PrusaConnect.DTO.Transfers;
 using Homespool.Host.PrusaConnect.Transfers;
+using Homespool.Host.Telemetry;
 using Homespool.Model;
 
 namespace Homespool.Host.Test;
@@ -147,7 +148,7 @@ public class TransferRequestHandlingTests
             new InboundEventMessage(DateTimeOffset.UtcNow, new EventDTO
             {
                 Status = "IDLE",
-                EventType = Events.TransferFinished,
+                EventType = PrinterEventType.TransferFinished,
                 TransferId = 4242,
             }),
             CancellationToken.None);
@@ -177,7 +178,7 @@ public class TransferRequestHandlingTests
             new InboundEventMessage(DateTimeOffset.UtcNow, new EventDTO
             {
                 Status = "IDLE",
-                EventType = Events.TransferFinished,
+                EventType = PrinterEventType.TransferFinished,
                 TransferId = 9999,
             }),
             CancellationToken.None);

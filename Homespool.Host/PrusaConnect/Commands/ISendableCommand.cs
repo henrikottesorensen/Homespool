@@ -35,7 +35,7 @@ public interface ISendableCommand : ICommand
     /// <remarks>
     /// <para>
     /// A command declaring <c>false</c> is completed as
-    /// <see cref="CommandSendOutcome.Dispatched"/> the moment its frame is written, and never takes
+    /// <see cref="Printing.CommandSendOutcome.Dispatched"/> the moment its frame is written, and never takes
     /// the one in-flight slot - because nothing will ever free it. The alternative is worse than it
     /// sounds: the caller would wait out the full response timeout and be told the command failed,
     /// for a command that did exactly what was asked.
@@ -43,7 +43,7 @@ public interface ISendableCommand : ICommand
     /// <para>
     /// <b>Not a guess about slow printers.</b> This is only for commands the firmware
     /// <i>structurally</i> cannot acknowledge - where answering would require code to run after the
-    /// point of no return. A merely slow answer is <see cref="CommandSendOutcome.ResponseTimedOut"/>
+    /// point of no return. A merely slow answer is <see cref="Printing.CommandSendOutcome.ResponseTimedOut"/>
     /// and stays that way; do not reach for this to paper over one.
     /// </para>
     /// </remarks>
@@ -75,12 +75,12 @@ public interface ISendableCommand : ICommand
 /// </summary>
 /// <typeparam name="TAnswer">
 /// The shape of the answering event's <c>data</c>, e.g. <c>FileInfoEventDataDTO</c> for
-/// <c>SEND_FILE_INFO</c>. Deserialised once, in <see cref="PrinterCommandService"/>.
+/// <c>SEND_FILE_INFO</c>. Deserialised once, in <see cref="Printing.PrinterCommandService"/>.
 /// </typeparam>
 /// <remarks>
 /// <para>
 /// <b>A marker, deliberately - the type parameter is the whole declaration.</b> It is what lets
-/// <see cref="PrinterCommandService.AskAsync"/> return a typed answer without anything switching on
+/// <see cref="Printing.PrinterCommandService.AskAsync"/> return a typed answer without anything switching on
 /// event type at runtime: the command's own static type names the shape, so the compiler dispatches
 /// it and each new question-asking command adds nothing to any existing method.
 /// </para>
@@ -94,7 +94,7 @@ public interface ISendableCommand : ICommand
 /// <para>
 /// Commands answered by their event type alone - <c>Finished</c> or <c>Rejected</c>, which is all
 /// twelve sendable ones today - implement plain <see cref="ISendableCommand"/> and go through
-/// <see cref="PrinterCommandService.SendCommandAsync"/> unchanged.
+/// <see cref="Printing.PrinterCommandService.SendCommandAsync(int, ISendableCommand, long, System.Threading.CancellationToken)"/> unchanged.
 /// </para>
 /// </remarks>
 public interface ISendableCommand<TAnswer> : ISendableCommand;

@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20260814113324_InitialCreate")]
+    [Migration("20260816090804_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -417,6 +417,9 @@ namespace Homespool.Data.Migrations
 
                     b.Property<long>("Timestamp")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("WireType")
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 

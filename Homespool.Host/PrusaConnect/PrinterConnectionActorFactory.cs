@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using Homespool.Host.PrusaConnect.Transfers;
+using Homespool.Host.Telemetry;
 
 namespace Homespool.Host.PrusaConnect;
 
@@ -34,7 +35,7 @@ public class PrinterConnectionActorFactory
     }
 
     /// <summary>Creates the actor and starts its loop; the caller owns completion via
-    /// <see cref="IPrinterConnectionActor.Complete"/>.</summary>
+    /// <see cref="Printing.IPrinterLink.Complete"/>.</summary>
     public virtual IPrinterConnectionActor Create(int printerId, IPrinterConnection connection)
     {
         return new PrinterConnectionActor(printerId, connection, _sink, _logger, _options.Value.CommandResponseTimeout,

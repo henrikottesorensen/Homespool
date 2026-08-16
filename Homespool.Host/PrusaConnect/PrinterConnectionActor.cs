@@ -8,10 +8,12 @@ using System.Threading.Tasks;
 
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.DTO.Transfers;
 using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Services;
+using Homespool.Host.Telemetry;
 
 namespace Homespool.Host.PrusaConnect;
 
@@ -160,6 +162,16 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         return _mailbox.Writer.WriteAsync(message, cancellationToken);
     }
 
+    /// <summary>
+    /// The <see cref="IPrinterLink"/> entry: an intent, translated here into this protocol's
+    /// command because the connection is what knows it speaks Prusa Connect. An intent this
+    /// protocol cannot express throws from the translator, before anything is written.
+    /// </summary>
+    public Task<CommandSendResult> SendAsync(IPrinterIntent intent, CancellationToken cancellationToken)
+    {
+        return SendCommandAsync(PrusaIntentTranslator.ToCommand(intent), cancellationToken);
+    }
+
     public async Task<CommandSendResult> SendCommandAsync(ISendableCommand command, CancellationToken cancellationToken)
     {
         // RunContinuationsAsynchronously: the loop completes this while processing the printer's
@@ -183,6 +195,9 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         return await completion.Task.WaitAsync(cancellationToken);
     }
 
+    /// <summary>Completes the mailbox. The loop drains what is already queued, fails any in-flight
+    /// command as <see cref="CommandSendOutcome.NotConnected"/>, and exits - no cancellation token
+    /// is threaded into the work at all.</summary>
     public void Complete()
     {
         // Set before completing the writer, so the loop can never dequeue a command without knowing
@@ -311,7 +326,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                 break;
 
             case InboundTelemetryMessage telemetry:
-                _sink.Enqueue(_printerId, telemetry.ReceivedAt, telemetry.Telemetry);
+                EnqueueTelemetry(telemetry);
                 break;
 
             case InboundTransferRequestMessage transferRequest:
@@ -467,8 +482,25 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         EndTransferIfTerminal(eventDto);
 
         // Answering a command doesn't consume the event - it is still an ordinary event
-        // (Finished/Rejected/StateChanged) and is persisted like any other.
-        _sink.Enqueue(_printerId, message.ReceivedAt, eventDto);
+        // (Finished/Rejected/StateChanged) and is persisted like any other. Mapping happens here,
+        // at the last point that knows this connection speaks Prusa Connect; an unmapped wire
+        // value's throw is the loop's throttled catch-all's business, costing one message and one
+        // aggregated log line, never the connection. The ack correlation above already ran, so a
+        // command's caller is unaffected either way.
+        _sink.Enqueue(_printerId, message.ReceivedAt, PrusaTelemetryMapping.ToRecord(eventDto, message.Identity));
+    }
+
+    /// <summary>
+    /// Converts at the edge and hands the sink the neutral currency - the last point that knows
+    /// this connection speaks Prusa Connect. Deliberately no try/catch of its own: an unmapped
+    /// wire state (ParseWireState's loud throw, <c>notes/protocol-vocabulary-boundary.md</c>) is
+    /// handled by the loop's throttled catch-all, which drops the one message and aggregates the
+    /// logging - a local catch here would log unthrottled at wire rate, the exact flood
+    /// <see cref="Services.LogThrottle"/> exists to prevent.
+    /// </summary>
+    private void EnqueueTelemetry(InboundTelemetryMessage telemetry)
+    {
+        _sink.Enqueue(_printerId, telemetry.ReceivedAt, PrusaTelemetryMapping.ToUpdate(telemetry.Telemetry));
     }
 
     /// <summary>
@@ -616,8 +648,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             return;
         }
 
-        if (eventDto.EventType is not (Model.Events.TransferFinished or Model.Events.TransferAborted
-            or Model.Events.TransferStopped))
+        if (eventDto.EventType is not (Model.PrinterEventType.TransferFinished or Model.PrinterEventType.TransferAborted
+            or Model.PrinterEventType.TransferStopped))
         {
             return;
         }

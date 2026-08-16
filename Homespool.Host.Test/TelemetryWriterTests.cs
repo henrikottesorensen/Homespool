@@ -12,7 +12,6 @@ using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
 
@@ -20,6 +19,7 @@ using Homespool.Data;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.PrusaConnect.DTO.Telemetry;
+using Homespool.Host.Telemetry;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -192,8 +192,7 @@ public sealed class TelemetryWriterTests : IDisposable
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
                                       Options.Create(options),
                                       _fakeLogger,
-                                      TimeProvider.System,
-                                      new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance))
+                                      TimeProvider.System)
         {
             SampleTrimWarningInterval = trimWarningInterval ?? TimeSpan.FromSeconds(10),
             EventTrimWarningInterval = trimWarningInterval ?? TimeSpan.FromSeconds(10),
@@ -369,7 +368,7 @@ public sealed class TelemetryWriterTests : IDisposable
         }
 
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow,
-                       new EventDTO { EventType = Events.StateChanged, Status = "PRINTING" });
+                       new EventDTO { EventType = PrinterEventType.StateChanged, Status = "PRINTING" });
 
         bool firstAttemptFailed = await LoggedAsync(FlushFailed);
         firstAttemptFailed.Should().BeTrue(
@@ -525,7 +524,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Act - feed until the ceiling is reached, then keep going: each event past it is one lost.
         bool atCeiling = await FeedUntilAsync(
             () => writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow,
-                                 new EventDTO { EventType = Events.StateChanged, Status = "PRINTING" }),
+                                 new EventDTO { EventType = PrinterEventType.StateChanged, Status = "PRINTING" }),
             () => writer.Current.PendingEvents >= 50,
             TimeSpan.FromSeconds(20));
 
@@ -535,7 +534,7 @@ public sealed class TelemetryWriterTests : IDisposable
         for (int i = 0; i < 100; i++)
         {
             writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow,
-                           new EventDTO { EventType = Events.StateChanged, Status = "PRINTING" });
+                           new EventDTO { EventType = PrinterEventType.StateChanged, Status = "PRINTING" });
             await Task.Delay(2, TestContext.Current.CancellationToken);
         }
 
@@ -654,7 +653,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         writer.Enqueue(printerId: 1, now.AddSeconds(25), new EventDTO
         {
-            EventType = Events.Finished,
+            EventType = PrinterEventType.Finished,
             Status = "PRINTING",
             CommandId = 42,
         });
@@ -740,7 +739,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Act
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
         {
-            EventType = Events.Info,
+            EventType = PrinterEventType.Info,
             Status = "IDLE",
             JobId = 42,
             Data = payload.RootElement.Clone(),
@@ -759,7 +758,7 @@ public sealed class TelemetryWriterTests : IDisposable
         PrinterEvent stored = await verify.PrinterEvents.SingleAsync(TestContext.Current.CancellationToken);
 
         stored.PrinterId.Should().Be(1);
-        stored.EventType.Should().Be(Events.Info);
+        stored.EventType.Should().Be(PrinterEventType.Info);
         stored.Status.Should().Be(PrinterStatus.Idle);
         stored.JobId.Should().Be(42);
         stored.Payload.Should().Be("""{"firmware":"6.4.0"}""");
@@ -793,7 +792,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Act
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
         {
-            EventType = Events.Info,
+            EventType = PrinterEventType.Info,
             Status = "IDLE",
             Data = payload.RootElement.Clone(),
         });
@@ -850,7 +849,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Act
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
         {
-            EventType = Events.Info,
+            EventType = PrinterEventType.Info,
             Status = "IDLE",
             Data = payload.RootElement.Clone(),
         });
@@ -888,7 +887,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Act
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
         {
-            EventType = Events.Info, Status = "IDLE", Data = before.RootElement.Clone(),
+            EventType = PrinterEventType.Info, Status = "IDLE", Data = before.RootElement.Clone(),
         });
 
         await WaitUntilAsync(async () =>
@@ -899,7 +898,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
         {
-            EventType = Events.Info, Status = "IDLE", Data = after.RootElement.Clone(),
+            EventType = PrinterEventType.Info, Status = "IDLE", Data = after.RootElement.Clone(),
         });
 
         // Assert
@@ -933,7 +932,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
         {
-            EventType = Events.Info, Status = "IDLE", Data = brass.RootElement.Clone(),
+            EventType = PrinterEventType.Info, Status = "IDLE", Data = brass.RootElement.Clone(),
         });
 
         await WaitUntilAsync(async () =>
@@ -948,7 +947,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Act
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
         {
-            EventType = Events.Info, Status = "IDLE", Data = swapped.RootElement.Clone(),
+            EventType = PrinterEventType.Info, Status = "IDLE", Data = swapped.RootElement.Clone(),
         });
 
         // Assert
@@ -993,7 +992,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Act
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
         {
-            EventType = Events.Info, Status = "IDLE", Data = payload.RootElement.Clone(),
+            EventType = PrinterEventType.Info, Status = "IDLE", Data = payload.RootElement.Clone(),
         });
 
         await WaitUntilAsync(async () =>
@@ -1043,7 +1042,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Act
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
         {
-            EventType = Events.Info, Status = "IDLE", Data = payload.RootElement.Clone(),
+            EventType = PrinterEventType.Info, Status = "IDLE", Data = payload.RootElement.Clone(),
         });
 
         // Assert
@@ -1074,7 +1073,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
         {
-            EventType = Events.Info, Status = "IDLE", Data = withMmu.RootElement.Clone(),
+            EventType = PrinterEventType.Info, Status = "IDLE", Data = withMmu.RootElement.Clone(),
         });
 
         await WaitUntilAsync(async () =>
@@ -1086,7 +1085,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Act
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
         {
-            EventType = Events.Info, Status = "IDLE", Data = without.RootElement.Clone(),
+            EventType = PrinterEventType.Info, Status = "IDLE", Data = without.RootElement.Clone(),
         });
 
         // The firmware in the second event is the marker that it was processed at all.
@@ -1120,7 +1119,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Act
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
         {
-            EventType = Events.Info, Status = "IDLE", Data = payload.RootElement.Clone(),
+            EventType = PrinterEventType.Info, Status = "IDLE", Data = payload.RootElement.Clone(),
         });
 
         // Assert
@@ -1154,7 +1153,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
         {
-            EventType = Events.Info, Status = "IDLE", Data = first.RootElement.Clone(),
+            EventType = PrinterEventType.Info, Status = "IDLE", Data = first.RootElement.Clone(),
         });
 
         await WaitUntilAsync(async () =>
@@ -1166,7 +1165,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Act
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
         {
-            EventType = Events.Info, Status = "IDLE", Data = second.RootElement.Clone(),
+            EventType = PrinterEventType.Info, Status = "IDLE", Data = second.RootElement.Clone(),
         });
 
         // The firmware in the same event is the marker that this INFO was processed at all - without
@@ -1200,7 +1199,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
         {
-            EventType = Events.Info, Status = "IDLE", Data = full.RootElement.Clone(),
+            EventType = PrinterEventType.Info, Status = "IDLE", Data = full.RootElement.Clone(),
         });
 
         await WaitUntilAsync(async () =>
@@ -1212,7 +1211,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Act
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
         {
-            EventType = Events.Info, Status = "IDLE", Data = sparse.RootElement.Clone(),
+            EventType = PrinterEventType.Info, Status = "IDLE", Data = sparse.RootElement.Clone(),
         });
 
         await WaitUntilAsync(async () =>
@@ -1258,7 +1257,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Act
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
         {
-            EventType = Events.FileInfo,
+            EventType = PrinterEventType.FileInfo,
             Status = "IDLE",
             Data = payload.RootElement.Clone(),
         });
@@ -1308,7 +1307,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // Act
         writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
         {
-            EventType = Events.TransferInfo,
+            EventType = PrinterEventType.TransferInfo,
             Status = "IDLE",
             Data = payload.RootElement.Clone(),
         });
@@ -1639,42 +1638,6 @@ public sealed class TelemetryWriterTests : IDisposable
     }
 
     /// <summary>
-    /// A stream of unprocessable messages logs one throttled Error, not one per message. A normal
-    /// printer never sends these; an attacker can, at wire rate - and this is the heaviest log site
-    /// in the class, a full stack trace per entry. <c>"UNKNOWN"</c> is the probe because it is both
-    /// the attacker shape and a real possibility: the firmware's <c>to_str</c> default arm can
-    /// genuinely emit it, while <c>ParseWireState</c> rejects it.
-    /// </summary>
-    [Fact]
-    public async Task ABurstOfUnprocessableMessagesLogsOneErrorNotOnePerMessage()
-    {
-        // Arrange
-        await SeedPrinterAsync();
-        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 500, flushIntervalSeconds: 0.05));
-
-        // Act - five failures, then a good message behind them: once its sample lands, FIFO
-        // guarantees all five failures were consumed (and logged or throttled) before we count.
-        for (int i = 0; i < 5; i++)
-        {
-            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "UNKNOWN" });
-        }
-
-        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" });
-
-        bool flushed = await WaitUntilAsync(async () =>
-        {
-            await using HomespoolDbContext context = NewVerificationContext();
-
-            return await context.TelemetrySamples.CountAsync() == 1;
-        }, TimeSpan.FromSeconds(5));
-
-        // Assert
-        flushed.Should().BeTrue($"the good message must land, proving the bad ones were consumed. Log:\n{LogDump()}");
-        LogRecords.Count(record => record.Level == LogLevel.Error && record.Message.Contains("failed to process"))
-                  .Should().Be(1, $"five failures inside one window must produce one Error, not five. Log:\n{LogDump()}");
-    }
-
-    /// <summary>
     /// Builds a writer without starting its drain loop, so the channel never empties and drop
     /// behaviour is deterministic: with batch size 1 the capacity is exactly 4, and every enqueue
     /// past that is a synchronous drop on the calling thread.
@@ -1688,8 +1651,7 @@ public sealed class TelemetryWriterTests : IDisposable
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
                                       Options.Create(options),
                                       _fakeLogger,
-                                      TimeProvider.System,
-                                      new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance))
+                                      TimeProvider.System)
         {
             DropWarningInterval = dropWarningInterval,
         };
@@ -1827,7 +1789,7 @@ public sealed class TelemetryWriterTests : IDisposable
 
         // Act + Assert - feed until the event cap (WriteBatchSize(1) * 10 = 10 here) is exceeded.
         bool trimmed = await FeedUntilAsync(
-            () => writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO { Status = "IDLE", EventType = Events.Info }),
+            () => writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO { Status = "IDLE", EventType = PrinterEventType.Info }),
             () => LogRecords.Any(record => record.Level == LogLevel.Error
                                            && record.Message.Contains("Discarded")
                                            && record.Message.Contains("event")
@@ -1835,5 +1797,33 @@ public sealed class TelemetryWriterTests : IDisposable
             TimeSpan.FromSeconds(30));
 
         trimmed.Should().BeTrue($"the pending event buffer must have a ceiling too, even a distant one. Log:\n{LogDump()}");
+    }
+}
+
+/// <summary>
+/// The wire-shaped entry this suite was written against, preserved as composition: the Prusa
+/// edge's mapping (including the identity extraction the dispatcher does in production), then the
+/// writer's neutral <c>Enqueue</c>. Every end-to-end assertion here - the job clear, the INFO
+/// application, the payload reduction - still bites through the real mapper, so a mutation in
+/// either half fails exactly the tests that guarded it when parsing lived in the writer.
+/// </summary>
+file static class WireEnqueueExtensions
+{
+    public static void Enqueue(this TelemetryWriter writer, int printerId, DateTimeOffset receivedAt, TelemetryDTO telemetry)
+    {
+        writer.Enqueue(printerId, receivedAt, PrusaTelemetryMapping.ToUpdate(telemetry));
+    }
+
+    public static void Enqueue(this TelemetryWriter writer, int printerId, DateTimeOffset receivedAt, EventDTO eventDto)
+    {
+        PrinterIdentityUpdate? identity = null;
+
+        if (eventDto.EventType == PrinterEventType.Info && eventDto.Data is { } data
+            && data.Deserialize<InfoEventDataDTO>() is { } info)
+        {
+            identity = PrusaTelemetryMapping.ToIdentity(info);
+        }
+
+        writer.Enqueue(printerId, receivedAt, PrusaTelemetryMapping.ToRecord(eventDto, identity));
     }
 }

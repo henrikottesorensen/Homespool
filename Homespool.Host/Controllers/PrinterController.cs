@@ -12,8 +12,7 @@ using Homespool.Host.Authorisation;
 using Homespool.Host.DTO;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
-using Homespool.Host.PrusaConnect;
-using Homespool.Host.PrusaConnect.Commands;
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.Services;
 using Homespool.Model;
@@ -165,7 +164,7 @@ public class PrinterController : ControllerBase
         {
             CommandOutcome? outcome = await _sender.SendAsync(printer, file, caller.Id, cancellationToken);
 
-            return outcome?.EventType is Events.Rejected or Events.Failed ?
+            return outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed ?
                 this.CommandFailure(StatusCodes.Status409Conflict, wireName,
                                     outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString()) :
                 NoContent();
@@ -219,7 +218,7 @@ public class PrinterController : ControllerBase
             return failure!;
         }
 
-        return await SendAsync(printer, new StartPrint { Path = body.Path }, cancellationToken);
+        return await SendAsync(printer, new StartPrint(body.Path), cancellationToken);
     }
 
     /// <summary>
@@ -249,7 +248,7 @@ public class PrinterController : ControllerBase
     /// <para>
     /// <b>Gated here, on <see cref="Capability.ControlPrinter"/>, rather than left to the command.</b>
     /// Although this reads, it does so by making the printer go and work - and
-    /// <see cref="SendFileInfo"/> itself only requires <see cref="Capability.ViewPrinter"/>, because
+    /// <see cref="PrusaConnect.Commands.SendFileInfo"/> itself only requires <see cref="Capability.ViewPrinter"/>, because
     /// the queue loop asks the same question on behalf of whoever queued a print. So the endpoint is
     /// the thing that has to be stricter, and says so.
     /// </para>
@@ -282,7 +281,7 @@ public class PrinterController : ControllerBase
         }
 
         string trimmed = path?.Trim('/') ?? string.Empty;
-        SendFileInfo command = new() { Path = trimmed.Length == 0 ? "/usb" : $"/usb/{trimmed}" };
+        PrusaConnect.Commands.SendFileInfo command = new() { Path = trimmed.Length == 0 ? "/usb" : $"/usb/{trimmed}" };
         HSUser user = (await _userManager.GetUserAsync(User))!;
 
         if (!await _access.AllowsAsync(printer.Id, user.Id, Capability.ControlPrinter, cancellationToken))
@@ -295,7 +294,7 @@ public class PrinterController : ControllerBase
             CommandOutcome<FileInfoEventDataDTO>? outcome =
                 await _commands.AskAsync(printer.Id, command, user.Id, cancellationToken);
 
-            if (outcome?.EventType is Events.Rejected or Events.Failed)
+            if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {
                 // Firmware answers a path that does not exist and a path it will not touch with the
                 // same event, distinguished only by reason text - so this stays one status code and
@@ -456,7 +455,7 @@ public class PrinterController : ControllerBase
 
     /// <summary>Resolves the printer, then sends - the whole body of every job-control verb above.</summary>
     private async Task<ActionResult> SendJobControlAsync(Guid uuid,
-                                                         ISendableCommand command,
+                                                         IPrinterIntent command,
                                                          CancellationToken cancellationToken)
     {
         (Printer? printer, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
@@ -497,7 +496,7 @@ public class PrinterController : ControllerBase
     /// <see cref="CommandOutcome"/>, so nothing below that line has to know which one ran.
     /// </remarks>
     private async Task<ActionResult> SendAsync(Printer printer,
-                                               ISendableCommand command,
+                                               IPrinterIntent command,
                                                CancellationToken cancellationToken,
                                                Action? onFailure = null,
                                                Func<int, long, CancellationToken, Task<CommandOutcome?>>? send = null)
@@ -520,11 +519,11 @@ public class PrinterController : ControllerBase
             // A null outcome is a command the printer cannot answer, written successfully - nothing
             // to inspect, and 204 is the honest result. None of this controller's commands are of
             // that kind today.
-            if (outcome?.EventType is Events.Rejected or Events.Failed)
+            if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {
                 onFailure?.Invoke();
 
-                return this.CommandFailure(StatusCodes.Status409Conflict, command.WireName,
+                return this.CommandFailure(StatusCodes.Status409Conflict, command.Name,
                                            outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString());
             }
 
@@ -538,9 +537,9 @@ public class PrinterController : ControllerBase
                                       or CommandResponseTimedOutException or CommandSendTimedOutException)
         {
             onFailure?.Invoke();
-            _logger.LogInformation(e, "{Command} to printer {PrinterId} did not complete", command.WireName, printer.Id);
+            _logger.LogInformation(e, "{Command} to printer {PrinterId} did not complete", command.Name, printer.Id);
 
-            return this.CommandFailure(StatusCodes.Status409Conflict, command.WireName, e.Message);
+            return this.CommandFailure(StatusCodes.Status409Conflict, command.Name, e.Message);
         }
         catch (TeamAccessDeniedException)
         {

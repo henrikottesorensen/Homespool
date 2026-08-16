@@ -20,6 +20,7 @@ using Homespool.Host.Authorisation;
 using Homespool.Host.Cameras;
 using Homespool.Host.Pages.Printers;
 using Homespool.Host.PrintFiles;
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Queue;
 using Homespool.Host.Services;

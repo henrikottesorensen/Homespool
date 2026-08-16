@@ -61,7 +61,7 @@ public class MessageDispatcher
             // is never walked, for the reason UnknownFieldTracker's remarks give at length.
             _unknownFields.Record(printerId, $"event:{eventDto.EventType}", eventDto.Unknown);
 
-            return new InboundEventMessage(receivedAt, eventDto);
+            return new InboundEventMessage(receivedAt, eventDto, ExtractIdentity(printerId, eventDto));
         }
 
         if (root.TryGetProperty("transfer", out JsonElement transfer) && transfer.ValueEquals("inline"))
@@ -92,5 +92,38 @@ public class MessageDispatcher
         _unknownFields.Record(printerId, "telemetry.enclosure", telemetryDto.Enclosure?.Unknown);
 
         return new InboundTelemetryMessage(receivedAt, telemetryDto);
+    }
+
+    /// <summary>
+    /// The parsed identity payload of an <c>INFO</c> event, or null for every other event and for
+    /// an <c>INFO</c> whose data will not parse. Lives here rather than in
+    /// <see cref="PrusaTelemetryMapping"/> because the parse feeds unknown-field accounting - the
+    /// one place an event's typed data is read at all; INFO's key set is firmware-rendered and
+    /// closed, so a new key there is a finding, unlike the FILE_INFO payload's gcode flood.
+    /// </summary>
+    private Telemetry.PrinterIdentityUpdate? ExtractIdentity(int printerId, EventDTO eventDto)
+    {
+        if (eventDto.EventType != Model.PrinterEventType.Info || eventDto.Data is not { } data)
+        {
+            return null;
+        }
+
+        try
+        {
+            if (data.Deserialize<InfoEventDataDTO>() is { } info)
+            {
+                _unknownFields.Record(printerId, "event:Info.data", info.Unknown);
+
+                return PrusaTelemetryMapping.ToIdentity(info);
+            }
+        }
+        catch (JsonException e)
+        {
+            // Off the wire and attacker-shaped, so a malformed INFO must not cost the connection.
+            // The event row itself is still persisted, payload and all.
+            _logger.LogWarning(e, "Printer {PrinterId} sent an INFO event whose data could not be read.", printerId);
+        }
+
+        return null;
     }
 }

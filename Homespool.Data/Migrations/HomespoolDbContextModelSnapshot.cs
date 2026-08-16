@@ -415,6 +415,9 @@ namespace Homespool.Data.Migrations
                     b.Property<long>("Timestamp")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("WireType")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("PrinterId", "JobId");

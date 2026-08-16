@@ -1,9 +1,6 @@
 using System;
 
-using Homespool.Host.PrusaConnect.DTO.EventMessages;
-using Homespool.Host.PrusaConnect.DTO.Telemetry;
-
-namespace Homespool.Host.PrusaConnect;
+namespace Homespool.Host.Telemetry;
 
 /// <summary>
 /// One message queued for <see cref="TelemetryWriter"/> to persist. A closed hierarchy rather than
@@ -12,9 +9,9 @@ namespace Homespool.Host.PrusaConnect;
 /// </summary>
 public abstract record TelemetryWriteItem(int PrinterId, DateTimeOffset ReceivedAt)
 {
-    public sealed record TelemetryItem(int PrinterId, DateTimeOffset ReceivedAt, TelemetryDTO Data)
+    public sealed record TelemetryItem(int PrinterId, DateTimeOffset ReceivedAt, TelemetryUpdate Data)
         : TelemetryWriteItem(PrinterId, ReceivedAt);
 
-    public sealed record EventItem(int PrinterId, DateTimeOffset ReceivedAt, EventDTO Data)
+    public sealed record EventItem(int PrinterId, DateTimeOffset ReceivedAt, PrinterEventRecord Data)
         : TelemetryWriteItem(PrinterId, ReceivedAt);
 }

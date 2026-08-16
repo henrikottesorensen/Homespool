@@ -97,6 +97,16 @@ public class CertificateOptions
     public int AuthorityValidityDays { get; set; } = 5475;
 
     /// <summary>
+    /// How long the Data Protection key-protection certificate is valid, in days. Default fifteen
+    /// years, matching the authority.
+    /// </summary>
+    /// <remarks>
+    /// Long deliberately: nothing verifies that certificate, so an expiry buys no security and would
+    /// only ever surface as an outage. See <see cref="DataProtectionCertificate"/>.
+    /// </remarks>
+    public int KeyProtectionValidityDays { get; set; } = 5475;
+
+    /// <summary>
     /// How long an issued leaf is valid, in days. Default two years.
     /// </summary>
     /// <remarks>

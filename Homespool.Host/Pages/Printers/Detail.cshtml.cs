@@ -17,6 +17,7 @@ using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.Queue;
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Printers;
@@ -232,10 +233,10 @@ public class DetailModel : PageModel
         Statistics = statistics;
         Connected = _connectionRegistry.IsConnected(statistics.Printer.Id);
 
-        CanUse = await _access.AllowsAsync(statistics.Printer.Id, user.Id, PrinterOperation.ChangeQueue,
+        CanUse = await _access.AllowsAsync(statistics.Printer.Id, user.Id, Capability.Print,
                                            cancellationToken);
 
-        CanManage = await _access.AllowsAsync(statistics.Printer.Id, user.Id, PrinterOperation.ManagePrinter,
+        CanManage = await _access.AllowsAsync(statistics.Printer.Id, user.Id, Capability.ManagePrinter,
                                               cancellationToken);
 
         SlicerUrl = $"{Request.Scheme}://{Request.Host}/compat/octoprint/{statistics.Printer.Uuid}/";

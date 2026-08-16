@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 
+using Homespool.Model;
+
 namespace Homespool.Host.PrusaConnect.Commands;
 
 /// <summary>
@@ -46,6 +48,25 @@ public interface ISendableCommand : ICommand
     /// </para>
     /// </remarks>
     bool ExpectsReply => true;
+
+    /// <summary>
+    /// What an account must hold to send this command. <b>Declared by the command rather than passed
+    /// in by the caller</b>, so a new call site cannot pick a weaker one by accident.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The default is the strict answer</b>, so a command that says nothing is treated as steering
+    /// the machine. Overriding it is how a command declares itself weaker, which is a decision worth
+    /// making explicitly and in one visible place.
+    /// </para>
+    /// <para>
+    /// <b><see cref="StopPrint"/> is the subtle one.</b> It declares <see cref="Capability.Print"/>,
+    /// which alone would let anybody with that capability stop anybody's print - so the ownership half
+    /// is enforced above, by <c>PrintStopService</c>, which every path to a stop goes through. The
+    /// capability here is the floor, not the whole rule.
+    /// </para>
+    /// </remarks>
+    Capability RequiredCapability => Capability.ControlPrinter;
 }
 
 /// <summary>

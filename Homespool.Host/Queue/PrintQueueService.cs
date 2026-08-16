@@ -10,6 +10,7 @@ using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Queue;
@@ -67,7 +68,7 @@ public class PrintQueueService
                                                             long userId,
                                                             CancellationToken cancellationToken)
     {
-        await _access.RequireAsync(printerId, userId, PrinterOperation.ViewQueue, cancellationToken);
+        await _access.RequireAsync(printerId, userId, Capability.ViewQueue, cancellationToken);
 
         return await _dbContext.QueuedPrints
                                .AsNoTracking()
@@ -94,7 +95,7 @@ public class PrintQueueService
                                                 string fileName,
                                                 CancellationToken cancellationToken)
     {
-        await _access.RequireAsync(printerId, userId, PrinterOperation.ChangeQueue, cancellationToken);
+        await _access.RequireAsync(printerId, userId, Capability.Print, cancellationToken);
 
         PrintFile? file = await _files.ResolveAsync(userId, fileName, cancellationToken);
 
@@ -171,7 +172,9 @@ public class PrintQueueService
             return false;
         }
 
-        await _access.RequireAsync(job.PrinterId, userId, PrinterOperation.ChangeQueue, cancellationToken);
+        // Reordering moves other people's work as well as your own - there is one queue - so it is
+        // the same right as withdrawing somebody else's, not the same right as adding your own.
+        await _access.RequireAsync(job.PrinterId, userId, Capability.ControlPrinter, cancellationToken);
 
         List<QueuedPrint> queue = await _dbContext.QueuedPrints
                                                   .Where(candidate => candidate.PrinterId == job.PrinterId)
@@ -196,10 +199,21 @@ public class PrintQueueService
     /// Removes a queued print. Cancelling <i>is</i> deleting the row - there is no cancelled state,
     /// because a queue entry records an intention and the intention is gone.
     /// </summary>
-    /// <exception cref="TeamAccessDeniedException">Caller lacks <c>CanUse</c> on the printer's team.</exception>
+    /// <exception cref="TeamAccessDeniedException">
+    /// The caller may not withdraw this entry - see the remarks.
+    /// </exception>
     /// <remarks>
+    /// <para>
     /// <b>This never stops a print.</b> A job the loop has already started is a <c>Job</c>, not a queue
     /// entry, and stopping it is a separate deliberate act - "don't cancel prints on people" (Henrik).
+    /// </para>
+    /// <para>
+    /// <b>Whose entry it is decides who may remove it.</b> <see cref="Capability.Print"/> withdraws
+    /// your own, <see cref="Capability.ControlPrinter"/> withdraws anybody's. That narrows the older
+    /// rule that anyone able to use the printer could cancel anyone's entry - which was written when
+    /// the vocabulary could not tell the two apart. "The queue is the printer's, not the queuer's"
+    /// still holds, for whoever holds <see cref="Capability.ControlPrinter"/>.
+    /// </para>
     /// </remarks>
     /// <returns>False if there is no such queued print.</returns>
     public async Task<bool> CancelAsync(Guid trackingId, long userId, CancellationToken cancellationToken)
@@ -213,7 +227,7 @@ public class PrintQueueService
             return false;
         }
 
-        await _access.RequireAsync(job.PrinterId, userId, PrinterOperation.ChangeQueue, cancellationToken);
+        await _access.RequireWithdrawingAsync(job.PrinterId, userId, job.QueuedByUserId, cancellationToken);
 
         _dbContext.QueuedPrints.Remove(job);
         await _dbContext.SaveChangesAsync(cancellationToken);

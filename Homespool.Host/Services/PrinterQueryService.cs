@@ -30,24 +30,38 @@ public class PrinterQueryService
 
     private readonly HomespoolDbContext _dbContext;
     private readonly PrinterAccessService _access;
+
+    /// <summary>
+    /// Which teams the caller may see printers on. <b>Listing cannot use
+    /// <see cref="PrinterAccessService"/></b>, which answers about one printer at a time; and the
+    /// capability column cannot be matched in SQL without a <c>LIKE</c> that is neither indexable nor
+    /// exact. See <see cref="TeamCapabilityLookup"/>.
+    /// </summary>
+    private readonly TeamCapabilityLookup _teams;
     private readonly TimeProvider _timeProvider;
 
-    public PrinterQueryService(HomespoolDbContext dbContext, PrinterAccessService access, TimeProvider timeProvider)
+    public PrinterQueryService(HomespoolDbContext dbContext,
+                               PrinterAccessService access,
+                               TeamCapabilityLookup teams,
+                               TimeProvider timeProvider)
     {
         _dbContext = dbContext;
         _access = access;
+        _teams = teams;
         _timeProvider = timeProvider;
     }
 
     /// <summary>
-    /// Every printer belonging to a team <paramref name="userId"/> has <c>CanRead</c> on, oldest
-    /// first. Read-only, so untracked.
+    /// Every printer belonging to a team <paramref name="userId"/> may view, oldest first. Read-only,
+    /// so untracked.
     /// </summary>
     public async Task<IReadOnlyList<Printer>> ListPrintersForUserAsync(long userId, CancellationToken cancellationToken)
     {
+        IReadOnlyCollection<int> teams = await _teams.TeamsAllowingAsync(userId, Capability.ViewPrinter, cancellationToken);
+
         return await _dbContext.Printers
                                .AsNoTracking()
-                               .Where(p => _dbContext.TeamMembers.Any(m => m.TeamId == p.TeamId && m.UserId == userId && m.CanRead))
+                               .Where(p => teams.Contains(p.TeamId))
                                .OrderBy(p => p.Id)
                                .ToListAsync(cancellationToken);
     }
@@ -67,9 +81,11 @@ public class PrinterQueryService
         long userId,
         CancellationToken cancellationToken)
     {
+        IReadOnlyCollection<int> teams = await _teams.TeamsAllowingAsync(userId, Capability.ViewPrinter, cancellationToken);
+
         return await _dbContext.Printers
                                .AsNoTracking()
-                               .Where(p => _dbContext.TeamMembers.Any(m => m.TeamId == p.TeamId && m.UserId == userId && m.CanRead))
+                               .Where(p => teams.Contains(p.TeamId))
                                .OrderBy(p => p.Id)
                                .Select(p => new PrinterWithState(
                                            p,
@@ -84,12 +100,13 @@ public class PrinterQueryService
     /// <see cref="ListPrintersWithStateForUserAsync"/> for why the join is necessary rather than
     /// convenient.
     /// </summary>
-    public Task<PrinterWithState?> GetPrinterWithStateForUserAsync(Guid uuid, long userId, CancellationToken cancellationToken)
+    public async Task<PrinterWithState?> GetPrinterWithStateForUserAsync(Guid uuid, long userId, CancellationToken cancellationToken)
     {
-        return _dbContext.Printers
+        IReadOnlyCollection<int> teams = await _teams.TeamsAllowingAsync(userId, Capability.ViewPrinter, cancellationToken);
+
+        return await _dbContext.Printers
                          .AsNoTracking()
-                         .Where(p => p.Uuid == uuid &&
-                                     _dbContext.TeamMembers.Any(m => m.TeamId == p.TeamId && m.UserId == userId && m.CanRead))
+                         .Where(p => p.Uuid == uuid && teams.Contains(p.TeamId))
                          .Select(p => new PrinterWithState(
                                      p,
                                      _dbContext.PrinterLiveStates.SingleOrDefault(s => s.PrinterId == p.Id),
@@ -110,7 +127,7 @@ public class PrinterQueryService
     /// </remarks>
     public Task<Printer?> GetPrinterForUserAsync(Guid uuid, long userId, CancellationToken cancellationToken)
     {
-        return _access.FindAsync(uuid, userId, PrinterOperation.ViewPrinter, cancellationToken);
+        return _access.FindAsync(uuid, userId, Capability.ViewPrinter, cancellationToken);
     }
 
     /// <summary>
@@ -148,14 +165,14 @@ public class PrinterQueryService
                                                         bool allowed,
                                                         CancellationToken cancellationToken)
     {
-        if (await _access.FindAsync(uuid, userId, PrinterOperation.ViewPrinter, cancellationToken) is null)
+        if (await _access.FindAsync(uuid, userId, Capability.ViewPrinter, cancellationToken) is null)
         {
             return null;
         }
 
         Printer printer = await _dbContext.Printers.SingleAsync(p => p.Uuid == uuid, cancellationToken);
 
-        await _access.RequireAsync(printer.Id, userId, PrinterOperation.ManagePrinter, cancellationToken);
+        await _access.RequireAsync(printer.Id, userId, Capability.ManagePrinter, cancellationToken);
 
         printer.RemoteReadyAllowed = allowed;
         printer.UpdatedAt = _timeProvider.GetUtcNow();
@@ -174,7 +191,7 @@ public class PrinterQueryService
         // Two questions, two refusal shapes, and the order matters: a caller who cannot even read
         // this printer gets null, because saying "forbidden" would confirm the UUID exists. One who
         // can read but not manage has already been shown it, so naming the refusal is safe.
-        if (await _access.FindAsync(uuid, userId, PrinterOperation.ViewPrinter, cancellationToken) is null)
+        if (await _access.FindAsync(uuid, userId, Capability.ViewPrinter, cancellationToken) is null)
         {
             return null;
         }
@@ -182,7 +199,7 @@ public class PrinterQueryService
         // Tracked, unlike the gate's copy - this one is about to be edited and saved.
         Printer printer = await _dbContext.Printers.SingleAsync(p => p.Uuid == uuid, cancellationToken);
 
-        await _access.RequireAsync(printer.Id, userId, PrinterOperation.ManagePrinter, cancellationToken);
+        await _access.RequireAsync(printer.Id, userId, Capability.ManagePrinter, cancellationToken);
 
         printer.Name = name;
         printer.Location = location;
@@ -217,12 +234,12 @@ public class PrinterQueryService
                                                                            long userId,
                                                                            CancellationToken cancellationToken)
     {
+        IReadOnlyCollection<int> teams = await _teams.TeamsAllowingAsync(userId, Capability.ViewPrinter, cancellationToken);
+
         Printer? printer = await _dbContext.Printers
                                            .AsNoTracking()
                                            .Include(p => p.Team)
-                                           .SingleOrDefaultAsync(p => p.Uuid == uuid &&
-                                                                      _dbContext.TeamMembers.Any(m => m.TeamId == p.TeamId &&
-                                                                          m.UserId == userId && m.CanRead),
+                                           .SingleOrDefaultAsync(p => p.Uuid == uuid && teams.Contains(p.TeamId),
                                                                  cancellationToken);
 
         if (printer is null)

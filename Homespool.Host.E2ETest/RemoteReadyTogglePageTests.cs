@@ -13,6 +13,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Data;
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.E2ETest;
@@ -198,7 +199,10 @@ public sealed class RemoteReadyTogglePageTests : IAsyncLifetime, IDisposable
         TeamMember membership = await context.TeamMembers
                                              .SingleAsync(m => m.UserId == user.Id, TestContext.Current.CancellationToken);
 
-        membership.CanManage.Should().BeTrue("the default team makes its creator a manager, which this needs");
+        CapabilitySet.Parse(membership.Capabilities)
+                     .Allows(Capability.ManagePrinter)
+                     .Should()
+                     .BeTrue("the default team makes its creator a manager, which this needs");
 
         context.Printers.Add(new Printer
         {

@@ -14,6 +14,7 @@ using Homespool.Host.Authorisation;
 using Homespool.Host.Cameras;
 using Homespool.Host.Localisation;
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Cameras;
@@ -121,7 +122,7 @@ public class IndexModel : PageModel
         if (edit is Guid uuid)
         {
             Editing = await _access
-                            .FindAsync(uuid, userId.Value, CameraOperation.ManageCamera, cancellationToken)
+                            .FindAsync(uuid, userId.Value, Capability.ManageCamera, cancellationToken)
                             .ConfigureAwait(false);
         }
 

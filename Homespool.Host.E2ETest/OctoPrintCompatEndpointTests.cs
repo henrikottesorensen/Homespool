@@ -609,9 +609,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime, IDisposable
         {
             TeamId = owner.TeamId,
             UserId = readerId,
-            CanRead = true,
-            CanUse = false,
-            CanManage = false,
+            Capabilities = CapabilitySet.Format(CapabilityPresets.Viewer),
             IsDefault = false,
         });
 

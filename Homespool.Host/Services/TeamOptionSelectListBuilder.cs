@@ -3,6 +3,7 @@ using System.Linq;
 
 using Microsoft.AspNetCore.Mvc.Rendering;
 
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Services;
@@ -25,7 +26,8 @@ public static class TeamOptionSelectListBuilder
     public static IReadOnlyList<SelectListItem> BuildManageableOptions(IReadOnlyList<TeamMember> memberships)
     {
         return memberships
-               .Where(m => m.CanManage)
+               .AsEnumerable()
+               .Where(m => CapabilitySet.Parse(m.Capabilities).Allows(Capability.ManagePrinter))
                .Select(m => new SelectListItem(m.Team?.Name ?? $"Team #{m.TeamId}", m.TeamId.ToString(), m.IsDefault))
                .ToList();
     }

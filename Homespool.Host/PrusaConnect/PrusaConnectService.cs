@@ -524,7 +524,7 @@ public class PrusaConnectService
     {
         TeamMember? membership = await _teamService.GetMemberAsync(teamId, userId, CancellationToken.None);
 
-        if (membership is null || !membership.CanManage)
+        if (membership is null || !CapabilitySet.Parse(membership.Capabilities).Allows(Capability.ManagePrinter))
         {
             throw new TeamAccessDeniedException();
         }

@@ -327,6 +327,15 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // One row per user per team.
             entity.HasKey(e => new { e.TeamId, e.UserId });
 
+            // Required with an empty default rather than nullable: "grants nothing" is a real and
+            // frequent state, and having two spellings of it - "" and NULL - would mean every reader
+            // handling both. CapabilitySet.Parse treats them alike anyway; this stops the second one
+            // ever being written.
+            entity.Property(e => e.Capabilities)
+                  .IsRequired()
+                  .HasMaxLength(TeamMember.CapabilitiesMaxLength)
+                  .HasDefaultValue(string.Empty);
+
             entity.HasOne(e => e.Team)
                   .WithMany(e => e.Members)
                   .HasForeignKey(e => e.TeamId)

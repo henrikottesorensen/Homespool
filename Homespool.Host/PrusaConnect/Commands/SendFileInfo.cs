@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
+using Homespool.Model;
 
 namespace Homespool.Host.PrusaConnect.Commands;
 
@@ -45,4 +46,8 @@ public class SendFileInfo : ISendableCommand<FileInfoEventDataDTO>
     {
         ["path"] = Path,
     };
+
+    /// <inheritdoc />
+    /// <remarks>It asks a question and changes nothing. An endpoint exposing it may still gate itself higher.</remarks>
+    public Capability RequiredCapability => Capability.ViewPrinter;
 }

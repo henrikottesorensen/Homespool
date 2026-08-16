@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using AwesomeAssertions;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 using Homespool.Data;
 using Homespool.Host.Authorisation;
@@ -73,9 +74,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
                 new TeamMember
                 {
                     UserId = userId,
-                    CanRead = canRead,
-                    CanUse = canUse,
-                    CanManage = canManage,
+                    Capabilities = TestMemberships.Graded(canRead, canUse, canManage),
                     IsDefault = true,
                 },
             },
@@ -127,7 +126,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
         // Act
         IReadOnlyList<Printer> printers =
-            await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System).ListPrintersForUserAsync(
+            await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System).ListPrintersForUserAsync(
                 1, CancellationToken.None);
 
         // Assert
@@ -146,7 +145,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
         // Act
         IReadOnlyList<Printer> printers =
-            await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System).ListPrintersForUserAsync(
+            await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System).ListPrintersForUserAsync(
                 1, CancellationToken.None);
 
         // Assert
@@ -167,7 +166,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
         // Act
         Printer? found =
-            await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System).GetPrinterForUserAsync(
+            await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System).GetPrinterForUserAsync(
                 printer.Uuid, 1, CancellationToken.None);
 
         // Assert
@@ -190,7 +189,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
         // Act
         Printer? found =
-            await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System).GetPrinterForUserAsync(
+            await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System).GetPrinterForUserAsync(
                 printer.Uuid, 1, CancellationToken.None);
 
         // Assert
@@ -206,7 +205,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
         // Act
         Printer? found =
-            await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System).GetPrinterForUserAsync(
+            await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System).GetPrinterForUserAsync(
                 Guid.NewGuid(), 1, CancellationToken.None);
 
         // Assert
@@ -226,7 +225,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
         Printer printer = await AddPrinterAsync(context, membership.TeamId, name: "Old name", location: "Old location");
 
         // Act
-        PrinterWithState? updated = await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
+        PrinterWithState? updated = await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
             .UpdatePrinterAsync(printer.Uuid, 1, "New name", "New location", CancellationToken.None);
 
         // Assert
@@ -253,7 +252,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
         // Act
-        Func<Task> update = () => new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
+        Func<Task> update = () => new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
             .UpdatePrinterAsync(printer.Uuid, 1, "New name", null, CancellationToken.None);
 
         // Assert
@@ -275,7 +274,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
         Printer printer = await AddPrinterAsync(context, someoneElses.TeamId);
 
         // Act
-        PrinterWithState? updated = await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
+        PrinterWithState? updated = await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
             .UpdatePrinterAsync(printer.Uuid, 1, "New name", null, CancellationToken.None);
 
         // Assert
@@ -290,7 +289,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
 
         // Act
-        PrinterWithState? updated = await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
+        PrinterWithState? updated = await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
             .UpdatePrinterAsync(Guid.NewGuid(), 1, "New name", null, CancellationToken.None);
 
         // Assert
@@ -312,7 +311,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
         DateTimeOffset before = DateTimeOffset.UtcNow;
 
         // Act
-        PrinterWithState? updated = await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
+        PrinterWithState? updated = await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
             .UpdatePrinterAsync(printer.Uuid, 1, null, null, CancellationToken.None);
 
         // Assert
@@ -330,7 +329,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
         // Act
         PrinterStatistics? statistics =
-            await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
+            await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
                 .GetPrinterStatisticsForUserAsync(Guid.NewGuid(), 1, CancellationToken.None);
 
         // Assert
@@ -350,7 +349,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
         // Act
         PrinterStatistics? statistics =
-            await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
+            await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
                 .GetPrinterStatisticsForUserAsync(printer.Uuid, 1, CancellationToken.None);
 
         // Assert
@@ -369,7 +368,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
         // Act
         PrinterStatistics? statistics =
-            await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
+            await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
                 .GetPrinterStatisticsForUserAsync(printer.Uuid, 1, CancellationToken.None);
 
         // Assert
@@ -389,7 +388,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
         // Act
         PrinterStatistics? statistics =
-            await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
+            await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
                 .GetPrinterStatisticsForUserAsync(printer.Uuid, 1, CancellationToken.None);
 
         // Assert
@@ -437,7 +436,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
         // Act
         PrinterStatistics? statistics =
-            await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
+            await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
                 .GetPrinterStatisticsForUserAsync(printer.Uuid, 1, CancellationToken.None);
 
         // Assert
@@ -478,7 +477,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
         // Act
         PrinterStatistics? statistics =
-            await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
+            await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
                 .GetPrinterStatisticsForUserAsync(printer.Uuid, 1, CancellationToken.None);
 
         // Assert

@@ -93,9 +93,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
                 new TeamMember
                 {
                     UserId = userId,
-                    CanRead = true,
-                    CanUse = true,
-                    CanManage = canManage,
+                    Capabilities = TestMemberships.Graded(true, true, canManage),
                     IsDefault = isDefault,
                 },
             },

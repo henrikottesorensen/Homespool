@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
+using Homespool.Host.Authorisation;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Model;
@@ -35,12 +36,18 @@ public class PrintStopService
 {
     private readonly HomespoolDbContext _dbContext;
     private readonly PrinterCommandService _commands;
+
+    private readonly PrinterAccessService _access;
     private readonly ILogger<PrintStopService> _logger;
 
-    public PrintStopService(HomespoolDbContext dbContext, PrinterCommandService commands, ILogger<PrintStopService> logger)
+    public PrintStopService(HomespoolDbContext dbContext,
+                            PrinterCommandService commands,
+                            PrinterAccessService access,
+                            ILogger<PrintStopService> logger)
     {
         _dbContext = dbContext;
         _commands = commands;
+        _access = access;
         _logger = logger;
     }
 
@@ -61,11 +68,18 @@ public class PrintStopService
     /// falsehood this column exists to prevent - just pointing the other way.
     /// </para>
     /// <para>
-    /// <b>The read happens before any permission check, deliberately.</b> Authorisation belongs to
-    /// <see cref="PrinterCommandService"/> and is not duplicated here - the controller's own remarks
-    /// say why a second answer to that question would be worse than none. A caller who may not use
-    /// this printer gets an exception out of the send, having had an id read into a local and thrown
-    /// away: nothing is returned from it and nothing is written.
+    /// <b>The ownership half of the permission lives here, and only here.</b> <c>StopPrint</c>
+    /// declares <see cref="Capability.Print"/> as its floor, which alone would let anyone holding it
+    /// stop anyone's print; what narrows that to <i>your own</i> print is
+    /// <see cref="PrinterAccessService.RequireWithdrawingAsync"/>, called below. This is the one place
+    /// that can make the check, because it is the one place that has read the open row and therefore
+    /// knows who queued it - and <b>every path to a stop comes through here</b>, which is what makes
+    /// "only here" safe rather than fragile. <see cref="Capability.ControlPrinter"/> stops anybody's.
+    /// </para>
+    /// <para>
+    /// <b>The rest of authorisation is still not duplicated here.</b> Whether this account may touch
+    /// this printer at all belongs to <see cref="PrinterCommandService"/>, and a caller who may not
+    /// gets an exception out of the send.
     /// </para>
     /// </remarks>
     /// <returns>
@@ -75,11 +89,19 @@ public class PrintStopService
     /// </returns>
     public async Task<CommandOutcome?> StopAsync(int printerId, long userId, CancellationToken cancellationToken)
     {
-        long? activeId = await _dbContext.PrintJobs
-                                         .AsNoTracking()
-                                         .Where(job => job.PrinterId == printerId && job.EndedAt == null)
-                                         .Select(job => (long?)job.Id)
-                                         .SingleOrDefaultAsync(cancellationToken);
+        ActivePrint? active = await _dbContext.PrintJobs
+                                              .AsNoTracking()
+                                              .Where(job => job.PrinterId == printerId && job.EndedAt == null)
+                                              .Select(job => new ActivePrint(job.Id, job.QueuedByUserId))
+                                              .SingleOrDefaultAsync(cancellationToken);
+
+        // Withdrawing your own work is Print; withdrawing somebody else's is ControlPrinter. An open
+        // row nobody owns cannot happen - QueuedByUserId is required - so a missing row is the only
+        // case with nothing to check against, and the send's own gate still applies to it.
+        if (active is { } job)
+        {
+            await _access.RequireWithdrawingAsync(printerId, userId, job.QueuedByUserId, cancellationToken);
+        }
 
         CommandOutcome? outcome = await _commands.SendCommandAsync(printerId, new StopPrint(), userId, cancellationToken);
 
@@ -88,7 +110,7 @@ public class PrintStopService
             return outcome;
         }
 
-        if (activeId is not { } id)
+        if (active is null)
         {
             // Accepted with nothing here to attribute it to - a print started before this process
             // knew about it, or one already closed. Worth a line, because it is the shape of a
@@ -107,7 +129,7 @@ public class PrintStopService
         // StoppedByUserId == null keeps the first stop rather than the last: two people pressing stop
         // seconds apart both get an accepted ack, and the one that caused it is the first.
         int marked = await _dbContext.PrintJobs
-                                     .Where(job => job.Id == id
+                                     .Where(job => job.Id == active.Id
                                                    && job.StoppedByUserId == null
                                                    && (job.EndedAt == null || job.State == PrintState.Stopped))
                                      .ExecuteUpdateAsync(
@@ -116,9 +138,12 @@ public class PrintStopService
 
         if (marked > 0)
         {
-            _logger.LogInformation("[{PrinterId}] Print {JobId} stopped by user {UserId}", printerId, id, userId);
+            _logger.LogInformation("[{PrinterId}] Print {JobId} stopped by user {UserId}", printerId, active.Id, userId);
         }
 
         return outcome;
     }
+
+    /// <summary>The open print, reduced to the two things a stop needs: which row, and whose work.</summary>
+    private sealed record ActivePrint(long Id, long QueuedByUserId);
 }

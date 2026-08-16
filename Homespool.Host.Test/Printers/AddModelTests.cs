@@ -140,9 +140,7 @@ public sealed class AddModelTests : IDisposable
         {
             TeamId = usableOnly.Id,
             UserId = user.Id,
-            CanRead = true,
-            CanUse = true,
-            CanManage = false,
+            Capabilities = TestMemberships.Graded(true, true, false),
             IsDefault = false,
         });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);

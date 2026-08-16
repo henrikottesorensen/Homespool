@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 
 using Homespool.Host.Authorisation;
 using Homespool.Host.Cameras;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Controllers;
@@ -84,7 +85,7 @@ public class CameraController : ControllerBase
         }
 
         Camera? camera = await _access
-                               .FindAsync(uuid, userId.Value, CameraOperation.ViewCamera, cancellationToken)
+                               .FindAsync(uuid, userId.Value, Capability.ViewCamera, cancellationToken)
                                .ConfigureAwait(false);
 
         // Not found and not permitted are deliberately the same answer, following

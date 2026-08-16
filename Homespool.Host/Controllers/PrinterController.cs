@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.Authorisation;
 using Homespool.Host.DTO;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
@@ -67,6 +68,7 @@ public class PrinterController : ControllerBase
     private readonly PrinterCommandService _commands;
     private readonly PrintStopService _stops;
     private readonly PrinterQueryService _printers;
+    private readonly PrinterAccessService _access;
     private readonly UserManager<HSUser> _userManager;
     private readonly ILogger<PrinterController> _logger;
 
@@ -75,6 +77,7 @@ public class PrinterController : ControllerBase
                              PrinterCommandService commands,
                              PrintStopService stops,
                              PrinterQueryService printers,
+                             PrinterAccessService access,
                              UserManager<HSUser> userManager,
                              ILogger<PrinterController> logger)
     {
@@ -83,6 +86,7 @@ public class PrinterController : ControllerBase
         _commands = commands;
         _stops = stops;
         _printers = printers;
+        _access = access;
         _userManager = userManager;
         _logger = logger;
     }
@@ -243,9 +247,11 @@ public class PrinterController : ControllerBase
     /// though - see <see cref="PrinterStorageReadDTO.Path"/>.
     /// </para>
     /// <para>
-    /// Gated on <c>CanUse</c> rather than <c>CanRead</c>, because although this reads, it does so by
-    /// making the printer go and work: <see cref="PrinterCommandService"/> is the one place that
-    /// decides, and it decides the same way for every command.
+    /// <b>Gated here, on <see cref="Capability.ControlPrinter"/>, rather than left to the command.</b>
+    /// Although this reads, it does so by making the printer go and work - and
+    /// <see cref="SendFileInfo"/> itself only requires <see cref="Capability.ViewPrinter"/>, because
+    /// the queue loop asks the same question on behalf of whoever queued a print. So the endpoint is
+    /// the thing that has to be stricter, and says so.
     /// </para>
     /// </remarks>
     [HttpGet]
@@ -278,6 +284,11 @@ public class PrinterController : ControllerBase
         string trimmed = path?.Trim('/') ?? string.Empty;
         SendFileInfo command = new() { Path = trimmed.Length == 0 ? "/usb" : $"/usb/{trimmed}" };
         HSUser user = (await _userManager.GetUserAsync(User))!;
+
+        if (!await _access.AllowsAsync(printer.Id, user.Id, Capability.ControlPrinter, cancellationToken))
+        {
+            return this.Failure(StatusCodes.Status403Forbidden, "You may not browse this printer's storage.");
+        }
 
         try
         {

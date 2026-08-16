@@ -15,6 +15,7 @@ using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Queue;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -236,7 +237,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     /// entry.
     /// </summary>
     [Fact]
-    public async Task AnotherMemberWithCanUseMayCancelSomebodyElsesJob()
+    public async Task AMemberWhoMayControlThePrinterMayCancelSomebodyElsesJob()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
@@ -256,6 +257,58 @@ public sealed class PrintQueueServiceTests : IDisposable
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
     }
 
+    /// <summary>
+    /// <c>Print</c> withdraws your own work. Somebody who may put work on a printer may take it off
+    /// again without also being trusted to touch the machine.
+    /// </summary>
+    [Fact]
+    public async Task SomebodyWhoMayOnlyPrintMayCancelTheirOwnEntry()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, canUse: true);
+        await AddUserAsync(context, Bob, "bob@example.com");
+        await AddMemberAsync(context, printer.TeamId, Bob, Capability.ViewQueue, Capability.Print);
+        PrintQueueService queue = NewQueue(context);
+        await UploadForAsync(context, Bob, "one.gcode");
+
+        QueuedPrint job = await queue.EnqueueAsync(printer.Id, Bob, "one.gcode",
+                                                   TestContext.Current.CancellationToken);
+
+        // Act
+        bool cancelled = await queue.CancelAsync(job.TrackingId, Bob, TestContext.Current.CancellationToken);
+
+        // Assert
+        cancelled.Should().BeTrue();
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+    }
+
+    /// <summary>
+    /// <b>The refusal that gives <c>Print</c> its shape.</b> Withdrawing somebody else's work is
+    /// <c>ControlPrinter</c>, so a contributor cannot cancel a print they did not queue - and the
+    /// entry is still there afterwards, which is the half that a throw alone would not prove.
+    /// </summary>
+    [Fact]
+    public async Task SomebodyWhoMayOnlyPrintMayNotCancelSomebodyElsesEntry()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, canUse: true);
+        await AddMemberAsync(context, printer.TeamId, Bob, Capability.ViewQueue, Capability.Print);
+        PrintQueueService queue = NewQueue(context);
+        await UploadAsync(context, "one.gcode");
+
+        QueuedPrint job = await queue.EnqueueAsync(printer.Id, Alice, "one.gcode",
+                                                   TestContext.Current.CancellationToken);
+
+        // Act
+        Func<Task> act = () => queue.CancelAsync(job.TrackingId, Bob, TestContext.Current.CancellationToken);
+
+        // Assert
+        await act.Should().ThrowAsync<TeamAccessDeniedException>();
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+    }
+
     [Fact]
     public async Task CancellingAJobThatIsNotThereIsFalseRatherThanAThrow()
     {
@@ -271,16 +324,38 @@ public sealed class PrintQueueServiceTests : IDisposable
         cancelled.Should().BeFalse();
     }
 
+    /// <summary>A second account, needed before that person can own a file.</summary>
+    private static async Task AddUserAsync(HomespoolDbContext context, long userId, string email)
+    {
+        context.Users.Add(new HSUser(email)
+        {
+            Id = userId,
+            Email = email,
+            NormalizedEmail = email.ToUpperInvariant(),
+            NormalizedUserName = email.ToUpperInvariant(),
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
     private static async Task AddMemberAsync(HomespoolDbContext context, int teamId, long userId, bool canUse)
     {
         context.TeamMembers.Add(new TeamMember
         {
             TeamId = teamId,
             UserId = userId,
-            CanRead = true,
-            CanUse = canUse,
-            CanManage = false,
+            Capabilities = TestMemberships.Graded(true, canUse, false),
         });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    private static async Task AddMemberAsync(HomespoolDbContext context,
+                                             int teamId,
+                                             long userId,
+                                             params Capability[] capabilities)
+    {
+        context.TeamMembers.Add(TestMemberships.With(teamId, userId, capabilities));
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
@@ -314,11 +389,17 @@ public sealed class PrintQueueServiceTests : IDisposable
     /// <summary>Puts real files on disk for Alice, so the catalog has something to resolve.</summary>
     private async Task UploadAsync(HomespoolDbContext context, params string[] names)
     {
+        await UploadForAsync(context, Alice, names);
+    }
+
+    /// <summary>The store is keyed by user, so a second person queueing needs a file of their own.</summary>
+    private async Task UploadForAsync(HomespoolDbContext context, long userId, params string[] names)
+    {
         PrintFileCatalog catalog = NewCatalog(context);
 
         foreach (string name in names)
         {
-            await catalog.SaveAsync(Alice, name, new MemoryStream([1, 2, 3]), overwrite: false,
+            await catalog.SaveAsync(userId, name, new MemoryStream([1, 2, 3]), overwrite: false,
                                     TestContext.Current.CancellationToken);
         }
     }
@@ -335,7 +416,7 @@ public sealed class PrintQueueServiceTests : IDisposable
 
     private PrintQueueService NewQueue(HomespoolDbContext context)
     {
-        return new(context, new PrinterAccessService(context), NewCatalog(context), TimeProvider.System, _signal);
+        return new(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), NewCatalog(context), TimeProvider.System, _signal);
     }
 
     private HomespoolDbContext NewContext()

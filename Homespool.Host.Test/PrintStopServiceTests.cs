@@ -190,7 +190,10 @@ public sealed class PrintStopServiceTests : IDisposable
     private PrintStopService NewService(HomespoolDbContext context)
     {
         return new PrintStopService(context,
-                                    new PrinterCommandService(new PrinterAccessService(context), _registry),
+                                    new PrinterCommandService(
+                                        new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
+                                        _registry),
+                                    new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
                                     NullLogger<PrintStopService>.Instance);
     }
 
@@ -274,8 +277,8 @@ public sealed class PrintStopServiceTests : IDisposable
         context.Teams.Add(team);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = Stopper, CanRead = true, CanUse = true });
-        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = SomebodyElse, CanRead = true, CanUse = true });
+        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = Stopper, Capabilities = TestMemberships.Graded(true, true, false) });
+        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = SomebodyElse, Capabilities = TestMemberships.Graded(true, true, false) });
         context.Printers.Add(new Printer { Id = PrinterId, Uuid = Guid.NewGuid(), TeamId = team.Id });
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);

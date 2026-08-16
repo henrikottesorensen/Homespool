@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -101,10 +102,8 @@ public sealed class TeamServiceTests : IDisposable
         context.Teams.AddRange(owned, someoneElses);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        await new TeamService(context).AddMemberAsync(owned.Id, 1, canRead: true, canUse: true, canManage: true,
-                                                      CancellationToken.None);
-        await new TeamService(context).AddMemberAsync(someoneElses.Id, 2, canRead: true, canUse: true, canManage: true,
-                                                      CancellationToken.None);
+        await new TeamService(context).AddMemberAsync(owned.Id, 1, CapabilityPresets.Manager, CancellationToken.None);
+        await new TeamService(context).AddMemberAsync(someoneElses.Id, 2, CapabilityPresets.Manager, CancellationToken.None);
 
         // Act
         IReadOnlyList<TeamMember> memberships = await new TeamService(context).GetTeamsForUserAsync(1, CancellationToken.None);

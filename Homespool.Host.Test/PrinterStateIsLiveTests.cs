@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using AwesomeAssertions;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 using Homespool.Data;
 using Homespool.Host.Authorisation;
@@ -82,9 +83,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         {
             TeamId = team.Id,
             UserId = userId,
-            CanRead = true,
-            CanUse = canUse,
-            CanManage = canManage,
+            Capabilities = TestMemberships.Graded(true, canUse, canManage),
             IsDefault = true,
         });
 
@@ -131,7 +130,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
 
         // Act
         IReadOnlyList<PrinterWithState> listed =
-            await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
+            await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
                 .ListPrintersWithStateForUserAsync(1, CancellationToken.None);
 
         // Assert
@@ -153,7 +152,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         Printer printer = await AddPrinterAsync(context, userId: 1, liveStatus: PrinterStatus.Paused);
 
         // Act
-        PrinterWithState? found = await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
+        PrinterWithState? found = await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
             .GetPrinterWithStateForUserAsync(printer.Uuid, 1, CancellationToken.None);
 
         // Assert
@@ -174,7 +173,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
 
         // Act
         IReadOnlyList<PrinterWithState> listed =
-            await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
+            await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
                 .ListPrintersWithStateForUserAsync(1, CancellationToken.None);
 
         // Assert
@@ -206,7 +205,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
-        PrinterWithState? found = await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
+        PrinterWithState? found = await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
             .GetPrinterWithStateForUserAsync(printer.Uuid, 1, CancellationToken.None);
 
         // Assert
@@ -237,16 +236,17 @@ public sealed class PrinterStateIsLiveTests : IDisposable
 
         // Act
         IReadOnlyList<PrinterWithState> listed =
-            await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
+            await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
                 .ListPrintersWithStateForUserAsync(1, CancellationToken.None);
 
         // Assert
         PrinterReadDTO dto = PrinterReadDTO.FromEntity(listed.Should().ContainSingle().Subject);
 
         dto.TeamName.Should().Be("Workshop", "a team id alone does not tell a client who owns the printer");
-        dto.CanRead.Should().BeTrue("the printer was returned at all, which requires it");
-        dto.CanUse.Should().BeFalse();
-        dto.CanManage.Should().BeFalse();
+        dto.Capabilities.Should().BeEquivalentTo(
+            [nameof(Capability.ViewPrinter), nameof(Capability.ViewQueue), nameof(Capability.ViewHistory),
+             nameof(Capability.ViewCamera)],
+            "the printer was returned at all, which needs ViewPrinter - and nothing here grants more");
     }
 
     /// <summary>
@@ -261,7 +261,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         Printer printer = await AddPrinterAsync(context, userId: 1, liveStatus: PrinterStatus.Printing);
 
         // Act
-        PrinterWithState? updated = await new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System)
+        PrinterWithState? updated = await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
             .UpdatePrinterAsync(printer.Uuid, 1, "Renamed", "Garage", CancellationToken.None);
 
         // Assert

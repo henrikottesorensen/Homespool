@@ -132,7 +132,7 @@ public class PrinterCommandService
     }
 
     /// <summary>
-    /// The half both entry points share: check the caller may use this printer, send, and turn every
+    /// The half both entry points share: check the caller holds what the command requires, send, and turn every
     /// way the send fell short into the exception that describes it. What comes back is always a
     /// <see cref="CommandSendOutcome.Completed"/> or <see cref="CommandSendOutcome.Dispatched"/>
     /// result, which is the only distinction the two callers still have to make.
@@ -142,7 +142,8 @@ public class PrinterCommandService
                                                             long userId,
                                                             CancellationToken cancellationToken)
     {
-        await _access.RequireAsync(printerId, userId, PrinterOperation.ControlPrinter, cancellationToken);
+        // The command names its own requirement, so a new caller cannot ask for a weaker one.
+        await _access.RequireAsync(printerId, userId, commandData.RequiredCapability, cancellationToken);
 
         if (!_registry.TryGet(printerId, out IPrinterConnectionActor? actor) || actor is null)
         {

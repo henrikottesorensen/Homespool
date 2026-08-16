@@ -1,4 +1,5 @@
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
+using Homespool.Model;
 
 namespace Homespool.Host.PrusaConnect.Commands;
 
@@ -27,4 +28,8 @@ namespace Homespool.Host.PrusaConnect.Commands;
 public class SendInfo : ISendableCommand<InfoEventDataDTO>
 {
     public string WireName => "SEND_INFO";
+
+    /// <inheritdoc />
+    /// <remarks>It asks a question and changes nothing.</remarks>
+    public Capability RequiredCapability => Capability.ViewPrinter;
 }

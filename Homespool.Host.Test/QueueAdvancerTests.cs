@@ -542,8 +542,7 @@ public sealed class QueueAdvancerTests : IDisposable
         {
             TeamId = team.Id,
             UserId = 1,
-            CanRead = true,
-            CanUse = true,
+            Capabilities = TestMemberships.Graded(true, true, false),
         });
 
         context.Printers.Add(new Printer { Id = PrinterId, Uuid = Guid.NewGuid(), TeamId = team.Id });

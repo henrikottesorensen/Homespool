@@ -93,7 +93,7 @@ public sealed class DetailModelTests : IDisposable
                                   TimeProvider.System,
                                   NullLogger<UserFileStore>.Instance);
 
-        PrinterAccessService access = new(context);
+        PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
         PrintQueueService queueService = new(context, access,
                                              new PrintFileCatalog(store, context, NullLogger<PrintFileCatalog>.Instance),
                                              TimeProvider.System,
@@ -101,7 +101,7 @@ public sealed class DetailModelTests : IDisposable
 
         QueueSnapshotReader snapshots = new(context, connectionRegistry, TimeProvider.System);
 
-        DetailModel model = new(new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System),
+        DetailModel model = new(new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System),
                                 queueService,
 
                                 // Constructed rather than substituted: these tests are about the page, and a real one
@@ -110,7 +110,7 @@ public sealed class DetailModelTests : IDisposable
                                 new PrintHistoryService(context, access),
                                 snapshots,
                                 access,
-                                new CameraAccessService(context),
+                                new CameraAccessService(context, new TeamCapabilityLookup(context)),
                                 new CameraDisplayNames(
                                     new LocalCameraDevices(
                                         NullLogger<LocalCameraDevices>.Instance,

@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 
+using Homespool.Model;
+
 namespace Homespool.Host.PrusaConnect.Commands;
 
 /// <summary>
@@ -35,4 +37,8 @@ public class StartPrint : ISendableCommand
     {
         ["path"] = Path,
     };
+
+    /// <inheritdoc />
+    /// <remarks>Starting a print is the act queueing defers, so it is the same right - which is what lets <c>QueueAdvancer</c> send this as the person who queued the work.</remarks>
+    public Capability RequiredCapability => Capability.Print;
 }

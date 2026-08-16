@@ -5,9 +5,11 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
 using Homespool.Host.Exceptions;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Authorisation;
@@ -43,7 +45,8 @@ namespace Homespool.Host.Authorisation;
 /// <para>
 /// <b>Three entry points, because there are three honest answers to "you may not".</b> They are not
 /// an accident of how the six sites grew, and collapsing them would lose a deliberate distinction -
-/// see each one.
+/// see each one. <see cref="AllowsWithdrawingAsync"/> and its throwing twin sit alongside them
+/// answering a different question: not "may you do this here" but "is this yours to withdraw".
 /// </para>
 /// </remarks>
 public class PrinterAccessService
@@ -55,7 +58,7 @@ public class PrinterAccessService
     /// </summary>
     /// <remarks>
     /// A request cannot change its own permissions part-way through, and the pages here ask the same
-    /// question repeatedly: the printer Detail page reads its own <c>CanUse</c> and then calls four
+    /// question repeatedly: the printer Detail page asks for itself and then calls four
     /// services that each independently reloaded printer and membership - five lookups for one answer.
     /// Scoped lifetime bounds this to a request, so there is nothing to invalidate.
     /// <para>
@@ -63,36 +66,16 @@ public class PrinterAccessService
     /// most of the waste on a page a stranger cannot see.
     /// </para>
     /// </remarks>
-    private readonly Dictionary<(int printerId, long userId), TeamMember?> _memberships = [];
+    private readonly Dictionary<(int printerId, long userId), CapabilitySet?> _memberships = [];
 
     private readonly Dictionary<int, Printer?> _printers = [];
 
-    public PrinterAccessService(HomespoolDbContext dbContext)
+    private readonly ILogger<PrinterAccessService> _logger;
+
+    public PrinterAccessService(HomespoolDbContext dbContext, ILogger<PrinterAccessService> logger)
     {
         _dbContext = dbContext;
-    }
-
-    /// <summary>
-    /// The permission an operation currently needs. <b>The whole operation-to-flag mapping, in one
-    /// place</b> - which is the reason <see cref="PrinterOperation"/> names operations at all.
-    /// </summary>
-    public static Func<TeamMember, bool> RequiredPermission(PrinterOperation operation)
-    {
-        return operation switch
-        {
-            PrinterOperation.ViewPrinter or PrinterOperation.ViewQueue or PrinterOperation.ViewHistory =>
-                member => member.CanRead,
-
-            PrinterOperation.ChangeQueue or PrinterOperation.ControlPrinter =>
-                member => member.CanUse,
-
-            PrinterOperation.ManagePrinter =>
-                member => member.CanManage,
-
-            // A new operation with no mapping is a programming error, and a silent default of
-            // CanRead would be the wrong one to guess: it would grant, not refuse.
-            _ => throw new ArgumentOutOfRangeException(nameof(operation), operation, "No permission is mapped to this operation."),
-        };
+        _logger = logger;
     }
 
     /// <summary>
@@ -109,7 +92,7 @@ public class PrinterAccessService
     /// <exception cref="TeamAccessDeniedException">The caller may not do this to it.</exception>
     public async Task<Printer> RequireAsync(int printerId,
                                             long userId,
-                                            PrinterOperation operation,
+                                            Capability capability,
                                             CancellationToken cancellationToken)
     {
         Printer? printer = await PrinterAsync(printerId, cancellationToken);
@@ -119,12 +102,52 @@ public class PrinterAccessService
             throw PrinterNotFoundException.ForId(printerId);
         }
 
-        if (!await AllowsAsync(printerId, userId, operation, cancellationToken))
+        if (!await AllowsAsync(printerId, userId, capability, cancellationToken))
         {
             throw new TeamAccessDeniedException();
         }
 
         return printer;
+    }
+
+    /// <summary>
+    /// May this account withdraw this piece of work - stop the print, or cancel the queue entry -
+    /// given who put it there? <b>The one place the "your own work" half of
+    /// <see cref="Capability.Print"/> is decided</b>.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Capability.ControlPrinter"/> withdraws anyone's work; <see cref="Capability.Print"/>
+    /// withdraws only its holder's. Here rather than at the two call sites for the reason this whole
+    /// class exists: a rule spread across callers is one a new caller can forget, and forgetting this
+    /// one fails open.
+    /// </remarks>
+    public async Task<bool> AllowsWithdrawingAsync(int printerId,
+                                                   long userId,
+                                                   long queuedByUserId,
+                                                   CancellationToken cancellationToken)
+    {
+        if (await AllowsAsync(printerId, userId, Capability.ControlPrinter, cancellationToken))
+        {
+            return true;
+        }
+
+        return queuedByUserId == userId
+               && await AllowsAsync(printerId, userId, Capability.Print, cancellationToken);
+    }
+
+    /// <summary>
+    /// <see cref="AllowsWithdrawingAsync"/>, throwing the refusal the services here already speak.
+    /// </summary>
+    /// <exception cref="TeamAccessDeniedException">The caller may not withdraw this work.</exception>
+    public async Task RequireWithdrawingAsync(int printerId,
+                                              long userId,
+                                              long queuedByUserId,
+                                              CancellationToken cancellationToken)
+    {
+        if (!await AllowsWithdrawingAsync(printerId, userId, queuedByUserId, cancellationToken))
+        {
+            throw new TeamAccessDeniedException();
+        }
     }
 
     /// <summary>
@@ -141,12 +164,12 @@ public class PrinterAccessService
     /// it, because the fused form answers the question without leaving anything behind. This seeds
     /// the caches instead, which is the better trade on the pages that ask repeatedly - and it keeps
     /// the operation-to-permission mapping in one place, which a query cannot do: an EF expression
-    /// tree has nowhere to put a <see cref="Func{T, TResult}"/>.
+    /// tree has nowhere to put the capability test.
     /// </para>
     /// </remarks>
     public async Task<Printer?> FindAsync(Guid uuid,
                                           long userId,
-                                          PrinterOperation operation,
+                                          Capability capability,
                                           CancellationToken cancellationToken)
     {
         Printer? printer = await _dbContext.Printers
@@ -161,7 +184,7 @@ public class PrinterAccessService
 
         _printers[printer.Id] = printer;
 
-        return await AllowsAsync(printer.Id, userId, operation, cancellationToken) ? printer : null;
+        return await AllowsAsync(printer.Id, userId, capability, cancellationToken) ? printer : null;
     }
 
     /// <summary>
@@ -176,7 +199,7 @@ public class PrinterAccessService
     /// </remarks>
     public async Task<bool> AllowsAsync(int printerId,
                                         long userId,
-                                        PrinterOperation operation,
+                                        Capability capability,
                                         CancellationToken cancellationToken)
     {
         Printer? printer = await PrinterAsync(printerId, cancellationToken);
@@ -186,9 +209,9 @@ public class PrinterAccessService
             return false;
         }
 
-        TeamMember? membership = await MembershipAsync(printerId, printer.TeamId, userId, cancellationToken);
+        CapabilitySet? capabilities = await MembershipAsync(printerId, printer.TeamId, userId, cancellationToken);
 
-        return membership is not null && RequiredPermission(operation).Invoke(membership);
+        return capabilities is not null && capabilities.Allows(capability);
     }
 
     private async Task<Printer?> PrinterAsync(int printerId, CancellationToken cancellationToken)
@@ -208,27 +231,45 @@ public class PrinterAccessService
         return printer;
     }
 
-    private async Task<TeamMember?> MembershipAsync(int printerId,
-                                                    int teamId,
-                                                    long userId,
-                                                    CancellationToken cancellationToken)
+    /// <summary>
+    /// The caller's capabilities on this printer's team, or <c>null</c> if they are not a member -
+    /// which is a different answer from a member holding nothing.
+    /// </summary>
+    private async Task<CapabilitySet?> MembershipAsync(int printerId,
+                                                       int teamId,
+                                                       long userId,
+                                                       CancellationToken cancellationToken)
     {
-        if (_memberships.TryGetValue((printerId, userId), out TeamMember? cached))
+        if (_memberships.TryGetValue((printerId, userId), out CapabilitySet? cached))
         {
             return cached;
         }
 
-        // AsNoTracking, unlike TeamService.GetMemberAsync: a cached instance outlives the call that
-        // fetched it, and a tracked one could be mutated by an unrelated save in the same scope -
-        // which would silently change an answer already given.
-        TeamMember? membership = await _dbContext.TeamMembers
-                                                 .AsNoTracking()
-                                                 .SingleOrDefaultAsync(
-                                                     member => member.TeamId == teamId && member.UserId == userId,
-                                                     cancellationToken);
+        // Only the column: nothing here needs the row, and projecting keeps a tracked entity from
+        // being mutated by an unrelated save in the same scope, which would silently change an answer
+        // already given.
+        string? stored = await _dbContext.TeamMembers
+                                         .AsNoTracking()
+                                         .Where(member => member.TeamId == teamId && member.UserId == userId)
+                                         .Select(member => member.Capabilities)
+                                         .SingleOrDefaultAsync(cancellationToken);
 
-        _memberships[(printerId, userId)] = membership;
+        CapabilitySet? capabilities = stored is null ? null : CapabilitySet.Parse(stored);
 
-        return membership;
+        if (capabilities is not null && capabilities.Unrecognised.Length > 0)
+        {
+            // Grants nothing, so this has already failed closed - but silently, and the causes are a
+            // hand-edited row or a Capability rename whose data migration was missed. Both want a
+            // person to know.
+            _logger.LogWarning(
+                "Team {TeamId} membership for user {UserId} carries unrecognised capabilities: {Unrecognised}.",
+                teamId,
+                userId,
+                string.Join(", ", capabilities.Unrecognised));
+        }
+
+        _memberships[(printerId, userId)] = capabilities;
+
+        return capabilities;
     }
 }

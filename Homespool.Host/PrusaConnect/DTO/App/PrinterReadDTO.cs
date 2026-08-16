@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 using Homespool.Host.Services;
 using Homespool.Model;
@@ -123,21 +125,18 @@ public class PrinterReadDTO
 
     public DateTimeOffset UpdatedAt { get; set; }
 
-    /// <summary>Whether the caller may see this printer. True wherever the printer was returned at
-    /// all, since a caller without it gets a 404.</summary>
-    public bool CanRead { get; set; }
-
     /// <summary>
-    /// Whether the caller may send it commands - the permission <c>PrinterCommandService</c> enforces.
+    /// What the caller may do to this printer - <c>Capability</c> names, as the membership grants
+    /// them.
     /// </summary>
     /// <remarks>
-    /// The useful one. Without it a client has no way to tell a printer it may only watch from one it
-    /// may drive, and has to discover the difference from a 403 after trying.
+    /// <b>The useful field, and the reason it is a list rather than flags.</b> Without it a client has
+    /// no way to tell a printer it may only watch from one it may drive, and has to discover the
+    /// difference from a 403 after trying. It was three booleans until 2026-08-14, which was Connect's
+    /// mobile-API shape; <c>ViewPrinter</c> is present on anything returned at all, since a caller
+    /// without it gets a 404.
     /// </remarks>
-    public bool CanUse { get; set; }
-
-    /// <summary>Whether the caller may edit or reprovision it.</summary>
-    public bool CanManage { get; set; }
+    public IReadOnlyList<string> Capabilities { get; set; } = [];
 
     /// <summary>Maps a printer, taking its reported state from the live-state row when there is one.</summary>
     /// <param name="printer">The printer row.</param>
@@ -186,9 +185,11 @@ public class PrinterReadDTO
         PrinterReadDTO dto = FromEntity(printer.Printer, printer.LiveState);
 
         dto.TeamName = printer.Team?.Name;
-        dto.CanRead = printer.Membership?.CanRead ?? false;
-        dto.CanUse = printer.Membership?.CanUse ?? false;
-        dto.CanManage = printer.Membership?.CanManage ?? false;
+        dto.Capabilities = CapabilitySet.Parse(printer.Membership?.Capabilities)
+                                        .Granted
+                                        .OrderBy(capability => capability)
+                                        .Select(capability => capability.ToString())
+                                        .ToList();
 
         return dto;
     }

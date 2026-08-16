@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Services;
@@ -39,18 +40,14 @@ public class TeamService
 
     public async Task<TeamMember> AddMemberAsync(int teamId,
                                                  long userId,
-                                                 bool canRead,
-                                                 bool canUse,
-                                                 bool canManage,
+                                                 IEnumerable<Capability> capabilities,
                                                  CancellationToken cancellationToken)
     {
         TeamMember member = new()
         {
             TeamId = teamId,
             UserId = userId,
-            CanRead = canRead,
-            CanUse = canUse,
-            CanManage = canManage,
+            Capabilities = CapabilitySet.Format(capabilities),
             IsDefault = false,
         };
 

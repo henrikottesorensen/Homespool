@@ -15,7 +15,7 @@ namespace Homespool.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
 
             modelBuilder.Entity("Homespool.Model.Entities.ApiToken", b =>
                 {
@@ -730,14 +730,12 @@ namespace Homespool.Data.Migrations
                     b.Property<long>("UserId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<bool>("CanManage")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("CanRead")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("CanUse")
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("Capabilities")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("");
 
                     b.Property<bool>("IsDefault")
                         .HasColumnType("INTEGER");

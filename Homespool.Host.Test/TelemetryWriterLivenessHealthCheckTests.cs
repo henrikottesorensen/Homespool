@@ -6,7 +6,7 @@ using AwesomeAssertions;
 
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-using Homespool.Host.PrusaConnect;
+using Homespool.Host.Telemetry;
 
 namespace Homespool.Host.Test;
 

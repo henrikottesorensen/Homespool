@@ -6,8 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
-using Homespool.Host.PrusaConnect;
-using Homespool.Host.PrusaConnect.Commands;
+using Homespool.Host.Printing;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -69,7 +68,7 @@ public class PrintStopService
     /// </para>
     /// </remarks>
     /// <returns>
-    /// The printer's own answer, exactly as <see cref="PrinterCommandService.SendCommandAsync"/>
+    /// The printer's own answer, exactly as <see cref="PrinterCommandService.SendCommandAsync(int, Printing.IPrinterIntent, long, System.Threading.CancellationToken)"/>
     /// gives it - so callers keep reporting refusals in their own words. Every way the send can fail
     /// throws, as it does there.
     /// </returns>
@@ -83,7 +82,7 @@ public class PrintStopService
 
         CommandOutcome? outcome = await _commands.SendCommandAsync(printerId, new StopPrint(), userId, cancellationToken);
 
-        if (outcome?.EventType is Events.Rejected or Events.Failed)
+        if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
         {
             return outcome;
         }

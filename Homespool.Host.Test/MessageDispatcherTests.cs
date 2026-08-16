@@ -87,7 +87,7 @@ public class MessageDispatcherTests
 
         // Assert
         InboundEventMessage inboundEvent = message.Should().BeOfType<InboundEventMessage>().Subject;
-        inboundEvent.Event.EventType.Should().Be(Homespool.Model.Events.Info);
+        inboundEvent.Event.EventType.Should().Be(Homespool.Model.PrinterEventType.Info);
     }
 
     /// <summary>The <c>command_id</c> a command ack correlates on must survive classification - it
@@ -106,7 +106,7 @@ public class MessageDispatcherTests
         // Assert
         InboundEventMessage inboundEvent = message.Should().BeOfType<InboundEventMessage>().Subject;
         inboundEvent.Event.CommandId.Should().Be(42u);
-        inboundEvent.Event.EventType.Should().Be(Homespool.Model.Events.Finished);
+        inboundEvent.Event.EventType.Should().Be(Homespool.Model.PrinterEventType.Finished);
     }
 
     [Fact]

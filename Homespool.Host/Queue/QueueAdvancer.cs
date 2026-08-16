@@ -15,8 +15,7 @@ using Microsoft.Extensions.Logging;
 using Homespool.Data;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
-using Homespool.Host.PrusaConnect;
-using Homespool.Host.PrusaConnect.Commands;
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.Services;
 using Homespool.Model;
@@ -374,7 +373,7 @@ public sealed class QueueAdvancer : BackgroundService
                                                    .AsNoTracking()
                                                    .Where(printerEvent => printerEvent.PrinterId == printerId
                                                                           && printerEvent.Id > watermark
-                                                                          && printerEvent.EventType == Events.FileInfo)
+                                                                          && printerEvent.EventType == PrinterEventType.FileInfo)
                                                    .OrderBy(printerEvent => printerEvent.Id)
                                                    .ToListAsync(cancellationToken);
 
@@ -587,7 +586,7 @@ public sealed class QueueAdvancer : BackgroundService
         {
             CommandOutcome? outcome = await sender.SendAsync(printer, file, head.QueuedByUserId, cancellationToken);
 
-            if (outcome?.EventType is Events.Rejected or Events.Failed)
+            if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {
                 // Classified on MachineReason, not on the prose: the code is a fixed vocabulary and
                 // the wording is free to change between releases.
@@ -670,7 +669,7 @@ public sealed class QueueAdvancer : BackgroundService
         try
         {
             CommandOutcome<FileInfoEventDataDTO>? answer = await commands.AskAsync(
-                printerId, new SendFileInfo { Path = file.PrinterPath }, head.QueuedByUserId, cancellationToken);
+                printerId, new PrusaConnect.Commands.SendFileInfo { Path = file.PrinterPath }, head.QueuedByUserId, cancellationToken);
 
             existing = answer?.Answer;
         }
@@ -766,7 +765,7 @@ public sealed class QueueAdvancer : BackgroundService
         try
         {
             CommandOutcome<InfoEventDataDTO>? answer =
-                await commands.AskAsync(printerId, new SendInfo(), head.QueuedByUserId, cancellationToken);
+                await commands.AskAsync(printerId, new PrusaConnect.Commands.SendInfo(), head.QueuedByUserId, cancellationToken);
 
             free = answer?.Answer?.Storages?
                 .FirstOrDefault(storage => storage.MountPoint == "/usb")?
@@ -854,10 +853,10 @@ public sealed class QueueAdvancer : BackgroundService
         try
         {
             CommandOutcome? outcome = await commands.SendCommandAsync(printerId,
-                                                                      new StartPrint { Path = printerPath }, head.QueuedByUserId,
+                                                                      new StartPrint(printerPath), head.QueuedByUserId,
                                                                       cancellationToken);
 
-            if (outcome?.EventType is Events.Rejected or Events.Failed)
+            if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {
                 HandleRefusal(printerId, dbContext, head, outcome.Reason);
                 await dbContext.SaveChangesAsync(cancellationToken);

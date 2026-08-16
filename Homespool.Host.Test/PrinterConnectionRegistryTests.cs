@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Testing;
 
 using NSubstitute;
 
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 
 namespace Homespool.Host.Test;
@@ -38,7 +39,7 @@ public class PrinterConnectionRegistryTests
         registry.Register(1, actor);
 
         // Assert
-        registry.TryGet(1, out IPrinterConnectionActor? found).Should().BeTrue();
+        registry.TryGet(1, out IPrinterLink? found).Should().BeTrue();
         found.Should().BeSameAs(actor);
     }
 
@@ -76,7 +77,7 @@ public class PrinterConnectionRegistryTests
         registry.Unregister(1, actorA);
 
         // Assert
-        registry.TryGet(1, out IPrinterConnectionActor? found).Should().BeTrue();
+        registry.TryGet(1, out IPrinterLink? found).Should().BeTrue();
         found.Should().BeSameAs(actorB);
     }
 
@@ -121,7 +122,7 @@ public class PrinterConnectionRegistryTests
         registry.Register(printerId: 1, second);
 
         // Assert
-        registry.TryGet(1, out IPrinterConnectionActor? live).Should().BeTrue();
+        registry.TryGet(1, out IPrinterLink? live).Should().BeTrue();
         live.Should().BeSameAs(second, "the newest connection owns the command channel");
         first.Received(1).Complete();
         second.DidNotReceive().Complete();

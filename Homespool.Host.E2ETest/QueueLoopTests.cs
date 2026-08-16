@@ -380,8 +380,8 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         await EndRunAsync(fake, run);
     }
 
-    private PrusaConnect.PrinterConnectionRegistry Registry =>
-        _factory.Services.GetRequiredService<PrusaConnect.PrinterConnectionRegistry>();
+    private Printing.PrinterConnectionRegistry Registry =>
+        _factory.Services.GetRequiredService<Printing.PrinterConnectionRegistry>();
 
     /// <summary>The fake's socket, over the test server's printer listener - where /p/ws lives.</summary>
     /// <summary>

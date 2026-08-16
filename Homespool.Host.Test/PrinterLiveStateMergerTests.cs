@@ -6,6 +6,7 @@ using AwesomeAssertions;
 
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.DTO.Telemetry;
+using Homespool.Host.Telemetry;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -38,7 +39,7 @@ public class PrinterLiveStateMergerTests
         DateTimeOffset receivedAt = DateTimeOffset.UtcNow;
 
         // Act
-        PrinterLiveStateMerger.Merge(state, slim, receivedAt);
+        Merge(state, slim, receivedAt);
 
         // Assert
         state.Status.Should().Be(PrinterStatus.Printing);
@@ -70,7 +71,7 @@ public class PrinterLiveStateMergerTests
         state.NozzleTemperature = 210.5f;
 
         // Act - the print has ended, so the block is simply absent
-        PrinterLiveStateMerger.Merge(state, new TelemetryDTO { Status = "FINISHED" }, DateTimeOffset.UtcNow);
+        Merge(state, new TelemetryDTO { Status = "FINISHED" }, DateTimeOffset.UtcNow);
 
         // Assert
         state.JobId.Should().BeNull();
@@ -98,7 +99,7 @@ public class PrinterLiveStateMergerTests
         state.TimePrinting = 500;
 
         // Act - only progress moved
-        PrinterLiveStateMerger.Merge(state, new TelemetryDTO { Status = "PRINTING", Progress = 41 },
+        Merge(state, new TelemetryDTO { Status = "PRINTING", Progress = 41 },
                                      DateTimeOffset.UtcNow);
 
         // Assert
@@ -126,7 +127,7 @@ public class PrinterLiveStateMergerTests
         };
 
         // Act
-        PrinterLiveStateMerger.Merge(state, full, DateTimeOffset.UtcNow);
+        Merge(state, full, DateTimeOffset.UtcNow);
 
         // Assert
         state.JobId.Should().Be(42);
@@ -166,7 +167,7 @@ public class PrinterLiveStateMergerTests
         };
 
         // Act
-        PrinterLiveStateMerger.Merge(state, withChamber, DateTimeOffset.UtcNow);
+        Merge(state, withChamber, DateTimeOffset.UtcNow);
 
         // Assert
         state.ChamberTemperature.Should().Be(45.5f);
@@ -188,7 +189,7 @@ public class PrinterLiveStateMergerTests
         TelemetryDTO withoutChamber = new() { Status = "PRINTING" };
 
         // Act
-        PrinterLiveStateMerger.Merge(state, withoutChamber, DateTimeOffset.UtcNow);
+        Merge(state, withoutChamber, DateTimeOffset.UtcNow);
 
         // Assert
         state.ChamberTemperature.Should().Be(30f);
@@ -213,7 +214,7 @@ public class PrinterLiveStateMergerTests
         };
 
         // Act
-        PrinterLiveStateMerger.Merge(state, withEnclosure, DateTimeOffset.UtcNow);
+        Merge(state, withEnclosure, DateTimeOffset.UtcNow);
 
         // Assert
         state.EnclosureTemperature.Should().Be(42);
@@ -241,7 +242,7 @@ public class PrinterLiveStateMergerTests
         };
 
         // Act
-        PrinterLiveStateMerger.Merge(state, xlLikeSlotBlock, DateTimeOffset.UtcNow);
+        Merge(state, xlLikeSlotBlock, DateTimeOffset.UtcNow);
 
         // Assert
         state.ActiveSlot.Should().Be(2);
@@ -282,7 +283,7 @@ public class PrinterLiveStateMergerTests
         };
 
         // Act
-        PrinterLiveStateMerger.Merge(state, onlySlot1Reported, DateTimeOffset.UtcNow);
+        Merge(state, onlySlot1Reported, DateTimeOffset.UtcNow);
 
         // Assert
         PrinterLiveSlotState slot1 = state.Slots.Should().ContainSingle(s => s.SlotNumber == 1).Subject;
@@ -319,7 +320,7 @@ public class PrinterLiveStateMergerTests
         };
 
         // Act
-        PrinterLiveStateMerger.Merge(state, newSlot, DateTimeOffset.UtcNow);
+        Merge(state, newSlot, DateTimeOffset.UtcNow);
 
         // Assert
         state.Slots.Should().ContainSingle(s => s.SlotNumber == 3 && s.Material == "PC");
@@ -338,7 +339,7 @@ public class PrinterLiveStateMergerTests
         TelemetryDTO badStatus = new() { Status = "UNKNOWN" };
 
         // Act
-        Action act = () => PrinterLiveStateMerger.Merge(state, badStatus, DateTimeOffset.UtcNow);
+        Action act = () => Merge(state, badStatus, DateTimeOffset.UtcNow);
 
         // Assert
         act.Should().Throw<ArgumentOutOfRangeException>();
@@ -381,5 +382,16 @@ public class PrinterLiveStateMergerTests
         slotSample.Temperature.Should().Be(210f);
         slotSample.HotendFanRpm.Should().Be(8000f);
         slotSample.PrintFanRpm.Should().Be(6000f);
+    }
+
+    /// <summary>
+    /// The composition this suite historically asserted as one call: the Prusa edge's mapping into
+    /// the neutral currency, then the mechanical apply. Kept composed so every policy assertion
+    /// here (the job-block clear, the atomic blocks, the coalesce) still bites end to end - a
+    /// mutation in either half fails these tests exactly as it did when both halves were one class.
+    /// </summary>
+    private static void Merge(PrinterLiveState state, TelemetryDTO telemetry, DateTimeOffset receivedAt)
+    {
+        PrinterLiveStateMerger.Apply(state, PrusaTelemetryMapping.ToUpdate(telemetry), receivedAt);
     }
 }

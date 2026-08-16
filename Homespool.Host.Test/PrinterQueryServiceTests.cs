@@ -425,11 +425,11 @@ public sealed class PrinterQueryServiceTests : IDisposable
         context.PrinterEvents.AddRange(
             new PrinterEvent
             {
-                PrinterId = printer.Id, Timestamp = now.AddMinutes(-1), EventType = Events.Info, Status = PrinterStatus.Printing,
+                PrinterId = printer.Id, Timestamp = now.AddMinutes(-1), EventType = PrinterEventType.Info, Status = PrinterStatus.Printing,
             },
             new PrinterEvent
             {
-                PrinterId = printer.Id, Timestamp = now, EventType = Events.Finished, Status = PrinterStatus.Printing,
+                PrinterId = printer.Id, Timestamp = now, EventType = PrinterEventType.Finished, Status = PrinterStatus.Printing,
                 Reason = "No print to pause",
             });
 
@@ -450,9 +450,9 @@ public sealed class PrinterQueryServiceTests : IDisposable
         statistics.RecentSamples[1].Progress.Should().Be(40);
 
         statistics.RecentEvents.Should().HaveCount(2);
-        statistics.RecentEvents[0].EventType.Should().Be(Events.Finished, "newest first");
+        statistics.RecentEvents[0].EventType.Should().Be(PrinterEventType.Finished, "newest first");
         statistics.RecentEvents[0].Reason.Should().Be("No print to pause");
-        statistics.RecentEvents[1].EventType.Should().Be(Events.Info);
+        statistics.RecentEvents[1].EventType.Should().Be(PrinterEventType.Info);
     }
 
     /// <summary>More rows exist than the display cap - only the newest RecentSampleCount survive.</summary>

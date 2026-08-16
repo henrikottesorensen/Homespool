@@ -12,7 +12,7 @@ namespace Homespool.Host.Services;
 /// <remarks>
 /// <para>
 /// Reads the report rather than re-deriving anything from
-/// <see cref="PrusaConnect.ITelemetryHealthSource"/> directly, so the banner and <c>/health</c> can
+/// <see cref="Telemetry.ITelemetryHealthSource"/> directly, so the banner and <c>/health</c> can
 /// never disagree about what counts as a problem or how to describe it. Adding a health check is
 /// enough to make it appear here too.
 /// </para>

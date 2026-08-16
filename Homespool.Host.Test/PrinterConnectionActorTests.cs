@@ -16,12 +16,14 @@ using NSubstitute;
 using NSubstitute.Core;
 
 using Homespool.Host.Exceptions;
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.PrusaConnect.DTO.Telemetry;
 using Homespool.Host.PrusaConnect.DTO.Transfers;
 using Homespool.Host.PrusaConnect.Transfers;
+using Homespool.Host.Telemetry;
 using Homespool.Model;
 
 namespace Homespool.Host.Test;
@@ -182,7 +184,7 @@ public class PrinterConnectionActorTests
     }
 
     private static InboundEventMessage EventAnswering(uint commandId,
-                                                      Events eventType = Events.Finished,
+                                                      PrinterEventType eventType = PrinterEventType.Finished,
                                                       string? reason = null,
                                                       string? dataJson = null,
                                                       string? machineReason = null)
@@ -211,7 +213,7 @@ public class PrinterConnectionActorTests
         PrinterConnectionActor actor = NewActor(connection);
 
         // Act
-        CommandSendResult result = await Eventually(actor.SendCommandAsync(new PausePrint(), CancellationToken.None));
+        CommandSendResult result = await Eventually(actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None));
 
         // Assert
         result.Outcome.Should().Be(CommandSendOutcome.NotConnected);
@@ -228,7 +230,7 @@ public class PrinterConnectionActorTests
         RecordingTelemetrySink sink = new();
         PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), sink);
 
-        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PausePrint(), CancellationToken.None);
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 1);
 
         // Act
@@ -237,7 +239,7 @@ public class PrinterConnectionActorTests
 
         // Assert
         result.Outcome.Should().Be(CommandSendOutcome.Completed);
-        result.Response!.EventType.Should().Be(Events.Finished);
+        result.Response!.EventType.Should().Be(PrinterEventType.Finished);
         sentFrames.Should().ContainSingle();
 
         // Answering a command doesn't consume the event: it must still reach the sink and be
@@ -262,16 +264,16 @@ public class PrinterConnectionActorTests
         List<byte[]> sentFrames = [];
         PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames));
 
-        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new SetPrinterIdle(), CancellationToken.None);
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PrusaConnect.Commands.SetPrinterIdle(), CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 1);
 
         // Act
-        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), Events.Rejected, "Can't set idle now"),
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.Rejected, "Can't set idle now"),
                               CancellationToken.None);
         CommandSendResult result = await Eventually(sendTask);
 
         // Assert
-        result.Response!.EventType.Should().Be(Events.Rejected);
+        result.Response!.EventType.Should().Be(PrinterEventType.Rejected);
         result.Response.Reason.Should().Be("Can't set idle now");
         result.Data.Should().BeNull("an event that carried no data must not invent one");
 
@@ -290,12 +292,12 @@ public class PrinterConnectionActorTests
         List<byte[]> sentFrames = [];
         PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames));
 
-        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new SetPrinterIdle(), CancellationToken.None);
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PrusaConnect.Commands.SetPrinterIdle(), CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 1);
 
         // Act - a transfer refusal's shape: the busy-slot case, which is the one that is transient.
         await actor.PostAsync(
-            EventAnswering(CommandIdOf(sentFrames[0]), Events.Rejected, "Another transfer in progress",
+            EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.Rejected, "Another transfer in progress",
                            machineReason: "TRANSFER_IN_PROGRESS"),
             CancellationToken.None);
         CommandSendResult result = await Eventually(sendTask);
@@ -319,10 +321,10 @@ public class PrinterConnectionActorTests
         List<byte[]> sentFrames = [];
         PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames));
 
-        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new SetPrinterIdle(), CancellationToken.None);
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PrusaConnect.Commands.SetPrinterIdle(), CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 1);
 
-        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), Events.Rejected, "Can't set idle now"),
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.Rejected, "Can't set idle now"),
                               CancellationToken.None);
         CommandSendResult result = await Eventually(sendTask);
 
@@ -349,7 +351,7 @@ public class PrinterConnectionActorTests
         List<byte[]> sentFrames = [];
         PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames));
 
-        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PausePrint(), CancellationToken.None);
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 1);
 
         const string listing = """
@@ -359,7 +361,7 @@ public class PrinterConnectionActorTests
                                """;
 
         // Act
-        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), Events.FileInfo, dataJson: listing),
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.FileInfo, dataJson: listing),
                               CancellationToken.None);
         CommandSendResult result = await Eventually(sendTask);
 
@@ -404,7 +406,7 @@ public class PrinterConnectionActorTests
         sentFrames.Should().ContainSingle("the frame still goes out - only the waiting is skipped");
 
         // The slot is free: a following command is sent rather than refused as AlreadyInFlight.
-        Task<CommandSendResult> next = actor.SendCommandAsync(new PausePrint(), CancellationToken.None);
+        Task<CommandSendResult> next = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 2);
 
         actor.Complete();
@@ -419,11 +421,11 @@ public class PrinterConnectionActorTests
         List<byte[]> sentFrames = [];
         PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames));
 
-        Task<CommandSendResult> firstSend = actor.SendCommandAsync(new PausePrint(), CancellationToken.None);
+        Task<CommandSendResult> firstSend = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 1);
 
         // Act
-        CommandSendResult secondResult = await Eventually(actor.SendCommandAsync(new ResumePrint(), CancellationToken.None));
+        CommandSendResult secondResult = await Eventually(actor.SendCommandAsync(new PrusaConnect.Commands.ResumePrint(), CancellationToken.None));
 
         // Assert
         secondResult.Outcome.Should().Be(CommandSendOutcome.AlreadyInFlight);
@@ -450,7 +452,7 @@ public class PrinterConnectionActorTests
         // Long timeout so a genuine timeout can't race the completion below and mask it.
         PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), responseTimeout: TimeSpan.FromSeconds(30));
 
-        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PausePrint(), CancellationToken.None);
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 1);
 
         // Act
@@ -471,7 +473,7 @@ public class PrinterConnectionActorTests
         await Eventually(actor.Completion);
 
         // Act
-        CommandSendResult result = await Eventually(actor.SendCommandAsync(new PausePrint(), CancellationToken.None));
+        CommandSendResult result = await Eventually(actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None));
 
         // Assert
         // The message never entered the mailbox (ChannelClosedException path), so nothing will ever
@@ -495,7 +497,7 @@ public class PrinterConnectionActorTests
         using CancellationTokenSource cts = new();
 
         // Act
-        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PausePrint(), cts.Token);
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), cts.Token);
         await WaitUntilAsync(() => sentFrames.Count == 1);
         await cts.CancelAsync();
 
@@ -528,14 +530,14 @@ public class PrinterConnectionActorTests
         PrinterConnectionActor actor = NewActor(connection);
 
         // Act
-        Func<Task> act = () => actor.SendCommandAsync(new PausePrint(), CancellationToken.None);
+        Func<Task> act = () => actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<InvalidOperationException>();
 
         // Not wedged: the failed send never became pending, so the next command proceeds normally.
         failSends = false;
-        Task<CommandSendResult> retry = actor.SendCommandAsync(new PausePrint(), CancellationToken.None);
+        Task<CommandSendResult> retry = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 1);
         await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0])), CancellationToken.None);
 
@@ -561,7 +563,7 @@ public class PrinterConnectionActorTests
         PrinterConnectionActor actor = NewActor(OpenConnection(), responseTimeout: TimeSpan.FromMilliseconds(50));
 
         // Act
-        CommandSendResult result = await Eventually(actor.SendCommandAsync(new PausePrint(), CancellationToken.None));
+        CommandSendResult result = await Eventually(actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None));
 
         // Assert
         result.Outcome.Should().Be(CommandSendOutcome.ResponseTimedOut);
@@ -593,11 +595,11 @@ public class PrinterConnectionActorTests
         List<byte[]> sentFrames = [];
         PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), responseTimeout: TimeSpan.FromMilliseconds(500));
 
-        CommandSendResult timedOut = await Eventually(actor.SendCommandAsync(new PausePrint(), CancellationToken.None));
+        CommandSendResult timedOut = await Eventually(actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None));
         timedOut.Outcome.Should().Be(CommandSendOutcome.ResponseTimedOut);
 
         // Act
-        Task<CommandSendResult> retry = actor.SendCommandAsync(new ResumePrint(), CancellationToken.None);
+        Task<CommandSendResult> retry = actor.SendCommandAsync(new PrusaConnect.Commands.ResumePrint(), CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 2);
         await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[1])), CancellationToken.None);
 
@@ -616,7 +618,7 @@ public class PrinterConnectionActorTests
         RecordingTelemetrySink sink = new();
         PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), sink);
 
-        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PausePrint(), CancellationToken.None);
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 1);
         uint commandId = CommandIdOf(sentFrames[0]);
 
@@ -653,7 +655,7 @@ public class PrinterConnectionActorTests
         // Assert
         sink.TelemetryCalls[0].printerId.Should().Be(7);
         sink.TelemetryCalls[0].receivedAt.Should().Be(receivedAt);
-        sink.TelemetryCalls[0].telemetry.Status.Should().Be("PRINTING");
+        sink.TelemetryCalls[0].telemetry.Status.Should().Be(PrinterStatus.Printing);
 
         actor.Complete();
         await Eventually(actor.Completion);
@@ -721,7 +723,7 @@ public class PrinterConnectionActorTests
 
         using CancellationTokenSource cts = new();
 
-        Task<CommandSendResult> abandoned = actor.SendCommandAsync(new PausePrint(), cts.Token);
+        Task<CommandSendResult> abandoned = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), cts.Token);
 
         // Act - the caller gives up while its command is still queued behind the held message.
         await cts.CancelAsync();
@@ -737,7 +739,7 @@ public class PrinterConnectionActorTests
         sentFrames.Should().BeEmpty("a command whose caller has gone must not still reach the printer");
 
         // And the slot is free: the next command goes out rather than coming back AlreadyInFlight.
-        Task<CommandSendResult> next = actor.SendCommandAsync(new ResumePrint(), CancellationToken.None);
+        Task<CommandSendResult> next = actor.SendCommandAsync(new PrusaConnect.Commands.ResumePrint(), CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 1);
         await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0])), CancellationToken.None);
 
@@ -771,7 +773,7 @@ public class PrinterConnectionActorTests
         await WaitUntilAsync(() => sink.IsHeld);
 
         // Queued behind the held message, exactly as a click landing during shutdown would be.
-        Task<CommandSendResult> queued = actor.SendCommandAsync(new PausePrint(), CancellationToken.None);
+        Task<CommandSendResult> queued = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
 
         // Act
         actor.Complete();
@@ -805,7 +807,7 @@ public class PrinterConnectionActorTests
         using GatedTelemetrySink sink = new();
         PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), sink, responseTimeout: TimeSpan.FromSeconds(1));
 
-        Task<CommandSendResult> send = actor.SendCommandAsync(new PausePrint(), CancellationToken.None);
+        Task<CommandSendResult> send = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 1);
 
         // Park the loop, then let the printer's answer arrive behind the held message.
@@ -846,7 +848,7 @@ public class PrinterConnectionActorTests
 
         // Act - wrapped in Eventually, not awaited bare: if the send deadline ever stops firing this
         // call never returns at all, and a hanging test is worse than a failing one.
-        Func<Task> send = () => Eventually(actor.SendCommandAsync(new PausePrint(), CancellationToken.None));
+        Func<Task> send = () => Eventually(actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None));
 
         // Assert - told, and told honestly. Not PrinterNotConnectedException, which would claim the
         // command never left; not CommandResponseTimedOutException, which would claim it arrived and went
@@ -857,6 +859,44 @@ public class PrinterConnectionActorTests
         // bearing half: completing the mailbox is what ends the read loop, which reaches the
         // teardown that disposes the socket - the only thing that can end the abandoned write.
         await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A wire state outside the known vocabulary costs one message, never the connection. The
+    /// deliberate throw moved here with the edge mapping (<c>ParseWireState</c>'s loud rejection,
+    /// <c>notes/protocol-vocabulary-boundary.md</c>), and it is the loop's throttled catch-all
+    /// that absorbs it - a burst logs one aggregated Error, and the messages behind the bad ones
+    /// still flow. <c>"UNKNOWN"</c> is the probe because it is both the attacker shape and a real
+    /// possibility: firmware's <c>to_str</c> default arm can genuinely emit it.
+    /// </summary>
+    [Fact]
+    public async Task AnUnmappedWireStateCostsOneMessageNotTheConnection()
+    {
+        // Arrange
+        RecordingTelemetrySink sink = new();
+        FakeLogger<PrinterConnectionActor> logger = new();
+        PrinterConnectionActor actor = NewActor(OpenConnection(), sink, logger: logger);
+
+        // Act - five unmappable messages, then a good one behind them: once it reaches the sink,
+        // mailbox FIFO guarantees all five were consumed (and logged or throttled) before we count.
+        for (int i = 0; i < 5; i++)
+        {
+            await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "UNKNOWN" }),
+                                  CancellationToken.None);
+        }
+
+        await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }),
+                              CancellationToken.None);
+        await WaitUntilAsync(() => sink.TelemetryCalls.Count == 1);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+
+        // Assert - only the good message was persisted, and the burst produced one Error, not five.
+        sink.TelemetryCalls.Should().ContainSingle()
+            .Which.telemetry.Status.Should().Be(PrinterStatus.Printing);
+        logger.Collector.GetSnapshot().Count(record => record.Level == LogLevel.Error)
+              .Should().Be(1, "five unmappable messages inside one throttle window must produce one Error, not five");
     }
 
     /// <summary>
@@ -871,7 +911,7 @@ public class PrinterConnectionActorTests
         // Arrange - a sink that rejects everything stands in for whatever unforeseen throw the
         // catch-all exists to survive.
         ITelemetrySink sink = Substitute.For<ITelemetrySink>();
-        sink.WhenForAnyArgs(s => s.Enqueue(default, default, (TelemetryDTO)null!))
+        sink.WhenForAnyArgs(s => s.Enqueue(default, default, (TelemetryUpdate)null!))
             .Do(_ => throw new InvalidOperationException("poison"));
 
         FakeLogger<PrinterConnectionActor> logger = new();
@@ -894,7 +934,7 @@ public class PrinterConnectionActorTests
     }
 
     /// <summary>
-    /// Blocks the actor's loop on demand. <see cref="ITelemetrySink.Enqueue(int,DateTimeOffset,TelemetryDTO)"/> is synchronous and
+    /// Blocks the actor's loop on demand. <see cref="ITelemetrySink.Enqueue(int,DateTimeOffset,TelemetryUpdate)"/> is synchronous and
     /// called from the loop, which makes it the one place a test can hold the loop still without
     /// guessing at timing.
     /// </summary>
@@ -931,7 +971,7 @@ public class PrinterConnectionActorTests
             _gate.Set();
         }
 
-        public void Enqueue(int printerId, DateTimeOffset receivedAt, TelemetryDTO telemetry)
+        public void Enqueue(int printerId, DateTimeOffset receivedAt, TelemetryUpdate telemetry)
         {
             lock (_sync)
             {
@@ -946,7 +986,7 @@ public class PrinterConnectionActorTests
             }
         }
 
-        public void Enqueue(int printerId, DateTimeOffset receivedAt, EventDTO eventDto)
+        public void Enqueue(int printerId, DateTimeOffset receivedAt, PrinterEventRecord eventRecord)
         {
         }
 
@@ -973,12 +1013,12 @@ public class PrinterConnectionActorTests
         FakeLogger<PrinterConnectionActor> logger = new();
         PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), logger: logger);
 
-        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PausePrint(), CancellationToken.None);
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 1);
 
         // Act
         uint commandId = CommandIdOf(sentFrames[0]);
-        await actor.PostAsync(EventAnswering(commandId, Events.Finished, null), CancellationToken.None);
+        await actor.PostAsync(EventAnswering(commandId, PrinterEventType.Finished, null), CancellationToken.None);
         await Eventually(sendTask);
 
         // Assert
@@ -1011,11 +1051,11 @@ public class PrinterConnectionActorTests
         FakeLogger<PrinterConnectionActor> logger = new();
         PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), logger: logger);
 
-        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new SetPrinterIdle(), CancellationToken.None);
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PrusaConnect.Commands.SetPrinterIdle(), CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 1);
 
         // Act
-        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), Events.Rejected, "Can't set idle now"),
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.Rejected, "Can't set idle now"),
                               CancellationToken.None);
         await Eventually(sendTask);
 
@@ -1116,18 +1156,18 @@ public class PrinterConnectionActorTests
     /// <c>Arg.Is&lt;&gt;</c> lambda, which is why this stays a class rather than a substitute.</summary>
     private sealed class RecordingTelemetrySink : ITelemetrySink
     {
-        public List<(int printerId, DateTimeOffset receivedAt, TelemetryDTO telemetry)> TelemetryCalls { get; } = [];
+        public List<(int printerId, DateTimeOffset receivedAt, TelemetryUpdate telemetry)> TelemetryCalls { get; } = [];
 
-        public List<(int printerId, DateTimeOffset receivedAt, EventDTO eventDto)> EventCalls { get; } = [];
+        public List<(int printerId, DateTimeOffset receivedAt, PrinterEventRecord eventRecord)> EventCalls { get; } = [];
 
-        public void Enqueue(int printerId, DateTimeOffset receivedAt, TelemetryDTO telemetry)
+        public void Enqueue(int printerId, DateTimeOffset receivedAt, TelemetryUpdate telemetry)
         {
             TelemetryCalls.Add((printerId, receivedAt, telemetry));
         }
 
-        public void Enqueue(int printerId, DateTimeOffset receivedAt, EventDTO eventDto)
+        public void Enqueue(int printerId, DateTimeOffset receivedAt, PrinterEventRecord eventRecord)
         {
-            EventCalls.Add((printerId, receivedAt, eventDto));
+            EventCalls.Add((printerId, receivedAt, eventRecord));
         }
     }
 }

@@ -17,6 +17,7 @@ using NSubstitute;
 using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Model;
@@ -159,7 +160,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         public string? Path { get; set; }
     }
 
-    private static CommandSendResult Answered(string? dataJson, Events eventType = Events.FileInfo, string? reason = null)
+    private static CommandSendResult Answered(string? dataJson, PrinterEventType eventType = PrinterEventType.FileInfo, string? reason = null)
     {
         return new(CommandSendOutcome.Completed,
                    new CommandOutcome(eventType, reason),
@@ -204,7 +205,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
         (PrinterConnectionRegistry registry, _) =
-            RegistryWithActor(printer.Id, Answered(null, Events.Rejected, "Won't execute the same command multiple times"));
+            RegistryWithActor(printer.Id, Answered(null, PrinterEventType.Rejected, "Won't execute the same command multiple times"));
         PrinterCommandService service = new(new PrinterAccessService(context), registry);
 
         // Act
@@ -212,7 +213,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
             await service.AskAsync(printer.Id, new AskSomething(), 1, CancellationToken.None);
 
         // Assert
-        outcome!.EventType.Should().Be(Events.Rejected);
+        outcome!.EventType.Should().Be(PrinterEventType.Rejected);
         outcome.Reason.Should().Be("Won't execute the same command multiple times");
         outcome.Answer.Should().BeNull();
     }
@@ -243,7 +244,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The permission gate is shared with <see cref="PrinterCommandService.SendCommandAsync"/> rather
+    /// The permission gate is shared with <see cref="PrinterCommandService.SendCommandAsync(int, ISendableCommand, long, System.Threading.CancellationToken)"/> rather
     /// than reimplemented - which is exactly what extracting the common half could have broken
     /// silently, since nothing else asks a question yet.
     /// </summary>
@@ -277,16 +278,16 @@ public sealed class PrinterCommandServiceTests : IDisposable
 
         (PrinterConnectionRegistry registry, IPrinterConnectionActor actor) =
             RegistryWithActor(
-                printer.Id, new CommandSendResult(CommandSendOutcome.Completed, new CommandOutcome(Events.Finished, null)));
+                printer.Id, new CommandSendResult(CommandSendOutcome.Completed, new CommandOutcome(PrinterEventType.Finished, null)));
         PrinterCommandService service = new(new PrinterAccessService(context), registry);
-        PausePrint command = new();
+        PrusaConnect.Commands.PausePrint command = new();
 
         // Act
         CommandOutcome? outcome = await service.SendCommandAsync(printer.Id, command, 1, CancellationToken.None);
 
         // Assert
         outcome.Should().NotBeNull("PAUSE_PRINT is answered - only unanswerable commands report null");
-        outcome!.EventType.Should().Be(Events.Finished);
+        outcome!.EventType.Should().Be(PrinterEventType.Finished);
         await actor.Received(1).SendCommandAsync(command, Arg.Any<CancellationToken>());
     }
 
@@ -303,7 +304,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
                                             RegistryWithActor(printer.Id, CommandSendOutcome.Completed).registry);
 
         // Act
-        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PausePrint(), 1, CancellationToken.None);
+        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), 1, CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<TeamAccessDeniedException>();
@@ -322,7 +323,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
                                             RegistryWithActor(printer.Id, CommandSendOutcome.Completed).registry);
 
         // Act
-        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PausePrint(), 1, CancellationToken.None);
+        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), 1, CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<TeamAccessDeniedException>();
@@ -338,7 +339,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
                                             new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance));
 
         // Act
-        Func<Task> act = () => service.SendCommandAsync(999, new PausePrint(), 1, CancellationToken.None);
+        Func<Task> act = () => service.SendCommandAsync(999, new PrusaConnect.Commands.PausePrint(), 1, CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<PrinterNotFoundException>();
@@ -358,7 +359,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
                                             new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance));
 
         // Act
-        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PausePrint(), 1, CancellationToken.None);
+        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), 1, CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<PrinterNotConnectedException>();
@@ -379,7 +380,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
                                             RegistryWithActor(printer.Id, CommandSendOutcome.NotConnected).registry);
 
         // Act
-        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PausePrint(), 1, CancellationToken.None);
+        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), 1, CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<PrinterNotConnectedException>();
@@ -398,7 +399,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
                                             RegistryWithActor(printer.Id, CommandSendOutcome.AlreadyInFlight).registry);
 
         // Act
-        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PausePrint(), 1, CancellationToken.None);
+        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), 1, CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<CommandAlreadyInFlightException>();
@@ -417,9 +418,65 @@ public sealed class PrinterCommandServiceTests : IDisposable
                                             RegistryWithActor(printer.Id, CommandSendOutcome.ResponseTimedOut).registry);
 
         // Act
-        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PausePrint(), 1, CancellationToken.None);
+        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), 1, CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<CommandResponseTimedOutException>();
+    }
+
+    /// <summary>
+    /// The protocol-neutral path: an intent reaches a link that is <i>not</i> the Prusa actor and
+    /// is sent through it untranslated by the service - the link owns translation, so the service
+    /// never learns which protocol it spoke to. This is the seam a second protocol plugs into.
+    /// </summary>
+    [Fact]
+    public async Task AnIntentReachesANonPrusaLinkThroughTheNeutralPath()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: false);
+        Printer printer = await AddPrinterAsync(context, membership.TeamId);
+
+        IPrinterLink link = Substitute.For<IPrinterLink>();
+        link.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
+            .Returns(new CommandSendResult(CommandSendOutcome.Completed, new CommandOutcome(PrinterEventType.Finished, null)));
+
+        PrinterConnectionRegistry registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
+        registry.Register(printer.Id, link);
+        PrinterCommandService service = new(new PrinterAccessService(context), registry);
+        Printing.PausePrint intent = new();
+
+        // Act
+        CommandOutcome? outcome = await service.SendCommandAsync(printer.Id, intent, 1, CancellationToken.None);
+
+        // Assert
+        outcome!.EventType.Should().Be(PrinterEventType.Finished);
+        await link.Received(1).SendAsync(intent, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The honest edge of the seam: a wire-typed Prusa command has no neutral shape yet, so a link
+    /// that is not the Prusa actor refuses it with a specific exception rather than pretending -
+    /// distinct from "not connected", because the printer <i>is</i> connected.
+    /// </summary>
+    [Fact]
+    public async Task AWireTypedCommandToANonPrusaLinkIsRefusedAsUnsupported()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: true, canManage: false);
+        Printer printer = await AddPrinterAsync(context, membership.TeamId);
+
+        PrinterConnectionRegistry registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
+        registry.Register(printer.Id, Substitute.For<IPrinterLink>());
+        PrinterCommandService service = new(new PrinterAccessService(context), registry);
+
+        // Act
+        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), 1, CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<PrinterProtocolUnsupportedException>();
     }
 }

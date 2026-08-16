@@ -170,18 +170,18 @@ public class RenderFixtureTests
         // Assert
         events.Should().HaveCount(13);
 
-        events["Event - rejected"].EventType.Should().Be(Events.Rejected);
+        events["Event - rejected"].EventType.Should().Be(PrinterEventType.Rejected);
         events["Event - rejected"].CommandId.Should().Be(11u);
         events["Event - rejected"].Status.Should().Be("IDLE");
 
-        events["Event - job info"].EventType.Should().Be(Events.JobInfo);
+        events["Event - job info"].EventType.Should().Be(PrinterEventType.JobInfo);
         events["Event - job info"].JobId.Should().Be(42);
 
         // A JOB_INFO request that cannot be answered comes back as REJECTED with a reason, not as
         // an empty JOB_INFO - three different ways, all of which a server has to expect.
-        events["Even - job info not printing"].EventType.Should().Be(Events.Rejected);
+        events["Even - job info not printing"].EventType.Should().Be(PrinterEventType.Rejected);
         events["Even - job info not printing"].Reason.Should().Be("No job in progress");
-        events["Even - job info - invalid job ID"].EventType.Should().Be(Events.Rejected);
+        events["Even - job info - invalid job ID"].EventType.Should().Be(PrinterEventType.Rejected);
         events["Even - job info - invalid job ID"].Reason.Should().Be("Job ID doesn't match");
 
         // A finished job answers with its terminal state instead of its details.
@@ -190,9 +190,9 @@ public class RenderFixtureTests
         events["Even - job info - old job ID ABORTED"].Data!.Value.GetProperty("state").GetString()
                                                       .Should().Be("FIN_STOPPED");
 
-        events["Event - info"].EventType.Should().Be(Events.Info);
-        events["Event - transfer info, no transfer"].EventType.Should().Be(Events.TransferInfo);
-        events["Event - state changed with dialog"].EventType.Should().Be(Events.StateChanged);
+        events["Event - info"].EventType.Should().Be(PrinterEventType.Info);
+        events["Event - transfer info, no transfer"].EventType.Should().Be(PrinterEventType.TransferInfo);
+        events["Event - state changed with dialog"].EventType.Should().Be(PrinterEventType.StateChanged);
     }
 
     /// <summary>
@@ -353,7 +353,7 @@ public class RenderFixtureTests
         TransferEventDataDTO? data = eventDto!.Data!.Value.Deserialize<TransferEventDataDTO>();
 
         // Assert
-        eventDto.EventType.Should().Be(Events.TransferFinished);
+        eventDto.EventType.Should().Be(PrinterEventType.TransferFinished);
         eventDto.TransferId.Should().Be(1037732555);
         eventDto.CommandId.Should().BeNull("the terminal events are unsolicited - they answer no "
                                            + "command, which is why start_cmd_id has to exist");

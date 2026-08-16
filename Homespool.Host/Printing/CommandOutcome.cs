@@ -1,4 +1,4 @@
-namespace Homespool.Host.PrusaConnect;
+namespace Homespool.Host.Printing;
 
 /// <summary>
 /// The printer's answer to a sent command, e.g. <c>(Finished, null)</c> or
@@ -18,7 +18,7 @@ namespace Homespool.Host.PrusaConnect;
 /// The printer's own words when it rejected the command, e.g. "No print to pause". Null for the
 /// outcomes that carry no explanation, which is most of them.
 /// </param>
-public sealed record CommandOutcome(Model.Events EventType, string? Reason)
+public sealed record CommandOutcome(Model.PrinterEventType EventType, string? Reason)
 {
     /// <summary>
     /// Firmware's machine-readable companion to <see cref="Reason"/> - <c>TRANSFER_IN_PROGRESS</c>,
@@ -46,7 +46,7 @@ public sealed record CommandOutcome(Model.Events EventType, string? Reason)
 /// </summary>
 /// <typeparam name="TAnswer">
 /// The answering event's <c>data</c>, from
-/// <see cref="Commands.ISendableCommand{TAnswer}"/>.
+/// <see cref="PrusaConnect.Commands.ISendableCommand{TAnswer}"/>.
 /// </typeparam>
 /// <param name="EventType">As <see cref="CommandOutcome.EventType"/>.</param>
 /// <param name="Reason">As <see cref="CommandOutcome.Reason"/>.</param>
@@ -56,7 +56,7 @@ public sealed record CommandOutcome(Model.Events EventType, string? Reason)
 /// <see cref="EventType"/> set and this null, and callers must read the two together rather than
 /// treating null as failure.
 /// </param>
-public sealed record CommandOutcome<TAnswer>(Model.Events EventType, string? Reason, TAnswer? Answer)
+public sealed record CommandOutcome<TAnswer>(Model.PrinterEventType EventType, string? Reason, TAnswer? Answer)
 {
     /// <summary>As <see cref="CommandOutcome.MachineReason"/>.</summary>
     public string? MachineReason { get; init; }

@@ -4,9 +4,10 @@ using System.Threading.Tasks;
 
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
+using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 
-namespace Homespool.Host.PrusaConnect;
+namespace Homespool.Host.Printing;
 
 /// <summary>
 /// Permission-checked entry point for sending a command to a printer. Kept separate from
@@ -29,6 +30,19 @@ public class PrinterCommandService
     {
         _access = access;
         _registry = registry;
+    }
+
+    /// <summary>Turns every way a send fell short into the exception that describes it.</summary>
+    private static CommandSendResult Check(int printerId, CommandSendResult result)
+    {
+        return result.Outcome switch
+        {
+            CommandSendOutcome.NotConnected => throw new PrinterNotConnectedException(printerId),
+            CommandSendOutcome.AlreadyInFlight => throw new CommandAlreadyInFlightException(printerId),
+            CommandSendOutcome.ResponseTimedOut => throw new CommandResponseTimedOutException(printerId),
+            CommandSendOutcome.SendTimedOut => throw new CommandSendTimedOutException(printerId),
+            _ => result,
+        };
     }
 
     /// <summary>
@@ -70,8 +84,30 @@ public class PrinterCommandService
     }
 
     /// <summary>
+    /// Sends a domain intent - the protocol-free entry point, and what callers outside the wire
+    /// layer use. Goes through <see cref="IPrinterLink"/>, so the connection translates the intent
+    /// into whatever protocol it speaks and this service never learns which. Identical contract to
+    /// the <see cref="ISendableCommand"/> overload, which remains for the callers that are
+    /// legitimately wire-typed.
+    /// </summary>
+    /// <param name="printerId">The printer to send to.</param>
+    /// <param name="intent">What the caller wants done, translated by the printer's own link.</param>
+    /// <param name="userId">The caller, checked for <c>CanUse</c> on the printer's team.</param>
+    /// <param name="cancellationToken">The caller's own cancellation.</param>
+    public async Task<CommandOutcome?> SendCommandAsync(int printerId,
+                                                        IPrinterIntent intent,
+                                                        long userId,
+                                                        CancellationToken cancellationToken)
+    {
+        IPrinterLink link = await RequireLinkAsync(printerId, userId, cancellationToken);
+        CommandSendResult result = Check(printerId, await link.SendAsync(intent, cancellationToken));
+
+        return result.Outcome == CommandSendOutcome.Dispatched ? null : result.Response!;
+    }
+
+    /// <summary>
     /// Asks a printer a question and hands back the answer already parsed into
-    /// <typeparamref name="TAnswer"/> - the counterpart to <see cref="SendCommandAsync"/>, for the
+    /// <typeparamref name="TAnswer"/> - the counterpart to <see cref="SendCommandAsync(int, ISendableCommand, long, System.Threading.CancellationToken)"/>, for the
     /// commands whose answer is a payload rather than a verdict.
     /// </summary>
     /// <typeparam name="TAnswer">Declared by the command itself, via <see cref="ISendableCommand{TAnswer}"/>.</typeparam>
@@ -97,7 +133,7 @@ public class PrinterCommandService
     /// without a payload - a <c>Rejected</c> being the ordinary case, where
     /// <see cref="CommandOutcome{TAnswer}.Reason"/> is what the caller wants. Null overall only for
     /// a command declaring <see cref="ISendableCommand.ExpectsReply"/> false, as
-    /// <see cref="SendCommandAsync"/>.
+    /// <see cref="SendCommandAsync(int, ISendableCommand, long, System.Threading.CancellationToken)"/>.
     /// </returns>
     public async Task<CommandOutcome<TAnswer>?> AskAsync<TAnswer>(int printerId,
                                                                   ISendableCommand<TAnswer> commandData,
@@ -132,32 +168,45 @@ public class PrinterCommandService
     }
 
     /// <summary>
-    /// The half both entry points share: check the caller may use this printer, send, and turn every
-    /// way the send fell short into the exception that describes it. What comes back is always a
-    /// <see cref="CommandSendOutcome.Completed"/> or <see cref="CommandSendOutcome.Dispatched"/>
-    /// result, which is the only distinction the two callers still have to make.
+    /// The half the wire-typed entry points share: check the caller may use this printer, reach its
+    /// Prusa actor, send, and turn every way the send fell short into the exception that describes
+    /// it. What comes back is always a <see cref="CommandSendOutcome.Completed"/> or
+    /// <see cref="CommandSendOutcome.Dispatched"/> result, which is the only distinction the
+    /// callers still have to make.
     /// </summary>
+    /// <remarks>
+    /// <b>The downcast to <see cref="IPrinterConnectionActor"/> is the honest marker of remaining
+    /// work.</b> Queries whose answers are wire payloads (<see cref="AskAsync{TAnswer}"/>) and
+    /// commands constructed as Prusa types have no protocol-neutral shape yet, because no second
+    /// protocol has offered one to draw it against; until then they are Prusa-only by declaration,
+    /// and a link that is not the Prusa actor refuses them here rather than pretending. When a
+    /// second protocol grows a comparable query, this is where the neutral shape lands.
+    /// </remarks>
     private async Task<CommandSendResult> SendAndCheckAsync(int printerId,
                                                             ISendableCommand commandData,
                                                             long userId,
                                                             CancellationToken cancellationToken)
     {
+        IPrinterLink link = await RequireLinkAsync(printerId, userId, cancellationToken);
+
+        if (link is not IPrinterConnectionActor actor)
+        {
+            throw new PrinterProtocolUnsupportedException(printerId, commandData.WireName);
+        }
+
+        return Check(printerId, await actor.SendCommandAsync(commandData, cancellationToken));
+    }
+
+    /// <summary>The permission check and the registry lookup every entry point shares.</summary>
+    private async Task<IPrinterLink> RequireLinkAsync(int printerId, long userId, CancellationToken cancellationToken)
+    {
         await _access.RequireAsync(printerId, userId, PrinterOperation.ControlPrinter, cancellationToken);
 
-        if (!_registry.TryGet(printerId, out IPrinterConnectionActor? actor) || actor is null)
+        if (!_registry.TryGet(printerId, out IPrinterLink? link) || link is null)
         {
             throw new PrinterNotConnectedException(printerId);
         }
 
-        CommandSendResult result = await actor.SendCommandAsync(commandData, cancellationToken);
-
-        return result.Outcome switch
-        {
-            CommandSendOutcome.NotConnected => throw new PrinterNotConnectedException(printerId),
-            CommandSendOutcome.AlreadyInFlight => throw new CommandAlreadyInFlightException(printerId),
-            CommandSendOutcome.ResponseTimedOut => throw new CommandResponseTimedOutException(printerId),
-            CommandSendOutcome.SendTimedOut => throw new CommandSendTimedOutException(printerId),
-            _ => result,
-        };
+        return link;
     }
 }

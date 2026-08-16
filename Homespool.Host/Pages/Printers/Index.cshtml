@@ -92,13 +92,13 @@ else
                     @if (row.Connected)
                     {
                         <form method="post" asp-page-handler="Pause" asp-route-printerId="@row.Printer.Id" class="d-inline">
-                            <button type="submit" class="btn btn-sm btn-outline-secondary">@Localiser["Command_Pause"]</button>
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">@Localiser["Intent_PausePrint"]</button>
                         </form>
                         <form method="post" asp-page-handler="Resume" asp-route-printerId="@row.Printer.Id" class="d-inline">
-                            <button type="submit" class="btn btn-sm btn-outline-secondary">@Localiser["Command_Resume"]</button>
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">@Localiser["Intent_ResumePrint"]</button>
                         </form>
                         <form method="post" asp-page-handler="Stop" asp-route-printerId="@row.Printer.Id" class="d-inline">
-                            <button type="submit" class="btn btn-sm btn-outline-danger">@Localiser["Command_Stop"]</button>
+                            <button type="submit" class="btn btn-sm btn-outline-danger">@Localiser["Intent_StopPrint"]</button>
                         </form>
                     }
                 </td>

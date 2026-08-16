@@ -1,11 +1,14 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 
 using AwesomeAssertions;
 
 using Homespool.Host.Certificates;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Localisation;
+using Homespool.Host.Printing;
 using Homespool.Model;
 
 namespace Homespool.Host.Test;
@@ -212,6 +215,59 @@ public sealed class ErrorTextTests
             InCulture("da", () => TestLocaliser.Shared()[suggestion.NoteKey])
                 .ResourceNotFound.Should().BeFalse($"{durability} is reachable and needs words");
         }
+    }
+
+    /// <summary>
+    /// An intent is named for a person, not for a log.
+    /// </summary>
+    /// <remarks>
+    /// <b><see cref="IPrinterIntent.Name"/> is the type name and its own documentation says so</b> -
+    /// "for logs and failure bodies". It was reaching a status message, so the page told somebody
+    /// "PausePrint sent." and a Danish reader "PausePrint er afsendt." Before the vocabulary refactor
+    /// it showed <c>PAUSE_PRINT</c> instead, which is the same defect in a different spelling.
+    /// </remarks>
+    [Fact]
+    public void AnIntentIsNamedForAPersonRatherThanForALog()
+    {
+        IPrinterIntent intent = new PausePrint();
+
+        intent.Name.Should().Be("PausePrint", "that is what the seam exists to keep off the page");
+
+        InCulture("en-GB", () => Intents().For(intent)).Should().Be("Pause");
+        InCulture("da", () => Intents().For(intent)).Should().Be("Pause");
+        InCulture("da", () => Intents().For(new ResumePrint())).Should().Be("Fortsæt");
+    }
+
+    /// <summary>
+    /// Every intent has words, in both languages.
+    /// </summary>
+    /// <remarks>
+    /// Driven from the interface's implementations rather than a list, so an intent added later fails
+    /// here instead of quietly falling back to its type name on somebody's printer page. The fallback
+    /// exists so that failure is cosmetic rather than a rendered resource key; this is what keeps it
+    /// theoretical.
+    /// </remarks>
+    [Fact]
+    public void EveryIntentHasWords()
+    {
+        IEnumerable<Type> intents = typeof(IPrinterIntent).Assembly
+                                                          .GetTypes()
+                                                          .Where(type => typeof(IPrinterIntent).IsAssignableFrom(type))
+                                                          .Where(type => !type.IsInterface && !type.IsAbstract);
+
+        foreach (Type type in intents)
+        {
+            foreach (string culture in new[] { "en-GB", "da" })
+            {
+                InCulture(culture, () => TestLocaliser.Shared()["Intent_" + type.Name])
+                    .ResourceNotFound.Should().BeFalse($"{type.Name} is shown to somebody in {culture}");
+            }
+        }
+    }
+
+    private static PrinterIntentText Intents()
+    {
+        return new PrinterIntentText(TestLocaliser.Shared());
     }
 
     private static string Describe(Exception error, string cultureName)

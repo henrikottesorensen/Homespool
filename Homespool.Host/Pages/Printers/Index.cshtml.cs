@@ -41,6 +41,11 @@ public class IndexModel : PageModel
     private readonly PrinterStatusText _statusText;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
+    /// <summary>
+    /// Names an intent for a person. <see cref="IPrinterIntent.Name"/> is the type name and says so.
+    /// </summary>
+    private readonly PrinterIntentText _intents;
+
     public IndexModel(PrinterQueryService printerQueryService,
                       PrusaConnectService prusaConnectService,
                       ProvisioningBundleBuilder bundles,
@@ -51,6 +56,7 @@ public class IndexModel : PageModel
                       PrinterCommandService printerCommandService,
                       PrintStopService printStopService,
                       PrinterStatusText statusText,
+                      PrinterIntentText intents,
                       IStringLocalizer<SharedResource> localiser)
     {
         _printerQueryService = printerQueryService;
@@ -63,6 +69,7 @@ public class IndexModel : PageModel
         _printerCommandService = printerCommandService;
         _printStopService = printStopService;
         _statusText = statusText;
+        _intents = intents;
         _localiser = localiser;
     }
 
@@ -264,8 +271,8 @@ public class IndexModel : PageModel
             (StatusMessage, StatusSuccess) = outcome?.EventType switch
             {
                 PrinterEventType.Rejected or PrinterEventType.Failed =>
-                    (_localiser["Printers_CommandRejected", command.Name, outcome!.Reason ?? string.Empty], false),
-                _ => (_localiser["Printers_CommandSent", command.Name], true),
+                    (_localiser["Printers_CommandRejected", _intents.For(command), outcome!.Reason ?? string.Empty], false),
+                _ => (_localiser["Printers_CommandSent", _intents.For(command)], true),
             };
         }
         catch (PrinterNotFoundException)

@@ -222,15 +222,6 @@
   <data name="Common_Status" xml:space="preserve">
     <value>Status</value>
   </data>
-  <data name="Command_Pause" xml:space="preserve">
-    <value>Pause</value>
-  </data>
-  <data name="Command_Resume" xml:space="preserve">
-    <value>Fortsæt</value>
-  </data>
-  <data name="Command_Stop" xml:space="preserve">
-    <value>Stop</value>
-  </data>
   <data name="Printers_NotFound" xml:space="preserve">
     <value>Denne printer findes ikke længere.</value>
   </data>
@@ -490,9 +481,6 @@
   </data>
   <data name="Printers_CoolingIncluded" xml:space="preserve">
     <value>nedkøling inkluderet</value>
-  </data>
-  <data name="Printers_SetReady" xml:space="preserve">
-    <value>Markér klargjort</value>
   </data>
   <data name="Printers_ReadyHeading" xml:space="preserve">
     <value>Er {0} klar til næste print?</value>
@@ -1744,5 +1732,29 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   </data>
   <data name="Readme_FileName" xml:space="preserve">
     <value>LÆSMIG.Pakke.md</value>
+  </data>
+  <data name="Intent_PausePrint" xml:space="preserve">
+    <value>Pause</value>
+  </data>
+  <data name="Intent_ResumePrint" xml:space="preserve">
+    <value>Fortsæt</value>
+  </data>
+  <data name="Intent_StopPrint" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="Intent_StartPrint" xml:space="preserve">
+    <value>Start print</value>
+  </data>
+  <data name="Intent_SetPrinterReady" xml:space="preserve">
+    <value>Markér klargjort</value>
+  </data>
+  <data name="Intent_SetPrinterIdle" xml:space="preserve">
+    <value>Markér ikke klargjort</value>
+  </data>
+  <data name="Intent_CancelPrinterReady" xml:space="preserve">
+    <value>Annullér klargjort</value>
+  </data>
+  <data name="Intent_SetTemperatures" xml:space="preserve">
+    <value>Sæt temperaturer</value>
   </data>
 </root>

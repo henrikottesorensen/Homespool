@@ -148,6 +148,7 @@ public sealed class IndexModelTests : IDisposable
                                  new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
                                  NullLogger<PrintStopService>.Instance),
             new PrinterStatusText(localiser),
+            new PrinterIntentText(localiser),
             localiser)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),

@@ -61,6 +61,9 @@ public static class Registration
         // language of the sentence around it.
         services.AddScoped<ErrorText>();
 
+        // And the same again for intents, whose own Name is documented as being for logs.
+        services.AddScoped<PrinterIntentText>();
+
         return services;
     }
 

@@ -237,15 +237,6 @@
   <data name="Common_Status" xml:space="preserve">
     <value>Status</value>
   </data>
-  <data name="Command_Pause" xml:space="preserve">
-    <value>Pause</value>
-  </data>
-  <data name="Command_Resume" xml:space="preserve">
-    <value>Resume</value>
-  </data>
-  <data name="Command_Stop" xml:space="preserve">
-    <value>Stop</value>
-  </data>
   <data name="Printers_NotFound" xml:space="preserve">
     <value>That printer no longer exists.</value>
   </data>
@@ -504,9 +495,6 @@
   </data>
   <data name="Printers_CoolingIncluded" xml:space="preserve">
     <value>cooling included</value>
-  </data>
-  <data name="Printers_SetReady" xml:space="preserve">
-    <value>Set ready</value>
   </data>
   <data name="Printers_ReadyHeading" xml:space="preserve">
     <value>Is {0} ready for the next print?</value>
@@ -1803,5 +1791,30 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Readme_FileName" xml:space="preserve">
     <value>README.Bundle.md</value>
     <comment>The name of the file, which is a word rather than a format. Nothing parses it - the printer ignores this file entirely - so unlike prusa_printer_settings.ini and connect.der it is free to be translated. The extension stays, being a format.</comment>
+  </data>
+  <data name="Intent_PausePrint" xml:space="preserve">
+    <value>Pause</value>
+    <comment>The words for an intent in a status message - &quot;{0} sent.&quot; Named for the type so PrinterIntentText can build the key from IPrinterIntent.Name, the way PrinterStatusText builds one from a status. The type name itself is a developer&apos;s word and was reaching the page before this existed.</comment>
+  </data>
+  <data name="Intent_ResumePrint" xml:space="preserve">
+    <value>Resume</value>
+  </data>
+  <data name="Intent_StopPrint" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="Intent_StartPrint" xml:space="preserve">
+    <value>Start print</value>
+  </data>
+  <data name="Intent_SetPrinterReady" xml:space="preserve">
+    <value>Set ready</value>
+  </data>
+  <data name="Intent_SetPrinterIdle" xml:space="preserve">
+    <value>Set not ready</value>
+  </data>
+  <data name="Intent_CancelPrinterReady" xml:space="preserve">
+    <value>Cancel ready</value>
+  </data>
+  <data name="Intent_SetTemperatures" xml:space="preserve">
+    <value>Set temperatures</value>
   </data>
 </root>

@@ -477,7 +477,7 @@ public sealed class LocalisationTests
                      .Select(File.ReadAllText));
 
         // Built from a prefix at run time, so they are never written out in full anywhere.
-        string[] constructed = ["PrinterStatus_"];
+        string[] constructed = ["PrinterStatus_", "Intent_"];
         string[] constructedSuffixes = ["_One", "_Other"];
 
         List<string> orphans = ReadResources("SharedResource.resx")

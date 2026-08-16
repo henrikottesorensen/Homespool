@@ -513,7 +513,8 @@
     <comment>{0} is the printer's name. Naming it guards against readying the machine you are not looking at.</comment>
   </data>
   <data name="Printers_ReadyChecklist" xml:space="preserve">
-    <value>Is the print sheet in place, empty and cleaned?</value>
+    <value>Is the print sheet empty, in place and cleaned?</value>
+    <comment>Empty comes first because the sentence below it is about exactly that - the printer will print onto a finished part and not refuse. Henrik wanted the order changed and could not say why; this is the why. Alphabetising or tidying this back separates the question from its own warning.</comment>
     <comment>One sentence and one key on purpose: the three conditions must be free to reorder in a language that wants them in another order.</comment>
   </data>
   <data name="Printers_ReadyConsequence" xml:space="preserve">

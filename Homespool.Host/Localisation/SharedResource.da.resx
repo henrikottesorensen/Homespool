@@ -397,6 +397,9 @@
   <data name="Printers_Starting" xml:space="preserve">
     <value>starter</value>
   </data>
+  <data name="Printers_StartedAt" xml:space="preserve">
+    <value>Startet {0}</value>
+  </data>
   <data name="Printers_PrintHistory" xml:space="preserve">
     <value>Printhistorik</value>
   </data>

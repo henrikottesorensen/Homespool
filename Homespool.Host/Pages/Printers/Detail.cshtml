@@ -78,18 +78,18 @@ else
         <tbody>
             <tr><th>@Localiser["Common_Status"]</th><td>@liveState.Status</td></tr>
             <tr><th>@Localiser["Printers_Progress"]</th><td>@(liveState.Progress is { } progress ? $"{progress}%" : "-")</td></tr>
-            <tr><th>@Localiser["Printers_TimePrinting"]</th><td>@(liveState.TimePrinting is { } tp ? TimeSpan.FromSeconds(tp).ToString("g") : "-")</td></tr>
-            <tr><th>@Localiser["Printers_TimeRemaining"]</th><td>@(liveState.TimeRemaining is { } tr ? TimeSpan.FromSeconds(tr).ToString("g") : "-")</td></tr>
+            <tr><th>@Localiser["Printers_TimePrinting"]</th><td>@(liveState.TimePrinting is { } tp ? TimeSpan.FromSeconds(tp).ToString("g", System.Globalization.CultureInfo.CurrentCulture) : "-")</td></tr>
+            <tr><th>@Localiser["Printers_TimeRemaining"]</th><td>@(liveState.TimeRemaining is { } tr ? TimeSpan.FromSeconds(tr).ToString("g", System.Globalization.CultureInfo.CurrentCulture) : "-")</td></tr>
             @* Only rendered when the printer actually reports it: the firmware emits filament_change_in
                only while a pause is scheduled (render.cpp:164, gated on time_to_pause), so on a print
                with no M600 the field is absent rather than zero. A "-" row would imply "no swap due" on
                every ordinary print, which is noise. *@
             @if (liveState.TimeToFilamentChange is { } untilChange)
             {
-                <tr><th>@Localiser["Printers_FilamentChangeIn"]</th><td>@TimeSpan.FromSeconds(untilChange).ToString("g")</td></tr>
+                <tr><th>@Localiser["Printers_FilamentChangeIn"]</th><td>@TimeSpan.FromSeconds(untilChange).ToString("g", System.Globalization.CultureInfo.CurrentCulture)</td></tr>
             }
-            <tr><th>@Localiser["Printers_NozzleTemp"]</th><td>@Localiser["Printers_TemperatureTarget", liveState.NozzleTemperature?.ToString("0.0") ?? "-", liveState.TargetNozzleTemperature?.ToString("0.0") ?? "-"]</td></tr>
-            <tr><th>@Localiser["Printers_BedTemp"]</th><td>@Localiser["Printers_TemperatureTarget", liveState.BedTemperature?.ToString("0.0") ?? "-", liveState.TargetBedTemperature?.ToString("0.0") ?? "-"]</td></tr>
+            <tr><th>@Localiser["Printers_NozzleTemp"]</th><td>@Localiser["Printers_TemperatureTarget", liveState.NozzleTemperature?.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture) ?? "-", liveState.TargetNozzleTemperature?.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture) ?? "-"]</td></tr>
+            <tr><th>@Localiser["Printers_BedTemp"]</th><td>@Localiser["Printers_TemperatureTarget", liveState.BedTemperature?.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture) ?? "-", liveState.TargetBedTemperature?.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture) ?? "-"]</td></tr>
             <tr><th>@Localiser["Printers_Material"]</th><td>@(liveState.Material ?? "-")</td></tr>
             <tr><th>@Localiser["Printers_Speed"]</th><td>@(liveState.Speed is { } speed ? $"{speed}%" : "-")</td></tr>
             <tr><th>@Localiser["Printers_Flow"]</th><td>@(liveState.Flow is { } flow ? $"{flow}%" : "-")</td></tr>
@@ -111,8 +111,8 @@ else
         }
         <br />
         <span class="text-muted">
-            started @active.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm",
-                System.Globalization.CultureInfo.InvariantCulture)
+            @Localiser["Printers_StartedAt", active.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm",
+                System.Globalization.CultureInfo.InvariantCulture)]
         </span>
     </p>
 }
@@ -478,8 +478,8 @@ else
                 <td>@sample.Timestamp</td>
                 <td>@sample.Status</td>
                 <td>@(sample.Progress is { } progress ? $"{progress}%" : "-")</td>
-                <td>@(sample.NozzleTemperature?.ToString("0.0") ?? "-")</td>
-                <td>@(sample.BedTemperature?.ToString("0.0") ?? "-")</td>
+                <td>@(sample.NozzleTemperature?.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture) ?? "-")</td>
+                <td>@(sample.BedTemperature?.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture) ?? "-")</td>
                 <td>@(sample.Speed is { } speed ? $"{speed}%" : "-")</td>
             </tr>
         }

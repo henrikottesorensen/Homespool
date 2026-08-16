@@ -107,12 +107,12 @@
                 </tr>
                 <tr>
                     <th scope="row">@Localiser["Cert_Expires"]</th>
-                    <td>@(Model.LeafExpires?.ToString("yyyy-MM-dd") ?? "-")</td>
+                    <td>@(Model.LeafExpires?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) ?? "-")</td>
                 </tr>
                 <tr>
                     <th scope="row">@Localiser["Cert_AuthorityExpires"]</th>
                     <td>
-                        @(Model.AuthorityExpires?.ToString("yyyy-MM-dd") ?? "-")
+                        @(Model.AuthorityExpires?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) ?? "-")
                         <div class="form-text">
                             @Localiser["Cert_AuthorityReplaceCost"]
                         </div>

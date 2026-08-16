@@ -1,4 +1,4 @@
-namespace Homespool.Host.PrusaConnect;
+namespace Homespool.Host.Printing;
 
 /// <summary>
 /// How far a command got. Every value except <see cref="Completed"/> means the printer's answer is
@@ -31,7 +31,7 @@ public enum CommandSendOutcome
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Only reachable for commands declaring <see cref="Commands.ISendableCommand.ExpectsReply"/>
+    /// Only reachable for commands declaring <see cref="PrusaConnect.Commands.ISendableCommand.ExpectsReply"/>
     /// false. <c>RESET_PRINTER</c> is the case that proved this necessary: firmware's handler calls
     /// <c>printer.reset_printer()</c> and the rejection line after it is annotated "We reach this place
     /// only if the reset_printer fails to execute" (planner.cpp:960-966), so a <i>successful</i> reset

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.Extensions.Localization;
 
 using Homespool.Host.Localisation;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Services;
@@ -29,7 +30,8 @@ public static class TeamOptionSelectListBuilder
         IStringLocalizer<SharedResource> localiser)
     {
         return memberships
-               .Where(m => m.CanManage)
+               .AsEnumerable()
+               .Where(m => CapabilitySet.Parse(m.Capabilities).Allows(Capability.ManagePrinter))
                .Select(m => new SelectListItem(
                             m.Team?.Name ?? localiser["Common_TeamNumbered", m.TeamId].Value,
                             m.TeamId.ToString(),

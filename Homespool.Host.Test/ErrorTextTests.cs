@@ -75,7 +75,7 @@ public sealed class ErrorTextTests
     [Fact]
     public void ThePrintersOwnWordsAreNotTranslated()
     {
-        PrinterRefusedException error = new(Events.Rejected, "Not in a state to accept this");
+        PrinterRefusedException error = new(PrinterEventType.Rejected, "Not in a state to accept this");
 
         Describe(error, "da")
             .Should().Be("Printeren afviste den: Not in a state to accept this");
@@ -87,7 +87,7 @@ public sealed class ErrorTextTests
     [Fact]
     public void AnEventNameIsFirmwareVocabulary()
     {
-        Describe(new PrinterRefusedException(Events.Failed, reason: null), "da")
+        Describe(new PrinterRefusedException(PrinterEventType.Failed, reason: null), "da")
             .Should().Be("Printeren afviste den (Failed).");
     }
 

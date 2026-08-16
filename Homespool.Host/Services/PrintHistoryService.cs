@@ -65,7 +65,7 @@ public class PrintHistoryService
     /// </remarks>
     public async Task<PrintJob?> GetActiveAsync(int printerId, long userId, CancellationToken cancellationToken)
     {
-        await _access.RequireAsync(printerId, userId, PrinterOperation.ViewHistory, cancellationToken);
+        await _access.RequireAsync(printerId, userId, Capability.ViewHistory, cancellationToken);
 
         return await _dbContext.PrintJobs
                                .AsNoTracking()
@@ -78,7 +78,7 @@ public class PrintHistoryService
                                                          long userId,
                                                          CancellationToken cancellationToken)
     {
-        await _access.RequireAsync(printerId, userId, PrinterOperation.ViewHistory, cancellationToken);
+        await _access.RequireAsync(printerId, userId, Capability.ViewHistory, cancellationToken);
 
         return await _dbContext.PrintJobs
                                .AsNoTracking()
@@ -148,7 +148,7 @@ public class PrintHistoryService
     /// </remarks>
     public async Task<MessageKey?> GetHoldReasonAsync(int printerId, long userId, CancellationToken cancellationToken)
     {
-        await _access.RequireAsync(printerId, userId, PrinterOperation.ViewQueue, cancellationToken);
+        await _access.RequireAsync(printerId, userId, Capability.ViewQueue, cancellationToken);
 
         QueuedPrint? head = await _dbContext.QueuedPrints
                                             .AsNoTracking()

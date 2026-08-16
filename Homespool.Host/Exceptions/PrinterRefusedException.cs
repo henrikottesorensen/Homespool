@@ -29,7 +29,7 @@ public class PrinterRefusedException : Exception, ILocalisableError
     {
     }
 
-    public PrinterRefusedException(Events eventType, string? reason)
+    public PrinterRefusedException(PrinterEventType eventType, string? reason)
         : base(reason is null ? $"The printer refused it ({eventType})." : $"The printer refused it: {reason}")
     {
         EventType = eventType;
@@ -37,7 +37,7 @@ public class PrinterRefusedException : Exception, ILocalisableError
     }
 
     /// <summary>The answering event - <c>Rejected</c> or <c>Failed</c>.</summary>
-    public Events EventType { get; }
+    public PrinterEventType EventType { get; }
 
     /// <summary>The printer's own words, when it gave any.</summary>
     public string? Reason { get; }

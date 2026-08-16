@@ -23,6 +23,7 @@ using Homespool.Host.Authorisation;
 using Homespool.Host.Certificates;
 using Homespool.Host.Localisation;
 using Homespool.Host.Pages.Printers;
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.Services;
@@ -130,7 +131,7 @@ public sealed class IndexModelTests : IDisposable
                                    .GetRequiredService<IStringLocalizer<SharedResource>>();
 
         IndexModel model = new(
-            new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System),
+            new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System),
             new PrusaConnectService(context, new CodeGenerator(), new TokenService(), new TeamService(context),
                                     TimeProvider.System, NullLogger<PrusaConnectService>.Instance, Options.Create(options)),
             new ProvisioningBundleBuilder(Options.Create(options), Options.Create(new CertificateOptions()), authority,
@@ -139,8 +140,12 @@ public sealed class IndexModelTests : IDisposable
             users,
             Options.Create(options),
             connectionRegistry,
-            new PrinterCommandService(new PrinterAccessService(context), connectionRegistry),
-            new PrintStopService(context, new PrinterCommandService(new PrinterAccessService(context), connectionRegistry),
+            new PrinterCommandService(new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), connectionRegistry),
+            new PrintStopService(context,
+                                 new PrinterCommandService(
+                                     new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
+                                     connectionRegistry),
+                                 new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
                                  NullLogger<PrintStopService>.Instance),
             new PrinterStatusText(localiser),
             localiser)

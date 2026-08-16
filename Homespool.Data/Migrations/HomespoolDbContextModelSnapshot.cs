@@ -421,6 +421,9 @@ namespace Homespool.Data.Migrations
                     b.Property<long>("Timestamp")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("WireType")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("PrinterId", "JobId");
@@ -736,14 +739,12 @@ namespace Homespool.Data.Migrations
                     b.Property<long>("UserId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<bool>("CanManage")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("CanRead")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("CanUse")
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("Capabilities")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("");
 
                     b.Property<bool>("IsDefault")
                         .HasColumnType("INTEGER");

@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
-using Homespool.Host.PrusaConnect;
+using Homespool.Host.Printing;
 using Homespool.Model;
 using Homespool.Model.Entities;
 

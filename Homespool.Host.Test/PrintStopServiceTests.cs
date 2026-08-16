@@ -12,6 +12,7 @@ using NSubstitute;
 
 using Homespool.Data;
 using Homespool.Host.Authorisation;
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.Services;
@@ -62,7 +63,7 @@ public sealed class PrintStopServiceTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await SeedAsync();
         await AddPrintAsync(context, PrintState.Printing, ended: false);
-        Connect(Events.Finished);
+        Connect(PrinterEventType.Finished);
 
         // Act
         await NewService(context).StopAsync(PrinterId, Stopper, TestContext.Current.CancellationToken);
@@ -84,7 +85,7 @@ public sealed class PrintStopServiceTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await SeedAsync();
         await AddPrintAsync(context, PrintState.Printing, ended: false);
-        Connect(Events.Rejected, "No print to stop");
+        Connect(PrinterEventType.Rejected, "No print to stop");
 
         // Act
         await NewService(context).StopAsync(PrinterId, Stopper, TestContext.Current.CancellationToken);
@@ -150,7 +151,7 @@ public sealed class PrintStopServiceTests : IDisposable
         // Arrange - already attributed
         await using HomespoolDbContext context = await SeedAsync();
         await AddPrintAsync(context, PrintState.Printing, ended: false, stoppedBy: Stopper);
-        Connect(Events.Finished);
+        Connect(PrinterEventType.Finished);
 
         // Act
         await NewService(context).StopAsync(PrinterId, SomebodyElse, TestContext.Current.CancellationToken);
@@ -172,14 +173,14 @@ public sealed class PrintStopServiceTests : IDisposable
         // Arrange - history, but nothing running
         await using HomespoolDbContext context = await SeedAsync();
         await AddPrintAsync(context, PrintState.Finished, ended: true);
-        Connect(Events.Finished);
+        Connect(PrinterEventType.Finished);
 
         // Act
         CommandOutcome? outcome =
             await NewService(context).StopAsync(PrinterId, Stopper, TestContext.Current.CancellationToken);
 
         // Assert
-        outcome!.EventType.Should().Be(Events.Finished, "the send is not conditional on our own bookkeeping");
+        outcome!.EventType.Should().Be(PrinterEventType.Finished, "the send is not conditional on our own bookkeeping");
 
         context.ChangeTracker.Clear();
         PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
@@ -190,15 +191,21 @@ public sealed class PrintStopServiceTests : IDisposable
     private PrintStopService NewService(HomespoolDbContext context)
     {
         return new PrintStopService(context,
-                                    new PrinterCommandService(new PrinterAccessService(context), _registry),
+                                    new PrinterCommandService(
+                                        new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
+                                        _registry),
+                                    new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
                                     NullLogger<PrintStopService>.Instance);
     }
 
-    private void Connect(Events reply, string? reason = null)
+    private void Connect(PrinterEventType reply, string? reason = null)
     {
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
+             .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
+                                                            new CommandOutcome(reply, reason))));
+        actor.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
              .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
                                                             new CommandOutcome(reply, reason))));
 
@@ -213,7 +220,7 @@ public sealed class PrintStopServiceTests : IDisposable
     {
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
-        actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
+        actor.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
              .Returns(async _ =>
              {
                  await using HomespoolDbContext loopContext = NewContext();
@@ -225,7 +232,7 @@ public sealed class PrintStopServiceTests : IDisposable
                  await loopContext.SaveChangesAsync(TestContext.Current.CancellationToken);
 
                  return new CommandSendResult(CommandSendOutcome.Completed,
-                                              new CommandOutcome(Events.Finished, null));
+                                              new CommandOutcome(PrinterEventType.Finished, null));
              });
 
         _registry.Register(PrinterId, actor);
@@ -274,8 +281,8 @@ public sealed class PrintStopServiceTests : IDisposable
         context.Teams.Add(team);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = Stopper, CanRead = true, CanUse = true });
-        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = SomebodyElse, CanRead = true, CanUse = true });
+        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = Stopper, Capabilities = TestMemberships.Graded(true, true, false) });
+        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = SomebodyElse, Capabilities = TestMemberships.Graded(true, true, false) });
         context.Printers.Add(new Printer { Id = PrinterId, Uuid = Guid.NewGuid(), TeamId = team.Id });
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);

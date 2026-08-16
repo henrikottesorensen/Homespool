@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -41,8 +42,8 @@ public class EventDTO
     public int? TransferId { get; set; }
 
     [JsonPropertyName("event")]
-    [JsonConverter(typeof(EventsJsonConverter))]
-    public required Events EventType { get; set; }
+    [JsonConverter(typeof(EventTypeJsonConverter))]
+    public required PrinterEventType EventType { get; set; }
 
     /// <summary>
     /// Envelope keys this build does not model - see <see cref="UnknownFieldTracker"/>. This is the
@@ -53,16 +54,36 @@ public class EventDTO
     public Dictionary<string, JsonElement>? Unknown { get; set; }
 
     /// <summary>
-    /// Maps <see cref="Events"/> to/from firmware's SCREAMING_SNAKE_CASE wire strings (e.g.
-    /// <c>FileInfo</c> &lt;-&gt; <c>"FILE_INFO"</c>). <see cref="JsonConverterAttribute"/> only
-    /// instantiates its target type via a parameterless constructor, so the naming policy has to be
-    /// baked into a subclass rather than passed at the attribute site.
+    /// Delegates the <c>event</c> field to <see cref="PrusaEventWireMapping"/>, which is the
+    /// authority on Connect's vocabulary. A casing transform used to sit here; it only worked
+    /// while our enum's members mirrored the SDK's, and <see cref="PrinterEventType"/> is
+    /// deliberately free not to.
     /// </summary>
-    public sealed class EventsJsonConverter : JsonStringEnumConverter<Events>
+    public sealed class EventTypeJsonConverter : JsonConverter<PrinterEventType>
     {
-        public EventsJsonConverter()
-            : base(JsonNamingPolicy.SnakeCaseUpper)
+        public override PrinterEventType Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
+            string? wireValue = reader.GetString();
+            if (wireValue is null)
+            {
+                throw new JsonException("The event field cannot be null.");
+            }
+
+            try
+            {
+                return PrusaEventWireMapping.Parse(wireValue);
+            }
+            catch (ArgumentOutOfRangeException e)
+            {
+                // The read loop treats JsonException as a protocol violation; an unknown event
+                // word is exactly that, not an argument error in our own code.
+                throw new JsonException(e.Message, e);
+            }
+        }
+
+        public override void Write(Utf8JsonWriter writer, PrinterEventType value, JsonSerializerOptions options)
+        {
+            writer.WriteStringValue(PrusaEventWireMapping.Format(value));
         }
     }
 }

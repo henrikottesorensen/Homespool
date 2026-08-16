@@ -297,9 +297,7 @@ namespace Homespool.Data.Migrations
                 {
                     TeamId = table.Column<int>(type: "INTEGER", nullable: false),
                     UserId = table.Column<long>(type: "INTEGER", nullable: false),
-                    CanRead = table.Column<bool>(type: "INTEGER", nullable: false),
-                    CanUse = table.Column<bool>(type: "INTEGER", nullable: false),
-                    CanManage = table.Column<bool>(type: "INTEGER", nullable: false),
+                    Capabilities = table.Column<string>(type: "TEXT", maxLength: 512, nullable: false, defaultValue: ""),
                     IsDefault = table.Column<bool>(type: "INTEGER", nullable: false)
                 },
                 constraints: table =>
@@ -353,6 +351,7 @@ namespace Homespool.Data.Migrations
                     PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
                     Timestamp = table.Column<long>(type: "INTEGER", nullable: false),
                     EventType = table.Column<string>(type: "TEXT", nullable: false),
+                    WireType = table.Column<string>(type: "TEXT", nullable: true),
                     Status = table.Column<int>(type: "INTEGER", nullable: false),
                     JobId = table.Column<int>(type: "INTEGER", nullable: true),
                     CommandId = table.Column<long>(type: "INTEGER", nullable: true),

@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 
+using Homespool.Model;
+
 namespace Homespool.Host.PrusaConnect.Commands;
 
 /// <summary>
@@ -56,4 +58,8 @@ public class StartConnectDownload : ISendableCommand
         ["hash"] = Hash,
         ["orig_size"] = OriginalSize,
     };
+
+    /// <inheritdoc />
+    /// <remarks>Sending the file is part of causing the print, and goes out as the queuer.</remarks>
+    public Capability RequiredCapability => Capability.Print;
 }

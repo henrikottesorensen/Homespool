@@ -32,7 +32,7 @@ namespace Homespool.Host.Test;
 /// <see cref="TelemetryDTO.TransferId"/>, the Prusa-iX fields, and <see cref="TelemetryDTO.CommandId"/>
 /// are proven absent-safe here, not proven correct when present. The capture also only ever shows
 /// <c>INFO</c>, <c>REJECTED</c>, <c>JOB_INFO</c> and <c>FILE_INFO</c> events - the other 10 event
-/// types (including the firmware-only <see cref="Events.CancelableChanged"/>) rest on the firmware
+/// types (including the firmware-only <see cref="PrinterEventType.CancelableChanged"/>) rest on the firmware
 /// source reading in <c>notes/phase-2-dispatch.md</c> alone, same as the untested telemetry fields.
 /// </para>
 /// </remarks>
@@ -81,7 +81,7 @@ public class CaptureReplayTests
         // Assert
         result.EventFailures.Should().BeEmpty();
         result.EventTypesSeen.Should().Equal(
-            Events.Info, Events.Rejected, Events.JobInfo, Events.FileInfo, Events.FileInfo);
+            PrinterEventType.Info, PrinterEventType.Rejected, PrinterEventType.JobInfo, PrinterEventType.FileInfo, PrinterEventType.FileInfo);
 
         result.InfoData.Should().NotBeNull();
         result.InfoData!.Firmware.Should().Be("6.4.0+11974");
@@ -183,7 +183,7 @@ public class CaptureReplayTests
 
         List<string> telemetryFailures = [];
         List<string> eventFailures = [];
-        List<Events> eventTypesSeen = [];
+        List<PrinterEventType> eventTypesSeen = [];
         List<FileInfoEventDataDTO> fileInfoData = [];
         int telemetryCount = 0;
         int eventCount = 0;
@@ -226,12 +226,12 @@ public class CaptureReplayTests
                         {
                             eventTypesSeen.Add(eventDto.EventType);
 
-                            if (eventDto.EventType == Events.Info && eventDto.Data is not null)
+                            if (eventDto.EventType == PrinterEventType.Info && eventDto.Data is not null)
                             {
                                 infoData = eventDto.Data.Value.Deserialize<InfoEventDataDTO>();
                             }
 
-                            if (eventDto.EventType == Events.FileInfo && eventDto.Data is not null
+                            if (eventDto.EventType == PrinterEventType.FileInfo && eventDto.Data is not null
                                                                       && eventDto.Data.Value.Deserialize<FileInfoEventDataDTO>() is
                                                                           { } fileInfo)
                             {
@@ -281,7 +281,7 @@ public class CaptureReplayTests
         List<string> TelemetryFailures,
         int ChamberLedSeen,
         List<string> EventFailures,
-        List<Events> EventTypesSeen,
+        List<PrinterEventType> EventTypesSeen,
         InfoEventDataDTO? InfoData,
         List<FileInfoEventDataDTO> FileInfoData);
 

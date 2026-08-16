@@ -1,5 +1,6 @@
 using System;
 
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Data;
@@ -40,9 +41,7 @@ public static class TeamProvisioning
                 new TeamMember
                 {
                     UserId = userId,
-                    CanRead = true,
-                    CanUse = true,
-                    CanManage = true,
+                    Capabilities = CapabilitySet.Format(CapabilityPresets.Manager),
                     IsDefault = true,
                 },
             },

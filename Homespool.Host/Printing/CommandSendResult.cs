@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Homespool.Host.PrusaConnect;
+namespace Homespool.Host.Printing;
 
 /// <summary>
 /// What became of one <c>SendCommandAsync</c> call: how far it got, and the printer's answer if it
@@ -19,7 +19,7 @@ namespace Homespool.Host.PrusaConnect;
 /// type it - correlation is on <c>command_id</c> alone and nothing here knows which command asked
 /// what - but a <c>JsonElement</c> handed to callers is a schema that ends up living in call sites.
 /// So it stops one layer up: <see cref="PrinterCommandService.AskAsync"/> deserialises it into the
-/// shape the command declared through <see cref="Commands.ISendableCommand{TAnswer}"/>, and nothing
+/// shape the command declared through <see cref="PrusaConnect.Commands.ISendableCommand{TAnswer}"/>, and nothing
 /// above that ever sees this property. <c>CommandSendResult</c> reaches exactly one production
 /// class, which is what makes that enforceable rather than merely encouraged.
 /// </para>

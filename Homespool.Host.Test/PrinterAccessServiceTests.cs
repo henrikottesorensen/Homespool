@@ -6,10 +6,12 @@ using System.Threading.Tasks;
 using AwesomeAssertions;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -55,27 +57,27 @@ public sealed class PrinterAccessServiceTests : IDisposable
     /// entry here grants access rather than refusing it, which nothing else would catch.
     /// </summary>
     [Theory]
-    [InlineData(PrinterOperation.ViewPrinter, Reader, true)]
-    [InlineData(PrinterOperation.ViewQueue, Reader, true)]
-    [InlineData(PrinterOperation.ViewHistory, Reader, true)]
-    [InlineData(PrinterOperation.ChangeQueue, Reader, false)]
-    [InlineData(PrinterOperation.ControlPrinter, Reader, false)]
-    [InlineData(PrinterOperation.ManagePrinter, Reader, false)]
-    [InlineData(PrinterOperation.ViewQueue, User, true)]
-    [InlineData(PrinterOperation.ChangeQueue, User, true)]
-    [InlineData(PrinterOperation.ControlPrinter, User, true)]
-    [InlineData(PrinterOperation.ManagePrinter, User, false)]
-    [InlineData(PrinterOperation.ChangeQueue, Manager, true)]
-    [InlineData(PrinterOperation.ManagePrinter, Manager, true)]
-    [InlineData(PrinterOperation.ViewPrinter, Stranger, false)]
-    [InlineData(PrinterOperation.ChangeQueue, Stranger, false)]
-    public async Task EachOperationNeedsThePermissionItIsMappedTo(PrinterOperation operation,
+    [InlineData(Capability.ViewPrinter, Reader, true)]
+    [InlineData(Capability.ViewQueue, Reader, true)]
+    [InlineData(Capability.ViewHistory, Reader, true)]
+    [InlineData(Capability.Print, Reader, false)]
+    [InlineData(Capability.ControlPrinter, Reader, false)]
+    [InlineData(Capability.ManagePrinter, Reader, false)]
+    [InlineData(Capability.ViewQueue, User, true)]
+    [InlineData(Capability.Print, User, true)]
+    [InlineData(Capability.ControlPrinter, User, true)]
+    [InlineData(Capability.ManagePrinter, User, false)]
+    [InlineData(Capability.Print, Manager, true)]
+    [InlineData(Capability.ManagePrinter, Manager, true)]
+    [InlineData(Capability.ViewPrinter, Stranger, false)]
+    [InlineData(Capability.Print, Stranger, false)]
+    public async Task EachOperationNeedsThePermissionItIsMappedTo(Capability operation,
                                                                   long userId,
                                                                   bool expected)
     {
         // Arrange
         await using HomespoolDbContext context = await SeedAsync();
-        PrinterAccessService access = new(context);
+        PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
 
         // Act
         bool allowed = await access.AllowsAsync(1, userId, operation, TestContext.Current.CancellationToken);
@@ -93,16 +95,16 @@ public sealed class PrinterAccessServiceTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await SeedAsync();
-        PrinterAccessService access = new(context);
+        PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
 
         // Act & Assert
         await FluentActions
-              .Awaiting(() => access.RequireAsync(999, Reader, PrinterOperation.ViewPrinter,
+              .Awaiting(() => access.RequireAsync(999, Reader, Capability.ViewPrinter,
                                                   TestContext.Current.CancellationToken))
               .Should().ThrowAsync<PrinterNotFoundException>();
 
         await FluentActions
-              .Awaiting(() => access.RequireAsync(1, Reader, PrinterOperation.ChangeQueue,
+              .Awaiting(() => access.RequireAsync(1, Reader, Capability.Print,
                                                   TestContext.Current.CancellationToken))
               .Should().ThrowAsync<TeamAccessDeniedException>();
     }
@@ -121,15 +123,15 @@ public sealed class PrinterAccessServiceTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await SeedAsync();
-        PrinterAccessService access = new(context);
+        PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
         Guid known = await context.Printers.Select(printer => printer.Uuid)
                                   .SingleAsync(TestContext.Current.CancellationToken);
 
         // Act
-        Printer? unknown = await access.FindAsync(Guid.NewGuid(), Reader, PrinterOperation.ViewPrinter,
+        Printer? unknown = await access.FindAsync(Guid.NewGuid(), Reader, Capability.ViewPrinter,
                                                   TestContext.Current.CancellationToken);
 
-        Printer? forbidden = await access.FindAsync(known, Stranger, PrinterOperation.ViewPrinter,
+        Printer? forbidden = await access.FindAsync(known, Stranger, Capability.ViewPrinter,
                                                     TestContext.Current.CancellationToken);
 
         // Assert
@@ -142,22 +144,26 @@ public sealed class PrinterAccessServiceTests : IDisposable
     /// </summary>
     /// <remarks>
     /// <b>The one case that fails open if it regresses.</b> Before
-    /// <see cref="PrinterOperation.Undefined"/> existed, zero was <c>ViewPrinter</c> - so an
+    /// <see cref="Capability.Undefined"/> existed, zero was <c>ViewPrinter</c> - so an
     /// uninitialised field or a deserialised zero asked for the most permissive read and got it.
     /// Throwing is right rather than returning false: nothing legitimately asks this, so it is a
     /// programming error rather than a refusal.
+    /// <para>
+    /// The throw now comes from <c>CapabilitySet.Allows</c> rather than an operation-to-permission
+    /// switch, so it covers cameras on the same argument.
+    /// </para>
     /// </remarks>
     [Fact]
     public async Task TheDefaultOperationIsNotAPermissionAnybodyHas()
     {
         // Arrange
         await using HomespoolDbContext context = await SeedAsync();
-        PrinterAccessService access = new(context);
+        PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
 
         // Act & Assert
         await FluentActions
               .Awaiting(() => access.AllowsAsync(1, Manager, default, TestContext.Current.CancellationToken))
-              .Should().ThrowAsync<ArgumentOutOfRangeException>("a default operation must not resolve to a real one");
+              .Should().ThrowAsync<ArgumentOutOfRangeException>("a default capability must not resolve to a real one");
     }
 
     /// <summary>A printer that does not exist is not something anybody may act on.</summary>
@@ -166,10 +172,10 @@ public sealed class PrinterAccessServiceTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await SeedAsync();
-        PrinterAccessService access = new(context);
+        PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
 
         // Act
-        bool allowed = await access.AllowsAsync(999, Manager, PrinterOperation.ViewPrinter,
+        bool allowed = await access.AllowsAsync(999, Manager, Capability.ViewPrinter,
                                                 TestContext.Current.CancellationToken);
 
         // Assert
@@ -190,22 +196,22 @@ public sealed class PrinterAccessServiceTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await SeedAsync();
-        PrinterAccessService access = new(context);
+        PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
 
-        (await access.AllowsAsync(1, Reader, PrinterOperation.ChangeQueue, TestContext.Current.CancellationToken))
+        (await access.AllowsAsync(1, Reader, Capability.Print, TestContext.Current.CancellationToken))
             .Should().BeFalse();
 
         // Act - grant it behind the service's back
         TeamMember member = await context.TeamMembers.SingleAsync(m => m.UserId == Reader,
                                                                   TestContext.Current.CancellationToken);
-        member.CanUse = true;
+        member.Capabilities = CapabilitySet.Format(CapabilityPresets.Operator);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        (await access.AllowsAsync(1, Reader, PrinterOperation.ChangeQueue, TestContext.Current.CancellationToken))
+        (await access.AllowsAsync(1, Reader, Capability.Print, TestContext.Current.CancellationToken))
             .Should().BeFalse("the answer was already given in this scope");
 
-        (await access.AllowsAsync(1, Manager, PrinterOperation.ManagePrinter, TestContext.Current.CancellationToken))
+        (await access.AllowsAsync(1, Manager, Capability.ManagePrinter, TestContext.Current.CancellationToken))
             .Should().BeTrue("a memo keyed on the printer alone would answer for the wrong person");
     }
 
@@ -221,16 +227,9 @@ public sealed class PrinterAccessServiceTests : IDisposable
         context.Teams.Add(team);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = Reader, CanRead = true });
-        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = User, CanRead = true, CanUse = true });
-        context.TeamMembers.Add(new TeamMember
-        {
-            TeamId = team.Id,
-            UserId = Manager,
-            CanRead = true,
-            CanUse = true,
-            CanManage = true,
-        });
+        context.TeamMembers.Add(TestMemberships.Viewer(team.Id, Reader));
+        context.TeamMembers.Add(TestMemberships.Operator(team.Id, User));
+        context.TeamMembers.Add(TestMemberships.Manager(team.Id, Manager));
 
         context.Printers.Add(new Printer { Id = 1, Uuid = Guid.NewGuid(), TeamId = team.Id });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);

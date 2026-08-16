@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
+using Homespool.Model;
 
 namespace Homespool.Host.PrusaConnect.Commands;
 
@@ -15,7 +17,7 @@ namespace Homespool.Host.PrusaConnect.Commands;
 /// <see cref="ISendableCommand{TAnswer}"/> - firmware replies with a <c>FILE_INFO</c> carrying the
 /// same <c>command_id</c>, and the listing is inside its <c>data</c>. Send it with
 /// <see cref="PrinterCommandService.AskAsync"/> rather than
-/// <see cref="PrinterCommandService.SendCommandAsync"/>, which reports the verdict and drops the
+/// <see cref="PrinterCommandService.SendCommandAsync(int, ISendableCommand, long, System.Threading.CancellationToken)"/>, which reports the verdict and drops the
 /// answer.
 /// </para>
 /// <para>
@@ -45,4 +47,8 @@ public class SendFileInfo : ISendableCommand<FileInfoEventDataDTO>
     {
         ["path"] = Path,
     };
+
+    /// <inheritdoc />
+    /// <remarks>It asks a question and changes nothing. An endpoint exposing it may still gate itself higher.</remarks>
+    public Capability RequiredCapability => Capability.ViewPrinter;
 }

@@ -5,14 +5,15 @@ namespace Homespool.Model.Entities;
 /// that user's default team. Composite primary key <c>(TeamId, UserId)</c>: one row per user per
 /// team.
 /// </summary>
-/// <remarks>
-/// Permissions are three independent booleans rather than a role enum because that is exactly the
-/// shape the Prusa mobile API exposes in <c>User.teams[]</c> and <c>Printer-read</c>
-/// (<c>canRead</c>/<c>canUse</c>/<c>canManage</c>). A role enum would need a translation layer in
-/// both directions for nothing gained.
-/// </remarks>
 public class TeamMember
 {
+    /// <summary>The longest <see cref="Capabilities"/> string the column has to hold.</summary>
+    /// <remarks>
+    /// Every capability name, single-spaced, with room for the vocabulary to roughly double. A cap at
+    /// all is what stops the column being a place to put arbitrary text.
+    /// </remarks>
+    public const int CapabilitiesMaxLength = 512;
+
     public int TeamId { get; set; }
 
     public virtual Team? Team { get; set; }
@@ -20,11 +21,27 @@ public class TeamMember
     /// <summary>User id of the member. A plain id, not a foreign key — see <see cref="Team.CreatedBy"/>.</summary>
     public long UserId { get; set; }
 
-    public bool CanRead { get; set; }
-
-    public bool CanUse { get; set; }
-
-    public bool CanManage { get; set; }
+    /// <summary>
+    /// What this membership permits: <see cref="Capability"/> names separated by spaces, as
+    /// <c>CapabilitySet</c> writes them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Read it with <c>CapabilitySet.Parse</c> and write it with <c>CapabilitySet.Format</c>;
+    /// never compose or match this string by hand.</b> A substring test is the specific trap — it
+    /// would let one capability's name match inside another's — and hand-composition is how an
+    /// unrecognised name gets in.
+    /// </para>
+    /// <para>
+    /// <b>Empty grants nothing</b>, so an uninitialised membership refuses rather than permits.
+    /// </para>
+    /// <para>
+    /// <b>Text rather than a bitmask</b>, so a row says what it means when somebody is reading query
+    /// output trying to work out what went wrong — and so a new capability costs no migration. The
+    /// price is that renaming one does.
+    /// </para>
+    /// </remarks>
+    public string Capabilities { get; set; } = string.Empty;
 
     /// <summary>
     /// Whether this team is the user's default — where their printers land, and the fallback when a

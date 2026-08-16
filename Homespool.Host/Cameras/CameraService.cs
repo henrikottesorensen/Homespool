@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
 using Homespool.Host.Authorisation;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Cameras;
@@ -137,7 +138,7 @@ public class CameraService
                                                      CancellationToken cancellationToken)
     {
         Camera? camera = await _access
-                               .FindAsync(uuid, userId, CameraOperation.ManageCamera, cancellationToken)
+                               .FindAsync(uuid, userId, Capability.ManageCamera, cancellationToken)
                                .ConfigureAwait(false);
 
         if (camera is null)
@@ -179,7 +180,7 @@ public class CameraService
     public async Task<bool> DeleteAsync(long userId, Guid uuid, CancellationToken cancellationToken)
     {
         Camera? camera = await _access
-                               .FindAsync(uuid, userId, CameraOperation.ManageCamera, cancellationToken)
+                               .FindAsync(uuid, userId, Capability.ManageCamera, cancellationToken)
                                .ConfigureAwait(false);
 
         if (camera is null)
@@ -229,7 +230,7 @@ public class CameraService
                                                      cancellationToken)
                                                  .ConfigureAwait(false);
 
-        return membership is not null && membership.CanManage ?
+        return membership is not null && CapabilitySet.Parse(membership.Capabilities).Allows(Capability.ManageCamera) ?
             null :
             CameraSaveOutcome.Refused("Cameras_NotYourTeam");
     }

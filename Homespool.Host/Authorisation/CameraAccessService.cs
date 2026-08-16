@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Authorisation;
@@ -33,26 +34,12 @@ public class CameraAccessService
 {
     private readonly HomespoolDbContext _dbContext;
 
-    public CameraAccessService(HomespoolDbContext dbContext)
+    private readonly TeamCapabilityLookup _teams;
+
+    public CameraAccessService(HomespoolDbContext dbContext, TeamCapabilityLookup teams)
     {
         _dbContext = dbContext;
-    }
-
-    /// <summary>
-    /// The permission an operation needs.
-    /// </summary>
-    public static Func<TeamMember, bool> RequiredPermission(CameraOperation operation)
-    {
-        return operation switch
-        {
-            CameraOperation.ViewCamera => member => member.CanRead,
-            CameraOperation.ManageCamera => member => member.CanManage,
-
-            // A new operation with no mapping is a programming error, and defaulting would grant
-            // rather than refuse.
-            _ => throw new ArgumentOutOfRangeException(
-                nameof(operation), operation, "No permission is mapped to this operation."),
-        };
+        _teams = teams;
     }
 
     /// <summary>
@@ -60,9 +47,12 @@ public class CameraAccessService
     /// </summary>
     public async Task<IReadOnlyList<Camera>> ListAsync(long userId, CancellationToken cancellationToken)
     {
+        IReadOnlyCollection<int> teams = await _teams
+                                               .TeamsAllowingAsync(userId, Capability.ViewCamera, cancellationToken)
+                                               .ConfigureAwait(false);
+
         return await _dbContext.Cameras
-                               .Where(camera => _dbContext.TeamMembers.Any(member => member.TeamId == camera.TeamId &&
-                                                                                     member.UserId == userId && member.CanRead))
+                               .Where(camera => teams.Contains(camera.TeamId))
                                .Include(camera => camera.Printer)
                                .OrderBy(camera => camera.Name ?? string.Empty)
                                .ThenBy(camera => camera.Id)
@@ -81,10 +71,13 @@ public class CameraAccessService
     /// </remarks>
     public async Task<IReadOnlyList<Camera>> ListForPrinterAsync(int printerId, long userId, CancellationToken cancellationToken)
     {
+        IReadOnlyCollection<int> teams = await _teams
+                                               .TeamsAllowingAsync(userId, Capability.ViewCamera, cancellationToken)
+                                               .ConfigureAwait(false);
+
         return await _dbContext.Cameras
                                .Where(camera => camera.PrinterId == printerId)
-                               .Where(camera => _dbContext.TeamMembers.Any(member => member.TeamId == camera.TeamId &&
-                                                                                     member.UserId == userId && member.CanRead))
+                               .Where(camera => teams.Contains(camera.TeamId))
                                .OrderBy(camera => camera.Name ?? string.Empty)
                                .ThenBy(camera => camera.Id)
                                .AsNoTracking()
@@ -101,7 +94,7 @@ public class CameraAccessService
     /// UUID that answers differently for "no such camera" and "not yours" is a way to find out which
     /// cameras exist.
     /// </remarks>
-    public async Task<Camera?> FindAsync(Guid uuid, long userId, CameraOperation operation, CancellationToken cancellationToken)
+    public async Task<Camera?> FindAsync(Guid uuid, long userId, Capability capability, CancellationToken cancellationToken)
     {
         Camera? camera = await _dbContext.Cameras
                                          .Include(entity => entity.Printer)
@@ -119,7 +112,7 @@ public class CameraAccessService
                                                      cancellationToken)
                                                  .ConfigureAwait(false);
 
-        if (membership is null || !RequiredPermission(operation)(membership))
+        if (membership is null || !CapabilitySet.Parse(membership.Capabilities).Allows(capability))
         {
             return null;
         }
@@ -166,9 +159,12 @@ public class CameraAccessService
     /// </remarks>
     public async Task<IReadOnlyList<Team>> ManageableTeamsAsync(long userId, CancellationToken cancellationToken)
     {
-        return await _dbContext.TeamMembers
-                               .Where(member => member.UserId == userId && member.CanManage)
-                               .Select(member => member.Team!)
+        IReadOnlyCollection<int> teams = await _teams
+                                               .TeamsAllowingAsync(userId, Capability.ManageCamera, cancellationToken)
+                                               .ConfigureAwait(false);
+
+        return await _dbContext.Teams
+                               .Where(team => teams.Contains(team.Id))
                                .OrderBy(team => team.Name ?? string.Empty)
                                .ThenBy(team => team.Id)
                                .AsNoTracking()

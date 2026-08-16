@@ -80,9 +80,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
                 new TeamMember
                 {
                     UserId = userId,
-                    CanRead = true,
-                    CanUse = true,
-                    CanManage = canManage,
+                    Capabilities = TestMemberships.Graded(true, true, canManage),
                     IsDefault = isDefault,
                 },
             },
@@ -327,9 +325,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         {
             TeamId = printer.TeamId,
             UserId = 2,
-            CanRead = true,
-            CanUse = true,
-            CanManage = false,
+            Capabilities = TestMemberships.Graded(true, true, false),
             IsDefault = false,
         });
 

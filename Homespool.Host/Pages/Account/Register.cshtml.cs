@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 
 using Homespool.Host.Localisation;
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Identity;
@@ -180,7 +181,7 @@ public class RegisterModel : PageModel
 
             if (invitation.TeamId is int teamId)
             {
-                await _teamService.AddMemberAsync(teamId, user.Id, canRead: true, canUse: true, canManage: false,
+                await _teamService.AddMemberAsync(teamId, user.Id, CapabilityPresets.Operator,
                                                   cancellationToken);
             }
 

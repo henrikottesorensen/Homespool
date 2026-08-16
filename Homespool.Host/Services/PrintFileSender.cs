@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
-using Homespool.Host.PrusaConnect;
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Model;
@@ -102,7 +102,7 @@ public class PrintFileSender
             throw;
         }
 
-        if (outcome?.EventType is Events.Rejected or Events.Failed)
+        if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
         {
             // The printer will never ask for these bytes now, so the offer is dead weight holding a
             // descriptor open. Revoking is the same cleanup as the throw above, for the case that

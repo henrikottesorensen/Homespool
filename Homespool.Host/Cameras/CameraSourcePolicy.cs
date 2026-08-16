@@ -48,7 +48,7 @@ public sealed class CameraSourcePolicy
     /// <remarks>
     /// The distinction is not cosmetic: a networked camera belongs to whoever can already reach it,
     /// while one plugged into the server is a property of the machine - which is why the two are
-    /// permissioned differently. See <c>CameraOperation</c>.
+    /// permissioned differently. See <c>Capability</c>.
     /// </remarks>
     public static bool IsLocalDevice(string? source)
     {

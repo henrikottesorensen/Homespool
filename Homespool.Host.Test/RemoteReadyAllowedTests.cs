@@ -5,11 +5,13 @@ using System.Threading.Tasks;
 using AwesomeAssertions;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -152,13 +154,13 @@ public sealed class RemoteReadyAllowedTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await SeedAsync();
         PrinterQueryService service = ServiceFor(context);
-        PrinterAccessService access = new(context);
+        PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
 
         await service.SetRemoteReadyAllowedAsync(_printerUuid, Manager, false,
                                                  TestContext.Current.CancellationToken);
 
         // Act
-        bool mayControl = await access.AllowsAsync(1, User, PrinterOperation.ControlPrinter,
+        bool mayControl = await access.AllowsAsync(1, User, Capability.ControlPrinter,
                                                    TestContext.Current.CancellationToken);
 
         // Assert
@@ -167,7 +169,7 @@ public sealed class RemoteReadyAllowedTests : IDisposable
 
     private static PrinterQueryService ServiceFor(HomespoolDbContext context)
     {
-        return new PrinterQueryService(context, new PrinterAccessService(context), TimeProvider.System);
+        return new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System);
     }
 
     private async Task<bool> ReadFlagAsync(HomespoolDbContext context)
@@ -191,15 +193,13 @@ public sealed class RemoteReadyAllowedTests : IDisposable
         context.Teams.Add(team);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = Reader, CanRead = true });
-        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = User, CanRead = true, CanUse = true });
+        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = Reader, Capabilities = TestMemberships.Graded(true, false, false) });
+        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = User, Capabilities = TestMemberships.Graded(true, true, false) });
         context.TeamMembers.Add(new TeamMember
         {
             TeamId = team.Id,
             UserId = Manager,
-            CanRead = true,
-            CanUse = true,
-            CanManage = true,
+            Capabilities = TestMemberships.Graded(true, true, true),
         });
 
         _printerUuid = Guid.NewGuid();

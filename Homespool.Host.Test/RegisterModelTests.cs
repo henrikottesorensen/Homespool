@@ -22,6 +22,7 @@ using Homespool.Data;
 using Homespool.Host.Pages.Account;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -300,7 +301,9 @@ public sealed class RegisterModelTests : IDisposable
         memberships.Should().ContainSingle(m => m.IsDefault && m.TeamId != existingTeam.Id,
                                            "the default team is a fresh one, not the invited team");
         memberships.Should()
-                   .ContainSingle(m => m.TeamId == existingTeam.Id && !m.IsDefault && m.CanRead && m.CanUse && !m.CanManage);
+                   .ContainSingle(m => m.TeamId == existingTeam.Id
+                                       && !m.IsDefault
+                                       && m.Capabilities == CapabilitySet.Format(CapabilityPresets.Operator));
     }
 
     /// <summary>A new-account invite (no team) yields only the default team, no extra membership.</summary>
@@ -458,9 +461,7 @@ public sealed class RegisterModelTests : IDisposable
         {
             TeamId = dummyTeam.Id,
             UserId = nextUserId,
-            CanRead = true,
-            CanUse = true,
-            CanManage = true,
+            Capabilities = TestMemberships.Graded(true, true, true),
             IsDefault = true,
         });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);

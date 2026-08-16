@@ -18,7 +18,7 @@ using Microsoft.Extensions.Options;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Localisation;
 using Homespool.Host.PrintFiles;
-using Homespool.Host.PrusaConnect;
+using Homespool.Host.Printing;
 using Homespool.Host.Queue;
 using Homespool.Host.Services;
 using Homespool.Model;
@@ -422,9 +422,10 @@ public class IndexModel : PageModel
         {
             CommandOutcome? outcome = await _sender.SendAsync(printer, file, userId.Value, cancellationToken);
 
-            (StatusMessage, StatusSuccess) = outcome?.EventType is Events.Rejected or Events.Failed ?
-                (_localiser["Files_Refused", PrinterName(printer), outcome!.Reason ?? string.Empty], false) :
-                (_localiser["Files_Sending", file.FileName, PrinterName(printer)], true);
+            (StatusMessage, StatusSuccess) =
+                outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed ?
+                    (_localiser["Files_Refused", PrinterName(printer), outcome!.Reason ?? string.Empty], false) :
+                    (_localiser["Files_Sending", file.FileName, PrinterName(printer)], true);
         }
         catch (PrintFileUnreadableException e)
         {

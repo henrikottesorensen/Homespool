@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 
+using Homespool.Model;
+
 namespace Homespool.Host.PrusaConnect.Commands;
 
 /// <summary>
@@ -49,4 +51,8 @@ public class SetToken : ISendableCommand
     {
         ["token"] = Token,
     };
+
+    /// <inheritdoc />
+    /// <remarks>Re-tokening a printer is reprovisioning it, which is the manager's business.</remarks>
+    public Capability RequiredCapability => Capability.ManagePrinter;
 }

@@ -52,12 +52,12 @@ public class PrinterQueryService
     }
 
     /// <summary>
-    /// Every printer belonging to a team <paramref name="userId"/> may view, oldest first. Read-only,
+    /// Every printer belonging to a team the caller may view, oldest first. Read-only,
     /// so untracked.
     /// </summary>
-    public async Task<IReadOnlyList<Printer>> ListPrintersForUserAsync(long userId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<Printer>> ListPrintersForUserAsync(Caller caller, CancellationToken cancellationToken)
     {
-        IReadOnlyCollection<int> teams = await _teams.TeamsAllowingAsync(userId, Capability.ViewPrinter, cancellationToken);
+        IReadOnlyCollection<int> teams = await _teams.TeamsAllowingAsync(caller, Capability.ViewPrinter, cancellationToken);
 
         return await _dbContext.Printers
                                .AsNoTracking()
@@ -78,10 +78,10 @@ public class PrinterQueryService
     /// this exists for. Null live state means the printer has never connected.
     /// </remarks>
     public async Task<IReadOnlyList<PrinterWithState>> ListPrintersWithStateForUserAsync(
-        long userId,
+        Caller caller,
         CancellationToken cancellationToken)
     {
-        IReadOnlyCollection<int> teams = await _teams.TeamsAllowingAsync(userId, Capability.ViewPrinter, cancellationToken);
+        IReadOnlyCollection<int> teams = await _teams.TeamsAllowingAsync(caller, Capability.ViewPrinter, cancellationToken);
 
         return await _dbContext.Printers
                                .AsNoTracking()
@@ -90,7 +90,7 @@ public class PrinterQueryService
                                .Select(p => new PrinterWithState(
                                            p,
                                            _dbContext.PrinterLiveStates.SingleOrDefault(s => s.PrinterId == p.Id),
-                                           _dbContext.TeamMembers.SingleOrDefault(m => m.TeamId == p.TeamId && m.UserId == userId),
+                                           _dbContext.TeamMembers.SingleOrDefault(m => m.TeamId == p.TeamId && m.UserId == caller.UserId),
                                            _dbContext.Teams.SingleOrDefault(t => t.Id == p.TeamId)))
                                .ToListAsync(cancellationToken);
     }
@@ -100,9 +100,9 @@ public class PrinterQueryService
     /// <see cref="ListPrintersWithStateForUserAsync"/> for why the join is necessary rather than
     /// convenient.
     /// </summary>
-    public async Task<PrinterWithState?> GetPrinterWithStateForUserAsync(Guid uuid, long userId, CancellationToken cancellationToken)
+    public async Task<PrinterWithState?> GetPrinterWithStateForUserAsync(Guid uuid, Caller caller, CancellationToken cancellationToken)
     {
-        IReadOnlyCollection<int> teams = await _teams.TeamsAllowingAsync(userId, Capability.ViewPrinter, cancellationToken);
+        IReadOnlyCollection<int> teams = await _teams.TeamsAllowingAsync(caller, Capability.ViewPrinter, cancellationToken);
 
         return await _dbContext.Printers
                          .AsNoTracking()
@@ -110,7 +110,7 @@ public class PrinterQueryService
                          .Select(p => new PrinterWithState(
                                      p,
                                      _dbContext.PrinterLiveStates.SingleOrDefault(s => s.PrinterId == p.Id),
-                                     _dbContext.TeamMembers.SingleOrDefault(m => m.TeamId == p.TeamId && m.UserId == userId),
+                                     _dbContext.TeamMembers.SingleOrDefault(m => m.TeamId == p.TeamId && m.UserId == caller.UserId),
                                      _dbContext.Teams.SingleOrDefault(t => t.Id == p.TeamId)))
                          .SingleOrDefaultAsync(cancellationToken);
     }
@@ -125,9 +125,9 @@ public class PrinterQueryService
     /// <c>PrinterController</c> is the example. A caller that reports state to a user wants
     /// <see cref="GetPrinterWithStateForUserAsync"/> instead.
     /// </remarks>
-    public Task<Printer?> GetPrinterForUserAsync(Guid uuid, long userId, CancellationToken cancellationToken)
+    public Task<Printer?> GetPrinterForUserAsync(Guid uuid, Caller caller, CancellationToken cancellationToken)
     {
-        return _access.FindAsync(uuid, userId, Capability.ViewPrinter, cancellationToken);
+        return _access.FindAsync(uuid, caller, Capability.ViewPrinter, cancellationToken);
     }
 
     /// <summary>
@@ -161,18 +161,18 @@ public class PrinterQueryService
     /// </para>
     /// </remarks>
     public async Task<bool?> SetRemoteReadyAllowedAsync(Guid uuid,
-                                                        long userId,
+                                                        Caller caller,
                                                         bool allowed,
                                                         CancellationToken cancellationToken)
     {
-        if (await _access.FindAsync(uuid, userId, Capability.ViewPrinter, cancellationToken) is null)
+        if (await _access.FindAsync(uuid, caller, Capability.ViewPrinter, cancellationToken) is null)
         {
             return null;
         }
 
         Printer printer = await _dbContext.Printers.SingleAsync(p => p.Uuid == uuid, cancellationToken);
 
-        await _access.RequireAsync(printer.Id, userId, Capability.ManagePrinter, cancellationToken);
+        await _access.RequireAsync(printer.Id, caller, Capability.ManagePrinter, cancellationToken);
 
         printer.RemoteReadyAllowed = allowed;
         printer.UpdatedAt = _timeProvider.GetUtcNow();
@@ -183,7 +183,7 @@ public class PrinterQueryService
     }
 
     public async Task<PrinterWithState?> UpdatePrinterAsync(Guid uuid,
-                                                            long userId,
+                                                            Caller caller,
                                                             string? name,
                                                             string? location,
                                                             CancellationToken cancellationToken)
@@ -191,7 +191,7 @@ public class PrinterQueryService
         // Two questions, two refusal shapes, and the order matters: a caller who cannot even read
         // this printer gets null, because saying "forbidden" would confirm the UUID exists. One who
         // can read but not manage has already been shown it, so naming the refusal is safe.
-        if (await _access.FindAsync(uuid, userId, Capability.ViewPrinter, cancellationToken) is null)
+        if (await _access.FindAsync(uuid, caller, Capability.ViewPrinter, cancellationToken) is null)
         {
             return null;
         }
@@ -199,7 +199,7 @@ public class PrinterQueryService
         // Tracked, unlike the gate's copy - this one is about to be edited and saved.
         Printer printer = await _dbContext.Printers.SingleAsync(p => p.Uuid == uuid, cancellationToken);
 
-        await _access.RequireAsync(printer.Id, userId, Capability.ManagePrinter, cancellationToken);
+        await _access.RequireAsync(printer.Id, caller, Capability.ManagePrinter, cancellationToken);
 
         printer.Name = name;
         printer.Location = location;
@@ -219,7 +219,7 @@ public class PrinterQueryService
         // check - the checks above have already run.
         TeamMember? membership = await _dbContext.TeamMembers
                                                  .AsNoTracking()
-                                                 .SingleOrDefaultAsync(m => m.TeamId == printer.TeamId && m.UserId == userId,
+                                                 .SingleOrDefaultAsync(m => m.TeamId == printer.TeamId && m.UserId == caller.UserId,
                                                                        cancellationToken);
 
         return new PrinterWithState(printer, liveState, membership, team);
@@ -231,10 +231,10 @@ public class PrinterQueryService
     /// both cases return <c>null</c> so a 404 never confirms a UUID belongs to someone else's team.
     /// </summary>
     public async Task<PrinterStatistics?> GetPrinterStatisticsForUserAsync(Guid uuid,
-                                                                           long userId,
+                                                                           Caller caller,
                                                                            CancellationToken cancellationToken)
     {
-        IReadOnlyCollection<int> teams = await _teams.TeamsAllowingAsync(userId, Capability.ViewPrinter, cancellationToken);
+        IReadOnlyCollection<int> teams = await _teams.TeamsAllowingAsync(caller, Capability.ViewPrinter, cancellationToken);
 
         Printer? printer = await _dbContext.Printers
                                            .AsNoTracking()

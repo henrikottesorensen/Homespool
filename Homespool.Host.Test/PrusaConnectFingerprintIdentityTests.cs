@@ -18,6 +18,7 @@ using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.DTO;
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -176,7 +177,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         PrusaConnectRegistration registration = await context.PrusaConnectRegistrations.SingleAsync();
         string code = registration.TemporaryCode;
 
-        Printer printer = await service.ClaimPrinterAsync(code, "MK3.5", null, teamId, userId);
+        Printer printer = await service.ClaimPrinterAsync(code, "MK3.5", null, teamId, Caller.Unscoped(userId));
         string? token = await service.GetToken(code);
 
         token.Should().NotBeNull("the poll must issue a token once the code is claimed");
@@ -192,7 +193,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
                                                                            int? teamId,
                                                                            long userId)
     {
-        (Printer printer, string token) = await NewService(context).ProvisionPrinterAsync("MK3.5", null, teamId, userId);
+        (Printer printer, string token) = await NewService(context).ProvisionPrinterAsync("MK3.5", null, teamId, Caller.Unscoped(userId));
 
         AuthenticateResult firstContact = await AuthenticateAsync(HeaderFingerprint, token);
         firstContact.Succeeded.Should().BeTrue("USB-key first contact is what promotes the provisioning token");
@@ -290,7 +291,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         (Printer printer, string original) = await EnrolByUsbKeyAsync(context, team.TeamId, userId: 1);
 
         // Act - the operator writes a fresh stick for the printer they already have
-        string reissued = await NewService(context).RegenerateProvisioningTokenAsync(printer.Id, userId: 1);
+        string reissued = await NewService(context).RegenerateProvisioningTokenAsync(printer.Id, caller: Caller.Unscoped(1));
 
         AuthenticateResult result = await AuthenticateAsync(HeaderFingerprint, reissued);
 
@@ -337,7 +338,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         // someone else provisions a printer entry of their own and writes that stick
         TeamMember other = await AddTeamAsync(context, userId: 2, canManage: true, isDefault: true);
         (Printer theirs, string theirToken) = await NewService(context)
-            .ProvisionPrinterAsync("Mine now", null, other.TeamId, userId: 2);
+            .ProvisionPrinterAsync("Mine now", null, other.TeamId, caller: Caller.Unscoped(2));
 
         // Act
         AuthenticateResult result = await AuthenticateAsync(HeaderFingerprint, theirToken);
@@ -445,7 +446,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
 
         // Act
         Func<Task> claim = () =>
-            service.ClaimPrinterAsync(registration.TemporaryCode, "Mine now", null, stranger.TeamId, userId: 2);
+            service.ClaimPrinterAsync(registration.TemporaryCode, "Mine now", null, stranger.TeamId, caller: Caller.Unscoped(2));
 
         // Assert
         await claim.Should().ThrowAsync<TeamAccessDeniedException>();
@@ -479,7 +480,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         string code = registration.TemporaryCode;
 
         // Act
-        Func<Task> claim = () => service.ClaimPrinterAsync(code, "Mine now", null, stranger.TeamId, userId: 2);
+        Func<Task> claim = () => service.ClaimPrinterAsync(code, "Mine now", null, stranger.TeamId, caller: Caller.Unscoped(2));
         await claim.Should().ThrowAsync<TeamAccessDeniedException>();
 
         // Assert

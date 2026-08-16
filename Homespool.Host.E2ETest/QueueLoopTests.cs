@@ -515,7 +515,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         using IServiceScope scope = _factory.Services.CreateScope();
 
         QueuedPrint queued = await scope.ServiceProvider.GetRequiredService<PrintQueueService>()
-                                        .EnqueueAsync(printerId, userId, name, TestContext.Current.CancellationToken);
+                                        .EnqueueAsync(printerId, Caller.Unscoped(userId), name, TestContext.Current.CancellationToken);
 
         return queued.TrackingId;
     }
@@ -555,7 +555,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         using IServiceScope scope = _factory.Services.CreateScope();
 
         return await scope.ServiceProvider.GetRequiredService<PrintHistoryService>()
-                          .GetHoldReasonAsync(printerId, userId, TestContext.Current.CancellationToken);
+                          .GetHoldReasonAsync(printerId, Caller.Unscoped(userId), TestContext.Current.CancellationToken);
     }
 
     /// <summary>What the loop would do right now - the same question the page and the API ask.</summary>

@@ -94,13 +94,13 @@ public class PrinterPreheatService
     /// <exception cref="PrinterBusyException">The printer is in a state where this would interfere.</exception>
     /// <exception cref="TeamAccessDeniedException">Caller lacks <c>CanUse</c>.</exception>
     public Task<PreheatOutcome> PreheatAsync(int printerId,
-                                             long userId,
+                                             Caller caller,
                                              FilamentPreset preset,
                                              CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(preset);
 
-        return ApplyAsync(printerId, userId, preset.BedTemperature, preset.NozzleTemperature, cancellationToken);
+        return ApplyAsync(printerId, caller, preset.BedTemperature, preset.NozzleTemperature, cancellationToken);
     }
 
     /// <summary>
@@ -113,13 +113,13 @@ public class PrinterPreheatService
     /// without stopping it, and the control for "stop what you are doing" is Stop, which exists and
     /// tells the printer so.
     /// </remarks>
-    public Task<PreheatOutcome> CooldownAsync(int printerId, long userId, CancellationToken cancellationToken)
+    public Task<PreheatOutcome> CooldownAsync(int printerId, Caller caller, CancellationToken cancellationToken)
     {
-        return ApplyAsync(printerId, userId, bedTemperature: 0, nozzleTemperature: 0, cancellationToken);
+        return ApplyAsync(printerId, caller, bedTemperature: 0, nozzleTemperature: 0, cancellationToken);
     }
 
     private async Task<PreheatOutcome> ApplyAsync(int printerId,
-                                                  long userId,
+                                                  Caller caller,
                                                   int bedTemperature,
                                                   int nozzleTemperature,
                                                   CancellationToken cancellationToken)
@@ -136,7 +136,7 @@ public class PrinterPreheatService
         // executing and is refused with "Processing other command" - observed on a live stack before
         // this was one command.
         CommandOutcome? answer = await _commands.SendCommandAsync(
-            printerId, new SetTemperatures(nozzleTemperature, bedTemperature), userId, cancellationToken);
+            printerId, new SetTemperatures(nozzleTemperature, bedTemperature), caller, cancellationToken);
 
         // The printer's own answer decides, not the fact that a frame was written. Reporting success
         // here regardless is what let a refusal be shown to a user as "both heaters switched off".

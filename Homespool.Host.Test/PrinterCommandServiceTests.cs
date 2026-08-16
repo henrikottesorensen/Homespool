@@ -186,7 +186,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
 
         // Act
         CommandOutcome<AskSomethingAnswer>? outcome =
-            await service.AskAsync(printer.Id, new AskSomething(), 1, CancellationToken.None);
+            await service.AskAsync(printer.Id, new AskSomething(), Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         outcome.Should().NotBeNull();
@@ -214,7 +214,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
 
         // Act
         CommandOutcome<AskSomethingAnswer>? outcome =
-            await service.AskAsync(printer.Id, new AskSomething(), 1, CancellationToken.None);
+            await service.AskAsync(printer.Id, new AskSomething(), Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         outcome!.EventType.Should().Be(PrinterEventType.Rejected);
@@ -240,7 +240,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         PrinterCommandService service = new(new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), registry);
 
         // Act
-        Func<Task> ask = () => service.AskAsync(printer.Id, new AskSomething(), 1, CancellationToken.None);
+        Func<Task> ask = () => service.AskAsync(printer.Id, new AskSomething(), Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         await ask.Should().ThrowAsync<CommandAnswerUnreadableException>()
@@ -248,7 +248,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The permission gate is shared with <see cref="PrinterCommandService.SendCommandAsync(int, ISendableCommand, long, System.Threading.CancellationToken)"/> rather
+    /// The permission gate is shared with <see cref="PrinterCommandService.SendCommandAsync(int, ISendableCommand, Homespool.Model.Caller, System.Threading.CancellationToken)"/> rather
     /// than reimplemented - which is exactly what extracting the common half could have broken
     /// silently, since nothing else asks a question yet.
     /// </summary>
@@ -265,7 +265,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         PrinterCommandService service = new(new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), registry);
 
         // Act
-        Func<Task> ask = () => service.AskAsync(printer.Id, new AskSomething(), 1, CancellationToken.None);
+        Func<Task> ask = () => service.AskAsync(printer.Id, new AskSomething(), Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         await ask.Should().ThrowAsync<TeamAccessDeniedException>();
@@ -287,7 +287,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         PrusaConnect.Commands.PausePrint command = new();
 
         // Act
-        CommandOutcome? outcome = await service.SendCommandAsync(printer.Id, command, 1, CancellationToken.None);
+        CommandOutcome? outcome = await service.SendCommandAsync(printer.Id, command, Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         outcome.Should().NotBeNull("PAUSE_PRINT is answered - only unanswerable commands report null");
@@ -329,10 +329,10 @@ public sealed class PrinterCommandServiceTests : IDisposable
 
         // Act
         CommandOutcome? outcome = await service.SendCommandAsync(
-            printer.Id, new Printing.StartPrint("/usb/one.bgcode"), 1, CancellationToken.None);
+            printer.Id, new Printing.StartPrint("/usb/one.bgcode"), Caller.Unscoped(1), CancellationToken.None);
 
         Func<Task> pausing = () =>
-            service.SendCommandAsync(printer.Id, new Printing.PausePrint(), 1, CancellationToken.None);
+            service.SendCommandAsync(printer.Id, new Printing.PausePrint(), Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         outcome.Should().NotBeNull("StartPrint requires Print, which this membership holds");
@@ -378,13 +378,13 @@ public sealed class PrinterCommandServiceTests : IDisposable
 
         // Act
         CommandOutcome? readying = await service.SendCommandAsync(
-            printer.Id, new Printing.SetPrinterReady(), 1, CancellationToken.None);
+            printer.Id, new Printing.SetPrinterReady(), Caller.Unscoped(1), CancellationToken.None);
 
         CommandOutcome? unreadying = await service.SendCommandAsync(
-            printer.Id, new Printing.CancelPrinterReady(), 1, CancellationToken.None);
+            printer.Id, new Printing.CancelPrinterReady(), Caller.Unscoped(1), CancellationToken.None);
 
         Func<Task> idling = () =>
-            service.SendCommandAsync(printer.Id, new Printing.SetPrinterIdle(), 1, CancellationToken.None);
+            service.SendCommandAsync(printer.Id, new Printing.SetPrinterIdle(), Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         readying.Should().NotBeNull("a contributor must be able to ready the bed for their own print");
@@ -408,7 +408,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
                                             RegistryWithActor(printer.Id, CommandSendOutcome.Completed).registry);
 
         // Act
-        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), 1, CancellationToken.None);
+        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<TeamAccessDeniedException>();
@@ -427,7 +427,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
                                             RegistryWithActor(printer.Id, CommandSendOutcome.Completed).registry);
 
         // Act
-        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), 1, CancellationToken.None);
+        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<TeamAccessDeniedException>();
@@ -443,7 +443,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
                                             new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance));
 
         // Act
-        Func<Task> act = () => service.SendCommandAsync(999, new PrusaConnect.Commands.PausePrint(), 1, CancellationToken.None);
+        Func<Task> act = () => service.SendCommandAsync(999, new PrusaConnect.Commands.PausePrint(), Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<PrinterNotFoundException>();
@@ -463,7 +463,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
                                             new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance));
 
         // Act
-        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), 1, CancellationToken.None);
+        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<PrinterNotConnectedException>();
@@ -484,7 +484,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
                                             RegistryWithActor(printer.Id, CommandSendOutcome.NotConnected).registry);
 
         // Act
-        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), 1, CancellationToken.None);
+        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<PrinterNotConnectedException>();
@@ -503,7 +503,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
                                             RegistryWithActor(printer.Id, CommandSendOutcome.AlreadyInFlight).registry);
 
         // Act
-        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), 1, CancellationToken.None);
+        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<CommandAlreadyInFlightException>();
@@ -522,7 +522,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
                                             RegistryWithActor(printer.Id, CommandSendOutcome.ResponseTimedOut).registry);
 
         // Act
-        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), 1, CancellationToken.None);
+        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<CommandResponseTimedOutException>();
@@ -552,7 +552,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         Printing.PausePrint intent = new();
 
         // Act
-        CommandOutcome? outcome = await service.SendCommandAsync(printer.Id, intent, 1, CancellationToken.None);
+        CommandOutcome? outcome = await service.SendCommandAsync(printer.Id, intent, Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         outcome!.EventType.Should().Be(PrinterEventType.Finished);
@@ -578,7 +578,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         PrinterCommandService service = new(new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), registry);
 
         // Act
-        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), 1, CancellationToken.None);
+        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<PrinterProtocolUnsupportedException>();

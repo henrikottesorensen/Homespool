@@ -17,7 +17,7 @@ namespace Homespool.Host.PrusaConnect.Commands;
 /// <see cref="ISendableCommand{TAnswer}"/> - firmware replies with a <c>FILE_INFO</c> carrying the
 /// same <c>command_id</c>, and the listing is inside its <c>data</c>. Send it with
 /// <see cref="PrinterCommandService.AskAsync"/> rather than
-/// <see cref="PrinterCommandService.SendCommandAsync(int, ISendableCommand, long, System.Threading.CancellationToken)"/>, which reports the verdict and drops the
+/// <see cref="PrinterCommandService.SendCommandAsync(int, ISendableCommand, Homespool.Model.Caller, System.Threading.CancellationToken)"/>, which reports the verdict and drops the
 /// answer.
 /// </para>
 /// <para>

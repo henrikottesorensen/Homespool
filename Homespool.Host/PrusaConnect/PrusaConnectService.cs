@@ -255,7 +255,7 @@ public class PrusaConnectService
     /// phase-1.5 §15 step 7 left open as "even 'last write wins' is fine".
     /// </para>
     /// </remarks>
-    public async Task<Printer> ClaimPrinterAsync(string temporaryCode, string? name, string? location, int? teamId, long userId)
+    public async Task<Printer> ClaimPrinterAsync(string temporaryCode, string? name, string? location, int? teamId, Caller caller)
     {
         DateTimeOffset now = _timeProvider.GetUtcNow();
 
@@ -275,10 +275,10 @@ public class PrusaConnectService
 
         if (enrolled is not null)
         {
-            return await LinkClaimToEnrolledPrinterAsync(registration, enrolled, userId);
+            return await LinkClaimToEnrolledPrinterAsync(registration, enrolled, caller);
         }
 
-        int resolvedTeamId = await ResolveTeamForWriteAsync(teamId, userId);
+        int resolvedTeamId = await ResolveTeamForWriteAsync(teamId, caller);
 
         Printer printer = NewPrinter(name, location, resolvedTeamId, now);
 
@@ -332,9 +332,9 @@ public class PrusaConnectService
     /// </remarks>
     private async Task<Printer> LinkClaimToEnrolledPrinterAsync(PrusaConnectRegistration registration,
                                                                 Printer enrolled,
-                                                                long userId)
+                                                                Caller caller)
     {
-        await RequireManageAsync(enrolled.TeamId, userId);
+        await RequireManageAsync(enrolled.TeamId, caller);
 
         registration.PrinterId = enrolled.Id;
 
@@ -357,11 +357,11 @@ public class PrusaConnectService
     public async Task<(Printer printer, string token)> ProvisionPrinterAsync(string? name,
                                                                              string? location,
                                                                              int? teamId,
-                                                                             long userId)
+                                                                             Caller caller)
     {
         DateTimeOffset now = _timeProvider.GetUtcNow();
 
-        int resolvedTeamId = await ResolveTeamForWriteAsync(teamId, userId);
+        int resolvedTeamId = await ResolveTeamForWriteAsync(teamId, caller);
 
         Printer printer = NewPrinter(name, location, resolvedTeamId, now);
         await _dbContext.Printers.AddAsync(printer);
@@ -410,7 +410,7 @@ public class PrusaConnectService
     /// The printer was never provisioned and is not enrolled — there is no enrolment for a reissued
     /// token to attach to.
     /// </exception>
-    public async Task<string> RegenerateProvisioningTokenAsync(int printerId, long userId)
+    public async Task<string> RegenerateProvisioningTokenAsync(int printerId, Caller caller)
     {
         Printer? printer = await _dbContext.Printers.SingleOrDefaultAsync(p => p.Id == printerId);
 
@@ -419,7 +419,7 @@ public class PrusaConnectService
             throw new PrinterNotFoundException($"Printer {printerId} was not found.");
         }
 
-        await RequireManageAsync(printer.TeamId, userId);
+        await RequireManageAsync(printer.TeamId, caller);
 
         PrusaConnectProvisioning? provisioning = await _dbContext.PrusaConnectProvisionings
                                                                  .SingleOrDefaultAsync(p => p.PrinterId == printerId);
@@ -500,15 +500,15 @@ public class PrusaConnectService
     /// <c>CanManage</c> on it - adding a printer is treated as a structural change to the team, the
     /// same tier as inviting a member. Omitted, the printer lands in the caller's default team.
     /// </summary>
-    private async Task<int> ResolveTeamForWriteAsync(int? teamId, long userId)
+    private async Task<int> ResolveTeamForWriteAsync(int? teamId, Caller caller)
     {
         if (teamId is int explicitTeamId)
         {
-            await RequireManageAsync(explicitTeamId, userId);
+            await RequireManageAsync(explicitTeamId, caller);
             return explicitTeamId;
         }
 
-        TeamMember? defaultMembership = await _teamService.GetDefaultTeamMembershipAsync(userId, CancellationToken.None);
+        TeamMember? defaultMembership = await _teamService.GetDefaultTeamMembershipAsync(caller.UserId, CancellationToken.None);
 
         // Should be unreachable: every account is given a default team at creation
         // (TeamProvisioning.AddDefaultTeam). Fail closed rather than create a teamless printer.
@@ -520,11 +520,14 @@ public class PrusaConnectService
         return defaultMembership.TeamId;
     }
 
-    private async Task RequireManageAsync(int teamId, long userId)
+    private async Task RequireManageAsync(int teamId, Caller caller)
     {
-        TeamMember? membership = await _teamService.GetMemberAsync(teamId, userId, CancellationToken.None);
+        TeamMember? membership = await _teamService.GetMemberAsync(teamId, caller.UserId, CancellationToken.None);
 
-        if (membership is null || !CapabilitySet.Parse(membership.Capabilities).Allows(Capability.ManagePrinter))
+        // Two questions, both asked - may the team, and did the caller lend this key that power.
+        if (membership is null
+            || !CapabilitySet.Parse(membership.Capabilities).Allows(Capability.ManagePrinter)
+            || !caller.Allows(Capability.ManagePrinter))
         {
             throw new TeamAccessDeniedException();
         }

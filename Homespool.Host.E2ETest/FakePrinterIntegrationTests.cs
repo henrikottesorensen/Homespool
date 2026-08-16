@@ -208,7 +208,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
             FilamentPreset petg = FilamentPreset.Find(model: null, "PETG")!;
 
-            await preheat.PreheatAsync(printerId, userId, petg, CancellationToken.None);
+            await preheat.PreheatAsync(printerId, Caller.Unscoped(userId), petg, CancellationToken.None);
 
             // One command, not two. Two were sent originally and the printer refused the second
             // with "Processing other command", because gcode is answered Accepted when it is queued
@@ -238,7 +238,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             using IServiceScope scope = _factory.Services.CreateScope();
             PrinterPreheatService preheat = scope.ServiceProvider.GetRequiredService<PrinterPreheatService>();
 
-            PreheatOutcome outcome = await preheat.CooldownAsync(printerId, userId, CancellationToken.None);
+            PreheatOutcome outcome = await preheat.CooldownAsync(printerId, Caller.Unscoped(userId), CancellationToken.None);
 
             fake.ReceivedCommands.Should().ContainSingle();
             Encoding.ASCII.GetString(fake.ReceivedCommands[0].Payload.Span)
@@ -981,7 +981,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
         // Every command these tests send is one the printer answers, so a null here would itself be
         // a failure worth surfacing loudly rather than a case to handle.
-        return await service.SendCommandAsync(printerId, command, userId, CancellationToken.None)
+        return await service.SendCommandAsync(printerId, command, Caller.Unscoped(userId), CancellationToken.None)
                ?? throw new InvalidOperationException($"{command.WireName} reported no answer expected.");
     }
 

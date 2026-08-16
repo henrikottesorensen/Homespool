@@ -67,12 +67,12 @@ public sealed class PrintQueueServiceTests : IDisposable
         await UploadAsync(context, "one.gcode", "two.gcode", "three.gcode");
 
         // Act
-        await queue.EnqueueAsync(printer.Id, Alice, "one.gcode", TestContext.Current.CancellationToken);
-        await queue.EnqueueAsync(printer.Id, Alice, "two.gcode", TestContext.Current.CancellationToken);
-        await queue.EnqueueAsync(printer.Id, Alice, "three.gcode", TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode", TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "two.gcode", TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "three.gcode", TestContext.Current.CancellationToken);
 
         // Assert
-        IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Alice, TestContext.Current.CancellationToken);
+        IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
 
         jobs.Select(job => job.PrintFile!.Name).Should().Equal("one.gcode", "two.gcode", "three.gcode");
     }
@@ -90,18 +90,18 @@ public sealed class PrintQueueServiceTests : IDisposable
         PrintQueueService queue = NewQueue(context);
         await UploadAsync(context, "one.gcode", "two.gcode", "three.gcode");
 
-        await queue.EnqueueAsync(printer.Id, Alice, "one.gcode", TestContext.Current.CancellationToken);
-        await queue.EnqueueAsync(printer.Id, Alice, "two.gcode", TestContext.Current.CancellationToken);
-        QueuedPrint third = await queue.EnqueueAsync(printer.Id, Alice, "three.gcode",
+        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode", TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "two.gcode", TestContext.Current.CancellationToken);
+        QueuedPrint third = await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "three.gcode",
                                                      TestContext.Current.CancellationToken);
 
         // Act
-        bool moved = await queue.MoveAsync(third.TrackingId, Alice, 0, TestContext.Current.CancellationToken);
+        bool moved = await queue.MoveAsync(third.TrackingId, Caller.Unscoped(Alice), 0, TestContext.Current.CancellationToken);
 
         // Assert
         moved.Should().BeTrue();
 
-        IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Alice, TestContext.Current.CancellationToken);
+        IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
 
         jobs.Select(job => job.PrintFile!.Name).Should().Equal("three.gcode", "one.gcode", "two.gcode");
         jobs.Select(job => job.Position).Should().Equal(0, 1, 2);
@@ -117,15 +117,15 @@ public sealed class PrintQueueServiceTests : IDisposable
         PrintQueueService queue = NewQueue(context);
         await UploadAsync(context, "one.gcode", "two.gcode");
 
-        QueuedPrint first = await queue.EnqueueAsync(printer.Id, Alice, "one.gcode",
+        QueuedPrint first = await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode",
                                                      TestContext.Current.CancellationToken);
-        await queue.EnqueueAsync(printer.Id, Alice, "two.gcode", TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "two.gcode", TestContext.Current.CancellationToken);
 
         // Act
-        await queue.MoveAsync(first.TrackingId, Alice, 99, TestContext.Current.CancellationToken);
+        await queue.MoveAsync(first.TrackingId, Caller.Unscoped(Alice), 99, TestContext.Current.CancellationToken);
 
         // Assert
-        IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Alice, TestContext.Current.CancellationToken);
+        IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
 
         jobs.Select(job => job.PrintFile!.Name).Should().Equal("two.gcode", "one.gcode");
     }
@@ -143,16 +143,16 @@ public sealed class PrintQueueServiceTests : IDisposable
         PrintQueueService queue = NewQueue(context);
         await UploadAsync(context, "one.gcode", "two.gcode", "three.gcode");
 
-        await queue.EnqueueAsync(printer.Id, Alice, "one.gcode", TestContext.Current.CancellationToken);
-        QueuedPrint second = await queue.EnqueueAsync(printer.Id, Alice, "two.gcode",
+        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode", TestContext.Current.CancellationToken);
+        QueuedPrint second = await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "two.gcode",
                                                       TestContext.Current.CancellationToken);
 
         // Act
-        await queue.CancelAsync(second.TrackingId, Alice, TestContext.Current.CancellationToken);
-        await queue.EnqueueAsync(printer.Id, Alice, "three.gcode", TestContext.Current.CancellationToken);
+        await queue.CancelAsync(second.TrackingId, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "three.gcode", TestContext.Current.CancellationToken);
 
         // Assert
-        IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Alice, TestContext.Current.CancellationToken);
+        IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
 
         jobs.Select(job => job.PrintFile!.Name).Should().Equal("one.gcode", "three.gcode");
         jobs.Select(job => job.Position).Should().OnlyHaveUniqueItems();
@@ -169,11 +169,11 @@ public sealed class PrintQueueServiceTests : IDisposable
         await UploadAsync(context, "one.gcode");
 
         // Act
-        await queue.EnqueueAsync(printer.Id, Alice, "one.gcode", TestContext.Current.CancellationToken);
-        await queue.EnqueueAsync(printer.Id, Alice, "one.gcode", TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode", TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode", TestContext.Current.CancellationToken);
 
         // Assert
-        IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Alice, TestContext.Current.CancellationToken);
+        IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
 
         jobs.Should().HaveCount(2);
         jobs.Select(job => job.PrintFileId).Distinct().Should().HaveCount(1);
@@ -188,7 +188,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         PrintQueueService queue = NewQueue(context);
 
         // Act
-        Func<Task> act = () => queue.EnqueueAsync(printer.Id, Alice, "nothing.gcode",
+        Func<Task> act = () => queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "nothing.gcode",
                                                   TestContext.Current.CancellationToken);
 
         // Assert
@@ -207,8 +207,8 @@ public sealed class PrintQueueServiceTests : IDisposable
         PrintQueueService queue = NewQueue(context);
 
         // Act
-        IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Alice, TestContext.Current.CancellationToken);
-        Func<Task> enqueue = () => queue.EnqueueAsync(printer.Id, Alice, "one.gcode",
+        IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
+        Func<Task> enqueue = () => queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode",
                                                       TestContext.Current.CancellationToken);
 
         // Assert
@@ -226,7 +226,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         PrintQueueService queue = NewQueue(context);
 
         // Act
-        Func<Task> act = () => queue.ListAsync(printer.Id, Bob, TestContext.Current.CancellationToken);
+        Func<Task> act = () => queue.ListAsync(printer.Id, Caller.Unscoped(Bob), TestContext.Current.CancellationToken);
 
         // Assert
         await act.Should().ThrowAsync<TeamAccessDeniedException>();
@@ -246,11 +246,11 @@ public sealed class PrintQueueServiceTests : IDisposable
         PrintQueueService queue = NewQueue(context);
         await UploadAsync(context, "one.gcode");
 
-        QueuedPrint job = await queue.EnqueueAsync(printer.Id, Alice, "one.gcode",
+        QueuedPrint job = await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode",
                                                    TestContext.Current.CancellationToken);
 
         // Act
-        bool cancelled = await queue.CancelAsync(job.TrackingId, Bob, TestContext.Current.CancellationToken);
+        bool cancelled = await queue.CancelAsync(job.TrackingId, Caller.Unscoped(Bob), TestContext.Current.CancellationToken);
 
         // Assert
         cancelled.Should().BeTrue();
@@ -272,11 +272,11 @@ public sealed class PrintQueueServiceTests : IDisposable
         PrintQueueService queue = NewQueue(context);
         await UploadForAsync(context, Bob, "one.gcode");
 
-        QueuedPrint job = await queue.EnqueueAsync(printer.Id, Bob, "one.gcode",
+        QueuedPrint job = await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Bob), "one.gcode",
                                                    TestContext.Current.CancellationToken);
 
         // Act
-        bool cancelled = await queue.CancelAsync(job.TrackingId, Bob, TestContext.Current.CancellationToken);
+        bool cancelled = await queue.CancelAsync(job.TrackingId, Caller.Unscoped(Bob), TestContext.Current.CancellationToken);
 
         // Assert
         cancelled.Should().BeTrue();
@@ -298,11 +298,11 @@ public sealed class PrintQueueServiceTests : IDisposable
         PrintQueueService queue = NewQueue(context);
         await UploadAsync(context, "one.gcode");
 
-        QueuedPrint job = await queue.EnqueueAsync(printer.Id, Alice, "one.gcode",
+        QueuedPrint job = await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode",
                                                    TestContext.Current.CancellationToken);
 
         // Act
-        Func<Task> act = () => queue.CancelAsync(job.TrackingId, Bob, TestContext.Current.CancellationToken);
+        Func<Task> act = () => queue.CancelAsync(job.TrackingId, Caller.Unscoped(Bob), TestContext.Current.CancellationToken);
 
         // Assert
         await act.Should().ThrowAsync<TeamAccessDeniedException>();
@@ -318,7 +318,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         PrintQueueService queue = NewQueue(context);
 
         // Act
-        bool cancelled = await queue.CancelAsync(Guid.NewGuid(), Alice, TestContext.Current.CancellationToken);
+        bool cancelled = await queue.CancelAsync(Guid.NewGuid(), Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
 
         // Assert
         cancelled.Should().BeFalse();

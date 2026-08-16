@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.DTO.App;
@@ -92,7 +93,7 @@ public class PrinterAppController : ControllerBase
         try
         {
             Printer printer = await _prusaConnectService.ClaimPrinterAsync(
-                body.Code, body.Name, body.Location, body.TeamId, user.Id);
+                body.Code, body.Name, body.Location, body.TeamId, CallerResolver.For(user, User));
 
             await transaction.CommitAsync(cancellationToken);
 
@@ -100,7 +101,7 @@ public class PrinterAppController : ControllerBase
             // permission flags and describes the same resource the next GET will. Mapping it bare
             // would report canRead/canUse/canManage as false to the person who just claimed it.
             PrinterWithState? claimed = await _printerQueryService.GetPrinterWithStateForUserAsync(
-                printer.Uuid, user.Id, cancellationToken);
+                printer.Uuid, CallerResolver.For(user, User), cancellationToken);
 
             return StatusCode(StatusCodes.Status201Created,
                               claimed is null ? PrinterReadDTO.FromEntity(printer) : PrinterReadDTO.FromEntity(claimed));
@@ -157,7 +158,7 @@ public class PrinterAppController : ControllerBase
         }
 
         IReadOnlyList<PrinterWithState> printers =
-            await _printerQueryService.ListPrintersWithStateForUserAsync(user.Id, cancellationToken);
+            await _printerQueryService.ListPrintersWithStateForUserAsync(CallerResolver.For(user, User), cancellationToken);
 
         return Ok(printers.Select(PrinterReadDTO.FromEntity).ToList());
     }
@@ -176,7 +177,7 @@ public class PrinterAppController : ControllerBase
             return Forbid();
         }
 
-        PrinterWithState? printer = await _printerQueryService.GetPrinterWithStateForUserAsync(uuid, user.Id, cancellationToken);
+        PrinterWithState? printer = await _printerQueryService.GetPrinterWithStateForUserAsync(uuid, CallerResolver.For(user, User), cancellationToken);
 
         if (printer is null)
         {
@@ -208,7 +209,7 @@ public class PrinterAppController : ControllerBase
         try
         {
             PrinterWithState? printer =
-                await _printerQueryService.UpdatePrinterAsync(uuid, user.Id, body.Name, body.Location, cancellationToken);
+                await _printerQueryService.UpdatePrinterAsync(uuid, CallerResolver.For(user, User), body.Name, body.Location, cancellationToken);
 
             if (printer is null)
             {

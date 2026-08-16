@@ -45,10 +45,10 @@ public class CameraAccessService
     /// <summary>
     /// Every camera this account may see, newest last.
     /// </summary>
-    public async Task<IReadOnlyList<Camera>> ListAsync(long userId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<Camera>> ListAsync(Caller caller, CancellationToken cancellationToken)
     {
         IReadOnlyCollection<int> teams = await _teams
-                                               .TeamsAllowingAsync(userId, Capability.ViewCamera, cancellationToken)
+                                               .TeamsAllowingAsync(caller, Capability.ViewCamera, cancellationToken)
                                                .ConfigureAwait(false);
 
         return await _dbContext.Cameras
@@ -69,10 +69,10 @@ public class CameraAccessService
     /// authority over a camera comes from the camera - inheriting it through the printer is the rule
     /// that works for bound cameras and quietly fails for unbound ones.
     /// </remarks>
-    public async Task<IReadOnlyList<Camera>> ListForPrinterAsync(int printerId, long userId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<Camera>> ListForPrinterAsync(int printerId, Caller caller, CancellationToken cancellationToken)
     {
         IReadOnlyCollection<int> teams = await _teams
-                                               .TeamsAllowingAsync(userId, Capability.ViewCamera, cancellationToken)
+                                               .TeamsAllowingAsync(caller, Capability.ViewCamera, cancellationToken)
                                                .ConfigureAwait(false);
 
         return await _dbContext.Cameras
@@ -94,7 +94,7 @@ public class CameraAccessService
     /// UUID that answers differently for "no such camera" and "not yours" is a way to find out which
     /// cameras exist.
     /// </remarks>
-    public async Task<Camera?> FindAsync(Guid uuid, long userId, Capability capability, CancellationToken cancellationToken)
+    public async Task<Camera?> FindAsync(Guid uuid, Caller caller, Capability capability, CancellationToken cancellationToken)
     {
         Camera? camera = await _dbContext.Cameras
                                          .Include(entity => entity.Printer)
@@ -108,11 +108,14 @@ public class CameraAccessService
 
         TeamMember? membership = await _dbContext.TeamMembers
                                                  .FirstOrDefaultAsync(
-                                                     member => member.TeamId == camera.TeamId && member.UserId == userId,
+                                                     member => member.TeamId == camera.TeamId && member.UserId == caller.UserId,
                                                      cancellationToken)
                                                  .ConfigureAwait(false);
 
-        if (membership is null || !CapabilitySet.Parse(membership.Capabilities).Allows(capability))
+        // Two questions, both asked: may the team, and did the caller lend this key that power.
+        if (membership is null
+            || !CapabilitySet.Parse(membership.Capabilities).Allows(capability)
+            || !caller.Allows(capability))
         {
             return null;
         }
@@ -157,10 +160,10 @@ public class CameraAccessService
     /// Needed because creating a camera has no camera to check yet - the question is about a team
     /// rather than a row, which is the one shape <see cref="FindAsync"/> cannot express.
     /// </remarks>
-    public async Task<IReadOnlyList<Team>> ManageableTeamsAsync(long userId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<Team>> ManageableTeamsAsync(Caller caller, CancellationToken cancellationToken)
     {
         IReadOnlyCollection<int> teams = await _teams
-                                               .TeamsAllowingAsync(userId, Capability.ManageCamera, cancellationToken)
+                                               .TeamsAllowingAsync(caller, Capability.ManageCamera, cancellationToken)
                                                .ConfigureAwait(false);
 
         return await _dbContext.Teams

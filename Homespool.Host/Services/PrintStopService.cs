@@ -51,7 +51,7 @@ public class PrintStopService
     }
 
     /// <summary>
-    /// Asks the printer to stop, and attributes the stop to <paramref name="userId"/> when it accepts.
+    /// Asks the printer to stop, and attributes the stop to the caller when it accepts.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -82,11 +82,11 @@ public class PrintStopService
     /// </para>
     /// </remarks>
     /// <returns>
-    /// The printer's own answer, exactly as <see cref="PrinterCommandService.SendCommandAsync(int, Printing.IPrinterIntent, long, System.Threading.CancellationToken)"/>
+    /// The printer's own answer, exactly as <see cref="PrinterCommandService.SendCommandAsync(int, Printing.IPrinterIntent, Homespool.Model.Caller, System.Threading.CancellationToken)"/>
     /// gives it - so callers keep reporting refusals in their own words. Every way the send can fail
     /// throws, as it does there.
     /// </returns>
-    public async Task<CommandOutcome?> StopAsync(int printerId, long userId, CancellationToken cancellationToken)
+    public async Task<CommandOutcome?> StopAsync(int printerId, Caller caller, CancellationToken cancellationToken)
     {
         ActivePrint? active = await _dbContext.PrintJobs
                                               .AsNoTracking()
@@ -99,10 +99,10 @@ public class PrintStopService
         // case with nothing to check against, and the send's own gate still applies to it.
         if (active is { } job)
         {
-            await _access.RequireWithdrawingAsync(printerId, userId, job.QueuedByUserId, cancellationToken);
+            await _access.RequireWithdrawingAsync(printerId, caller, job.QueuedByUserId, cancellationToken);
         }
 
-        CommandOutcome? outcome = await _commands.SendCommandAsync(printerId, new StopPrint(), userId, cancellationToken);
+        CommandOutcome? outcome = await _commands.SendCommandAsync(printerId, new StopPrint(), caller, cancellationToken);
 
         if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
         {
@@ -132,12 +132,12 @@ public class PrintStopService
                                                    && job.StoppedByUserId == null
                                                    && (job.EndedAt == null || job.State == PrintState.Stopped))
                                      .ExecuteUpdateAsync(
-                                         set => set.SetProperty(job => job.StoppedByUserId, userId),
+                                         set => set.SetProperty(job => job.StoppedByUserId, caller.UserId),
                                          cancellationToken);
 
         if (marked > 0)
         {
-            _logger.LogInformation("[{PrinterId}] Print {JobId} stopped by user {UserId}", printerId, active.Id, userId);
+            _logger.LogInformation("[{PrinterId}] Print {JobId} stopped by user {UserId}", printerId, active.Id, caller.UserId);
         }
 
         return outcome;

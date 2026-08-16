@@ -122,7 +122,7 @@ public class IndexModel : PageModel
         if (edit is Guid uuid)
         {
             Editing = await _access
-                            .FindAsync(uuid, userId.Value, Capability.ManageCamera, cancellationToken)
+                            .FindAsync(uuid, CallerResolver.For(userId.Value, User), Capability.ManageCamera, cancellationToken)
                             .ConfigureAwait(false);
         }
 
@@ -142,7 +142,7 @@ public class IndexModel : PageModel
         }
 
         CameraSaveOutcome outcome = await _cameras
-                                          .CreateAsync(userId.Value, teamId, name, source, printerId, cancellationToken)
+                                          .CreateAsync(CallerResolver.For(userId.Value, User), teamId, name, source, printerId, cancellationToken)
                                           .ConfigureAwait(false);
 
         Report(outcome);
@@ -167,7 +167,7 @@ public class IndexModel : PageModel
         string source = LocalCameraDevices.SourceFor(device);
 
         CameraSaveOutcome outcome = await _cameras
-                                          .CreateAsync(userId.Value, teamId, name, source, printerId, cancellationToken)
+                                          .CreateAsync(CallerResolver.For(userId.Value, User), teamId, name, source, printerId, cancellationToken)
                                           .ConfigureAwait(false);
 
         Report(outcome);
@@ -188,7 +188,7 @@ public class IndexModel : PageModel
         }
 
         CameraSaveOutcome outcome = await _cameras
-                                          .UpdateAsync(userId.Value, uuid, name, source, printerId, cancellationToken)
+                                          .UpdateAsync(CallerResolver.For(userId.Value, User), uuid, name, source, printerId, cancellationToken)
                                           .ConfigureAwait(false);
 
         Report(outcome);
@@ -204,7 +204,7 @@ public class IndexModel : PageModel
             return Forbid();
         }
 
-        bool removed = await _cameras.DeleteAsync(userId.Value, uuid, cancellationToken).ConfigureAwait(false);
+        bool removed = await _cameras.DeleteAsync(CallerResolver.For(userId.Value, User), uuid, cancellationToken).ConfigureAwait(false);
 
         if (removed)
         {
@@ -238,11 +238,11 @@ public class IndexModel : PageModel
 
     private async Task LoadAsync(long userId, CancellationToken cancellationToken)
     {
-        Cameras = await _access.ListAsync(userId, cancellationToken).ConfigureAwait(false);
-        Teams = await _access.ManageableTeamsAsync(userId, cancellationToken).ConfigureAwait(false);
+        Cameras = await _access.ListAsync(CallerResolver.For(userId, User), cancellationToken).ConfigureAwait(false);
+        Teams = await _access.ManageableTeamsAsync(CallerResolver.For(userId, User), cancellationToken).ConfigureAwait(false);
         IsAdministrator = await _access.IsAdministratorAsync(userId, cancellationToken).ConfigureAwait(false);
 
-        Printers = await _printers.ListPrintersForUserAsync(userId, cancellationToken).ConfigureAwait(false);
+        Printers = await _printers.ListPrintersForUserAsync(CallerResolver.For(userId, User), cancellationToken).ConfigureAwait(false);
 
         AvailableDevices = IsAdministrator ? await _cameras.AvailableDevicesAsync(cancellationToken).ConfigureAwait(false) : [];
     }

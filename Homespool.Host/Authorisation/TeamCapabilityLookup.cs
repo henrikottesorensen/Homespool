@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -35,6 +36,8 @@ namespace Homespool.Host.Authorisation;
 /// </remarks>
 public class TeamCapabilityLookup
 {
+    private static readonly IReadOnlyCollection<int> NoTeams = [];
+
     private readonly HomespoolDbContext _dbContext;
 
     /// <summary>
@@ -49,14 +52,27 @@ public class TeamCapabilityLookup
     }
 
     /// <summary>
-    /// The ids of every team on which <paramref name="userId"/> holds <paramref name="capability"/>.
+    /// The ids of every team on which the caller holds <paramref name="capability"/> - by membership,
+    /// and by the credential they arrived on.
     /// Empty when they hold it nowhere, which callers should treat as "match no rows" rather than
     /// skipping the filter.
     /// </summary>
-    public async Task<IReadOnlyCollection<int>> TeamsAllowingAsync(long userId,
+    public async Task<IReadOnlyCollection<int>> TeamsAllowingAsync(Caller caller,
                                                                    Capability capability,
                                                                    CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(caller);
+
+        // The credential's half: a scope that does not name the capability holds it on no team at
+        // all, and answering that before the query keeps a scoped listing from returning rows the
+        // scope cannot see.
+        if (!caller.Allows(capability))
+        {
+            return NoTeams;
+        }
+
+        long userId = caller.UserId;
+
         if (_teams.TryGetValue((userId, capability), out IReadOnlyCollection<int>? cached))
         {
             return cached;

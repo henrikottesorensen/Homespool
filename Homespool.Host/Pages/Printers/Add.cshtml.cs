@@ -13,6 +13,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Services;
@@ -125,7 +126,7 @@ public class AddModel : PageModel
         try
         {
             (Printer printer, string token) = await _prusaConnectService.ProvisionPrinterAsync(
-                Input.Name, Input.Location, Input.TeamId, user.Id);
+                Input.Name, Input.Location, Input.TeamId, CallerResolver.For(user, User));
 
             await transaction.CommitAsync(cancellationToken);
 

@@ -9,10 +9,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 
+using Homespool.Host.Authorisation;
 using Homespool.Host.DTO;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Queue;
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Controllers;
@@ -71,7 +73,7 @@ public class PrintQueueController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<QueuedPrintReadDTO>>> List(Guid uuid,
                                                                             CancellationToken cancellationToken)
     {
-        (Printer? printer, long userId, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+        (Printer? printer, Caller? caller, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
 
         if (printer is null)
         {
@@ -80,7 +82,7 @@ public class PrintQueueController : ControllerBase
 
         try
         {
-            IReadOnlyList<QueuedPrint> jobs = await _queue.ListAsync(printer.Id, userId, cancellationToken);
+            IReadOnlyList<QueuedPrint> jobs = await _queue.ListAsync(printer.Id, caller!, cancellationToken);
 
             // The same snapshot the loop reads, through the same rules - so a client is told what the
             // loop actually believes rather than a second opinion computed here.
@@ -118,7 +120,7 @@ public class PrintQueueController : ControllerBase
     {
         ArgumentNullException.ThrowIfNull(body);
 
-        (Printer? printer, long userId, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+        (Printer? printer, Caller? caller, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
 
         if (printer is null)
         {
@@ -127,10 +129,10 @@ public class PrintQueueController : ControllerBase
 
         try
         {
-            QueuedPrint job = await _queue.EnqueueAsync(printer.Id, userId, body.Name, cancellationToken);
+            QueuedPrint job = await _queue.EnqueueAsync(printer.Id, caller!, body.Name, cancellationToken);
 
             // Re-read so the response carries the file's name and size, which the entity does not hold.
-            IReadOnlyList<QueuedPrint> queue = await _queue.ListAsync(printer.Id, userId, cancellationToken);
+            IReadOnlyList<QueuedPrint> queue = await _queue.ListAsync(printer.Id, caller!, cancellationToken);
             QueuedPrintReadDTO created = QueuedPrintReadDTO.FromQueuedPrint(queue.Single(entry => entry.Id == job.Id));
 
             return CreatedAtAction(nameof(List), new { uuid }, created);
@@ -161,7 +163,7 @@ public class PrintQueueController : ControllerBase
     {
         ArgumentNullException.ThrowIfNull(body);
 
-        (Printer? printer, long userId, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+        (Printer? printer, Caller? caller, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
 
         if (printer is null)
         {
@@ -170,7 +172,7 @@ public class PrintQueueController : ControllerBase
 
         try
         {
-            bool found = await _queue.MoveAsync(trackingId, userId, body.Position, cancellationToken);
+            bool found = await _queue.MoveAsync(trackingId, caller!, body.Position, cancellationToken);
 
             if (!found)
             {
@@ -200,7 +202,7 @@ public class PrintQueueController : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     public async Task<ActionResult> Cancel(Guid uuid, Guid trackingId, CancellationToken cancellationToken)
     {
-        (Printer? printer, long userId, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+        (Printer? printer, Caller? caller, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
 
         if (printer is null)
         {
@@ -209,7 +211,7 @@ public class PrintQueueController : ControllerBase
 
         try
         {
-            bool found = await _queue.CancelAsync(trackingId, userId, cancellationToken);
+            bool found = await _queue.CancelAsync(trackingId, caller!, cancellationToken);
 
             if (!found)
             {
@@ -232,7 +234,7 @@ public class PrintQueueController : ControllerBase
     /// apart would confirm the existence of other people's printers. The same rule
     /// <see cref="PrinterController"/> follows.
     /// </remarks>
-    private async Task<(Printer? printer, long userId, ActionResult? failure)> ResolveAsync(Guid uuid,
+    private async Task<(Printer? printer, Caller? caller, ActionResult? failure)> ResolveAsync(Guid uuid,
         CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
@@ -240,17 +242,18 @@ public class PrintQueueController : ControllerBase
         if (user is null)
         {
             // [Authorize] should make this unreachable; fail closed rather than act on an invented id.
-            return (null, 0, Forbid());
+            return (null, null, Forbid());
         }
 
-        Printer? printer = await _printers.GetPrinterForUserAsync(uuid, user.Id, cancellationToken);
+        Caller caller = CallerResolver.For(user, User);
+        Printer? printer = await _printers.GetPrinterForUserAsync(uuid, caller, cancellationToken);
 
         if (printer is null)
         {
-            return (null, user.Id, NotFound());
+            return (null, caller, NotFound());
         }
 
-        return (printer, user.Id, null);
+        return (printer, caller, null);
     }
 
     /// <summary>Body of an enqueue: which of the caller's files to add.</summary>

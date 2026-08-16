@@ -87,14 +87,14 @@ public class CameraService
     /// <summary>
     /// Adds a camera, registers it, and finds out whether it actually produces a picture.
     /// </summary>
-    public async Task<CameraSaveOutcome> CreateAsync(long userId,
+    public async Task<CameraSaveOutcome> CreateAsync(Caller caller,
                                                      int teamId,
                                                      string? name,
                                                      string source,
                                                      int? printerId,
                                                      CancellationToken cancellationToken)
     {
-        CameraSaveOutcome? refusal = await CheckPermittedAsync(userId, teamId, source, cancellationToken)
+        CameraSaveOutcome? refusal = await CheckPermittedAsync(caller, teamId, source, cancellationToken)
             .ConfigureAwait(false);
 
         if (refusal is not null)
@@ -130,7 +130,7 @@ public class CameraService
     /// <summary>
     /// Changes a camera. Re-registers it, and forgets any frame from the old source.
     /// </summary>
-    public async Task<CameraSaveOutcome> UpdateAsync(long userId,
+    public async Task<CameraSaveOutcome> UpdateAsync(Caller caller,
                                                      Guid uuid,
                                                      string? name,
                                                      string source,
@@ -138,7 +138,7 @@ public class CameraService
                                                      CancellationToken cancellationToken)
     {
         Camera? camera = await _access
-                               .FindAsync(uuid, userId, Capability.ManageCamera, cancellationToken)
+                               .FindAsync(uuid, caller, Capability.ManageCamera, cancellationToken)
                                .ConfigureAwait(false);
 
         if (camera is null)
@@ -146,7 +146,7 @@ public class CameraService
             return CameraSaveOutcome.Refused("That camera does not exist, or is not yours to change.");
         }
 
-        CameraSaveOutcome? refusal = await CheckPermittedAsync(userId, camera.TeamId, source, cancellationToken)
+        CameraSaveOutcome? refusal = await CheckPermittedAsync(caller, camera.TeamId, source, cancellationToken)
             .ConfigureAwait(false);
 
         if (refusal is not null)
@@ -177,10 +177,10 @@ public class CameraService
     /// <summary>
     /// Removes a camera, its stream and its cached frame.
     /// </summary>
-    public async Task<bool> DeleteAsync(long userId, Guid uuid, CancellationToken cancellationToken)
+    public async Task<bool> DeleteAsync(Caller caller, Guid uuid, CancellationToken cancellationToken)
     {
         Camera? camera = await _access
-                               .FindAsync(uuid, userId, Capability.ManageCamera, cancellationToken)
+                               .FindAsync(uuid, caller, Capability.ManageCamera, cancellationToken)
                                .ConfigureAwait(false);
 
         if (camera is null)
@@ -191,7 +191,7 @@ public class CameraService
         // An attached device is released by whoever holds it, so deleting is the release - but a
         // non-administrator must not be able to free one they could not have claimed.
         if (CameraSourcePolicy.IsLocalDevice(camera.Source)
-            && !await _access.IsAdministratorAsync(userId, cancellationToken).ConfigureAwait(false))
+            && !await _access.IsAdministratorAsync(caller.UserId, cancellationToken).ConfigureAwait(false))
         {
             return false;
         }
@@ -209,14 +209,14 @@ public class CameraService
     /// Whether this account may put <paramref name="source"/> on a camera owned by this team, or
     /// the refusal to show them.
     /// </summary>
-    private async Task<CameraSaveOutcome?> CheckPermittedAsync(long userId,
+    private async Task<CameraSaveOutcome?> CheckPermittedAsync(Caller caller,
                                                                int teamId,
                                                                string source,
                                                                CancellationToken cancellationToken)
     {
         if (CameraSourcePolicy.IsLocalDevice(source))
         {
-            bool isAdministrator = await _access.IsAdministratorAsync(userId, cancellationToken)
+            bool isAdministrator = await _access.IsAdministratorAsync(caller.UserId, cancellationToken)
                                                 .ConfigureAwait(false);
 
             return isAdministrator ?
@@ -228,11 +228,18 @@ public class CameraService
 
         TeamMember? membership = await _dbContext.TeamMembers
                                                  .FirstOrDefaultAsync(
-                                                     member => member.TeamId == teamId && member.UserId == userId,
+                                                     member => member.TeamId == teamId && member.UserId == caller.UserId,
                                                      cancellationToken)
                                                  .ConfigureAwait(false);
 
-        return membership is not null && CapabilitySet.Parse(membership.Capabilities).Allows(Capability.ManageCamera) ?
+        // Two questions, both asked - may the team, and did the caller lend this key that power.
+        // Reading the row directly rather than through CameraAccessService is why the second half
+        // has to be spelled here too: a scope must not slip past a gate because it went round it.
+        bool permitted = membership is not null
+                         && CapabilitySet.Parse(membership.Capabilities).Allows(Capability.ManageCamera)
+                         && caller.Allows(Capability.ManageCamera);
+
+        return permitted ?
             null :
             CameraSaveOutcome.Refused("You cannot add a camera to that team.");
     }

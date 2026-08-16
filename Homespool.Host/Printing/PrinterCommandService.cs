@@ -47,7 +47,7 @@ public class PrinterCommandService
     }
 
     /// <summary>
-    /// Sends <paramref name="commandData"/> to a printer <paramref name="userId"/> is allowed to use,
+    /// Sends <paramref name="commandData"/> to a printer the caller is allowed to use,
     /// and waits for the printer's own reply. Every way this can fail throws - the return value is
     /// only ever a real answer from the hardware.
     /// </summary>
@@ -74,10 +74,10 @@ public class PrinterCommandService
     /// </returns>
     public async Task<CommandOutcome?> SendCommandAsync(int printerId,
                                                         ISendableCommand commandData,
-                                                        long userId,
+                                                        Caller caller,
                                                         CancellationToken cancellationToken)
     {
-        CommandSendResult result = await SendAndCheckAsync(printerId, commandData, userId, cancellationToken);
+        CommandSendResult result = await SendAndCheckAsync(printerId, commandData, caller, cancellationToken);
 
         // Written, and nothing will answer it. Null rather than an invented event: there is no
         // outcome to report, and fabricating one would misrepresent the wire.
@@ -93,14 +93,14 @@ public class PrinterCommandService
     /// </summary>
     /// <param name="printerId">The printer to send to.</param>
     /// <param name="intent">What the caller wants done, translated by the printer's own link.</param>
-    /// <param name="userId">The caller, checked for the intent's own capability on the printer's team.</param>
+    /// <param name="caller">Who is asking, checked for the intent's own capability on the printer's team and against the credential's scope.</param>
     /// <param name="cancellationToken">The caller's own cancellation.</param>
     public async Task<CommandOutcome?> SendCommandAsync(int printerId,
                                                         IPrinterIntent intent,
-                                                        long userId,
+                                                        Caller caller,
                                                         CancellationToken cancellationToken)
     {
-        IPrinterLink link = await RequireLinkAsync(printerId, userId, intent.RequiredCapability, cancellationToken);
+        IPrinterLink link = await RequireLinkAsync(printerId, caller, intent.RequiredCapability, cancellationToken);
         CommandSendResult result = Check(printerId, await link.SendAsync(intent, cancellationToken));
 
         return result.Outcome == CommandSendOutcome.Dispatched ? null : result.Response!;
@@ -108,7 +108,7 @@ public class PrinterCommandService
 
     /// <summary>
     /// Asks a printer a question and hands back the answer already parsed into
-    /// <typeparamref name="TAnswer"/> - the counterpart to <see cref="SendCommandAsync(int, ISendableCommand, long, System.Threading.CancellationToken)"/>, for the
+    /// <typeparamref name="TAnswer"/> - the counterpart to <see cref="SendCommandAsync(int, ISendableCommand, Homespool.Model.Caller, System.Threading.CancellationToken)"/>, for the
     /// commands whose answer is a payload rather than a verdict.
     /// </summary>
     /// <typeparam name="TAnswer">Declared by the command itself, via <see cref="ISendableCommand{TAnswer}"/>.</typeparam>
@@ -134,14 +134,14 @@ public class PrinterCommandService
     /// without a payload - a <c>Rejected</c> being the ordinary case, where
     /// <see cref="CommandOutcome{TAnswer}.Reason"/> is what the caller wants. Null overall only for
     /// a command declaring <see cref="ISendableCommand.ExpectsReply"/> false, as
-    /// <see cref="SendCommandAsync(int, ISendableCommand, long, System.Threading.CancellationToken)"/>.
+    /// <see cref="SendCommandAsync(int, ISendableCommand, Homespool.Model.Caller, System.Threading.CancellationToken)"/>.
     /// </returns>
     public async Task<CommandOutcome<TAnswer>?> AskAsync<TAnswer>(int printerId,
                                                                   ISendableCommand<TAnswer> commandData,
-                                                                  long userId,
+                                                                  Caller caller,
                                                                   CancellationToken cancellationToken)
     {
-        CommandSendResult result = await SendAndCheckAsync(printerId, commandData, userId, cancellationToken);
+        CommandSendResult result = await SendAndCheckAsync(printerId, commandData, caller, cancellationToken);
 
         if (result.Outcome == CommandSendOutcome.Dispatched)
         {
@@ -185,10 +185,10 @@ public class PrinterCommandService
     /// </remarks>
     private async Task<CommandSendResult> SendAndCheckAsync(int printerId,
                                                             ISendableCommand commandData,
-                                                            long userId,
+                                                            Caller caller,
                                                             CancellationToken cancellationToken)
     {
-        IPrinterLink link = await RequireLinkAsync(printerId, userId, commandData.RequiredCapability, cancellationToken);
+        IPrinterLink link = await RequireLinkAsync(printerId, caller, commandData.RequiredCapability, cancellationToken);
 
         if (link is not IPrinterConnectionActor actor)
         {
@@ -205,11 +205,11 @@ public class PrinterCommandService
     /// of the thing being asked for rather than an argument to this method's callers.
     /// </remarks>
     private async Task<IPrinterLink> RequireLinkAsync(int printerId,
-                                                      long userId,
+                                                      Caller caller,
                                                       Capability capability,
                                                       CancellationToken cancellationToken)
     {
-        await _access.RequireAsync(printerId, userId, capability, cancellationToken);
+        await _access.RequireAsync(printerId, caller, capability, cancellationToken);
 
         if (!_registry.TryGet(printerId, out IPrinterLink? link) || link is null)
         {

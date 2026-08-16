@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
@@ -350,7 +351,7 @@ public class IndexModel : PageModel
 
         try
         {
-            await _queue.EnqueueAsync(printerId, userId.Value, name, cancellationToken);
+            await _queue.EnqueueAsync(printerId, CallerResolver.For(userId.Value, User), name, cancellationToken);
 
             (StatusMessage, StatusSuccess) = ($"Queued {name}.", true);
         }
@@ -412,7 +413,7 @@ public class IndexModel : PageModel
 
         try
         {
-            CommandOutcome? outcome = await _sender.SendAsync(printer, file, userId.Value, cancellationToken);
+            CommandOutcome? outcome = await _sender.SendAsync(printer, file, CallerResolver.For(userId.Value, User), cancellationToken);
 
             (StatusMessage, StatusSuccess) = outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed ?
                 ($"{PrinterName(printer)} refused it: {outcome!.Reason}", false) :
@@ -543,7 +544,7 @@ public class IndexModel : PageModel
     {
         long? userId = UserId();
 
-        Printers = userId is null ? [] : await _printers.ListPrintersForUserAsync(userId.Value, cancellationToken);
+        Printers = userId is null ? [] : await _printers.ListPrintersForUserAsync(CallerResolver.For(userId.Value, User), cancellationToken);
     }
 
     private long? UserId()

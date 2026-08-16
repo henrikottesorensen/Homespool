@@ -82,7 +82,7 @@ public sealed class RemoteReadyAllowedTests : IDisposable
         PrinterQueryService service = ServiceFor(context);
 
         // Act
-        bool? allowed = await service.SetRemoteReadyAllowedAsync(_printerUuid, Manager, true,
+        bool? allowed = await service.SetRemoteReadyAllowedAsync(_printerUuid, Caller.Unscoped(Manager), true,
                                                                  TestContext.Current.CancellationToken);
 
         // Assert
@@ -90,7 +90,7 @@ public sealed class RemoteReadyAllowedTests : IDisposable
         (await ReadFlagAsync(context)).Should().BeTrue();
 
         // Act
-        await service.SetRemoteReadyAllowedAsync(_printerUuid, Manager, false,
+        await service.SetRemoteReadyAllowedAsync(_printerUuid, Caller.Unscoped(Manager), false,
                                                  TestContext.Current.CancellationToken);
 
         // Assert
@@ -111,7 +111,7 @@ public sealed class RemoteReadyAllowedTests : IDisposable
 
         // Act & Assert
         await FluentActions
-              .Awaiting(() => service.SetRemoteReadyAllowedAsync(_printerUuid, User, true,
+              .Awaiting(() => service.SetRemoteReadyAllowedAsync(_printerUuid, Caller.Unscoped(User), true,
                                                                  TestContext.Current.CancellationToken))
               .Should().ThrowAsync<TeamAccessDeniedException>();
 
@@ -130,7 +130,7 @@ public sealed class RemoteReadyAllowedTests : IDisposable
         PrinterQueryService service = ServiceFor(context);
 
         // Act
-        bool? unknown = await service.SetRemoteReadyAllowedAsync(Guid.NewGuid(), Manager, true,
+        bool? unknown = await service.SetRemoteReadyAllowedAsync(Guid.NewGuid(), Caller.Unscoped(Manager), true,
                                                                  TestContext.Current.CancellationToken);
 
         // Assert
@@ -156,11 +156,11 @@ public sealed class RemoteReadyAllowedTests : IDisposable
         PrinterQueryService service = ServiceFor(context);
         PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
 
-        await service.SetRemoteReadyAllowedAsync(_printerUuid, Manager, false,
+        await service.SetRemoteReadyAllowedAsync(_printerUuid, Caller.Unscoped(Manager), false,
                                                  TestContext.Current.CancellationToken);
 
         // Act
-        bool mayControl = await access.AllowsAsync(1, User, Capability.ControlPrinter,
+        bool mayControl = await access.AllowsAsync(1, Caller.Unscoped(User), Capability.ControlPrinter,
                                                    TestContext.Current.CancellationToken);
 
         // Assert

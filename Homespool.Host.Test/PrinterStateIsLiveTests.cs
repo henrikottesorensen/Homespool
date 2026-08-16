@@ -131,7 +131,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         // Act
         IReadOnlyList<PrinterWithState> listed =
             await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
-                .ListPrintersWithStateForUserAsync(1, CancellationToken.None);
+                .ListPrintersWithStateForUserAsync(Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         listed.Should().ContainSingle();
@@ -153,7 +153,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
 
         // Act
         PrinterWithState? found = await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
-            .GetPrinterWithStateForUserAsync(printer.Uuid, 1, CancellationToken.None);
+            .GetPrinterWithStateForUserAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         found.Should().NotBeNull();
@@ -174,7 +174,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         // Act
         IReadOnlyList<PrinterWithState> listed =
             await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
-                .ListPrintersWithStateForUserAsync(1, CancellationToken.None);
+                .ListPrintersWithStateForUserAsync(Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         listed.Should().ContainSingle();
@@ -206,7 +206,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
 
         // Act
         PrinterWithState? found = await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
-            .GetPrinterWithStateForUserAsync(printer.Uuid, 1, CancellationToken.None);
+            .GetPrinterWithStateForUserAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         PrinterReadDTO dto = PrinterReadDTO.FromEntity(found!);
@@ -237,7 +237,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         // Act
         IReadOnlyList<PrinterWithState> listed =
             await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
-                .ListPrintersWithStateForUserAsync(1, CancellationToken.None);
+                .ListPrintersWithStateForUserAsync(Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         PrinterReadDTO dto = PrinterReadDTO.FromEntity(listed.Should().ContainSingle().Subject);
@@ -262,7 +262,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
 
         // Act
         PrinterWithState? updated = await new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
-            .UpdatePrinterAsync(printer.Uuid, 1, "Renamed", "Garage", CancellationToken.None);
+            .UpdatePrinterAsync(printer.Uuid, Caller.Unscoped(1), "Renamed", "Garage", CancellationToken.None);
 
         // Assert
         updated.Should().NotBeNull();

@@ -14,6 +14,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Localisation;
 using Homespool.Host.PrusaConnect;
@@ -150,7 +151,7 @@ public class ClaimModel : PageModel
         try
         {
             Printer printer = await _prusaConnectService.ClaimPrinterAsync(
-                code, Input.Name, Input.Location, Input.TeamId, user.Id);
+                code, Input.Name, Input.Location, Input.TeamId, CallerResolver.For(user, User));
 
             // Inside the transaction the claim was made in, so a rollback takes the reset with it.
             await _attemptLimiter.ResetAsync(user, cancellationToken);

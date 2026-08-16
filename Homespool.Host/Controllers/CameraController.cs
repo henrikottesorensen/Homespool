@@ -85,7 +85,7 @@ public class CameraController : ControllerBase
         }
 
         Camera? camera = await _access
-                               .FindAsync(uuid, userId.Value, Capability.ViewCamera, cancellationToken)
+                               .FindAsync(uuid, CallerResolver.For(userId.Value, User), Capability.ViewCamera, cancellationToken)
                                .ConfigureAwait(false);
 
         // Not found and not permitted are deliberately the same answer, following

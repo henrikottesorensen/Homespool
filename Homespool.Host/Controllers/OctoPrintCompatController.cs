@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 
+using Homespool.Host.Authorisation;
 using Homespool.Host.DTO;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
@@ -220,7 +221,7 @@ public class OctoPrintCompatController : ControllerBase
         {
             try
             {
-                await _queue.EnqueueAsync(printer.Id, owner.Id, stored.FileName, cancellationToken);
+                await _queue.EnqueueAsync(printer.Id, CallerResolver.For(owner, User), stored.FileName, cancellationToken);
             }
             catch (TeamAccessDeniedException)
             {
@@ -339,7 +340,7 @@ public class OctoPrintCompatController : ControllerBase
             return (null, null, Forbid());
         }
 
-        Printer? printer = await _printers.GetPrinterForUserAsync(uuid, user.Id, cancellationToken);
+        Printer? printer = await _printers.GetPrinterForUserAsync(uuid, CallerResolver.For(user, User), cancellationToken);
 
         if (printer is null)
         {

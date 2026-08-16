@@ -62,9 +62,9 @@ public class PrintHistoryService
     /// spends <see cref="Model.PrintState.Starting"/> before the printer reports itself printing.
     /// A page showing this should say so rather than claiming the machine is printing already.
     /// </remarks>
-    public async Task<PrintJob?> GetActiveAsync(int printerId, long userId, CancellationToken cancellationToken)
+    public async Task<PrintJob?> GetActiveAsync(int printerId, Caller caller, CancellationToken cancellationToken)
     {
-        await _access.RequireAsync(printerId, userId, Capability.ViewHistory, cancellationToken);
+        await _access.RequireAsync(printerId, caller, Capability.ViewHistory, cancellationToken);
 
         return await _dbContext.PrintJobs
                                .AsNoTracking()
@@ -74,10 +74,10 @@ public class PrintHistoryService
 
     /// <summary>Finished prints, newest first.</summary>
     public async Task<IReadOnlyList<PrintJob>> ListAsync(int printerId,
-                                                         long userId,
+                                                         Caller caller,
                                                          CancellationToken cancellationToken)
     {
-        await _access.RequireAsync(printerId, userId, Capability.ViewHistory, cancellationToken);
+        await _access.RequireAsync(printerId, caller, Capability.ViewHistory, cancellationToken);
 
         return await _dbContext.PrintJobs
                                .AsNoTracking()
@@ -138,9 +138,9 @@ public class PrintHistoryService
     /// hold a queue: the loop never looks past it, which is the spooler behaviour the design chose
     /// over skipping.
     /// </remarks>
-    public async Task<string?> GetHoldReasonAsync(int printerId, long userId, CancellationToken cancellationToken)
+    public async Task<string?> GetHoldReasonAsync(int printerId, Caller caller, CancellationToken cancellationToken)
     {
-        await _access.RequireAsync(printerId, userId, Capability.ViewQueue, cancellationToken);
+        await _access.RequireAsync(printerId, caller, Capability.ViewQueue, cancellationToken);
 
         QueuedPrint? head = await _dbContext.QueuedPrints
                                             .AsNoTracking()

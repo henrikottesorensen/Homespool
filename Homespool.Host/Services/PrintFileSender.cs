@@ -70,7 +70,7 @@ public class PrintFileSender
     /// </remarks>
     public async Task<CommandOutcome?> SendAsync(Printer printer,
                                                  StoredFile file,
-                                                 long userId,
+                                                 Caller caller,
                                                  CancellationToken cancellationToken)
     {
         string token = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(TransferTokenBytes));
@@ -93,7 +93,7 @@ public class PrintFileSender
 
         try
         {
-            outcome = await _commands.SendCommandAsync(printer.Id, command, userId, cancellationToken);
+            outcome = await _commands.SendCommandAsync(printer.Id, command, caller, cancellationToken);
         }
         catch
         {

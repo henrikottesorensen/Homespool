@@ -80,7 +80,7 @@ public sealed class PrinterAccessServiceTests : IDisposable
         PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
 
         // Act
-        bool allowed = await access.AllowsAsync(1, userId, operation, TestContext.Current.CancellationToken);
+        bool allowed = await access.AllowsAsync(1, Caller.Unscoped(userId), operation, TestContext.Current.CancellationToken);
 
         // Assert
         allowed.Should().Be(expected);
@@ -99,12 +99,12 @@ public sealed class PrinterAccessServiceTests : IDisposable
 
         // Act & Assert
         await FluentActions
-              .Awaiting(() => access.RequireAsync(999, Reader, Capability.ViewPrinter,
+              .Awaiting(() => access.RequireAsync(999, Caller.Unscoped(Reader), Capability.ViewPrinter,
                                                   TestContext.Current.CancellationToken))
               .Should().ThrowAsync<PrinterNotFoundException>();
 
         await FluentActions
-              .Awaiting(() => access.RequireAsync(1, Reader, Capability.Print,
+              .Awaiting(() => access.RequireAsync(1, Caller.Unscoped(Reader), Capability.Print,
                                                   TestContext.Current.CancellationToken))
               .Should().ThrowAsync<TeamAccessDeniedException>();
     }
@@ -128,10 +128,10 @@ public sealed class PrinterAccessServiceTests : IDisposable
                                   .SingleAsync(TestContext.Current.CancellationToken);
 
         // Act
-        Printer? unknown = await access.FindAsync(Guid.NewGuid(), Reader, Capability.ViewPrinter,
+        Printer? unknown = await access.FindAsync(Guid.NewGuid(), Caller.Unscoped(Reader), Capability.ViewPrinter,
                                                   TestContext.Current.CancellationToken);
 
-        Printer? forbidden = await access.FindAsync(known, Stranger, Capability.ViewPrinter,
+        Printer? forbidden = await access.FindAsync(known, Caller.Unscoped(Stranger), Capability.ViewPrinter,
                                                     TestContext.Current.CancellationToken);
 
         // Assert
@@ -162,7 +162,7 @@ public sealed class PrinterAccessServiceTests : IDisposable
 
         // Act & Assert
         await FluentActions
-              .Awaiting(() => access.AllowsAsync(1, Manager, default, TestContext.Current.CancellationToken))
+              .Awaiting(() => access.AllowsAsync(1, Caller.Unscoped(Manager), default, TestContext.Current.CancellationToken))
               .Should().ThrowAsync<ArgumentOutOfRangeException>("a default capability must not resolve to a real one");
     }
 
@@ -175,7 +175,7 @@ public sealed class PrinterAccessServiceTests : IDisposable
         PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
 
         // Act
-        bool allowed = await access.AllowsAsync(999, Manager, Capability.ViewPrinter,
+        bool allowed = await access.AllowsAsync(999, Caller.Unscoped(Manager), Capability.ViewPrinter,
                                                 TestContext.Current.CancellationToken);
 
         // Assert
@@ -198,7 +198,7 @@ public sealed class PrinterAccessServiceTests : IDisposable
         await using HomespoolDbContext context = await SeedAsync();
         PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
 
-        (await access.AllowsAsync(1, Reader, Capability.Print, TestContext.Current.CancellationToken))
+        (await access.AllowsAsync(1, Caller.Unscoped(Reader), Capability.Print, TestContext.Current.CancellationToken))
             .Should().BeFalse();
 
         // Act - grant it behind the service's back
@@ -208,11 +208,86 @@ public sealed class PrinterAccessServiceTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        (await access.AllowsAsync(1, Reader, Capability.Print, TestContext.Current.CancellationToken))
+        (await access.AllowsAsync(1, Caller.Unscoped(Reader), Capability.Print, TestContext.Current.CancellationToken))
             .Should().BeFalse("the answer was already given in this scope");
 
-        (await access.AllowsAsync(1, Manager, Capability.ManagePrinter, TestContext.Current.CancellationToken))
+        (await access.AllowsAsync(1, Caller.Unscoped(Manager), Capability.ManagePrinter, TestContext.Current.CancellationToken))
             .Should().BeTrue("a memo keyed on the printer alone would answer for the wrong person");
+    }
+
+    /// <summary>
+    /// <b>The credential's half of the gate, which is the load-bearing line for scoped tokens.</b> The
+    /// membership says Manager; the scope names only <c>ViewPrinter</c>; the answer is the
+    /// intersection, so the printer is visible and nothing else is permitted.
+    /// </summary>
+    [Fact]
+    public async Task AScopedCallerIsRefusedWhatItsScopeDoesNotName()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+        PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
+
+        Caller scoped = Caller.Scoped(
+            Manager,
+            CapabilitySet.Parse(CapabilitySet.Format([Capability.ViewPrinter])));
+
+        // Act & Assert
+        (await access.AllowsAsync(1, scoped, Capability.ViewPrinter, TestContext.Current.CancellationToken))
+            .Should().BeTrue("the membership allows it and the scope names it");
+
+        (await access.AllowsAsync(1, scoped, Capability.ControlPrinter, TestContext.Current.CancellationToken))
+            .Should().BeFalse("a Manager membership cannot widen a credential that never named it");
+
+        (await access.AllowsAsync(1, scoped, Capability.ManagePrinter, TestContext.Current.CancellationToken))
+            .Should().BeFalse();
+    }
+
+    /// <summary>
+    /// A scope cannot reach past the membership either - the intersection refuses from both sides.
+    /// </summary>
+    [Fact]
+    public async Task AScopeNamingMoreThanTheMembershipHoldsStillRefuses()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+        PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
+
+        // Reader holds the viewer preset; the credential asks for far more.
+        Caller overreaching = Caller.Scoped(
+            Reader,
+            CapabilitySet.Parse(CapabilitySet.Format(CapabilityPresets.Manager)));
+
+        // Act & Assert
+        (await access.AllowsAsync(1, overreaching, Capability.ViewPrinter, TestContext.Current.CancellationToken))
+            .Should().BeTrue("both sides hold it");
+
+        (await access.AllowsAsync(1, overreaching, Capability.ManagePrinter, TestContext.Current.CancellationToken))
+            .Should().BeFalse("naming a capability in a scope does not grant it");
+    }
+
+    /// <summary>
+    /// <b>The withdrawal rule reads the credential too.</b> Somebody who could withdraw their own work
+    /// by membership cannot do it on a credential that never named <see cref="Capability.Print"/>.
+    /// </summary>
+    [Fact]
+    public async Task WithdrawingYourOwnWorkStillNeedsTheCredentialToNamePrint()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+        PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
+
+        Caller viewerScope = Caller.Scoped(
+            User,
+            CapabilitySet.Parse(CapabilitySet.Format([Capability.ViewPrinter])));
+
+        // Act - their own work, and their membership would allow it
+        bool allowed = await access.AllowsWithdrawingAsync(1, viewerScope, User, TestContext.Current.CancellationToken);
+
+        // Assert
+        allowed.Should().BeFalse("the credential is the second gate, and it named neither Print nor ControlPrinter");
+
+        (await access.AllowsWithdrawingAsync(1, Caller.Unscoped(User), User, TestContext.Current.CancellationToken))
+            .Should().BeTrue("the same person on an unscoped credential withdraws their own work");
     }
 
     private async Task<HomespoolDbContext> SeedAsync()

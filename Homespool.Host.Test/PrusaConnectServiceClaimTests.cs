@@ -120,7 +120,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
         // Act
-        Printer printer = await service.ClaimPrinterAsync(code, "My printer", "Office", teamId: null, userId: 1);
+        Printer printer = await service.ClaimPrinterAsync(code, "My printer", "Office", teamId: null, caller: Caller.Unscoped(1));
 
         // Assert
         printer.TeamId.Should().Be(defaultTeam.TeamId);
@@ -150,7 +150,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
         // Act
-        Printer printer = await service.ClaimPrinterAsync(code, null, null, teamId: managedTeam.TeamId, userId: 1);
+        Printer printer = await service.ClaimPrinterAsync(code, null, null, teamId: managedTeam.TeamId, caller: Caller.Unscoped(1));
 
         // Assert
         printer.TeamId.Should().Be(managedTeam.TeamId);
@@ -172,7 +172,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
         // Act
-        Func<Task> claim = () => service.ClaimPrinterAsync(code, null, null, teamId: unmanaged.TeamId, userId: 1);
+        Func<Task> claim = () => service.ClaimPrinterAsync(code, null, null, teamId: unmanaged.TeamId, caller: Caller.Unscoped(1));
 
         // Assert
         await claim.Should().ThrowAsync<TeamAccessDeniedException>();
@@ -194,7 +194,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
         // Act
-        Func<Task> claim = () => service.ClaimPrinterAsync(code, null, null, teamId: someoneElses.TeamId, userId: 1);
+        Func<Task> claim = () => service.ClaimPrinterAsync(code, null, null, teamId: someoneElses.TeamId, caller: Caller.Unscoped(1));
 
         // Assert
         await claim.Should().ThrowAsync<TeamAccessDeniedException>();
@@ -215,10 +215,10 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         await AddTeamAsync(context, userId: 2, canManage: true, isDefault: true);
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
-        await service.ClaimPrinterAsync(code, null, null, teamId: null, userId: 1);
+        await service.ClaimPrinterAsync(code, null, null, teamId: null, caller: Caller.Unscoped(1));
 
         // Act
-        Func<Task> secondClaim = () => service.ClaimPrinterAsync(code, null, null, teamId: null, userId: 2);
+        Func<Task> secondClaim = () => service.ClaimPrinterAsync(code, null, null, teamId: null, caller: Caller.Unscoped(2));
 
         // Assert
         await secondClaim.Should().ThrowAsync<RegistrationAlreadyClaimedException>();
@@ -243,7 +243,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
         // Act
-        await service.ClaimPrinterAsync(code, null, null, teamId: null, userId: 1);
+        await service.ClaimPrinterAsync(code, null, null, teamId: null, caller: Caller.Unscoped(1));
 
         // Assert
         (await service.GetToken(code)).Should().NotBeNullOrWhiteSpace("the printer still has to redeem the code itself");
@@ -263,7 +263,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
 
         // Act
-        Func<Task> unknown = () => service.ClaimPrinterAsync("NEVER-ISSUED", null, null, teamId: null, userId: 1);
+        Func<Task> unknown = () => service.ClaimPrinterAsync("NEVER-ISSUED", null, null, teamId: null, caller: Caller.Unscoped(1));
 
         // Assert
         await unknown.Should().ThrowAsync<PrinterNotFoundException>();
@@ -283,7 +283,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
         // Act
-        Func<Task> claim = () => service.ClaimPrinterAsync(code, null, null, teamId: null, userId: 1);
+        Func<Task> claim = () => service.ClaimPrinterAsync(code, null, null, teamId: null, caller: Caller.Unscoped(1));
 
         // Assert
         await claim.Should().ThrowAsync<TeamAccessDeniedException>();

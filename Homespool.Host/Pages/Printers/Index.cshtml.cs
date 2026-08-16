@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Options;
 
+using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Localisation;
 using Homespool.Host.Printing;
@@ -157,7 +158,7 @@ public class IndexModel : PageModel
 
         try
         {
-            string token = await _prusaConnectService.RegenerateProvisioningTokenAsync(printerId, user.Id);
+            string token = await _prusaConnectService.RegenerateProvisioningTokenAsync(printerId, CallerResolver.For(user, User));
 
             RegeneratedPrinterId = printerId;
 
@@ -235,7 +236,7 @@ public class IndexModel : PageModel
     private async Task<IActionResult> SendCommandAsync(int printerId,
                                                        IPrinterIntent command,
                                                        CancellationToken cancellationToken,
-                                                       Func<int, long, CancellationToken, Task<CommandOutcome?>>? send = null)
+                                                       Func<int, Caller, CancellationToken, Task<CommandOutcome?>>? send = null)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
@@ -245,17 +246,19 @@ public class IndexModel : PageModel
             return Forbid();
         }
 
+        Caller caller = CallerResolver.For(user, User);
+
         try
         {
             CommandOutcome? outcome;
 
             if (send is null)
             {
-                outcome = await _printerCommandService.SendCommandAsync(printerId, command, user.Id, cancellationToken);
+                outcome = await _printerCommandService.SendCommandAsync(printerId, command, caller, cancellationToken);
             }
             else
             {
-                outcome = await send(printerId, user.Id, cancellationToken);
+                outcome = await send(printerId, caller, cancellationToken);
             }
 
             // Null means the command was written and no answer is expected of it - success. Only the
@@ -314,7 +317,7 @@ public class IndexModel : PageModel
         // With state, because the Status column reports what a connected printer is doing rather than
         // only that it is enrolled. Same query shape, one join.
         IReadOnlyList<PrinterWithState> printers =
-            await _printerQueryService.ListPrintersWithStateForUserAsync(user.Id, cancellationToken);
+            await _printerQueryService.ListPrintersWithStateForUserAsync(CallerResolver.For(user, User), cancellationToken);
 
         if (printers.Count == 0)
         {

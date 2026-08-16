@@ -91,7 +91,7 @@ public class PrinterAccessService
     /// <exception cref="PrinterNotFoundException">No printer has that id.</exception>
     /// <exception cref="TeamAccessDeniedException">The caller may not do this to it.</exception>
     public async Task<Printer> RequireAsync(int printerId,
-                                            long userId,
+                                            Caller caller,
                                             Capability capability,
                                             CancellationToken cancellationToken)
     {
@@ -102,7 +102,7 @@ public class PrinterAccessService
             throw PrinterNotFoundException.ForId(printerId);
         }
 
-        if (!await AllowsAsync(printerId, userId, capability, cancellationToken))
+        if (!await AllowsAsync(printerId, caller, capability, cancellationToken))
         {
             throw new TeamAccessDeniedException();
         }
@@ -111,7 +111,7 @@ public class PrinterAccessService
     }
 
     /// <summary>
-    /// May this account withdraw this piece of work - stop the print, or cancel the queue entry -
+    /// May this caller withdraw this piece of work - stop the print, or cancel the queue entry -
     /// given who put it there? <b>The one place the "your own work" half of
     /// <see cref="Capability.Print"/> is decided</b>.
     /// </summary>
@@ -122,17 +122,17 @@ public class PrinterAccessService
     /// one fails open.
     /// </remarks>
     public async Task<bool> AllowsWithdrawingAsync(int printerId,
-                                                   long userId,
+                                                   Caller caller,
                                                    long queuedByUserId,
                                                    CancellationToken cancellationToken)
     {
-        if (await AllowsAsync(printerId, userId, Capability.ControlPrinter, cancellationToken))
+        if (await AllowsAsync(printerId, caller, Capability.ControlPrinter, cancellationToken))
         {
             return true;
         }
 
-        return queuedByUserId == userId
-               && await AllowsAsync(printerId, userId, Capability.Print, cancellationToken);
+        return queuedByUserId == caller.UserId
+               && await AllowsAsync(printerId, caller, Capability.Print, cancellationToken);
     }
 
     /// <summary>
@@ -140,11 +140,11 @@ public class PrinterAccessService
     /// </summary>
     /// <exception cref="TeamAccessDeniedException">The caller may not withdraw this work.</exception>
     public async Task RequireWithdrawingAsync(int printerId,
-                                              long userId,
+                                              Caller caller,
                                               long queuedByUserId,
                                               CancellationToken cancellationToken)
     {
-        if (!await AllowsWithdrawingAsync(printerId, userId, queuedByUserId, cancellationToken))
+        if (!await AllowsWithdrawingAsync(printerId, caller, queuedByUserId, cancellationToken))
         {
             throw new TeamAccessDeniedException();
         }
@@ -168,7 +168,7 @@ public class PrinterAccessService
     /// </para>
     /// </remarks>
     public async Task<Printer?> FindAsync(Guid uuid,
-                                          long userId,
+                                          Caller caller,
                                           Capability capability,
                                           CancellationToken cancellationToken)
     {
@@ -184,7 +184,7 @@ public class PrinterAccessService
 
         _printers[printer.Id] = printer;
 
-        return await AllowsAsync(printer.Id, userId, capability, cancellationToken) ? printer : null;
+        return await AllowsAsync(printer.Id, caller, capability, cancellationToken) ? printer : null;
     }
 
     /// <summary>
@@ -198,10 +198,20 @@ public class PrinterAccessService
     /// the other two entry points care about.
     /// </remarks>
     public async Task<bool> AllowsAsync(int printerId,
-                                        long userId,
+                                        Caller caller,
                                         Capability capability,
                                         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(caller);
+
+        // The credential's half first: it needs no database, and a scope that does not name the
+        // capability refuses whatever the membership would have said. Two questions, both asked -
+        // may the team, and did the caller lend this key that power.
+        if (!caller.Allows(capability))
+        {
+            return false;
+        }
+
         Printer? printer = await PrinterAsync(printerId, cancellationToken);
 
         if (printer is null)
@@ -209,7 +219,7 @@ public class PrinterAccessService
             return false;
         }
 
-        CapabilitySet? capabilities = await MembershipAsync(printerId, printer.TeamId, userId, cancellationToken);
+        CapabilitySet? capabilities = await MembershipAsync(printerId, printer.TeamId, caller.UserId, cancellationToken);
 
         return capabilities is not null && capabilities.Allows(capability);
     }

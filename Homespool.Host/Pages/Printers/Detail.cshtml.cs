@@ -223,7 +223,7 @@ public class DetailModel : PageModel
         }
 
         PrinterStatistics? statistics =
-            await _printerQueryService.GetPrinterStatisticsForUserAsync(uuid, user.Id, cancellationToken);
+            await _printerQueryService.GetPrinterStatisticsForUserAsync(uuid, CallerResolver.For(user, User), cancellationToken);
 
         if (statistics is null)
         {
@@ -233,23 +233,23 @@ public class DetailModel : PageModel
         Statistics = statistics;
         Connected = _connectionRegistry.IsConnected(statistics.Printer.Id);
 
-        CanUse = await _access.AllowsAsync(statistics.Printer.Id, user.Id, Capability.Print,
+        CanUse = await _access.AllowsAsync(statistics.Printer.Id, CallerResolver.For(user, User), Capability.Print,
                                            cancellationToken);
 
-        CanManage = await _access.AllowsAsync(statistics.Printer.Id, user.Id, Capability.ManagePrinter,
+        CanManage = await _access.AllowsAsync(statistics.Printer.Id, CallerResolver.For(user, User), Capability.ManagePrinter,
                                               cancellationToken);
 
         SlicerUrl = $"{Request.Scheme}://{Request.Host}/compat/octoprint/{statistics.Printer.Uuid}/";
 
         Presets = FilamentPreset.For(statistics.Printer.Model);
 
-        Queue = await _queueService.ListAsync(statistics.Printer.Id, user.Id, cancellationToken);
-        ActivePrint = await _historyService.GetActiveAsync(statistics.Printer.Id, user.Id, cancellationToken);
-        History = await _historyService.ListAsync(statistics.Printer.Id, user.Id, cancellationToken);
+        Queue = await _queueService.ListAsync(statistics.Printer.Id, CallerResolver.For(user, User), cancellationToken);
+        ActivePrint = await _historyService.GetActiveAsync(statistics.Printer.Id, CallerResolver.For(user, User), cancellationToken);
+        History = await _historyService.ListAsync(statistics.Printer.Id, CallerResolver.For(user, User), cancellationToken);
         StopperNames = await _historyService.GetStopperNamesAsync(History, cancellationToken);
-        HoldReason = await _historyService.GetHoldReasonAsync(statistics.Printer.Id, user.Id, cancellationToken);
+        HoldReason = await _historyService.GetHoldReasonAsync(statistics.Printer.Id, CallerResolver.For(user, User), cancellationToken);
 
-        Cameras = await _cameraAccess.ListForPrinterAsync(statistics.Printer.Id, user.Id, cancellationToken);
+        Cameras = await _cameraAccess.ListForPrinterAsync(statistics.Printer.Id, CallerResolver.For(user, User), cancellationToken);
 
         QueueSnapshot snapshot = await _snapshots.ReadAsync(statistics.Printer.Id, cancellationToken);
         WaitingOn = QueueWaitDescription.For(QueueRules.Decide(snapshot), snapshot.Head?.FileName);
@@ -267,9 +267,9 @@ public class DetailModel : PageModel
                                                int position,
                                                CancellationToken cancellationToken)
     {
-        return ActAsync(uuid, async (userId, printer) =>
+        return ActAsync(uuid, async (caller, printer) =>
         {
-            bool moved = await _queueService.MoveAsync(id, userId, position, cancellationToken);
+            bool moved = await _queueService.MoveAsync(id, caller, position, cancellationToken);
 
             return moved ? ("Queue reordered.", true) : ("That print is no longer in the queue.", false);
         }, cancellationToken);
@@ -281,9 +281,9 @@ public class DetailModel : PageModel
     /// </summary>
     public Task<IActionResult> OnPostCancelAsync(Guid uuid, Guid id, CancellationToken cancellationToken)
     {
-        return ActAsync(uuid, async (userId, printer) =>
+        return ActAsync(uuid, async (caller, printer) =>
         {
-            bool cancelled = await _queueService.CancelAsync(id, userId, cancellationToken);
+            bool cancelled = await _queueService.CancelAsync(id, caller, cancellationToken);
 
             return cancelled ? ("Removed from the queue.", true) : ("That print is no longer in the queue.", false);
         }, cancellationToken);
@@ -300,7 +300,7 @@ public class DetailModel : PageModel
     /// </remarks>
     public Task<IActionResult> OnPostPreheatAsync(Guid uuid, string filament, CancellationToken cancellationToken)
     {
-        return ActAsync(uuid, async (userId, printer) =>
+        return ActAsync(uuid, async (caller, printer) =>
         {
             FilamentPreset? preset = FilamentPreset.Find(printer.Model, filament);
 
@@ -309,7 +309,7 @@ public class DetailModel : PageModel
                 return ($"'{filament}' is not a filament this printer has a preset for.", false);
             }
 
-            await _preheat.PreheatAsync(printer.Id, userId, preset, cancellationToken);
+            await _preheat.PreheatAsync(printer.Id, caller, preset, cancellationToken);
 
             return ($"Heating to {preset.NozzleTemperature} °C nozzle and {preset.BedTemperature} °C bed for {preset.Name}.",
                 true);
@@ -335,14 +335,14 @@ public class DetailModel : PageModel
     /// </remarks>
     public Task<IActionResult> OnPostReadyAsync(Guid uuid, CancellationToken cancellationToken)
     {
-        return ActAsync(uuid, async (userId, printer) =>
+        return ActAsync(uuid, async (caller, printer) =>
         {
             if (!printer.RemoteReadyAllowed)
             {
                 return (_localiser["Printers_ReadyNotAllowed"].Value, false);
             }
 
-            await _commands.SendCommandAsync(printer.Id, new SetPrinterReady(), userId, cancellationToken);
+            await _commands.SendCommandAsync(printer.Id, new SetPrinterReady(), caller, cancellationToken);
 
             return (_localiser["Printers_ReadySent"].Value, true);
         }, cancellationToken);
@@ -356,9 +356,9 @@ public class DetailModel : PageModel
     /// </remarks>
     public Task<IActionResult> OnPostRemoteReadyAsync(Guid uuid, bool allowed, CancellationToken cancellationToken)
     {
-        return ActAsync(uuid, async (userId, printer) =>
+        return ActAsync(uuid, async (caller, printer) =>
         {
-            await _printerQueryService.SetRemoteReadyAllowedAsync(printer.Uuid, userId, allowed, cancellationToken);
+            await _printerQueryService.SetRemoteReadyAllowedAsync(printer.Uuid, caller, allowed, cancellationToken);
 
             return (_localiser[allowed ? "Printers_RemoteReadySaved" : "Printers_RemoteReadyCleared"].Value, true);
         }, cancellationToken);
@@ -367,9 +367,9 @@ public class DetailModel : PageModel
     /// <summary>Turns both heaters off.</summary>
     public Task<IActionResult> OnPostCooldownAsync(Guid uuid, CancellationToken cancellationToken)
     {
-        return ActAsync(uuid, async (userId, printer) =>
+        return ActAsync(uuid, async (caller, printer) =>
         {
-            await _preheat.CooldownAsync(printer.Id, userId, cancellationToken);
+            await _preheat.CooldownAsync(printer.Id, caller, cancellationToken);
 
             return ("Both heaters switched off.", true);
         }, cancellationToken);
@@ -385,7 +385,7 @@ public class DetailModel : PageModel
     /// rendered is not a permission check.
     /// </remarks>
     private async Task<IActionResult> ActAsync(Guid uuid,
-                                               Func<long, Printer, Task<(string message, bool success)>> action,
+                                               Func<Caller, Printer, Task<(string message, bool success)>> action,
                                                CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
@@ -397,7 +397,8 @@ public class DetailModel : PageModel
 
         // Resolved rather than trusted: this is what makes a uuid the caller cannot read a 404 here
         // as much as on the GET, instead of an id going straight to the queue service.
-        Printer? printer = await _printerQueryService.GetPrinterForUserAsync(uuid, user.Id, cancellationToken);
+        Caller caller = CallerResolver.For(user, User);
+        Printer? printer = await _printerQueryService.GetPrinterForUserAsync(uuid, caller, cancellationToken);
 
         if (printer is null)
         {
@@ -406,7 +407,7 @@ public class DetailModel : PageModel
 
         try
         {
-            (StatusMessage, StatusSuccess) = await action(user.Id, printer);
+            (StatusMessage, StatusSuccess) = await action(caller, printer);
         }
         catch (TeamAccessDeniedException)
         {

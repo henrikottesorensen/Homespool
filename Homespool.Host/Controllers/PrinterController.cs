@@ -162,7 +162,7 @@ public class PrinterController : ControllerBase
 
         try
         {
-            CommandOutcome? outcome = await _sender.SendAsync(printer, file, caller.Id, cancellationToken);
+            CommandOutcome? outcome = await _sender.SendAsync(printer, file, CallerResolver.For(caller, User), cancellationToken);
 
             return outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed ?
                 this.CommandFailure(StatusCodes.Status409Conflict, wireName,
@@ -284,7 +284,7 @@ public class PrinterController : ControllerBase
         PrusaConnect.Commands.SendFileInfo command = new() { Path = trimmed.Length == 0 ? "/usb" : $"/usb/{trimmed}" };
         HSUser user = (await _userManager.GetUserAsync(User))!;
 
-        if (!await _access.AllowsAsync(printer.Id, user.Id, Capability.ControlPrinter, cancellationToken))
+        if (!await _access.AllowsAsync(printer.Id, CallerResolver.For(user, User), Capability.ControlPrinter, cancellationToken))
         {
             return this.Failure(StatusCodes.Status403Forbidden, "You may not browse this printer's storage.");
         }
@@ -292,7 +292,7 @@ public class PrinterController : ControllerBase
         try
         {
             CommandOutcome<FileInfoEventDataDTO>? outcome =
-                await _commands.AskAsync(printer.Id, command, user.Id, cancellationToken);
+                await _commands.AskAsync(printer.Id, command, CallerResolver.For(user, User), cancellationToken);
 
             if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {
@@ -474,7 +474,7 @@ public class PrinterController : ControllerBase
             return (null, Forbid());
         }
 
-        Printer? printer = await _printers.GetPrinterForUserAsync(uuid, user.Id, cancellationToken);
+        Printer? printer = await _printers.GetPrinterForUserAsync(uuid, CallerResolver.For(user, User), cancellationToken);
 
         // Null covers both "no such printer" and "not visible to this user", deliberately - telling
         // them apart would confirm the existence of other people's printers.
@@ -499,9 +499,10 @@ public class PrinterController : ControllerBase
                                                IPrinterIntent command,
                                                CancellationToken cancellationToken,
                                                Action? onFailure = null,
-                                               Func<int, long, CancellationToken, Task<CommandOutcome?>>? send = null)
+                                               Func<int, Caller, CancellationToken, Task<CommandOutcome?>>? send = null)
     {
         HSUser user = (await _userManager.GetUserAsync(User))!;
+        Caller caller = CallerResolver.For(user, User);
 
         try
         {
@@ -509,11 +510,11 @@ public class PrinterController : ControllerBase
 
             if (send is null)
             {
-                outcome = await _commands.SendCommandAsync(printer.Id, command, user.Id, cancellationToken);
+                outcome = await _commands.SendCommandAsync(printer.Id, command, caller, cancellationToken);
             }
             else
             {
-                outcome = await send(printer.Id, user.Id, cancellationToken);
+                outcome = await send(printer.Id, caller, cancellationToken);
             }
 
             // A null outcome is a command the printer cannot answer, written successfully - nothing

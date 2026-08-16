@@ -13,6 +13,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
@@ -584,7 +585,7 @@ public sealed class QueueAdvancer : BackgroundService
 
         try
         {
-            CommandOutcome? outcome = await sender.SendAsync(printer, file, head.QueuedByUserId, cancellationToken);
+            CommandOutcome? outcome = await sender.SendAsync(printer, file, CallerResolver.ForUserId(head.QueuedByUserId), cancellationToken);
 
             if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {
@@ -669,7 +670,7 @@ public sealed class QueueAdvancer : BackgroundService
         try
         {
             CommandOutcome<FileInfoEventDataDTO>? answer = await commands.AskAsync(
-                printerId, new PrusaConnect.Commands.SendFileInfo { Path = file.PrinterPath }, head.QueuedByUserId, cancellationToken);
+                printerId, new PrusaConnect.Commands.SendFileInfo { Path = file.PrinterPath }, CallerResolver.ForUserId(head.QueuedByUserId), cancellationToken);
 
             existing = answer?.Answer;
         }
@@ -765,7 +766,7 @@ public sealed class QueueAdvancer : BackgroundService
         try
         {
             CommandOutcome<InfoEventDataDTO>? answer =
-                await commands.AskAsync(printerId, new PrusaConnect.Commands.SendInfo(), head.QueuedByUserId, cancellationToken);
+                await commands.AskAsync(printerId, new PrusaConnect.Commands.SendInfo(), CallerResolver.ForUserId(head.QueuedByUserId), cancellationToken);
 
             free = answer?.Answer?.Storages?
                 .FirstOrDefault(storage => storage.MountPoint == "/usb")?
@@ -853,7 +854,8 @@ public sealed class QueueAdvancer : BackgroundService
         try
         {
             CommandOutcome? outcome = await commands.SendCommandAsync(printerId,
-                                                                      new StartPrint(printerPath), head.QueuedByUserId,
+                                                                      new StartPrint(printerPath),
+                                                                      CallerResolver.ForUserId(head.QueuedByUserId),
                                                                       cancellationToken);
 
             if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)

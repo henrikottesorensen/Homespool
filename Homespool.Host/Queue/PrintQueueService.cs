@@ -65,10 +65,10 @@ public class PrintQueueService
     /// <exception cref="PrinterNotFoundException">No printer has that id.</exception>
     /// <exception cref="TeamAccessDeniedException">Caller lacks <c>CanRead</c> on the printer's team.</exception>
     public async Task<IReadOnlyList<QueuedPrint>> ListAsync(int printerId,
-                                                            long userId,
+                                                            Caller caller,
                                                             CancellationToken cancellationToken)
     {
-        await _access.RequireAsync(printerId, userId, Capability.ViewQueue, cancellationToken);
+        await _access.RequireAsync(printerId, caller, Capability.ViewQueue, cancellationToken);
 
         return await _dbContext.QueuedPrints
                                .AsNoTracking()
@@ -80,7 +80,7 @@ public class PrintQueueService
     }
 
     /// <summary>
-    /// Adds one of <paramref name="userId"/>'s files to the end of a printer's queue.
+    /// Adds one of the caller's files to the end of a printer's queue.
     /// </summary>
     /// <exception cref="PrinterNotFoundException">No printer has that id.</exception>
     /// <exception cref="TeamAccessDeniedException">Caller lacks <c>CanUse</c> on the printer's team.</exception>
@@ -91,13 +91,13 @@ public class PrintQueueService
     /// belongs to <i>(file, printer)</i> rather than to the entry.
     /// </remarks>
     public async Task<QueuedPrint> EnqueueAsync(int printerId,
-                                                long userId,
+                                                Caller caller,
                                                 string fileName,
                                                 CancellationToken cancellationToken)
     {
-        await _access.RequireAsync(printerId, userId, Capability.Print, cancellationToken);
+        await _access.RequireAsync(printerId, caller, Capability.Print, cancellationToken);
 
-        PrintFile? file = await _files.ResolveAsync(userId, fileName, cancellationToken);
+        PrintFile? file = await _files.ResolveAsync(caller.UserId, fileName, cancellationToken);
 
         if (file is null)
         {
@@ -119,7 +119,7 @@ public class PrintQueueService
             // intention begins, and everything that becomes of it carries this forward.
             TrackingId = Guid.NewGuid(),
             Position = (last ?? -1) + 1,
-            QueuedByUserId = userId,
+            QueuedByUserId = caller.UserId,
             QueuedAt = _timeProvider.GetUtcNow(),
         };
 
@@ -159,7 +159,7 @@ public class PrintQueueService
     /// </remarks>
     /// <returns>False if there is no such queued print.</returns>
     public async Task<bool> MoveAsync(Guid trackingId,
-                                      long userId,
+                                      Caller caller,
                                       int targetIndex,
                                       CancellationToken cancellationToken)
     {
@@ -174,7 +174,7 @@ public class PrintQueueService
 
         // Reordering moves other people's work as well as your own - there is one queue - so it is
         // the same right as withdrawing somebody else's, not the same right as adding your own.
-        await _access.RequireAsync(job.PrinterId, userId, Capability.ControlPrinter, cancellationToken);
+        await _access.RequireAsync(job.PrinterId, caller, Capability.ControlPrinter, cancellationToken);
 
         List<QueuedPrint> queue = await _dbContext.QueuedPrints
                                                   .Where(candidate => candidate.PrinterId == job.PrinterId)
@@ -216,7 +216,7 @@ public class PrintQueueService
     /// </para>
     /// </remarks>
     /// <returns>False if there is no such queued print.</returns>
-    public async Task<bool> CancelAsync(Guid trackingId, long userId, CancellationToken cancellationToken)
+    public async Task<bool> CancelAsync(Guid trackingId, Caller caller, CancellationToken cancellationToken)
     {
         QueuedPrint? job = await _dbContext.QueuedPrints
                                            .SingleOrDefaultAsync(candidate => candidate.TrackingId == trackingId,
@@ -227,7 +227,7 @@ public class PrintQueueService
             return false;
         }
 
-        await _access.RequireWithdrawingAsync(job.PrinterId, userId, job.QueuedByUserId, cancellationToken);
+        await _access.RequireWithdrawingAsync(job.PrinterId, caller, job.QueuedByUserId, cancellationToken);
 
         _dbContext.QueuedPrints.Remove(job);
         await _dbContext.SaveChangesAsync(cancellationToken);

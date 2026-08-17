@@ -25,14 +25,21 @@ public class ListenerSegregationTests
     private const int UserPort = 8080;
 
     /// <summary>
-    /// The printer protocol lives under <c>/p</c>, and nothing else does. Both halves matter: a page
-    /// whose name merely starts with a p must not be dragged onto the printer listener.
+    /// The printer protocol lives under <c>/p</c>, the transfer path under <c>/f</c>, and nothing
+    /// else does. Both halves matter for each: a page whose name merely starts with a p or an f
+    /// must not be dragged onto a listener it does not belong to.
     /// </summary>
     [Theory]
     [InlineData("p/ws", ListenerClass.Printer)]
     [InlineData("/p/register", ListenerClass.Printer)]
     [InlineData("P/Camera", ListenerClass.Printer)]
     [InlineData("p", ListenerClass.Printer)]
+    [InlineData("f/{iv}/raw", ListenerClass.Transfer)]
+    [InlineData("/f/2a71b2bf1845a4752a033244cd856553/raw", ListenerClass.Transfer)]
+    [InlineData("F/x", ListenerClass.Transfer)]
+    [InlineData("f", ListenerClass.Transfer)]
+    [InlineData("files", ListenerClass.User)]
+    [InlineData("files/upload", ListenerClass.User)]
     [InlineData("printers/add", ListenerClass.User)]
     [InlineData("api/v1/printers", ListenerClass.User)]
     [InlineData("health/live", ListenerClass.User)]

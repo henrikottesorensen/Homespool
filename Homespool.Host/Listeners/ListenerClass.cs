@@ -18,4 +18,13 @@ public enum ListenerClass
 
     /// <summary>A printer's fingerprint and token: everything under <c>/p</c>.</summary>
     Printer,
+
+    /// <summary>
+    /// A transfer IV, which is the capability: <c>/f/&lt;iv&gt;/raw</c>, the encrypted download a
+    /// printer on the pre-websocket transport fetches over a plain HTTP connection of its own. No
+    /// other credential, no other route. Its own listener because the body is ciphertext by
+    /// construction and the port must be plain HTTP - the printer's TLS door cannot serve it, and
+    /// nothing else should share the one door that is deliberately unencrypted.
+    /// </summary>
+    Transfer,
 }

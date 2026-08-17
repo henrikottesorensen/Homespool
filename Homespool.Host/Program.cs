@@ -278,6 +278,10 @@ public static class Program
                                                                                           PrusaConnect.Transfers.
                                                                                           TransferOfferStore>());
 
+            // The keys behind encrypted downloads, beside the offers rather than inside them: the
+            // store pins bytes and knows nothing of ciphers, which the inline path relies on.
+            builder.Services.AddSingleton<PrusaConnect.Transfers.EncryptedTransferOffers>();
+
             // Uploaded gcode: options, the store, and the content-root accessor it needs. Singleton
             // because the store holds no per-request state - it is a path and a couple of rules.
             builder.Services.Configure<PrintFiles.PrintFileStorageOptions>(
@@ -760,6 +764,10 @@ public static class Program
             // difference is what sits in front, which is compose.yaml's business rather than this
             // process's - so there is one listener here and no branch.
             options.ListenAnyIP(listeners.PrinterPort);
+
+            // Plain HTTP and never anything else - see ListenerOptions.TransferPort. The one listener
+            // whose being unencrypted is the design rather than a proxy's business.
+            options.ListenAnyIP(listeners.TransferPort);
         });
     }
 

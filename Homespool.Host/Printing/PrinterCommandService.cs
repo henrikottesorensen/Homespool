@@ -198,6 +198,29 @@ public class PrinterCommandService
         return Check(printerId, await actor.SendCommandAsync(commandData, cancellationToken));
     }
 
+    /// <summary>
+    /// Whether the printer's connection can carry an inline transfer, for a caller entitled to send
+    /// it one - so the sender can choose between the two download commands without doing its own
+    /// registry lookup around the permission check.
+    /// </summary>
+    /// <remarks>
+    /// Same gate as a send: the caller must hold the capability the download will need, and the
+    /// printer must be connected. A printer on a link that is not the Prusa actor has no notion of
+    /// chunk streaming at all, and is reported as unable rather than refused - the caller's next step
+    /// is a send, and that is where a foreign protocol is refused with the right exception.
+    /// </remarks>
+    /// <exception cref="PrinterNotConnectedException">No live connection for the printer.</exception>
+    /// <exception cref="TeamAccessDeniedException">Caller lacks the capability on the printer's team.</exception>
+    public async Task<bool> CanStreamChunksAsync(int printerId,
+                                                 Caller caller,
+                                                 Capability capability,
+                                                 CancellationToken cancellationToken)
+    {
+        IPrinterLink link = await RequireLinkAsync(printerId, caller, capability, cancellationToken);
+
+        return link is IPrinterConnectionActor { CanStreamChunks: true };
+    }
+
     /// <summary>The permission check and the registry lookup every entry point shares.</summary>
     /// <remarks>
     /// <b>The capability is named by the intent or command, never by the caller.</b> A new call site

@@ -88,10 +88,19 @@ public sealed class ListenerSegregationMiddleware : IMiddleware
                                + "Listeners:PrinterPort; the address in their ini is PrusaConnect:PrinterHost.",
                                context.Request.Path, context.Connection.LocalPort, _listeners.PrinterPort);
         }
+        else if (belongsTo == ListenerClass.Transfer)
+        {
+            // A printer fetching a file from the wrong port - most likely a deployment that published
+            // the transfer listener somewhere other than the port written into the command.
+            _logger.LogWarning("A request for the transfer endpoint {Path} arrived on port {Port}, which is not the "
+                               + "transfer listener ({TransferPort}). The printer fetches from the port in "
+                               + "PrusaConnect:TransferPort, which must be published onto Listeners:TransferPort.",
+                               context.Request.Path, context.Connection.LocalPort, _listeners.TransferPort);
+        }
         else
         {
-            _logger.LogDebug("Refused {Path} on the printer listener; it belongs to the user listener.",
-                             context.Request.Path);
+            _logger.LogDebug("Refused {Path} on the {Listener} listener; it belongs to the user listener.",
+                             context.Request.Path, arrivedOn);
         }
 
         context.Response.StatusCode = StatusCodes.Status404NotFound;
@@ -107,6 +116,16 @@ public sealed class ListenerSegregationMiddleware : IMiddleware
     /// </remarks>
     private ListenerClass ClassOf(int localPort)
     {
-        return localPort == _listeners.PrinterPort ? ListenerClass.Printer : ListenerClass.User;
+        if (localPort == _listeners.PrinterPort)
+        {
+            return ListenerClass.Printer;
+        }
+
+        if (localPort == _listeners.TransferPort)
+        {
+            return ListenerClass.Transfer;
+        }
+
+        return ListenerClass.User;
     }
 }

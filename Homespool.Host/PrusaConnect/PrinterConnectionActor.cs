@@ -181,6 +181,9 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
 
     public bool IsOpen => _connection.IsOpen;
 
+    /// <inheritdoc/>
+    public bool CanStreamChunks => _connection is IChunkStreamingConnection;
+
     public Task Completion { get; }
 
     public ValueTask PostAsync(ConnectionMessage message, CancellationToken cancellationToken)

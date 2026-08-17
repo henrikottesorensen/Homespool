@@ -71,10 +71,23 @@ public static class ListenerSegregation
         string path = (routePattern ?? string.Empty).TrimStart('/');
 
         // Segment-exact, so a page called "printers" or "profile" is not mistaken for the printer
-        // protocol. Only "p" and things beneath it qualify.
-        bool printer = path.Equals("p", StringComparison.OrdinalIgnoreCase)
-                       || path.StartsWith("p/", StringComparison.OrdinalIgnoreCase);
+        // protocol, nor "files" for the transfer one. Only "p" and "f", and things beneath them.
+        if (IsPrefix(path, "p"))
+        {
+            return ListenerClass.Printer;
+        }
 
-        return printer ? ListenerClass.Printer : ListenerClass.User;
+        if (IsPrefix(path, "f"))
+        {
+            return ListenerClass.Transfer;
+        }
+
+        return ListenerClass.User;
+    }
+
+    private static bool IsPrefix(string path, string segment)
+    {
+        return path.Equals(segment, StringComparison.OrdinalIgnoreCase)
+               || path.StartsWith(segment + "/", StringComparison.OrdinalIgnoreCase);
     }
 }

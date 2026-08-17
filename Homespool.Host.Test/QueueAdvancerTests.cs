@@ -9,6 +9,7 @@ using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 using NSubstitute;
@@ -597,6 +598,8 @@ public sealed class QueueAdvancerTests : IDisposable
         services.AddScoped<PrintFileCatalog>();
         services.AddSingleton<ITransferOffers>(
             new TransferOfferStore(_clock, NullLogger<TransferOfferStore>.Instance));
+        services.AddSingleton<EncryptedTransferOffers>();
+        services.AddSingleton(Options.Create(new PrusaConnectOptions()));
         services.AddScoped<PrintFileSender>();
         services.AddLogging();
 

@@ -135,6 +135,28 @@ public class PrusaConnectOptions
     public int PrinterPort { get; set; } = 15443;
 
     /// <summary>
+    /// The port a printer on the pre-websocket transport fetches an encrypted download from - the
+    /// <c>port</c> kwarg of <c>START_ENCRYPTED_DOWNLOAD</c>, and the host side of the mapping onto
+    /// <see cref="Listeners.ListenerOptions.TransferPort"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Sent explicitly, always.</b> Firmware resolves the fetch address from the printer's own
+    /// enrolled config, and rewrites 443-with-TLS to 80 (<c>host_and_port</c>, planner.cpp:176-189
+    /// at v6.2.6). A deployment whose printers are told 443 - the default - would therefore aim a
+    /// plain GET at whatever answers on 80. Naming the port in the command is the only way to say
+    /// where the transfer listener actually is. The <b>host</b> is not ours to name: it is always the
+    /// server the printer is enrolled against.
+    /// </para>
+    /// <para>
+    /// Plain HTTP, and published directly - the body is ciphertext by construction and the proxy
+    /// has no business in front of it. Not <see cref="PrinterPort"/>: that one is TLS-terminated
+    /// in the shipped stack, and a plain GET at a TLS door fails.
+    /// </para>
+    /// </remarks>
+    public int TransferPort { get; set; } = 15080;
+
+    /// <summary>
     /// Whether printers reach this server over TLS. On by default, as the firmware is.
     /// </summary>
     /// <remarks>

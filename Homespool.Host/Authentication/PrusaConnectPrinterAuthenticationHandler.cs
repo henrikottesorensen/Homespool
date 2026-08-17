@@ -57,6 +57,50 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
         return new AuthenticationTicket(principal, Authentication.Schemes.PrusaConnectPrinter);
     }
 
+    /// <summary>
+    /// The four headers a printer must present. Named once so the check and the diagnostic cannot
+    /// disagree about what was expected.
+    /// </summary>
+    private static readonly string[] RequiredHeaders =
+    [
+        Headers.Fingerprint,
+        Headers.Token,
+        Headers.UserAgentPrinter,
+        Headers.UserAgentVersion,
+    ];
+
+    /// <summary>
+    /// The caller's fingerprint in its key form for logging, or a placeholder when it sent none.
+    /// </summary>
+    /// <remarks>
+    /// Normalised through <see cref="PrinterFingerprint.Key"/> so a line about a failure and a line
+    /// about a success name the same printer the same way - the SDK's fingerprint is 64 characters
+    /// where Buddy's is 50 or 16, and only the key form is comparable across them.
+    /// </remarks>
+    private string FingerprintForLog()
+    {
+        return Request.Headers.TryGetValue(Headers.Fingerprint, out StringValues value)
+               && !StringValues.IsNullOrEmpty(value)
+                   ? PrinterFingerprint.Key(value.ToString())
+                   : "(none)";
+    }
+
+    /// <summary>Which of <see cref="RequiredHeaders"/> the request did not carry.</summary>
+    private string MissingHeaderNames()
+    {
+        List<string> missing = [];
+
+        foreach (string header in RequiredHeaders)
+        {
+            if (!Request.Headers.TryGetValue(header, out StringValues value) || StringValues.IsNullOrEmpty(value))
+            {
+                missing.Add(header);
+            }
+        }
+
+        return string.Join(", ", missing);
+    }
+
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         // Headers missing? Do nothing.
@@ -65,7 +109,15 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
             !Request.Headers.TryGetValue(Headers.UserAgentPrinter, out StringValues uaPrinter) ||
             !Request.Headers.TryGetValue(Headers.UserAgentVersion, out StringValues uaVersion))
         {
-            Logger.LogInformation("PrusaConnect authentication failed, no headers supplied");
+            // Which headers, and whose. A printer sending a Fingerprint but no Token is the Python
+            // SDK before registration completes (make_headers adds Token only once it has one), and
+            // from here that is indistinguishable from a caller sending nothing at all unless the
+            // difference is recorded. The fingerprint is an identifier the printer sends in clear -
+            // the token is the secret, and never reaches the log at any level.
+            Logger.LogInformation("PrusaConnect authentication failed for {Fingerprint}: missing headers {MissingHeaders}.",
+                                  FingerprintForLog(),
+                                  MissingHeaderNames());
+
             return AuthenticateResult.NoResult();
         }
 
@@ -158,7 +210,13 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
 
         if (reissued is null || !_tokenService.VerifyToken(token, reissued.HashedToken))
         {
-            Logger.LogInformation("PrusaConnect invalid token.");
+            // The printer is known, so this line can name it - which separates "this printer's token
+            // is stale" from the fingerprint-unknown case below, the two being identical to a caller
+            // and needing opposite remedies.
+            Logger.LogInformation("PrusaConnect invalid token for printer {PrinterId} ({Fingerprint}).",
+                                  enrolled.PrinterId,
+                                  enrolled.FingerPrintKey);
+
             return AuthenticateResult.Fail("PrusaConnect invalid token.");
         }
 
@@ -215,7 +273,11 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
             }
         }
 
-        Logger.LogInformation("PrusaConnect authentication failed, fingerprint unknown.");
+        // No enrolled row and no provisioning token matched. Naming the fingerprint is what separates
+        // one printer retrying with a credential we no longer hold from a caller working through
+        // fingerprints it has invented.
+        Logger.LogInformation("PrusaConnect authentication failed, fingerprint {Fingerprint} unknown.", fingerprint);
+
         return AuthenticateResult.Fail("Printer unknown");
     }
 

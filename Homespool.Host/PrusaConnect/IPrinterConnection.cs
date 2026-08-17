@@ -1,59 +1,74 @@
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Homespool.Host.PrusaConnect.Transfers;
+using Homespool.Host.PrusaConnect.Commands;
 
 namespace Homespool.Host.PrusaConnect;
 
 /// <summary>
 /// Write-only view of a printer's live connection. Command-sending code has no business touching
-/// the receive side, <c>State</c> transitions, or the close handshake - only writing a frame.
-/// Frames come from the printer's <see cref="PrinterConnectionActor"/> loop, and only from there.
+/// the receive side, <c>State</c> transitions, or the close handshake - only handing over a command.
+/// Commands come from the printer's <see cref="PrinterConnectionActor"/> loop, and only from there.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <b>Takes the command, not its bytes.</b> Encoding is the connection's business, because the two
+/// transports frame the same body differently: the WebSocket wraps it in a 9-byte header and writes
+/// it now; the pre-websocket HTTP transport holds it until the printer's next telemetry POST and
+/// returns it in that response, typed by <c>Content-Type</c>. A caller that had encoded a frame
+/// would have chosen a transport it is not supposed to know about.
+/// </para>
+/// <para>
+/// <b>Transfer chunks are deliberately not here.</b> They exist on <see cref="IChunkStreamingConnection"/>,
+/// which only a socket implements: the inline transfer engine is a WebSocket mechanism with no HTTP
+/// counterpart, and firmware itself asserts on it in non-websocket mode. Keeping it off this
+/// interface makes "unreachable over HTTP" a property of the type rather than a runtime refusal.
+/// </para>
+/// </remarks>
 public interface IPrinterConnection
 {
     bool IsOpen { get; }
 
-    ValueTask SendAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken);
+    /// <summary>
+    /// Hands one command to the printer. On a socket, that is a write; on the HTTP transport, it is
+    /// parking the command for the printer's next poll.
+    /// </summary>
+    /// <param name="commandId">The id the printer will echo in its answering event.</param>
+    /// <param name="command">The command; encoded by the implementation.</param>
+    /// <param name="cancellationToken">Cancels a wait for the write lock. Never a partial write.</param>
+    /// <returns>
+    /// Whether the printer has the command now, or will collect it. The actor starts a command's
+    /// response deadline only once it has actually been delivered, so a connection that parks must
+    /// say so - a parked command timing out against the moment it was parked would report a healthy
+    /// printer as unresponsive for the length of its own poll interval.
+    /// </returns>
+    ValueTask<CommandHandover> SendCommandAsync(uint commandId, ISendableCommand command, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Sends one transfer chunk as a single WebSocket <i>message</i>: <paramref name="header"/>
-    /// followed by <paramref name="count"/> bytes pulled from <paramref name="content"/> starting at
-    /// <paramref name="offset"/>, split across as many frames as the wire format requires.
+    /// The command parked on this connection, if any, removed from it - the printer is collecting.
+    /// A socket never has one.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// <b>Why this is not just repeated <see cref="SendAsync"/> calls.</b> A WebSocket frame's length
-    /// is encoded in 7, 16 or 64 bits, and the firmware's client rejects the 64-bit form outright
-    /// (<c>websocket.cpp:127-129</c> returns <c>Error::WebSocket</c>, which drops the connection).
-    /// .NET emits exactly one frame per <see cref="SendAsync"/> call and never fragments on its own -
-    /// measured - so a 256 KiB chunk sent in one call goes out with the 64-bit marker and kills the
-    /// connection. Fragmenting is therefore mandatory, and it lives here because this class owns the
-    /// socket and the write lock.
-    /// </para>
-    /// <para>
-    /// The whole message is written under a single acquisition of that lock. Fragments of one message
-    /// cannot be interleaved with another message on the same connection, so a command send or the
-    /// close frame slipping between two fragments would corrupt the stream for both.
-    /// </para>
-    /// <para>
-    /// Reads are interleaved with the sends rather than buffered up front, so no 256 KiB buffer ever
-    /// exists - only one frame's worth at a time.
-    /// </para>
+    /// Called only from the actor loop, in answer to a <see cref="TakePendingCommandMessage"/>. That
+    /// is what keeps the slot loop-owned despite living on the connection: it is written by
+    /// <see cref="SendCommandAsync"/> from the loop and emptied here from the loop, and the request
+    /// thread that wants the command only ever posts a message and awaits the answer.
     /// </remarks>
-    /// <param name="header">The 9-byte <c>'T'</c> frame header, sent once at the start of the
-    /// message.</param>
-    /// <param name="content">Where the bytes come from.</param>
-    /// <param name="offset">Offset into <paramref name="content"/> of the first byte to send.</param>
-    /// <param name="count">How many bytes to send. Must be delivered in full: firmware has no stall
-    /// timeout on this path, so a short message leaves the printer waiting forever.</param>
-    /// <param name="cancellationToken">Cancels the reads. Never passed to the socket write, for the
-    /// same reason <see cref="SendAsync"/> does not - a cancelled write leaves a partial frame on the
-    /// wire.</param>
-    ValueTask SendChunkAsync(ReadOnlyMemory<byte> header,
-                             ITransferContent content,
-                             long offset,
-                             long count,
-                             CancellationToken cancellationToken);
+    PendingCommand? TakeParkedCommand();
 }
+
+/// <summary>What became of a command handed to a connection.</summary>
+public enum CommandHandover
+{
+    /// <summary>Written to the printer; the response clock may start.</summary>
+    Written,
+
+    /// <summary>Held for the printer's next poll; the response clock waits for the hand-over.</summary>
+    Parked,
+}
+
+/// <summary>
+/// A command a printer is collecting over the HTTP transport: what it asked to be sent, and the id
+/// it will echo when it answers.
+/// </summary>
+public sealed record PendingCommand(uint CommandId, ISendableCommand Command);

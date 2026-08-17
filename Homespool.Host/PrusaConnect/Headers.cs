@@ -4,6 +4,13 @@ public static class Headers
 {
     public const string Code = nameof(Code);
 
+    /// <summary>
+    /// On the pre-websocket HTTP transport, the id of the command carried in a telemetry response.
+    /// Firmware's response parser is generated from a table that spells it exactly this way
+    /// (<c>utils/gen-automata/http_client.py</c>), and reads the value as base-ten digits.
+    /// </summary>
+    public const string CommandId = "Command-Id";
+
     public const string Expires = nameof(Expires);
 
     public const string Fingerprint = nameof(Fingerprint);

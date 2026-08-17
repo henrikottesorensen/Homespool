@@ -112,16 +112,19 @@ audiences, and a [go2rtc](https://github.com/AlexxIT/go2rtc) sidecar that talks 
 database lives in a named volume (`homespool-data`) so it survives container replacement. The sidecar
 costs nothing when no camera is configured — it publishes no port and idles.
 
-**Everything is served over TLS from the first start, and the two audiences are kept apart.**
+**Everything is served over TLS from the first start, and the audiences are kept apart** — with one
+deliberate exception, and it is plain because it has to be.
 
 | | who | port | certificate |
 |---|---|---|---|
 | **people** | pages, `/api` | `443` (`HTTPS_PORT`), with `80` redirecting to it | self-signed on first start; replace it with your own |
 | **printers** | `/p/*`, nothing else | `15443` (`PRINTER_PORT`) | minted by this deployment, and the one on the USB stick |
+| **transfers** | `/f/*`, nothing else | `15080` (`TRANSFER_PORT`) | **none — plain HTTP by design.** A printer built without websockets fetches files here over a raw socket it cannot make TLS; the body is AES-CTR ciphertext, keyed by a per-transfer key that only ever travelled over the printer's own channel. Nothing checks the body's *integrity*, so treat this port as LAN-only. |
 
-**None of the application's own ports are published.** nginx reaches both over the compose network
-and is the only thing that can. Inside the app, `/p/*` exists on the printer listener alone and every
-other route exists everywhere else, so a request on the wrong port is answered `404`.
+**None of the application's own ports are published.** nginx reaches all three over the compose
+network and is the only thing that can. Inside the app, `/p/*` exists on the printer listener alone,
+`/f/*` on the transfer listener alone, and every other route exists everywhere else, so a request on
+the wrong port is answered `404`.
 
 **Set `PRINTER_HOST` in `.env` before the first start** — which `setup-env.sh` does for you. There is
 no way to infer your server's externally-reachable address from inside the container, so USB-key
@@ -476,6 +479,7 @@ choice, then `Accept-Language`. The two Englishes differ in formatting rather th
 |---|---|---|
 | `PrinterHost` | *(empty)* | The hostname printers use to reach this server. **Required for USB-key provisioning.** |
 | `PrinterPort` | `15443` | Port written into the provisioning ini — the host side of the printer port mapping. Not 443: that belongs to the people-facing proxy. |
+| `TransferPort` | `15080` | Port written into `START_ENCRYPTED_DOWNLOAD` — where a printer without websockets fetches a file from. Plain HTTP, and always sent explicitly: firmware would otherwise fetch from its enrolled port, rewriting 443 to 80. |
 | `PrinterTls` | `true` | Whether printers reach this deployment over TLS — the `tls` line in the ini **and** whether a certificate is issued for the proxy to present, so the two cannot disagree. See below. |
 | `RegistrationCodeLifetimeMinutes` | `30` | How long a registration code stays claimable. Deliberately tighter than Prusa's 24 h; claiming is done standing at the printer. |
 | `MaxIncomingMessageBytes` | `1048576` | Bytes a printer may accumulate without completing a message before the connection is closed. About eleven times the largest message measured (a `FILE_INFO` with a thumbnail); tripping it is logged with the printer and the byte count. |
@@ -507,6 +511,7 @@ another. Naming any of these makes Kestrel ignore `ASPNETCORE_URLS`.
 | Setting | Default | Purpose |
 |---|---|---|
 | `PrinterPort` | `15443` | Plain HTTP: `/p/*` and nothing else. Not published to the host; the shipped proxy terminates the printer's TLS in front of it. |
+| `TransferPort` | `15080` | Plain HTTP: `/f/*` and nothing else. Not published to the host; the shipped proxy forwards to it *without* TLS, because the printer opens this with a raw socket. |
 | `UserPort` | `8080` | Plain HTTP: pages, `/api`, `/health` — everything except `/p/*`. Not published either; same proxy, different port and certificate. |
 | `UserHttpsPort` | *(none)* | An HTTPS listener for people, using the ASP.NET development certificate or `Kestrel:Certificates:Default`. Only if this process should serve user TLS itself; it never carries the printer's certificate. |
 

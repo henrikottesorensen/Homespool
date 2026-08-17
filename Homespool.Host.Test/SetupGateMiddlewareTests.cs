@@ -63,6 +63,7 @@ public class SetupGateMiddlewareTests
     /// </summary>
     [Theory]
     [InlineData("/")]
+    [InlineData("/files")]
     [InlineData("/Account/Login")]
     [InlineData("/Account/Register")]
     [InlineData("/Account/Manage/Index")]
@@ -86,6 +87,7 @@ public class SetupGateMiddlewareTests
     [InlineData("/setup")]
     [InlineData("/p/register")]
     [InlineData("/p/ws")]
+    [InlineData("/f/2a71b2bf1845a4752a033244cd856553/raw")]
     [InlineData("/scalar/v1")]
     [InlineData("/openapi/v1.json")]
     [InlineData("/css/site.css")]

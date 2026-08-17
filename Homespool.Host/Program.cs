@@ -271,6 +271,13 @@ public static class Program
             builder.Services.AddSingleton<Printing.PrinterConnectionRegistry>();
             builder.Services.AddSingleton<PrusaConnect.PrinterConnectionActorFactory>();
 
+            // The exception to "not registered at all": a printer on the pre-websocket HTTP transport
+            // has no request to own its actor, so this singleton does - one per printer, created on
+            // its first POST and reaped when it goes quiet. Registered once as itself, so the
+            // controller and the hosted-service host share the instance holding the sessions.
+            builder.Services.AddSingleton<PrusaConnect.HttpPrinterSessions>();
+            builder.Services.AddHostedService(sp => sp.GetRequiredService<PrusaConnect.HttpPrinterSessions>());
+
             // Singleton because its whole value is accumulating across connections and printers:
             // "this firmware sends a field we do not model" is a fact about the deployment, and a
             // per-request instance would forget it between messages.
@@ -286,6 +293,10 @@ public static class Program
                                                                                       .GetRequiredService<
                                                                                           PrusaConnect.Transfers.
                                                                                           TransferOfferStore>());
+
+            // The keys behind encrypted downloads, beside the offers rather than inside them: the
+            // store pins bytes and knows nothing of ciphers, which the inline path relies on.
+            builder.Services.AddSingleton<PrusaConnect.Transfers.EncryptedTransferOffers>();
 
             // Uploaded gcode: options, the store, and the content-root accessor it needs. Singleton
             // because the store holds no per-request state - it is a path and a couple of rules.
@@ -604,6 +615,18 @@ public static class Program
     internal const string PrinterSocketRateLimitPolicy = "printer-socket";
 
     /// <summary>
+    /// Rate-limit policy for the pre-websocket HTTP transport - <c>POST /p/telemetry</c> and
+    /// <c>POST /p/events</c>.
+    /// </summary>
+    /// <remarks>
+    /// <b>Its own policy, because the traffic shape is the opposite of the socket's.</b> An upgrade
+    /// happens once per connection, so <see cref="PrinterSocketRateLimitPolicy"/>'s 120/minute covers
+    /// a whole fleet; this transport posts roughly once a second <em>per printer</em>, so sharing that
+    /// window would let two printers exhaust it and throttle every printer as a matter of course.
+    /// </remarks>
+    internal const string PrinterHttpTransportRateLimitPolicy = "printer-http-transport";
+
+    /// <summary>
     /// Caps how fast the anonymous printer endpoints can be hit. These are the only routes an
     /// unauthenticated caller on the internet can reach, and both cost something: <c>POST
     /// /p/register</c> creates or renews a database row per call, and <c>GET /p/register</c> is a
@@ -761,6 +784,10 @@ public static class Program
             // difference is what sits in front, which is compose.yaml's business rather than this
             // process's - so there is one listener here and no branch.
             options.ListenAnyIP(listeners.PrinterPort);
+
+            // Plain HTTP and never anything else - see ListenerOptions.TransferPort. The one listener
+            // whose being unencrypted is the design rather than a proxy's business.
+            options.ListenAnyIP(listeners.TransferPort);
         });
     }
 
@@ -922,6 +949,24 @@ public static class Program
                 // notes/cross-channel-identity-bug.md), so this is ample for a fleet while still
                 // bounding an attacker probing tokens.
                 limiter.PermitLimit = 120;
+                limiter.Window = TimeSpan.FromMinutes(1);
+                limiter.QueueLimit = 0;
+            });
+
+            options.AddFixedWindowLimiter(PrinterHttpTransportRateLimitPolicy, limiter =>
+            {
+                // Sized for the wire rather than for a connection attempt: firmware's HTTP transport
+                // posts telemetry every 1-4s per printer and events on top, so one printer alone can
+                // spend ~90/minute. This covers a ten-printer fleet with headroom.
+                //
+                // Global rather than per printer, and that is a limitation rather than a choice: this
+                // middleware runs before UseAuthentication (deliberately, so a rejected request costs
+                // no database work), so no identity is resolved when the partition key is computed.
+                // The Fingerprint header is the only pre-auth identity available and an attacker can
+                // mint a fresh one per request, which buys isolation between honest printers at the
+                // cost of an unbounded aggregate - the opposite of what internet-exposure.md's threat
+                // model asks for. One window for the transport keeps that ceiling.
+                limiter.PermitLimit = 1200;
                 limiter.Window = TimeSpan.FromMinutes(1);
                 limiter.QueueLimit = 0;
             });

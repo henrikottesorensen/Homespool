@@ -17,7 +17,7 @@ namespace Homespool.Host.PrusaConnect.Transfers;
 /// <para>
 /// Header only - the payload is streamed after it rather than concatenated, so that a 256 KiB chunk
 /// never has to exist as a single buffer. See
-/// <see cref="IPrinterConnection.SendChunkAsync"/>.
+/// <see cref="IChunkStreamingConnection.SendChunkAsync"/>.
 /// </para>
 /// </remarks>
 public static class ChunkWireEncoder

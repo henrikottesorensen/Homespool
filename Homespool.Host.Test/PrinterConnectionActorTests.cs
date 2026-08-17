@@ -38,17 +38,28 @@ namespace Homespool.Host.Test;
 public class PrinterConnectionActorTests
 {
     /// <summary>
-    /// An open connection that copies every frame written to it into <paramref name="sentFrames"/>.
-    /// The copy matters: the frame arrives as a <see cref="ReadOnlyMemory{T}"/> over a buffer the
-    /// actor is free to reuse, and tests read the command id back out of it afterwards.
+    /// An open connection that records every command handed to it into <paramref name="sentFrames"/>,
+    /// as the frame a socket would have written. Tests read the command id back out of it afterwards.
     /// </summary>
+    /// <remarks>
+    /// The actor no longer encodes - the connection does, since the two transports frame the same
+    /// body differently - so what crosses the seam is (id, command). Re-encoding it here, with the
+    /// same encoder the WebSocket connection uses, keeps every assertion below reading a frame the
+    /// way it always has, rather than teaching all of them the new seam.
+    /// </remarks>
     private static IPrinterConnection OpenConnection(List<byte[]> sentFrames)
     {
         IPrinterConnection connection = OpenConnection();
 
-        OnSend(connection, call => sentFrames.Add(((ReadOnlyMemory<byte>)call[0]!).ToArray()));
+        OnSend(connection, call => sentFrames.Add(FrameOf(call)));
 
         return connection;
+    }
+
+    /// <summary>The frame a socket would write for the command an actor just handed over.</summary>
+    private static byte[] FrameOf(CallInfo call)
+    {
+        return CommandWireEncoder.Encode((uint)call[0]!, (ISendableCommand)call[1]!);
     }
 
     /// <summary>
@@ -65,7 +76,7 @@ public class PrinterConnectionActorTests
                      Justification = "NSubstitute call specification, not an invocation; no ValueTask is produced to consume.")]
     private static void OnSend(IPrinterConnection connection, Action<CallInfo> onSend)
     {
-        connection.WhenForAnyArgs(c => c.SendAsync(default, default)).Do(onSend);
+        connection.WhenForAnyArgs(c => c.SendCommandAsync(default, default!, default)).Do(onSend);
     }
 
     /// <summary>An open connection that accepts and discards whatever is written to it.</summary>
@@ -94,7 +105,7 @@ public class PrinterConnectionActorTests
     }
 
     /// <summary>
-    /// A connection whose <c>SendAsync</c> never completes - a peer that is alive but has stopped
+    /// A connection whose <c>SendCommandAsync</c> never completes - a peer that is alive but has stopped
     /// draining its socket, which is the one stall nothing else in the system bounds.
     /// </summary>
     /// <remarks>
@@ -108,7 +119,8 @@ public class PrinterConnectionActorTests
     {
         IPrinterConnection connection = Substitute.For<IPrinterConnection>();
         connection.IsOpen.Returns(true);
-        connection.SendAsync(default, default).ReturnsForAnyArgs(_ => new ValueTask(new TaskCompletionSource().Task));
+        connection.SendCommandAsync(default, default!, default)
+                  .ReturnsForAnyArgs(_ => new ValueTask<CommandHandover>(new TaskCompletionSource<CommandHandover>().Task));
 
         return connection;
     }
@@ -524,7 +536,7 @@ public class PrinterConnectionActorTests
                 throw new InvalidOperationException("socket gone");
             }
 
-            sentFrames.Add(((ReadOnlyMemory<byte>)call[0]!).ToArray());
+            sentFrames.Add(FrameOf(call));
         });
 
         PrinterConnectionActor actor = NewActor(connection);
@@ -931,6 +943,97 @@ public class PrinterConnectionActorTests
         // exactly one Error was written for the burst.
         logger.Collector.GetSnapshot().Count(record => record.Level == LogLevel.Error)
               .Should().Be(1, "five poison messages inside one throttle window must produce one Error, not five");
+    }
+
+    /// <summary>
+    /// A command a connection parks - the HTTP transport - has no response deadline until the printer
+    /// collects it. The clock starts at hand-over, on the loop, not at the send.
+    /// </summary>
+    /// <remarks>
+    /// The deadline here is 50 ms and the command sits parked for 200 ms; were the clock started at
+    /// the send, it would have timed out four times over before the collect. That it is then answered
+    /// <c>Completed</c> is the whole assertion. The failure this pins is the one a slow poller would
+    /// have suffered: a healthy printer on a 4 s poll reported as unresponsive by a timeout that began
+    /// before it had seen anything.
+    /// </remarks>
+    [Fact]
+    public async Task AParkedCommandsResponseClockStartsWhenItIsCollectedNotWhenItIsSent()
+    {
+        // Arrange
+        HttpPrinterConnection connection = new(TimeProvider.System);
+        PrinterConnectionActor actor = NewActor(connection, responseTimeout: TimeSpan.FromMilliseconds(50));
+
+        // Act
+        Task<CommandSendResult> send = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
+
+        // Parked, uncollected, for far longer than the deadline.
+        await Task.Delay(200, TestContext.Current.CancellationToken);
+        send.IsCompleted.Should().BeFalse("nothing has been delivered, so nothing can be late");
+
+        // The printer polls: the loop hands over the command and starts its clock.
+        TaskCompletionSource<PendingCommand?> take = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await actor.PostAsync(new TakePendingCommandMessage(take), CancellationToken.None);
+        PendingCommand collected = (await Eventually(take.Task))!;
+
+        collected.Command.Should().BeOfType<PrusaConnect.Commands.PausePrint>();
+
+        // The printer answers well inside 50 ms of collecting.
+        await actor.PostAsync(EventAnswering(collected.CommandId), CancellationToken.None);
+
+        // Assert
+        CommandSendResult result = await Eventually(send);
+        result.Outcome.Should().Be(CommandSendOutcome.Completed);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// The clock really does start at the collect: a printer that collects and then goes quiet is
+    /// timed out from that moment, not left waiting for the reaper.
+    /// </summary>
+    [Fact]
+    public async Task AParkedCommandTimesOutOnceCollectedAndNotAnswered()
+    {
+        // Arrange
+        HttpPrinterConnection connection = new(TimeProvider.System);
+        PrinterConnectionActor actor = NewActor(connection, responseTimeout: TimeSpan.FromMilliseconds(50));
+
+        Task<CommandSendResult> send = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
+
+        // Act
+        TaskCompletionSource<PendingCommand?> take = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await actor.PostAsync(new TakePendingCommandMessage(take), CancellationToken.None);
+        (await Eventually(take.Task)).Should().NotBeNull();
+
+        // Assert
+        CommandSendResult result = await Eventually(send);
+        result.Outcome.Should().Be(CommandSendOutcome.ResponseTimedOut);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A poll with nothing parked gets nothing, and touches nothing - so an unrelated in-flight
+    /// command's clock is not restarted by a printer that merely asked.
+    /// </summary>
+    [Fact]
+    public async Task CollectingWhenNothingIsParkedAnswersNull()
+    {
+        // Arrange
+        HttpPrinterConnection connection = new(TimeProvider.System);
+        PrinterConnectionActor actor = NewActor(connection);
+
+        // Act
+        TaskCompletionSource<PendingCommand?> take = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await actor.PostAsync(new TakePendingCommandMessage(take), CancellationToken.None);
+
+        // Assert
+        (await Eventually(take.Task)).Should().BeNull();
+
+        actor.Complete();
+        await Eventually(actor.Completion);
     }
 
     /// <summary>

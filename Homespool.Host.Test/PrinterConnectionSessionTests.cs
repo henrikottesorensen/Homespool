@@ -17,6 +17,7 @@ using NSubstitute;
 
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
+using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Queue;
 using Homespool.Host.Telemetry;
@@ -295,19 +296,14 @@ public class PrinterConnectionSessionTests
 
         public bool IsOpen => true;
 
-        public ValueTask SendAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken)
+        public ValueTask<CommandHandover> SendCommandAsync(uint commandId, ISendableCommand command, CancellationToken cancellationToken)
         {
-            return ValueTask.CompletedTask;
+            return ValueTask.FromResult(CommandHandover.Written);
         }
 
-        // These tests are about the session's teardown ordering; nothing here sends a transfer chunk.
-        public ValueTask SendChunkAsync(ReadOnlyMemory<byte> header,
-                                        ITransferContent content,
-                                        long offset,
-                                        long count,
-                                        CancellationToken cancellationToken)
+        public PendingCommand? TakeParkedCommand()
         {
-            return ValueTask.CompletedTask;
+            return null;
         }
 
         public Task CloseOutputAsync(WebSocketCloseStatus closeStatus)

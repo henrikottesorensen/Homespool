@@ -16,6 +16,7 @@ using NSubstitute;
 
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
+using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Queue;
 using Homespool.Host.Telemetry;
@@ -200,18 +201,14 @@ public sealed class PrinterConnectionCorrelationTests : IDisposable
     {
         public bool IsOpen => true;
 
-        public ValueTask SendAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken)
+        public ValueTask<CommandHandover> SendCommandAsync(uint commandId, ISendableCommand command, CancellationToken cancellationToken)
         {
-            return ValueTask.CompletedTask;
+            return ValueTask.FromResult(CommandHandover.Written);
         }
 
-        public ValueTask SendChunkAsync(ReadOnlyMemory<byte> header,
-                                        ITransferContent content,
-                                        long offset,
-                                        long count,
-                                        CancellationToken cancellationToken)
+        public PendingCommand? TakeParkedCommand()
         {
-            return ValueTask.CompletedTask;
+            return null;
         }
 
         public Task CloseOutputAsync(System.Net.WebSockets.WebSocketCloseStatus status)

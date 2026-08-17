@@ -22,8 +22,9 @@ services:
     # churning between reissues, and makes the logs say "homespool" rather than a hex id.
     hostname: homespool
 
-    # NOTHING is published from this container. Both listeners - people on 8080, printers on 15443 -
-    # stay inside this network, and the proxy below is the single way in to either. That is what makes
+    # NOTHING is published from this container. All three listeners - people on 8080, printers on
+    # 15443, transfers on 15080 - stay inside this network, and the proxy below is the single way in
+    # to any of them. That is what makes
     # X-Real-IP worth trusting on both of them: a client that could reach Kestrel directly could
     # simply write that header itself.
     #
@@ -122,6 +123,12 @@ services:
       PrusaConnect__PrinterHost: "${PRINTER_HOST:-}"
       PrusaConnect__PrinterPort: "${PRINTER_PORT:-15443}"
       PrusaConnect__PrinterTls: "${PRINTER_TLS:-true}"
+
+      # The port written into START_ENCRYPTED_DOWNLOAD - what a printer on the pre-websocket transport
+      # fetches a file from. Plain HTTP by design (the printer opens it with a raw socket; see
+      # nginx/homespool-transfer.conf), so it is proxied without TLS and stays plain whatever
+      # PRINTER_TLS says. Same variable as the proxy's published port below, so they cannot drift.
+      PrusaConnect__TransferPort: "${TRANSFER_PORT:-15080}"
 
       # Outgoing mail. Values come from .env - copy .env.example to .env and edit that, rather
       # than editing this file, so secrets stay out of the repository. Leaving SMTP_HOST empty
@@ -362,6 +369,13 @@ services:
       # since a URL carrying a port number is a daily papercut while a printer's port is typed by no one.
       - "${PRINTER_PORT:-15443}:15443"
 
+      # What a printer fetches an encrypted download from - the number in every
+      # START_ENCRYPTED_DOWNLOAD, so it must match PrusaConnect__TransferPort above. Plain HTTP,
+      # deliberately and permanently: the printer cannot open a TLS socket for this. The body is
+      # ciphertext, the port serves nothing else, and it is a LAN proposition - see
+      # nginx/homespool-transfer.conf before publishing it any further than that.
+      - "${TRANSFER_PORT:-15080}:15080"
+
     environment:
       # The same zone the application uses, so the two logs can be read side by side. Without it the
       # proxy stamps every access line UTC while the application stamps its own local, and correlating
@@ -400,6 +414,10 @@ services:
       # would refuse to start at all on a stack with printer TLS turned off, taking the pages down
       # with it over a certificate the operator deliberately does not have.
       - ./nginx/homespool-printer.conf:/etc/nginx/homespool-printer.conf:ro
+
+      # Straight into conf.d, unlike the printer block: there is no certificate to wait for, so
+      # nothing conditions whether this listener is served. Plain HTTP, /f/* only.
+      - ./nginx/homespool-transfer.conf:/etc/nginx/conf.d/homespool-transfer.conf:ro
 
       # Holds the user-facing certificate. Named rather than a bind mount so the directory keeps the
       # ownership the image gave it - an unprivileged nginx has to be able to write the self-signed

@@ -47,6 +47,20 @@ internal static class PrinterListener
         });
     }
 
+    /// <summary>A client whose requests arrive on the transfer listener - <c>/f/*</c>, plain HTTP.</summary>
+    public static HttpClient CreateTransferClient(WebApplicationFactory<PrinterAppController> factory)
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+
+        int port = factory.Services.GetRequiredService<IOptions<ListenerOptions>>().Value.TransferPort;
+
+        return factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri($"http://localhost:{port}"),
+        });
+    }
+
     /// <summary>The <c>/p/ws</c> address on the printer listener.</summary>
     public static Uri WebSocketUri(WebApplicationFactory<PrinterAppController> factory)
     {

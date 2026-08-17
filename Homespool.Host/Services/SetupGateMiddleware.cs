@@ -20,7 +20,9 @@ namespace Homespool.Host.Services;
 /// </para>
 /// <para>
 /// Allowed through even before setup: <c>/setup</c> itself; the printer protocol under <c>/p</c>
-/// (a firmware client must get its documented status codes, never a 302 to an HTML page); the
+/// and the encrypted download under <c>/f</c> (a firmware client must get its documented status
+/// codes, never a 302 to an HTML page - and neither path is navigable or reveals anything, since
+/// both answer only to a credential or a capability minted by this deployment); the
 /// dev-only API docs (<c>/scalar</c>, <c>/openapi</c>); and any request for a static asset,
 /// identified by a file extension - which covers the setup page's own CSS and JS regardless of
 /// whether they are served from <c>wwwroot</c> or an <c>/Identity</c> path.
@@ -56,6 +58,12 @@ public sealed class SetupGateMiddleware : IMiddleware
 
         if (path.StartsWithSegments("/setup", StringComparison.OrdinalIgnoreCase)
             || path.StartsWithSegments("/p", StringComparison.OrdinalIgnoreCase)
+
+            // The transfer path, for the same reason as /p: firmware reads status codes and a 302 to
+            // an HTML page is a failed transfer. It cannot be reached before setup in practice - a
+            // transfer needs a printer, which needs an administrator to claim it - but "in practice"
+            // is not what a gate should rest on, and the failure it would cause is silent.
+            || path.StartsWithSegments("/f", StringComparison.OrdinalIgnoreCase)
             || path.StartsWithSegments("/scalar", StringComparison.OrdinalIgnoreCase)
             || path.StartsWithSegments("/openapi", StringComparison.OrdinalIgnoreCase)
 

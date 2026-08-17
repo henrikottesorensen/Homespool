@@ -5,6 +5,7 @@ using System.IO.Pipelines;
 using System.Net.Mime;
 using System.Net.WebSockets;
 using System.Security.Claims;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -18,6 +19,7 @@ using Microsoft.Extensions.Logging;
 
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;
+using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.DTO;
 
 namespace Homespool.Host.Controllers;
@@ -28,16 +30,22 @@ public class PrusaConnectPrinterController : ControllerBase
 {
     private readonly PrusaConnectService _prusaConnectService;
     private readonly PrinterConnectionSession _session;
+    private readonly MessageDispatcher _dispatcher;
+    private readonly HttpPrinterSessions _sessions;
     private readonly IHostApplicationLifetime _lifetime;
     private readonly ILogger<PrusaConnectPrinterController> _logger;
 
     public PrusaConnectPrinterController(PrusaConnectService prusaConnectService,
                                          PrinterConnectionSession session,
+                                         MessageDispatcher dispatcher,
+                                         HttpPrinterSessions sessions,
                                          IHostApplicationLifetime lifetime,
                                          ILogger<PrusaConnectPrinterController> logger)
     {
         _prusaConnectService = prusaConnectService;
         _session = session;
+        _dispatcher = dispatcher;
+        _sessions = sessions;
         _lifetime = lifetime;
         _logger = logger;
     }
@@ -213,5 +221,149 @@ public class PrusaConnectPrinterController : ControllerBase
         {
             return TypedResults.Unauthorized();
         }
+    }
+
+    /// <summary>
+    /// Receives one telemetry message from a printer speaking the pre-websocket HTTP transport, and
+    /// answers it with whatever command is waiting for that printer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The response is the command channel.</b> On this transport a command travels in the
+    /// response to a telemetry POST: 200 with a <c>Command-Id</c> header and the command as the body,
+    /// or 204 for nothing pending (<c>handle_server_resp</c>, connect.cpp:712-745 at v6.2.6). The
+    /// header is not optional - a 200 without it makes firmware discard the body, invalidate its
+    /// connection and report <c>OnlineError::Confused</c>. Nor is the body's <c>Content-Type</c>: it
+    /// is how firmware chooses a parser, and an unknown one becomes an <c>UnknownCommand</c>.
+    /// </para>
+    /// <para>
+    /// Only telemetry carries a command back. An event's response is always 204: firmware reads it
+    /// through the same path, but a command riding on an ack would arrive out of the one-in-flight
+    /// order the actor keeps, so the parked command waits for the next telemetry poll instead.
+    /// </para>
+    /// </remarks>
+    [HttpPost]
+    [Route("/p/telemetry")]
+    [EnableRateLimiting(Program.PrinterHttpTransportRateLimitPolicy)]
+    [ProducesResponseType(typeof(void), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(void), StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(void), StatusCodes.Status400BadRequest)]
+    public Task<ActionResult> PostTelemetry(CancellationToken cancellationToken)
+    {
+        return IngestAsync(deliverCommand: true, cancellationToken);
+    }
+
+    /// <summary>
+    /// Receives one event from a printer speaking the pre-websocket HTTP transport.
+    /// </summary>
+    [HttpPost]
+    [Route("/p/events")]
+    [EnableRateLimiting(Program.PrinterHttpTransportRateLimitPolicy)]
+    [ProducesResponseType(typeof(void), StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(void), StatusCodes.Status400BadRequest)]
+    public Task<ActionResult> PostEvent(CancellationToken cancellationToken)
+    {
+        return IngestAsync(deliverCommand: false, cancellationToken);
+    }
+
+    /// <summary>
+    /// Posts one message to the printer's actor, whichever of the two endpoints it arrived on, and
+    /// - for telemetry - collects the command the actor has parked.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>One body for both routes, because the message decides what it is.</b>
+    /// <see cref="MessageDispatcher.Classify"/> sorts on the payload's own <c>event</c> property and
+    /// is the only place that decision is made; keying off the URL instead would be a second
+    /// classifier free to disagree with it.
+    /// </para>
+    /// <para>
+    /// <b>Through the actor, not straight to the sink.</b> The actor is where an event answering a
+    /// command meets the command it answers (<c>HandleEvent</c>), and where the last point that knows
+    /// this printer speaks Prusa Connect maps into the sink. Bypassing it would persist the ack and
+    /// leave the caller of the command waiting out the response timeout.
+    /// </para>
+    /// <para>
+    /// <b>The session, not the connection, decides whether this printer has an actor.</b>
+    /// <see cref="HttpPrinterSessions.GetOrCreate"/> creates one on the first authenticated POST and
+    /// touches it on every one after, which is what makes the printer read as connected - there is
+    /// no socket to be open.
+    /// </para>
+    /// </remarks>
+    private async Task<ActionResult> IngestAsync(bool deliverCommand, CancellationToken cancellationToken)
+    {
+        // Guaranteed present: the controller's [Authorize] only admits a request once
+        // PrusaConnectPrinterAuthenticationHandler has resolved the Fingerprint header to a printer.
+        int printerId = int.Parse(User.FindFirstValue(HSClaimTypes.PrinterId)!);
+
+        JsonDocument document;
+
+        try
+        {
+            document = await JsonDocument.ParseAsync(Request.Body, cancellationToken: cancellationToken);
+        }
+        catch (JsonException e)
+        {
+            // A body that is not JSON is a protocol violation, and this codebase treats those as the
+            // client's fault rather than an error of ours. On the socket the equivalent closes the
+            // connection; here the request is simply refused and the printer retries.
+            _logger.LogWarning(e, "Printer {PrinterId} posted a body that is not JSON.", printerId);
+
+            return BadRequest();
+        }
+
+        // Touched before the body is looked at: reaching us at all is the liveness signal, and a
+        // printer whose message we then refuse is still a printer that is there.
+        IPrinterConnectionActor actor = _sessions.GetOrCreate(printerId);
+
+        using (document)
+        {
+            ConnectionMessage? message = _dispatcher.Classify(printerId, document.RootElement);
+
+            if (message is InboundTransferRequestMessage)
+            {
+                // Inline transfers are a websocket mechanism - the printer asks for a chunk and the
+                // answer is a frame on the same socket. There is nothing to answer with here, so
+                // refuse it rather than accept a request that can never be served. Structurally it
+                // could not be served anyway: HttpPrinterConnection is not an IChunkStreamingConnection.
+                _logger.LogWarning(
+                    "Printer {PrinterId} requested an inline transfer chunk over HTTP, which cannot be served.",
+                    printerId);
+
+                return BadRequest();
+            }
+
+            if (message is not null)
+            {
+                await actor.PostAsync(message, cancellationToken);
+            }
+        }
+
+        if (!deliverCommand)
+        {
+            return NoContent();
+        }
+
+        // Ask the loop, and only the loop, whether a command is waiting: the parked slot is
+        // loop-owned, and this request thread never reads it. Posted after the telemetry so that a
+        // command answering something in this very message is not handed out ahead of it.
+        TaskCompletionSource<PendingCommand?> take = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await actor.PostAsync(new TakePendingCommandMessage(take), cancellationToken);
+
+        PendingCommand? pending = await take.Task.WaitAsync(cancellationToken);
+
+        if (pending is null)
+        {
+            return NoContent();
+        }
+
+        CommandWireEncoder.Body body = CommandWireEncoder.EncodeBody(pending.Command);
+
+        // Decimal, not the frame's hex: ExtractCommanId accumulates digit by digit as base ten
+        // (command_id.cpp), so "0000002A" would parse as 2 and then choke on the A.
+        Response.Headers[Headers.CommandId] = pending.CommandId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        return File(body.Payload, body.ContentType);
     }
 }

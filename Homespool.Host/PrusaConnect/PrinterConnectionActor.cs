@@ -57,7 +57,33 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     // race - it only ever goes false to true.
     private volatile bool _draining;
 
-    private sealed record Pending(uint CommandId, string WireName, TaskCompletionSource<CommandSendResult> Completion, long SentAt);
+    /// <summary>
+    /// The one command in flight.
+    /// </summary>
+    /// <param name="CommandId">The id the printer will echo in its answer.</param>
+    /// <param name="WireName">The command's wire name, for the log lines.</param>
+    /// <param name="Completion">What the caller is awaiting.</param>
+    /// <param name="SentAt">
+    /// When the printer received it, as a <see cref="Stopwatch"/> timestamp - the moment the response
+    /// clock starts. <b>Null while parked</b> on the HTTP transport, waiting to be collected: a parked
+    /// command has no response deadline, because it has not been delivered, and its bound is the
+    /// session's idle window rather than the response timeout. Stamped by the loop at hand-over.
+    /// </param>
+    private sealed record Pending(uint CommandId, string WireName, TaskCompletionSource<CommandSendResult> Completion, long? SentAt);
+
+    /// <summary>
+    /// The connection as a chunk carrier, for the transfer engine.
+    /// </summary>
+    /// <remarks>
+    /// Throws rather than returns null, and the throw is meant to be unreachable: an
+    /// <see cref="InboundTransferRequestMessage"/> is posted only by the WebSocket read loop, and the
+    /// HTTP transport refuses one before any actor sees it. If it ever fires, a request that could
+    /// not exist has been posted to a connection that cannot answer it, and that is a programming
+    /// error rather than a printer condition.
+    /// </remarks>
+    private IChunkStreamingConnection ChunkStreaming =>
+        _connection as IChunkStreamingConnection
+        ?? throw new InvalidOperationException("A transfer request reached a connection that cannot stream chunks.");
 
     /// <summary>
     /// A transfer the printer is currently pulling from us.
@@ -155,6 +181,9 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
 
     public bool IsOpen => _connection.IsOpen;
 
+    /// <inheritdoc/>
+    public bool CanStreamChunks => _connection is IChunkStreamingConnection;
+
     public Task Completion { get; }
 
     public ValueTask PostAsync(ConnectionMessage message, CancellationToken cancellationToken)
@@ -222,7 +251,9 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                 // messages that genuinely arrived first can come between.
                 if (!_mailbox.Reader.TryRead(out ConnectionMessage? message))
                 {
-                    if (_pending is null)
+                    // Undelivered is the same as none for the deadline: nothing has been sent, so
+                    // nothing can be late. The reaper bounds a command nobody ever collects.
+                    if (_pending is null || _pending.SentAt is null)
                     {
                         if (!await _mailbox.Reader.WaitToReadAsync())
                         {
@@ -235,7 +266,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                         // the next message only until the response timeout expires. The token never
                         // touches the work itself - expiry is just "stop waiting", handled in one
                         // place, by the one owner of the pending state.
-                        TimeSpan remaining = _responseTimeout - Stopwatch.GetElapsedTime(_pending.SentAt);
+                        TimeSpan remaining = _responseTimeout - Stopwatch.GetElapsedTime(_pending.SentAt.Value);
 
                         if (remaining <= TimeSpan.Zero)
                         {
@@ -332,7 +363,32 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             case InboundTransferRequestMessage transferRequest:
                 await HandleTransferRequestAsync(transferRequest.Request);
                 break;
+
+            case TakePendingCommandMessage take:
+                HandleTakePending(take);
+                break;
         }
+    }
+
+    /// <summary>
+    /// The HTTP transport collecting: hands over whatever is parked and starts its response clock.
+    /// </summary>
+    /// <remarks>
+    /// The clock starts here and not at the send, because this is the moment the printer has the
+    /// command. Started at the send, a healthy printer with a 4-second poll interval would spend
+    /// most of its allowance before it had seen anything, and a slow-but-honest one would be
+    /// reported as unresponsive.
+    /// </remarks>
+    private void HandleTakePending(TakePendingCommandMessage take)
+    {
+        PendingCommand? parked = _connection.TakeParkedCommand();
+
+        if (parked is not null && _pending is { SentAt: null } && _pending.CommandId == parked.CommandId)
+        {
+            _pending = _pending with { SentAt = Stopwatch.GetTimestamp() };
+        }
+
+        take.Completion.TrySetResult(parked);
     }
 
     private async Task HandleSendAsync(SendCommandMessage send)
@@ -383,14 +439,17 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         }
 
         uint commandId = unchecked(++_lastCommandId);
-        byte[] frame = CommandWireEncoder.Encode(commandId, send.Command);
+        CommandHandover handover;
 
         try
         {
             // WaitAsync bounds the wait, never the write. The token stays None deliberately (see the
             // comment above); giving up on the wait leaves the send running, which is safe precisely
-            // because the teardown this triggers disposes the socket and faults it.
-            await _connection.SendAsync(frame, CancellationToken.None).AsTask().WaitAsync(SendTimeout);
+            // because the teardown this triggers disposes the socket and faults it. Encoding is the
+            // connection's, since the two transports frame the same body differently.
+            handover = await _connection.SendCommandAsync(commandId, send.Command, CancellationToken.None)
+                                        .AsTask()
+                                        .WaitAsync(SendTimeout);
         }
         catch (TimeoutException)
         {
@@ -442,7 +501,12 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             return;
         }
 
-        _pending = new Pending(commandId, send.Command.WireName, send.Completion, Stopwatch.GetTimestamp());
+        // Written: the clock starts now. Parked: it starts when the printer collects, in
+        // HandleTakePending, on this same loop.
+        _pending = new Pending(commandId,
+                               send.Command.WireName,
+                               send.Completion,
+                               handover == CommandHandover.Written ? Stopwatch.GetTimestamp() : null);
     }
 
     private void HandleEvent(InboundEventMessage message)
@@ -464,7 +528,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                 answered.CommandId,
                 answered.WireName,
                 eventDto.EventType,
-                Stopwatch.GetElapsedTime(answered.SentAt).TotalMilliseconds,
+                ElapsedMilliseconds(answered),
                 eventDto.Reason is null ? string.Empty : $": {eventDto.Reason}",
                 eventDto.MachineReason);
 
@@ -600,9 +664,9 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             // Same discipline as HandleSendAsync: bound the wait, never the write. A chunk send is
             // reads and writes interleaved, and neither has any other bound - the reads because a
             // data directory can be a network mount, the writes because a peer can stop draining.
-            await _connection.SendChunkAsync(header, _transfer.Content, request.Start, count, CancellationToken.None)
-                             .AsTask()
-                             .WaitAsync(SendTimeout);
+            await ChunkStreaming.SendChunkAsync(header, _transfer.Content, request.Start, count, CancellationToken.None)
+                                .AsTask()
+                                .WaitAsync(SendTimeout);
         }
         catch (TimeoutException)
         {
@@ -682,9 +746,9 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
 
         try
         {
-            await _connection.SendAsync(ChunkWireEncoder.EncodeHeader(fileId), CancellationToken.None)
-                             .AsTask()
-                             .WaitAsync(SendTimeout);
+            await ChunkStreaming.SendEmptyChunkAsync(ChunkWireEncoder.EncodeHeader(fileId), CancellationToken.None)
+                                .AsTask()
+                                .WaitAsync(SendTimeout);
         }
         catch (Exception e) when (e is TimeoutException or IOException or ObjectDisposedException or InvalidOperationException)
         {
@@ -692,6 +756,19 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             // notice that separately.
             _logger.LogDebug(e, "could not signal transfer failure");
         }
+    }
+
+    /// <summary>
+    /// How long a command took to be answered, for the log; -1 if it was never handed over.
+    /// </summary>
+    /// <remarks>
+    /// An answer to a command that was never delivered cannot happen honestly - the printer would be
+    /// acking something it never received - but if it does, a visible -1 is preferable to a throw
+    /// that costs the loop a message.
+    /// </remarks>
+    private static double ElapsedMilliseconds(Pending answered)
+    {
+        return answered.SentAt is long sentAt ? Stopwatch.GetElapsedTime(sentAt).TotalMilliseconds : -1;
     }
 
     private void TimeOutPending()

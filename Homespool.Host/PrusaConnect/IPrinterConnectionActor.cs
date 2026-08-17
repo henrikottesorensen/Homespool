@@ -26,6 +26,20 @@ public interface IPrinterConnectionActor : IPrinterLink
     /// equivalent of <see cref="Telemetry.TelemetryWriter"/>'s shutdown-by-completion.</summary>
     Task Completion { get; }
 
+    /// <summary>
+    /// Whether this printer's connection can carry the inline transfer engine - chunks pulled over
+    /// the same channel its commands arrive on. True for a socket; false for the pre-websocket HTTP
+    /// transport, whose printer must be sent an encrypted download to fetch itself instead.
+    /// </summary>
+    /// <remarks>
+    /// Derived from the connection's type - <see cref="IChunkStreamingConnection"/> or not - rather
+    /// than declared, so it cannot disagree with what the actor can actually do. This is the check
+    /// that lets a sender choose between <c>START_CONNECT_DOWNLOAD</c> and
+    /// <c>START_ENCRYPTED_DOWNLOAD</c>; sending the former to a printer that cannot stream chunks
+    /// starts a transfer whose chunk request has no address, and firmware asserts on it.
+    /// </remarks>
+    bool CanStreamChunks { get; }
+
     /// <summary>Posts an inbound message from the read loop. Waits when the mailbox is full, which
     /// deliberately stops the socket read and lets TCP push back on the printer.</summary>
     ValueTask PostAsync(ConnectionMessage message, CancellationToken cancellationToken);

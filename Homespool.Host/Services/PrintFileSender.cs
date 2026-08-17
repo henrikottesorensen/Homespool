@@ -1,11 +1,15 @@
+using System;
 using System.Buffers.Text;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Microsoft.Extensions.Options;
+
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
+using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Model;
@@ -47,12 +51,19 @@ public class PrintFileSender
     private const int TransferTokenBytes = 21;
 
     private readonly ITransferOffers _offers;
+    private readonly EncryptedTransferOffers _encrypted;
     private readonly PrinterCommandService _commands;
+    private readonly IOptions<PrusaConnectOptions> _options;
 
-    public PrintFileSender(ITransferOffers offers, PrinterCommandService commands)
+    public PrintFileSender(ITransferOffers offers,
+                           EncryptedTransferOffers encrypted,
+                           PrinterCommandService commands,
+                           IOptions<PrusaConnectOptions> options)
     {
         _offers = offers;
+        _encrypted = encrypted;
         _commands = commands;
+        _options = options;
     }
 
     /// <summary>
@@ -73,6 +84,25 @@ public class PrintFileSender
                                                  Caller caller,
                                                  CancellationToken cancellationToken)
     {
+        // Which download the printer can perform is a property of its connection, not of the file
+        // or the caller. Same gate as the send that follows - permission and connectedness - so a
+        // printer that would be refused a send is refused here, with the same exceptions.
+        bool inline = await _commands.CanStreamChunksAsync(printer.Id, caller, Capability.Print, cancellationToken);
+
+        return inline ?
+            await SendInlineAsync(printer, file, caller, cancellationToken) :
+            await SendEncryptedAsync(printer, file, caller, cancellationToken);
+    }
+
+    /// <summary>
+    /// The inline transfer: the printer pulls chunks over its Connect socket, from an offer keyed
+    /// by a random token it quotes back.
+    /// </summary>
+    private async Task<CommandOutcome?> SendInlineAsync(Printer printer,
+                                                        StoredFile file,
+                                                        Caller caller,
+                                                        CancellationToken cancellationToken)
+    {
         string token = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(TransferTokenBytes));
 
         // Opening the file is what pins these bytes for the whole transfer - see ITransferOffers.
@@ -89,6 +119,93 @@ public class PrintFileSender
             OriginalSize = file.Length,
         };
 
+        return await SendAndCleanUpAsync(printer, command, caller, () => _offers.Revoke(token), cancellationToken);
+    }
+
+    /// <summary>
+    /// The encrypted download: the printer fetches AES-CTR ciphertext over a plain HTTP connection
+    /// it opens itself, from <c>/f/&lt;iv&gt;/raw</c> on the transfer listener. What a printer on
+    /// the pre-websocket transport does, since it has no socket to pull chunks over.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Key and IV are minted fresh, per transfer, at random.</b> CTR under a repeated (key, IV)
+    /// reuses a keystream, and two files under one keystream leak their XOR - for gcode with a shared
+    /// slicer preamble, most of the smaller file. Deriving the IV from the file would give stable
+    /// URLs and exactly that reuse; <see cref="TransferCipher"/>'s remarks call it the one fatal
+    /// shortcut. So there is no content-addressing here at any price.
+    /// </para>
+    /// <para>
+    /// The offer is keyed by the IV's hex, because that is what the printer's request carries and
+    /// what <c>EncryptedTransferController</c> looks up. Two stores share the key: the offer store
+    /// pins the bytes, <see cref="EncryptedTransferOffers"/> holds the AES key beside them, and both
+    /// are cleaned up together on every path a send can fail by.
+    /// </para>
+    /// <para>
+    /// <see cref="StartEncryptedDownload.Port"/> is always sent. Firmware would otherwise fetch from
+    /// the port in its enrolled config, rewriting 443-with-TLS to 80 - and the transfer listener is
+    /// on neither. <see cref="PrusaConnectOptions.TransferPort"/> is the public number.
+    /// </para>
+    /// </remarks>
+    private async Task<CommandOutcome?> SendEncryptedAsync(Printer printer,
+                                                           StoredFile file,
+                                                           Caller caller,
+                                                           CancellationToken cancellationToken)
+    {
+        byte[] key = RandomNumberGenerator.GetBytes(TransferCipher.KeyLength);
+        byte[] iv = RandomNumberGenerator.GetBytes(TransferCipher.IvLength);
+        string ivHex = Convert.ToHexStringLower(iv);
+
+        try
+        {
+            if (!_offers.Offer(ivHex, file.Path))
+            {
+                throw new PrintFileUnreadableException(file.FileName);
+            }
+
+            _encrypted.Register(ivHex, key, ivHex);
+
+            // The command takes its own copies. It may be rendered long after this method returns -
+            // on the HTTP transport it is parked and encoded when the printer next polls - so it must
+            // not share an array with anything zeroed below.
+            StartEncryptedDownload command = new()
+            {
+                Path = file.PrinterPath,
+                Key = (byte[])key.Clone(),
+                Iv = (byte[])iv.Clone(),
+                OriginalSize = file.Length,
+                Port = checked((ushort)_options.Value.TransferPort),
+            };
+
+            return await SendAndCleanUpAsync(printer,
+                                             command,
+                                             caller,
+                                             () =>
+                                             {
+                                                 _encrypted.Revoke(ivHex);
+                                                 _offers.Revoke(ivHex);
+                                             },
+                                             cancellationToken);
+        }
+        finally
+        {
+            // Only this method's copy. The store holds its own and zeroes it on revoke; the command
+            // holds its own and lives as long as the actor keeps it.
+            CryptographicOperations.ZeroMemory(key);
+        }
+    }
+
+    /// <summary>
+    /// Sends the command, and runs <paramref name="revoke"/> on every path where the printer will
+    /// never come for the bytes: a throw, or an answer of <c>Rejected</c>/<c>Failed</c>. The rule
+    /// this class exists to keep in one place.
+    /// </summary>
+    private async Task<CommandOutcome?> SendAndCleanUpAsync(Printer printer,
+                                                            ISendableCommand command,
+                                                            Caller caller,
+                                                            Action revoke,
+                                                            CancellationToken cancellationToken)
+    {
         CommandOutcome? outcome;
 
         try
@@ -97,7 +214,7 @@ public class PrintFileSender
         }
         catch
         {
-            _offers.Revoke(token);
+            revoke();
 
             throw;
         }
@@ -107,7 +224,7 @@ public class PrintFileSender
             // The printer will never ask for these bytes now, so the offer is dead weight holding a
             // descriptor open. Revoking is the same cleanup as the throw above, for the case that
             // does not look like a failure from here.
-            _offers.Revoke(token);
+            revoke();
         }
 
         return outcome;

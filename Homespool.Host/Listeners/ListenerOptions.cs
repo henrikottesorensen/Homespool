@@ -75,6 +75,29 @@ public class ListenerOptions
     public int? UserHttpsPort { get; set; }
 
     /// <summary>
+    /// The plain-HTTP listener carrying encrypted downloads: <c>/f/*</c> and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Plain HTTP by design, and never behind the printer's TLS.</b> A printer on the pre-websocket
+    /// transport fetches a file over a plain connection it opens itself; the body is AES-CTR
+    /// ciphertext, so what crosses this port is unreadable without a key that only ever travelled
+    /// inside the command. It gets its own port so the door that is deliberately unencrypted serves
+    /// exactly one thing, and so the printer's own listener can stay TLS-terminated regardless.
+    /// </para>
+    /// <para>
+    /// <b>Not integrity-protected</b> - CTR is malleable, and firmware checks nothing about the body
+    /// but its length. An on-path attacker cannot read the gcode but can corrupt it, bit for bit.
+    /// <c>notes/encrypted-download.md</c> and <c>internet-exposure.md</c> together make this a LAN
+    /// proposition; publish this port to the internet knowingly or not at all.
+    /// </para>
+    /// <para>
+    /// 15080 beside the printer's 15443: the same range, the suffix saying plain against TLS.
+    /// </para>
+    /// </remarks>
+    public int TransferPort { get; set; } = 15080;
+
+    /// <summary>
     /// Throws unless the ports describe a boundary that can actually exist.
     /// </summary>
     /// <remarks>
@@ -92,6 +115,14 @@ public class ListenerOptions
                 + $"(UserPort {UserPort}, UserHttpsPort {UserHttpsPort?.ToString() ?? "none"}). Sharing a port "
                 + "would put printer endpoints and application endpoints on one listener, which is the "
                 + "separation this exists to keep.");
+        }
+
+        if (TransferPort == UserPort || TransferPort == UserHttpsPort || TransferPort == PrinterPort)
+        {
+            throw new InvalidOperationException(
+                $"Listeners:TransferPort ({TransferPort}) must differ from every other listener "
+                + $"(UserPort {UserPort}, UserHttpsPort {UserHttpsPort?.ToString() ?? "none"}, PrinterPort {PrinterPort}). "
+                + "It is the one deliberately plain-HTTP door, and it must serve nothing but transfers.");
         }
     }
 }

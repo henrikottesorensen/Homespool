@@ -71,3 +71,17 @@ public sealed record InboundTelemetryMessage(DateTimeOffset ReceivedAt, Telemetr
 /// </summary>
 public sealed record InboundTransferRequestMessage(DateTimeOffset ReceivedAt, InlineRequestDTO Request)
     : ConnectionMessage;
+
+/// <summary>
+/// The HTTP transport asking, on behalf of a telemetry POST it is about to answer, whether a
+/// command is waiting for this printer. Answered by the loop with the parked command - now
+/// delivered, its response clock started - or null for "nothing pending", which the caller turns
+/// into a 204.
+/// </summary>
+/// <remarks>
+/// A message rather than a direct read of the connection's slot, so that the slot stays loop-owned:
+/// the request thread posts and awaits, and only the loop takes, stamps and hands over. The
+/// alternative - a self-synchronised slot the request thread empties itself - would be the first
+/// piece of command state touched from two threads, and this class's history is what that costs.
+/// </remarks>
+public sealed record TakePendingCommandMessage(TaskCompletionSource<PendingCommand?> Completion) : ConnectionMessage;

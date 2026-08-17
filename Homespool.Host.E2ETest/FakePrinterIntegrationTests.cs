@@ -849,7 +849,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         Guid uuid = (await context.Printers.SingleAsync(p => p.Id == printerId, TestContext.Current.CancellationToken)).Uuid;
 
         ApiTokenService tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
-        (_, string token) = await tokens.CreateAsync(userId, "storage-e2e", CancellationToken.None);
+        (_, string token) = await tokens.CreateAsync(userId, "storage-e2e", CapabilitySet.Everything, CancellationToken.None);
 
         return (uuid, token);
     }
@@ -923,7 +923,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             uuid = (await context.Printers.SingleAsync(p => p.Id == printerId, TestContext.Current.CancellationToken)).Uuid;
 
             ApiTokenService tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
-            (_, token) = await tokens.CreateAsync(userId, "e2e", CancellationToken.None);
+            (_, token) = await tokens.CreateAsync(userId, "e2e", CapabilitySet.Everything, CancellationToken.None);
         }
 
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });

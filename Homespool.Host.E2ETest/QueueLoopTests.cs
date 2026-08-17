@@ -463,7 +463,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         using IServiceScope scope = _factory.Services.CreateScope();
 
         (_, string plaintext) = await scope.ServiceProvider.GetRequiredService<ApiTokenService>()
-                                           .CreateAsync(userId, "e2e", TestContext.Current.CancellationToken);
+                                           .CreateAsync(userId, "e2e", CapabilitySet.Everything, TestContext.Current.CancellationToken);
 
         return plaintext;
     }

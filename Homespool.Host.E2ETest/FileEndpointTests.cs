@@ -14,6 +14,7 @@ using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.E2ETest;
@@ -419,7 +420,7 @@ public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
         using (IServiceScope scope = _factory.Services.CreateScope())
         {
             ApiTokenService tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
-            (_, plaintext) = await tokens.CreateAsync(user.Id, "e2e", CancellationToken.None);
+            (_, plaintext) = await tokens.CreateAsync(user.Id, "e2e", CapabilitySet.Everything, CancellationToken.None);
         }
 
         // A client with no cookie at all, so nothing but the header can be authenticating this.
@@ -441,6 +442,103 @@ public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
             JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         payload.RootElement.GetProperty("name").GetString().Should().Be("bearer.bgcode");
         payload.RootElement.GetProperty("size").GetInt64().Should().Be(content.Length);
+    }
+
+    /// <summary>
+    /// <b>The feature, end to end and at the boundary that matters.</b> A token minted to upload and
+    /// print - what a slicer's print-host key needs - uploads, and is refused the delete that the same
+    /// token would have been handed before scopes existed.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately an end-to-end test rather than a unit one. The unit tests prove the catalog
+    /// refuses a scoped caller; only a real request proves the whole chain carries the scope - the
+    /// handler writing the claim, the principal keeping it, the resolver reading it and the gate
+    /// honouring it. Any one of those going missing leaves the unit tests green.
+    /// </remarks>
+    [Fact]
+    public async Task ATokenScopedToUploadingAndPrintingCannotDeleteItsOwnersFiles()
+    {
+        // Arrange
+        (HSUser user, HttpClient cookieClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "slicerkey@example.com");
+        cookieClient.Dispose();
+
+        string plaintext;
+
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            ApiTokenService tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
+            (_, plaintext) = await tokens.CreateAsync(
+                user.Id, "slicer", [Capability.UploadOwnFiles, Capability.Print], CancellationToken.None);
+        }
+
+        using HttpClient client = _factory.CreateClient(
+            new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", plaintext);
+
+        using StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes("G28 ; home\n")));
+
+        // Act
+        using HttpResponseMessage uploaded =
+            await client.PutAsync("/api/v1/files/scoped.bgcode", body, TestContext.Current.CancellationToken);
+
+        using HttpResponseMessage listed =
+            await client.GetAsync("/api/v1/files", TestContext.Current.CancellationToken);
+
+        using HttpResponseMessage deleted =
+            await client.DeleteAsync("/api/v1/files/scoped.bgcode", TestContext.Current.CancellationToken);
+
+        // Assert
+        uploaded.StatusCode.Should().Be(HttpStatusCode.OK, "the token was minted to upload");
+
+        listed.StatusCode.Should()
+              .Be(HttpStatusCode.Forbidden, "listing is ViewOwnFiles, which this token never named");
+
+        deleted.StatusCode.Should()
+               .Be(HttpStatusCode.Forbidden, "and deleting is ManipulateOwnFiles - the blast radius this closes");
+    }
+
+    /// <summary>
+    /// <b>A token scoped to everything is the same credential as one that narrows nothing.</b>
+    /// Intersecting with every capability is identity, which is why the column needs no null: "full
+    /// access" is a scope like any other rather than a second kind of token.
+    /// </summary>
+    [Fact]
+    public async Task ATokenScopedToEverythingIsBoundedOnlyByItsOwnersRights()
+    {
+        // Arrange
+        (HSUser user, HttpClient cookieClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "fullkey@example.com");
+        cookieClient.Dispose();
+
+        string plaintext;
+
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            ApiTokenService tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
+            (_, plaintext) = await tokens.CreateAsync(user.Id, "full", CapabilitySet.Everything, CancellationToken.None);
+        }
+
+        using HttpClient client = _factory.CreateClient(
+            new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", plaintext);
+
+        using StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes("G28 ; home\n")));
+
+        // Act
+        using HttpResponseMessage uploaded =
+            await client.PutAsync("/api/v1/files/full.bgcode", body, TestContext.Current.CancellationToken);
+
+        using HttpResponseMessage listed =
+            await client.GetAsync("/api/v1/files", TestContext.Current.CancellationToken);
+
+        using HttpResponseMessage deleted =
+            await client.DeleteAsync("/api/v1/files/full.bgcode", TestContext.Current.CancellationToken);
+
+        // Assert
+        uploaded.StatusCode.Should().Be(HttpStatusCode.OK);
+        listed.StatusCode.Should().Be(HttpStatusCode.OK);
+        deleted.StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
 
     /// <summary>

@@ -112,7 +112,8 @@ namespace Homespool.Data.Migrations
                     UserId = table.Column<long>(type: "INTEGER", nullable: false),
                     TokenHash = table.Column<string>(type: "TEXT", nullable: false),
                     Name = table.Column<string>(type: "TEXT", maxLength: 64, nullable: false),
-                    CreatedAt = table.Column<long>(type: "INTEGER", nullable: false)
+                    CreatedAt = table.Column<long>(type: "INTEGER", nullable: false),
+                    Scope = table.Column<string>(type: "TEXT", maxLength: 512, nullable: false)
                 },
                 constraints: table =>
                 {

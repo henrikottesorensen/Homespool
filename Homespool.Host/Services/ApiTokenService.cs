@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Services;
@@ -85,10 +86,18 @@ public class ApiTokenService
     /// credential. The plaintext exists only in this return value — only its hash is stored — so the
     /// caller must show it immediately; it cannot be recovered afterwards, by anyone, by construction.
     /// </summary>
-    /// <param name="userId">The user the token acts as. It inherits their rights in full.</param>
+    /// <param name="userId">The user the token acts as.</param>
     /// <param name="name">What the owner calls it, so they know which one to revoke.</param>
+    /// <param name="scope">
+    /// What the token may do. It can only ever narrow: the gates intersect it with the owner's
+    /// memberships, so naming a capability they do not hold grants nothing. Pass
+    /// <c>CapabilitySet.Everything</c> for a token bounded by its owner's rights and nothing else.
+    /// </param>
     /// <param name="cancellationToken">Cancels the insert; nothing is persisted if it fires first.</param>
-    public async Task<(ApiToken token, string plaintext)> CreateAsync(long userId, string name, CancellationToken cancellationToken)
+    public async Task<(ApiToken token, string plaintext)> CreateAsync(long userId,
+                                                                      string name,
+                                                                      IEnumerable<Capability> scope,
+                                                                      CancellationToken cancellationToken)
     {
         string secret = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(SecretByteCount));
 
@@ -97,6 +106,7 @@ public class ApiTokenService
             UserId = userId,
             TokenHash = HashSecret(secret),
             Name = name,
+            Scope = CapabilitySet.Format(scope),
             CreatedAt = DateTimeOffset.UtcNow,
         };
 

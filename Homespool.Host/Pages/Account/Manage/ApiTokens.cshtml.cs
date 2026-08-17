@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
 
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Account.Manage;
@@ -89,7 +90,7 @@ public class ApiTokensModel : PageModel
             return Page();
         }
 
-        (ApiToken token, string plaintext) = await _tokens.CreateAsync(user.Id, Input.Name, cancellationToken);
+        (ApiToken token, string plaintext) = await _tokens.CreateAsync(user.Id, Input.Name, CapabilitySet.Everything, cancellationToken);
 
         _logger.LogInformation("User {UserId} created API token {TokenId}.", user.Id, token.Id);
 

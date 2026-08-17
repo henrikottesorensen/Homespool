@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -104,7 +105,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         ApiTokenService service = new(context);
 
         // Act
-        (ApiToken token, string plaintext) = await service.CreateAsync(user.Id, "laptop", CancellationToken.None);
+        (ApiToken token, string plaintext) = await service.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
         // Assert
         plaintext.Should().StartWith(ApiTokenService.Prefix);
@@ -129,8 +130,8 @@ public sealed class ApiTokenServiceTests : IDisposable
         ApiTokenService service = new(context);
 
         // Act
-        (_, string first) = await service.CreateAsync(user.Id, "laptop", CancellationToken.None);
-        (_, string second) = await service.CreateAsync(user.Id, "laptop", CancellationToken.None);
+        (_, string first) = await service.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
+        (_, string second) = await service.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
         // Assert
         second.Should().NotBe(first);
@@ -147,7 +148,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         HSUser user = await AddUserAsync(context);
         ApiTokenService service = new(context);
 
-        (ApiToken created, string plaintext) = await service.CreateAsync(user.Id, "laptop", CancellationToken.None);
+        (ApiToken created, string plaintext) = await service.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
         // Act
         ApiToken? found = await service.FindByCredentialAsync(plaintext, CancellationToken.None);
@@ -171,7 +172,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         HSUser user = await AddUserAsync(context);
         ApiTokenService service = new(context);
 
-        (_, string plaintext) = await service.CreateAsync(user.Id, "laptop", CancellationToken.None);
+        (_, string plaintext) = await service.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
         string secretOnly = plaintext[ApiTokenService.Prefix.Length..];
 
         // Act
@@ -190,7 +191,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         HSUser user = await AddUserAsync(context);
         ApiTokenService service = new(context);
 
-        await service.CreateAsync(user.Id, "laptop", CancellationToken.None);
+        await service.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
         // Act
         ApiToken? found = await service.FindByCredentialAsync(
@@ -214,7 +215,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         HSUser user = await AddUserAsync(context);
         ApiTokenService service = new(context);
 
-        await service.CreateAsync(user.Id, "laptop", CancellationToken.None);
+        await service.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
         // Act
         ApiToken? found = await service.FindByCredentialAsync(credential, CancellationToken.None);
@@ -232,7 +233,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         HSUser user = await AddUserAsync(context);
         ApiTokenService service = new(context);
 
-        (ApiToken created, string plaintext) = await service.CreateAsync(user.Id, "laptop", CancellationToken.None);
+        (ApiToken created, string plaintext) = await service.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
         // Act
         bool revoked = await service.RevokeAsync(user.Id, created.Id, CancellationToken.None);
@@ -258,7 +259,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         HSUser other = await AddUserAsync(context, "other@example.com");
         ApiTokenService service = new(context);
 
-        (ApiToken token, string plaintext) = await service.CreateAsync(owner.Id, "laptop", CancellationToken.None);
+        (ApiToken token, string plaintext) = await service.CreateAsync(owner.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
         // Act
         bool revoked = await service.RevokeAsync(other.Id, token.Id, CancellationToken.None);
@@ -279,9 +280,9 @@ public sealed class ApiTokenServiceTests : IDisposable
         HSUser other = await AddUserAsync(context, "other@example.com");
         ApiTokenService service = new(context);
 
-        (ApiToken older, _) = await service.CreateAsync(owner.Id, "older", CancellationToken.None);
-        (ApiToken newer, _) = await service.CreateAsync(owner.Id, "newer", CancellationToken.None);
-        await service.CreateAsync(other.Id, "theirs", CancellationToken.None);
+        (ApiToken older, _) = await service.CreateAsync(owner.Id, "older", CapabilitySet.Everything, CancellationToken.None);
+        (ApiToken newer, _) = await service.CreateAsync(owner.Id, "newer", CapabilitySet.Everything, CancellationToken.None);
+        await service.CreateAsync(other.Id, "theirs", CapabilitySet.Everything, CancellationToken.None);
 
         // The two are minted in the same millisecond, so order by CreatedAt alone is not decidable -
         // separate them rather than assert on a tie the database is entitled to break either way.
@@ -310,7 +311,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         HSUser user = await AddUserAsync(context);
         ApiTokenService service = new(context);
 
-        (_, string plaintext) = await service.CreateAsync(user.Id, "laptop", CancellationToken.None);
+        (_, string plaintext) = await service.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
         // Act
         context.Users.Remove(user);

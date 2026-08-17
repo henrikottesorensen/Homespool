@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace Homespool.Model.Entities;
 
@@ -36,6 +37,11 @@ public class ApiToken
     /// </summary>
     public const int NameMaxLength = 64;
 
+    /// <summary>The longest <see cref="Scope"/> string the column has to hold.</summary>
+    /// <remarks>Matches <c>TeamMember.CapabilitiesMaxLength</c>: a scope cannot usefully be longer than
+    /// the membership it narrows.</remarks>
+    public const int ScopeMaxLength = 512;
+
     public long Id { get; set; }
 
     /// <summary>The user this token acts as. Its rights are theirs, in full.</summary>
@@ -58,4 +64,25 @@ public class ApiToken
     public required string Name { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>
+    /// What this token may do, as <c>CapabilitySet</c> spells it. <b>Every token has one.</b>
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Not nullable, because there is nothing for a null to mean.</b> A token that narrows nothing
+    /// is one scoped to <c>CapabilitySet.Everything</c> - intersecting with every capability is
+    /// identity, so the two are the same credential by construction. A nullable column would have
+    /// bought a second spelling of that and an <c>is null</c> for every reader to get right.
+    /// </para>
+    /// <para>
+    /// <b>Empty grants nothing</b>, deliberately and sayably: a token can be minted powerless.
+    /// </para>
+    /// <para>
+    /// <b>It cannot widen its owner.</b> A scope naming <c>ManagePrinter</c> on a printer its owner
+    /// only reads still manages nothing - the gates intersect, and the membership half is unchanged.
+    /// </para>
+    /// </remarks>
+    [MaxLength(ScopeMaxLength)]
+    public required string Scope { get; set; }
 }

@@ -27,6 +27,23 @@ public sealed class CapabilitySet
     /// <summary>Grants nothing. What an empty or absent column parses to.</summary>
     public static readonly CapabilitySet None = new([], []);
 
+    /// <summary>
+    /// Every capability this build defines - the scope of a credential that narrows nothing.
+    /// </summary>
+    /// <remarks>
+    /// <b>Intersecting with this is identity</b>, which is what makes "narrows nothing" expressible
+    /// without a null: a token holding all of them is bounded by its owner's memberships and by
+    /// nothing else.
+    /// <para>
+    /// <b>It is evaluated when it is written, not when it is read</b>, and that is the right way
+    /// round. A capability added next year does not retroactively widen a credential minted before it
+    /// existed - the stored scope names what was granted at the time, and a grant nobody made is not
+    /// one to infer.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<Capability> Everything { get; } =
+        [.. Enum.GetValues<Capability>().Where(capability => capability != Capability.Undefined)];
+
     private readonly ImmutableHashSet<Capability> _granted;
 
     private CapabilitySet(ImmutableHashSet<Capability> granted, ImmutableArray<string> unrecognised)

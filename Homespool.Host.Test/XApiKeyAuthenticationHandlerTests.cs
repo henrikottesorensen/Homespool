@@ -19,6 +19,7 @@ using Microsoft.Extensions.Options;
 using Homespool.Data;
 using Homespool.Host.Authentication;
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -167,7 +168,7 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
         HSUser user = await AddUserAsync(context);
         ApiTokenService tokens = new(context);
 
-        (_, string plaintext) = await tokens.CreateAsync(user.Id, "laptop", CancellationToken.None);
+        (_, string plaintext) = await tokens.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
         (XApiKeyAuthenticationHandler handler, _) = await NewHandlerAsync(
             context, apiKey: null, authorization: $"Bearer {plaintext}");
@@ -212,7 +213,7 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
         HSUser user = await AddUserAsync(context);
         ApiTokenService tokens = new(context);
 
-        (ApiToken token, string plaintext) = await tokens.CreateAsync(user.Id, "slicer", CancellationToken.None);
+        (ApiToken token, string plaintext) = await tokens.CreateAsync(user.Id, "slicer", CapabilitySet.Everything, CancellationToken.None);
         await tokens.RevokeAsync(user.Id, token.Id, CancellationToken.None);
 
         (XApiKeyAuthenticationHandler handler, _) = await NewHandlerAsync(context, apiKey: plaintext);
@@ -243,7 +244,7 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
         HSUser user = await AddUserAsync(context);
         ApiTokenService tokens = new(context);
 
-        (_, string plaintext) = await tokens.CreateAsync(user.Id, "slicer", CancellationToken.None);
+        (_, string plaintext) = await tokens.CreateAsync(user.Id, "slicer", CapabilitySet.Everything, CancellationToken.None);
 
         (XApiKeyAuthenticationHandler handler, _) = await NewHandlerAsync(context, apiKey: plaintext);
 
@@ -273,7 +274,7 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
         HSUser user = await AddUserAsync(context);
         ApiTokenService tokens = new(context);
 
-        (_, string plaintext) = await tokens.CreateAsync(user.Id, "slicer", CancellationToken.None);
+        (_, string plaintext) = await tokens.CreateAsync(user.Id, "slicer", CapabilitySet.Everything, CancellationToken.None);
 
         (XApiKeyAuthenticationHandler handler, _) = await NewHandlerAsync(context, apiKey: $" {plaintext} ");
 

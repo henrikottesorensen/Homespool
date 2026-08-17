@@ -572,7 +572,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime, IDisposable
         using (IServiceScope scope = _factory.Services.CreateScope())
         {
             ApiTokenService tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
-            (_, plaintext) = await tokens.CreateAsync(user.Id, "slicer", CancellationToken.None);
+            (_, plaintext) = await tokens.CreateAsync(user.Id, "slicer", CapabilitySet.Everything, CancellationToken.None);
         }
 
         HttpClient client = _factory.CreateClient(

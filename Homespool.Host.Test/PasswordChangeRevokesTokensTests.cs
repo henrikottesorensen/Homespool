@@ -16,6 +16,7 @@ using Homespool.Data;
 using Homespool.Host.Pages.Account;
 using Homespool.Host.Pages.Account.Manage;
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -104,8 +105,8 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
         ApiTokenService tokens = new(context);
-        (_, string first) = await tokens.CreateAsync(user.Id, "laptop", CancellationToken.None);
-        await tokens.CreateAsync(user.Id, "ci", CancellationToken.None);
+        (_, string first) = await tokens.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
+        await tokens.CreateAsync(user.Id, "ci", CapabilitySet.Everything, CancellationToken.None);
 
         ChangePasswordModel model = new(users, signIn, tokens, new UnitOfWork(context), NullLogger<ChangePasswordModel>.Instance)
         {
@@ -148,7 +149,7 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
         ApiTokenService tokens = new(context);
-        (_, string plaintext) = await tokens.CreateAsync(user.Id, "laptop", CancellationToken.None);
+        (_, string plaintext) = await tokens.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
         ChangePasswordModel model = new(users, signIn, tokens, new UnitOfWork(context), NullLogger<ChangePasswordModel>.Instance)
         {
@@ -218,7 +219,7 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
         ApiTokenService tokens = new(context);
-        await tokens.CreateAsync(user.Id, "laptop", CancellationToken.None);
+        await tokens.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
         ChangePasswordModel model = new(users, signIn, tokens, new UnitOfWork(context), NullLogger<ChangePasswordModel>.Instance)
         {
@@ -252,8 +253,8 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
         ApiTokenService tokens = new(context);
-        await tokens.CreateAsync(user.Id, "mine", CancellationToken.None);
-        (_, string theirs) = await tokens.CreateAsync(other.Id, "theirs", CancellationToken.None);
+        await tokens.CreateAsync(user.Id, "mine", CapabilitySet.Everything, CancellationToken.None);
+        (_, string theirs) = await tokens.CreateAsync(other.Id, "theirs", CapabilitySet.Everything, CancellationToken.None);
 
         ChangePasswordModel model = new(users, signIn, tokens, new UnitOfWork(context), NullLogger<ChangePasswordModel>.Instance)
         {
@@ -290,7 +291,7 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
         HSUser user = await AddUserWithPasswordAsync(users, "resetter@example.com");
 
         ApiTokenService tokens = new(context);
-        (_, string plaintext) = await tokens.CreateAsync(user.Id, "attacker's", CancellationToken.None);
+        (_, string plaintext) = await tokens.CreateAsync(user.Id, "attacker's", CapabilitySet.Everything, CancellationToken.None);
 
         ResetPasswordModel model = new(users, tokens, new UnitOfWork(context), NullLogger<ResetPasswordModel>.Instance)
         {
@@ -329,7 +330,7 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
         HSUser user = await AddUserWithPasswordAsync(users, "badcode@example.com");
 
         ApiTokenService tokens = new(context);
-        (_, string plaintext) = await tokens.CreateAsync(user.Id, "laptop", CancellationToken.None);
+        (_, string plaintext) = await tokens.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
         ResetPasswordModel model = new(users, tokens, new UnitOfWork(context), NullLogger<ResetPasswordModel>.Instance)
         {

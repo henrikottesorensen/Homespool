@@ -157,7 +157,13 @@ public static class Program
             builder.Services.AddHomespoolLocalisation();
 
             builder.Services.AddControllers(options =>
-                                                options.Conventions.Add(new ApiExplorerVisibilityConvention()));
+            {
+                options.Conventions.Add(new ApiExplorerVisibilityConvention());
+
+                // A credential scope refusing an action is a 403, not a fault - and mapping it here
+                // rather than per action is what keeps a new file endpoint from answering 500.
+                options.Filters.Add<Authorisation.CredentialScopeDeniedFilter>();
+            });
 
             builder.Services.AddOpenApi();
 

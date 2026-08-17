@@ -147,6 +147,11 @@ public abstract class ApiTokenAuthenticationHandlerBase : AuthenticationHandler<
         if (principal.Identity is ClaimsIdentity identity)
         {
             identity.AddClaim(new Claim(ClaimTypes.AuthenticationMethod, AuthenticationMethod));
+
+            // Always, because every token has a scope. The claim's absence is what tells
+            // CallerResolver a request came in on something that is not a token at all - a sign-in
+            // cookie - and writing it unconditionally here is what keeps that signal honest.
+            identity.AddClaim(new Claim(HSClaimTypes.Scope, token.Scope));
         }
 
         Logger.LogInformation("API token {TokenId} authenticated user {UserId}.", token.Id, token.UserId);

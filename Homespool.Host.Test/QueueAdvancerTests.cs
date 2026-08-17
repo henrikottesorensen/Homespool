@@ -376,6 +376,71 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>Puts real bytes where the store expects this user's file.</summary>
+    /// <summary>
+    /// <b>The loop acts within the authority the work was accepted under, not merely as its owner.</b>
+    /// An entry whose recorded scope cannot print is left alone, though the person who queued it can
+    /// print perfectly well.
+    /// </summary>
+    /// <remarks>
+    /// Without the stored scope the membership half would be re-checked at send time and the
+    /// credential half would not, so a narrowly scoped token could queue work that then ran with its
+    /// owner's full rights - privilege escalation across a time boundary. Latent while the loop only
+    /// does what <c>Print</c> covers; the point of storing the scope is that it stops being latent the
+    /// day the loop gains a step.
+    /// </remarks>
+    [Fact]
+    public async Task AnEntryQueuedUnderAScopeThatCannotPrintIsNotActedOn()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+
+        QueuedPrint head = await context.QueuedPrints.SingleAsync(TestContext.Current.CancellationToken);
+
+        // A printer that would happily accept, so a refusal can only come from the scope.
+        ConnectAccepting();
+
+        // The owner may print - SeedAsync grants it. The credential that queued this may not.
+        head.QueuedByScope = CapabilitySet.Format([Capability.ViewPrinter, Capability.ViewQueue]);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+
+        context.PrintJobs.Should().BeEmpty("nothing may be started under a scope that cannot print");
+
+        (await context.QueuedPrints.SingleAsync(TestContext.Current.CancellationToken))
+            .Should().NotBeNull("and the entry stays where it is rather than being consumed");
+    }
+
+    /// <summary>
+    /// The ordinary case beside it: an entry queued under a scope that <i>can</i> print is started, so
+    /// the test above is measuring the scope rather than a loop that does nothing.
+    /// </summary>
+    [Fact]
+    public async Task AnEntryQueuedUnderAScopeThatCanPrintIsStarted()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+
+        ConnectAccepting();
+
+        QueuedPrint head = await context.QueuedPrints.SingleAsync(TestContext.Current.CancellationToken);
+        head.QueuedByScope = CapabilitySet.Format([Capability.Print]);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        context.PrintJobs.Should().NotBeEmpty("Print is what queueing and starting both need");
+    }
+
     private async Task WriteFileOnDiskAsync(string name)
     {
         string directory = Path.Combine(_storeRoot, "1-owner");
@@ -396,6 +461,21 @@ public sealed class QueueAdvancerTests : IDisposable
         actor.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
              .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
                                                             new CommandOutcome(PrinterEventType.Rejected, reason))));
+
+        _registry.Register(PrinterId, actor);
+    }
+
+    /// <summary>A printer that accepts whatever it is sent, so a refusal can only be ours.</summary>
+    private void ConnectAccepting()
+    {
+        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+        actor.IsOpen.Returns(true);
+        actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
+             .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
+                                                            new CommandOutcome(PrinterEventType.Finished, null))));
+        actor.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
+             .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
+                                                            new CommandOutcome(PrinterEventType.Finished, null))));
 
         _registry.Register(PrinterId, actor);
     }
@@ -575,6 +655,7 @@ public sealed class QueueAdvancerTests : IDisposable
             TrackingId = QueuedTrackingId,
             Position = 0,
             QueuedByUserId = 1,
+            QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
             QueuedAt = _clock.GetUtcNow(),
         });
 

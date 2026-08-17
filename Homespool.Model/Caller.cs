@@ -57,6 +57,20 @@ public sealed class Caller
     public bool IsScoped => Scope is not null;
 
     /// <summary>
+    /// The scope to store when this caller's authority has to outlive the request that carried it -
+    /// work accepted now and acted on later by something with no credential of its own.
+    /// </summary>
+    /// <remarks>
+    /// <b>An unscoped caller records <see cref="CapabilitySet.Everything"/> rather than an empty
+    /// string or a null.</b> Intersecting with every capability is identity, so the stored row means
+    /// exactly what the request meant - bounded by the owner's memberships and nothing else - while
+    /// keeping the column one shape with one reading. Recording "nothing" would silently strand the
+    /// work; recording a null would put an <c>is null</c> in the loop that reads it.
+    /// </remarks>
+    public string ScopeToRecord =>
+        CapabilitySet.Format(Scope is null ? CapabilitySet.Everything : Scope.Granted);
+
+    /// <summary>
     /// A caller whose credential permits everything its owner's memberships permit - the ordinary
     /// case today, and the only case a cookie session can produce.
     /// </summary>

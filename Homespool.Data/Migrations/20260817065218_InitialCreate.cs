@@ -564,6 +564,7 @@ namespace Homespool.Data.Migrations
                     PrintFileId = table.Column<long>(type: "INTEGER", nullable: false),
                     Position = table.Column<int>(type: "INTEGER", nullable: false),
                     QueuedByUserId = table.Column<long>(type: "INTEGER", nullable: false),
+                    QueuedByScope = table.Column<string>(type: "TEXT", maxLength: 512, nullable: false),
                     QueuedAt = table.Column<long>(type: "INTEGER", nullable: false)
                 },
                 constraints: table =>

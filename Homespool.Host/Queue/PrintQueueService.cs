@@ -120,6 +120,7 @@ public class PrintQueueService
             TrackingId = Guid.NewGuid(),
             Position = (last ?? -1) + 1,
             QueuedByUserId = caller.UserId,
+            QueuedByScope = caller.ScopeToRecord,
             QueuedAt = _timeProvider.GetUtcNow(),
         };
 

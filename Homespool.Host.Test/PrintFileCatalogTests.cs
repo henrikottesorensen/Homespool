@@ -263,6 +263,7 @@ public sealed class PrintFileCatalogTests : IDisposable
             PrintFileId = printFileId,
             Position = 0,
             QueuedByUserId = Alice,
+            QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
             QueuedAt = DateTimeOffset.UnixEpoch,
         };
 

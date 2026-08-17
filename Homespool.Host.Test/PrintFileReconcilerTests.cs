@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.PrintFiles;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -138,6 +139,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
             PrintFileId = row.Id,
             Position = 0,
             QueuedByUserId = Alice,
+            QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
             QueuedAt = DateTimeOffset.UnixEpoch,
         });
 

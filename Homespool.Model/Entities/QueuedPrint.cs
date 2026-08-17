@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Homespool.Model.Entities;
@@ -28,6 +29,9 @@ namespace Homespool.Model.Entities;
 /// </remarks>
 public class QueuedPrint
 {
+    /// <summary>The longest <see cref="QueuedByScope"/> string the column has to hold.</summary>
+    public const int ScopeMaxLength = 512;
+
     public long Id { get; set; }
 
     /// <summary>
@@ -105,6 +109,32 @@ public class QueuedPrint
     /// </para>
     /// </remarks>
     public long QueuedByUserId { get; set; }
+
+    /// <summary>
+    /// The scope of the credential this entry was accepted under, as <c>CapabilitySet</c> spells it.
+    /// The queue loop acts within it, not merely as its owner.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Provenance like <see cref="QueuedByUserId"/>, not state</b> - it records the authority that
+    /// accepted the work, and it does not change while the entry waits.
+    /// </para>
+    /// <para>
+    /// <b>Without it the loop would run work with more authority than the credential that queued
+    /// it</b> - the membership half is re-checked at send time and the credential half would not be,
+    /// which is privilege escalation across a time boundary. Latent while the loop only does what
+    /// <c>Print</c> covers; real the day it gains a step.
+    /// </para>
+    /// <para>
+    /// <b>A snapshot, not a reference to the token.</b> Revocation is deleting the token's row, so a
+    /// foreign key would have to either widen this work to unscoped on delete - the fail-open again,
+    /// with a database default doing it - or destroy queued prints as a side effect of revoking a key.
+    /// The honest cost is that <b>revoking a token does not withdraw work it already queued</b>;
+    /// membership revocation still stops it.
+    /// </para>
+    /// </remarks>
+    [MaxLength(ScopeMaxLength)]
+    public required string QueuedByScope { get; set; }
 
     public DateTimeOffset QueuedAt { get; set; }
 }

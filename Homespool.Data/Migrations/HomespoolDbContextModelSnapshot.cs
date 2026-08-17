@@ -692,6 +692,11 @@ namespace Homespool.Data.Migrations
                     b.Property<long>("QueuedAt")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("QueuedByScope")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
                     b.Property<long>("QueuedByUserId")
                         .HasColumnType("INTEGER");
 

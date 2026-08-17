@@ -13,7 +13,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
-using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
@@ -236,6 +235,20 @@ public sealed class QueueAdvancer : BackgroundService
     /// self-limiting: the row closes, the queue is empty, the printer drops off the list.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// The authority a queue entry was accepted under - <b>not merely the person who queued it</b>.
+    /// </summary>
+    /// <remarks>
+    /// The loop has no credential of its own, so it acts on the one recorded when the work was
+    /// accepted. Acting as the user alone would run their work with more authority than the token that
+    /// queued it, which is privilege escalation across a time boundary: the membership half is
+    /// re-checked at send time, and this is what re-checks the credential half beside it.
+    /// </remarks>
+    private static Caller CallerFor(QueuedPrint head)
+    {
+        return Caller.Scoped(head.QueuedByUserId, CapabilitySet.Parse(head.QueuedByScope));
+    }
+
     private static Task<List<int>> PrintersNeedingAPassAsync(HomespoolDbContext dbContext,
                                                              CancellationToken cancellationToken)
     {
@@ -585,7 +598,7 @@ public sealed class QueueAdvancer : BackgroundService
 
         try
         {
-            CommandOutcome? outcome = await sender.SendAsync(printer, file, CallerResolver.ForUserId(head.QueuedByUserId), cancellationToken);
+            CommandOutcome? outcome = await sender.SendAsync(printer, file, CallerFor(head), cancellationToken);
 
             if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {
@@ -670,7 +683,7 @@ public sealed class QueueAdvancer : BackgroundService
         try
         {
             CommandOutcome<FileInfoEventDataDTO>? answer = await commands.AskAsync(
-                printerId, new PrusaConnect.Commands.SendFileInfo { Path = file.PrinterPath }, CallerResolver.ForUserId(head.QueuedByUserId), cancellationToken);
+                printerId, new PrusaConnect.Commands.SendFileInfo { Path = file.PrinterPath }, CallerFor(head), cancellationToken);
 
             existing = answer?.Answer;
         }
@@ -766,7 +779,7 @@ public sealed class QueueAdvancer : BackgroundService
         try
         {
             CommandOutcome<InfoEventDataDTO>? answer =
-                await commands.AskAsync(printerId, new PrusaConnect.Commands.SendInfo(), CallerResolver.ForUserId(head.QueuedByUserId), cancellationToken);
+                await commands.AskAsync(printerId, new PrusaConnect.Commands.SendInfo(), CallerFor(head), cancellationToken);
 
             free = answer?.Answer?.Storages?
                 .FirstOrDefault(storage => storage.MountPoint == "/usb")?
@@ -855,7 +868,7 @@ public sealed class QueueAdvancer : BackgroundService
         {
             CommandOutcome? outcome = await commands.SendCommandAsync(printerId,
                                                                       new StartPrint(printerPath),
-                                                                      CallerResolver.ForUserId(head.QueuedByUserId),
+                                                                      CallerFor(head),
                                                                       cancellationToken);
 
             if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)

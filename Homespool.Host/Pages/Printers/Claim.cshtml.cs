@@ -79,6 +79,14 @@ public class ClaimModel : PageModel
 
     public class InputModel
     {
+        [StringLength(200)]
+        [Display(Name = "Common_Name")]
+        public string? Name { get; set; }
+
+        [StringLength(200)]
+        [Display(Name = "Printers_Location")]
+        public string? Location { get; set; }
+
         /// <summary>The registration code as typed, before normalisation.</summary>
         /// <remarks>
         /// The bound length is generous rather than exactly ten, because
@@ -90,14 +98,6 @@ public class ClaimModel : PageModel
         [StringLength(32, ErrorMessage = "Validation_ClaimCodeShape")]
         [Display(Name = "Printers_RegistrationCode")]
         public string Code { get; set; } = string.Empty;
-
-        [StringLength(200)]
-        [Display(Name = "Common_Name")]
-        public string? Name { get; set; }
-
-        [StringLength(200)]
-        [Display(Name = "Printers_Location")]
-        public string? Location { get; set; }
 
         [Display(Name = "Common_Team")]
         public int? TeamId { get; set; }

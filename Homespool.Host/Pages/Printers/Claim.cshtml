@@ -25,6 +25,20 @@
     <div class="col-md-6">
         <form method="post">
             <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
+            @* Name and Location lead, in that order, because Add.cshtml's form opens with the same
+               two - the two enrolment pages differ only in how the printer is identified, so the
+               fields they share read the same way on both. The code follows as this page's own
+               field rather than opening it. *@
+            <div class="form-floating mb-3">
+                <input asp-for="Input.Name" class="form-control" placeholder="@Localiser["Printers_NamePlaceholder"]" />
+                <label asp-for="Input.Name" class="form-label"></label>
+                <span asp-validation-for="Input.Name" class="text-danger"></span>
+            </div>
+            <div class="form-floating mb-3">
+                <input asp-for="Input.Location" class="form-control" placeholder="@Localiser["Common_LocationPlaceholder"]" />
+                <label asp-for="Input.Location" class="form-label"></label>
+                <span asp-validation-for="Input.Location" class="text-danger"></span>
+            </div>
             <div class="form-floating mb-3">
                 @* 10 characters, per CodeGenerator.CodeLength. The placeholder must be drawn from
                    Crockford's own alphabet (no I, L, O or U) - the previous one was 24 base36
@@ -35,16 +49,6 @@
                        autocapitalize="characters" autocorrect="off" spellcheck="false" />
                 <label asp-for="Input.Code" class="form-label"></label>
                 <span asp-validation-for="Input.Code" class="text-danger"></span>
-            </div>
-            <div class="form-floating mb-3">
-                <input asp-for="Input.Name" class="form-control" placeholder="@Localiser["Printers_NamePlaceholder"]" />
-                <label asp-for="Input.Name" class="form-label"></label>
-                <span asp-validation-for="Input.Name" class="text-danger"></span>
-            </div>
-            <div class="form-floating mb-3">
-                <input asp-for="Input.Location" class="form-control" placeholder="@Localiser["Common_LocationPlaceholder"]" />
-                <label asp-for="Input.Location" class="form-label"></label>
-                <span asp-validation-for="Input.Location" class="text-danger"></span>
             </div>
             <div class="mb-3">
                 <label asp-for="Input.TeamId" class="form-label"></label>

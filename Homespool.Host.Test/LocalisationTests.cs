@@ -430,6 +430,7 @@ public sealed class LocalisationTests
             // Danish had to tell them apart and did. The English arguably should too - "Add to queue"
             // on the button - which is a UI change rather than a translation one.
             "Queue",
+
         ];
 
         IReadOnlyDictionary<string, string> english = ReadResources("SharedResource.resx");
@@ -477,7 +478,9 @@ public sealed class LocalisationTests
                      .Select(File.ReadAllText));
 
         // Built from a prefix at run time, so they are never written out in full anywhere.
-        string[] constructed = ["PrinterStatus_", "Intent_"];
+        // Capability_ is CapabilityText, which names a capability from the enum member - the same
+        // seam, and the reason a grep for the key finds nothing.
+        string[] constructed = ["PrinterStatus_", "Intent_", "Capability_"];
         string[] constructedSuffixes = ["_One", "_Other"];
 
         List<string> orphans = ReadResources("SharedResource.resx")

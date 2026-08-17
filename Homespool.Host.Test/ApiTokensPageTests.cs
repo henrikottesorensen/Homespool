@@ -11,8 +11,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Homespool.Data;
+using Homespool.Host.Localisation;
 using Homespool.Host.Pages.Account.Manage;
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -53,6 +55,72 @@ public sealed class ApiTokensPageTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// <b>The form mints what the boxes say.</b> A person narrowing the scope gets a token that
+    /// carries exactly that, which is the whole feature.
+    /// </summary>
+    [Fact]
+    public async Task CreatingATokenStoresTheScopeThatWasTicked()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (ApiTokensModel model, _) = await NewModelAsync(context, "slicer");
+        model.Input.Scope = [Capability.UploadOwnFiles, Capability.Print];
+
+        // Act
+        await model.OnPostAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        ApiToken token = await context.ApiTokens.SingleAsync(TestContext.Current.CancellationToken);
+        CapabilitySet stored = CapabilitySet.Parse(token.Scope);
+
+        stored.Allows(Capability.UploadOwnFiles).Should().BeTrue();
+        stored.Allows(Capability.Print).Should().BeTrue();
+        stored.Allows(Capability.ViewPrinter).Should().BeTrue("Print implies it, and Format closes the set");
+        stored.Allows(Capability.ManipulateOwnFiles).Should().BeFalse("nobody ticked it");
+        stored.Allows(Capability.ManagePrinter).Should().BeFalse("nor that");
+    }
+
+    /// <summary>
+    /// The form opens with everything ticked, so narrowing is a deliberate act rather than a chore -
+    /// and so the default is the credential somebody expects.
+    /// </summary>
+    [Fact]
+    public async Task TheFormOpensWithEverythingTicked()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (ApiTokensModel model, _) = await NewModelAsync(context, string.Empty);
+
+        // Act
+        await model.OnGetAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        model.Input.Scope.Should().BeEquivalentTo(CapabilitySet.Everything);
+    }
+
+    /// <summary>
+    /// <b>Unticking everything is refused, though an empty scope is representable on purpose.</b> The
+    /// model must be able to say "this token can do nothing" - that is what keeps empty from being
+    /// overloaded to mean unrestricted - but nobody arrives at this form intending to mint one.
+    /// </summary>
+    [Fact]
+    public async Task ATokenWithNothingTickedIsRefused()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (ApiTokensModel model, _) = await NewModelAsync(context, "useless");
+        model.Input.Scope = [];
+        model.ModelState.AddModelError("Input.Scope", "Tokens_ScopeRequired");
+
+        // Act
+        await model.OnPostAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ApiTokens.Should().BeEmpty("an invalid form mints nothing");
+        model.CreatedToken.Should().BeNull();
+    }
+
     private static async Task<(ApiTokensModel model, DefaultHttpContext httpContext)> NewModelAsync(
         HomespoolDbContext context,
         string name)
@@ -64,10 +132,15 @@ public sealed class ApiTokensPageTests : IDisposable
         (await users.CreateAsync(user)).Succeeded.Should().BeTrue();
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
-        ApiTokensModel model = new(new ApiTokenService(context), users, NullLogger<ApiTokensModel>.Instance, TestLocaliser.Shared())
+        ApiTokensModel model = new(new ApiTokenService(context), users, NullLogger<ApiTokensModel>.Instance,
+                                   TestLocaliser.Shared(), new CapabilityText(TestLocaliser.Shared()))
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
-            Input = new ApiTokensModel.InputModel { Name = name },
+            Input = new ApiTokensModel.InputModel
+            {
+                Name = name,
+                Scope = [.. CapabilitySet.Everything],
+            },
         };
 
         return (model, httpContext);

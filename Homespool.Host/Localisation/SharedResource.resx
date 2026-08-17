@@ -1820,4 +1820,58 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Intent_SetTemperatures" xml:space="preserve">
     <value>Set temperatures</value>
   </data>
+  <data name="Capability_ViewPrinter" xml:space="preserve">
+    <value>See printers and their state</value>
+  </data>
+  <data name="Capability_ViewQueue" xml:space="preserve">
+    <value>See the print queue</value>
+  </data>
+  <data name="Capability_ViewHistory" xml:space="preserve">
+    <value>See print history</value>
+  </data>
+  <data name="Capability_Print" xml:space="preserve">
+    <value>Queue prints, and stop your own</value>
+  </data>
+  <data name="Capability_ControlPrinter" xml:space="preserve">
+    <value>Control printers, including other people's prints</value>
+  </data>
+  <data name="Capability_ManagePrinter" xml:space="preserve">
+    <value>Rename, relocate and re-enrol printers</value>
+  </data>
+  <data name="Capability_ViewCamera" xml:space="preserve">
+    <value>See cameras</value>
+  </data>
+  <data name="Capability_ManageCamera" xml:space="preserve">
+    <value>Add, change and remove cameras</value>
+  </data>
+  <data name="Capability_ViewOwnFiles" xml:space="preserve">
+    <value>List and download your files</value>
+  </data>
+  <data name="Capability_UploadOwnFiles" xml:space="preserve">
+    <value>Upload new files</value>
+  </data>
+  <data name="Capability_ManipulateOwnFiles" xml:space="preserve">
+    <value>Rename, delete and replace your files</value>
+  </data>
+  <data name="Capability_Everything" xml:space="preserve">
+    <value>Everything you can do</value>
+  </data>
+  <data name="Capability_Nothing" xml:space="preserve">
+    <value>Nothing</value>
+  </data>
+  <data name="Common_ListSeparator" xml:space="preserve">
+    <value>, </value>
+  </data>
+  <data name="Tokens_ScopeLegend" xml:space="preserve">
+    <value>What this token may do</value>
+  </data>
+  <data name="Tokens_ScopeHint" xml:space="preserve">
+    <value>A token can never do more than you can. Untick anything the script does not need.</value>
+  </data>
+  <data name="Tokens_ScopeColumn" xml:space="preserve">
+    <value>Permissions</value>
+  </data>
+  <data name="Tokens_ScopeRequired" xml:space="preserve">
+    <value>Choose at least one thing this token may do.</value>
+  </data>
 </root>

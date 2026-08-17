@@ -1760,4 +1760,58 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Intent_SetTemperatures" xml:space="preserve">
     <value>Sæt temperaturer</value>
   </data>
+  <data name="Capability_ViewPrinter" xml:space="preserve">
+    <value>Se printere og deres tilstand</value>
+  </data>
+  <data name="Capability_ViewQueue" xml:space="preserve">
+    <value>Se printkøen</value>
+  </data>
+  <data name="Capability_ViewHistory" xml:space="preserve">
+    <value>Se printhistorik</value>
+  </data>
+  <data name="Capability_Print" xml:space="preserve">
+    <value>Sætte print i kø og stoppe dine egne</value>
+  </data>
+  <data name="Capability_ControlPrinter" xml:space="preserve">
+    <value>Styre printere, også andres print</value>
+  </data>
+  <data name="Capability_ManagePrinter" xml:space="preserve">
+    <value>Omdøbe, flytte og gentilmelde printere</value>
+  </data>
+  <data name="Capability_ViewCamera" xml:space="preserve">
+    <value>Se kameraer</value>
+  </data>
+  <data name="Capability_ManageCamera" xml:space="preserve">
+    <value>Tilføje, ændre og fjerne kameraer</value>
+  </data>
+  <data name="Capability_ViewOwnFiles" xml:space="preserve">
+    <value>Se og hente dine filer</value>
+  </data>
+  <data name="Capability_UploadOwnFiles" xml:space="preserve">
+    <value>Uploade nye filer</value>
+  </data>
+  <data name="Capability_ManipulateOwnFiles" xml:space="preserve">
+    <value>Omdøbe, slette og erstatte dine filer</value>
+  </data>
+  <data name="Capability_Everything" xml:space="preserve">
+    <value>Alt hvad du kan</value>
+  </data>
+  <data name="Capability_Nothing" xml:space="preserve">
+    <value>Intet</value>
+  </data>
+  <data name="Common_ListSeparator" xml:space="preserve">
+    <value>, </value>
+  </data>
+  <data name="Tokens_ScopeLegend" xml:space="preserve">
+    <value>Hvad denne token må</value>
+  </data>
+  <data name="Tokens_ScopeHint" xml:space="preserve">
+    <value>En token kan aldrig mere end dig selv. Fjern fluebenet ved alt, som scriptet ikke har brug for.</value>
+  </data>
+  <data name="Tokens_ScopeColumn" xml:space="preserve">
+    <value>Rettigheder</value>
+  </data>
+  <data name="Tokens_ScopeRequired" xml:space="preserve">
+    <value>Vælg mindst én ting, denne token må.</value>
+  </data>
 </root>

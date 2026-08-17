@@ -60,6 +60,7 @@ public static class Registration
         // Same, and it holds the one above so that a status inside an error sentence reads in the
         // language of the sentence around it.
         services.AddScoped<ErrorText>();
+        services.AddScoped<CapabilityText>();
 
         // And the same again for intents, whose own Name is documented as being for logs.
         services.AddScoped<PrinterIntentText>();

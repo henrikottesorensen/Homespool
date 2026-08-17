@@ -30,6 +30,31 @@
                 <label asp-for="Input.Name" class="form-label"></label>
                 <span asp-validation-for="Input.Name" class="text-danger"></span>
             </div>
+
+            <fieldset class="mb-3">
+                <legend class="fs-6 fw-semibold">@Localiser["Tokens_ScopeLegend"]</legend>
+                <p class="text-muted small">@Localiser["Tokens_ScopeHint"]</p>
+                <span asp-validation-for="Input.Scope" class="text-danger d-block mb-2"></span>
+
+                @foreach (var group in Homespool.Host.Localisation.CapabilityText.Groups)
+                {
+                    <div class="mb-2">
+                        <div class="form-label small text-uppercase text-muted">@Model.Capabilities.Group(group.groupKey)</div>
+                        @foreach (var capability in group.capabilities)
+                        {
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="Input.Scope"
+                                       value="@capability" id="scope-@capability"
+                                       checked="@(Model.Input.Scope.Contains(capability))" />
+                                <label class="form-check-label" for="scope-@capability">
+                                    @Model.Capabilities.For(capability)
+                                </label>
+                            </div>
+                        }
+                    </div>
+                }
+            </fieldset>
+
             <button type="submit" class="w-100 btn btn-lg btn-primary">@Localiser["Tokens_Create"]</button>
         </form>
     </div>
@@ -47,6 +72,7 @@ else
         <thead>
             <tr>
                 <th scope="col">@Localiser["Common_Name"]</th>
+                <th scope="col">@Localiser["Tokens_ScopeColumn"]</th>
                 <th scope="col">@Localiser["Tokens_Created"]</th>
                 <th scope="col"></th>
             </tr>
@@ -56,6 +82,7 @@ else
         {
             <tr>
                 <td class="typed-name">@token.Name</td>
+                <td class="small">@Model.Capabilities.Describe(token.Scope)</td>
                 <td>@token.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
                 <td class="text-end">
                     <form method="post" asp-page-handler="Revoke">

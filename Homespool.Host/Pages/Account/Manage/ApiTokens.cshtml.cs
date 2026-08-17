@@ -43,13 +43,17 @@ public class ApiTokensModel : PageModel
     private readonly ILogger<ApiTokensModel> _logger;
 
     public ApiTokensModel(ApiTokenService tokens, UserManager<HSUser> userManager, ILogger<ApiTokensModel> logger,
-                          IStringLocalizer<SharedResource> localiser)
+                          IStringLocalizer<SharedResource> localiser, CapabilityText capabilities)
     {
         _tokens = tokens;
         _userManager = userManager;
         _localiser = localiser;
         _logger = logger;
+        Capabilities = capabilities;
     }
+
+    /// <summary>Names the capabilities for both the form and the listing, so the two cannot disagree.</summary>
+    public CapabilityText Capabilities { get; }
 
     [BindProperty]
     public InputModel Input { get; set; } = new();
@@ -72,10 +76,27 @@ public class ApiTokensModel : PageModel
         [StringLength(ApiToken.NameMaxLength, MinimumLength = 1)]
         [Display(Name = "Manage_TokenName")]
         public string Name { get; set; } = string.Empty;
+
+        /// <summary>
+        /// What the token may do. Ticked boxes, so the default is what the form renders rather than
+        /// what this field says.
+        /// </summary>
+        /// <remarks>
+        /// <b>At least one is required, though an empty scope is representable on purpose.</b> A token
+        /// that can do nothing is a thing the model must be able to express - it is what keeps "empty"
+        /// from being overloaded to mean "unrestricted" - but nobody arrives at this form intending to
+        /// mint one, so unticking everything is far likelier to be a slip than a wish.
+        /// </remarks>
+        [MinLength(1, ErrorMessage = "Tokens_ScopeRequired")]
+        public IList<Capability> Scope { get; set; } = [];
     }
 
     public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
     {
+        // Everything ticked, so the form opens on the credential somebody expects and narrowing is a
+        // deliberate act rather than a chore. It is also exactly what tokens were before scopes.
+        Input.Scope = [.. CapabilitySet.Everything];
+
         return await LoadAsync(cancellationToken) ? Page() : NotFound();
     }
 
@@ -95,12 +116,16 @@ public class ApiTokensModel : PageModel
             return Page();
         }
 
-        (ApiToken token, string plaintext) = await _tokens.CreateAsync(user.Id, Input.Name, CapabilitySet.Everything, cancellationToken);
+        (ApiToken token, string plaintext) =
+            await _tokens.CreateAsync(user.Id, Input.Name, Input.Scope, cancellationToken);
 
-        _logger.LogInformation("User {UserId} created API token {TokenId}.", user.Id, token.Id);
+        // The scope is logged with it: "my script stopped working" is answered by knowing what the
+        // key was minted able to do, and the scope is the one part of a token that is not secret.
+        _logger.LogInformation("User {UserId} created API token {TokenId} scoped to {Scope}.",
+                               user.Id, token.Id, token.Scope);
 
         CreatedToken = plaintext;
-        Input = new InputModel();
+        Input = new InputModel { Scope = [.. CapabilitySet.Everything] };
 
         // The secret is in this response body and must not outlive it. POST responses are already
         // non-cacheable under RFC 9111 absent explicit freshness information, which nothing here

@@ -56,6 +56,21 @@ WORKDIR "/src/Homespool.Host"
 # gitignored rather than committed, so they must be materialised here before publish captures the
 # static web assets.
 RUN dotnet libman restore
+# The commit this image is built from, because the image cannot work it out for itself: .dockerignore
+# excludes **/.git, so SourceLink - which stamps every local build with the commit during compilation -
+# finds no repository in here and omits it. The omission is SILENT, guarded by an MSBuild condition
+# rather than a warning, which made the deployed artefact the one build that could not say what it is.
+#
+# Passed as SourceRevisionId rather than through a build argument on each command because MSBuild reads
+# ENVIRONMENT VARIABLES AS PROPERTIES: one line covers both the build below and the publish stage that
+# derives from it, with no change to either command line. Empty is a supported value - a source tarball
+# has no commit - and then --version reports an unknown one instead of the build failing.
+#
+# Set here rather than at the top of the stage so the restore layers above still cache on the project
+# files. `docker compose build` cannot supply this (compose does no command substitution), which is
+# what ./build.sh is for; see tools/gitref.sh.
+ARG HOMESPOOL_GITREF=
+ENV SourceRevisionId=$HOMESPOOL_GITREF
 RUN dotnet build "./Homespool.Host.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 FROM build AS publish

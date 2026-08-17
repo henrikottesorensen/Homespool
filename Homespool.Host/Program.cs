@@ -98,6 +98,22 @@ public static class Program
             return;
         }
 
+        // Which build this is, and equally not a server run. Answered here rather than after the
+        // logger for the same reason as the applet above: it must work on a deployment that cannot
+        // start at all - no database mounted, a broken .env - because "what is actually running?" is
+        // asked precisely when something is wrong. It is also the answer the AGPL's offer of source
+        // needs, so it has to hold on an image nobody can log in to.
+        //
+        // Note what an OLDER image does with this argument, which is documented at length in
+        // setup-env.sh: it does not recognise it, hands it to WebApplication.CreateBuilder, STARTS
+        // THE SERVER and prints a page of JSON. Anything that ever scripts this must bound it in
+        // time and check that the output looks like an answer, rather than trusting it.
+        if (args.Length > 0 && args[0] == BuildInformation.VersionArgument)
+        {
+            Environment.ExitCode = BuildInformation.WriteVersion("Homespool");
+            return;
+        }
+
         Log.Logger = new LoggerConfiguration()
                      .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
                      .Enrich.FromLogContext()

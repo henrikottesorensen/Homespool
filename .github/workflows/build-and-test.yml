@@ -57,8 +57,13 @@ jobs:
         run: ./tests/setup-env.test.sh
 
       # Both images: the application and the proxy that terminates TLS in front of it.
+      #
+      # Through ./build.sh rather than `docker compose build` directly, for the same reason this job
+      # builds the images at all: the wrapper is what a person is told to run, so it is the thing that
+      # has to keep working. Calling compose here would leave the commit-stamping path - the one that
+      # only fails by producing an image that quietly reports an unknown commit - tested by nothing.
       - name: Build the container images
-        run: docker compose build
+        run: ./build.sh
 
       # always(), so a failed test still tears down. On an ephemeral runner that costs nothing; the
       # same script runs on a laptop, where it does.

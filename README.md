@@ -178,6 +178,33 @@ automatically. The database is created and migrated on first start.
 > [`PrinterTls`](#turning-printertls-off-and-when-that-is-legitimate). The fake printer under
 > [Testing without a printer](#testing-without-a-printer) needs neither.
 
+### Which build is this?
+
+Every binary reports the version it was built as and the commit it came from:
+
+```bash
+docker compose run --rm --entrypoint dotnet homespool Homespool.Host.dll --version
+```
+
+```
+Homespool 0.0.1
+commit dd029e0fa7a6a29b699dc1d7f3b414ae2903ee38
+```
+
+It answers before anything else starts, so it works on a deployment that cannot start at all — no
+database mounted, a broken `.env` — which is when the question usually gets asked. `--version` works
+the same on the fake printer (`dotnet run --project Homespool.FakePrinter.Cli -- --version`).
+
+**Build the images with `./build.sh` rather than `docker compose build`** if the image is going to be
+run, kept or shipped. Compose cannot work the commit out for itself, so a bare `docker compose build`
+produces an image that answers `commit unknown` — and only says so if somebody thinks to ask.
+`./build.sh` takes the same arguments and passes them straight through. The Raspberry Pi image and CI
+already do this for themselves.
+
+`(modified)` after the commit means the image was built from a working tree that differed from that
+commit, so the commit names its starting point and not the contents. Builds made straight from a
+source archive have no commit to report and say so.
+
 ---
 
 ## First run
@@ -680,3 +707,5 @@ Copyright (C) 2025-2026 Henrik O. Sørensen
 
 [GNU Affero General Public License v3.0](LICENSE.md). If you run a modified version as a network
 service, the AGPL requires you to offer that version's source to its users.
+[`--version`](#which-build-is-this) is what makes that offer answerable: it names the commit a running
+binary was built from, so *"which version"* has an answer somebody can act on.

@@ -4,6 +4,12 @@ services:
     build:
       context: .
       dockerfile: Homespool.Host/Dockerfile
+      args:
+        # The commit to stamp into the image, which `docker compose build` CANNOT FILL IN: compose
+        # does no command substitution, so this is only ever whatever the environment already holds.
+        # ./build.sh is the wrapper that computes it and calls compose; use that if the image is going
+        # anywhere. Empty is supported and means --version reports an unknown commit.
+        HOMESPOOL_GITREF: "${HOMESPOOL_GITREF:-}"
 
     # Pinned, because Docker otherwise derives it from the container id - a new name on every
     # recreation. The printer certificate carries this machine's hostname and is issued once and then

@@ -8,6 +8,24 @@
         <TargetFramework>net10.0</TargetFramework>
         <Nullable>enable</Nullable>
 
+        <!--
+            Stated rather than defaulted. Without this every assembly carried 1.0.0 - the SDK's
+            default, which nobody chose and which claims a finished product; this project has no
+            release and no git tag at all. The version argument reads it, so somebody sees it.
+
+            (Note for anyone editing this comment: a doubled hyphen cannot appear inside an XML
+            comment, so the argument is named in prose here. Writing it out makes this file fail to
+            parse, and the error that follows is NETSDK1013 "TargetFramework value '' was not
+            recognized" on every project - naming neither this file nor the reason.)
+
+            The commit is NOT set here. SourceLink ships inside the SDK and resolves SourceRevisionId
+            from the repository, which the SDK appends as "+<sha>", so every local build is already
+            stamped. A container build is the exception, because .dockerignore excludes **/.git: the
+            Dockerfile passes the value in as a SourceRevisionId environment variable instead, since
+            MSBuild reads environment variables as properties. See Homespool.Host/BuildInformation.cs.
+        -->
+        <VersionPrefix>0.0.1</VersionPrefix>
+
         <!-- Nothing here is allowed to accumulate warnings, so they are failures. -->
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
 

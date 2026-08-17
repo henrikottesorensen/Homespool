@@ -31,6 +31,13 @@ public static class Program
             return 1;
         }
 
+        // Before the verb switch, because it is not a verb: no server is contacted and no identity
+        // file is read, so it answers on a machine with neither.
+        if (args[0] == BuildInformation.VersionArgument)
+        {
+            return BuildInformation.WriteVersion("fakeprinter");
+        }
+
         Dictionary<string, string> named = ParseNamedArguments(args);
 
         // Refused rather than ignored. An unrecognised option is silently dropped by the parser above,
@@ -88,6 +95,7 @@ public static class Program
             "  fakeprinter run    --server <url> [--identity <file>] [--capture <path>] [--printing] [--interval-ms <n>] [--events-every-nth <n>] [--events-every-seconds <n>] [--tools <n>] [--mmu] [--junk-fields <n>] [--junk-distinct]");
         Console.WriteLine(
             "  fakeprinter blast  --server <url> [--identity <file>] [--events-every-nth <n>] [--events-every-seconds <n>] [--tools <n>] [--mmu] [--junk-fields <n>] [--junk-distinct]");
+        Console.WriteLine("  fakeprinter --version");
         Console.WriteLine();
         Console.WriteLine("--events-every-nth <n> makes every n-th message a STATE_CHANGED event rather");
         Console.WriteLine("than telemetry - a fixed ratio, 10 matching the firmware ratio, which is what");

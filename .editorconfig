@@ -582,7 +582,14 @@ dotnet_diagnostic.SA1124.severity = none
 dotnet_diagnostic.SA1127.severity = none
 dotnet_diagnostic.SA1201.severity = none
 dotnet_diagnostic.SA1202.severity = none
-dotnet_diagnostic.SA1204.severity = warning
+# Off, and not a judgement on the rule: static-before-instance is right most of the time, and the
+# exception is the one thing it cannot express - a private static helper reads best beneath the
+# instance method that calls it, not lifted to the top away from its only caller. Suggestion would
+# keep the nudge without failing the build, and is deliberately not used: what makes this a problem
+# is the flagging itself, which a suggestion still does. Field ordering is unaffected either way -
+# SA1203 and SA1214 order fields among themselves, constants first and readonly before
+# non-readonly, and neither one looks at static.
+dotnet_diagnostic.SA1204.severity = none
 # Off, and it cannot be anything else: SA1210 sorts the whole list alphabetically, so it wants
 # Homespool above Microsoft - exactly what the layout moves to the bottom. UA1000 takes over
 # ordering entirely. SA1208, SA1209, SA1211, SA1216 and SA1217 are unaffected and stay on.

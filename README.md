@@ -401,6 +401,12 @@ configures it when you add one. Its port is not published, and every viewing pat
 Homespool so the camera's own permission check applies. `GO2RTC_USERNAME` and `GO2RTC_PASSWORD` in
 `.env` are its credential — `setup-env.sh` generates them; set **both or neither**.
 
+**Cameras need that credential.** Without it Homespool declines to use the sidecar at all: adding a
+camera is refused and an existing one stops producing a picture, with the reason in the
+administrator's banner. That is deliberate — go2rtc's API takes a source address as a parameter and
+can run commands, so an unauthenticated sidecar will do as it is told by anything that can reach it,
+and a camera address is a way to reach it. A deployment with no cameras can leave both empty.
+
 **Frames are fetched only while somebody is looking**, so a page left open stays current and a
 camera nobody is watching costs nothing. An attached camera is grabbed at roughly half a second, a
 1080p H.264 network camera at two to three. Neither is a live stream: this is "is the print still all

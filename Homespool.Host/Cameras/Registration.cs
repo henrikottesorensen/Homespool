@@ -79,7 +79,10 @@ public static class Registration
     {
         CameraOptions options = serviceProvider.GetRequiredService<IOptions<CameraOptions>>().Value;
 
-        if (string.IsNullOrEmpty(options.ApiUsername) || string.IsNullOrEmpty(options.ApiPassword))
+        // Not a silent skip any more: Go2RtcClient refuses every call when this is false, so a client
+        // without the header is never actually used. Returning early keeps this from inventing a
+        // half-credential out of one configured half - see CameraOptions.IsAuthenticated.
+        if (!options.IsAuthenticated)
         {
             return;
         }

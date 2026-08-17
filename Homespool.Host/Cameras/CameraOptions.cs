@@ -1,3 +1,5 @@
+using System;
+
 namespace Homespool.Host.Cameras;
 
 /// <summary>
@@ -23,12 +25,14 @@ public class CameraOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Defence in depth, not the access control.</b> go2rtc's authentication is a single
-    /// credential for its whole API - it has no notion of which streams a caller may see - so it
-    /// cannot express "this account may view the printer camera and not the workshop one". That
-    /// remains <c>CameraAccessService</c>'s job, and every viewing path is still proxied by
-    /// Homespool. What this buys is that the sidecar is not wide open to anything else that can
-    /// reach it, and a port published by accident is not immediately a camera feed.
+    /// <b>Required, not optional</b> — see <see cref="IsAuthenticated"/> for what changes without it,
+    /// and why that reverses the earlier reading of this setting.
+    /// </para>
+    /// <para>
+    /// <b>Not the access control, all the same.</b> go2rtc's authentication is a single credential
+    /// for its whole API - it has no notion of which streams a caller may see - so it cannot express
+    /// "this account may view the printer camera and not the workshop one". That remains
+    /// <c>CameraAccessService</c>'s job, and every viewing path is still proxied by Homespool.
     /// </para>
     /// <para>
     /// <b>Passed to the sidecar on its command line, never written into its config file</b>
@@ -40,13 +44,68 @@ public class CameraOptions
     public string ApiUsername { get; set; } = string.Empty;
 
     /// <summary>
-    /// Password for the stream server's API. Empty means the sidecar is unauthenticated.
+    /// Password for the stream server's API. Both halves must be set for cameras to work at all.
+    /// </summary>
+    public string ApiPassword { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Whether the sidecar has a credential, and therefore whether cameras work at all.
     /// </summary>
     /// <remarks>
-    /// Both halves must be set for a header to be sent. An empty pair is the unauthenticated
-    /// arrangement, which is what a deployment that never published the sidecar's port already had.
+    /// <para>
+    /// <b>Decided by configuration alone, never by asking the sidecar</b> — the same rule as
+    /// <see cref="Services.SmtpOptions.IsConfigured"/>, and for the same reason: a service being
+    /// briefly unreachable must not quietly change what this deployment permits.
+    /// </para>
+    /// <para>
+    /// <b>Both halves or neither, and that is measured rather than assumed</b> (2026-08-09): a
+    /// username with an empty password turns go2rtc's authentication <i>on</i> with an empty key and
+    /// answers 401 to everything, Homespool included. So half a credential is worse than none, and
+    /// this predicate is the one place that judgement is made.
+    /// </para>
+    /// <para>
+    /// <b>Why an absent credential now stops cameras rather than merely omitting a header</b>
+    /// (2026-08-17). It used to be defence in depth: the sidecar's port is not published, so an empty
+    /// pair was the arrangement every deployment already had. That reasoning covered the outside and
+    /// missed the inside. go2rtc's API takes an ad-hoc source in <c>src</c> and supports <c>exec:</c>,
+    /// so a camera source naming the sidecar's own API is a way for a team member to run a command
+    /// inside a container that mounts <c>/dev</c> and can reach the printer listener directly. Its
+    /// own credential is what refuses that self-fetch — so with no credential there is nothing between
+    /// the two, and the safe answer is to decline to use the sidecar at all rather than to use it
+    /// unauthenticated. <see cref="CameraSourcePolicy"/> is the other half of that argument.
+    /// </para>
     /// </remarks>
-    public string ApiPassword { get; set; } = string.Empty;
+    public bool IsAuthenticated => !string.IsNullOrEmpty(ApiUsername) && !string.IsNullOrEmpty(ApiPassword);
+
+    /// <summary>
+    /// Whether this credential can reach the sidecar unchanged.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The two halves travel by different roads and the roads disagree.</b> Compose hands this
+    /// process the value as a plain YAML environment variable, and hands the sidecar the same value
+    /// interpolated into a <i>JSON</i> string on its command line. A <c>"</c> makes that JSON
+    /// invalid; a <c>\</c> is read as a JSON escape, so <c>has\back</c> arrives at the sidecar as
+    /// <c>has</c>, backspace, <c>ack</c> while arriving here intact.
+    /// </para>
+    /// <para>
+    /// <b>The backslash case is why this is checked rather than documented alone.</b> It fails
+    /// silently: both halves look configured, this deployment believes it has a credential, and every
+    /// camera answers 401 with nothing saying why. Base64 output contains neither character, which is
+    /// why <c>openssl rand -base64 24</c> is what the documentation recommends — but a hand-edited
+    /// <c>.env</c> never passes through the wizard that would have said so.
+    /// </para>
+    /// <para>
+    /// This is a judgement about configuration, not a refusal: a credential that cannot survive the
+    /// trip leaves cameras as broken as no credential would, so refusing here would add nothing that
+    /// the sidecar's own 401 does not already do. What it buys is the diagnosis.
+    /// </para>
+    /// </remarks>
+    public bool CredentialSurvivesTransport =>
+        !ApiUsername.Contains('"', StringComparison.Ordinal)
+        && !ApiUsername.Contains('\\', StringComparison.Ordinal)
+        && !ApiPassword.Contains('"', StringComparison.Ordinal)
+        && !ApiPassword.Contains('\\', StringComparison.Ordinal);
 
     /// <summary>
     /// Shortest gap between two fetches of the same camera, in seconds. Default 2.

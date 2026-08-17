@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.Authorisation;
@@ -44,6 +45,7 @@ public class CameraService
     private readonly CameraFrameCache _frames;
     private readonly LocalCameraDevices _devices;
     private readonly TimeProvider _timeProvider;
+    private readonly IOptions<CameraOptions> _options;
 
     public CameraService(HomespoolDbContext dbContext,
                          CameraAccessService access,
@@ -52,7 +54,8 @@ public class CameraService
                          ICameraSnapshotFetcher fetcher,
                          CameraFrameCache frames,
                          LocalCameraDevices devices,
-                         TimeProvider timeProvider)
+                         TimeProvider timeProvider,
+                         IOptions<CameraOptions> options)
     {
         _dbContext = dbContext;
         _access = access;
@@ -62,6 +65,7 @@ public class CameraService
         _frames = frames;
         _devices = devices;
         _timeProvider = timeProvider;
+        _options = options;
     }
 
     /// <summary>
@@ -101,6 +105,13 @@ public class CameraService
         if (refusal is not null)
         {
             return refusal;
+        }
+
+        // After the permission check rather than before it, so that a deployment's configuration is
+        // only described to somebody who could otherwise have saved this camera.
+        if (!_options.Value.IsAuthenticated)
+        {
+            return CameraSaveOutcome.Refused("Cameras_StreamServerNoCredential");
         }
 
         CameraSourceCheck check = await _sourcePolicy.CheckAsync(source, cancellationToken).ConfigureAwait(false);
@@ -153,6 +164,13 @@ public class CameraService
         if (refusal is not null)
         {
             return refusal;
+        }
+
+        // After the permission check rather than before it, so that a deployment's configuration is
+        // only described to somebody who could otherwise have saved this camera.
+        if (!_options.Value.IsAuthenticated)
+        {
+            return CameraSaveOutcome.Refused("Cameras_StreamServerNoCredential");
         }
 
         CameraSourceCheck check = await _sourcePolicy.CheckAsync(source, cancellationToken).ConfigureAwait(false);
@@ -266,9 +284,14 @@ public class CameraService
             return CameraSaveOutcome.Silent(camera, "Cameras_StreamServerRefused");
         }
 
-        CameraFrame? frame = await _fetcher
-                                   .FetchAsync(_streamServer.FrameUrl(camera.Uuid), cancellationToken)
-                                   .ConfigureAwait(false);
+        // Null only when the sidecar has no credential, which PutStreamAsync above has already
+        // refused for - so this is unreachable in practice and written as a fall-through rather than
+        // a suppression, because "unreachable" is a claim about today's call order.
+        Uri? frameUrl = _streamServer.FrameUrl(camera.Uuid);
+
+        CameraFrame? frame = frameUrl is null ?
+            null :
+            await _fetcher.FetchAsync(frameUrl, cancellationToken).ConfigureAwait(false);
 
         if (frame is not null)
         {

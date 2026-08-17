@@ -1270,7 +1270,25 @@ ask_smtp() {
 ensure_go2rtc_credential() {
     local password
     password="$(env_get GO2RTC_PASSWORD)"
-    [ -n "$password" ] && return 0
+
+    if [ -n "$password" ]; then
+        # Set by hand, so it never went through random_password's alphabet. A " or a \ cannot reach
+        # the sidecar intact - it is interpolated into a JSON string on that container's command
+        # line - and the backslash is the dangerous one, because it fails silently: the sidecar
+        # receives a different value than Homespool does and answers 401 to everything while both
+        # halves look correctly configured.
+        #
+        # Warned rather than replaced. Overwriting a credential somebody chose is not this script's
+        # call, and it patches rather than regenerates by design. Homespool's own health check says
+        # the same thing at runtime, for the .env this script never sees.
+        case $password in
+            *\"*|*\\*)
+                warn $"GO2RTC_PASSWORD contains a double quote or a backslash. Neither can reach the camera sidecar intact, so every camera will answer 401 while the setting looks correct. Replace it with the output of: openssl rand -base64 24"
+                ;;
+        esac
+
+        return 0
+    fi
 
     password="$(random_password)"
     if [ -z "$password" ]; then

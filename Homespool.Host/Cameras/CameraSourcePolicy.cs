@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -70,11 +71,153 @@ public sealed class CameraSourcePolicy
 
     private readonly IHostAddressResolver _resolver;
     private readonly IOptions<CameraOptions> _options;
+    private readonly IOptions<CertificateOptions> _certificates;
+    private readonly IOptions<PrusaConnect.PrusaConnectOptions> _connect;
 
-    public CameraSourcePolicy(IHostAddressResolver resolver, IOptions<CameraOptions> options)
+    public CameraSourcePolicy(IHostAddressResolver resolver,
+                              IOptions<CameraOptions> options,
+                              IOptions<CertificateOptions> certificates,
+                              IOptions<PrusaConnect.PrusaConnectOptions> connect)
     {
         _resolver = resolver;
         _options = options;
+        _certificates = certificates;
+        _connect = connect;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="host"/> is one of the names this deployment answers to.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Homespool has two identities and both have to be refused</b> (Henrik, 2026-08-17). Inside
+    /// the Compose network it is <c>homespool</c> on 8080 and 15443, beside <c>go2rtc</c> on 1984;
+    /// from outside it is whatever address the operator publishes, in front of nginx. A check that
+    /// covered only one of the two would refuse the obvious spelling and accept the other.
+    /// </para>
+    /// <para>
+    /// <b>The container half is closed; the outer half is only as good as
+    /// <c>PrusaConnect:PrinterHost</c>.</b> That is not an oversight — the application is never told
+    /// its user-facing name (<c>USER_HOST</c> goes to the proxy alone, and
+    /// <c>notes/tls-by-default.md</c> records that nobody stores the answer), so it cannot refuse a
+    /// name it has never been given. What that leaves reachable is our own front door over nginx,
+    /// answering an unauthenticated fetch with a login page; the sidecar's API, which is the target
+    /// that matters, is container-side and fully covered.
+    /// </para>
+    /// <para>
+    /// Deliberately not derived from the request: <c>Host</c> is written by the caller, which is a
+    /// separate finding of its own, and a check that trusted it could be told what to permit.
+    /// </para>
+    /// </remarks>
+    public static bool NamesThisDeployment(string? host, IEnumerable<string> deploymentNames)
+    {
+        ArgumentNullException.ThrowIfNull(deploymentNames);
+
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            return false;
+        }
+
+        string trimmed = host.Trim().TrimEnd('.');
+
+        foreach (string name in deploymentNames)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+
+            string candidate = name.Trim().TrimEnd('.');
+
+            if (string.Equals(trimmed, candidate, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            // "homespool" against "homespool.local", in both directions: a container's short name and
+            // the same machine's search-domain form are the same host, and refusing only the spelling
+            // we happened to store would be a refusal somebody could step around by typing the other.
+            if (candidate.Contains('.', StringComparison.Ordinal)
+                && candidate.StartsWith(trimmed + ".", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (trimmed.Contains('.', StringComparison.Ordinal)
+                && trimmed.StartsWith(candidate + ".", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="address"/> belongs to this deployment rather than to the network
+    /// around it.
+    /// </summary>
+    /// <remarks>
+    /// Two sources, because they catch different things. The container networks catch every service
+    /// in the stack including one this class has never heard of; this process's own interface
+    /// addresses catch the case where there are no container networks configured at all - a rig, or
+    /// a deployment on a 172.16/12 LAN that was told to empty the list.
+    /// </remarks>
+    public static bool IsInsideThisDeployment(IPAddress address,
+                                              IReadOnlyList<IPNetwork> containerNetworks,
+                                              IReadOnlyList<IPAddress> ownAddresses)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        ArgumentNullException.ThrowIfNull(containerNetworks);
+        ArgumentNullException.ThrowIfNull(ownAddresses);
+
+        IPAddress candidate = address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
+
+        foreach (IPNetwork network in containerNetworks)
+        {
+            if (network.Contains(candidate))
+            {
+                return true;
+            }
+        }
+
+        foreach (IPAddress own in ownAddresses)
+        {
+            IPAddress mine = own.IsIPv4MappedToIPv6 ? own.MapToIPv4() : own;
+
+            if (mine.Equals(candidate))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// This process's own addresses. Loopback is excluded because
+    /// <see cref="IsReachableAddress"/> has already refused it, and including it here would only
+    /// produce a second, less clear refusal for the same address.
+    /// </summary>
+    private static IReadOnlyList<IPAddress> OwnAddresses()
+    {
+        try
+        {
+            return
+            [
+                .. System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+                         .Where(nic => nic.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up)
+                         .Where(nic => nic.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Loopback)
+                         .SelectMany(nic => nic.GetIPProperties().UnicastAddresses)
+                         .Select(unicast => unicast.Address)
+            ];
+        }
+        catch (System.Net.NetworkInformation.NetworkInformationException)
+        {
+            // Enumeration is a courtesy on top of the container ranges and the names, so a platform
+            // that will not answer costs a narrower check rather than a failed save.
+            return [];
+        }
     }
 
     /// <summary>
@@ -93,6 +236,14 @@ public sealed class CameraSourcePolicy
         IPAddress candidate = address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
 
         if (IPAddress.IsLoopback(candidate))
+        {
+            return false;
+        }
+
+        // 0.0.0.0 and ::, which are not loopback and were therefore accepted. On Linux a connection
+        // to 0.0.0.0 reaches the local host, so this was a second spelling of loopback that the
+        // check above did not cover.
+        if (candidate.Equals(IPAddress.Any) || candidate.Equals(IPAddress.IPv6Any))
         {
             return false;
         }
@@ -119,6 +270,40 @@ public sealed class CameraSourcePolicy
     /// <summary>
     /// Checks a camera source: its shape, and where its host resolves to.
     /// </summary>
+    /// <summary>
+    /// Every name this deployment is known by, as far as this process can tell.
+    /// </summary>
+    private IReadOnlyList<string> DeploymentNames()
+    {
+        List<string> names = [];
+
+        // The sidecar, by the address we were configured to reach it on - so a deployment that
+        // renamed or re-homed it is covered without this class knowing how.
+        if (Uri.TryCreate(_options.Value.StreamServerBaseUrl, UriKind.Absolute, out Uri? streamServer))
+        {
+            names.Add(streamServer.Host);
+        }
+
+        // This container, which in the shipped stack is "homespool".
+        try
+        {
+            names.Add(System.Net.Dns.GetHostName());
+        }
+        catch (SocketException)
+        {
+            // A machine that cannot name itself contributes no name, exactly as PrinterAddressSuggestion
+            // treats the same failure.
+        }
+
+        // The one outer address the application is actually told about.
+        if (_connect.Value.IsPrinterAddressConfigured)
+        {
+            names.Add(_connect.Value.PrinterHost.Trim());
+        }
+
+        return names;
+    }
+
     public async Task<CameraSourceCheck> CheckAsync(string? source, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(source))
@@ -150,6 +335,14 @@ public sealed class CameraSourcePolicy
             return CameraSourceCheck.Accepted;
         }
 
+        // Before resolving, because a name is refused on its own terms: "go2rtc" and "homespool"
+        // are answers whatever DNS says about them, and inside the Compose network DNS is the only
+        // thing that could disagree.
+        if (NamesThisDeployment(uri.Host, DeploymentNames()))
+        {
+            return CameraSourceCheck.Refused("Cameras_SourceIsThisDeployment", uri.Host);
+        }
+
         // An address in the source is already an answer; a name has to be asked about. An
         // unresolvable name is allowed through on purpose - the resolver cannot tell "no such name"
         // from "DNS is unhappy right now", and a camera that cannot be resolved cannot be reached
@@ -157,9 +350,17 @@ public sealed class CameraSourcePolicy
         IReadOnlyList<IPAddress> addresses =
             await _resolver.ResolveAsync(uri.Host, cancellationToken).ConfigureAwait(false);
 
+        IReadOnlyList<IPNetwork> containerNetworks = _certificates.Value.ParsedContainerNetworks;
+        IReadOnlyList<IPAddress> ownAddresses = OwnAddresses();
+
         foreach (IPAddress address in addresses)
         {
             if (!IsReachableAddress(address))
+            {
+                return CameraSourceCheck.Refused("Cameras_SourceIsThisServer", uri.Host, address);
+            }
+
+            if (IsInsideThisDeployment(address, containerNetworks, ownAddresses))
             {
                 return CameraSourceCheck.Refused("Cameras_SourceIsThisServer", uri.Host, address);
             }

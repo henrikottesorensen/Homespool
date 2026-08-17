@@ -36,9 +36,16 @@ public sealed class Go2RtcClient
     /// <summary>Name of the <see cref="IHttpClientFactory"/> client used for the sidecar.</summary>
     public const string HttpClientName = "go2rtc";
 
+    /// <summary>
+    /// How often to say that the sidecar has no credential. Once a minute, because the frame endpoint
+    /// is asked every couple of seconds by any open camera page.
+    /// </summary>
+    private static readonly TimeSpan UncredentialedWarningInterval = TimeSpan.FromMinutes(1);
+
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IOptions<CameraOptions> _options;
     private readonly ILogger<Go2RtcClient> _logger;
+    private readonly Services.LogThrottle _uncredentialed = new(UncredentialedWarningInterval);
 
     public Go2RtcClient(IHttpClientFactory httpClientFactory,
                         IOptions<CameraOptions> options,
@@ -50,15 +57,66 @@ public sealed class Go2RtcClient
     }
 
     /// <summary>
-    /// Where a camera's still image is served from.
+    /// Whether this deployment will talk to the sidecar at all.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// <b>The single chokepoint, and deliberately here rather than at the call sites.</b> Five call
+    /// sites across four types reach the sidecar, and all of them go through this class - so a rule
+    /// enforced there would be five places to forget it, and the sixth caller would be the one that
+    /// mattered. Every public member below refuses when this is false.
+    /// </para>
+    /// <para>
+    /// The reasoning for refusing rather than proceeding without a header is in
+    /// <see cref="CameraOptions.IsAuthenticated"/>. In short: an uncredentialed sidecar can be driven
+    /// into running commands through its own API, and a camera source is how a team member would
+    /// reach it.
+    /// </para>
+    /// </remarks>
+    private bool IsUsable()
+    {
+        if (_options.Value.IsAuthenticated)
+        {
+            return true;
+        }
+
+        if (_uncredentialed.Record() is { } window)
+        {
+            _logger.LogWarning(
+                "Cameras are disabled because the stream server has no credential: set Cameras:ApiUsername and "
+                + "Cameras:ApiPassword (GO2RTC_USERNAME and GO2RTC_PASSWORD in .env, which ./setup-env.sh will "
+                + "generate). {Count} camera operation(s) refused in the last {Elapsed}, {Total} in total.",
+                window.Count,
+                window.Elapsed,
+                window.Total);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Where a camera's still image is served from, or <see langword="null"/> when the sidecar has no
+    /// credential and is therefore not used.
+    /// </summary>
+    /// <remarks>
+    /// <para>
     /// Derived, never stored. A snapshot address is entirely a function of the sidecar's base
     /// address and the stream name, so persisting it would only create something able to disagree
     /// with both.
+    /// </para>
+    /// <para>
+    /// <b>Nullable so the compiler finds both callers</b>, rather than returning an address nobody
+    /// should fetch. A null reads as "no picture available", which is the answer the frame endpoint
+    /// and the save path already know how to give for a camera that is merely switched off.
+    /// </para>
     /// </remarks>
-    public Uri FrameUrl(Guid streamName)
+    public Uri? FrameUrl(Guid streamName)
     {
+        if (!IsUsable())
+        {
+            return null;
+        }
+
         return new Uri(
             $"{BaseAddress().TrimEnd('/')}/api/frame.jpeg?src={streamName.ToString("D", CultureInfo.InvariantCulture)}");
     }
@@ -68,6 +126,11 @@ public sealed class Go2RtcClient
     /// </summary>
     public async Task<bool> PutStreamAsync(Guid streamName, string source, CancellationToken cancellationToken)
     {
+        if (!IsUsable())
+        {
+            return false;
+        }
+
         Uri request = new(
             $"{BaseAddress().TrimEnd('/')}/api/streams"
             + $"?name={Uri.EscapeDataString(streamName.ToString("D", CultureInfo.InvariantCulture))}"
@@ -116,6 +179,11 @@ public sealed class Go2RtcClient
     /// </summary>
     public async Task DeleteStreamAsync(Guid streamName, CancellationToken cancellationToken)
     {
+        if (!IsUsable())
+        {
+            return;
+        }
+
         // src, not name. Both are accepted and both answer 200; only src actually removes the
         // stream - measured 2026-08-08, after a delete that reported success left the stream in
         // place. For a camera attached to this machine that is worse than untidy: Homespool would
@@ -164,6 +232,14 @@ public sealed class Go2RtcClient
     /// </remarks>
     public async Task<IReadOnlySet<string>?> ListStreamNamesAsync(CancellationToken cancellationToken)
     {
+        // Null, which the reconciler already reads as "could not be asked" and answers by doing
+        // nothing. That is exactly right here: with no credential there is nothing to reconcile
+        // towards, and the empty set would instead mean "everything is missing".
+        if (!IsUsable())
+        {
+            return null;
+        }
+
         Uri request = new($"{BaseAddress().TrimEnd('/')}/api/streams");
 
         try

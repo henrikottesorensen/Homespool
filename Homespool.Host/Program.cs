@@ -372,7 +372,11 @@ public static class Program
 
                    // Also untagged: a deployment handing tokens to the internet is misconfigured, not
                    // broken, and a restart would faithfully reproduce it.
-                   .AddCheck<Services.DeploymentExposureHealthCheck>("deployment-exposure");
+                   .AddCheck<Services.DeploymentExposureHealthCheck>("deployment-exposure")
+
+                   // Untagged for the same reason. Cameras stop working entirely without a sidecar
+                   // credential, and the person who can fix that otherwise sees only blank cameras.
+                   .AddCheck<Cameras.CameraCredentialHealthCheck>("camera-credential");
 
             // Sweeps TelemetrySample rows past StorageOptions.TelemetryRetentionDays. No interface
             // registration needed, unlike TelemetryWriter above - nothing else ever needs to reach it.

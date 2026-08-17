@@ -53,4 +53,24 @@ public sealed class CapturingSink : ILogEventSink
                .Select(p => p.Value is ScalarValue { Value: string s } ? s : p.Value.ToString())
                .FirstOrDefault();
     }
+
+    /// <summary>
+    /// Whether any single event carries every one of <paramref name="properties"/> with the given
+    /// value - the assertion for "one log line said both of these", which
+    /// <see cref="FindPropertyValue"/> cannot make: it reads properties across events, and the bag
+    /// underneath is unordered, so "the first match" is whichever event happened to be enumerated
+    /// first. When two requests in one test log the same property, only the conjunction is
+    /// meaningful.
+    /// </summary>
+    public bool HasEventWith(params (string name, string value)[] properties)
+    {
+        return _events.Any(e => properties.All(p =>
+                                                   e.Properties.TryGetValue(p.name, out LogEventPropertyValue? v)
+                                                   && Render(v) == p.value));
+    }
+
+    private static string Render(LogEventPropertyValue value)
+    {
+        return value is ScalarValue { Value: string s } ? s : value.ToString();
+    }
 }

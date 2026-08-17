@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -11,8 +12,11 @@ using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.FakePrinter;
+using Homespool.Host.Exceptions;
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Services;
+using Homespool.Model;
 
 namespace Homespool.Host.E2ETest;
 
@@ -264,12 +268,12 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime, IDisposable
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
 
-        _logs.FindPropertyValue("MissingHeaders").Should().Be(Headers.Token,
-                                                             "the diagnostic must name the header that was absent");
-
-        _logs.FindPropertyValue("Fingerprint")
-             .Should().Be(PrinterFingerprint.Key(identity.HeaderFingerprint),
-                          "and the printer that asked, in the key form successes are logged under");
+        // One line carrying both, because the enrolment above already produced a "Fingerprint,
+        // Token" line for its anonymous /p/register - the same diagnostic doing its job on a
+        // different request. Only the conjunction identifies this one.
+        _logs.HasEventWith(("MissingHeaders", Headers.Token),
+                           ("Fingerprint", PrinterFingerprint.Key(identity.HeaderFingerprint)))
+             .Should().BeTrue("the diagnostic must name the absent header and the printer that asked, on one line");
     }
 
     /// <summary>
@@ -299,7 +303,7 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime, IDisposable
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        _logs.FindPropertyValue("Fingerprint").Should().Be("0123456789abcdef");
+        _logs.HasEventWith(("Fingerprint", "0123456789abcdef")).Should().BeTrue();
     }
 
     /// <summary>
@@ -335,6 +339,166 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime, IDisposable
 
         _dispatcher.Calls[0].root.TryGetProperty("event", out _)
                    .Should().BeTrue("INFO goes first on this transport exactly as it does on the socket");
+    }
+
+    /// <summary>
+    /// The round trip the transport exists for: a command sent through <see cref="PrinterCommandService"/>
+    /// is parked, collected by the fake in the response to its next telemetry POST, answered with an
+    /// event POST, and the caller sees the answer - through the same actor and the same ack
+    /// correlation the socket uses.
+    /// </summary>
+    /// <remarks>
+    /// The fake is set printing first so <c>PAUSE_PRINT</c> is a command
+    /// <see cref="FirmwareFaithfulPolicy"/> answers <c>FINISHED</c> rather than rejects; the point is
+    /// the plumbing, not the policy. Telemetry is paced at 20 ms so the parked command is collected
+    /// well inside the test's patience while still going through a real "next poll".
+    /// </remarks>
+    [Fact]
+    public async Task ACommandIsCollectedInTheNextTelemetryResponseAndItsAnswerReachesTheCaller()
+    {
+        // Arrange
+        StartWithRealDispatcher();
+
+        (PrinterIdentity identity, string token, int printerId, long userId) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        await using FakePrinterClient fake = new(identity,
+                                                 TimeProvider.System,
+                                                 new FakePrinterOptions
+                                                 {
+                                                     TelemetrySource = new PacedTelemetrySource(TimeSpan.FromMilliseconds(20)),
+                                                 });
+
+        fake.Token = token;
+        fake.Device.StartPrint(jobId: 1);
+
+        using HttpClient printer = PrinterListener.CreateClient(_factory);
+        using CancellationTokenSource run = new(TimeSpan.FromSeconds(30));
+        Task running = fake.RunHttpAsync(printer, run.Token);
+
+        // The first POST is what creates the session and registers the actor; a command sent before
+        // it would be PrinterNotConnected, correctly.
+        await WaitUntilAsync(() => _factory.Services.GetRequiredService<PrinterConnectionRegistry>().IsConnected(printerId));
+
+        // Act
+        CommandOutcome outcome;
+
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            PrinterCommandService service = scope.ServiceProvider.GetRequiredService<PrinterCommandService>();
+
+            outcome = await service.SendCommandAsync(printerId, new PrusaConnect.Commands.PausePrint(), Caller.Unscoped(userId), run.Token)
+                      ?? throw new InvalidOperationException("PAUSE_PRINT reported no answer expected.");
+        }
+
+        // Assert
+        outcome.EventType.Should().Be(PrinterEventType.Finished,
+                                      "the fake collected the command in a telemetry response and acked it over /p/events");
+
+        fake.ReceivedCommands.Should().ContainSingle()
+            .Which.Kind.Should().Be(ServerCommandKind.Json, "the response's Content-Type is how firmware picks a parser");
+
+        fake.ReplyFault.Should().BeNull();
+        _logs.Failures.Should().BeEmpty();
+
+        await run.CancelAsync();
+        await running;
+    }
+
+    /// <summary>
+    /// A printer on this transport reads as connected while it is posting, and as gone once it
+    /// stops - with no socket to be open or closed, that is a judgement about recency, and it is the
+    /// registry's <c>IsConnected</c> that every page and the queue loop consult.
+    /// </summary>
+    [Fact]
+    public async Task APostingPrinterIsConnectedAndAQuietOneIsNot()
+    {
+        // Arrange
+        StartWithCapturingDispatcher();
+
+        (PrinterIdentity identity, string token, int printerId, long _) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        PrinterConnectionRegistry registry = _factory.Services.GetRequiredService<PrinterConnectionRegistry>();
+        registry.IsConnected(printerId).Should().BeFalse("nothing has been heard from it yet");
+
+        using HttpClient printer = PrinterListener.CreateClient(_factory);
+
+        // Act
+        using (HttpRequestMessage request = Post("/p/telemetry", identity, token, TelemetryBody))
+        {
+            using HttpResponseMessage response = await printer.SendAsync(request, TestContext.Current.CancellationToken);
+
+            response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        }
+
+        // Assert
+        registry.IsConnected(printerId).Should().BeTrue("one authenticated POST is arrival");
+
+        // Not asserted here: that it goes quiet after IdleWindow. That takes 15 s of wall clock and
+        // is what ReapingFailsAParkedCommandAsNotConnected drives directly through the sessions.
+    }
+
+    /// <summary>
+    /// A command parked for a printer that never returns is failed as <c>NotConnected</c> when the
+    /// session is reaped - the same outcome a socket death produces, so a caller learns nothing new
+    /// and nothing waits forever.
+    /// </summary>
+    /// <remarks>
+    /// Drives <see cref="HttpPrinterSessions.StopAsync"/>, which reaps everything, rather than
+    /// waiting out the idle window: the reaper's decision is a timestamp comparison the unit tests
+    /// can pin, and what this proves is the teardown - unregister, complete, drain - failing the
+    /// parked command through the actor's own loop.
+    /// </remarks>
+    [Fact]
+    public async Task ReapingFailsAParkedCommandAsNotConnected()
+    {
+        // Arrange
+        StartWithCapturingDispatcher();
+
+        (PrinterIdentity identity, string token, int printerId, long userId) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        using HttpClient printer = PrinterListener.CreateClient(_factory);
+
+        using (HttpRequestMessage request = Post("/p/telemetry", identity, token, TelemetryBody))
+        {
+            using HttpResponseMessage response = await printer.SendAsync(request, TestContext.Current.CancellationToken);
+        }
+
+        Task<CommandOutcome?> send;
+
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            PrinterCommandService service = scope.ServiceProvider.GetRequiredService<PrinterCommandService>();
+
+            // Parked: nobody polls again, so it sits until the session ends.
+            send = service.SendCommandAsync(printerId, new PrusaConnect.Commands.PausePrint(), Caller.Unscoped(userId),
+                                            TestContext.Current.CancellationToken);
+
+            // Act
+            HttpPrinterSessions sessions = _factory.Services.GetRequiredService<HttpPrinterSessions>();
+            await sessions.StopAsync(TestContext.Current.CancellationToken);
+
+            // Assert
+            Func<Task> awaitingIt = async () => await send;
+            await awaitingIt.Should().ThrowAsync<PrinterNotConnectedException>(
+                "a reaped session fails its parked command exactly as a dead socket fails an in-flight one");
+        }
+
+        _factory.Services.GetRequiredService<PrinterConnectionRegistry>().IsConnected(printerId)
+                .Should().BeFalse("reaping unregisters");
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+
+        while (!condition())
+        {
+            timeout.Token.ThrowIfCancellationRequested();
+            await Task.Delay(10, timeout.Token);
+        }
     }
 
     private static HttpRequestMessage Post(string route, PrinterIdentity identity, string token, string body)
@@ -403,6 +567,31 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime, IDisposable
         public TimeSpan DelayBeforeNext(FakeDevice device)
         {
             return TimeSpan.Zero;
+        }
+    }
+
+    /// <summary>
+    /// A telemetry source that never ends and paces itself, for a run that is cancelled rather than
+    /// awaited - the shape a real printer has, at a cadence a test can afford.
+    /// </summary>
+    private sealed class PacedTelemetrySource : ITelemetrySource
+    {
+        private readonly TimeSpan _interval;
+        private readonly TelemetryReadings _readings = new();
+
+        public PacedTelemetrySource(TimeSpan interval)
+        {
+            _interval = interval;
+        }
+
+        public byte[]? NextMessage(FakeDevice device)
+        {
+            return TelemetryMessageBuilder.BuildSlim(device, _readings);
+        }
+
+        public TimeSpan DelayBeforeNext(FakeDevice device)
+        {
+            return _interval;
         }
     }
 

@@ -1,8 +1,10 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -262,7 +264,18 @@ public sealed class FakePrinterClient : IAsyncDisposable
                     break;
                 }
 
-                await PostMessageAsync(httpClient, next, cancellationToken);
+                ServerCommandFrame? command = await PostMessageAsync(httpClient, next, cancellationToken);
+
+                if (command is not null)
+                {
+                    // Answered the way a socket-delivered command is: same policy, same recording,
+                    // the reply going out as its own POST. No connection to drop, so a policy that
+                    // asks for one faults rather than pretends.
+                    HandleCommand(command,
+                                  (payload, ct) => PostMessageAsync(httpClient, payload, ct),
+                                  disconnect: null,
+                                  cancellationToken);
+                }
 
                 TimeSpan delay = _options.TelemetrySource.DelayBeforeNext(Device);
 
@@ -310,14 +323,24 @@ public sealed class FakePrinterClient : IAsyncDisposable
 
     /// <summary>
     /// Posts one already-rendered message to whichever of the two endpoints its shape belongs to,
-    /// with the four headers the server's authentication requires on every request.
+    /// with the four headers the server's authentication requires on every request - and returns
+    /// the command the response carried, if it carried one.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A non-success status is thrown rather than retried: a fake that quietly swallows a 401 or a
     /// 400 looks exactly like one that is working, which is the failure this whole harness exists to
     /// avoid. The real printer retries; a test double should stop and say so.
+    /// </para>
+    /// <para>
+    /// A 200 is read the way firmware reads it (<c>handle_server_resp</c>, connect.cpp:212-265 at
+    /// v6.2.6): the id from the <c>Command-Id</c> header, base ten; the kind from <c>Content-Type</c>,
+    /// JSON or gcode; anything else an unknown command. A 200 with no <c>Command-Id</c> is the
+    /// server's error, and firmware treats it as one - it discards the body and invalidates the
+    /// connection - so it is thrown here rather than tolerated.
+    /// </para>
     /// </remarks>
-    private async Task PostMessageAsync(HttpClient httpClient, byte[] payload, CancellationToken cancellationToken)
+    private async Task<ServerCommandFrame?> PostMessageAsync(HttpClient httpClient, byte[] payload, CancellationToken cancellationToken)
     {
         string route = IsEventMessage(payload) ? "/p/events" : "/p/telemetry";
 
@@ -333,6 +356,29 @@ public sealed class FakePrinterClient : IAsyncDisposable
         using HttpResponseMessage response = await httpClient.SendAsync(request, cancellationToken);
 
         response.EnsureSuccessStatusCode();
+
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            return null;
+        }
+
+        if (!response.Headers.TryGetValues("Command-Id", out IEnumerable<string>? values)
+            || !uint.TryParse(values.FirstOrDefault(), NumberStyles.None, CultureInfo.InvariantCulture, out uint commandId))
+        {
+            throw new InvalidOperationException(
+                "The server answered 200 to a telemetry POST without a Command-Id header, which firmware would discard as confused.");
+        }
+
+        ServerCommandKind kind = response.Content.Headers.ContentType?.MediaType switch
+        {
+            "application/json" => ServerCommandKind.Json,
+            "text/x.gcode" or "text/x-gcode" => ServerCommandKind.Gcode,
+            _ => ServerCommandKind.Undefined,
+        };
+
+        byte[] body = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+
+        return new ServerCommandFrame(kind, commandId, body);
     }
 
     /// <summary>
@@ -458,8 +504,27 @@ public sealed class FakePrinterClient : IAsyncDisposable
             return;
         }
 
-        ServerCommandFrame frame = parsed.Frame!;
+        HandleCommand(parsed.Frame!, SendMessageAsync, socket.Abort, cancellationToken);
+    }
 
+    /// <summary>
+    /// What both transports do with a command once they have one: record it, ask the policy, and run
+    /// the replies off the receiving path. The two verbs a reply needs - send this payload, drop the
+    /// connection - are what differ between transports, so they are passed in rather than assumed.
+    /// </summary>
+    /// <param name="frame">The command, however it arrived.</param>
+    /// <param name="send">Sends one rendered message: a socket write, or a POST.</param>
+    /// <param name="disconnect">
+    /// Drops the connection, for the policies that ask to. Null when the transport has no connection
+    /// to drop - the HTTP transport - in which case a policy asking for it gets nothing, and says so
+    /// through <see cref="ReplyFault"/> rather than silently.
+    /// </param>
+    /// <param name="cancellationToken">Ends any delayed reply.</param>
+    private void HandleCommand(ServerCommandFrame frame,
+                               Func<byte[], CancellationToken, Task> send,
+                               Action? disconnect,
+                               CancellationToken cancellationToken)
+    {
         lock (_receivedCommands)
         {
             _receivedCommands.Add(frame);
@@ -472,14 +537,15 @@ public sealed class FakePrinterClient : IAsyncDisposable
             return;
         }
 
-        // Replies run off the read loop so the fake keeps reading while a delayed reply is pending -
-        // the firmware likewise keeps receiving (and rejecting) commands while a background command
-        // executes. The send lock keeps whole messages from interleaving on the wire.
-        _ = ExecuteRepliesAsync(socket, replies, cancellationToken);
+        // Replies run off the receiving path so the fake keeps receiving while a delayed reply is
+        // pending - the firmware likewise keeps receiving (and rejecting) commands while a background
+        // command executes. On the socket the send lock keeps whole messages from interleaving.
+        _ = ExecuteRepliesAsync(replies, send, disconnect, cancellationToken);
     }
 
-    private async Task ExecuteRepliesAsync(WebSocket socket,
-                                           IReadOnlyList<PlannedReply> replies,
+    private async Task ExecuteRepliesAsync(IReadOnlyList<PlannedReply> replies,
+                                           Func<byte[], CancellationToken, Task> send,
+                                           Action? disconnect,
                                            CancellationToken cancellationToken)
     {
         try
@@ -493,12 +559,21 @@ public sealed class FakePrinterClient : IAsyncDisposable
 
                 if (reply.Payload is not null)
                 {
-                    await SendMessageAsync(reply.Payload, cancellationToken);
+                    await send(reply.Payload, cancellationToken);
                 }
 
                 if (reply.DisconnectAfter)
                 {
-                    socket.Abort();
+                    if (disconnect is null)
+                    {
+                        // A DisconnectOnCommandPolicy on a transport with nothing to disconnect. Not
+                        // an error of the fake's, but a test that asked for it would otherwise pass
+                        // on a behaviour that never happened.
+                        throw new InvalidOperationException(
+                            "The policy asked to disconnect, but the HTTP transport has no connection to drop.");
+                    }
+
+                    disconnect();
 
                     return;
                 }

@@ -97,8 +97,8 @@ public static class Program
         Console.WriteLine();
         Console.WriteLine("--no-websocket uses the pre-websocket HTTP transport - one POST to /p/telemetry or");
         Console.WriteLine("/p/events per message - which is what firmware built with WEBSOCKET off speaks, a");
-        Console.WriteLine("6.2.6 MK3.5 among them. No commands arrive on that transport, so the answer");
-        Console.WriteLine("policies do not run.");
+        Console.WriteLine("6.2.6 MK3.5 among them. A command arrives in a telemetry response and is answered");
+        Console.WriteLine("with its own POST; there is no connection to drop, so a disconnecting policy faults.");
         Console.WriteLine();
         Console.WriteLine("--tools <n> reports n tools, which emits the per-slot \"slot\" object firmware only");
         Console.WriteLine("sends above one tool - one extra persisted row per tool per sample. --mmu adds the");

@@ -255,6 +255,13 @@ public static class Program
             builder.Services.AddSingleton<Printing.PrinterConnectionRegistry>();
             builder.Services.AddSingleton<PrusaConnect.PrinterConnectionActorFactory>();
 
+            // The exception to "not registered at all": a printer on the pre-websocket HTTP transport
+            // has no request to own its actor, so this singleton does - one per printer, created on
+            // its first POST and reaped when it goes quiet. Registered once as itself, so the
+            // controller and the hosted-service host share the instance holding the sessions.
+            builder.Services.AddSingleton<PrusaConnect.HttpPrinterSessions>();
+            builder.Services.AddHostedService(sp => sp.GetRequiredService<PrusaConnect.HttpPrinterSessions>());
+
             // Singleton because its whole value is accumulating across connections and printers:
             // "this firmware sends a field we do not model" is a fact about the deployment, and a
             // per-request instance would forget it between messages.

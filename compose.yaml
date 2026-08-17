@@ -276,8 +276,13 @@ services:
     # which stop or restart this container for anyone who can reach the port - and api/config, which
     # can carry a camera's RTSP credentials when a source embeds user:pass.
     #
-    # WITHOUT A LEADING SLASH. The comparison is against go2rtc's own registration pattern
-    # ("api/streams"), so "/api/streams" allowlists nothing and every camera stops working.
+    # WITH A LEADING SLASH, and that is measured rather than read (Pi 3, go2rtc 1.9.14, 2026-08-17).
+    # The source registers these as HandleFunc("api/streams", ...) and filters on that argument,
+    # which reads as though the allowlist wants the bare form - it does not, and this comment said
+    # the opposite until it was run. Without the slash EVERY path 404s, including the allowed ones,
+    # so every camera stops working. The check that separates "not registered" from "no such stream"
+    # is the body: Go's mux answers "404 page not found", while a registered handler answers
+    # go2rtc's own "stream not found".
     #
     # What this is NOT: closing a remote-execution hole. go2rtc's streams.Validate already refuses
     # sources whose scheme it marks insecure (exec, echo) on the path that creates a stream, so that
@@ -292,7 +297,7 @@ services:
 
       # Hardened, and the default deliberately: a fresh deployment is restricted without anyone
       # choosing it, and only a developer opts out.
-      - '{"api":{"username":"${GO2RTC_USERNAME:-}","password":"${GO2RTC_PASSWORD:-}","allow_paths":["api/streams","api/frame.jpeg"]}}'
+      - '{"api":{"username":"${GO2RTC_USERNAME:-}","password":"${GO2RTC_PASSWORD:-}","allow_paths":["/api/streams","/api/frame.jpeg"]}}'
 
       # DEVELOPER: swap the line above for this one to get the web interface back - it is how stream
       # types get tested by hand. Omitting allow_paths entirely is how go2rtc means "unrestricted",

@@ -32,6 +32,11 @@ services:
     #
     # 80 and 443 are restated because overriding the list replaces all of it, and the people-facing
     # half of the deployment has nothing to do with any of this - it keeps its TLS either way.
+    #
+    # 15080 stays too. The transfer listener is plain HTTP whatever PRINTER_TLS says - the printer
+    # opens it with a raw socket and cannot do otherwise - so it is the one printer-facing port whose
+    # placement does not move with this switch. Only 15443 changes hands.
     ports: !override
       - "${PORT:-80}:8080"
       - "${HTTPS_PORT:-443}:8443"
+      - "${TRANSFER_PORT:-15080}:15080"

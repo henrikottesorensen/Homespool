@@ -157,6 +157,12 @@ DEFAULT_PASSWORD="homespool"
 # 1. The application images, native arm64.
 # ------------------------------------------------------------------------------------------------
 echo "==> Building the Homespool container images for arm64"
+# Stamp the commit into the images. It matters more on a card than anywhere else: this artefact gets
+# written to an SD card, posted, and run for months by somebody who never built it, and "which build
+# is this?" then has exactly one answer - `docker compose run --rm homespool --version`. Compose
+# cannot compute it (no command substitution), so it is computed here; see tools/gitref.sh.
+HOMESPOOL_GITREF="$("$repo_root/tools/gitref.sh")"
+export HOMESPOOL_GITREF
 docker --log-level warn compose -f "$repo_root/compose.yaml" build
 
 # ------------------------------------------------------------------------------------------------

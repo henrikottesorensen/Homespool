@@ -144,10 +144,15 @@ public class ClaimModel : PageModel
         // character misread off a low-resolution LCD still resolve.
         string code = ClaimCode.Normalise(Input.Code);
 
-        await using IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken);
-
         try
         {
+            // Scoped INSIDE the try, and that placement is the whole point. Declared at method scope
+            // it outlives the catch below, so the limiter's save enlisted in a transaction that was
+            // then disposed uncommitted - and every failed claim counted as zero. Here the
+            // transaction is disposed as the exception leaves this block, before any handler runs,
+            // so RecordFailedAttemptAsync writes on its own.
+            await using IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
             Printer printer = await _prusaConnectService.ClaimPrinterAsync(
                 code, Input.Name, Input.Location, Input.TeamId, CallerResolver.For(user, User));
 

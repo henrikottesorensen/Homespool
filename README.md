@@ -31,9 +31,11 @@ Everything below has been run against real hardware (an MK3.5) as well as the te
 - **Cameras** — a webcam plugged into the server, or an RTSP, ONVIF or HTTP camera on your network,
   shown on the printer's page and kept current while somebody is watching.
 - **Sending from PrusaSlicer** — its OctoPrint host type uploads straight into a printer's queue.
-- **A JSON API** at `/api/v1`, authenticated by sign-in cookie or personal access token.
-- **User accounts** — invite-only signup, admin bootstrap, 2FA, teams with per-team `CanRead` /
-  `CanUse` / `CanManage`.
+- **A JSON API** at `/api/v1`, authenticated by sign-in cookie or personal access token. A token is
+  scoped when you create it, so a key for a slicer can upload and print without being able to delete
+  anything — see [Capabilities](docs/capabilities.md).
+- **User accounts** — invite-only signup, admin bootstrap, 2FA, and teams whose members hold named
+  capabilities on the printers and cameras that team owns.
 - **TLS from the first start**, with printers and people on separate ports and separate
   certificates.
 - **Health checks and alerting** — `/health`, an administrator banner, and email when a check

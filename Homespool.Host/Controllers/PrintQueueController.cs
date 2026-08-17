@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 
@@ -71,28 +72,30 @@ public class PrintQueueController : ControllerBase
     /// </summary>
     [HttpGet]
     [Route("printers/{uuid:guid}/queue")]
-    [ProducesResponseType<PrintQueueReadDTO>(StatusCodes.Status200OK)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<IReadOnlyList<QueuedPrintReadDTO>>> List(Guid uuid,
-                                                                            CancellationToken cancellationToken)
+    public async Task<Results<Ok<PrintQueueReadDTO>, ForbiddenProblem, NotFoundProblem>> List(Guid uuid,
+                                                                                            CancellationToken cancellationToken)
     {
-        (Printer? printer, Caller? caller, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+        (Printer? printer, Caller? caller) = await ResolveAsync(uuid, cancellationToken);
+
+        if (caller is null)
+        {
+            return this.NoAccount();
+        }
 
         if (printer is null)
         {
-            return failure!;
+            return this.NotFoundProblem();
         }
 
         try
         {
-            IReadOnlyList<QueuedPrint> jobs = await _queue.ListAsync(printer.Id, caller!, cancellationToken);
+            IReadOnlyList<QueuedPrint> jobs = await _queue.ListAsync(printer.Id, caller, cancellationToken);
 
             // The same snapshot the loop reads, through the same rules - so a client is told what the
             // loop actually believes rather than a second opinion computed here.
             QueueSnapshot snapshot = await _snapshots.ReadAsync(printer.Id, cancellationToken);
 
-            return Ok(new PrintQueueReadDTO
+            return TypedResults.Ok(new PrintQueueReadDTO
             {
                 // Said here rather than returned as a key, because the DTO documents this field as
                 // "a sentence for a person" and a caller that had to resolve keys would need our
@@ -102,9 +105,9 @@ public class PrintQueueController : ControllerBase
                 Prints = jobs.Select(QueuedPrintReadDTO.FromQueuedPrint).ToList(),
             });
         }
-        catch (TeamAccessDeniedException)
+        catch (TeamAccessDeniedException e)
         {
-            return Forbid();
+            return this.ForbiddenProblem(e.Message);
         }
     }
 
@@ -119,39 +122,44 @@ public class PrintQueueController : ControllerBase
     /// </remarks>
     [HttpPost]
     [Route("printers/{uuid:guid}/queue")]
-    [ProducesResponseType<QueuedPrintReadDTO>(StatusCodes.Status201Created)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<QueuedPrintReadDTO>> Enqueue(Guid uuid,
-                                                                [FromBody] EnqueueRequest body,
-                                                                CancellationToken cancellationToken)
+    public async Task<Results<Created<QueuedPrintReadDTO>, ForbiddenProblem, NotFoundProblem>> Enqueue(
+        Guid uuid,
+        [FromBody] EnqueueRequest body,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(body);
 
-        (Printer? printer, Caller? caller, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+        (Printer? printer, Caller? caller) = await ResolveAsync(uuid, cancellationToken);
+
+        if (caller is null)
+        {
+            return this.NoAccount();
+        }
 
         if (printer is null)
         {
-            return failure!;
+            return this.NotFoundProblem();
         }
 
         try
         {
-            QueuedPrint job = await _queue.EnqueueAsync(printer.Id, caller!, body.Name, cancellationToken);
+            QueuedPrint job = await _queue.EnqueueAsync(printer.Id, caller, body.Name, cancellationToken);
 
             // Re-read so the response carries the file's name and size, which the entity does not hold.
-            IReadOnlyList<QueuedPrint> queue = await _queue.ListAsync(printer.Id, caller!, cancellationToken);
+            IReadOnlyList<QueuedPrint> queue = await _queue.ListAsync(printer.Id, caller, cancellationToken);
             QueuedPrintReadDTO created = QueuedPrintReadDTO.FromQueuedPrint(queue.Single(entry => entry.Id == job.Id));
 
-            return CreatedAtAction(nameof(List), new { uuid }, created);
+            // Location is the queue the entry now sits in - the same URL CreatedAtAction would have
+            // composed, built through the same helper.
+            return TypedResults.Created(Url.Action(nameof(List), new { uuid }), created);
         }
         catch (PrintFileNotFoundException e)
         {
-            return this.Failure(StatusCodes.Status404NotFound, e.Message);
+            return this.NotFoundProblem(e.Message);
         }
-        catch (TeamAccessDeniedException)
+        catch (TeamAccessDeniedException e)
         {
-            return Forbid();
+            return this.ForbiddenProblem(e.Message);
         }
     }
 
@@ -161,37 +169,39 @@ public class PrintQueueController : ControllerBase
     /// </summary>
     [HttpPatch]
     [Route("printers/{uuid:guid}/queue/{trackingId:guid}")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult> Move(Guid uuid,
-                                         Guid trackingId,
-                                         [FromBody] MoveRequest body,
-                                         CancellationToken cancellationToken)
+    public async Task<Results<NoContent, ForbiddenProblem, NotFoundProblem>> Move(Guid uuid,
+                                                                                 Guid trackingId,
+                                                                                 [FromBody] MoveRequest body,
+                                                                                 CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(body);
 
-        (Printer? printer, Caller? caller, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+        (Printer? printer, Caller? caller) = await ResolveAsync(uuid, cancellationToken);
+
+        if (caller is null)
+        {
+            return this.NoAccount();
+        }
 
         if (printer is null)
         {
-            return failure!;
+            return this.NotFoundProblem();
         }
 
         try
         {
-            bool found = await _queue.MoveAsync(trackingId, caller!, body.Position, cancellationToken);
+            bool found = await _queue.MoveAsync(trackingId, caller, body.Position, cancellationToken);
 
             if (!found)
             {
-                return NotFound();
+                return this.NotFoundProblem();
             }
 
-            return NoContent();
+            return TypedResults.NoContent();
         }
-        catch (TeamAccessDeniedException)
+        catch (TeamAccessDeniedException e)
         {
-            return Forbid();
+            return this.ForbiddenProblem(e.Message);
         }
     }
 
@@ -205,63 +215,61 @@ public class PrintQueueController : ControllerBase
     /// </remarks>
     [HttpDelete]
     [Route("printers/{uuid:guid}/queue/{trackingId:guid}")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult> Cancel(Guid uuid, Guid trackingId, CancellationToken cancellationToken)
+    public async Task<Results<NoContent, ForbiddenProblem, NotFoundProblem>> Cancel(Guid uuid,
+                                                                                   Guid trackingId,
+                                                                                   CancellationToken cancellationToken)
     {
-        (Printer? printer, Caller? caller, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+        (Printer? printer, Caller? caller) = await ResolveAsync(uuid, cancellationToken);
+
+        if (caller is null)
+        {
+            return this.NoAccount();
+        }
 
         if (printer is null)
         {
-            return failure!;
+            return this.NotFoundProblem();
         }
 
         try
         {
-            bool found = await _queue.CancelAsync(trackingId, caller!, cancellationToken);
+            bool found = await _queue.CancelAsync(trackingId, caller, cancellationToken);
 
             if (!found)
             {
-                return NotFound();
+                return this.NotFoundProblem();
             }
 
-            return NoContent();
+            return TypedResults.NoContent();
         }
-        catch (TeamAccessDeniedException)
+        catch (TeamAccessDeniedException e)
         {
-            return Forbid();
+            return this.ForbiddenProblem(e.Message);
         }
     }
 
     /// <summary>
-    /// Resolves the route's printer and the caller, or the failure to answer with.
+    /// Resolves the route's printer and the caller - either null being a refusal the action answers
+    /// itself, the caller first.
     /// </summary>
     /// <remarks>
-    /// Null covers both "no such printer" and "not visible to this user", deliberately - telling them
-    /// apart would confirm the existence of other people's printers. The same rule
+    /// A null printer covers both "no such printer" and "not visible to this user", deliberately -
+    /// telling them apart would confirm the existence of other people's printers. The same rule
     /// <see cref="PrinterController"/> follows.
     /// </remarks>
-    private async Task<(Printer? printer, Caller? caller, ActionResult? failure)> ResolveAsync(Guid uuid,
-        CancellationToken cancellationToken)
+    private async Task<(Printer? printer, Caller? caller)> ResolveAsync(Guid uuid, CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
         if (user is null)
         {
-            // [Authorize] should make this unreachable; fail closed rather than act on an invented id.
-            return (null, null, Forbid());
+            return (null, null);
         }
 
         Caller caller = CallerResolver.For(user, User);
         Printer? printer = await _printers.GetPrinterForUserAsync(uuid, caller, cancellationToken);
 
-        if (printer is null)
-        {
-            return (null, caller, NotFound());
-        }
-
-        return (printer, caller, null);
+        return (printer, caller);
     }
 
     /// <summary>Body of an enqueue: which of the caller's files to add.</summary>

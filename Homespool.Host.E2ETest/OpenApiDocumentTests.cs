@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
@@ -90,8 +91,9 @@ public sealed class OpenApiDocumentTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
-    /// The success body is described by its own schema - the whole point of typing the return as
-    /// <c>ActionResult&lt;T&gt;</c> rather than <c>IActionResult</c>.
+    /// The success body is described by its own schema - the whole point of naming
+    /// <c>Ok&lt;PrinterStorageReadDTO&gt;</c> as an arm of the action's <c>Results&lt;...&gt;</c>
+    /// rather than returning <c>IActionResult</c>.
     /// </summary>
     [Fact]
     public async Task TheStorageListingDocumentsItsResponseSchema()
@@ -113,11 +115,11 @@ public sealed class OpenApiDocumentTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
-    /// Every failure the document describes is a <c>ProblemDetails</c>, and the responses really are
-    /// - including the 502, which is <b>not</b> a client-error code and therefore gets no shape
-    /// inferred for it. That one is the tell: before the attributes named the type, it was the only
-    /// response the document left honestly undescribed while the 4xx ones claimed a shape they did
-    /// not have.
+    /// Every failure the document describes is a <c>ProblemDetails</c>, as <c>application/problem+json</c>,
+    /// and the responses really are - including the 502, which is <b>not</b> a client-error code and
+    /// therefore gets no shape inferred for it. That one is the tell: before the types named the shape,
+    /// it was the only response the document left honestly undescribed while the 4xx ones claimed a
+    /// shape they did not have. Now every failure arm is a <c>ProblemResult</c>, and says both.
     /// </summary>
     [Theory]
     [InlineData("400")]
@@ -137,6 +139,32 @@ public sealed class OpenApiDocumentTests : IAsyncLifetime, IDisposable
         // Assert
         SchemaOf(get, statusCode).GetProperty("$ref").GetString()
                                  .Should().Be("#/components/schemas/ProblemDetails");
+    }
+
+    /// <summary>
+    /// And the content type is the one the arm writes, and only that - where the attribute-era
+    /// document listed MVC's three formatter types against a body none of them produced. The 401 is
+    /// absent from this list because it is the auth policy's, said once by an attribute at class
+    /// level, and an attribute cannot say better than the formatters.
+    /// </summary>
+    [Theory]
+    [InlineData("400")]
+    [InlineData("403")]
+    [InlineData("404")]
+    [InlineData("409")]
+    [InlineData("502")]
+    public async Task EveryFailureTheActionAnswersIsProblemJson(string statusCode)
+    {
+        // Arrange
+        JsonElement document = await DocumentAsync();
+
+        // Act
+        JsonElement get = document.GetProperty("paths").GetProperty(StoragePath).GetProperty("get");
+        JsonElement content = get.GetProperty("responses").GetProperty(statusCode).GetProperty("content");
+
+        // Assert
+        content.EnumerateObject().Select(mediaType => mediaType.Name)
+               .Should().Equal(["application/problem+json"], "the arm says the content type it writes, and only that");
     }
 
     /// <summary>

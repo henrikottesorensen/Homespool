@@ -1,9 +1,11 @@
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -17,6 +19,15 @@ using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
+
+// What the six job-control verbs answer, and the two helpers behind them: named once, because a
+// union spelled out at seven sites is seven chances for one to drift.
+using JobControlResult =
+    Microsoft.AspNetCore.Http.HttpResults.Results<
+        Microsoft.AspNetCore.Http.HttpResults.NoContent,
+        Homespool.Host.Controllers.ForbiddenProblem,
+        Homespool.Host.Controllers.NotFoundProblem,
+        Homespool.Host.Controllers.ConflictProblem>;
 
 namespace Homespool.Host.Controllers;
 
@@ -116,20 +127,16 @@ public class PrinterController : ControllerBase
     /// </remarks>
     [HttpPost]
     [Route("printers/{uuid:guid}/files")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public async Task<ActionResult> SendFile(Guid uuid,
-                                             [FromBody] SendFileRequest body,
-                                             CancellationToken cancellationToken)
+    public async Task<Results<NoContent, BadRequestProblem, ForbiddenProblem, NotFoundProblem, ConflictProblem>> SendFile(
+        Guid uuid,
+        [FromBody] SendFileRequest body,
+        CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
         if (user is null)
         {
-            return Forbid();
+            return this.NoAccount();
         }
 
         // Scoped to the caller, so "someone else's file" and "no such file" are the same answer and
@@ -138,21 +145,20 @@ public class PrinterController : ControllerBase
 
         if (file is null)
         {
-            return this.Failure(StatusCodes.Status404NotFound, $"You have no file named {body.Name}.");
+            return this.NotFoundProblem($"You have no file named {body.Name}.");
         }
 
         if (file.Length >= uint.MaxValue)
         {
             // orig_size is uint32 on the wire; a file this large cannot be described at all.
-            return this.Failure(StatusCodes.Status400BadRequest,
-                                "Files must be under 4 GiB - a printer cannot be sent anything larger.");
+            return this.BadRequestProblem("Files must be under 4 GiB - a printer cannot be sent anything larger.");
         }
 
-        (Printer? printer, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+        Printer? printer = await _printers.GetPrinterForUserAsync(uuid, CallerResolver.For(user, User), cancellationToken);
 
         if (printer is null)
         {
-            return failure!;
+            return this.NotFoundProblem();
         }
 
         // Minting the token, offering the bytes and cleaning up after a send that did not take all
@@ -165,24 +171,23 @@ public class PrinterController : ControllerBase
             CommandOutcome? outcome = await _sender.SendAsync(printer, file, CallerResolver.For(user, User), cancellationToken);
 
             return outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed ?
-                this.CommandFailure(StatusCodes.Status409Conflict, wireName,
-                                    outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString()) :
-                NoContent();
+                this.CommandRefused(wireName, outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString()) :
+                TypedResults.NoContent();
         }
         catch (PrintFileUnreadableException e)
         {
-            return this.Failure(StatusCodes.Status409Conflict, e.Message);
+            return this.ConflictProblem(e.Message);
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
                                       or CommandResponseTimedOutException or CommandSendTimedOutException)
         {
             _logger.LogInformation(e, "{Command} to printer {PrinterId} did not complete", wireName, printer.Id);
 
-            return this.CommandFailure(StatusCodes.Status409Conflict, wireName, e.Message);
+            return this.CommandRefused(wireName, e.Message);
         }
-        catch (TeamAccessDeniedException)
+        catch (TeamAccessDeniedException e)
         {
-            return Forbid();
+            return this.ForbiddenProblem(e.Message);
         }
     }
 
@@ -196,29 +201,42 @@ public class PrinterController : ControllerBase
     /// </remarks>
     [HttpPost]
     [Route("printers/{uuid:guid}/print")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public async Task<ActionResult> Print(Guid uuid, [FromBody] PrintRequest body, CancellationToken cancellationToken)
+    public async Task<Results<NoContent, BadRequestProblem, ForbiddenProblem, NotFoundProblem, ConflictProblem>> Print(
+        Guid uuid,
+        [FromBody] PrintRequest body,
+        CancellationToken cancellationToken)
     {
         if (!body.Path.StartsWith("/usb/", StringComparison.Ordinal) || body.Path.Contains("/../", StringComparison.Ordinal))
         {
             // The printer enforces this itself (path_allowed, planner.cpp:135-141); rejecting here
             // turns a silent refusal into an explanation.
-            return this.Failure(StatusCodes.Status400BadRequest,
-                                "Path must be under /usb/ and contain no '/../' segment.");
+            return this.BadRequestProblem("Path must be under /usb/ and contain no '/../' segment.");
         }
 
-        (Printer? printer, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+        (HSUser? user, Printer? printer) = await ResolveAsync(uuid, cancellationToken);
+
+        if (user is null)
+        {
+            return this.NoAccount();
+        }
 
         if (printer is null)
         {
-            return failure!;
+            return this.NotFoundProblem();
         }
 
-        return await SendAsync(printer, new StartPrint(body.Path), cancellationToken);
+        // A union does not widen on its own: SendAsync answers with the four arms every verb shares,
+        // and this action has a fifth, so its answer is unpacked into the wider type here.
+        JobControlResult sent = await SendAsync(printer, new StartPrint(body.Path), cancellationToken);
+
+        return sent.Result switch
+        {
+            NoContent accepted => accepted,
+            ConflictProblem refused => refused,
+            ForbiddenProblem forbidden => forbidden,
+            NotFoundProblem missing => missing,
+            _ => throw new UnreachableException("SendAsync answered with an arm it does not declare."),
+        };
     }
 
     /// <summary>
@@ -255,13 +273,8 @@ public class PrinterController : ControllerBase
     /// </remarks>
     [HttpGet]
     [Route("printers/{uuid:guid}/storage/usb/{**path}")]
-    [ProducesResponseType<PrinterStorageReadDTO>(StatusCodes.Status200OK)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status502BadGateway)]
-    public async Task<ActionResult<PrinterStorageReadDTO>> Storage(Guid uuid, string? path, CancellationToken cancellationToken)
+    public async Task<Results<Ok<PrinterStorageReadDTO>, BadRequestProblem, ForbiddenProblem, NotFoundProblem, ConflictProblem, BadGatewayProblem>>
+        Storage(Guid uuid, string? path, CancellationToken cancellationToken)
     {
         // Firmware rejects traversal itself; catching it here means an attempt never reaches the
         // printer and the caller gets told why, rather than spending a command on a refusal.
@@ -270,23 +283,27 @@ public class PrinterController : ControllerBase
                                  path.EndsWith("/..", StringComparison.Ordinal) ||
                                  path == ".."))
         {
-            return this.Failure(StatusCodes.Status400BadRequest, "Path must contain no '/../' segment.");
+            return this.BadRequestProblem("Path must contain no '/../' segment.");
         }
 
-        (Printer? printer, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+        (HSUser? user, Printer? printer) = await ResolveAsync(uuid, cancellationToken);
+
+        if (user is null)
+        {
+            return this.NoAccount();
+        }
 
         if (printer is null)
         {
-            return failure!;
+            return this.NotFoundProblem();
         }
 
         string trimmed = path?.Trim('/') ?? string.Empty;
         PrusaConnect.Commands.SendFileInfo command = new() { Path = trimmed.Length == 0 ? "/usb" : $"/usb/{trimmed}" };
-        HSUser user = (await _userManager.GetUserAsync(User))!;
 
         if (!await _access.AllowsAsync(printer.Id, CallerResolver.For(user, User), Capability.ControlPrinter, cancellationToken))
         {
-            return this.Failure(StatusCodes.Status403Forbidden, "You may not browse this printer's storage.");
+            return this.ForbiddenProblem("You may not browse this printer's storage.");
         }
 
         try
@@ -299,7 +316,7 @@ public class PrinterController : ControllerBase
                 // Firmware answers a path that does not exist and a path it will not touch with the
                 // same event, distinguished only by reason text - so this stays one status code and
                 // hands the caller firmware's own words rather than guessing at a 404.
-                return this.CommandFailure(StatusCodes.Status409Conflict, command.WireName,
+                return this.CommandRefused(command.WireName,
                                            outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString());
             }
 
@@ -311,11 +328,10 @@ public class PrinterController : ControllerBase
                 _logger.LogInformation("{Command} to printer {PrinterId} answered {Outcome} with no data",
                                        command.WireName, printer.Id, outcome?.EventType.ToString() ?? "nothing");
 
-                return this.CommandFailure(StatusCodes.Status502BadGateway, command.WireName,
-                                           "The printer answered without a listing.");
+                return this.CommandAnswerUnusable(command.WireName, "The printer answered without a listing.");
             }
 
-            return Ok(PrinterStorageReadDTO.FromEvent(outcome.Answer));
+            return TypedResults.Ok(PrinterStorageReadDTO.FromEvent(outcome.Answer));
         }
         catch (CommandAnswerUnreadableException e)
         {
@@ -323,18 +339,18 @@ public class PrinterController : ControllerBase
             // the caller's - so 502 rather than the 409 the transport failures below get.
             _logger.LogWarning(e, "{Command} to printer {PrinterId} answered unreadably", command.WireName, printer.Id);
 
-            return this.CommandFailure(StatusCodes.Status502BadGateway, command.WireName, e.Message);
+            return this.CommandAnswerUnusable(command.WireName, e.Message);
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
                                       or CommandResponseTimedOutException or CommandSendTimedOutException)
         {
             _logger.LogInformation(e, "{Command} to printer {PrinterId} did not complete", command.WireName, printer.Id);
 
-            return this.CommandFailure(StatusCodes.Status409Conflict, command.WireName, e.Message);
+            return this.CommandRefused(command.WireName, e.Message);
         }
-        catch (TeamAccessDeniedException)
+        catch (TeamAccessDeniedException e)
         {
-            return Forbid();
+            return this.ForbiddenProblem(e.Message);
         }
     }
 
@@ -353,11 +369,7 @@ public class PrinterController : ControllerBase
     /// </remarks>
     [HttpPut]
     [Route("printers/{uuid:guid}/command/pause")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public Task<ActionResult> Pause(Guid uuid, CancellationToken cancellationToken)
+    public Task<JobControlResult> Pause(Guid uuid, CancellationToken cancellationToken)
     {
         return SendJobControlAsync(uuid, new PausePrint(), cancellationToken);
     }
@@ -365,11 +377,7 @@ public class PrinterController : ControllerBase
     /// <summary>Resumes a paused print. <c>PUT /api/v1/printers/{uuid}/command/resume</c>.</summary>
     [HttpPut]
     [Route("printers/{uuid:guid}/command/resume")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public Task<ActionResult> Resume(Guid uuid, CancellationToken cancellationToken)
+    public Task<JobControlResult> Resume(Guid uuid, CancellationToken cancellationToken)
     {
         return SendJobControlAsync(uuid, new ResumePrint(), cancellationToken);
     }
@@ -384,18 +392,19 @@ public class PrinterController : ControllerBase
     /// </remarks>
     [HttpPut]
     [Route("printers/{uuid:guid}/command/stop")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public async Task<ActionResult> Stop(Guid uuid, CancellationToken cancellationToken)
+    public async Task<JobControlResult> Stop(Guid uuid, CancellationToken cancellationToken)
     {
         // Which printer, and whether this caller may be told it exists.
-        (Printer? printer, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+        (HSUser? user, Printer? printer) = await ResolveAsync(uuid, cancellationToken);
+
+        if (user is null)
+        {
+            return this.NoAccount();
+        }
 
         if (printer is null)
         {
-            return failure!;
+            return this.NotFoundProblem();
         }
 
         // The one difference from the other five verbs: PrintStopService sends the same command
@@ -410,11 +419,7 @@ public class PrinterController : ControllerBase
     /// success as far as this endpoint is concerned, since only Rejected and Failed are refusals.</remarks>
     [HttpPut]
     [Route("printers/{uuid:guid}/command/ready")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public Task<ActionResult> Ready(Guid uuid, CancellationToken cancellationToken)
+    public Task<JobControlResult> Ready(Guid uuid, CancellationToken cancellationToken)
     {
         return SendJobControlAsync(uuid, new SetPrinterReady(), cancellationToken);
     }
@@ -422,11 +427,7 @@ public class PrinterController : ControllerBase
     /// <summary>Cancels the ready state. <c>PUT /api/v1/printers/{uuid}/command/unready</c>.</summary>
     [HttpPut]
     [Route("printers/{uuid:guid}/command/unready")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public Task<ActionResult> Unready(Guid uuid, CancellationToken cancellationToken)
+    public Task<JobControlResult> Unready(Guid uuid, CancellationToken cancellationToken)
     {
         return SendJobControlAsync(uuid, new CancelPrinterReady(), cancellationToken);
     }
@@ -444,46 +445,51 @@ public class PrinterController : ControllerBase
     /// </remarks>
     [HttpPut]
     [Route("printers/{uuid:guid}/command/idle")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public Task<ActionResult> Idle(Guid uuid, CancellationToken cancellationToken)
+    public Task<JobControlResult> Idle(Guid uuid, CancellationToken cancellationToken)
     {
         return SendJobControlAsync(uuid, new SetPrinterIdle(), cancellationToken);
     }
 
     /// <summary>Resolves the printer, then sends - the whole body of every job-control verb above.</summary>
-    private async Task<ActionResult> SendJobControlAsync(Guid uuid,
-                                                         IPrinterIntent command,
-                                                         CancellationToken cancellationToken)
+    private async Task<JobControlResult> SendJobControlAsync(Guid uuid,
+                                                             IPrinterIntent command,
+                                                             CancellationToken cancellationToken)
     {
-        (Printer? printer, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+        (HSUser? user, Printer? printer) = await ResolveAsync(uuid, cancellationToken);
 
-        return printer is null ? failure! : await SendAsync(printer, command, cancellationToken);
+        if (user is null)
+        {
+            return this.NoAccount();
+        }
+
+        if (printer is null)
+        {
+            return this.NotFoundProblem();
+        }
+
+        return await SendAsync(printer, command, cancellationToken);
     }
 
-    private async Task<(Printer? printer, ActionResult? failure)> ResolveAsync(Guid uuid,
-                                                                               CancellationToken cancellationToken)
+    /// <summary>
+    /// The caller's account and the printer the route names - either null being a refusal the action
+    /// answers itself, in that order.
+    /// </summary>
+    /// <remarks>
+    /// A null printer covers both "no such printer" and "not visible to this user", deliberately -
+    /// telling them apart would confirm the existence of other people's printers.
+    /// </remarks>
+    private async Task<(HSUser? user, Printer? printer)> ResolveAsync(Guid uuid, CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
         if (user is null)
         {
-            // [Authorize] should make this unreachable; fail closed rather than act on an invented id.
-            return (null, Forbid());
+            return (null, null);
         }
 
         Printer? printer = await _printers.GetPrinterForUserAsync(uuid, CallerResolver.For(user, User), cancellationToken);
 
-        // Null covers both "no such printer" and "not visible to this user", deliberately - telling
-        // them apart would confirm the existence of other people's printers.
-        if (printer is null)
-        {
-            return (null, NotFound());
-        }
-
-        return (printer, null);
+        return (user, printer);
     }
 
     /// <summary>
@@ -495,11 +501,11 @@ public class PrinterController : ControllerBase
     /// which is every other caller. A replacement throws the same exceptions and returns the same
     /// <see cref="CommandOutcome"/>, so nothing below that line has to know which one ran.
     /// </remarks>
-    private async Task<ActionResult> SendAsync(Printer printer,
-                                               IPrinterIntent command,
-                                               CancellationToken cancellationToken,
-                                               Action? onFailure = null,
-                                               Func<int, Caller, CancellationToken, Task<CommandOutcome?>>? send = null)
+    private async Task<JobControlResult> SendAsync(Printer printer,
+                                                   IPrinterIntent command,
+                                                   CancellationToken cancellationToken,
+                                                   Action? onFailure = null,
+                                                   Func<int, Caller, CancellationToken, Task<CommandOutcome?>>? send = null)
     {
         HSUser user = (await _userManager.GetUserAsync(User))!;
         Caller caller = CallerResolver.For(user, User);
@@ -524,15 +530,14 @@ public class PrinterController : ControllerBase
             {
                 onFailure?.Invoke();
 
-                return this.CommandFailure(StatusCodes.Status409Conflict, command.Name,
-                                           outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString());
+                return this.CommandRefused(command.Name, outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString());
             }
 
             // 204, which is ours rather than the spec's - Connect documents 200 with a Command
             // resource for these. Answering the printer's real verdict is more useful to a caller
             // than an acknowledgement that we asked. The printer's actual reply is logged and
             // persisted as an ordinary event either way; a caller wanting it watches the event stream.
-            return NoContent();
+            return TypedResults.NoContent();
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
                                       or CommandResponseTimedOutException or CommandSendTimedOutException)
@@ -540,13 +545,13 @@ public class PrinterController : ControllerBase
             onFailure?.Invoke();
             _logger.LogInformation(e, "{Command} to printer {PrinterId} did not complete", command.Name, printer.Id);
 
-            return this.CommandFailure(StatusCodes.Status409Conflict, command.Name, e.Message);
+            return this.CommandRefused(command.Name, e.Message);
         }
-        catch (TeamAccessDeniedException)
+        catch (TeamAccessDeniedException e)
         {
             onFailure?.Invoke();
 
-            return Forbid();
+            return this.ForbiddenProblem(e.Message);
         }
     }
 

@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 
@@ -72,16 +73,19 @@ public class CameraController : ControllerBase
     /// </remarks>
     [HttpGet]
     [Route("{uuid:guid}/frame")]
+
+    // The 200 is said here because a file result carries no metadata of its own; the rest of the
+    // answers say theirs through the union.
     [Produces("image/jpeg")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult> Frame(Guid uuid, CancellationToken cancellationToken)
+    public async Task<Results<FileContentHttpResult, NoContent, ForbiddenProblem, NotFoundProblem>> Frame(
+        Guid uuid,
+        CancellationToken cancellationToken)
     {
         long? userId = UserId();
         if (userId is null)
         {
-            return Forbid();
+            return this.NoAccount();
         }
 
         Camera? camera = await _access
@@ -92,9 +96,7 @@ public class CameraController : ControllerBase
         // PrinterAccessService: a UUID that answers differently is a way to learn which exist.
         if (camera is null)
         {
-            return Problem(
-                title: "No such camera.",
-                statusCode: StatusCodes.Status404NotFound);
+            return this.NotFoundProblem("No such camera.");
         }
 
         // Asking is what schedules the next capture. Ordered before the read so that the very first
@@ -111,7 +113,7 @@ public class CameraController : ControllerBase
         CameraFrame? frame = _frames.Current(camera.Id);
         if (frame is null)
         {
-            return NoContent();
+            return TypedResults.NoContent();
         }
 
         // No caching anywhere: this resource is different every couple of seconds, and a cached
@@ -120,7 +122,7 @@ public class CameraController : ControllerBase
         Response.Headers["X-Frame-Captured-At"] =
             frame.CapturedAt.ToString("O", CultureInfo.InvariantCulture);
 
-        return File(frame.Bytes, frame.ContentType);
+        return TypedResults.File(frame.Bytes, frame.ContentType);
     }
 
     private long? UserId()

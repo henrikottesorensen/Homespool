@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -65,20 +66,14 @@ public class PrinterAppController : ControllerBase
 
     [HttpPost]
     [Route("printers/register")]
-    [ProducesResponseType<PrinterReadDTO>(StatusCodes.Status201Created)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<PrinterReadDTO>> RegisterPrinter([FromBody] RegisterPrinterAppRequestDTO body,
-                                                                    CancellationToken cancellationToken)
+    public async Task<Results<Created<PrinterReadDTO>, ForbiddenProblem, NotFoundProblem, ConflictProblem, InternalServerErrorProblem>>
+        RegisterPrinter([FromBody] RegisterPrinterAppRequestDTO body, CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
         if (user is null)
         {
-            // [Authorize] should make this unreachable; fail closed rather than claim on an invented id.
-            return Forbid();
+            return this.NoAccount();
         }
 
         // The transaction is required, not a convenience. ClaimPrinterAsync makes three separate
@@ -103,105 +98,98 @@ public class PrinterAppController : ControllerBase
             PrinterWithState? claimed = await _printerQueryService.GetPrinterWithStateForUserAsync(
                 printer.Uuid, CallerResolver.For(user, User), cancellationToken);
 
-            return StatusCode(StatusCodes.Status201Created,
-                              claimed is null ? PrinterReadDTO.FromEntity(printer) : PrinterReadDTO.FromEntity(claimed));
+            // 201 with no Location: the printer is at GET printers/{uuid}, and the body carries the
+            // uuid, but this surface has never advertised the header and a claim is not quite a create.
+            return TypedResults.Created((string?)null,
+                                        claimed is null ? PrinterReadDTO.FromEntity(printer) : PrinterReadDTO.FromEntity(claimed));
         }
-        catch (PrinterNotFoundException)
+        catch (PrinterNotFoundException e)
         {
-            return NotFound();
+            return this.NotFoundProblem(e.Message);
         }
-        catch (RegistrationAlreadyClaimedException)
+        catch (RegistrationAlreadyClaimedException e)
         {
-            return Conflict();
+            return this.ConflictProblem(e.Message);
         }
-        catch (TeamAccessDeniedException)
+        catch (TeamAccessDeniedException e)
         {
-            return Forbid();
+            return this.ForbiddenProblem(e.Message);
         }
         catch (DbUpdateException ex)
         {
             _logger.LogError(ex, "Failed to claim printer for registration code; rolling back.");
 
-            return StatusCode(StatusCodes.Status500InternalServerError);
+            return this.InternalServerErrorProblem("The claim could not be saved.");
         }
     }
 
     [HttpGet]
     [Route("user")]
-    [ProducesResponseType<UserReadDTO>(StatusCodes.Status200OK)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    public async Task<ActionResult<UserReadDTO>> GetCurrentUser(CancellationToken cancellationToken)
+    public async Task<Results<Ok<UserReadDTO>, ForbiddenProblem>> GetCurrentUser(CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
         if (user is null)
         {
-            return Forbid();
+            return this.NoAccount();
         }
 
         IReadOnlyList<TeamMember> memberships = await _teamService.GetTeamsForUserAsync(user.Id, cancellationToken);
 
-        return Ok(UserReadDTO.FromEntity(user, memberships));
+        return TypedResults.Ok(UserReadDTO.FromEntity(user, memberships));
     }
 
     [HttpGet]
     [Route("printers")]
-    [ProducesResponseType<IReadOnlyList<PrinterReadDTO>>(StatusCodes.Status200OK)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    public async Task<ActionResult<IReadOnlyList<PrinterReadDTO>>> ListPrinters(CancellationToken cancellationToken)
+    public async Task<Results<Ok<IReadOnlyList<PrinterReadDTO>>, ForbiddenProblem>> ListPrinters(CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
         if (user is null)
         {
-            return Forbid();
+            return this.NoAccount();
         }
 
         IReadOnlyList<PrinterWithState> printers =
             await _printerQueryService.ListPrintersWithStateForUserAsync(CallerResolver.For(user, User), cancellationToken);
 
-        return Ok(printers.Select(PrinterReadDTO.FromEntity).ToList());
+        return TypedResults.Ok<IReadOnlyList<PrinterReadDTO>>(printers.Select(PrinterReadDTO.FromEntity).ToList());
     }
 
     [HttpGet]
     [Route("printers/{uuid:guid}")]
-    [ProducesResponseType<PrinterReadDTO>(StatusCodes.Status200OK)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<PrinterReadDTO>> GetPrinter(Guid uuid, CancellationToken cancellationToken)
+    public async Task<Results<Ok<PrinterReadDTO>, ForbiddenProblem, NotFoundProblem>> GetPrinter(Guid uuid,
+                                                                                               CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
         if (user is null)
         {
-            return Forbid();
+            return this.NoAccount();
         }
 
         PrinterWithState? printer = await _printerQueryService.GetPrinterWithStateForUserAsync(uuid, CallerResolver.For(user, User), cancellationToken);
 
         if (printer is null)
         {
-            return NotFound();
+            return this.NotFoundProblem();
         }
 
-        return Ok(PrinterReadDTO.FromEntity(printer));
+        return TypedResults.Ok(PrinterReadDTO.FromEntity(printer));
     }
 
     [HttpPatch]
     [Route("printers/{uuid:guid}")]
-    [ProducesResponseType<PrinterReadDTO>(StatusCodes.Status200OK)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<PrinterReadDTO>> PatchPrinter(Guid uuid,
-                                                                 [FromBody] PrinterPatchInputDTO body,
-                                                                 CancellationToken cancellationToken)
+    public async Task<Results<Ok<PrinterReadDTO>, ForbiddenProblem, NotFoundProblem, InternalServerErrorProblem>> PatchPrinter(
+        Guid uuid,
+        [FromBody] PrinterPatchInputDTO body,
+        CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
         if (user is null)
         {
-            return Forbid();
+            return this.NoAccount();
         }
 
         await using IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken);
@@ -213,22 +201,22 @@ public class PrinterAppController : ControllerBase
 
             if (printer is null)
             {
-                return NotFound();
+                return this.NotFoundProblem();
             }
 
             await transaction.CommitAsync(cancellationToken);
 
-            return Ok(PrinterReadDTO.FromEntity(printer));
+            return TypedResults.Ok(PrinterReadDTO.FromEntity(printer));
         }
-        catch (TeamAccessDeniedException)
+        catch (TeamAccessDeniedException e)
         {
-            return Forbid();
+            return this.ForbiddenProblem(e.Message);
         }
         catch (DbUpdateException ex)
         {
             _logger.LogError(ex, "Failed to update printer {PrinterUuid}; rolling back.", uuid);
 
-            return StatusCode(StatusCodes.Status500InternalServerError);
+            return this.InternalServerErrorProblem("The change could not be saved.");
         }
     }
 }

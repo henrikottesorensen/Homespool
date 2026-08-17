@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Hosting;
@@ -48,9 +49,10 @@ public class PrusaConnectPrinterController : ControllerBase
     [HttpGet]
     [Route("/p/ws")]
     [EnableRateLimiting(Program.PrinterSocketRateLimitPolicy)]
+
+    // The 101 is said here because nothing in the union can: the response starts inside the action.
     [ProducesResponseType(typeof(void), StatusCodes.Status101SwitchingProtocols)]
-    [ProducesResponseType(typeof(void), StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult> ConnectWebSocket()
+    public async Task<Results<EmptyHttpResult, BadRequest>> ConnectWebSocket()
     {
         try
         {
@@ -115,15 +117,15 @@ public class PrusaConnectPrinterController : ControllerBase
                 // Response.StatusCode during result execution - after this action returns, outside
                 // the try above - which throws "the response has already started" and surfaces as an
                 // unhandled error the client never sees, because the socket is closed by then.
-                return new EmptyResult();
+                return TypedResults.Empty;
             }
         }
         catch (Exception e) when (e is ArgumentNullException or InvalidOperationException)
         {
-            return BadRequest();
+            return TypedResults.BadRequest();
         }
 
-        return BadRequest();
+        return TypedResults.BadRequest();
     }
 
     [AllowAnonymous]
@@ -132,10 +134,10 @@ public class PrusaConnectPrinterController : ControllerBase
     [Route("/p/register")]
 
     // Firmware reads the status code and the Code header; the body is deliberately empty, and
-    // text/html rather than JSON because that is what Connect answers with.
+    // text/html rather than JSON because that is what Connect answers with. The 200 is said here
+    // because a content result carries no metadata of its own.
     [ProducesResponseType(typeof(void), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(void), StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult> RegisterPrinter([FromBody] RegisterPrinterRequestDTO printer)
+    public async Task<Results<ContentHttpResult, BadRequest>> RegisterPrinter([FromBody] RegisterPrinterRequestDTO printer)
     {
         try
         {
@@ -154,11 +156,11 @@ public class PrusaConnectPrinterController : ControllerBase
 
             Response.Headers.TryAdd(Headers.Expires, $"{code.Expires:R}");
 
-            return Content(string.Empty, MediaTypeNames.Text.Html);
+            return TypedResults.Content(string.Empty, MediaTypeNames.Text.Html);
         }
         catch (Exception e) when (e is ArgumentNullException or InvalidOperationException)
         {
-            return BadRequest();
+            return TypedResults.BadRequest();
         }
     }
 
@@ -168,13 +170,11 @@ public class PrusaConnectPrinterController : ControllerBase
     [Route("/p/register")]
 
     // 200 carries the token in a header and nothing in the body; 202 is the one answer here with a
-    // payload, telling the printer to poll again.
-    [ProducesResponseType(typeof(void), StatusCodes.Status200OK)]
-    [ProducesResponseType<MessageDTO>(StatusCodes.Status202Accepted)]
-    [ProducesResponseType(typeof(void), StatusCodes.Status400BadRequest)]
+    // payload, telling the printer to poll again. The 401 is said here because an unauthorized
+    // result carries no metadata of its own; the rest say theirs through the union.
     [ProducesResponseType(typeof(void), StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(typeof(void), StatusCodes.Status404NotFound)]
-    public async Task<ActionResult> GetPrinterRegistrationStatus()
+    public async Task<Results<Ok, Accepted<MessageDTO>, ContentHttpResult, BadRequest, NotFound, UnauthorizedHttpResult>>
+        GetPrinterRegistrationStatus()
     {
         try
         {
@@ -184,14 +184,14 @@ public class PrusaConnectPrinterController : ControllerBase
             // header and nothing else.
             if (clientHeaders.Code is null)
             {
-                return BadRequest("Code missing");
+                return TypedResults.Text("Code missing", statusCode: StatusCodes.Status400BadRequest);
             }
 
             string? token = await _prusaConnectService.GetToken(clientHeaders.Code);
 
             if (string.IsNullOrWhiteSpace(token))
             {
-                return Accepted(new MessageDTO
+                return TypedResults.Accepted((string?)null, new MessageDTO
                 {
                     Message = "User hasn't used Temporary-Code yet. Printer must call it one more time",
                     Code = "REGISTRATION_ACCEPTED",
@@ -199,19 +199,19 @@ public class PrusaConnectPrinterController : ControllerBase
             }
 
             Response.Headers.TryAdd(Headers.Token, token);
-            return Ok();
+            return TypedResults.Ok();
         }
         catch (Exception e) when (e is ArgumentNullException or InvalidOperationException)
         {
-            return BadRequest();
+            return TypedResults.BadRequest();
         }
         catch (PrinterNotFoundException)
         {
-            return NotFound();
+            return TypedResults.NotFound();
         }
         catch (UnauthorizedAccessException)
         {
-            return Unauthorized();
+            return TypedResults.Unauthorized();
         }
     }
 }

@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -63,18 +64,17 @@ public class PrintFileController : ControllerBase
 
     /// <summary>Everything the caller has uploaded. <c>GET /api/v1/files</c>.</summary>
     [HttpGet]
-    [ProducesResponseType<IReadOnlyList<PrintFileReadDTO>>(StatusCodes.Status200OK)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    public async Task<ActionResult<IReadOnlyList<PrintFileReadDTO>>> List()
+    public async Task<Results<Ok<IReadOnlyList<PrintFileReadDTO>>, ForbiddenProblem>> List()
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
         if (user is null)
         {
-            return Forbid();
+            return this.NoAccount();
         }
 
-        return Ok(_files.List(CallerResolver.For(user, User)).Select(PrintFileReadDTO.FromStored).ToList());
+        return TypedResults.Ok<IReadOnlyList<PrintFileReadDTO>>(
+            _files.List(CallerResolver.For(user, User)).Select(PrintFileReadDTO.FromStored).ToList());
     }
 
     /// <summary>
@@ -97,35 +97,29 @@ public class PrintFileController : ControllerBase
     [HttpPut]
     [Route("{fileName}")]
     [RequestSizeLimit(long.MaxValue)] // Enforced against the configured cap below, not by MVC.
-    [ProducesResponseType<PrintFileReadDTO>(StatusCodes.Status200OK)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status413PayloadTooLarge)]
-    public async Task<ActionResult<PrintFileReadDTO>> Upload(string fileName,
-                                                             [FromQuery] bool overwrite,
-                                                             CancellationToken cancellationToken)
+    public async Task<Results<Ok<PrintFileReadDTO>, BadRequestProblem, ForbiddenProblem, ConflictProblem, PayloadTooLargeProblem>> Upload(
+        string fileName,
+        [FromQuery] bool overwrite,
+        CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
         if (user is null)
         {
-            return Forbid();
+            return this.NoAccount();
         }
 
         if (!UserFileStore.IsAllowedExtension(fileName))
         {
-            return this.Failure(StatusCodes.Status400BadRequest,
-                                "Only .gcode, .bgcode, .gco and .bgc are accepted - the printer would "
-                                + "refuse anything else after the transfer.");
+            return this.BadRequestProblem("Only .gcode, .bgcode, .gco and .bgc are accepted - the printer would "
+                                          + "refuse anything else after the transfer.");
         }
 
         // Content-Length is advisory (a client may omit it), so this rejects the obvious case early
         // and the copy below is still bounded.
         if (Request.ContentLength > _options.MaxUploadBytes)
         {
-            return this.Failure(StatusCodes.Status413PayloadTooLarge,
-                                $"Larger than the {_options.MaxUploadBytes}-byte limit.");
+            return this.PayloadTooLargeProblem($"Larger than the {_options.MaxUploadBytes}-byte limit.");
         }
 
         StoredFile stored;
@@ -138,19 +132,18 @@ public class PrintFileController : ControllerBase
         }
         catch (UploadTooLargeException)
         {
-            return this.Failure(StatusCodes.Status413PayloadTooLarge,
-                                $"Larger than the {_options.MaxUploadBytes}-byte limit.");
+            return this.PayloadTooLargeProblem($"Larger than the {_options.MaxUploadBytes}-byte limit.");
         }
         catch (PrintFileNameConflictException e)
         {
-            return this.Failure(StatusCodes.Status409Conflict, e.Message);
+            return this.ConflictProblem(e.Message);
         }
         catch (ArgumentException e)
         {
-            return this.Failure(StatusCodes.Status400BadRequest, e.Message);
+            return this.BadRequestProblem(e.Message);
         }
 
-        return Ok(PrintFileReadDTO.FromStored(stored));
+        return TypedResults.Ok(PrintFileReadDTO.FromStored(stored));
     }
 
     /// <summary>Downloads a file back. <c>GET /api/v1/files/{fileName}</c>.</summary>
@@ -158,25 +151,26 @@ public class PrintFileController : ControllerBase
     [Route("{fileName}")]
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
                      Justification =
-                         "Ownership passes to FileStreamResult, which disposes the stream once the response has been written. Disposing it here would close it before a byte is sent.")]
+                         "Ownership passes to FileStreamHttpResult, which disposes the stream once the response has been written. Disposing it here would close it before a byte is sent.")]
+
+    // The 200 is said here because a file result carries no metadata of its own; the failures say
+    // theirs through the union.
     [Produces("application/octet-stream")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult> Download(string fileName)
+    public async Task<Results<FileStreamHttpResult, ForbiddenProblem, NotFoundProblem>> Download(string fileName)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
         if (user is null)
         {
-            return Forbid();
+            return this.NoAccount();
         }
 
         StoredFile? file = _files.Find(CallerResolver.For(user, User), fileName);
 
         if (file is null)
         {
-            return NotFound();
+            return this.NotFoundProblem();
         }
 
         // Opened before the response starts so a file deleted mid-download still completes: the
@@ -184,7 +178,7 @@ public class PrintFileController : ControllerBase
         FileStream content = new(file.Path, FileMode.Open, FileAccess.Read, FileShare.Read,
                                  bufferSize: 64 * 1024, useAsync: true);
 
-        return File(content, "application/octet-stream", file.FileName);
+        return TypedResults.File(content, "application/octet-stream", file.FileName);
     }
 
     /// <summary>Renames a file. <c>PATCH /api/v1/files/{fileName}</c>.</summary>
@@ -195,35 +189,36 @@ public class PrintFileController : ControllerBase
     /// </remarks>
     [HttpPatch]
     [Route("{fileName}")]
-    [ProducesResponseType<PrintFileReadDTO>(StatusCodes.Status200OK)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public async Task<ActionResult<PrintFileReadDTO>> Rename(string fileName,
-                                                             [FromBody] PrintFileRenameRequest body,
-                                                             CancellationToken cancellationToken)
+    public async Task<Results<Ok<PrintFileReadDTO>, BadRequestProblem, ForbiddenProblem, NotFoundProblem, ConflictProblem>> Rename(
+        string fileName,
+        [FromBody] PrintFileRenameRequest body,
+        CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
         if (user is null)
         {
-            return Forbid();
+            return this.NoAccount();
         }
 
         try
         {
             StoredFile? renamed = await _files.RenameAsync(CallerResolver.For(user, User), fileName, body.Name, cancellationToken);
 
-            return renamed is null ? NotFound() : Ok(PrintFileReadDTO.FromStored(renamed));
+            if (renamed is null)
+            {
+                return this.NotFoundProblem();
+            }
+
+            return TypedResults.Ok(PrintFileReadDTO.FromStored(renamed));
         }
         catch (PrintFileNameConflictException e)
         {
-            return this.Failure(StatusCodes.Status409Conflict, e.Message);
+            return this.ConflictProblem(e.Message);
         }
         catch (ArgumentException e)
         {
-            return this.Failure(StatusCodes.Status400BadRequest, e.Message);
+            return this.BadRequestProblem(e.Message);
         }
     }
 
@@ -239,25 +234,22 @@ public class PrintFileController : ControllerBase
     /// </remarks>
     [HttpDelete]
     [Route("{fileName}")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public async Task<ActionResult> Delete(string fileName, CancellationToken cancellationToken)
+    public async Task<Results<NoContent, ForbiddenProblem, NotFoundProblem, ConflictProblem>> Delete(
+        string fileName,
+        CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
         if (user is null)
         {
-            return Forbid();
+            return this.NoAccount();
         }
 
         return await _files.DeleteAsync(CallerResolver.For(user, User), fileName, cancellationToken) switch
         {
-            PrintFileDeletion.Deleted => NoContent(),
-            PrintFileDeletion.Queued => this.Failure(StatusCodes.Status409Conflict,
-                                                     $"{fileName} is queued to print. Cancel the queued print first."),
-            _ => NotFound(),
+            PrintFileDeletion.Deleted => TypedResults.NoContent(),
+            PrintFileDeletion.Queued => this.ConflictProblem($"{fileName} is queued to print. Cancel the queued print first."),
+            _ => this.NotFoundProblem(),
         };
     }
 }

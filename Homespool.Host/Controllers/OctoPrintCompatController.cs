@@ -1,10 +1,12 @@
 using System;
 using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
@@ -98,16 +100,22 @@ public class OctoPrintCompatController : ControllerBase
     /// </remarks>
     [HttpGet]
     [Route("api/version")]
-    public async Task<ActionResult<OctoPrintVersionDTO>> Version(Guid uuid, CancellationToken cancellationToken)
+    public async Task<Results<Ok<OctoPrintVersionDTO>, ForbiddenProblem, NotFoundProblem>> Version(Guid uuid,
+                                                                                                  CancellationToken cancellationToken)
     {
-        (Printer? printer, _, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+        (Printer? printer, HSUser? caller) = await ResolveAsync(uuid, cancellationToken);
+
+        if (caller is null)
+        {
+            return this.NoAccount();
+        }
 
         if (printer is null)
         {
-            return failure!;
+            return this.NotFoundProblem();
         }
 
-        return Ok(new OctoPrintVersionDTO());
+        return TypedResults.Ok(new OctoPrintVersionDTO());
     }
 
     /// <summary>
@@ -139,21 +147,23 @@ public class OctoPrintCompatController : ControllerBase
     // Without this MVC buffers the whole body into Request.Form before this method runs, and the
     // MultipartReader below then reads an exhausted stream. See the attribute's own documentation.
     [DisableFormValueModelBinding]
-    public async Task<ActionResult> Upload(Guid uuid, CancellationToken cancellationToken)
+    public async Task<Results<Created, ContentHttpResult, ForbiddenProblem, NotFoundProblem>> Upload(Guid uuid,
+                                                                                                    CancellationToken cancellationToken)
     {
         // Before a byte of the body is read: with Expect: 100-continue - which libcurl adds to every
         // upload this size - Kestrel withholds the 100 until something reads the body, so refusing
         // here means the file is never transferred at all rather than uploaded and then rejected.
-        (Printer? printer, HSUser? caller, ActionResult? failure) = await ResolveAsync(uuid, cancellationToken);
+        (Printer? printer, HSUser? owner) = await ResolveAsync(uuid, cancellationToken);
+
+        if (owner is null)
+        {
+            return this.NoAccount();
+        }
 
         if (printer is null)
         {
-            return failure!;
+            return this.NotFoundProblem();
         }
-
-        // ResolveAsync returns a user whenever it returns a printer - it cannot find one without an
-        // owner to scope the lookup by. Asserted once here so nothing below carries a nullable.
-        HSUser owner = caller!;
 
         if (!IsMultipart(Request.ContentType, out string? boundary))
         {
@@ -187,8 +197,11 @@ public class OctoPrintCompatController : ControllerBase
                          && string.Equals(disposition.Name.Value, "print", StringComparison.OrdinalIgnoreCase))
                 {
                     // Read into a bounded reader rather than the section stream directly: this is a
-                    // four-character flag, and nothing should be able to make it a memory cost.
-                    string value = await new StreamReader(section.Body).ReadToEndAsync(cancellationToken);
+                    // four-character flag, and nothing should be able to make it a memory cost. The
+                    // section's stream is the multipart reader's to close, hence leaveOpen.
+                    using StreamReader flag = new(section.Body, Encoding.UTF8, detectEncodingFromByteOrderMarks: true,
+                                                  bufferSize: 1024, leaveOpen: true);
+                    string value = await flag.ReadToEndAsync(cancellationToken);
                     print = string.Equals(value.Trim(), "true", StringComparison.OrdinalIgnoreCase);
                 }
             }
@@ -232,7 +245,7 @@ public class OctoPrintCompatController : ControllerBase
             }
         }
 
-        return Created();
+        return TypedResults.Created();
     }
 
     /// <summary>
@@ -252,14 +265,9 @@ public class OctoPrintCompatController : ControllerBase
     /// nothing.
     /// </para>
     /// </remarks>
-    private static ContentResult Explain(int status, string message)
+    private static ContentHttpResult Explain(int status, string message)
     {
-        return new ContentResult
-        {
-            StatusCode = status,
-            ContentType = "text/plain; charset=utf-8",
-            Content = message,
-        };
+        return TypedResults.Text(message, "text/plain; charset=utf-8", statusCode: status);
     }
 
     /// <summary>
@@ -324,29 +332,22 @@ public class OctoPrintCompatController : ControllerBase
     }
 
     /// <summary>
-    /// Resolves the route's printer and the caller, or the failure to answer with. The same
-    /// null-covers-both rule <see cref="PrintQueueController"/> follows: telling "no such printer"
-    /// apart from "not yours" would confirm the existence of other people's printers.
+    /// Resolves the route's printer and the caller - either null being a refusal the action answers
+    /// itself, the caller first. The same null-covers-both rule <see cref="PrintQueueController"/>
+    /// follows: telling "no such printer" apart from "not yours" would confirm the existence of other
+    /// people's printers.
     /// </summary>
-    private async Task<(Printer? printer, HSUser? user, ActionResult? failure)> ResolveAsync(
-        Guid uuid,
-        CancellationToken cancellationToken)
+    private async Task<(Printer? printer, HSUser? user)> ResolveAsync(Guid uuid, CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
         if (user is null)
         {
-            // [Authorize] should make this unreachable; fail closed rather than act on an invented id.
-            return (null, null, Forbid());
+            return (null, null);
         }
 
         Printer? printer = await _printers.GetPrinterForUserAsync(uuid, CallerResolver.For(user, User), cancellationToken);
 
-        if (printer is null)
-        {
-            return (null, user, NotFound());
-        }
-
-        return (printer, user, null);
+        return (printer, user);
     }
 }

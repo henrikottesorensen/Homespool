@@ -7,6 +7,7 @@ using System.Threading;
 using AwesomeAssertions;
 
 using Homespool.Host.PrusaConnect;
+using Homespool.Host.PrusaConnect.Commands;
 
 namespace Homespool.Host.Test;
 
@@ -18,8 +19,14 @@ namespace Homespool.Host.Test;
 /// </summary>
 public class WebSocketPrinterConnectionTests
 {
+    /// <summary>
+    /// The connection encodes the frame - id as eight hex digits after the type byte, the NO_ARGS
+    /// body with no wrapper - and writes it as one Binary message. Encoding moved here from the
+    /// actor when the second transport arrived, so this is now the test that pins the socket's
+    /// framing rather than one that hands it a pre-built frame.
+    /// </summary>
     [Fact]
-    public async System.Threading.Tasks.Task SendAsyncSendsTheExactFrameBytesAsOneBinaryMessage()
+    public async System.Threading.Tasks.Task SendCommandEncodesTheFrameAndSendsItAsOneBinaryMessage()
     {
         // Arrange
         using FakeWebSocket socket = new();
@@ -27,7 +34,7 @@ public class WebSocketPrinterConnectionTests
         byte[] frame = Encoding.ASCII.GetBytes("J0000002A{\"command\":\"PAUSE_PRINT\"}");
 
         // Act
-        await connection.SendAsync(frame, CancellationToken.None);
+        await connection.SendCommandAsync(42, new PausePrint(), CancellationToken.None);
 
         // Assert
         socket.Sent.Should().ContainSingle();
@@ -56,8 +63,7 @@ public class WebSocketPrinterConnectionTests
 
         // A command send is in flight: inside the socket, holding the connection's write lock.
         System.Threading.Tasks.Task send =
-            connection.SendAsync(Encoding.ASCII.GetBytes("J0000002A{\"command\":\"PAUSE_PRINT\"}"), CancellationToken.None)
-                      .AsTask();
+            connection.SendCommandAsync(42, new PausePrint(), CancellationToken.None).AsTask();
 
         await WaitUntilAsync(() => socket.Operations.Contains(FakeWebSocket.SendStarted));
 

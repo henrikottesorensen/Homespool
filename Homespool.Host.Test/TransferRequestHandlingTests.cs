@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
 using Homespool.Host.PrusaConnect;
+using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.PrusaConnect.DTO.Transfers;
 using Homespool.Host.PrusaConnect.Transfers;
@@ -268,7 +269,7 @@ public class TransferRequestHandlingTests
     /// Records what was sent rather than sending it: chunk sends as (file id, offset, count), and
     /// bare header writes - the failure signal - as their file id.
     /// </summary>
-    private sealed class RecordingConnection : IPrinterConnection
+    private sealed class RecordingConnection : IChunkStreamingConnection
     {
         public List<(uint fileId, long offset, long count)> Chunks { get; } = [];
 
@@ -276,11 +277,21 @@ public class TransferRequestHandlingTests
 
         public bool IsOpen => true;
 
-        public ValueTask SendAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken)
+        public ValueTask<CommandHandover> SendCommandAsync(uint commandId, ISendableCommand command, CancellationToken cancellationToken)
         {
-            // A bare 9-byte header with no payload is the deliberate failure signal; nothing else
-            // reaches this connection in these tests.
-            EmptyChunks.Add(ParseFileId(frame.Span));
+            // Nothing in these tests sends a command; recording nothing keeps a stray one visible as
+            // an absent chunk rather than a mis-filed one.
+            return ValueTask.FromResult(CommandHandover.Written);
+        }
+
+        public PendingCommand? TakeParkedCommand()
+        {
+            return null;
+        }
+
+        public ValueTask SendEmptyChunkAsync(ReadOnlyMemory<byte> header, CancellationToken cancellationToken)
+        {
+            EmptyChunks.Add(ParseFileId(header.Span));
 
             return ValueTask.CompletedTask;
         }
@@ -343,11 +354,21 @@ public class TransferRequestHandlingTests
     /// Actually pulls from the content, unlike <see cref="RecordingConnection"/> - needed by the
     /// stalled-read case, where the point is that the read is reached at all.
     /// </summary>
-    private sealed class ReadingConnection : IPrinterConnection
+    private sealed class ReadingConnection : IChunkStreamingConnection
     {
         public bool IsOpen => true;
 
-        public ValueTask SendAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken)
+        public ValueTask<CommandHandover> SendCommandAsync(uint commandId, ISendableCommand command, CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult(CommandHandover.Written);
+        }
+
+        public PendingCommand? TakeParkedCommand()
+        {
+            return null;
+        }
+
+        public ValueTask SendEmptyChunkAsync(ReadOnlyMemory<byte> header, CancellationToken cancellationToken)
         {
             return ValueTask.CompletedTask;
         }

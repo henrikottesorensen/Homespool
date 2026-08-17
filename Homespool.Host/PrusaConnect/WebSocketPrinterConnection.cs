@@ -6,6 +6,7 @@ using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.Transfers;
 
 namespace Homespool.Host.PrusaConnect;
@@ -26,7 +27,7 @@ namespace Homespool.Host.PrusaConnect;
 [SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable",
                  Justification =
                      "The semaphore allocates no wait handle, and disposing it would race in-flight sends. See the remarks.")]
-public sealed class WebSocketPrinterConnection : IClosablePrinterConnection
+public sealed class WebSocketPrinterConnection : IClosablePrinterConnection, IChunkStreamingConnection
 {
     /// <summary>
     /// Payload bytes per WebSocket frame. The only limit is the WebSocket one their client can parse:
@@ -88,7 +89,35 @@ public sealed class WebSocketPrinterConnection : IClosablePrinterConnection
 
     public bool IsOpen => _webSocket.State == WebSocketState.Open;
 
-    public async ValueTask SendAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken)
+    /// <summary>
+    /// Encodes the command into its 9-byte-header frame and writes it now. On a socket, "handing
+    /// over" and "writing" are the same act, so this is always <see cref="CommandHandover.Written"/>.
+    /// </summary>
+    public async ValueTask<CommandHandover> SendCommandAsync(uint commandId,
+                                                             ISendableCommand command,
+                                                             CancellationToken cancellationToken)
+    {
+        await SendFrameAsync(CommandWireEncoder.Encode(commandId, command), cancellationToken);
+
+        return CommandHandover.Written;
+    }
+
+    /// <summary>A socket parks nothing: every command was written the moment it was sent.</summary>
+    public PendingCommand? TakeParkedCommand()
+    {
+        return null;
+    }
+
+    /// <inheritdoc/>
+    public ValueTask SendEmptyChunkAsync(ReadOnlyMemory<byte> header, CancellationToken cancellationToken)
+    {
+        return SendFrameAsync(header, cancellationToken);
+    }
+
+    /// <summary>
+    /// One frame, serialised against every other write on this socket.
+    /// </summary>
+    private async ValueTask SendFrameAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken)
     {
         // The lock survives the move to the actor, which serializes every command send onto one
         // loop and would otherwise make it redundant. Teardown is why: the close below is sent from

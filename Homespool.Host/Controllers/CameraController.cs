@@ -99,7 +99,14 @@ public class CameraController : ControllerBase
 
         // Asking is what schedules the next capture. Ordered before the read so that the very first
         // request on a cold camera starts the work rather than only discovering there is none.
-        _frames.RequestRefresh(camera.Id, _streamServer.FrameUrl(camera.Uuid));
+        //
+        // No address means the sidecar has no credential and is not used, so there is nothing to
+        // schedule. The read below then finds no frame and answers 204 - the same answer a camera
+        // that is switched off gives, which is honest: there is no current picture either way.
+        if (_streamServer.FrameUrl(camera.Uuid) is { } frameUrl)
+        {
+            _frames.RequestRefresh(camera.Id, frameUrl);
+        }
 
         CameraFrame? frame = _frames.Current(camera.Id);
         if (frame is null)

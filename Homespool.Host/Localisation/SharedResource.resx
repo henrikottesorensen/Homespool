@@ -1594,6 +1594,10 @@
     <value>{0} resolves to {1}, which is this server itself rather than a camera on your network.</value>
     <comment>{0} is the host as typed, {1} the address it resolved to.</comment>
   </data>
+  <data name="Cameras_SourceIsThisDeployment" xml:space="preserve">
+    <value>{0} is part of this Homespool deployment, not a camera on your network. Use the camera's own address.</value>
+    <comment>{0} is the host as typed - for example the application's own name or the camera service beside it.</comment>
+  </data>
   <data name="Cameras_NotFoundOrNotYours" xml:space="preserve">
     <value>That camera does not exist, or is not yours to change.</value>
   </data>
@@ -1602,6 +1606,10 @@
   </data>
   <data name="Cameras_NotYourTeam" xml:space="preserve">
     <value>You cannot add a camera to that team.</value>
+  </data>
+  <data name="Cameras_StreamServerNoCredential" xml:space="preserve">
+    <value>Cameras are unavailable until the go2rtc service is given a username and password. Set GO2RTC_USERNAME and GO2RTC_PASSWORD in .env, or run setup-env.sh, and restart. Without them the service is open to anything that can reach it, so Homespool will not use it.</value>
+    <comment>go2rtc is the service's own name and stays as it is. GO2RTC_USERNAME, GO2RTC_PASSWORD, .env and setup-env.sh are file and variable names and are not translated.</comment>
   </data>
   <data name="Cameras_StreamServerRefused" xml:space="preserve">
     <value>Saved, but the go2rtc service would not accept this source. Check the address, and that it is still running.</value>

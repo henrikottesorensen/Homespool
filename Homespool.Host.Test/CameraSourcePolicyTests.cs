@@ -155,7 +155,121 @@ public class CameraSourcePolicyTests
         check.IsAcceptable.Should().BeTrue();
     }
 
-    private static CameraSourcePolicy Build(string? resolvesTo = null, bool refuseLoopback = true)
+    /// <summary>
+    /// The sidecar, by the name the deployment was configured to reach it on. This is the address
+    /// that turns a camera source into a way to drive go2rtc's own API - see
+    /// <c>notes/security-audit-2026-08-17.md</c> #1.
+    /// </summary>
+    [Theory]
+    [InlineData("http://go2rtc:1984/api/stream.mjpeg?src=exec:whoami")]
+    [InlineData("http://GO2RTC:1984/api/streams")]
+    [InlineData("rtsp://go2rtc/live")]
+    public async Task TheStreamServerIsNotACamera(string source)
+    {
+        CameraSourcePolicy policy = Build();
+
+        CameraSourceCheck check = await policy.CheckAsync(source, CancellationToken.None);
+
+        check.IsAcceptable.Should().BeFalse("the sidecar's own API is the target this check exists for");
+        check.Error!.Key.Should().Be("Cameras_SourceIsThisDeployment");
+    }
+
+    /// <summary>
+    /// Homespool's container identity - the name it answers to inside the Compose network.
+    /// </summary>
+    [Fact]
+    public async Task ThisContainerIsNotACamera()
+    {
+        CameraSourcePolicy policy = Build();
+
+        CameraSourceCheck check = await policy.CheckAsync(
+            $"http://{System.Net.Dns.GetHostName()}:8080/api/v1/printers", CancellationToken.None);
+
+        check.IsAcceptable.Should().BeFalse();
+        check.Error!.Key.Should().Be("Cameras_SourceIsThisDeployment");
+    }
+
+    /// <summary>
+    /// Homespool's outer identity - the address printers are told to reach it on, which is the one
+    /// public name the application is actually given.
+    /// </summary>
+    [Theory]
+    [InlineData("homespool.example", "https://homespool.example/")]
+    [InlineData("homespool.example", "https://HOMESPOOL.EXAMPLE:15443/p/ws")]
+    public async Task TheConfiguredPrinterAddressIsNotACamera(string printerHost, string source)
+    {
+        CameraSourcePolicy policy = Build(printerHost: printerHost);
+
+        CameraSourceCheck check = await policy.CheckAsync(source, CancellationToken.None);
+
+        check.IsAcceptable.Should().BeFalse();
+        check.Error!.Key.Should().Be("Cameras_SourceIsThisDeployment");
+    }
+
+    /// <summary>
+    /// A short name and its search-domain form are the same host, so refusing only the spelling we
+    /// happened to store would be a refusal somebody could step around by typing the other.
+    /// </summary>
+    [Theory]
+    [InlineData("homespool", "homespool.local")]
+    [InlineData("homespool.local", "homespool")]
+    public void AShortNameAndItsQualifiedFormAreTheSameHost(string configured, string typed)
+    {
+        CameraSourcePolicy.NamesThisDeployment(typed, [configured]).Should().BeTrue();
+    }
+
+    [Fact]
+    public void ASimilarNameIsNotTheSameHost()
+    {
+        CameraSourcePolicy.NamesThisDeployment("homespool-cam.local", ["homespool"]).Should().BeFalse(
+            "a camera named after the server is still a camera");
+    }
+
+    /// <summary>
+    /// An address inside the deployment's own container range, which catches every service in the
+    /// stack - including one this check has never been told about.
+    /// </summary>
+    [Fact]
+    public async Task AnAddressInsideTheContainerNetworkIsRefused()
+    {
+        CameraSourcePolicy policy = Build(resolvesTo: "172.28.0.3", containerNetwork: "172.28.0.0/16");
+
+        CameraSourceCheck check = await policy.CheckAsync("rtsp://camera.example/live", CancellationToken.None);
+
+        check.IsAcceptable.Should().BeFalse();
+        check.Error!.Key.Should().Be("Cameras_SourceIsThisServer");
+    }
+
+    /// <summary>
+    /// The same address with no container range configured - the deployment on a 172.16/12 LAN that
+    /// was told to empty the list. It is allowed, and that is the documented cost of emptying it.
+    /// </summary>
+    [Fact]
+    public async Task AnAddressOutsideTheConfiguredRangesIsStillACamera()
+    {
+        CameraSourcePolicy policy = Build(resolvesTo: "172.28.0.3");
+
+        CameraSourceCheck check = await policy.CheckAsync("rtsp://camera.example/live", CancellationToken.None);
+
+        check.IsAcceptable.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// 0.0.0.0 is not loopback, so it passed the reachability check and reached the local host
+    /// anyway on Linux.
+    /// </summary>
+    [Theory]
+    [InlineData("0.0.0.0")]
+    [InlineData("::")]
+    public void TheUnspecifiedAddressIsNotReachable(string address)
+    {
+        CameraSourcePolicy.IsReachableAddress(IPAddress.Parse(address)).Should().BeFalse();
+    }
+
+    internal static CameraSourcePolicy Build(string? resolvesTo = null,
+                                             bool refuseLoopback = true,
+                                             string? containerNetwork = null,
+                                             string? printerHost = null)
     {
         IHostAddressResolver resolver = Substitute.For<IHostAddressResolver>();
 
@@ -166,6 +280,19 @@ public class CameraSourcePolicyTests
 
         CameraOptions options = new() { RefuseLoopbackAndLinkLocal = refuseLoopback };
 
-        return new CameraSourcePolicy(resolver, Options.Create(options));
+        CertificateOptions certificates = new()
+        {
+            ContainerNetworks = containerNetwork is null ? [] : [containerNetwork],
+        };
+
+        Homespool.Host.PrusaConnect.PrusaConnectOptions connect = new()
+        {
+            PrinterHost = printerHost ?? string.Empty,
+        };
+
+        return new CameraSourcePolicy(resolver,
+                                      Options.Create(options),
+                                      Options.Create(certificates),
+                                      Options.Create(connect));
     }
 }

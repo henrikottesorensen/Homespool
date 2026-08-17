@@ -1551,6 +1551,9 @@
   <data name="Cameras_SourceIsThisServer" xml:space="preserve">
     <value>{0} slår op til {1}, som er selve denne server og ikke et kamera på dit netværk.</value>
   </data>
+  <data name="Cameras_SourceIsThisDeployment" xml:space="preserve">
+    <value>{0} er en del af denne Homespool-installation og ikke et kamera på dit netværk. Brug kameraets egen adresse.</value>
+  </data>
   <data name="Cameras_NotFoundOrNotYours" xml:space="preserve">
     <value>Dette kamera findes ikke, eller du må ikke ændre på dets opsætning.</value>
   </data>
@@ -1559,6 +1562,9 @@
   </data>
   <data name="Cameras_NotYourTeam" xml:space="preserve">
     <value>Du kan ikke tilføje et kamera til dette team.</value>
+  </data>
+  <data name="Cameras_StreamServerNoCredential" xml:space="preserve">
+    <value>Kameraer er utilgængelige, indtil go2rtc-tjenesten har fået tildelt et brugernavn og en adgangskode. Sæt GO2RTC_USERNAME og GO2RTC_PASSWORD i .env, eller kør setup-env.sh, og genstart. Uden dem er tjenesten åben for alt, der kan nå den, så Homespool bruger den ikke.</value>
   </data>
   <data name="Cameras_StreamServerRefused" xml:space="preserve">
     <value>Gemt, men go2rtc-tjenesten ville ikke tage imod denne kilde. Tjek adressen, og om den stadig kører.</value>

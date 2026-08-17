@@ -95,6 +95,11 @@ public static class Program
         Console.WriteLine("clock instead, which is what a blast wants: a ratio at blast speed would mean");
         Console.WriteLine("tens of thousands of events a second.");
         Console.WriteLine();
+        Console.WriteLine("--no-websocket uses the pre-websocket HTTP transport - one POST to /p/telemetry or");
+        Console.WriteLine("/p/events per message - which is what firmware built with WEBSOCKET off speaks, a");
+        Console.WriteLine("6.2.6 MK3.5 among them. No commands arrive on that transport, so the answer");
+        Console.WriteLine("policies do not run.");
+        Console.WriteLine();
         Console.WriteLine("--tools <n> reports n tools, which emits the per-slot \"slot\" object firmware only");
         Console.WriteLine("sends above one tool - one extra persisted row per tool per sample. --mmu adds the");
         Console.WriteLine("MMU-only state/command pair.");
@@ -207,6 +212,21 @@ public static class Program
         if (named.ContainsKey("printing"))
         {
             client.Device.StartPrint(jobId: 1);
+        }
+
+        if (named.ContainsKey("no-websocket"))
+        {
+            // The pre-websocket transport: no connection to make, so there is nothing to announce
+            // until the first POST has been accepted. A 401 or a 404 throws out of RunHttpAsync
+            // rather than being retried, which is what makes a misconfigured run visible.
+            using HttpClient httpClient = new() { BaseAddress = server };
+
+            Console.WriteLine($"Posting as {stored.ToIdentity().HeaderFingerprint}... Ctrl-C to stop.");
+
+            await client.RunHttpAsync(httpClient, cancellationToken);
+            Console.WriteLine("Telemetry source ended.");
+
+            return 0;
         }
 
         await client.ConnectAsync(cancellationToken: cancellationToken);

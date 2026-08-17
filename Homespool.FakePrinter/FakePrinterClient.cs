@@ -4,8 +4,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Net.WebSockets;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -209,6 +211,78 @@ public sealed class FakePrinterClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// Runs the <b>pre-websocket HTTP transport</b>: INFO, then the telemetry source, each message
+    /// its own POST. Ends when the source runs out or the token is cancelled.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>No connection and no read loop</b>, so <see cref="ConnectAsync"/> is not called and
+    /// <see cref="CommandAnswerPolicy"/> never runs. On this transport a command travels in the
+    /// response to a telemetry POST, and Homespool answers 204 - nothing pending - always. A fake
+    /// that pretended otherwise would be modelling a server that does not exist.
+    /// </para>
+    /// <para>
+    /// <b>The route is chosen per message, which is this transport's one structural difference.</b>
+    /// A socket carries events and telemetry down the same pipe and the server sorts them by
+    /// content; here they are two URLs, so the client must sort them instead - an event-mixing
+    /// telemetry source emits both shapes from one sequence.
+    /// </para>
+    /// </remarks>
+    /// <param name="httpClient">Addresses the printer listener; the same client the enrol calls use.</param>
+    /// <param name="cancellationToken">Ends the run.</param>
+    public async Task RunHttpAsync(HttpClient httpClient, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(httpClient);
+
+        if (Token is null)
+        {
+            throw new InvalidOperationException("No token - enrol first or set Token directly.");
+        }
+
+        await PostMessageAsync(
+            httpClient,
+            EventMessageBuilder.BuildInfo(Identity, Device.WireState, null, Device.JobId, Device.FreeSpace),
+            cancellationToken);
+
+        if (_options.TelemetrySource is null)
+        {
+            _telemetryCompleted.TrySetResult();
+
+            return;
+        }
+
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                byte[]? next = _options.TelemetrySource.NextMessage(Device);
+
+                if (next is null)
+                {
+                    break;
+                }
+
+                await PostMessageAsync(httpClient, next, cancellationToken);
+
+                TimeSpan delay = _options.TelemetrySource.DelayBeforeNext(Device);
+
+                if (delay > TimeSpan.Zero)
+                {
+                    await Task.Delay(delay, cancellationToken);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Shutdown, not failure.
+        }
+        finally
+        {
+            _telemetryCompleted.TrySetResult();
+        }
+    }
+
+    /// <summary>
     /// Client-initiated clean close. Sends the close frame only (<c>CloseOutputAsync</c>) so the
     /// concurrent read loop is the one that observes the server's answering close.
     /// </summary>
@@ -232,6 +306,44 @@ public sealed class FakePrinterClient : IAsyncDisposable
     private static bool IsConnectionGone(Exception exception)
     {
         return exception is WebSocketException or ObjectDisposedException or IOException;
+    }
+
+    /// <summary>
+    /// Posts one already-rendered message to whichever of the two endpoints its shape belongs to,
+    /// with the four headers the server's authentication requires on every request.
+    /// </summary>
+    /// <remarks>
+    /// A non-success status is thrown rather than retried: a fake that quietly swallows a 401 or a
+    /// 400 looks exactly like one that is working, which is the failure this whole harness exists to
+    /// avoid. The real printer retries; a test double should stop and say so.
+    /// </remarks>
+    private async Task PostMessageAsync(HttpClient httpClient, byte[] payload, CancellationToken cancellationToken)
+    {
+        string route = IsEventMessage(payload) ? "/p/events" : "/p/telemetry";
+
+        using HttpRequestMessage request = new(HttpMethod.Post, route);
+
+        request.Headers.TryAddWithoutValidation("Fingerprint", Identity.HeaderFingerprint);
+        request.Headers.TryAddWithoutValidation("Token", Token);
+        AddUserAgentHeaders(request);
+
+        request.Content = new ByteArrayContent(payload);
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+
+        using HttpResponseMessage response = await httpClient.SendAsync(request, cancellationToken);
+
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>
+    /// Whether a rendered message is an event, by the same test the server's dispatcher applies -
+    /// the presence of an <c>event</c> property.
+    /// </summary>
+    private static bool IsEventMessage(byte[] payload)
+    {
+        using JsonDocument document = JsonDocument.Parse(payload);
+
+        return document.RootElement.TryGetProperty("event", out _);
     }
 
     private void AddUserAgentHeaders(HttpRequestMessage request)

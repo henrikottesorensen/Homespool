@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
 using Homespool.Host.Authorisation;
+using Homespool.Host.Exceptions;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -230,12 +231,15 @@ public class CameraService
                                                      cancellationToken)
                                                  .ConfigureAwait(false);
 
-        // Two questions, both asked - may the team, and did the caller lend this key that power.
-        // Reading the row directly rather than through CameraAccessService is why the second half
+        // Reading the row directly rather than through CameraAccessService is why the credential half
         // has to be spelled here too: a scope must not slip past a gate because it went round it.
+        if (!caller.Allows(Capability.ManageCamera))
+        {
+            throw CredentialScopeDeniedException.For(Capability.ManageCamera);
+        }
+
         bool permitted = membership is not null
-                         && CapabilitySet.Parse(membership.Capabilities).Allows(Capability.ManageCamera)
-                         && caller.Allows(Capability.ManageCamera);
+                         && CapabilitySet.Parse(membership.Capabilities).Allows(Capability.ManageCamera);
 
         return permitted ?
             null :

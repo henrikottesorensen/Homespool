@@ -499,6 +499,49 @@ public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
+    /// <b>A refusal says which of the two it was.</b> A scope refusal names the capability, because
+    /// the holder can act on that - mint a replacement - where a team refusal needs somebody else.
+    /// </summary>
+    /// <remarks>
+    /// End-to-end because the naming happens at the edge: the exception carries the capability and a
+    /// filter turns it into the body. A unit test of the gate sees the exception and not the answer.
+    /// </remarks>
+    [Fact]
+    public async Task AScopeRefusalNamesTheCapabilityItWantedOnAPrinterEndpointToo()
+    {
+        // Arrange
+        (HSUser user, HttpClient cookieClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "narrowed@example.com");
+        cookieClient.Dispose();
+
+        string plaintext;
+
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            ApiTokenService tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
+            (_, plaintext) = await tokens.CreateAsync(
+                user.Id, "viewer", [Capability.ViewOwnFiles], CancellationToken.None);
+        }
+
+        using HttpClient client = _factory.CreateClient(
+            new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", plaintext);
+
+        using StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes("G28 ; home\n")));
+
+        // Act
+        using HttpResponseMessage refused =
+            await client.PutAsync("/api/v1/files/nope.bgcode", body, TestContext.Current.CancellationToken);
+
+        string payload = await refused.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        refused.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        payload.Should().Contain(nameof(Capability.UploadOwnFiles),
+                                 "a person holding the token can act on knowing which box to tick");
+    }
+
+    /// <summary>
     /// <b>A token scoped to everything is the same credential as one that narrows nothing.</b>
     /// Intersecting with every capability is identity, which is why the column needs no null: "full
     /// access" is a scope like any other rather than a second kind of token.

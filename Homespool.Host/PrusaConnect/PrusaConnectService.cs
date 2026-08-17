@@ -524,10 +524,13 @@ public class PrusaConnectService
     {
         TeamMember? membership = await _teamService.GetMemberAsync(teamId, caller.UserId, CancellationToken.None);
 
-        // Two questions, both asked - may the team, and did the caller lend this key that power.
-        if (membership is null
-            || !CapabilitySet.Parse(membership.Capabilities).Allows(Capability.ManagePrinter)
-            || !caller.Allows(Capability.ManagePrinter))
+        // Told apart, so a narrowed token is not mistaken for missing team access.
+        if (!caller.Allows(Capability.ManagePrinter))
+        {
+            throw CredentialScopeDeniedException.For(Capability.ManagePrinter);
+        }
+
+        if (membership is null || !CapabilitySet.Parse(membership.Capabilities).Allows(Capability.ManagePrinter))
         {
             throw new TeamAccessDeniedException();
         }

@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
+using Homespool.Host.Exceptions;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -112,10 +113,14 @@ public class CameraAccessService
                                                      cancellationToken)
                                                  .ConfigureAwait(false);
 
-        // Two questions, both asked: may the team, and did the caller lend this key that power.
-        if (membership is null
-            || !CapabilitySet.Parse(membership.Capabilities).Allows(capability)
-            || !caller.Allows(capability))
+        // The credential's refusal is said out loud, where the team's deliberately is not: the silence
+        // stops a UUID being confirmed, and a caller's own key leaks nothing about anybody else.
+        if (!caller.Allows(capability))
+        {
+            throw CredentialScopeDeniedException.For(capability);
+        }
+
+        if (membership is null || !CapabilitySet.Parse(membership.Capabilities).Allows(capability))
         {
             return null;
         }

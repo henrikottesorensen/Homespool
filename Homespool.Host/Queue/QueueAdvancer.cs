@@ -633,11 +633,16 @@ public sealed class QueueAdvancer : BackgroundService
             onPrinter.TransferStartedAt = null;
             await dbContext.SaveChangesAsync(cancellationToken);
         }
-        catch (TeamAccessDeniedException)
+        catch (Exception e) when (e is TeamAccessDeniedException or CredentialScopeDeniedException)
         {
             // Whoever queued this may no longer use the printer. Leaving the entry in place is
             // deliberate - it is not this loop's business to cancel somebody's print because their
             // permissions changed, and a restored permission resumes it.
+            //
+            // CredentialScopeDeniedException is here for completeness rather than because it fires:
+            // enqueueing requires Print, so a row written by EnqueueAsync always carries what the
+            // loop needs. It is reachable by editing the column by hand, and a background service
+            // that dies on a hand-edited row is worse than one that logs and moves on.
             _logger.LogWarning("[{PrinterId}] {FileName} is queued by a user who may no longer use this printer",
                                printerId, file.FileName);
             onPrinter.TransferStartedAt = null;
@@ -691,7 +696,7 @@ public sealed class QueueAdvancer : BackgroundService
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
                                       or CommandResponseTimedOutException or CommandSendTimedOutException or
-                                      TeamAccessDeniedException
+                                      TeamAccessDeniedException or CredentialScopeDeniedException
                                       or CommandAnswerUnreadableException)
         {
             // Could not ask. Not a block: the next pass asks again, and holding a queue on an
@@ -795,7 +800,7 @@ public sealed class QueueAdvancer : BackgroundService
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
                                       or CommandResponseTimedOutException or CommandSendTimedOutException or
-                                      TeamAccessDeniedException
+                                      TeamAccessDeniedException or CredentialScopeDeniedException
                                       or CommandAnswerUnreadableException)
         {
             // Could not ask. Not a block - the next pass asks again, and treating an unanswered
@@ -917,7 +922,7 @@ public sealed class QueueAdvancer : BackgroundService
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
                                       or CommandResponseTimedOutException or CommandSendTimedOutException or
-                                      TeamAccessDeniedException)
+                                      TeamAccessDeniedException or CredentialScopeDeniedException)
         {
             // Transient by nature: the next tick asks again.
             _logger.LogInformation(e, "[{PrinterId}] could not start {Path}", printerId, printerPath);

@@ -89,12 +89,15 @@ public class PrinterAccessService
     /// tell the two apart.
     /// </remarks>
     /// <exception cref="PrinterNotFoundException">No printer has that id.</exception>
-    /// <exception cref="TeamAccessDeniedException">The caller may not do this to it.</exception>
+    /// <exception cref="CredentialScopeDeniedException">The credential's scope does not name it.</exception>
+    /// <exception cref="TeamAccessDeniedException">The team does not permit it.</exception>
     public async Task<Printer> RequireAsync(int printerId,
                                             Caller caller,
                                             Capability capability,
                                             CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(caller);
+
         Printer? printer = await PrinterAsync(printerId, cancellationToken);
 
         if (printer is null)
@@ -102,12 +105,34 @@ public class PrinterAccessService
             throw PrinterNotFoundException.ForId(printerId);
         }
 
+        // The two refusals are told apart on purpose. "Your team does not allow this" and "the key you
+        // used does not" send a person to different places - one asks for access, the other mints a
+        // replacement token - and a single answer for both leaves them guessing which.
+        RequireScope(caller, capability);
+
         if (!await AllowsAsync(printerId, caller, capability, cancellationToken))
         {
             throw new TeamAccessDeniedException();
         }
 
         return printer;
+    }
+
+    /// <summary>
+    /// Refuses when the credential did not name <paramref name="capability"/>, before any question
+    /// about the team is asked.
+    /// </summary>
+    /// <remarks>
+    /// Ordered first because it needs no database, and because it is the half a caller can act on:
+    /// a token is theirs to replace.
+    /// </remarks>
+    /// <exception cref="CredentialScopeDeniedException">The credential's scope does not name it.</exception>
+    private static void RequireScope(Caller caller, Capability capability)
+    {
+        if (!caller.Allows(capability))
+        {
+            throw CredentialScopeDeniedException.For(capability);
+        }
     }
 
     /// <summary>
@@ -144,6 +169,16 @@ public class PrinterAccessService
                                               long queuedByUserId,
                                               CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(caller);
+
+        // Withdrawing needs one of two capabilities, so the credential only refuses when it names
+        // neither - and the one worth reporting is Print, since it is what withdrawing your own work
+        // needs and therefore what a narrowed token is missing.
+        if (!caller.Allows(Capability.ControlPrinter) && !caller.Allows(Capability.Print))
+        {
+            throw CredentialScopeDeniedException.For(Capability.Print);
+        }
+
         if (!await AllowsWithdrawingAsync(printerId, caller, queuedByUserId, cancellationToken))
         {
             throw new TeamAccessDeniedException();
@@ -172,6 +207,13 @@ public class PrinterAccessService
                                           Capability capability,
                                           CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(caller);
+
+        // A scope refusal is said out loud even here, where a team refusal deliberately is not. The
+        // silence exists so a 404 cannot confirm somebody else's printer exists; a caller's own
+        // credential leaks nothing about anybody else, so there is nothing to protect by hiding it.
+        RequireScope(caller, capability);
+
         Printer? printer = await _dbContext.Printers
                                            .AsNoTracking()
                                            .SingleOrDefaultAsync(candidate => candidate.Uuid == uuid,

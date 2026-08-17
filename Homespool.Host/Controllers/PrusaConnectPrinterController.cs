@@ -5,6 +5,7 @@ using System.IO.Pipelines;
 using System.Net.Mime;
 using System.Net.WebSockets;
 using System.Security.Claims;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -18,6 +19,7 @@ using Microsoft.Extensions.Logging;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.DTO;
+using Homespool.Host.Telemetry;
 
 namespace Homespool.Host.Controllers;
 
@@ -27,16 +29,22 @@ public class PrusaConnectPrinterController : ControllerBase
 {
     private readonly PrusaConnectService _prusaConnectService;
     private readonly PrinterConnectionSession _session;
+    private readonly MessageDispatcher _dispatcher;
+    private readonly ITelemetrySink _sink;
     private readonly IHostApplicationLifetime _lifetime;
     private readonly ILogger<PrusaConnectPrinterController> _logger;
 
     public PrusaConnectPrinterController(PrusaConnectService prusaConnectService,
                                          PrinterConnectionSession session,
+                                         MessageDispatcher dispatcher,
+                                         ITelemetrySink sink,
                                          IHostApplicationLifetime lifetime,
                                          ILogger<PrusaConnectPrinterController> logger)
     {
         _prusaConnectService = prusaConnectService;
         _session = session;
+        _dispatcher = dispatcher;
+        _sink = sink;
         _lifetime = lifetime;
         _logger = logger;
     }
@@ -213,5 +221,112 @@ public class PrusaConnectPrinterController : ControllerBase
         {
             return Unauthorized();
         }
+    }
+
+    /// <summary>
+    /// Receives one telemetry message from a printer speaking the pre-websocket HTTP transport.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>204 always, because command delivery is not built.</b> On this transport a command travels
+    /// in the response to this request - 200 with the payload, 204 for nothing pending - so 204 is
+    /// the protocol's own "nothing for you" rather than a placeholder. A printer here therefore
+    /// reports and is never told anything, and nothing reaches
+    /// <see cref="Printing.PrinterConnectionRegistry"/>, so it has no actor and no liveness.
+    /// </para>
+    /// </remarks>
+    [HttpPost]
+    [Route("/p/telemetry")]
+    [EnableRateLimiting(Program.PrinterHttpTransportRateLimitPolicy)]
+    [ProducesResponseType(typeof(void), StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(void), StatusCodes.Status400BadRequest)]
+    public Task<ActionResult> PostTelemetry(CancellationToken cancellationToken)
+    {
+        return IngestAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Receives one event from a printer speaking the pre-websocket HTTP transport.
+    /// </summary>
+    [HttpPost]
+    [Route("/p/events")]
+    [EnableRateLimiting(Program.PrinterHttpTransportRateLimitPolicy)]
+    [ProducesResponseType(typeof(void), StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(void), StatusCodes.Status400BadRequest)]
+    public Task<ActionResult> PostEvent(CancellationToken cancellationToken)
+    {
+        return IngestAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Persists one posted message, whichever of the two endpoints it arrived on.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>One body for both routes, because the message decides what it is.</b>
+    /// <see cref="MessageDispatcher.Classify"/> sorts on the payload's own <c>event</c> property and
+    /// is the only place that decision is made; keying off the URL instead would be a second
+    /// classifier free to disagree with it.
+    /// </para>
+    /// <para>
+    /// <b>The mapping to the sink is the actor's, copied deliberately rather than shared.</b>
+    /// <see cref="PrinterConnectionActor"/> converts at the same edge, for the same reason - it is
+    /// the last point that knows this connection speaks Prusa Connect. Reaching the actor from here
+    /// is what the rest of this transport needs and this first cut does not have: no socket owns the
+    /// lifetime, so there is nothing to post to.
+    /// </para>
+    /// </remarks>
+    private async Task<ActionResult> IngestAsync(CancellationToken cancellationToken)
+    {
+        // Guaranteed present: the controller's [Authorize] only admits a request once
+        // PrusaConnectPrinterAuthenticationHandler has resolved the Fingerprint header to a printer.
+        int printerId = int.Parse(User.FindFirstValue(HSClaimTypes.PrinterId)!);
+
+        JsonDocument document;
+
+        try
+        {
+            document = await JsonDocument.ParseAsync(Request.Body, cancellationToken: cancellationToken);
+        }
+        catch (JsonException e)
+        {
+            // A body that is not JSON is a protocol violation, and this codebase treats those as the
+            // client's fault rather than an error of ours. On the socket the equivalent closes the
+            // connection; here the request is simply refused and the printer retries.
+            _logger.LogWarning(e, "Printer {PrinterId} posted a body that is not JSON.", printerId);
+
+            return BadRequest();
+        }
+
+        using (document)
+        {
+            switch (_dispatcher.Classify(printerId, document.RootElement))
+            {
+                case InboundTelemetryMessage telemetry:
+                    _sink.Enqueue(printerId, telemetry.ReceivedAt, PrusaTelemetryMapping.ToUpdate(telemetry.Telemetry));
+                    break;
+
+                case InboundEventMessage inboundEvent:
+                    _sink.Enqueue(printerId,
+                                  inboundEvent.ReceivedAt,
+                                  PrusaTelemetryMapping.ToRecord(inboundEvent.Event, inboundEvent.Identity));
+                    break;
+
+                case InboundTransferRequestMessage:
+                    // Inline transfers are a websocket mechanism - the printer asks for a chunk and
+                    // the answer is a frame on the same socket. There is nothing to answer with here,
+                    // so refuse it rather than accept a request that can never be served.
+                    _logger.LogWarning(
+                        "Printer {PrinterId} requested an inline transfer chunk over HTTP, which cannot be served.",
+                        printerId);
+
+                    return BadRequest();
+
+                default:
+                    break;
+            }
+        }
+
+        return NoContent();
     }
 }

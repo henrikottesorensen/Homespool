@@ -545,7 +545,7 @@ public sealed class QueueAdvancer : BackgroundService
                                      CancellationToken cancellationToken)
     {
         PrintFileCatalog catalog = scope.ServiceProvider.GetRequiredService<PrintFileCatalog>();
-        StoredFile? file = catalog.Find(head.QueuedByUserId, head.PrintFile!.Name);
+        StoredFile? file = catalog.FindForPrinting(head.QueuedByUserId, head.PrintFile!.Name);
 
         if (file is null)
         {

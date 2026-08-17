@@ -12,7 +12,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 using Homespool.Data;
+using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -65,7 +67,7 @@ public sealed class PrintFileCatalogTests : IDisposable
         byte[] content = Encoding.UTF8.GetBytes("G28 ; home\nG1 X10\n");
 
         // Act
-        await catalog.SaveAsync(Alice, "benchy.gcode", new MemoryStream(content), overwrite: false,
+        await catalog.SaveAsync(Caller.Unscoped(Alice), "benchy.gcode", new MemoryStream(content), overwrite: false,
                                 TestContext.Current.CancellationToken);
 
         // Assert
@@ -87,14 +89,14 @@ public sealed class PrintFileCatalogTests : IDisposable
         await AddUserAsync(context);
         PrintFileCatalog catalog = NewCatalog(context);
 
-        await catalog.SaveAsync(Alice, "benchy.gcode", new MemoryStream([1, 2, 3]), overwrite: false,
+        await catalog.SaveAsync(Caller.Unscoped(Alice), "benchy.gcode", new MemoryStream([1, 2, 3]), overwrite: false,
                                 TestContext.Current.CancellationToken);
 
         PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
         long queuedPrintId = await AddQueuedPrintAsync(context, row.Id);
 
         // Act
-        await catalog.RenameAsync(Alice, "benchy.gcode", "boat.gcode", TestContext.Current.CancellationToken);
+        await catalog.RenameAsync(Caller.Unscoped(Alice), "benchy.gcode", "boat.gcode", TestContext.Current.CancellationToken);
 
         // Assert
         PrintFile renamed = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
@@ -121,13 +123,13 @@ public sealed class PrintFileCatalogTests : IDisposable
         PrintFileCatalog catalog = NewCatalog(context);
         byte[] replacement = Encoding.UTF8.GetBytes("second");
 
-        await catalog.SaveAsync(Alice, "benchy.gcode", new MemoryStream(Encoding.UTF8.GetBytes("first")),
+        await catalog.SaveAsync(Caller.Unscoped(Alice), "benchy.gcode", new MemoryStream(Encoding.UTF8.GetBytes("first")),
                                 overwrite: false, TestContext.Current.CancellationToken);
 
         long originalId = (await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken)).Id;
 
         // Act
-        await catalog.SaveAsync(Alice, "benchy.gcode", new MemoryStream(replacement), overwrite: true,
+        await catalog.SaveAsync(Caller.Unscoped(Alice), "benchy.gcode", new MemoryStream(replacement), overwrite: true,
                                 TestContext.Current.CancellationToken);
 
         // Assert
@@ -149,7 +151,7 @@ public sealed class PrintFileCatalogTests : IDisposable
         await AddUserAsync(context);
         PrintFileCatalog catalog = NewCatalog(context);
 
-        await catalog.SaveAsync(Alice, "benchy.gcode", new MemoryStream([1, 2, 3]), overwrite: false,
+        await catalog.SaveAsync(Caller.Unscoped(Alice), "benchy.gcode", new MemoryStream([1, 2, 3]), overwrite: false,
                                 TestContext.Current.CancellationToken);
 
         PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
@@ -157,11 +159,11 @@ public sealed class PrintFileCatalogTests : IDisposable
 
         // Act
         PrintFileDeletion result =
-            await catalog.DeleteAsync(Alice, "benchy.gcode", TestContext.Current.CancellationToken);
+            await catalog.DeleteAsync(Caller.Unscoped(Alice), "benchy.gcode", TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().Be(PrintFileDeletion.Queued);
-        catalog.Find(Alice, "benchy.gcode").Should().NotBeNull("refusing must not half-delete the file");
+        catalog.Find(Caller.Unscoped(Alice), "benchy.gcode").Should().NotBeNull("refusing must not half-delete the file");
         (await context.PrintFiles.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
     }
 
@@ -174,16 +176,16 @@ public sealed class PrintFileCatalogTests : IDisposable
         await AddUserAsync(context);
         PrintFileCatalog catalog = NewCatalog(context);
 
-        await catalog.SaveAsync(Alice, "benchy.gcode", new MemoryStream([1, 2, 3]), overwrite: false,
+        await catalog.SaveAsync(Caller.Unscoped(Alice), "benchy.gcode", new MemoryStream([1, 2, 3]), overwrite: false,
                                 TestContext.Current.CancellationToken);
 
         // Act
         PrintFileDeletion result =
-            await catalog.DeleteAsync(Alice, "benchy.gcode", TestContext.Current.CancellationToken);
+            await catalog.DeleteAsync(Caller.Unscoped(Alice), "benchy.gcode", TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().Be(PrintFileDeletion.Deleted);
-        catalog.Find(Alice, "benchy.gcode").Should().BeNull();
+        catalog.Find(Caller.Unscoped(Alice), "benchy.gcode").Should().BeNull();
         (await context.PrintFiles.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
     }
 
@@ -290,6 +292,175 @@ public sealed class PrintFileCatalogTests : IDisposable
                                                        .Options;
 
         return new HomespoolDbContext(options);
+    }
+
+    /// <summary>
+    /// <b>The case that makes scoped tokens honest.</b> A token scoped to one printer's work still
+    /// reaches every file its owner has unless the file surface asks the credential - so a caller
+    /// holding <c>Print</c> and nothing file-shaped is refused each file operation in turn.
+    /// </summary>
+    [Fact]
+    public async Task ACallerScopedToPrintingCannotTouchTheFileSurface()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        PrintFileCatalog catalog = NewCatalog(context);
+
+        await catalog.SaveAsync(Caller.Unscoped(Alice), "benchy.gcode", Content(), overwrite: false,
+                                TestContext.Current.CancellationToken);
+
+        Caller printing = Caller.Scoped(Alice, CapabilitySet.Parse(CapabilitySet.Format([Capability.Print])));
+
+        // Act & Assert
+        FluentActions.Invoking(() => catalog.List(printing))
+                     .Should().Throw<CredentialScopeDeniedException>("listing is ViewOwnFiles");
+
+        FluentActions.Invoking(() => catalog.Find(printing, "benchy.gcode"))
+                     .Should().Throw<CredentialScopeDeniedException>("downloading is ViewOwnFiles");
+
+        await FluentActions.Awaiting(() => catalog.SaveAsync(printing, "other.gcode", Content(), overwrite: false,
+                                                             TestContext.Current.CancellationToken))
+                           .Should().ThrowAsync<CredentialScopeDeniedException>("uploading is UploadOwnFiles");
+
+        await FluentActions.Awaiting(() => catalog.RenameAsync(printing, "benchy.gcode", "renamed.gcode",
+                                                               TestContext.Current.CancellationToken))
+                           .Should().ThrowAsync<CredentialScopeDeniedException>("renaming is ManipulateOwnFiles");
+
+        await FluentActions.Awaiting(() => catalog.DeleteAsync(printing, "benchy.gcode",
+                                                               TestContext.Current.CancellationToken))
+                           .Should().ThrowAsync<CredentialScopeDeniedException>("deleting is ManipulateOwnFiles");
+    }
+
+    /// <summary>
+    /// <b>And it can still print.</b> Resolving the bytes to send is part of printing, not a
+    /// browsing-shaped permission - so the same credential that cannot list finds its own file to
+    /// queue. A gate here would mean a token scoped to print could not print.
+    /// </summary>
+    [Fact]
+    public async Task ACallerScopedToPrintingCanStillResolveItsOwnFileToPrint()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        PrintFileCatalog catalog = NewCatalog(context);
+
+        await catalog.SaveAsync(Caller.Unscoped(Alice), "benchy.gcode", Content(), overwrite: false,
+                                TestContext.Current.CancellationToken);
+
+        // Act
+        StoredFile? resolved = catalog.FindForPrinting(Alice, "benchy.gcode");
+        PrintFile? row = await catalog.ResolveAsync(Alice, "benchy.gcode", TestContext.Current.CancellationToken);
+
+        // Assert
+        resolved.Should().NotBeNull();
+        row.Should().NotBeNull();
+    }
+
+    /// <summary>
+    /// <b>Overwriting is manipulation, not uploading.</b> A credential holding only
+    /// <c>UploadOwnFiles</c> writes a new name and is refused one that exists.
+    /// </summary>
+    [Fact]
+    public async Task UploadingCoversANewNameButNotReplacingAnExistingOne()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        PrintFileCatalog catalog = NewCatalog(context);
+
+        Caller uploader = Caller.Scoped(Alice, CapabilitySet.Parse(CapabilitySet.Format([Capability.UploadOwnFiles])));
+
+        // Act
+        await catalog.SaveAsync(uploader, "benchy.gcode", Content(), overwrite: false,
+                                TestContext.Current.CancellationToken);
+
+        // Assert
+        await FluentActions.Awaiting(() => catalog.SaveAsync(uploader, "benchy.gcode", Content(), overwrite: true,
+                                                             TestContext.Current.CancellationToken))
+                           .Should()
+                           .ThrowAsync<CredentialScopeDeniedException>(
+                               "replacing bytes under a name in use is ManipulateOwnFiles");
+    }
+
+    /// <summary>An ordinary session narrows nothing, so the whole file surface stays open to it.</summary>
+    [Fact]
+    public async Task AnUnscopedCallerIsRefusedNothingOnItsOwnFiles()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        PrintFileCatalog catalog = NewCatalog(context);
+
+        Caller session = Caller.Unscoped(Alice);
+
+        // Act
+        await catalog.SaveAsync(session, "benchy.gcode", Content(), overwrite: false,
+                                TestContext.Current.CancellationToken);
+
+        // Assert
+        catalog.List(session).Should().ContainSingle();
+        catalog.Find(session, "benchy.gcode").Should().NotBeNull();
+
+        (await catalog.RenameAsync(session, "benchy.gcode", "renamed.gcode", TestContext.Current.CancellationToken))
+            .Should().NotBeNull();
+
+        (await catalog.DeleteAsync(session, "renamed.gcode", TestContext.Current.CancellationToken))
+            .Should().Be(PrintFileDeletion.Deleted);
+    }
+
+    /// <summary>
+    /// <b>The staged upload path the browser uses, which the API's single-shot save does not touch.</b>
+    /// Staging writes bytes and publishing names them, so both are uploading and both ask the
+    /// credential - otherwise a scoped token could upload through the page's route while being
+    /// refused the controller's.
+    /// </summary>
+    [Fact]
+    public async Task StagingAndDiscardingAnUploadAskTheCredentialToo()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        PrintFileCatalog catalog = NewCatalog(context);
+
+        Caller printing = Caller.Scoped(Alice, CapabilitySet.Parse(CapabilitySet.Format([Capability.Print])));
+
+        // Act & Assert
+        await FluentActions.Awaiting(() => catalog.StageAsync(printing, "benchy.gcode", Content(),
+                                                              TestContext.Current.CancellationToken))
+                           .Should().ThrowAsync<CredentialScopeDeniedException>("staging bytes is UploadOwnFiles");
+
+        FluentActions.Invoking(() => catalog.Discard(printing, "any-token"))
+                     .Should()
+                     .Throw<CredentialScopeDeniedException>("throwing away your own staged upload is uploading too");
+    }
+
+    /// <summary>Publishing a staged upload under a name in use is manipulation, as a direct save is.</summary>
+    [Fact]
+    public async Task PublishingOverAnExistingNameNeedsManipulate()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        PrintFileCatalog catalog = NewCatalog(context);
+
+        Caller uploader = Caller.Scoped(Alice, CapabilitySet.Parse(CapabilitySet.Format([Capability.UploadOwnFiles])));
+
+        PendingUpload staged = await catalog.StageAsync(uploader, "benchy.gcode", Content(),
+                                                        TestContext.Current.CancellationToken);
+
+        // Act & Assert
+        await FluentActions.Awaiting(() => catalog.PublishAsync(uploader, staged.Token, overwrite: true,
+                                                                TestContext.Current.CancellationToken))
+                           .Should().ThrowAsync<CredentialScopeDeniedException>();
+
+        (await catalog.PublishAsync(uploader, staged.Token, overwrite: false, TestContext.Current.CancellationToken))
+            .Should().NotBeNull("a new name is what UploadOwnFiles is for");
+    }
+
+    private static MemoryStream Content()
+    {
+        return new MemoryStream(Encoding.UTF8.GetBytes("G28 ; home\nG1 X10\n"));
     }
 
     private async Task<HomespoolDbContext> MigratedContextAsync()

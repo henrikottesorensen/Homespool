@@ -399,7 +399,7 @@ public sealed class PrintQueueServiceTests : IDisposable
 
         foreach (string name in names)
         {
-            await catalog.SaveAsync(userId, name, new MemoryStream([1, 2, 3]), overwrite: false,
+            await catalog.SaveAsync(Caller.Unscoped(userId), name, new MemoryStream([1, 2, 3]), overwrite: false,
                                     TestContext.Current.CancellationToken);
         }
     }

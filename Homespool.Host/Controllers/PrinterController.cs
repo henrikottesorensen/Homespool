@@ -62,7 +62,7 @@ namespace Homespool.Host.Controllers;
 [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
 public class PrinterController : ControllerBase
 {
-    private readonly UserFileStore _files;
+    private readonly PrintFileCatalog _files;
     private readonly PrintFileSender _sender;
     private readonly PrinterCommandService _commands;
     private readonly PrintStopService _stops;
@@ -71,7 +71,7 @@ public class PrinterController : ControllerBase
     private readonly UserManager<HSUser> _userManager;
     private readonly ILogger<PrinterController> _logger;
 
-    public PrinterController(UserFileStore files,
+    public PrinterController(PrintFileCatalog files,
                              PrintFileSender sender,
                              PrinterCommandService commands,
                              PrintStopService stops,
@@ -125,16 +125,16 @@ public class PrinterController : ControllerBase
                                              [FromBody] SendFileRequest body,
                                              CancellationToken cancellationToken)
     {
-        HSUser? caller = await _userManager.GetUserAsync(User);
+        HSUser? user = await _userManager.GetUserAsync(User);
 
-        if (caller is null)
+        if (user is null)
         {
             return Forbid();
         }
 
         // Scoped to the caller, so "someone else's file" and "no such file" are the same answer and
         // neither confirms the other's existence. This is the ownership check, and it is structural.
-        StoredFile? file = _files.Find(caller.Id, body.Name);
+        StoredFile? file = _files.FindForPrinting(user.Id, body.Name);
 
         if (file is null)
         {
@@ -162,7 +162,7 @@ public class PrinterController : ControllerBase
 
         try
         {
-            CommandOutcome? outcome = await _sender.SendAsync(printer, file, CallerResolver.For(caller, User), cancellationToken);
+            CommandOutcome? outcome = await _sender.SendAsync(printer, file, CallerResolver.For(user, User), cancellationToken);
 
             return outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed ?
                 this.CommandFailure(StatusCodes.Status409Conflict, wireName,

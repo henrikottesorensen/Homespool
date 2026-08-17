@@ -506,7 +506,7 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         using IServiceScope scope = _factory.Services.CreateScope();
         PrintFileCatalog catalog = scope.ServiceProvider.GetRequiredService<PrintFileCatalog>();
 
-        await catalog.SaveAsync(userId, name, new MemoryStream(Encoding.UTF8.GetBytes("G28 ; home\nG1 X10\n")),
+        await catalog.SaveAsync(Caller.Unscoped(userId), name, new MemoryStream(Encoding.UTF8.GetBytes("G28 ; home\nG1 X10\n")),
                                 overwrite: false, TestContext.Current.CancellationToken);
     }
 

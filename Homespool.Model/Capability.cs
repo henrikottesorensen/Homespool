@@ -101,4 +101,38 @@ public enum Capability
     /// fetched by the thing that shows it, so adding one is where the judgement is.
     /// </remarks>
     ManageCamera,
+
+    /// <summary>List and download <b>your own</b> files.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The three file capabilities are about a credential, not about access between people.</b>
+    /// A file lives at <c>{userId}/{name}</c>, so no membership can grant somebody else's and none
+    /// can withhold your own - which makes these near-vacuous as a grant and load-bearing as a token
+    /// scope. <c>Own</c> is in the name so a row saying <c>ViewOwnFiles</c> reads as what it is rather
+    /// than as a claim over somebody's library.
+    /// </para>
+    /// <para>
+    /// <b>They are therefore not in <c>CapabilityPresets</c></b>, which are membership presets. There
+    /// is nothing for a membership to say about them.
+    /// </para>
+    /// </remarks>
+    ViewOwnFiles,
+
+    /// <summary>Upload a file under a name you are not already using.</summary>
+    /// <remarks>
+    /// Separate from <see cref="ManipulateOwnFiles"/> on a concrete driver: PrusaSlicer's print-host
+    /// key needs upload and print and nothing else, and under a view/manage split it would have needed
+    /// the destructive one - so a key sitting in a slicer's config could erase every model its owner
+    /// has.
+    /// </remarks>
+    UploadOwnFiles,
+
+    /// <summary>Rename, delete, and overwrite your own files.</summary>
+    /// <remarks>
+    /// <b>Overwrite belongs here rather than with <see cref="UploadOwnFiles"/></b>: replacing the bytes
+    /// under a name that already exists is manipulation whatever the verb says, and
+    /// <i>upload own files</i> should not sound like it destroys one. Without this an overwriting
+    /// upload is refused, which is the 409 an existing name already gives.
+    /// </remarks>
+    ManipulateOwnFiles,
 }

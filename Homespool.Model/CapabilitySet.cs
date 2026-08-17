@@ -88,9 +88,19 @@ public sealed class CapabilitySet
     /// looking at its picture.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <see cref="Capability.ViewQueue"/> and <see cref="Capability.ViewHistory"/> imply nothing: they
     /// are separate views rather than acts. Nor does any printer capability reach a camera, which is a
     /// different resource.
+    /// </para>
+    /// <para>
+    /// <b>The file capabilities imply nothing either, and that is not the rule failing to reach
+    /// them.</b> A printer act implies its view because a printer you cannot see is one you cannot
+    /// address - listing filters on it and a lookup answers "no such printer". A file is addressed by
+    /// the name the caller already supplies, so deleting one needs no listing. Making
+    /// <see cref="Capability.UploadOwnFiles"/> imply <see cref="Capability.ViewOwnFiles"/> would hand a
+    /// print-host key the owner's whole library listing for nothing.
+    /// </para>
     /// </remarks>
     public static Capability? ImpliedBy(Capability capability)
     {

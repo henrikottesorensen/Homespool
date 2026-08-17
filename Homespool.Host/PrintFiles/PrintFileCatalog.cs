@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
 using Homespool.Host.Exceptions;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.PrintFiles;
@@ -46,14 +47,57 @@ public sealed class PrintFileCatalog
         _logger = logger;
     }
 
-    /// <summary>Everything <paramref name="userId"/> has uploaded. Straight through to the store.</summary>
-    public IReadOnlyList<StoredFile> List(long userId)
+    /// <summary>Everything the caller has uploaded. Straight through to the store.</summary>
+    /// <summary>
+    /// Refuses when the credential did not name <paramref name="capability"/>.
+    /// </summary>
+    /// <remarks>
+    /// <b>The gate is here rather than in the controllers and pages</b>, on the same argument as
+    /// <c>PrinterAccessService</c>: a rule living with the callers is one the next caller forgets. It
+    /// asks only the credential, because a file has no team - it lives at <c>{userId}/{name}</c>, so
+    /// nobody else can reach it and its owner cannot be refused it. The only question is which of
+    /// their own powers this key was given.
+    /// </remarks>
+    /// <exception cref="CredentialScopeDeniedException">The credential does not permit it.</exception>
+    private static void Require(Caller caller, Capability capability)
     {
-        return _store.List(userId);
+        ArgumentNullException.ThrowIfNull(caller);
+
+        if (!caller.Allows(capability))
+        {
+            throw CredentialScopeDeniedException.For(capability);
+        }
     }
 
-    /// <summary>One of <paramref name="userId"/>'s files by name, or null. Straight through.</summary>
-    public StoredFile? Find(long userId, string fileName)
+    public IReadOnlyList<StoredFile> List(Caller caller)
+    {
+        Require(caller, Capability.ViewOwnFiles);
+
+        return _store.List(caller.UserId);
+    }
+
+    /// <summary>One of the caller's files by name, or null. Straight through.</summary>
+    public StoredFile? Find(Caller caller, string fileName)
+    {
+        Require(caller, Capability.ViewOwnFiles);
+
+        return _store.Find(caller.UserId, fileName);
+    }
+
+    /// <summary>
+    /// One of the caller's files, resolved so it can be <i>printed</i> rather than read.
+    /// </summary>
+    /// <remarks>
+    /// <b>Deliberately not gated on <see cref="Capability.ViewOwnFiles"/>.</b> Sending a file to a
+    /// printer and queueing one are both <see cref="Capability.Print"/>, checked before this is
+    /// reached, and the resolve is how that act finds its bytes - not a second, browsing-shaped
+    /// permission. Requiring the view here would mean a token scoped to print could not print.
+    /// <para>
+    /// Takes a bare id because it decides nothing: the deciding was done by whoever is about to
+    /// print.
+    /// </para>
+    /// </remarks>
+    public StoredFile? FindForPrinting(long userId, string fileName)
     {
         return _store.Find(userId, fileName);
     }
@@ -62,22 +106,28 @@ public sealed class PrintFileCatalog
     /// Streams an upload to disk without naming it yet. Straight through - a staged upload has no row
     /// because it is not yet a file anyone has.
     /// </summary>
-    public Task<PendingUpload> StageAsync(long userId,
+    public Task<PendingUpload> StageAsync(Caller caller,
                                           string fileName,
                                           Stream content,
                                           CancellationToken cancellationToken)
     {
-        return _store.StageAsync(userId, fileName, content, cancellationToken);
+        Require(caller, Capability.UploadOwnFiles);
+
+        return _store.StageAsync(caller.UserId, fileName, content, cancellationToken);
     }
 
     /// <summary>Throws a staged upload away. Straight through, for the same reason.</summary>
-    public bool Discard(long userId, string token)
+    public bool Discard(Caller caller, string token)
     {
-        return _store.Discard(userId, token);
+        // Throwing away your own half-finished upload is part of uploading, not manipulation of a
+        // file that exists - nothing is published under a name yet.
+        Require(caller, Capability.UploadOwnFiles);
+
+        return _store.Discard(caller.UserId, token);
     }
 
     /// <summary>
-    /// The index row for one of <paramref name="userId"/>'s files, creating it if the file is on disk
+    /// The index row for one of the caller's files, creating it if the file is on disk
     /// without one. Null only when there is no such file.
     /// </summary>
     /// <remarks>
@@ -93,6 +143,11 @@ public sealed class PrintFileCatalog
     /// not streaming past here, and reading a whole file to fill a column nothing yet reads is not a
     /// trade worth making.
     /// </para>
+    /// </remarks>
+    /// <remarks>
+    /// <b>Takes a bare id because it decides nothing.</b> Its callers - enqueueing, and renaming - have
+    /// already been gated by the capability their own act needs, and a second, browsing-shaped check
+    /// here would mean a credential scoped to print could not print.
     /// </remarks>
     public async Task<PrintFile?> ResolveAsync(long userId, string fileName, CancellationToken cancellationToken)
     {
@@ -123,19 +178,35 @@ public sealed class PrintFileCatalog
     /// </summary>
     /// <exception cref="ArgumentException">The name is empty, or not one a printer would accept.</exception>
     /// <exception cref="PrintFileNameConflictException">The name is taken and <paramref name="overwrite"/> is false.</exception>
-    public async Task<StoredFile> SaveAsync(long userId,
+    public async Task<StoredFile> SaveAsync(Caller caller,
                                             string fileName,
                                             Stream content,
                                             bool overwrite,
                                             CancellationToken cancellationToken,
                                             string? userName = null)
     {
-        PublishedFile published =
-            await _store.SaveAsync(userId, fileName, content, overwrite, cancellationToken, userName);
+        Require(caller, RequiredToWrite(overwrite));
 
-        await IndexAsync(userId, published, cancellationToken);
+        PublishedFile published =
+            await _store.SaveAsync(caller.UserId, fileName, content, overwrite, cancellationToken, userName);
+
+        await IndexAsync(caller.UserId, published, cancellationToken);
 
         return published.File;
+    }
+
+    /// <summary>
+    /// What a write needs: <see cref="Capability.UploadOwnFiles"/> for a new name,
+    /// <see cref="Capability.ManipulateOwnFiles"/> when it replaces one that exists.
+    /// </summary>
+    /// <remarks>
+    /// <b>Overwriting is manipulation whatever the verb says</b> - it destroys bytes under a name
+    /// already in use - and <i>upload own files</i> must not sound like it does that. A credential
+    /// holding only the upload capability gets the same <c>409</c> an existing name already gives.
+    /// </remarks>
+    private static Capability RequiredToWrite(bool overwrite)
+    {
+        return overwrite ? Capability.ManipulateOwnFiles : Capability.UploadOwnFiles;
     }
 
     /// <summary>
@@ -143,20 +214,22 @@ public sealed class PrintFileCatalog
     /// this user - the Files page's two-step path.
     /// </summary>
     /// <exception cref="PrintFileNameConflictException">The name is taken and <paramref name="overwrite"/> is false.</exception>
-    public async Task<StoredFile?> PublishAsync(long userId,
+    public async Task<StoredFile?> PublishAsync(Caller caller,
                                                 string token,
                                                 bool overwrite,
                                                 CancellationToken cancellationToken,
                                                 string? userName = null)
     {
-        PublishedFile? published = _store.Publish(userId, token, overwrite, userName);
+        Require(caller, RequiredToWrite(overwrite));
+
+        PublishedFile? published = _store.Publish(caller.UserId, token, overwrite, userName);
 
         if (published is null)
         {
             return null;
         }
 
-        await IndexAsync(userId, published, cancellationToken);
+        await IndexAsync(caller.UserId, published, cancellationToken);
 
         return published.File;
     }
@@ -170,11 +243,15 @@ public sealed class PrintFileCatalog
     /// <b>Queued jobs are untouched, and that is the point of the whole table.</b> They reference the
     /// row's id, so the file changing its name is invisible to them.
     /// </remarks>
-    public async Task<StoredFile?> RenameAsync(long userId,
+    public async Task<StoredFile?> RenameAsync(Caller caller,
                                                string fileName,
                                                string newName,
                                                CancellationToken cancellationToken)
     {
+        Require(caller, Capability.ManipulateOwnFiles);
+
+        long userId = caller.UserId;
+
         // Resolved before the move, because afterwards the old name finds nothing - and a rename of a
         // file that was never indexed still has to end with a row carrying the new name.
         PrintFile? row = await ResolveAsync(userId, fileName, cancellationToken);
@@ -213,8 +290,12 @@ public sealed class PrintFileCatalog
     /// <c>Restrict</c> is the backstop for anything that goes around this method.
     /// </para>
     /// </remarks>
-    public async Task<PrintFileDeletion> DeleteAsync(long userId, string fileName, CancellationToken cancellationToken)
+    public async Task<PrintFileDeletion> DeleteAsync(Caller caller, string fileName, CancellationToken cancellationToken)
     {
+        Require(caller, Capability.ManipulateOwnFiles);
+
+        long userId = caller.UserId;
+
         StoredFile? file = _store.Find(userId, fileName);
 
         if (file is null)

@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
+using Homespool.Host.Authorisation;
 using Homespool.Host.DTO;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
@@ -73,7 +74,7 @@ public class PrintFileController : ControllerBase
             return Forbid();
         }
 
-        return Ok(_files.List(user.Id).Select(PrintFileReadDTO.FromStored).ToList());
+        return Ok(_files.List(CallerResolver.For(user, User)).Select(PrintFileReadDTO.FromStored).ToList());
     }
 
     /// <summary>
@@ -132,7 +133,7 @@ public class PrintFileController : ControllerBase
         try
         {
             await using LengthLimitingStream limited = new(Request.Body, _options.MaxUploadBytes);
-            stored = await _files.SaveAsync(user.Id, fileName, limited, overwrite, cancellationToken,
+            stored = await _files.SaveAsync(CallerResolver.For(user, User), fileName, limited, overwrite, cancellationToken,
                                             user.UserName);
         }
         catch (UploadTooLargeException)
@@ -171,7 +172,7 @@ public class PrintFileController : ControllerBase
             return Forbid();
         }
 
-        StoredFile? file = _files.Find(user.Id, fileName);
+        StoredFile? file = _files.Find(CallerResolver.For(user, User), fileName);
 
         if (file is null)
         {
@@ -212,7 +213,7 @@ public class PrintFileController : ControllerBase
 
         try
         {
-            StoredFile? renamed = await _files.RenameAsync(user.Id, fileName, body.Name, cancellationToken);
+            StoredFile? renamed = await _files.RenameAsync(CallerResolver.For(user, User), fileName, body.Name, cancellationToken);
 
             return renamed is null ? NotFound() : Ok(PrintFileReadDTO.FromStored(renamed));
         }
@@ -251,7 +252,7 @@ public class PrintFileController : ControllerBase
             return Forbid();
         }
 
-        return await _files.DeleteAsync(user.Id, fileName, cancellationToken) switch
+        return await _files.DeleteAsync(CallerResolver.For(user, User), fileName, cancellationToken) switch
         {
             PrintFileDeletion.Deleted => NoContent(),
             PrintFileDeletion.Queued => this.Failure(StatusCodes.Status409Conflict,

@@ -235,7 +235,7 @@ public class IndexModel : PageModel
         {
             await using Stream content = file.OpenReadStream();
 
-            staged = await _files.StageAsync(userId.Value, file.FileName, content, cancellationToken);
+            staged = await _files.StageAsync(CallerResolver.For(userId.Value, User), file.FileName, content, cancellationToken);
         }
         catch (ArgumentException e)
         {
@@ -246,7 +246,7 @@ public class IndexModel : PageModel
 
         try
         {
-            StoredFile? stored = await _files.PublishAsync(userId.Value, staged.Token, overwrite: false,
+            StoredFile? stored = await _files.PublishAsync(CallerResolver.For(userId.Value, User), staged.Token, overwrite: false,
                                                            cancellationToken, UserName());
 
             (StatusMessage, StatusSuccess) = ($"Uploaded {stored!.FileName}.", true);
@@ -274,7 +274,7 @@ public class IndexModel : PageModel
             return Forbid();
         }
 
-        StoredFile? stored = await _files.PublishAsync(userId.Value, token, overwrite: true, cancellationToken,
+        StoredFile? stored = await _files.PublishAsync(CallerResolver.For(userId.Value, User), token, overwrite: true, cancellationToken,
                                                        UserName());
 
         (StatusMessage, StatusSuccess) = stored is null ?
@@ -294,7 +294,7 @@ public class IndexModel : PageModel
             return Forbid();
         }
 
-        _files.Discard(userId.Value, token);
+        _files.Discard(CallerResolver.For(userId.Value, User), token);
         (StatusMessage, StatusSuccess) = ("Upload discarded.", true);
 
         return RedirectToSelf(sort, desc);
@@ -380,7 +380,7 @@ public class IndexModel : PageModel
             return Forbid();
         }
 
-        StoredFile? file = _files.Find(userId.Value, name);
+        StoredFile? file = _files.Find(CallerResolver.For(userId.Value, User), name);
 
         if (file is null)
         {
@@ -469,7 +469,7 @@ public class IndexModel : PageModel
         try
         {
             StoredFile? renamed =
-                await _files.RenameAsync(userId.Value, name, newName ?? string.Empty, cancellationToken);
+                await _files.RenameAsync(CallerResolver.For(userId.Value, User), name, newName ?? string.Empty, cancellationToken);
 
             (StatusMessage, StatusSuccess) = renamed is null ?
                 ($"There is no file named {name}.", false) :
@@ -507,7 +507,7 @@ public class IndexModel : PageModel
             return Forbid();
         }
 
-        (StatusMessage, StatusSuccess) = await _files.DeleteAsync(userId.Value, name, cancellationToken) switch
+        (StatusMessage, StatusSuccess) = await _files.DeleteAsync(CallerResolver.For(userId.Value, User), name, cancellationToken) switch
         {
             PrintFileDeletion.Deleted => ($"Deleted {name}.", true),
             PrintFileDeletion.Queued => ($"{name} is queued to print. Cancel the queued print first.", false),
@@ -584,7 +584,7 @@ public class IndexModel : PageModel
 
         Descending = desc;
 
-        IReadOnlyList<StoredFile> files = _files.List(userId.Value);
+        IReadOnlyList<StoredFile> files = _files.List(CallerResolver.For(userId.Value, User));
 
         IOrderedEnumerable<StoredFile> ordered = Sort switch
         {

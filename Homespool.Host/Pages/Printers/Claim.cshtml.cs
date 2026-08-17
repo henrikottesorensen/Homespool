@@ -88,18 +88,18 @@ public class ClaimModel : PageModel
         /// </remarks>
         [Required(ErrorMessage = "Validation_ClaimCodeRequired")]
         [StringLength(32, ErrorMessage = "Validation_ClaimCodeShape")]
-        [Display(Name = "Registration code")]
+        [Display(Name = "Printers_RegistrationCode")]
         public string Code { get; set; } = string.Empty;
 
         [StringLength(200)]
-        [Display(Name = "Name")]
+        [Display(Name = "Common_Name")]
         public string? Name { get; set; }
 
         [StringLength(200)]
-        [Display(Name = "Location")]
+        [Display(Name = "Printers_Location")]
         public string? Location { get; set; }
 
-        [Display(Name = "Team")]
+        [Display(Name = "Common_Team")]
         public int? TeamId { get; set; }
     }
 
@@ -132,9 +132,7 @@ public class ClaimModel : PageModel
         {
             // Deliberately says how long, rather than a bare refusal: the overwhelmingly likely
             // person reading this is someone who mistyped, standing at their own printer.
-            ModelState.AddModelError(string.Empty,
-                                     $"Too many unrecognised codes. Try again in {FormatWait(remaining)}. "
-                                     + "The printer's own code is unaffected - it is still waiting.");
+            ModelState.AddModelError(string.Empty, _localiser["Printers_ClaimLockedOut", FormatWait(remaining)]);
 
             return Page();
         }
@@ -179,23 +177,19 @@ public class ClaimModel : PageModel
             // rollback cannot undo the count.
             await _attemptLimiter.RecordFailedAttemptAsync(user, now, cancellationToken);
 
-            ModelState.AddModelError(string.Empty,
-                                     "No printer is waiting with that code. Check it against the printer's screen - codes expire, so it "
-                                     + "may have already been replaced. Letters O, I and L are read as 0, 1 and 1, so those are safe to "
-                                     + "get wrong.");
+            ModelState.AddModelError(string.Empty, _localiser["Printers_ClaimNoSuchCode"]);
 
             return Page();
         }
         catch (RegistrationAlreadyClaimedException)
         {
-            ModelState.AddModelError(string.Empty,
-                                     "This code has already been claimed. If that wasn't you, make sure you copied the current code from the printer's screen.");
+            ModelState.AddModelError(string.Empty, _localiser["Printers_ClaimAlreadyClaimed"]);
 
             return Page();
         }
         catch (TeamAccessDeniedException)
         {
-            ModelState.AddModelError(string.Empty, "You don't have permission to claim a printer into that team.");
+            ModelState.AddModelError(string.Empty, _localiser["Printers_ClaimNoTeamPermission"]);
 
             return Page();
         }
@@ -203,7 +197,7 @@ public class ClaimModel : PageModel
         {
             _logger.LogError(ex, "Failed to claim printer for user {UserId}; rolling back.", user.Id);
 
-            ModelState.AddModelError(string.Empty, "Something went wrong claiming the printer. Please try again.");
+            ModelState.AddModelError(string.Empty, _localiser["Printers_ClaimFailed"]);
 
             return Page();
         }
@@ -216,18 +210,18 @@ public class ClaimModel : PageModel
     /// <remarks>
     /// Rounds up, so the message never tells someone to retry a moment before they may.
     /// </remarks>
-    private static string FormatWait(TimeSpan remaining)
+    private string FormatWait(TimeSpan remaining)
     {
         if (remaining < TimeSpan.FromMinutes(1))
         {
             int seconds = (int)Math.Ceiling(remaining.TotalSeconds);
 
-            return seconds == 1 ? "1 second" : $"{seconds} seconds";
+            return seconds == 1 ? _localiser["Printers_ClaimWaitOneSecond"] : _localiser["Printers_ClaimWaitSeconds", seconds];
         }
 
         int minutes = (int)Math.Ceiling(remaining.TotalMinutes);
 
-        return minutes == 1 ? "1 minute" : $"{minutes} minutes";
+        return minutes == 1 ? _localiser["Printers_ClaimWaitOneMinute"] : _localiser["Printers_ClaimWaitMinutes", minutes];
     }
 
     private async Task LoadTeamOptionsAsync(CancellationToken cancellationToken)
@@ -242,6 +236,6 @@ public class ClaimModel : PageModel
 
         IReadOnlyList<TeamMember> memberships = await _teamService.GetTeamsForUserAsync(user.Id, cancellationToken);
 
-        TeamOptions = TeamOptionSelectListBuilder.BuildManageableOptions(memberships);
+        TeamOptions = TeamOptionSelectListBuilder.BuildManageableOptions(memberships, _localiser);
     }
 }

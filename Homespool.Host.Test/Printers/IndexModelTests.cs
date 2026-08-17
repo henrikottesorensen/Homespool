@@ -135,7 +135,7 @@ public sealed class IndexModelTests : IDisposable
             new PrusaConnectService(context, new CodeGenerator(), new TokenService(), new TeamService(context),
                                     TimeProvider.System, NullLogger<PrusaConnectService>.Instance, Options.Create(options)),
             new ProvisioningBundleBuilder(Options.Create(options), Options.Create(new CertificateOptions()), authority,
-                                          new DnsHostAddressResolver()),
+                                          new DnsHostAddressResolver(), TestLocaliser.Shared()),
             new TeamService(context),
             users,
             Options.Create(options),
@@ -148,6 +148,7 @@ public sealed class IndexModelTests : IDisposable
                                  new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
                                  NullLogger<PrintStopService>.Instance),
             new PrinterStatusText(localiser),
+            new PrinterIntentText(localiser),
             localiser)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),

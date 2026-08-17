@@ -108,7 +108,8 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
         (_, string first) = await tokens.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
         await tokens.CreateAsync(user.Id, "ci", CapabilitySet.Everything, CancellationToken.None);
 
-        ChangePasswordModel model = new(users, signIn, tokens, new UnitOfWork(context), NullLogger<ChangePasswordModel>.Instance)
+        ChangePasswordModel model = new(users, signIn, tokens, new UnitOfWork(context), TestLocaliser.Shared(),
+                                        NullLogger<ChangePasswordModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
             Input = new ChangePasswordModel.InputModel
@@ -151,7 +152,8 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
         ApiTokenService tokens = new(context);
         (_, string plaintext) = await tokens.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
-        ChangePasswordModel model = new(users, signIn, tokens, new UnitOfWork(context), NullLogger<ChangePasswordModel>.Instance)
+        ChangePasswordModel model = new(users, signIn, tokens, new UnitOfWork(context), TestLocaliser.Shared(),
+                                        NullLogger<ChangePasswordModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
             Input = new ChangePasswordModel.InputModel
@@ -188,7 +190,7 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
         ChangePasswordModel model = new(users, signIn, new ApiTokenService(context), new UnitOfWork(context),
-                                        NullLogger<ChangePasswordModel>.Instance)
+                                        TestLocaliser.Shared(), NullLogger<ChangePasswordModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
             Input = new ChangePasswordModel.InputModel
@@ -221,7 +223,8 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
         ApiTokenService tokens = new(context);
         await tokens.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
-        ChangePasswordModel model = new(users, signIn, tokens, new UnitOfWork(context), NullLogger<ChangePasswordModel>.Instance)
+        ChangePasswordModel model = new(users, signIn, tokens, new UnitOfWork(context), TestLocaliser.Shared(),
+                                        NullLogger<ChangePasswordModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
             Input = new ChangePasswordModel.InputModel
@@ -256,7 +259,8 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
         await tokens.CreateAsync(user.Id, "mine", CapabilitySet.Everything, CancellationToken.None);
         (_, string theirs) = await tokens.CreateAsync(other.Id, "theirs", CapabilitySet.Everything, CancellationToken.None);
 
-        ChangePasswordModel model = new(users, signIn, tokens, new UnitOfWork(context), NullLogger<ChangePasswordModel>.Instance)
+        ChangePasswordModel model = new(users, signIn, tokens, new UnitOfWork(context), TestLocaliser.Shared(),
+                                        NullLogger<ChangePasswordModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
             Input = new ChangePasswordModel.InputModel
@@ -293,7 +297,8 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
         ApiTokenService tokens = new(context);
         (_, string plaintext) = await tokens.CreateAsync(user.Id, "attacker's", CapabilitySet.Everything, CancellationToken.None);
 
-        ResetPasswordModel model = new(users, tokens, new UnitOfWork(context), NullLogger<ResetPasswordModel>.Instance)
+        ResetPasswordModel model = new(users, tokens, new UnitOfWork(context), TestLocaliser.Shared(),
+                                       NullLogger<ResetPasswordModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
             Input = new ResetPasswordModel.InputModel
@@ -332,7 +337,8 @@ public sealed class PasswordChangeRevokesTokensTests : IDisposable
         ApiTokenService tokens = new(context);
         (_, string plaintext) = await tokens.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
-        ResetPasswordModel model = new(users, tokens, new UnitOfWork(context), NullLogger<ResetPasswordModel>.Instance)
+        ResetPasswordModel model = new(users, tokens, new UnitOfWork(context), TestLocaliser.Shared(),
+                                       NullLogger<ResetPasswordModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
             Input = new ResetPasswordModel.InputModel

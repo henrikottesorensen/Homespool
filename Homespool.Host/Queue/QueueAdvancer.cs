@@ -105,19 +105,6 @@ public sealed class QueueAdvancer : BackgroundService
     /// </remarks>
     private const string FileExistsCode = "FILE_EXISTS";
 
-    /// <summary>
-    /// How a block written by the free-space check begins, so that check can tell its own holds from
-    /// anyone else's.
-    /// </summary>
-    /// <remarks>
-    /// <b>A seam, and an honest one.</b> <see cref="PrintFileOnPrinter.BlockedReason"/> is documented
-    /// as a sentence for a person rather than a code, which was right while the space check was its
-    /// only writer. It is not any more, and matching on the opening words is the cheapest way for one
-    /// writer to avoid lifting another's hold without a column that says who set it. If a third writer
-    /// appears, add the column rather than a third prefix.
-    /// </remarks>
-    private const string SpaceBlockPrefix = "Not enough space on the printer:";
-
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly PrinterConnectionRegistry _registry;
     private readonly QueueSignal _signal;
@@ -247,6 +234,21 @@ public sealed class QueueAdvancer : BackgroundService
     private static Caller CallerFor(QueuedPrint head)
     {
         return Caller.Scoped(head.QueuedByUserId, CapabilitySet.Parse(head.QueuedByScope));
+    }
+
+    /// <summary>
+    /// Lifts a hold, and clears what was recorded about it.
+    /// </summary>
+    /// <remarks>
+    /// One place, because a hold is now four fields rather than one and leaving a stale byte count
+    /// behind a cleared reason would put a number on a page that describes nothing.
+    /// </remarks>
+    private static void ClearHold(PrintFileOnPrinter onPrinter)
+    {
+        onPrinter.HoldReason = null;
+        onPrinter.HoldPrinterFreeBytes = null;
+        onPrinter.HoldPrinterFileBytes = null;
+        onPrinter.BlockedAt = null;
     }
 
     private static Task<List<int>> PrintersNeedingAPassAsync(HomespoolDbContext dbContext,
@@ -708,25 +710,31 @@ public sealed class QueueAdvancer : BackgroundService
 
             onPrinter.ArrivedAt = _timeProvider.GetUtcNow();
             onPrinter.PrinterPath = existing.Path ?? file.PrinterPath;
-            onPrinter.BlockedReason = null;
-            onPrinter.BlockedAt = null;
+            ClearHold(onPrinter);
 
             return;
         }
 
         // Somebody else's file under our name. Held rather than failed, because the entry is still
         // wanted and a person deleting it at the panel should see the queue resume by itself.
-        onPrinter.BlockedReason = existing?.Size is { } size ?
-            string.Create(CultureInfo.InvariantCulture,
-                          $"The printer already has a different file called {file.FileName}: {size} bytes there, "
-                          + $"{file.Length} here. Delete it at the printer, or rename this one.") :
-            string.Create(CultureInfo.InvariantCulture,
-                          $"The printer already has a file called {file.FileName} and would not say how big it is, "
-                          + $"so it cannot be confirmed as this one. Delete it at the printer, or rename this one.");
-
+        //
+        // Two reasons rather than one with a nullable size: "demonstrably not our file" and "cannot
+        // be confirmed either way" are different things to tell somebody, and collapsing them would
+        // have the page claim a certainty the printer declined to give.
+        onPrinter.HoldReason = existing?.Size is not null ?
+            PrintHoldReason.FileExistsDifferentSize :
+            PrintHoldReason.FileExistsUnknownSize;
+        onPrinter.HoldPrinterFreeBytes = null;
+        onPrinter.HoldPrinterFileBytes = existing?.Size;
         onPrinter.BlockedAt = _timeProvider.GetUtcNow();
 
-        _logger.LogWarning("[{PrinterId}] {Reason}", printerId, onPrinter.BlockedReason);
+        // English in the log on purpose, and the numbers as fields: this line is read by whoever runs
+        // the deployment, while the page says the same thing to whoever is waiting for the print, in
+        // their own language. See notes/localisation.md.
+        _logger.LogWarning(
+            "[{PrinterId}] {FileName} is already on the printer as {PrinterBytes} bytes against {OurBytes} here; "
+            + "holding the queue.",
+            printerId, file.FileName, existing?.Size, file.Length);
     }
 
     /// <summary>
@@ -764,7 +772,7 @@ public sealed class QueueAdvancer : BackgroundService
     {
         DateTimeOffset now = _timeProvider.GetUtcNow();
 
-        if (onPrinter.BlockedReason is not null
+        if (onPrinter.HoldReason is not null
             && onPrinter.BlockedAt is { } blockedAt
             && now - blockedAt < BlockRecheckAfter)
         {
@@ -803,29 +811,36 @@ public sealed class QueueAdvancer : BackgroundService
             // holding the queue too, "there is room now" is no longer evidence that whatever is in the
             // way has gone - clearing indiscriminately would drop a file-conflict hold every minute
             // and set the transfer retrying against a refusal that has not changed.
-            if (onPrinter.BlockedReason?.StartsWith(SpaceBlockPrefix, StringComparison.Ordinal) == true)
+            if (onPrinter.HoldReason == PrintHoldReason.InsufficientSpace)
             {
                 _logger.LogInformation("[{PrinterId}] there is room for {FileName} now; the queue resumes",
                                        printerId, head.PrintFile!.Name);
 
-                onPrinter.BlockedReason = null;
-                onPrinter.BlockedAt = null;
+                ClearHold(onPrinter);
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
 
             return true;
         }
 
-        string reason = string.Create(CultureInfo.InvariantCulture,
-                                      $"{SpaceBlockPrefix} {head.PrintFile!.Name} needs {length} bytes, {free} free.");
+        bool newlyBlocked = onPrinter.HoldReason is null;
 
-        bool newlyBlocked = onPrinter.BlockedReason is null;
-
-        onPrinter.BlockedReason = reason;
+        onPrinter.HoldReason = PrintHoldReason.InsufficientSpace;
+        onPrinter.HoldPrinterFreeBytes = free;
+        onPrinter.HoldPrinterFileBytes = null;
         onPrinter.BlockedAt = now;
 
         if (newlyBlocked)
         {
+            // English, and staying that way. PrintJob.Reason is a history record whose other writer is
+            // HandleRefusal, passing firmware's own refusal string through verbatim - so the column
+            // holds what was said at the time rather than something to re-say later. The live hold is
+            // what a reader acts on, and that is HoldReason, which is localised. See
+            // notes/localisation.md on why the two are different jobs.
+            string recorded = string.Create(
+                CultureInfo.InvariantCulture,
+                $"Not enough space on the printer: {head.PrintFile!.Name} needs {length} bytes, {free} free.");
+
             // Written once, on the transition. A row per tick would turn history into a log, and the
             // queue entry itself stays put - somebody still wants this printed.
             dbContext.PrintJobs.Add(new PrintJob
@@ -838,10 +853,10 @@ public sealed class QueueAdvancer : BackgroundService
                 StartedAt = now,
                 EndedAt = now,
                 State = PrintState.Failed,
-                Reason = reason,
+                Reason = recorded,
             });
 
-            _logger.LogWarning("[{PrinterId}] {Reason} The queue holds until space is freed.", printerId, reason);
+            _logger.LogWarning("[{PrinterId}] {Reason} The queue holds until space is freed.", printerId, recorded);
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);

@@ -480,6 +480,14 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
                   .WithMany()
                   .HasForeignKey(e => e.PrintFileId)
                   .OnDelete(DeleteBehavior.Cascade);
+
+            // Stored as text, like PrintJob.State below. This column is null on nearly every row and
+            // non-null only while something is wrong - so every value of it that anybody ever reads
+            // is read while working out why a printer stopped, which is precisely when an integer is
+            // worth least. Also immune to the enum being reordered, which matters more here than for
+            // Events or PrinterStatus: nothing outside this repository pins the order.
+            entity.Property(e => e.HoldReason)
+                  .HasConversion<string>();
         });
 
         builder.Entity<PrintJob>(entity =>

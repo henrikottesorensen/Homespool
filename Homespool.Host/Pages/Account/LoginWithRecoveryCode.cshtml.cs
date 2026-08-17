@@ -7,12 +7,14 @@ using System;
 using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
 
+using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.Pages.Account;
@@ -22,14 +24,17 @@ public class LoginWithRecoveryCodeModel : PageModel
 {
     private readonly SignInManager<HSUser> _signInManager;
     private readonly UserManager<HSUser> _userManager;
+    private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<LoginWithRecoveryCodeModel> _logger;
 
     public LoginWithRecoveryCodeModel(SignInManager<HSUser> signInManager,
                                       UserManager<HSUser> userManager,
+                                      IStringLocalizer<SharedResource> localiser,
                                       ILogger<LoginWithRecoveryCodeModel> logger)
     {
         _signInManager = signInManager;
         _userManager = userManager;
+        _localiser = localiser;
         _logger = logger;
     }
 
@@ -43,7 +48,7 @@ public class LoginWithRecoveryCodeModel : PageModel
         [BindProperty]
         [Required]
         [DataType(DataType.Text)]
-        [Display(Name = "Recovery Code")]
+        [Display(Name = "Account_RecoveryCode")]
         public string RecoveryCode { get; set; }
     }
 
@@ -96,7 +101,7 @@ public class LoginWithRecoveryCodeModel : PageModel
         }
 
         _logger.LogWarning("Invalid recovery code entered for user with ID {UserId}", userId);
-        ModelState.AddModelError(string.Empty, "Invalid recovery code entered.");
+        ModelState.AddModelError(string.Empty, _localiser["Account_InvalidRecoveryCode"]);
 
         return Page();
     }

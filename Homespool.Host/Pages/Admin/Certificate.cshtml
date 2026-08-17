@@ -107,15 +107,14 @@
                 </tr>
                 <tr>
                     <th scope="row">@Localiser["Cert_Expires"]</th>
-                    <td>@(Model.LeafExpires?.ToString("yyyy-MM-dd") ?? "-")</td>
+                    <td>@(Model.LeafExpires?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) ?? "-")</td>
                 </tr>
                 <tr>
                     <th scope="row">@Localiser["Cert_AuthorityExpires"]</th>
                     <td>
-                        @(Model.AuthorityExpires?.ToString("yyyy-MM-dd") ?? "-")
+                        @(Model.AuthorityExpires?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) ?? "-")
                         <div class="form-text">
-                            Replacing this one means a USB visit to every printer - it is their entire trust
-                            store and cannot be sent over the network. Plan it well ahead.
+                            @Localiser["Cert_AuthorityReplaceCost"]
                         </div>
                     </td>
                 </tr>
@@ -127,15 +126,13 @@
 @if (Model.ConfiguredHostUncovered)
 {
     <div class="alert alert-danger" role="alert">
-        The address printers are told to use is not in the certificate, so no provisioning bundle can be
-        produced for it and any printer connecting to it cannot verify this server.
+        @Localiser["Cert_AddressNotCovered"]
     </div>
 }
 else if (Model.Uncovered.Count > 0)
 {
     <div class="alert alert-warning" role="alert">
-        This machine has addresses the certificate does not cover. That is only a problem for printers
-        told to use one of them - the ones using a covered address are unaffected.
+        @Localiser["Cert_UncoveredAddresses"]
     </div>
 }
 
@@ -143,12 +140,9 @@ else if (Model.Uncovered.Count > 0)
     @if (Model.Dropping.Count > 0)
     {
         <div class="alert alert-warning" role="alert">
-            <strong>@Localiser["Cert_WouldNarrow"]</strong> These names are covered today
-            and this machine no longer answers on them, so they would not be carried over. That is
-            usually right - a certificate should only vouch for what a printer can reach. But
+            <strong>@Localiser["Cert_WouldNarrow"]</strong> @Localiser["Cert_DroppingExplanation"]
             <strong>@Localiser["Cert_WouldStopConnecting"]</strong>
-            once the new certificate is served, reporting a bare TLS error that names nothing, and
-            putting it back means a USB visit to repoint it.
+            @Localiser["Cert_DroppingConsequence"]
             <p class="mt-2 mb-1">@Localiser["Cert_KeepTicked"]</p>
             @foreach (string name in Model.Dropping)
             {
@@ -156,7 +150,7 @@ else if (Model.Uncovered.Count > 0)
                     <input class="form-check-input" type="checkbox" name="KeepNames" value="@name"
                            id="keep-@name" />
                     <label class="form-check-label" for="keep-@name">
-                        keep <code>@name</code>
+                        @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Cert_Keep"].Value, $"<code>{name}</code>"))
                     </label>
                 </div>
             }
@@ -169,9 +163,5 @@ else if (Model.Uncovered.Count > 0)
 
 <p class="form-text mt-2">
     @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Cert_ReissueNeedsReload"].Value, $"<strong>{Localiser["Cert_ProxyReloaded"].Value}</strong>"))<code>docker compose exec
-    proxy nginx -s reload</code> - because the proxy is what presents this certificate to printers,
-    and it read the current one when it started. The application itself keeps running. A printer that
-    is already connected keeps meeting the old certificate until it next reconnects, since the reload
-    is graceful and does not interrupt live connections. Nothing is needed at the printers either:
-    both certificates are signed by the authority, which this does not touch.
+    proxy nginx -s reload</code> - @Localiser["Cert_ReloadExplanation"]
 </p>

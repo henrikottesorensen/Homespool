@@ -103,6 +103,6 @@ public class QueueSnapshotReader
                           onPrinter?.PrinterPath),
             IsTransferInFlight(onPrinter),
             printInFlight,
-            onPrinter?.BlockedReason);
+            onPrinter?.HoldReason);
     }
 }

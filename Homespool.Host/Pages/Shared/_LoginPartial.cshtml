@@ -8,22 +8,22 @@
     @if (User.IsInRole(AdminBootstrap.AdminRole))
     {
         <li class="nav-item">
-            <a id="invites" class="nav-link" asp-page="/Admin/Invites/Index" title="Invitations">@Localiser["Nav_Invites"]</a>
+            <a id="invites" class="nav-link" asp-page="/Admin/Invites/Index">@Localiser["Nav_Invites"]</a>
         </li>
 @*  The certificate banner tells an administrator to come here, so there has to be a here to come to.
     Admin-only, like Invites: it is the one page that can reissue what printers verify against. *@
         <li class="nav-item">
-            <a id="certificate" class="nav-link" asp-page="/Admin/Certificate" title="Printer certificate">@Localiser["Nav_Certificate"]</a>
+            <a id="certificate" class="nav-link" asp-page="/Admin/Certificate" title="@Localiser["Nav_CertificateTitle"]">@Localiser["Nav_Certificate"]</a>
         </li>
     }
     <li class="nav-item">
-        <a id="printers" class="nav-link" asp-page="/Printers/Index" title="Printers">@Localiser["Printers_Title"]</a>
+        <a id="printers" class="nav-link" asp-page="/Printers/Index">@Localiser["Printers_Title"]</a>
     </li>
     <li class="nav-item">
-        <a id="files" class="nav-link" asp-page="/Files/Index" title="Files">@Localiser["Files_Title"]</a>
+        <a id="files" class="nav-link" asp-page="/Files/Index">@Localiser["Files_Title"]</a>
     </li>
     <li class="nav-item">
-        <a id="cameras" class="nav-link" asp-page="/Cameras/Index" title="Cameras">@Localiser["Cameras_Title"]</a>
+        <a id="cameras" class="nav-link" asp-page="/Cameras/Index">@Localiser["Cameras_Title"]</a>
     </li>
     <li class="nav-item">
 @*  The username is already in the cookie - Identity writes it as ClaimTypes.Name - so naming the
@@ -32,7 +32,7 @@
     aria-label because the visible text is now a bare name: sighted readers get "who am I, and the
     way to my account" from its position in the bar, and a screen reader announcing "henrik.sorensen,
     link" gets neither. *@
-        <a id="manage" class="nav-link" asp-page="/Account/Manage/Index" title="Manage" aria-label="Manage your account">@UserManager.GetUserName(User)</a>
+        <a id="manage" class="nav-link" asp-page="/Account/Manage/Index" aria-label="@Localiser["Nav_ManageAccount"]">@UserManager.GetUserName(User)</a>
     </li>
     <li class="nav-item">
         <form id="logoutForm" class="form-inline" asp-page="/Account/Logout" asp-route-returnUrl="@Url.Action("Index", "Home", new { area = "" })">

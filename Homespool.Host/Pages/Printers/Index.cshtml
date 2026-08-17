@@ -42,9 +42,9 @@ else
         @foreach (var row in Model.Printers)
         {
             <tr>
-                <td><a asp-page="Detail" asp-route-uuid="@row.Printer.Uuid">@(row.Printer.Name ?? row.Printer.Model ?? row.Printer.Uuid.ToString())</a></td>
-                <td>@row.Printer.Location</td>
-                <td>@row.TeamName</td>
+                <td class="typed-name"><a asp-page="Detail" asp-route-uuid="@row.Printer.Uuid">@(row.Printer.Name ?? row.Printer.Model ?? row.Printer.Uuid.ToString())</a></td>
+                <td class="typed-name">@row.Printer.Location</td>
+                <td class="typed-name">@row.TeamName</td>
                 @* What the printer is doing beats how it was set up, whenever we can know it. A
                    connected printer used to read "Enrolled", which is true, unchanging, and answers a
                    question nobody has once the thing is working. Enrolment still shows when it is the
@@ -92,13 +92,13 @@ else
                     @if (row.Connected)
                     {
                         <form method="post" asp-page-handler="Pause" asp-route-printerId="@row.Printer.Id" class="d-inline">
-                            <button type="submit" class="btn btn-sm btn-outline-secondary">@Localiser["Command_Pause"]</button>
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">@Localiser["Intent_PausePrint"]</button>
                         </form>
                         <form method="post" asp-page-handler="Resume" asp-route-printerId="@row.Printer.Id" class="d-inline">
-                            <button type="submit" class="btn btn-sm btn-outline-secondary">@Localiser["Command_Resume"]</button>
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">@Localiser["Intent_ResumePrint"]</button>
                         </form>
                         <form method="post" asp-page-handler="Stop" asp-route-printerId="@row.Printer.Id" class="d-inline">
-                            <button type="submit" class="btn btn-sm btn-outline-danger">@Localiser["Command_Stop"]</button>
+                            <button type="submit" class="btn btn-sm btn-outline-danger">@Localiser["Intent_StopPrint"]</button>
                         </form>
                     }
                 </td>

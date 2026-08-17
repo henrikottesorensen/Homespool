@@ -54,6 +54,7 @@ public class DetailModel : PageModel
     private readonly PrinterConnectionRegistry _connectionRegistry;
     private readonly PrinterCommandService _commands;
     private readonly IStringLocalizer<SharedResource> _localiser;
+    private readonly ErrorText _errors;
     private readonly UserManager<HSUser> _userManager;
 
     public DetailModel(PrinterQueryService printerQueryService,
@@ -67,10 +68,9 @@ public class DetailModel : PageModel
                        PrinterConnectionRegistry connectionRegistry,
                        PrinterCommandService commands,
                        IStringLocalizer<SharedResource> localiser,
+                       ErrorText errors,
                        UserManager<HSUser> userManager)
     {
-        _commands = commands;
-        _localiser = localiser;
         _printerQueryService = printerQueryService;
         _queueService = queueService;
         _preheat = preheat;
@@ -80,6 +80,9 @@ public class DetailModel : PageModel
         _cameraAccess = cameraAccess;
         _cameraNames = cameraNames;
         _connectionRegistry = connectionRegistry;
+        _commands = commands;
+        _localiser = localiser;
+        _errors = errors;
         _userManager = userManager;
     }
 
@@ -112,10 +115,12 @@ public class DetailModel : PageModel
     {
         if (job.StoppedByUserId is not { } stopper)
         {
-            return "at the printer";
+            return _localiser["Printers_StoppedAtPrinter"];
         }
 
-        return StopperNames.TryGetValue(stopper, out string? name) ? $"by {name}" : "from here";
+        return StopperNames.TryGetValue(stopper, out string? name) ?
+            _localiser["Printers_StoppedByPerson", name] :
+            _localiser["Printers_StoppedFromHere"];
     }
 
     /// <summary>
@@ -209,7 +214,7 @@ public class DetailModel : PageModel
     /// </remarks>
     public string CameraName(Camera camera, int index)
     {
-        return _cameraNames.For(camera, $"Camera {index + 1}");
+        return _cameraNames.For(camera, _localiser["Cameras_Numbered", index + 1]);
     }
 
     public async Task<IActionResult> OnGetAsync(Guid uuid, CancellationToken cancellationToken)
@@ -247,12 +252,20 @@ public class DetailModel : PageModel
         ActivePrint = await _historyService.GetActiveAsync(statistics.Printer.Id, CallerResolver.For(user, User), cancellationToken);
         History = await _historyService.ListAsync(statistics.Printer.Id, CallerResolver.For(user, User), cancellationToken);
         StopperNames = await _historyService.GetStopperNamesAsync(History, cancellationToken);
-        HoldReason = await _historyService.GetHoldReasonAsync(statistics.Printer.Id, CallerResolver.For(user, User), cancellationToken);
+
+        // Both of these arrive as keys and are said here, which is the only place that knows who is
+        // reading. The loop that recorded the hold had no request to take a culture from.
+        MessageKey? hold = await _historyService.GetHoldReasonAsync(
+            statistics.Printer.Id, CallerResolver.For(user, User), cancellationToken);
+
+        HoldReason = hold is null ? null : _errors.For(hold);
 
         Cameras = await _cameraAccess.ListForPrinterAsync(statistics.Printer.Id, CallerResolver.For(user, User), cancellationToken);
 
         QueueSnapshot snapshot = await _snapshots.ReadAsync(statistics.Printer.Id, cancellationToken);
-        WaitingOn = QueueWaitDescription.For(QueueRules.Decide(snapshot), snapshot.Head?.FileName);
+        MessageKey? waiting = QueueWaitDescription.For(QueueRules.Decide(snapshot), snapshot.Head?.FileName);
+
+        WaitingOn = waiting is null ? null : _errors.For(waiting);
 
         return Page();
     }
@@ -271,7 +284,9 @@ public class DetailModel : PageModel
         {
             bool moved = await _queueService.MoveAsync(id, caller, position, cancellationToken);
 
-            return moved ? ("Queue reordered.", true) : ("That print is no longer in the queue.", false);
+            return moved ?
+                (_localiser["Printers_QueueReordered"].Value, true) :
+                (_localiser["Printers_JobGone"].Value, false);
         }, cancellationToken);
     }
 
@@ -285,7 +300,9 @@ public class DetailModel : PageModel
         {
             bool cancelled = await _queueService.CancelAsync(id, caller, cancellationToken);
 
-            return cancelled ? ("Removed from the queue.", true) : ("That print is no longer in the queue.", false);
+            return cancelled ?
+                (_localiser["Printers_JobRemoved"].Value, true) :
+                (_localiser["Printers_JobGone"].Value, false);
         }, cancellationToken);
     }
 
@@ -306,12 +323,13 @@ public class DetailModel : PageModel
 
             if (preset is null)
             {
-                return ($"'{filament}' is not a filament this printer has a preset for.", false);
+                return (_localiser["Printers_NoSuchFilament", filament].Value, false);
             }
 
             await _preheat.PreheatAsync(printer.Id, caller, preset, cancellationToken);
 
-            return ($"Heating to {preset.NozzleTemperature} °C nozzle and {preset.BedTemperature} °C bed for {preset.Name}.",
+            return (
+                _localiser["Printers_HeatingTo", preset.NozzleTemperature, preset.BedTemperature, preset.Name].Value,
                 true);
         }, cancellationToken);
     }
@@ -371,7 +389,7 @@ public class DetailModel : PageModel
         {
             await _preheat.CooldownAsync(printer.Id, caller, cancellationToken);
 
-            return ("Both heaters switched off.", true);
+            return (_localiser["Printers_HeatersOff"].Value, true);
         }, cancellationToken);
     }
 
@@ -417,18 +435,18 @@ public class DetailModel : PageModel
         {
             // Not an error page: the printer is doing something, which is an answer rather than a
             // fault, and the page is where the person already is.
-            (StatusMessage, StatusSuccess) = (e.Message, false);
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
         catch (PrinterRefusedException e)
         {
             // The printer's own words. Without this the page reported success for a command the
             // printer had declined, which is worse than reporting nothing.
-            (StatusMessage, StatusSuccess) = (e.Message, false);
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
                                       or CommandResponseTimedOutException or CommandSendTimedOutException)
         {
-            (StatusMessage, StatusSuccess) = (e.Message, false);
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
 
         return RedirectToPage(new { uuid });

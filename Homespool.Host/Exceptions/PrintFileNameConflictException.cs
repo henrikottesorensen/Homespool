@@ -10,7 +10,7 @@ namespace Homespool.Host.Exceptions;
 /// re-slice legitimately produces the same name with new content, but so does an accident, and only
 /// one of the two should be silent. OctoPrint overwrites silently; we make the caller say so.
 /// </remarks>
-public class PrintFileNameConflictException : Exception
+public class PrintFileNameConflictException : Exception, ILocalisableError
 {
     public PrintFileNameConflictException(string fileName)
         : base($"A file named '{fileName}' already exists. Ask to overwrite it if that is intended.")
@@ -30,4 +30,11 @@ public class PrintFileNameConflictException : Exception
 
     /// <summary>The name that collided, when the exception was raised for a specific one.</summary>
     public string? FileName { get; }
+
+    /// <inheritdoc />
+    public string ResourceKey =>
+        FileName is null ? "Error_FileNameConflictAny" : "Error_FileNameConflict";
+
+    /// <inheritdoc />
+    public object[] ResourceArguments => FileName is null ? [] : [FileName];
 }

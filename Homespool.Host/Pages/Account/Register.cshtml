@@ -27,22 +27,25 @@ else
                 <input type="hidden" asp-for="InviteId" />
                 <input type="hidden" asp-for="Code" />
                 <div class="form-floating mb-3">
-                    <input class="form-control" value="@Model.Email" readonly autocomplete="email" aria-label="Email" />
+                    <input class="form-control" value="@Model.Email" readonly autocomplete="email" aria-label="@Localiser["Account_Email"]" />
                     <label class="form-label">@Localiser["Account_Email"]</label>
                 </div>
                 <div class="form-floating mb-3">
-                    <input asp-for="Input.Username" class="form-control" autocomplete="username" aria-required="true" placeholder="username" />
+                    <input asp-for="Input.Username" class="form-control" autocomplete="username" aria-required="true" placeholder="@Localiser["Common_UsernamePlaceholder"]" />
                     <label asp-for="Input.Username">@Localiser["Account_Username"]</label>
                     <span asp-validation-for="Input.Username" class="text-danger"></span>
-                    <div class="form-text">@Localiser["Account_UsernameCharsPre"] <code>-</code> <code>.</code> <code>_</code>@Localiser["Account_UsernameCharsPost"]</div>
+                    <div class="form-text">@Html.Raw(string.Format(
+                        System.Globalization.CultureInfo.CurrentCulture,
+                        Localiser["Account_UsernameChars"].Value,
+                        "<code>-</code>", "<code>.</code>", "<code>_</code>"))</div>
                 </div>
                 <div class="form-floating mb-3">
-                    <input asp-for="Input.Password" class="form-control" autocomplete="new-password" aria-required="true" placeholder="password" />
+                    <input asp-for="Input.Password" class="form-control" autocomplete="new-password" aria-required="true" placeholder="@Localiser["Common_PasswordPlaceholder"]" />
                     <label asp-for="Input.Password">@Localiser["Account_Password"]</label>
                     <span asp-validation-for="Input.Password" class="text-danger"></span>
                 </div>
                 <div class="form-floating mb-3">
-                    <input asp-for="Input.ConfirmPassword" class="form-control" autocomplete="new-password" aria-required="true" placeholder="password" />
+                    <input asp-for="Input.ConfirmPassword" class="form-control" autocomplete="new-password" aria-required="true" placeholder="@Localiser["Common_PasswordPlaceholder"]" />
                     <label asp-for="Input.ConfirmPassword">@Localiser["Account_ConfirmPassword"]</label>
                     <span asp-validation-for="Input.ConfirmPassword" class="text-danger"></span>
                 </div>

@@ -64,11 +64,9 @@ public class ConfirmEmailChangeModel : PageModel
     /// choice is this staleness, and this is the one moment someone can do something about it, so
     /// it is said here rather than left to be discovered when an alert goes missing.
     /// </remarks>
-    private static string AlertRecipientNotice(bool isAlertRecipient)
+    private string AlertRecipientNotice(bool isAlertRecipient)
     {
-        return isAlertRecipient ?
-            " Service health alerts will continue to go to your previous address until the service is restarted." :
-            string.Empty;
+        return isAlertRecipient ? " " + _localiser["Account_AlertRecipientNotice"].Value : string.Empty;
     }
 
     public async Task<IActionResult> OnGetAsync(string userId, string email, string code)

@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Mvc;
 using Homespool.Host.Authorisation;
 using Homespool.Host.DTO;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Localisation;
 using Homespool.Host.Queue;
 using Homespool.Host.Services;
 using Homespool.Model;
@@ -49,16 +50,19 @@ public class PrintQueueController : ControllerBase
     private readonly PrintQueueService _queue;
     private readonly QueueSnapshotReader _snapshots;
     private readonly PrinterQueryService _printers;
+    private readonly ErrorText _errors;
     private readonly UserManager<HSUser> _userManager;
 
     public PrintQueueController(PrintQueueService queue,
                                 QueueSnapshotReader snapshots,
                                 PrinterQueryService printers,
+                                ErrorText errors,
                                 UserManager<HSUser> userManager)
     {
         _queue = queue;
         _snapshots = snapshots;
         _printers = printers;
+        _errors = errors;
         _userManager = userManager;
     }
 
@@ -90,7 +94,11 @@ public class PrintQueueController : ControllerBase
 
             return Ok(new PrintQueueReadDTO
             {
-                Waiting = QueueWaitDescription.For(QueueRules.Decide(snapshot), snapshot.Head?.FileName),
+                // Said here rather than returned as a key, because the DTO documents this field as
+                // "a sentence for a person" and a caller that had to resolve keys would need our
+                // resource file. It follows Accept-Language like every other response, so a script
+                // that sends none keeps getting exactly the English it got before.
+                Waiting = Waiting(snapshot),
                 Prints = jobs.Select(QueuedPrintReadDTO.FromQueuedPrint).ToList(),
             });
         }
@@ -271,5 +279,13 @@ public class PrintQueueController : ControllerBase
     {
         /// <summary>Target index, counting from zero. Past either end is clamped rather than refused.</summary>
         public required int Position { get; set; }
+    }
+
+    /// <summary>The sentence for what a queue is waiting on, or null when it needs no explanation.</summary>
+    private string? Waiting(QueueSnapshot snapshot)
+    {
+        MessageKey? waiting = QueueWaitDescription.For(QueueRules.Decide(snapshot), snapshot.Head?.FileName);
+
+        return waiting is null ? null : _errors.For(waiting);
     }
 }

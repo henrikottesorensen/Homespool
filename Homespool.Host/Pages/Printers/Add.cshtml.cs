@@ -10,11 +10,13 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Localisation;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
@@ -36,6 +38,7 @@ public class AddModel : PageModel
     private readonly UserManager<HSUser> _userManager;
     private readonly UnitOfWork _unitOfWork;
     private readonly PrusaConnectOptions _options;
+    private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<AddModel> _logger;
 
     public AddModel(PrusaConnectService prusaConnectService,
@@ -44,6 +47,7 @@ public class AddModel : PageModel
                     UserManager<HSUser> userManager,
                     UnitOfWork unitOfWork,
                     IOptions<PrusaConnectOptions> options,
+                    IStringLocalizer<SharedResource> localiser,
                     ILogger<AddModel> logger)
     {
         _prusaConnectService = prusaConnectService;
@@ -52,6 +56,7 @@ public class AddModel : PageModel
         _userManager = userManager;
         _unitOfWork = unitOfWork;
         _options = options.Value;
+        _localiser = localiser;
         _logger = logger;
     }
 
@@ -76,14 +81,14 @@ public class AddModel : PageModel
     public class InputModel
     {
         [StringLength(200)]
-        [Display(Name = "Name")]
+        [Display(Name = "Common_Name")]
         public string? Name { get; set; }
 
         [StringLength(200)]
-        [Display(Name = "Location")]
+        [Display(Name = "Printers_Location")]
         public string? Location { get; set; }
 
-        [Display(Name = "Team")]
+        [Display(Name = "Common_Team")]
         public int? TeamId { get; set; }
     }
 
@@ -101,8 +106,8 @@ public class AddModel : PageModel
             // Belt and braces: the view disables the submit button for the same reason, but a raw
             // POST must be refused server-side too, or a bypassed form would hand out a snippet with
             // an empty hostname.
-            ModelState.AddModelError(string.Empty,
-                                     "The server's public address is not configured yet (PrusaConnect:PrinterHost). Ask your administrator to set it before provisioning printers this way.");
+            ModelState.AddModelError(
+                string.Empty, _localiser["Printers_AddNoPublicAddress", "PrusaConnect:PrinterHost"]);
 
             return Page();
         }
@@ -143,7 +148,7 @@ public class AddModel : PageModel
         }
         catch (TeamAccessDeniedException)
         {
-            ModelState.AddModelError(string.Empty, "You don't have permission to add a printer to that team.");
+            ModelState.AddModelError(string.Empty, _localiser["Printers_AddNoTeamPermission"]);
 
             return Page();
         }
@@ -151,7 +156,7 @@ public class AddModel : PageModel
         {
             _logger.LogError(ex, "Failed to provision printer for user {UserId}; rolling back.", user.Id);
 
-            ModelState.AddModelError(string.Empty, "Something went wrong provisioning the printer. Please try again.");
+            ModelState.AddModelError(string.Empty, _localiser["Printers_AddFailed"]);
 
             return Page();
         }
@@ -193,6 +198,6 @@ public class AddModel : PageModel
 
         IReadOnlyList<TeamMember> memberships = await _teamService.GetTeamsForUserAsync(user.Id, cancellationToken);
 
-        TeamOptions = TeamOptionSelectListBuilder.BuildManageableOptions(memberships);
+        TeamOptions = TeamOptionSelectListBuilder.BuildManageableOptions(memberships, _localiser);
     }
 }

@@ -1,7 +1,7 @@
 @page
 @model AddModel
 @{
-    ViewData["Title"] = "Add printer (USB key)";
+    ViewData["Title"] = Localiser["Printers_Add"].Value;
 }
 
 <h1>@ViewData["Title"]</h1>
@@ -27,12 +27,12 @@
         <form method="post">
             <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
             <div class="form-floating mb-3">
-                <input asp-for="Input.Name" class="form-control" placeholder="Bench printer" />
+                <input asp-for="Input.Name" class="form-control" placeholder="@Localiser["Printers_NamePlaceholder"]" />
                 <label asp-for="Input.Name" class="form-label"></label>
                 <span asp-validation-for="Input.Name" class="text-danger"></span>
             </div>
             <div class="form-floating mb-3">
-                <input asp-for="Input.Location" class="form-control" placeholder="Workshop" />
+                <input asp-for="Input.Location" class="form-control" placeholder="@Localiser["Common_LocationPlaceholder"]" />
                 <label asp-for="Input.Location" class="form-label"></label>
                 <span asp-validation-for="Input.Location" class="text-danger"></span>
             </div>
@@ -42,7 +42,7 @@
                 <span asp-validation-for="Input.TeamId" class="text-danger"></span>
             </div>
             <button type="submit" class="btn btn-primary" disabled="@(!Model.PrinterAddressConfigured)">
-                Provision printer
+                @Localiser["Printers_ProvisionButton"]
             </button>
             <a class="btn btn-link" asp-page="Index">@Localiser["Printers_BackToList"]</a>
         </form>

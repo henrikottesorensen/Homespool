@@ -2,6 +2,7 @@ using System;
 
 using AwesomeAssertions;
 
+using Homespool.Host.Localisation;
 using Homespool.Host.Queue;
 using Homespool.Model;
 
@@ -221,7 +222,7 @@ public class QueueRulesTests
         QueueAction action = QueueRules.Decide(
             Situation(PrinterStatus.Ready, arrived: false, path: null) with
             {
-                BlockedReason = "Not enough space on the printer: needs 4096 bytes, 12 free.",
+                HoldReason = PrintHoldReason.InsufficientSpace,
             });
 
         action.Kind.Should().Be(QueueActionKind.Wait);
@@ -234,7 +235,7 @@ public class QueueRulesTests
     public void ABlockedFileHoldsInEveryState(PrinterStatus status)
     {
         QueueAction action = QueueRules.Decide(
-            Situation(status, arrived: false, path: null) with { BlockedReason = "no room" });
+            Situation(status, arrived: false, path: null) with { HoldReason = PrintHoldReason.InsufficientSpace });
 
         action.Kind.Should().Be(QueueActionKind.Wait);
         action.Reason.Should().Be(QueueWaitReason.InsufficientSpace);
@@ -252,7 +253,7 @@ public class QueueRulesTests
     [InlineData(QueueWaitReason.PrintStarting, false)]
     public void OnlyTheReasonsNothingElseCoversGetASentence(QueueWaitReason reason, bool expected)
     {
-        string? sentence = QueueWaitDescription.For(QueueAction.Wait(reason), "benchy.bgcode");
+        MessageKey? sentence = QueueWaitDescription.For(QueueAction.Wait(reason), "benchy.bgcode");
 
         (sentence is not null).Should().Be(expected);
     }

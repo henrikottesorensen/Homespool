@@ -71,7 +71,7 @@ public static class QueueRules
             return QueueAction.Wait(QueueWaitReason.Transferring);
         }
 
-        if (situation.BlockedReason is not null)
+        if (situation.HoldReason is not null)
         {
             // Ahead of the transfer branch, because a blocked file is precisely one that would
             // otherwise be reported as about to be sent. The advancer discovers the block and records

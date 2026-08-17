@@ -5,10 +5,11 @@
     ViewData["Title"] = Model.Statistics.Printer.Name ?? Model.Statistics.Printer.Model ?? Model.Statistics.Printer.Uuid.ToString();
 }
 
-<h1>@ViewData["Title"]</h1>
+<h1 class="typed-name">@ViewData["Title"]</h1>
 
 <p>
-    Team: @(Model.Statistics.Printer.Team?.Name ?? $"Team #{Model.Statistics.Printer.TeamId}")
+    @Localiser["Printers_TeamLabel"] <span class="typed-name">@(Model.Statistics.Printer.Team?.Name
+                                       ?? Localiser["Common_TeamNumbered", Model.Statistics.Printer.TeamId].Value)</span>
     &nbsp;
     @if (Model.Connected)
     {
@@ -77,18 +78,18 @@ else
         <tbody>
             <tr><th>@Localiser["Common_Status"]</th><td>@liveState.Status</td></tr>
             <tr><th>@Localiser["Printers_Progress"]</th><td>@(liveState.Progress is { } progress ? $"{progress}%" : "-")</td></tr>
-            <tr><th>@Localiser["Printers_TimePrinting"]</th><td>@(liveState.TimePrinting is { } tp ? TimeSpan.FromSeconds(tp).ToString("g") : "-")</td></tr>
-            <tr><th>@Localiser["Printers_TimeRemaining"]</th><td>@(liveState.TimeRemaining is { } tr ? TimeSpan.FromSeconds(tr).ToString("g") : "-")</td></tr>
+            <tr><th>@Localiser["Printers_TimePrinting"]</th><td>@(liveState.TimePrinting is { } tp ? TimeSpan.FromSeconds(tp).ToString("g", System.Globalization.CultureInfo.CurrentCulture) : "-")</td></tr>
+            <tr><th>@Localiser["Printers_TimeRemaining"]</th><td>@(liveState.TimeRemaining is { } tr ? TimeSpan.FromSeconds(tr).ToString("g", System.Globalization.CultureInfo.CurrentCulture) : "-")</td></tr>
             @* Only rendered when the printer actually reports it: the firmware emits filament_change_in
                only while a pause is scheduled (render.cpp:164, gated on time_to_pause), so on a print
                with no M600 the field is absent rather than zero. A "-" row would imply "no swap due" on
                every ordinary print, which is noise. *@
             @if (liveState.TimeToFilamentChange is { } untilChange)
             {
-                <tr><th>@Localiser["Printers_FilamentChangeIn"]</th><td>@TimeSpan.FromSeconds(untilChange).ToString("g")</td></tr>
+                <tr><th>@Localiser["Printers_FilamentChangeIn"]</th><td>@TimeSpan.FromSeconds(untilChange).ToString("g", System.Globalization.CultureInfo.CurrentCulture)</td></tr>
             }
-            <tr><th>@Localiser["Printers_NozzleTemp"]</th><td>@Localiser["Printers_TemperatureTarget", liveState.NozzleTemperature?.ToString("0.0") ?? "-", liveState.TargetNozzleTemperature?.ToString("0.0") ?? "-"]</td></tr>
-            <tr><th>@Localiser["Printers_BedTemp"]</th><td>@Localiser["Printers_TemperatureTarget", liveState.BedTemperature?.ToString("0.0") ?? "-", liveState.TargetBedTemperature?.ToString("0.0") ?? "-"]</td></tr>
+            <tr><th>@Localiser["Printers_NozzleTemp"]</th><td>@Localiser["Printers_TemperatureTarget", liveState.NozzleTemperature?.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture) ?? "-", liveState.TargetNozzleTemperature?.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture) ?? "-"]</td></tr>
+            <tr><th>@Localiser["Printers_BedTemp"]</th><td>@Localiser["Printers_TemperatureTarget", liveState.BedTemperature?.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture) ?? "-", liveState.TargetBedTemperature?.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture) ?? "-"]</td></tr>
             <tr><th>@Localiser["Printers_Material"]</th><td>@(liveState.Material ?? "-")</td></tr>
             <tr><th>@Localiser["Printers_Speed"]</th><td>@(liveState.Speed is { } speed ? $"{speed}%" : "-")</td></tr>
             <tr><th>@Localiser["Printers_Flow"]</th><td>@(liveState.Flow is { } flow ? $"{flow}%" : "-")</td></tr>
@@ -101,7 +102,7 @@ else
 {
     <h2>@Localiser["Printers_PrintingNow"]</h2>
     <p>
-        <strong>@active.FileName</strong>
+        <strong class="typed-name">@active.FileName</strong>
         @* Starting is not yet printing - the printer has accepted the command and is heating. Saying
            "printing" through that window would be a small lie the page tells every single time. *@
         @if (active.State == Homespool.Model.PrintState.Starting)
@@ -110,8 +111,8 @@ else
         }
         <br />
         <span class="text-muted">
-            started @active.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm",
-                System.Globalization.CultureInfo.InvariantCulture)
+            @Localiser["Printers_StartedAt", active.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm",
+                System.Globalization.CultureInfo.InvariantCulture)]
         </span>
     </p>
 }
@@ -172,7 +173,7 @@ else
                     @* The row's place in the list, not its stored Position - cancelling leaves gaps in
                        those, deliberately, and a gap shown to a person reads as a bug. *@
                     <td>@(index + 1)</td>
-                    <td>@(job.PrintFile?.Name ?? "(missing)")</td>
+                    <td class="typed-name">@(job.PrintFile?.Name ?? "(missing)")</td>
                     <td class="text-end">@($"{(job.PrintFile?.Size ?? 0) / 1024.0:N0} KiB")</td>
 
                     @* Fixed format rather than a culture-dependent one, matching the Files table -
@@ -188,7 +189,7 @@ else
                                 <input type="hidden" name="id" value="@job.TrackingId" />
                                 <input type="hidden" name="position" value="@(index - 1)" />
                                 <button type="submit" class="btn btn-sm btn-outline-secondary"
-                                        title="Move up" aria-label="Move @(job.PrintFile?.Name) up"
+                                        title="@Localiser["Printers_MoveUp"]" aria-label="@Localiser["Printers_MoveJobUp", job.PrintFile?.Name ?? string.Empty]"
                                         @(index == 0 ? "disabled" : string.Empty)>&uarr;</button>
                             </form>
                             <form method="post" asp-page-handler="Move" asp-route-uuid="@Model.Statistics.Printer.Uuid"
@@ -196,14 +197,14 @@ else
                                 <input type="hidden" name="id" value="@job.TrackingId" />
                                 <input type="hidden" name="position" value="@(index + 1)" />
                                 <button type="submit" class="btn btn-sm btn-outline-secondary"
-                                        title="Move down" aria-label="Move @(job.PrintFile?.Name) down"
+                                        title="@Localiser["Printers_MoveDown"]" aria-label="@Localiser["Printers_MoveJobDown", job.PrintFile?.Name ?? string.Empty]"
                                         @(index == Model.Queue.Count - 1 ? "disabled" : string.Empty)>&darr;</button>
                             </form>
                             <form method="post" asp-page-handler="Cancel" asp-route-uuid="@Model.Statistics.Printer.Uuid"
                                   class="d-inline">
                                 <input type="hidden" name="id" value="@job.TrackingId" />
                                 <button type="submit" class="btn btn-sm btn-outline-danger"
-                                        aria-label="Remove @(job.PrintFile?.Name) from the queue">@Localiser["Cameras_Remove"]</button>
+                                        aria-label="@Localiser["Printers_RemoveJob", job.PrintFile?.Name ?? string.Empty]">@Localiser["Cameras_Remove"]</button>
                             </form>
                         </td>
                     }
@@ -236,7 +237,7 @@ else
 
     <div class="input-group mb-3" data-copy>
         <input type="text" class="form-control font-monospace" readonly
-               value="@Model.SlicerUrl" aria-label="Print host address for this printer"
+               value="@Model.SlicerUrl" aria-label="@Localiser["Printers_SlicerAddressLabel"]"
                data-copy-source />
         <button type="button" class="btn btn-outline-secondary" data-copy-button>@Localiser["Common_Copy"]</button>
     </div>
@@ -254,7 +255,7 @@ else
     <h2>@Localiser["Printers_Temperature"]</h2>
 
     <p class="text-body-secondary">
-        Heats the nozzle and bed together, to the same targets the printer's own preheat menu uses.
+        @Localiser["Printers_PreheatBoth"]
     </p>
 
     @* Cooling is refused mid-print too, which reads as arbitrary unless it is said: the button
@@ -302,7 +303,7 @@ else
 
     <div class="mb-3">
         <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#set-ready">
-            @Localiser["Printers_SetReady"]
+            @Localiser["Intent_SetPrinterReady"]
         </button>
     </div>
 
@@ -423,7 +424,7 @@ else
             @foreach (var job in Model.History)
             {
                 <tr>
-                    <td>@job.FileName</td>
+                    <td class="typed-name">@job.FileName</td>
                     <td>@job.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm",
                         System.Globalization.CultureInfo.InvariantCulture)</td>
                     <td>
@@ -477,8 +478,8 @@ else
                 <td>@sample.Timestamp</td>
                 <td>@sample.Status</td>
                 <td>@(sample.Progress is { } progress ? $"{progress}%" : "-")</td>
-                <td>@(sample.NozzleTemperature?.ToString("0.0") ?? "-")</td>
-                <td>@(sample.BedTemperature?.ToString("0.0") ?? "-")</td>
+                <td>@(sample.NozzleTemperature?.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture) ?? "-")</td>
+                <td>@(sample.BedTemperature?.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture) ?? "-")</td>
                 <td>@(sample.Speed is { } speed ? $"{speed}%" : "-")</td>
             </tr>
         }

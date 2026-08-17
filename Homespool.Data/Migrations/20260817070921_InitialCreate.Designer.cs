@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20260817065218_InitialCreate")]
+    [Migration("20260817070921_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -249,7 +249,13 @@ namespace Homespool.Data.Migrations
                     b.Property<long?>("BlockedAt")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("BlockedReason")
+                    b.Property<long?>("HoldPrinterFileBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("HoldPrinterFreeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("HoldReason")
                         .HasColumnType("TEXT");
 
                     b.Property<long>("PrintFileId")

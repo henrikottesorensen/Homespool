@@ -1,4 +1,10 @@
 using System;
+using System.Collections.Generic;
+using System.Text;
+
+using Microsoft.Extensions.Localization;
+
+using Homespool.Host.Localisation;
 
 namespace Homespool.Host.PrusaConnect;
 
@@ -79,36 +85,84 @@ public static class ConnectIni
     /// afternoon once, which is exactly why this file is generated rather than described.
     /// </para>
     /// </remarks>
-    public static string BuildFile(PrusaConnectOptions options, string hostname, string token)
+    /// <summary>
+    /// The whole file, comments and all, for the provisioning bundle.
+    /// </summary>
+    /// <remarks>
+    /// <b>The comments are the only instructions that reach the stick.</b> Whoever opens this file is
+    /// standing at a printer, and everything the download page said is behind them - so these are
+    /// localised like any other sentence, while the keys, the section names and the printer's own menu
+    /// path are not. Firmware parses the first two; the third names a menu in firmware's language
+    /// rather than ours.
+    /// </remarks>
+    /// <param name="options">Supplies the port and whether TLS is in use.</param>
+    /// <param name="hostname">The address this printer should use: one of the names in the certificate.</param>
+    /// <param name="token">The provisioning token, which is what makes this a credential.</param>
+    /// <param name="localiser">Reads the comments in the culture of whoever asked for the bundle.</param>
+    public static string BuildFile(PrusaConnectOptions options,
+                                   string hostname,
+                                   string token,
+                                   IStringLocalizer<SharedResource> localiser)
     {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(localiser);
 
         string transportNote = options.PrinterTls ?
-            """
-            # custom_cert = 1 makes connect.der, beside this file, the printer's ENTIRE trust store -
-            # replacing the certificates it shipped with rather than adding to them. While that is
-            # set, this printer cannot talk to Prusa Connect. Set custom_cert = 0 to undo it.
-            """ :
-            """
-            # tls = False: this printer's token crosses the network in clear, and so does everything
-            # it says afterwards. That is a setting for reading the wire on a network you control.
-            """;
+            localiser["Ini_CustomCertNote"].Value :
+            localiser["Ini_PlainHttpNote"].Value;
 
         return $"""
-                # Homespool provisioning. Copy this file to the root of a USB stick - not into a folder,
-                # or the printer will not find it - and load it from the printer's own menu:
-                # Prusa Connect -> Load Settings.
+                {Commented(localiser["Ini_HowToLoad"].Value)}
+                # {PrinterMenuPath}.
                 #
-                # This file carries a token that enrols this printer. Treat it as you would a password,
-                # and delete it from the stick once the printer has connected.
+                {Commented(localiser["Ini_TokenIsAPassword"].Value)}
                 #
-                {transportNote}
+                {Commented(transportNote)}
                 #
-                # Only [service::connect] is written here. Your [network] section and wifi credentials
-                # are yours - this server has never had them.
+                {Commented(localiser["Ini_SectionScope"].Value)}
 
                 {BuildSnippet(options, hostname, token)}
 
                 """;
+    }
+
+    /// <summary>
+    /// The printer's own menu path, which is firmware's wording rather than ours.
+    /// </summary>
+    /// <remarks>
+    /// Left in English for the same reason PrusaSlicer's menu paths are: it names something the reader
+    /// will look for on another screen, spelled the way that screen spells it. Whether that is right
+    /// depends on whether their firmware speaks their language, which this cannot know - see
+    /// <c>notes/localisation.md</c>.
+    /// </remarks>
+    private const string PrinterMenuPath = "Prusa Connect -> Load Settings";
+
+    /// <summary>
+    /// Wraps a sentence as ini comment lines, wrapped near 96 characters.
+    /// </summary>
+    /// <remarks>
+    /// <b>Wrapped here rather than in the resource</b>, because a translator should be writing
+    /// sentences and not counting columns - and Danish runs longer than English, so a hand-wrapped
+    /// translation would wrap in the wrong places or not at all.
+    /// </remarks>
+    private static string Commented(string sentence)
+    {
+        List<string> lines = [];
+        StringBuilder line = new("#");
+
+        foreach (string word in sentence.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (line.Length + 1 + word.Length > 96)
+            {
+                lines.Add(line.ToString());
+                line = new StringBuilder("#");
+            }
+
+            line.Append(' ').Append(word);
+        }
+
+        lines.Add(line.ToString());
+
+        return string.Join("\n", lines);
     }
 }

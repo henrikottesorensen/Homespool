@@ -167,6 +167,32 @@ body {
   line-height: 60px;
 }
 
+/* Text somebody typed, of a length nobody promised: a printer's name or location (200 characters
+   each), a camera's name, a team's, an uploaded file's.
+
+   These are the only unbounded strings on a page. Every other string is either ours, and therefore
+   as long as we wrote it, or a number. A 200-character name with no space in it offers the browser
+   no break opportunity, so its column cannot shrink below its own content, the table grows wider
+   than the viewport, and the whole page scrolls sideways - carrying the navigation and everything
+   else out of reach with it.
+
+   Nothing to do with translation, and it is a defect in English today. It was found while asking
+   how far Danish stretches the layout, and the answer turned out to be 1.08x - far less than a
+   filename somebody chose.
+
+   `anywhere` and not `break-word`, which is the whole trick: only `anywhere` lets the column's
+   min-content width fall below the longest word, and that is precisely the measurement the table
+   layout consults when deciding whether it fits. `break-word` wraps the text but leaves the
+   minimum intact, so the table still overflows and the bug survives looking fixed.
+
+   Wrapping rather than an ellipsis, because an ellipsis hides the part that matters. A truncated
+   name needs a hover to reveal it, and there is no hover on the phone somebody is holding next to
+   the printer; for a filename it is the tail that carries the quality, the material and the time,
+   which is exactly what gets eaten. A long name here makes a tall row, which is honest. */
+.typed-name {
+  overflow-wrap: anywhere;
+}
+
 /* The upload area, and what it looks like with a file held over it. Dashed because that is the
    conventional shape of "you may drop here"; without scripting it is simply a border, and the
    picker inside it behaves the same either way. */

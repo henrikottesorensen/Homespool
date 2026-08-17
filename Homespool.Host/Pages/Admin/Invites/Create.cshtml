@@ -1,7 +1,7 @@
 @page
 @model CreateModel
 @{
-    ViewData["Title"] = "Create invitation";
+    ViewData["Title"] = Localiser["Invites_Create"].Value;
 }
 
 <h1>@ViewData["Title"]</h1>
@@ -21,7 +21,7 @@
             }
         </p>
         <div class="input-group">
-            <input type="text" class="form-control" readonly value="@Model.AcceptLink" aria-label="Accept link" />
+            <input type="text" class="form-control" readonly value="@Model.AcceptLink" aria-label="@Localiser["Invites_AcceptLinkLabel"]" />
         </div>
     </div>
 }

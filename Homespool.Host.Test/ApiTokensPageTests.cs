@@ -64,7 +64,7 @@ public sealed class ApiTokensPageTests : IDisposable
         (await users.CreateAsync(user)).Succeeded.Should().BeTrue();
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
-        ApiTokensModel model = new(new ApiTokenService(context), users, NullLogger<ApiTokensModel>.Instance)
+        ApiTokensModel model = new(new ApiTokenService(context), users, NullLogger<ApiTokensModel>.Instance, TestLocaliser.Shared())
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
             Input = new ApiTokensModel.InputModel { Name = name },

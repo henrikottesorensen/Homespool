@@ -41,7 +41,7 @@
     <form method="post" asp-page-handler="Upload" enctype="multipart/form-data"
           asp-route-sort="@Model.Sort" asp-route-desc="@Model.Descending"
           class="d-flex align-items-center gap-2">
-        <input type="file" name="file" accept=".gcode,.bgcode,.gco,.bgc" class="form-control" aria-label="File to upload" required />
+        <input type="file" name="file" accept=".gcode,.bgcode,.gco,.bgc" class="form-control" aria-label="@Localiser["Files_UploadLabel"]" required />
         <button type="submit" class="btn btn-primary text-nowrap">@Localiser["Files_Upload"]</button>
     </form>
     <p class="text-body-secondary small mb-0 mt-2">
@@ -97,7 +97,7 @@ else
                               asp-route-desc="@Model.Descending"
                               class="d-flex gap-2">
                             <input type="text" name="newName" value="@file.FileName" class="form-control form-control-sm"
-                                   aria-label="New file name" required />
+                                   aria-label="@Localiser["Files_NewNameLabel"]" required />
                             <button type="submit" class="btn btn-sm btn-primary">@Localiser["Common_Save"]</button>
                             <a asp-page="./Index" asp-route-sort="@Model.Sort" asp-route-desc="@Model.Descending"
                                class="btn btn-sm btn-outline-secondary">@Localiser["Common_Cancel"]</a>
@@ -106,11 +106,14 @@ else
                 }
                 else
                 {
-                    <td>@file.FileName</td>
+                    <td class="typed-name">@file.FileName</td>
                     <td class="text-end font-monospace">@IndexModel.FormatSize(file.Length)</td>
-                    @* Fixed format rather than a culture-dependent one, so the column reads the same
-                       whatever the server's locale is - notes/floating-point.md records the same trap
-                       biting number rendering elsewhere. *@
+                    @* ISO, deliberately, and not because the reader's culture is unknown - it is known
+                       per request, and FormatSize beside this now follows it. A timestamp is the one
+                       value where following it would make the column worse: en-GB and en-US are both
+                       supported here and disagree silently about 01/02/2026, so a short date is only
+                       unambiguous to a reader who knows which of the two they are being shown. This
+                       also sorts, and matches what the logs and the printer's own events carry. *@
                     <td>@file.UploadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
                 }
                 <td class="text-end text-nowrap">
@@ -124,7 +127,7 @@ else
                               asp-route-desc="@Model.Descending"
                               class="d-inline-flex align-items-center gap-1 me-2">
                             <select name="printerId" class="form-select form-select-sm w-auto"
-                                    aria-label="Printer to send @file.FileName to">
+                                    aria-label="@Localiser["Files_SendToPrinterLabel", file.FileName]">
                                 @foreach (var printer in Model.Printers)
                                 {
                                     <option value="@printer.Id">@(printer.Name ?? printer.Model ?? printer.Uuid.ToString())</option>

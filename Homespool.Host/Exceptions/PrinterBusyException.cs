@@ -11,7 +11,7 @@ namespace Homespool.Host.Exceptions;
 /// Carries the state so the answer can name it. "The printer is busy" sends someone to look at the
 /// machine; "the printer is printing" tells them why without moving.
 /// </remarks>
-public class PrinterBusyException : Exception
+public class PrinterBusyException : Exception, ILocalisableError
 {
     public PrinterBusyException()
     {
@@ -35,6 +35,22 @@ public class PrinterBusyException : Exception
 
     /// <summary>The state that refused it.</summary>
     public PrinterStatus Status { get; }
+
+    /// <inheritdoc />
+    public string ResourceKey =>
+        Status is PrinterStatus.Unknown or PrinterStatus.Undefined ?
+            "Error_PrinterStateUnknown" :
+            "Error_PrinterBusy";
+
+    /// <summary>
+    /// The status itself, not its name - so whoever renders it can put it through the display seam.
+    /// </summary>
+    /// <remarks>
+    /// Handing over <c>Status.ToString()</c> here would hard-code the English name into a Danish
+    /// sentence, which is the one thing <see cref="Localisation.PrinterStatusText"/> exists to
+    /// prevent. Passing the enum keeps that decision where the localiser is.
+    /// </remarks>
+    public object[] ResourceArguments => [Status];
 
     /// <summary>
     /// The sentence for a state - two of them, because the states mean different things to a reader.

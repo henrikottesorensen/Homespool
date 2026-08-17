@@ -287,7 +287,7 @@ public sealed class UserFileStore
         {
             // Also checked by the endpoint, which can say it better. Repeated here because this is
             // the boundary that must hold whoever calls it - see AllowedExtensions.
-            throw new ArgumentException($"'{safeName}' is not a file a printer would accept.", nameof(fileName));
+            throw new PrintFileNameRejectedException(safeName, nameof(fileName));
         }
 
         SweepAbandoned();
@@ -405,7 +405,7 @@ public sealed class UserFileStore
 
         if (!IsAllowedExtension(safeNewName))
         {
-            throw new ArgumentException($"'{safeNewName}' is not a file a printer would accept.", nameof(newName));
+            throw new PrintFileNameRejectedException(safeNewName, nameof(newName));
         }
 
         StoredFile? existing = Find(userId, fileName);
@@ -528,9 +528,7 @@ public sealed class UserFileStore
 
     private static string RequireSafeName(string fileName)
     {
-        return SafeName(fileName) ?? throw new ArgumentException(
-            "File name is empty, or is a directory reference, once its directory part is removed.",
-            nameof(fileName));
+        return SafeName(fileName) ?? throw new PrintFileNameRejectedException(nameof(fileName));
     }
 
     /// <summary>Deletes a path if it is there, and never throws for a path that is not.</summary>

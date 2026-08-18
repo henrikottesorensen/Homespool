@@ -77,8 +77,7 @@ public sealed class EncryptedTransferController : ControllerBase
     [ProducesResponseType(typeof(void), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(void), StatusCodes.Status206PartialContent)]
     [ProducesResponseType(typeof(void), StatusCodes.Status404NotFound)]
-    [ProducesResponseType(typeof(void), StatusCodes.Status416RangeNotSatisfiable)]
-    public Results<EncryptedTransferController.EncryptedBodyResult, NotFound, StatusCodeHttpResult> Fetch(string iv)
+    public Results<EncryptedTransferController.EncryptedBodyResult, NotFound, StatusCodeResult<Status.RangeNotSatisfiable>> Fetch(string iv)
     {
         // The IV as it appears in the URL is what firmware built from the bytes we sent, lowercase
         // hex (make_enc_url, planner.cpp:191-206). Normalised anyway: the lookup key must match what
@@ -101,7 +100,7 @@ public sealed class EncryptedTransferController : ControllerBase
             content.Dispose();
             Response.Headers.ContentRange = $"bytes */{length}";
 
-            return TypedResults.StatusCode(StatusCodes.Status416RangeNotSatisfiable);
+            return new StatusCodeResult<Status.RangeNotSatisfiable>();
         }
 
         // Ownership of the content passes to the result, which disposes it when the body has been

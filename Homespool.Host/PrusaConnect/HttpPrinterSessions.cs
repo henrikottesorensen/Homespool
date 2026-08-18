@@ -130,6 +130,13 @@ public sealed class HttpPrinterSessions : BackgroundService
                                    printerId,
                                    connection.Client.Describe);
 
+            // The dialect is logged separately from the client, because they answer different
+            // questions: the client is what it said, and the dialect is what that means for how a
+            // file can reach it. A support question is usually about the second.
+            _logger.LogDebug("Printer {PrinterId} speaks {Dialect}.",
+                             printerId,
+                             PrinterDialect.For(connection.Client, streamsChunks: false).Name);
+
             // Same as a socket arriving: there may be work waiting for it. The signal cannot fail
             // and carries nothing - the advancer re-reads everything.
             _queueSignal.Poke();

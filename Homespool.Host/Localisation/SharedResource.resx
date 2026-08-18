@@ -1053,6 +1053,90 @@
   <data name="Cameras_Capturing" xml:space="preserve">
     <value>Capturing…</value>
   </data>
+  <data name="Cameras_WatchLive" xml:space="preserve">
+    <value>Watch live</value>
+  </data>
+  <data name="Cameras_StopLive" xml:space="preserve">
+    <value>Stop live view</value>
+  </data>
+  <data name="Cameras_LiveConnecting" xml:space="preserve">
+    <value>Connecting…</value>
+  </data>
+  <data name="Cameras_LiveFailed" xml:space="preserve">
+    <value>Live view could not connect. Showing the still picture instead.</value>
+  </data>
+  <data name="Cameras_LiveUnsupported" xml:space="preserve">
+    <value>This camera sends still images rather than video, so it cannot be watched live.</value>
+  </data>
+  <data name="LiveView_Title" xml:space="preserve">
+    <value>Live camera view</value>
+  </data>
+  <data name="Nav_LiveView" xml:space="preserve">
+    <value>Live view</value>
+  </data>
+  <data name="Nav_LiveViewTitle" xml:space="preserve">
+    <value>Whether cameras can be watched live, and from where</value>
+  </data>
+  <data name="LiveView_Intro" xml:space="preserve">
+    <value>A camera whose video is H.264 can be watched live from its printer's page. The video travels straight from the camera stream server to the browser, so the browser has to be told an address it can reach.</value>
+  </data>
+  <data name="LiveView_Working" xml:space="preserve">
+    <value>Working</value>
+  </data>
+  <data name="LiveView_UsingAddress" xml:space="preserve">
+    <value>Browsers are told to use {0}.</value>
+  </data>
+  <data name="LiveView_NoAddress" xml:space="preserve">
+    <value>No address could be worked out, so nothing can be watched live and the button does not appear. It is taken from PRINTER_HOST; set that to a name this machine answers to, or set WEBRTC_CANDIDATE to the address and port a browser should use. Still pictures are unaffected.</value>
+  </data>
+  <data name="LiveView_StunHeading" xml:space="preserve">
+    <value>Watching from outside your network</value>
+  </data>
+  <data name="LiveView_StunOn" xml:space="preserve">
+    <value>STUN allowed</value>
+  </data>
+  <data name="LiveView_StunOff" xml:space="preserve">
+    <value>STUN off</value>
+  </data>
+  <data name="LiveView_StunExplained" xml:space="preserve">
+    <value>Watching from your own network needs nothing here. To watch from outside it, the stream server can ask a public STUN server what this deployment's public address is — which is off unless you turn it on, because it means contacting somebody else's server.</value>
+  </data>
+  <data name="LiveView_TurnStunOn" xml:space="preserve">
+    <value>Allow STUN…</value>
+  </data>
+  <data name="LiveView_TurnStunOff" xml:space="preserve">
+    <value>Stop allowing STUN</value>
+  </data>
+  <data name="LiveView_StunConfirmHeading" xml:space="preserve">
+    <value>Allow a public STUN server?</value>
+  </data>
+  <data name="LiveView_StunConfirmLead" xml:space="preserve">
+    <value>Two things become true if you do:</value>
+  </data>
+  <data name="LiveView_StunConfirmPublicAddress" xml:space="preserve">
+    <value>Your public address is placed in every offer this server makes to a browser.</value>
+  </data>
+  <data name="LiveView_StunConfirmThirdParty" xml:space="preserve">
+    <value>{0} is contacted to discover it, so this deployment stops being self-contained.</value>
+  </data>
+  <data name="LiveView_StunConfirmConsequence" xml:space="preserve">
+    <value>Neither is visible from the result, which is why you are being asked rather than told afterwards. Nothing about what you print is sent anywhere either way.</value>
+  </data>
+  <data name="LiveView_StunConfirm" xml:space="preserve">
+    <value>Allow the STUN server</value>
+  </data>
+  <data name="LiveView_StunOnApplied" xml:space="preserve">
+    <value>STUN is allowed, and the stream server has been restarted to apply it.</value>
+  </data>
+  <data name="LiveView_StunOffApplied" xml:space="preserve">
+    <value>STUN is no longer allowed, and the stream server has been restarted to apply it.</value>
+  </data>
+  <data name="LiveView_NotApplied" xml:space="preserve">
+    <value>Your choice is saved, but the camera stream server could not be told about it. It will be applied the next time Homespool starts.</value>
+  </data>
+  <data name="LiveView_RestartWarning" xml:space="preserve">
+    <value>Changing this restarts the camera stream server, which interrupts anyone watching for a moment. Cameras and still pictures are unaffected.</value>
+  </data>
   <data name="Printers_TemperatureTarget" xml:space="preserve">
     <value>{0}° / target {1}°</value>
   </data>

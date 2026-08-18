@@ -387,7 +387,12 @@ public static class Program
 
                    // Untagged for the same reason. Cameras stop working entirely without a sidecar
                    // credential, and the person who can fix that otherwise sees only blank cameras.
-                   .AddCheck<Cameras.CameraCredentialHealthCheck>("camera-credential");
+                   .AddCheck<Cameras.CameraCredentialHealthCheck>("camera-credential")
+
+                   // Untagged again, and the quietest failure of the three: with no address to send
+                   // video to, the live-view button simply never appears, which is indistinguishable
+                   // from a feature that was never built.
+                   .AddCheck<Cameras.WebRtcCandidateHealthCheck>("camera-live-view");
 
             // Sweeps TelemetrySample rows past StorageOptions.TelemetryRetentionDays. No interface
             // registration needed, unlike TelemetryWriter above - nothing else ever needs to reach it.

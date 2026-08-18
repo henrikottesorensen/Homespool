@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20260817070921_InitialCreate")]
+    [Migration("20260818065035_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -96,6 +96,22 @@ namespace Homespool.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Cameras");
+                });
+
+            modelBuilder.Entity("Homespool.Model.Entities.DeploymentSetting", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("UpdatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("WebRtcStunEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DeploymentSettings");
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.HSUser", b =>

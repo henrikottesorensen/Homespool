@@ -196,4 +196,67 @@ public class CameraOptions
     /// </para>
     /// </remarks>
     public bool RefuseLoopbackAndLinkLocal { get; set; } = true;
+
+    /// <summary>
+    /// The address a browser should send WebRTC media to, or empty to work it out. Default empty.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the setting that decides whether live view works at all, and it fails silently
+    /// when it is wrong.</b> WebRTC media travels from the sidecar to the browser directly, so the
+    /// browser has to be told an address it can actually reach. Told a wrong one, it negotiates
+    /// successfully, reports no error and delivers nothing — a black rectangle with no explanation.
+    /// Left to itself the sidecar advertises its own container address, which is exactly that case,
+    /// so something must name a better one.
+    /// </para>
+    /// <para>
+    /// <b>Empty means derive, and derived is the ordinary case.</b>
+    /// <see cref="WebRtcConfigurer"/> resolves <c>PrusaConnect:PrinterHost</c> and writes the answer
+    /// to the sidecar at startup. That indirection is not laziness: inside a container every
+    /// interface this process can see belongs to the container network, so resolving a configured
+    /// name is the only route to the machine's real address from in here — the same reasoning
+    /// <see cref="Certificates.PrinterCertificateNames"/> records for the printer certificate.
+    /// Deriving it each time also means a moved DHCP lease repairs itself, where a stored address
+    /// would not.
+    /// </para>
+    /// <para>
+    /// <b>Set it when the derivation cannot be right</b> — a forwarded port, a tunnel, a VPN — where
+    /// the address a browser must use is not one this machine holds. Host and port, no scheme.
+    /// </para>
+    /// </remarks>
+    public string WebRtcCandidate { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Port the sidecar's media port is published on. Default 8555.
+    /// </summary>
+    /// <remarks>
+    /// The host side of the mapping rather than the container side, because it is the number a
+    /// browser connects to and therefore the one that belongs in a candidate. Unused when
+    /// <see cref="WebRtcCandidate"/> names a port of its own.
+    /// </remarks>
+    public int WebRtcPort { get; set; } = 8555;
+
+    /// <summary>
+    /// The STUN server contacted when an administrator turns that on. Default Google's public one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Nothing contacts this unless somebody switched it on</b>, in the live-view settings, having
+    /// been told what it does. Off is the default and the decision:
+    /// <c>DeploymentSetting.WebRtcStunEnabled</c> has the argument.
+    /// </para>
+    /// <para>
+    /// <b>One address rather than a list</b>, and that is a real constraint accepted for a real
+    /// reason: whether the sidecar is already configured is decided by looking for this exact string
+    /// in its configuration document, which stays honest with one value and would need a parser with
+    /// several. A deployment that wants a different provider — or its own <c>coturn</c> — sets this;
+    /// a deployment that wants two is asking for redundancy in the one feature that is optional by
+    /// design.
+    /// </para>
+    /// <para>
+    /// The default is go2rtc's own, so switching this on changes who is contacted only if somebody
+    /// deliberately changed it here.
+    /// </para>
+    /// </remarks>
+    public string WebRtcStunServer { get; set; } = "stun:stun.l.google.com:19302";
 }

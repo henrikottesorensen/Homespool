@@ -29,7 +29,8 @@ Everything below has been run against real hardware (an MK3.5) as well as the te
 - **Print files** — upload, rename, delete, queue, or send straight to a printer, and browse what
   is already on the printer's own USB stick.
 - **Cameras** — a webcam plugged into the server, or an RTSP, ONVIF or HTTP camera on your network,
-  shown on the printer's page and kept current while somebody is watching.
+  shown on the printer's page and kept current while somebody is watching, with a **Watch live**
+  button under any camera whose video is H.264.
 - **Sending from PrusaSlicer** — its OctoPrint host type uploads straight into a printer's queue.
 - **A JSON API** at `/api/v1`, authenticated by sign-in cookie or personal access token. A token is
   scoped when you create it, so a key for a slicer can upload and print without being able to delete
@@ -53,8 +54,8 @@ Everything below has been run against real hardware (an MK3.5) as well as the te
 - **No arbitrary gcode**, deliberately. What can be sent goes through an allowlist, because
   firmware's `M997` reflashes the mainboard from a file on `/usb/` and validates nothing — "upload a
   file" plus "send any gcode" would add up to arbitrary firmware on someone's printer.
-- **No charts, and only cameras update themselves.** A camera panel refreshes while you watch it;
-  everything else on a printer's page renders on load.
+- **No charts, and only cameras update themselves.** A camera panel refreshes while you watch it,
+  and can be switched to live video; everything else on a printer's page renders on load.
 - **No transfer progress on the Files page** while a file is on its way to a printer.
 - **No file dedup or expiry.** A file stays until you delete it.
 - **No password reset without SMTP**, and no admin-side reset.
@@ -400,8 +401,9 @@ source like any other.
   devices nobody has claimed, and deleting a camera hands its device back.
 
 A [go2rtc](https://github.com/AlexxIT/go2rtc) sidecar does the talking to cameras; Homespool
-configures it when you add one. Its port is not published, and every viewing path is proxied through
-Homespool so the camera's own permission check applies. `GO2RTC_USERNAME` and `GO2RTC_PASSWORD` in
+configures it when you add one. Its API port is not published, and every viewing path is proxied
+through Homespool so the camera's own permission check applies — the one exception is WebRTC media,
+which cannot be, and is covered under *Watching live* below. `GO2RTC_USERNAME` and `GO2RTC_PASSWORD` in
 `.env` are its credential — `setup-env.sh` generates them; set **both or neither**.
 
 **Cameras need that credential.** Without it Homespool declines to use the sidecar at all: adding a
@@ -412,12 +414,46 @@ and a camera address is a way to reach it. A deployment with no cameras can leav
 
 **Frames are fetched only while somebody is looking**, so a page left open stays current and a
 camera nobody is watching costs nothing. An attached camera is grabbed at roughly half a second, a
-1080p H.264 network camera at two to three. Neither is a live stream: this is "is the print still all
-right", not video.
+1080p H.264 network camera at two to three.
 
 > **A frame past `MaxAgeSeconds` is thrown away rather than captioned.** A day-old photograph of a
 > clear print bed looks exactly like a current one, and an age label is no protection because people
 > look at the picture. Past that age the page says it is capturing, and shows nothing.
+
+### Watching live
+
+Under each picture on a printer's page there is a **Watch live** button, and pressing it replaces the
+still with live video over WebRTC. Press it again for the still back. The still is the default and
+stays the fallback: it renders in every browser, where every live transport fails somewhere.
+
+**The button only appears where it can work**, which is decided here rather than in your browser:
+
+- **The camera's video must be H.264.** WebRTC does not carry the JPEG most USB webcams produce, so
+  those keep the still and no button. A network camera is usually H.264, Prusa's Buddy Camera
+  included.
+- **This deployment needs an address to send video to.** Media goes straight from the sidecar to your
+  browser and cannot be proxied by anything, so the browser has to be told somewhere reachable.
+  Homespool works that out by resolving `PRINTER_HOST` and tells the sidecar at every start, which
+  means a moved DHCP lease repairs itself. If it cannot, the administrator's banner says so and
+  stills carry on as before.
+
+`WEBRTC_PORT` (default 8555) is the one port the camera sidecar publishes, and the only one. It hands
+out nothing by itself — media needs credentials from a handshake that goes through Homespool and
+applies the camera's own permission check. To switch live view off entirely, delete the `ports:`
+block from the `go2rtc` service in `compose.yaml`.
+
+Set `WEBRTC_CANDIDATE` only when the derivation cannot be right — a router forwarding a port inward,
+a VPN, a tunnel — as host and port together, `203.0.113.9:8555`. Getting it wrong is worth knowing
+the shape of: WebRTC negotiates successfully, reports no error, and delivers no pictures. The page
+waits a few seconds, gives up, and goes back to the still saying so.
+
+**Nothing leaves your network unless an administrator says so.** Watching from your own network needs
+no outside help at all. Watching from *outside* it needs the stream server to learn this deployment's
+public address, which means asking a public STUN server — so **Live view** in the navigation has a
+switch for that, off by default, and turning it on names both consequences first: your public address
+goes into every offer the server makes, and a third party is contacted to discover it. Nothing about
+what you print is sent anywhere either way. `WEBRTC_STUN_SERVER` chooses who is asked, and takes your
+own `coturn` if you have one.
 
 ---
 

@@ -50,13 +50,34 @@
         var lastFrameAt = 0;
         var stopped = false;
 
+        // Set while camera-live.js is showing live video from the same camera. Both paths ask the
+        // stream server for the same source and a poll is what schedules another capture, so polling
+        // underneath a live view would pay for a picture nobody is looking at.
+        var yielded = false;
+
+        // The pending poll, so that resuming can cancel it first. Without this, resuming while one
+        // is still queued leaves two chains running against the same camera for the life of the
+        // page - each scheduling its own successor, so it never settles back to one. The hidden-tab
+        // path could already do it; live view makes it easy, because stopping usually happens within
+        // one interval of starting.
+        var timer = null;
+
+        function resume() {
+            if (timer) {
+                window.clearTimeout(timer);
+                timer = null;
+            }
+
+            poll();
+        }
+
         function show(text) {
             status.textContent = text;
             status.hidden = false;
         }
 
         function poll() {
-            if (stopped) {
+            if (stopped || yielded) {
                 return;
             }
 
@@ -124,7 +145,7 @@
                         }
                     }
 
-                    window.setTimeout(poll, INTERVAL_MS);
+                    timer = window.setTimeout(poll, INTERVAL_MS);
                 });
         }
 
@@ -135,7 +156,21 @@
                 stopped = true;
             } else if (stopped) {
                 stopped = false;
-                poll();
+                resume();
+            }
+        });
+
+        // Live video has taken over this panel. The last frame is deliberately left where it is
+        // rather than blanked: the live view puts its own picture over the top, and if it never
+        // manages to, what comes back is a still whose age is still being judged by the rule below.
+        view.addEventListener('camera-live-started', function () {
+            yielded = true;
+        });
+
+        view.addEventListener('camera-live-stopped', function () {
+            if (yielded) {
+                yielded = false;
+                resume();
             }
         });
 

@@ -68,6 +68,19 @@ namespace Homespool.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "DeploymentSettings",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "INTEGER", nullable: false),
+                    WebRtcStunEnabled = table.Column<bool>(type: "INTEGER", nullable: false),
+                    UpdatedAt = table.Column<long>(type: "INTEGER", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_DeploymentSettings", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Teams",
                 columns: table => new
                 {
@@ -910,6 +923,9 @@ namespace Homespool.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "DataProtectionKeys");
+
+            migrationBuilder.DropTable(
+                name: "DeploymentSettings");
 
             migrationBuilder.DropTable(
                 name: "Invitations");

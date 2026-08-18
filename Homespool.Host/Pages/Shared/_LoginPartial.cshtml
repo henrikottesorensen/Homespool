@@ -15,6 +15,12 @@
         <li class="nav-item">
             <a id="certificate" class="nav-link" asp-page="/Admin/Certificate" title="@Localiser["Nav_CertificateTitle"]">@Localiser["Nav_Certificate"]</a>
         </li>
+@*  Same reason as the certificate page: the live-view banner names a setting, so the setting needs
+    somewhere to be. Admin-only because it decides whether this deployment contacts anyone outside
+    itself, which is not any one team's call. *@
+        <li class="nav-item">
+            <a id="live-view" class="nav-link" asp-page="/Admin/LiveView" title="@Localiser["Nav_LiveViewTitle"]">@Localiser["Nav_LiveView"]</a>
+        </li>
     }
     <li class="nav-item">
         <a id="printers" class="nav-link" asp-page="/Printers/Index">@Localiser["Printers_Title"]</a>

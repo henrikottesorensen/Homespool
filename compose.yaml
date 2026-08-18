@@ -88,6 +88,34 @@ services:
       Cameras__ApiUsername: "${GO2RTC_USERNAME:-}"
       Cameras__ApiPassword: "${GO2RTC_PASSWORD:-}"
 
+      # An override for the address a browser is told to send WebRTC media to, and empty is the
+      # ordinary case: left empty, Homespool works it out by resolving PrinterHost, which is the only
+      # route to this machine's real address from inside a container - every interface this process
+      # can see belongs to the container network. It writes the answer to the sidecar at startup.
+      #
+      # Set it when that derivation cannot be right: a router forwarding a port inward, a tunnel, or
+      # anything where the address a browser must use is not the address this machine has. Same shape
+      # as HTTPS_PORT_SUFFIX beside HTTPS_PORT - a second setting for something the first appears to
+      # know, because the moment anything sits in front they stop being the same fact.
+      Cameras__WebRtcCandidate: "${WEBRTC_CANDIDATE:-}"
+
+      # The published side of the sidecar's media port, which is the number a browser connects to and
+      # therefore the one that belongs in the candidate. Same variable the go2rtc service publishes
+      # with, so the address Homespool writes and the port Docker opens cannot drift apart. Ignored
+      # when WEBRTC_CANDIDATE names a port of its own.
+      Cameras__WebRtcPort: "${WEBRTC_PORT:-8555}"
+
+      # Which STUN server is contacted IF an administrator allows it, on the Live view page. Nothing
+      # contacts it otherwise: the default is off, because reaching out to somebody else's server
+      # should be a choice in a project whose premise is that nothing leaves your network. The
+      # default address is go2rtc's own, so allowing it contacts whoever go2rtc would have.
+      #
+      # One address rather than a list, deliberately: whether the sidecar already has this applied is
+      # decided by looking for this exact string in its configuration, which stays honest with one
+      # value and would need a parser with several. Point it at your own coturn if you would rather
+      # not use a public one.
+      Cameras__WebRtcStunServer: "${WEBRTC_STUN_SERVER:-stun:stun.l.google.com:19302}"
+
       # What a printer is told to use for enrolment. PrinterHost is required for USB-key
       # provisioning (Printers -> Add printer): the page cannot produce a usable ini snippet - and
       # refuses to - until it is set. It should also be one of the names in the certificate, which
@@ -237,8 +265,17 @@ services:
   # when a stream is added, and a camera described in two places is a camera described wrongly in
   # one of them.
   #
-  # Its API has no authentication of its own, which is why no port is published: it is reachable
-  # from inside this stack and from nowhere else. Do not publish 1984.
+  # Its API has no authentication of its own beyond the credential below, which is why its API port
+  # is not published: it is reachable from inside this stack and from nowhere else. Do not publish
+  # 1984 - every viewing path goes through Homespool, which is where the per-camera permission check
+  # lives.
+  #
+  # 8555 IS published, and it is the one exception rather than a softening of that rule. It carries
+  # WebRTC media only, which is SRTP straight from this container to a browser and cannot be proxied
+  # by anything - so live view exists on this port or not at all. What bounds it is that media needs
+  # the ICE credentials from a signalling exchange, and signalling goes through Homespool like
+  # everything else: the open port on its own hands out nothing. Delete the ports block below to turn
+  # live view off; the still on the printer page is unaffected and keeps working.
   go2rtc:
     # Pinned by digest rather than :latest, and this exact digest is deliberate: it is 1.9.14, which
     # is what :latest resolves to anyway, AND it is the same digest pi/decode-bench.sh pins. So the
@@ -283,11 +320,24 @@ services:
     # including Homespool. So the pair is set together or not at all - half of it is worse than none.
     # allow_paths is an allowlist of API paths, and go2rtc applies it by never registering the
     # others with its mux at all - so a path left out answers 404 because no handler exists, rather
-    # than being refused at request time. These two are the only ones Homespool calls
-    # (Go2RtcClient): /api/streams to register, replace, list and remove, and /api/frame.jpeg to
-    # read a still. Everything else in the default 45 goes, including api/exit and api/restart -
-    # which stop or restart this container for anyone who can reach the port - and api/config, which
-    # can carry a camera's RTSP credentials when a source embeds user:pass.
+    # than being refused at request time. These five are the only ones Homespool calls
+    # (Go2RtcClient): /api/streams to register, replace, list and remove, /api/frame.jpeg to read a
+    # still, /api/webrtc to exchange one SDP offer for an answer on behalf of a browser that has
+    # already passed the camera's permission check, and /api/config plus /api/restart to write the
+    # WebRTC candidate at startup. Everything else in the default 45 goes, api/exit among them.
+    #
+    # /api/webrtc is signalling, not media: it answers with an SDP and the pictures never travel over
+    # it. It is on this list because Homespool proxies that exchange, so the browser still talks only
+    # to Homespool - the same arrangement as /api/frame.jpeg, one path further along.
+    #
+    # /api/config and /api/restart were deliberately OFF this list on 2026-08-18 and are deliberately
+    # back on it, so the cost is written down rather than rediscovered: /api/restart stops every
+    # camera for anything that can reach this port, and /api/config can carry a camera's RTSP
+    # credentials when its source embeds user:pass. What buys that back is that Homespool now owns
+    # the WebRTC candidate instead of an operator maintaining it in .env - see WebRtcConfigurer. The
+    # address a browser must be told to send media to cannot be discovered from inside this stack any
+    # other way: the application container sees only container addresses, so an address it did not
+    # write is one it could never check either. Both paths still sit behind the credential.
     #
     # WITH A LEADING SLASH, and that is measured rather than read (Pi 3, go2rtc 1.9.14, 2026-08-17).
     # The source registers these as HandleFunc("api/streams", ...) and filters on that argument,
@@ -310,7 +360,15 @@ services:
 
       # Hardened, and the default deliberately: a fresh deployment is restricted without anyone
       # choosing it, and only a developer opts out.
-      - '{"api":{"username":"${GO2RTC_USERNAME:-}","password":"${GO2RTC_PASSWORD:-}","allow_paths":["/api/streams","/api/frame.jpeg"]}}'
+      #
+      # Nothing about webrtc is set here on purpose, though it would fit: the candidate is written by
+      # Homespool over /api/config at startup, because it has to be recomputed when this machine's
+      # address moves and a value frozen into a command line cannot be. ice_servers is written the
+      # same way and defaults to empty - left alone, go2rtc contacts a third-party STUN server
+      # unprompted and puts this deployment's public address into every offer, which for a project
+      # whose premise is not routing through somebody else's infrastructure should be asked for
+      # rather than inherited. LAN viewing is unaffected either way.
+      - '{"api":{"username":"${GO2RTC_USERNAME:-}","password":"${GO2RTC_PASSWORD:-}","allow_paths":["/api/streams","/api/frame.jpeg","/api/webrtc","/api/config","/api/restart"]}}'
 
       # DEVELOPER: swap the line above for this one to get the web interface back - it is how stream
       # types get tested by hand. Omitting allow_paths entirely is how go2rtc means "unrestricted",
@@ -323,6 +381,17 @@ services:
 
     # Named, because Cameras__StreamServerBaseUrl points at it by name rather than by address.
     hostname: go2rtc
+
+    # WebRTC media, and the only port this container publishes. Both protocols, because ICE prefers
+    # UDP and falls back to TCP through a network that will not pass it - publishing one of the two
+    # gives a browser that needs the other the same silent black screen the candidate does.
+    #
+    # The host side is what a browser connects to, so it is the number Homespool puts in the
+    # candidate it writes - which is why the application is told it too, below. The container side
+    # stays 8555 because that is where go2rtc listens.
+    ports:
+      - "${WEBRTC_PORT:-8555}:8555/tcp"
+      - "${WEBRTC_PORT:-8555}:8555/udp"
 
     # Cameras plugged into this machine, granted as a class rather than named one at a time
     # Major 81 is video4linux, where it covers both USB webcams and the Pi's built-in codec nodes.

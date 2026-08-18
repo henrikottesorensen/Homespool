@@ -57,9 +57,27 @@ public static class Registration
         // The one answer to "what is this camera called", so pages and endpoints cannot disagree.
         services.AddSingleton<CameraDisplayNames>();
 
+        // Holds the WebRTC address worked out at startup, for the endpoint and the health check to
+        // read. Singleton because it is that answer, and a scoped one would be empty.
+        services.AddSingleton<WebRtcAvailability>();
+
+        // Writes the sidecar's WebRTC configuration. Singleton because it holds nothing per request
+        // and both its callers - startup, and the settings page - want the same one.
+        services.AddSingleton<WebRtcSidecarWriter>();
+
+        // Scoped: holds a DbContext.
+        services.AddScoped<DeploymentSettingStore>();
+
         // Scoped: both hold a DbContext, and the access gate memoises within a request.
         services.AddScoped<Authorisation.CameraAccessService>();
         services.AddScoped<CameraService>();
+
+        // Ordered, and the order is the design rather than the sequence they were written in.
+        // Writing the WebRTC address replaces the sidecar's configuration rather than merging into
+        // it, so every registered stream goes with it - and the reconciler putting them back is what
+        // makes that acceptable. IHostedService.StartAsync is awaited in registration order, which is
+        // why the configurer is one; two BackgroundServices would start together on .NET 10 and race.
+        services.AddHostedService<WebRtcConfigurer>();
 
         // Runs once at startup, after MigrateHomespoolData has made the tables exist.
         services.AddHostedService<CameraStreamReconciler>();

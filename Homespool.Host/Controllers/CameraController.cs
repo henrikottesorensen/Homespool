@@ -43,16 +43,19 @@ public class CameraController : ControllerBase
     private readonly CameraAccessService _access;
     private readonly CameraFrameCache _frames;
     private readonly Go2RtcClient _streamServer;
+    private readonly WebRtcAvailability _liveView;
     private readonly UserManager<HSUser> _userManager;
 
     public CameraController(CameraAccessService access,
                             CameraFrameCache frames,
                             Go2RtcClient streamServer,
+                            WebRtcAvailability liveView,
                             UserManager<HSUser> userManager)
     {
         _access = access;
         _frames = frames;
         _streamServer = streamServer;
+        _liveView = liveView;
         _userManager = userManager;
     }
 
@@ -123,6 +126,130 @@ public class CameraController : ControllerBase
             frame.CapturedAt.ToString("O", CultureInfo.InvariantCulture);
 
         return TypedResults.File(frame.Bytes, frame.ContentType);
+    }
+
+    /// <summary>
+    /// Whether this camera can be watched live. <c>GET /api/v1/cameras/{uuid}/live</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Asked by the page rather than decided while it renders, and that is the whole point of it
+    /// being an endpoint.</b> The answer depends on the codec the sidecar reports, and a stream it
+    /// has not yet connected to reports none — so a page rendered a moment after the stack came up
+    /// would decide "no" for a camera that can, and go on saying so until somebody reloaded. Asking
+    /// separately means the button appears when it becomes true.
+    /// </para>
+    /// <para>
+    /// <b>What it cannot do is tell you the codec in advance</b>, and that was measured rather than
+    /// assumed: the stream server reports none for a camera nothing is watching, and 1.9.14 has no
+    /// probe endpoint. So this answers optimistically - see <see cref="WebRtcAvailability.CanOffer"/>
+    /// - and a camera whose video WebRTC cannot carry is learned from its first refusal.
+    /// </para>
+    /// </remarks>
+    [HttpGet]
+    [Route("{uuid:guid}/live")]
+    public async Task<Results<Ok<CameraLiveOption>, ForbiddenProblem, NotFoundProblem>> Live(
+        Guid uuid,
+        CancellationToken cancellationToken)
+    {
+        long? userId = UserId();
+        if (userId is null)
+        {
+            return this.NoAccount();
+        }
+
+        Camera? camera = await _access
+                               .FindAsync(uuid, CallerResolver.For(userId.Value, User), Capability.ViewCamera, cancellationToken)
+                               .ConfigureAwait(false);
+
+        if (camera is null)
+        {
+            return this.NotFoundProblem("No such camera.");
+        }
+
+        return TypedResults.Ok(new CameraLiveOption(_liveView.CanOffer(camera.Uuid)));
+    }
+
+    /// <summary>
+    /// Exchanges a browser's WebRTC offer for the stream server's answer.
+    /// <c>POST /api/v1/cameras/{uuid}/webrtc</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is where the permission is spent, and it is the only place it can be.</b> The pictures
+    /// do not come through here — media goes straight from the sidecar to the browser over its own
+    /// port, which is the one thing about WebRTC that cannot be proxied. What passes through is the
+    /// handshake that hands over the ICE credentials, so refusing here is refusing the stream, and a
+    /// published media port on its own gives out nothing.
+    /// </para>
+    /// <para>
+    /// <b>Availability is re-checked rather than trusted</b>, even though the page has asked already:
+    /// this endpoint is reachable on its own, and an offer for a camera whose codec cannot be carried
+    /// would otherwise be forwarded for the sidecar to refuse — which answers, correctly but
+    /// unhelpfully, that the gateway is at fault.
+    /// </para>
+    /// <para>
+    /// <b>The offer is not read.</b> It comes from a browser and goes to the sidecar, both of which
+    /// understand it; parsing it here would only add a third opinion about a negotiation Homespool
+    /// takes no part in.
+    /// </para>
+    /// </remarks>
+    [HttpPost]
+    [Route("{uuid:guid}/webrtc")]
+    public async Task<Results<Ok<WebRtcDescription>, BadRequestProblem, ForbiddenProblem, NotFoundProblem,
+        ConflictProblem, BadGatewayProblem>> WebRtc(
+        Guid uuid,
+        [FromBody] WebRtcDescription offer,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(offer);
+
+        long? userId = UserId();
+        if (userId is null)
+        {
+            return this.NoAccount();
+        }
+
+        if (string.IsNullOrWhiteSpace(offer.Sdp))
+        {
+            return this.BadRequestProblem("An offer with no session description cannot be answered.");
+        }
+
+        Camera? camera = await _access
+                               .FindAsync(uuid, CallerResolver.For(userId.Value, User), Capability.ViewCamera, cancellationToken)
+                               .ConfigureAwait(false);
+
+        // The same answer for absent and forbidden, following Frame above and PrinterAccessService:
+        // a UUID that answers differently is a way to learn which ones exist.
+        if (camera is null)
+        {
+            return this.NotFoundProblem("No such camera.");
+        }
+
+        if (!_liveView.CanOffer(camera.Uuid))
+        {
+            return this.ConflictProblem("This camera cannot be watched live.");
+        }
+
+        WebRtcOffer answer = await _streamServer.OfferAsync(camera.Uuid, offer.Sdp, cancellationToken)
+                                                .ConfigureAwait(false);
+
+        // A permanent fact about the camera rather than a failure of this request, so it is
+        // remembered: the page hides the button on this answer, and every later page never shows it.
+        // This is the only moment a camera's codec can be learned - nothing reports it beforehand.
+        if (answer.Outcome == WebRtcOfferOutcome.CodecUnsupported)
+        {
+            _liveView.MarkUnsupported(camera.Uuid);
+
+            return this.ConflictProblem("This camera cannot be watched live.");
+        }
+
+        if (answer.Outcome != WebRtcOfferOutcome.Answered || answer.Sdp is null)
+        {
+            return this.BadGatewayProblem("The stream server did not answer the offer.");
+        }
+
+        return TypedResults.Ok(new WebRtcDescription("answer", answer.Sdp));
     }
 
     private long? UserId()

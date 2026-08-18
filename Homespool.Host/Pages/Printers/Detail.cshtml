@@ -38,10 +38,17 @@
                        here" rather than as an empty gap. Both cameras here are 16:9; a camera that is
                        not will letterbox rather than distort, which object-fit-contain is for. *@
                     <div class="camera-view ratio ratio-16x9 border rounded bg-body-tertiary overflow-hidden"
-                         data-camera-frame="@Url.Action("Frame", "Camera", new { uuid = camera.Uuid })">
+                         data-camera-frame="@Url.Action("Frame", "Camera", new { uuid = camera.Uuid })"
+                         data-camera-live="@Url.Action("Live", "Camera", new { uuid = camera.Uuid })"
+                         data-camera-webrtc="@Url.Action("WebRtc", "Camera", new { uuid = camera.Uuid })">
                         @* Empty until a frame arrives. An img with no src draws nothing, which is
                            what "no picture yet" should look like - not a broken-image icon. *@
                         <img class="camera-image w-100 h-100 object-fit-contain d-none" alt="" />
+                        @* The same box as the still, so switching between them moves nothing on the
+                           page. muted and playsinline are what let it start without a gesture and
+                           without iOS taking it fullscreen; there is no audio track to lose. *@
+                        <video class="camera-live-video w-100 h-100 object-fit-contain d-none"
+                               autoplay muted playsinline></video>
                         <div class="camera-status d-flex align-items-center justify-content-center text-body-secondary small">
                             @Localiser["Cameras_Capturing"]
                         </div>
@@ -50,6 +57,22 @@
                         <span>@Model.CameraName(camera, index)</span>
                         <span class="camera-age"></span>
                     </figcaption>
+
+                    @* Hidden until the server says this camera may be offered - per camera, and asked
+                       rather than rendered, because the answer can change while the page is open.
+                       Nothing can report a camera's codec before something watches it (measured on
+                       the board: the stream server names none for a stream nobody is consuming), so
+                       the button is offered optimistically and taken away by the first refusal. A
+                       camera that sends JPEG loses it after one press, saying why. *@
+                    <div class="camera-live-controls d-none d-flex align-items-center gap-2 mt-1">
+                        <button type="button" class="btn btn-sm btn-outline-secondary camera-live-toggle"
+                                data-label-watch="@Localiser["Cameras_WatchLive"]"
+                                data-label-stop="@Localiser["Cameras_StopLive"]"
+                                data-label-connecting="@Localiser["Cameras_LiveConnecting"]"
+                                data-label-failed="@Localiser["Cameras_LiveFailed"]"
+                                data-label-unsupported="@Localiser["Cameras_LiveUnsupported"]">@Localiser["Cameras_WatchLive"]</button>
+                        <span class="camera-live-note small text-body-secondary" role="status"></span>
+                    </div>
                 </figure>
             </div>
         }
@@ -520,5 +543,6 @@ else
 
 @section Scripts {
     <script src="~/js/camera.js" asp-append-version="true"></script>
+    <script src="~/js/camera-live.js" asp-append-version="true"></script>
     <script src="~/js/toggle-submit.js" asp-append-version="true"></script>
 }

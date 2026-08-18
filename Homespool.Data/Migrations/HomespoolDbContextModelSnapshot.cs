@@ -95,6 +95,22 @@ namespace Homespool.Data.Migrations
                     b.ToTable("Cameras");
                 });
 
+            modelBuilder.Entity("Homespool.Model.Entities.DeploymentSetting", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("UpdatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("WebRtcStunEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DeploymentSettings");
+                });
+
             modelBuilder.Entity("Homespool.Model.Entities.HSUser", b =>
                 {
                     b.Property<long>("Id")

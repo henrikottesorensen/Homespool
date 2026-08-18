@@ -600,7 +600,7 @@ public sealed class QueueAdvancer : BackgroundService
 
         try
         {
-            CommandOutcome? outcome = await sender.SendAsync(printer, file, CallerFor(head), cancellationToken);
+            CommandOutcome? outcome = (await sender.SendAsync(printer, file, CallerFor(head), cancellationToken)).Outcome;
 
             if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {

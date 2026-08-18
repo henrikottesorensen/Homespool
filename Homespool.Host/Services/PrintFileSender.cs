@@ -79,19 +79,23 @@ public class PrintFileSender
     /// it then pulls the bytes at its own pace over the same WebSocket, and a full-size model takes
     /// minutes. Watch for <c>TRANSFER_FINISHED</c>, or the transfer fields in telemetry.
     /// </remarks>
-    public async Task<CommandOutcome?> SendAsync(Printer printer,
-                                                 StoredFile file,
-                                                 Caller caller,
-                                                 CancellationToken cancellationToken)
+    public async Task<FileSendResult> SendAsync(Printer printer,
+                                                StoredFile file,
+                                                Caller caller,
+                                                CancellationToken cancellationToken)
     {
         // Which download the printer can perform is a property of its connection, not of the file
         // or the caller. Same gate as the send that follows - permission and connectedness - so a
         // printer that would be refused a send is refused here, with the same exceptions.
         bool inline = await _commands.CanStreamChunksAsync(printer.Id, caller, Capability.Print, cancellationToken);
 
+        // Which command went out is reported rather than left to be inferred: the caller cannot see
+        // this branch, and a refusal that names the wrong command sends somebody to the wrong code.
         return inline ?
-            await SendInlineAsync(printer, file, caller, cancellationToken) :
-            await SendEncryptedAsync(printer, file, caller, cancellationToken);
+            new FileSendResult(PrusaConnect.Commands.StartConnectDownload.Wire,
+                               await SendInlineAsync(printer, file, caller, cancellationToken)) :
+            new FileSendResult(PrusaConnect.Commands.StartEncryptedDownload.Wire,
+                               await SendEncryptedAsync(printer, file, caller, cancellationToken));
     }
 
     /// <summary>

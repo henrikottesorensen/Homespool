@@ -44,7 +44,15 @@ public class StartConnectDownload : ISendableCommand
 
     public long OriginalSize { get; set; }
 
-    public string WireName => "START_CONNECT_DOWNLOAD";
+    /// <summary>The name this command goes out under, as a constant so nothing has to spell it.</summary>
+    /// <remarks>
+    /// A constant because a caller reporting what it sent should not be retyping the string - which
+    /// is how <c>PrinterController.SendFile</c> came to name this command in a refusal that had
+    /// actually carried <see cref="StartEncryptedDownload"/>.
+    /// </remarks>
+    public const string Wire = "START_CONNECT_DOWNLOAD";
+
+    public string WireName => Wire;
 
     /// <summary>
     /// All four kwargs firmware's <c>ARGS_INLINE_DOWN</c> requires. Its own parser tests reject the

@@ -431,7 +431,7 @@ public class IndexModel : PageModel
 
         try
         {
-            CommandOutcome? outcome = await _sender.SendAsync(printer, file, CallerResolver.For(userId.Value, User), cancellationToken);
+            CommandOutcome? outcome = (await _sender.SendAsync(printer, file, CallerResolver.For(userId.Value, User), cancellationToken)).Outcome;
 
             (StatusMessage, StatusSuccess) =
                 outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed ?

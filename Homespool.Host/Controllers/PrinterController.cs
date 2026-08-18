@@ -164,14 +164,17 @@ public class PrinterController : ControllerBase
         // Minting the token, offering the bytes and cleaning up after a send that did not take all
         // live in PrintFileSender, because the Files page needs exactly the same three things and
         // the cleanup rule is the one worth having a single copy of.
-        const string wireName = "START_CONNECT_DOWNLOAD";
-
         try
         {
-            CommandOutcome? outcome = await _sender.SendAsync(printer, file, CallerResolver.For(user, User), cancellationToken);
+            // The command named in a refusal is the one the sender actually sent. It chooses between
+            // an inline transfer and an encrypted download from a property of the connection, and
+            // this used to hold a hardcoded START_CONNECT_DOWNLOAD - so every refusal on the
+            // pre-websocket transport named a command that had never been on the wire.
+            FileSendResult sent = await _sender.SendAsync(printer, file, CallerResolver.For(user, User), cancellationToken);
+            CommandOutcome? outcome = sent.Outcome;
 
             return outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed ?
-                this.CommandRefused(wireName, outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString()) :
+                this.CommandRefused(sent.WireName, outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString()) :
                 TypedResults.NoContent();
         }
         catch (PrintFileUnreadableException e)
@@ -181,9 +184,11 @@ public class PrinterController : ControllerBase
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
                                       or CommandResponseTimedOutException or CommandSendTimedOutException)
         {
-            _logger.LogInformation(e, "{Command} to printer {PrinterId} did not complete", wireName, printer.Id);
+            // The send never got far enough to say which command it would have been, so this one
+            // names the endpoint's job rather than inventing a wire name.
+            _logger.LogInformation(e, "Sending a file to printer {PrinterId} did not complete", printer.Id);
 
-            return this.CommandRefused(wireName, e.Message);
+            return this.CommandRefused(PrusaConnect.Commands.StartConnectDownload.Wire, e.Message);
         }
         catch (TeamAccessDeniedException e)
         {

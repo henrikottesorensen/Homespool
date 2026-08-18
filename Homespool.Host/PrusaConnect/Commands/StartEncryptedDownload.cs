@@ -75,7 +75,10 @@ public class StartEncryptedDownload : ISendableCommand
     /// </summary>
     public ushort? Port { get; set; }
 
-    public string WireName => "START_ENCRYPTED_DOWNLOAD";
+    /// <summary>The name this command goes out under. See <see cref="StartConnectDownload.Wire"/>.</summary>
+    public const string Wire = "START_ENCRYPTED_DOWNLOAD";
+
+    public string WireName => Wire;
 
     /// <summary>
     /// The path the printer will GET, derived from <see cref="Iv"/> exactly as firmware derives it.

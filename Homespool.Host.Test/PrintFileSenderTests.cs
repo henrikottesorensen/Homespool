@@ -77,13 +77,15 @@ public sealed class PrintFileSenderTests : IDisposable
         IPrinterConnectionActor actor = Connect(canStreamChunks: true, PrinterEventType.Finished);
 
         // Act
-        await NewSender(context).SendAsync(await context.Printers.SingleAsync(TestContext.Current.CancellationToken),
-                                           file, Caller.Unscoped(Owner), TestContext.Current.CancellationToken);
+        FileSendResult result = await NewSender(context).SendAsync(
+            await context.Printers.SingleAsync(TestContext.Current.CancellationToken),
+            file, Caller.Unscoped(Owner), TestContext.Current.CancellationToken);
 
         // Assert
         ISendableCommand sent = SentCommand(actor);
 
         StartConnectDownload inline = sent.Should().BeOfType<StartConnectDownload>().Which;
+        result.WireName.Should().Be(sent.WireName, "a refusal names the command the caller reports");
         _offers.TryOpen(inline.Hash, out ITransferContent? content).Should().BeTrue("the bytes are offered under the token the command carries");
         content!.Dispose();
     }
@@ -102,11 +104,17 @@ public sealed class PrintFileSenderTests : IDisposable
         IPrinterConnectionActor actor = Connect(canStreamChunks: false, PrinterEventType.Finished);
 
         // Act
-        await NewSender(context).SendAsync(await context.Printers.SingleAsync(TestContext.Current.CancellationToken),
-                                           file, Caller.Unscoped(Owner), TestContext.Current.CancellationToken);
+        FileSendResult result = await NewSender(context).SendAsync(
+            await context.Printers.SingleAsync(TestContext.Current.CancellationToken),
+            file, Caller.Unscoped(Owner), TestContext.Current.CancellationToken);
 
         // Assert
         StartEncryptedDownload encrypted = SentCommand(actor).Should().BeOfType<StartEncryptedDownload>().Which;
+
+        // The bug this closes: the caller used to name START_CONNECT_DOWNLOAD here, which is the
+        // other branch - so every refusal on the pre-websocket transport pointed at the wrong code.
+        result.WireName.Should().Be(StartEncryptedDownload.Wire);
+        result.WireName.Should().NotBe(StartConnectDownload.Wire);
 
         encrypted.Port.Should().Be(TransferPort, "firmware would otherwise fetch from its enrolled port, rewriting 443 to 80");
         encrypted.Key.Should().HaveCount(TransferCipher.KeyLength);

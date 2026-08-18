@@ -42,6 +42,7 @@ public class PrusaConnectPrinterController : ControllerBase
     private readonly PrinterConnectionSession _session;
     private readonly MessageDispatcher _dispatcher;
     private readonly HttpPrinterSessions _sessions;
+    private readonly PrusaConnect.Transfers.ITransferContentStore _content;
     private readonly IHostApplicationLifetime _lifetime;
     private readonly ILogger<PrusaConnectPrinterController> _logger;
 
@@ -49,6 +50,7 @@ public class PrusaConnectPrinterController : ControllerBase
                                          PrinterConnectionSession session,
                                          MessageDispatcher dispatcher,
                                          HttpPrinterSessions sessions,
+                                         PrusaConnect.Transfers.ITransferContentStore content,
                                          IHostApplicationLifetime lifetime,
                                          ILogger<PrusaConnectPrinterController> logger)
     {
@@ -56,6 +58,7 @@ public class PrusaConnectPrinterController : ControllerBase
         _session = session;
         _dispatcher = dispatcher;
         _sessions = sessions;
+        _content = content;
         _lifetime = lifetime;
         _logger = logger;
     }
@@ -264,6 +267,53 @@ public class PrusaConnectPrinterController : ControllerBase
     }
 
     /// <summary>
+    /// Serves a file to a printer that fetches it over HTTP without decrypting it.
+    /// <c>GET /p/teams/{teamId}/files/{hash}/raw</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The path is the Python Connect SDK's, not ours.</b> Its <c>START_CONNECT_DOWNLOAD</c>
+    /// handler does not take a URL - it composes one, <c>/p/teams/{team_id}/files/{hash}/raw</c>,
+    /// appended to the same server it posts telemetry to. So the shape here is fixed by the client
+    /// and matching it exactly is the whole job.
+    /// </para>
+    /// <para>
+    /// <b>Which is also what makes it authenticated.</b> The SDK attaches its <c>Fingerprint</c> and
+    /// <c>Token</c> only when the download URL starts with that server address, and strips them for
+    /// anywhere else (<c>download.py</c>). Being on this listener, under this controller's
+    /// <c>[Authorize]</c>, is therefore not a nicety - move it and the credentials silently stop
+    /// arriving.
+    /// </para>
+    /// <para>
+    /// <b><c>teamId</c> is carried and not trusted.</b> It is in the path because the SDK puts it
+    /// there; what decides whether these bytes may be served is <c>hash</c>, which is the per-send
+    /// random token the offer was made under - unguessable, revoked when the send finishes or fails,
+    /// and never derived from the content. A digest would have been a stable URL for the life of the
+    /// file, which <c>notes/file-storage.md</c> records as the rejected design's one privacy leak.
+    /// </para>
+    /// <para>
+    /// <b>Plaintext, deliberately, and only to a client that cannot do better.</b> Firmware gets the
+    /// AES-CTR download because <c>M997</c> makes an unauthenticated fetch dangerous; this path is
+    /// authenticated instead, which is the protection the SDK can actually use.
+    /// </para>
+    /// </remarks>
+    [HttpGet]
+    [Route("/p/teams/{teamId:long}/files/{hash}/raw")]
+    [ProducesResponseType(typeof(void), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(void), StatusCodes.Status404NotFound)]
+    public Results<OfferedFileResult, NotFound> FetchOffered(long teamId, string hash)
+    {
+        if (!_content.TryOpen(hash, out PrusaConnect.Transfers.ITransferContent? content))
+        {
+            // Unknown, revoked, or the bytes are gone - one answer, as the encrypted route gives.
+            return TypedResults.NotFound();
+        }
+
+        // Ownership passes to the result, which disposes it when the body is written or abandoned.
+        return new OfferedFileResult(content);
+    }
+
+    /// <summary>
     /// Receives one event from a printer speaking the pre-websocket HTTP transport.
     /// </summary>
     [HttpPost]
@@ -324,7 +374,9 @@ public class PrusaConnectPrinterController : ControllerBase
 
         // Touched before the body is looked at: reaching us at all is the liveness signal, and a
         // printer whose message we then refuse is still a printer that is there.
-        IPrinterConnectionActor actor = _sessions.GetOrCreate(printerId);
+        // The user agent decides how a file may be offered to this printer later: firmware sends
+        // none, the Python SDK sends its own. See HttpPrinterConnection.CanDecryptDownloads.
+        IPrinterConnectionActor actor = _sessions.GetOrCreate(printerId, Request.Headers.UserAgent.ToString());
 
         using (document)
         {

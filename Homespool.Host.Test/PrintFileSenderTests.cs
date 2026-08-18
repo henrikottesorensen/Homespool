@@ -198,6 +198,9 @@ public sealed class PrintFileSenderTests : IDisposable
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
         actor.CanStreamChunks.Returns(false);
+
+        // Firmware, which is what makes this the encrypted path.
+        actor.Client.Returns(PrinterClient.Anonymous(PrinterTransport.Http));
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
              .Returns<Task<CommandSendResult>>(_ => throw new InvalidOperationException("gone"));
         _registry.Register(PrinterId, actor);
@@ -229,11 +232,54 @@ public sealed class PrintFileSenderTests : IDisposable
                     .Select(call => (ISendableCommand)call.GetArguments()[0]!);
     }
 
-    private IPrinterConnectionActor Connect(bool canStreamChunks, PrinterEventType reply, string? reason = null)
+    /// <summary>
+    /// A client that announced itself - the Python Connect SDK - is sent the plain
+    /// <c>START_CONNECT_DOWNLOAD</c> rather than the encrypted one, because it has no such command
+    /// and would simply never answer. It fetches the same offer over HTTP instead.
+    /// </summary>
+    /// <remarks>
+    /// Measured 2026-08-18 against the real SDK: an encrypted offer produced no reply at all and the
+    /// send timed out, while this command is answered and the bytes come back byte-identical.
+    /// </remarks>
+    [Fact]
+    public async Task AClientThatCannotDecryptIsSentThePlainDownload()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+        StoredFile file = WriteFile("model.gcode", 4096);
+        IPrinterConnectionActor actor = Connect(canStreamChunks: false, PrinterEventType.Finished,
+                                                canDecryptDownloads: false);
+
+        // Act
+        FileSendResult result = await NewSender(context).SendAsync(
+            await context.Printers.SingleAsync(TestContext.Current.CancellationToken),
+            file, Caller.Unscoped(Owner), TestContext.Current.CancellationToken);
+
+        // Assert
+        StartConnectDownload plain = SentCommand(actor).Should().BeOfType<StartConnectDownload>().Which;
+
+        result.WireName.Should().Be(StartConnectDownload.Wire);
+        plain.Hash.Should().NotBeNullOrEmpty("the hash is the offer token the printer fetches under");
+
+        _offers.TryOpen(plain.Hash, out ITransferContent? content)
+               .Should().BeTrue("the bytes must be fetchable at the offer URL the SDK composes");
+        content!.Dispose();
+    }
+
+    private IPrinterConnectionActor Connect(bool canStreamChunks,
+                                           PrinterEventType reply,
+                                           string? reason = null,
+                                           bool canDecryptDownloads = true)
     {
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
         actor.CanStreamChunks.Returns(canStreamChunks);
+
+        // Stated rather than left to the substitute's default, which is null and would quietly make
+        // every printer here look like a client that announced nothing.
+        actor.Client.Returns(canDecryptDownloads
+                                 ? PrinterClient.Anonymous(PrinterTransport.Http)
+                                 : new PrinterClient(PrinterTransport.Http, "Prusa-Connect-SDK-Printer/0.9.0"));
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
              .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
                                                             new CommandOutcome(reply, reason))));

@@ -221,6 +221,31 @@ public class PrinterCommandService
         return link is IPrinterConnectionActor { CanStreamChunks: true };
     }
 
+    /// <summary>
+    /// Whether this printer will answer an encrypted download. False for a client that announced
+    /// itself as the Python Connect SDK, which has no such command.
+    /// </summary>
+    public async Task<bool> CanDecryptDownloadsAsync(int printerId,
+                                                     Caller caller,
+                                                     Capability capability,
+                                                     CancellationToken cancellationToken)
+    {
+        IPrinterLink link = await RequireLinkAsync(printerId, caller, capability, cancellationToken);
+
+        // Two ways to know nothing about the client - a link that is not a Prusa Connect actor, and
+        // an actor that reports no observation at all - and both answer the same way: like firmware.
+        // The plaintext download is for a client that positively identifies itself, so anything
+        // unidentified keeps the path this transport was built for.
+        if (link is not IPrinterConnectionActor actor)
+        {
+            return true;
+        }
+
+        PrinterClient? client = actor.Client;
+
+        return client is null || client.UnderstandsEncryptedDownload;
+    }
+
     /// <summary>The permission check and the registry lookup every entry point shares.</summary>
     /// <remarks>
     /// <b>The capability is named by the intent or command, never by the caller.</b> A new call site

@@ -45,6 +45,24 @@ public sealed class HttpPrinterConnection : IPrinterConnection
     private long _lastSeenTicks;
     private PendingCommand? _parked;
 
+    /// <summary>
+    /// What is at the other end, as it announced itself. See <see cref="PrinterClient"/>.
+    /// </summary>
+    public PrinterClient Client { get; private set; } = PrinterClient.Anonymous(PrinterTransport.Http);
+
+    /// <summary>Records what this client called itself, on every request.</summary>
+    /// <remarks>
+    /// Sticky once announced: a client does not change what it is mid-session, and re-reading it per
+    /// request would let one proxy-inserted header change a printer's kind during a transfer.
+    /// </remarks>
+    public void Announce(string? userAgent)
+    {
+        if (!string.IsNullOrEmpty(userAgent) && Client.UserAgent is null)
+        {
+            Client = new PrinterClient(PrinterTransport.Http, userAgent);
+        }
+    }
+
     public HttpPrinterConnection(TimeProvider timeProvider)
     {
         _timeProvider = timeProvider;

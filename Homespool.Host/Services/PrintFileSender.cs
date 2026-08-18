@@ -89,13 +89,21 @@ public class PrintFileSender
         // printer that would be refused a send is refused here, with the same exceptions.
         bool inline = await _commands.CanStreamChunksAsync(printer.Id, caller, Capability.Print, cancellationToken);
 
+        // Three ways to hand over a file, and only the first two are about the connection. The third
+        // is about the client: the Python Connect SDK has no encrypted download at all, so offering
+        // it one is a command it never answers and a send that times out. It fetches the same
+        // START_CONNECT_DOWNLOAD the socket transfer uses, over plain HTTP from the printer listener
+        // - which is why this branch sends exactly that and only the fetch differs.
+        bool encrypted = !inline
+                         && await _commands.CanDecryptDownloadsAsync(printer.Id, caller, Capability.Print, cancellationToken);
+
         // Which command went out is reported rather than left to be inferred: the caller cannot see
         // this branch, and a refusal that names the wrong command sends somebody to the wrong code.
-        return inline ?
-            new FileSendResult(PrusaConnect.Commands.StartConnectDownload.Wire,
-                               await SendInlineAsync(printer, file, caller, cancellationToken)) :
+        return encrypted ?
             new FileSendResult(PrusaConnect.Commands.StartEncryptedDownload.Wire,
-                               await SendEncryptedAsync(printer, file, caller, cancellationToken));
+                               await SendEncryptedAsync(printer, file, caller, cancellationToken)) :
+            new FileSendResult(PrusaConnect.Commands.StartConnectDownload.Wire,
+                               await SendInlineAsync(printer, file, caller, cancellationToken));
     }
 
     /// <summary>

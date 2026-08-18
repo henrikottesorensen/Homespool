@@ -95,13 +95,14 @@ public sealed class HttpPrinterSessions : BackgroundService
     /// between the touch and the return, and the caller would post to an actor being drained - the
     /// exact race the lock exists to close.
     /// </remarks>
-    public IPrinterConnectionActor GetOrCreate(int printerId)
+    public IPrinterConnectionActor GetOrCreate(int printerId, string? userAgent = null)
     {
         lock (_lock)
         {
             if (_sessions.TryGetValue(printerId, out Session? existing))
             {
                 existing.Connection.Touch();
+                existing.Connection.Announce(userAgent);
 
                 return existing.Actor;
             }
@@ -117,12 +118,17 @@ public sealed class HttpPrinterSessions : BackgroundService
             });
 
             HttpPrinterConnection connection = new(_timeProvider);
+            connection.Announce(userAgent);
             IPrinterConnectionActor actor = _actorFactory.Create(printerId, connection);
 
             _sessions[printerId] = new Session(connection, actor, correlation);
             _registry.Register(printerId, actor);
 
-            _logger.LogInformation("Printer {PrinterId} connected over the HTTP transport.", printerId);
+            // Says what connected, not just that something did: Homespool could not previously
+            // answer "what is this printer running", which notes/diagnostics.md lists as a blind spot.
+            _logger.LogInformation("Printer {PrinterId} connected over the HTTP transport ({Client}).",
+                                   printerId,
+                                   connection.Client.Describe);
 
             // Same as a socket arriving: there may be work waiting for it. The signal cannot fail
             // and carries nothing - the advancer re-reads everything.

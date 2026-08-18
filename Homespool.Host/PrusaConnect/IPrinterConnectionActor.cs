@@ -40,6 +40,16 @@ public interface IPrinterConnectionActor : IPrinterLink
     /// </remarks>
     bool CanStreamChunks { get; }
 
+    /// <summary>
+    /// What is at the other end, as it announced itself - see <see cref="PrinterClient"/>.
+    /// </summary>
+    /// <remarks>
+    /// Defaulted to an unannounced socket client, so an implementation that has not thought about the
+    /// question behaves like firmware. The direction matters: the plaintext download exists for a
+    /// client that positively identifies itself, and a new implementer must not acquire it silently.
+    /// </remarks>
+    PrinterClient Client => PrinterClient.Anonymous(PrinterTransport.WebSocket);
+
     /// <summary>Posts an inbound message from the read loop. Waits when the mailbox is full, which
     /// deliberately stops the socket read and lets TCP push back on the printer.</summary>
     ValueTask PostAsync(ConnectionMessage message, CancellationToken cancellationToken);

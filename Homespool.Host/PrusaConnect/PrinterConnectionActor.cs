@@ -184,6 +184,18 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// <inheritdoc/>
     public bool CanStreamChunks => _connection is IChunkStreamingConnection;
 
+    /// <summary>
+    /// What is at the other end of this connection, as it announced itself.
+    /// </summary>
+    /// <remarks>
+    /// A socket connection is not asked: firmware is the only thing that opens one, and the question
+    /// this answers - whether an encrypted download is understood - never arises there, because such
+    /// a printer is offered the inline transfer instead.
+    /// </remarks>
+    public PrinterClient Client => _connection is HttpPrinterConnection http
+        ? http.Client
+        : PrinterClient.Anonymous(PrinterTransport.WebSocket);
+
     public Task Completion { get; }
 
     public ValueTask PostAsync(ConnectionMessage message, CancellationToken cancellationToken)

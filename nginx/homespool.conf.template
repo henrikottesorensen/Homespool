@@ -25,9 +25,40 @@ map $http_upgrade $connection_upgrade {
     ''      close;
 }
 
+# Anything whose Host this deployment does not recognise is refused here, before it can reach a
+# server block that would answer it. Two of these, because a default server is per-listener.
+#
+# WHY: the application builds absolute URLs from Request.Host - a password-reset link most of all -
+# so whoever chose the Host chose where the emailed token pointed. server_name used to be `_`, which
+# matches nothing and therefore made the first block the default for everything.
+#
+# 444 closes the connection without a response, which is right for a forged Host and unhelpful for an
+# owner who simply browsed to the machine's IP address: they get an empty reply and no reason. If
+# that trade reads wrong for your deployment, `return 421;` instead - it costs an attacker nothing
+# they did not already know and tells the owner what happened.
+#
+# So USER_HOST is no longer cosmetic. A name that reaches this deployment and is not in it - a second
+# DNS name, the bare IP - is refused. AllowedHosts in compose.yaml carries the same list for the
+# application, since a proxy is not the only way in.
+server {
+    listen 8080 default_server;
+    return 444;
+}
+
+server {
+    listen 8443 ssl default_server;
+
+    # A TLS default server still has to complete a handshake before it can see the Host, so it needs
+    # the certificate the real block presents.
+    ssl_certificate     /etc/nginx/certs/homespool.crt;
+    ssl_certificate_key /etc/nginx/certs/homespool.key;
+
+    return 444;
+}
+
 server {
     listen 8080;
-    server_name _;
+    server_name ${USER_HOST} localhost;
 
     # Not redirected, and this is the same reasoning Program.cs applies to its own redirection: a
     # monitoring probe follows nothing, and `curl --fail` treats a 301 as success - so a redirected
@@ -66,7 +97,7 @@ server {
 server {
     listen 8443 ssl;
     http2 on;
-    server_name _;
+    server_name ${USER_HOST} localhost;
 
     # Generated on first start by /docker-entrypoint.d/25-self-signed-certificate.sh unless the
     # volume already holds a certificate. Replace both files to use your own.

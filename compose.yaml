@@ -120,6 +120,28 @@ services:
       # you change PROXY_SUBNET, this follows, and the page keeps recognising what it should not offer.
       Certificates__ContainerNetworks__0: "${PROXY_NETWORK:-172.28.0.0/16}"
 
+      # Which Host headers this process will answer at all. "*" (appsettings.json) means any, and
+      # that is what made a password-reset link forgeable: Url.Page builds an absolute URL from
+      # Request.Host, so whoever chose the Host chose where the emailed token pointed. The proxy
+      # refuses an unknown Host as well; this is the same rule inside the application, because a
+      # proxy is not the only way to reach it.
+      #
+      # Composed from the addresses this deployment already knows rather than a list of its own, so
+      # there is nothing extra to keep in step:
+      #
+      #   USER_HOST     what people browse to
+      #   PRINTER_HOST  what printers connect to - and their Host header reaches this process too,
+      #                 through the proxy's printer listener, so leaving it out answers every printer
+      #                 400 while the pages look fine
+      #   localhost     the container health check, which curls itself
+      #
+      # SEMICOLONS, not commas - that is the framework's separator. The match ignores the port.
+      #
+      # If this deployment is reached by a name that is in neither variable - a second DNS name, or
+      # its bare IP address - add it here, or requests to it are refused with 400 before anything
+      # else runs. That is the cost of the setting, and it is why USER_HOST stopped being cosmetic.
+      AllowedHosts: "${USER_HOST:-localhost};${PRINTER_HOST:-localhost};localhost"
+
       PrusaConnect__PrinterHost: "${PRINTER_HOST:-}"
       PrusaConnect__PrinterPort: "${PRINTER_PORT:-15443}"
       PrusaConnect__PrinterTls: "${PRINTER_TLS:-true}"
@@ -397,7 +419,7 @@ services:
       # and $homespool_upstream are all substituted with nothing, nginx starts on a configuration
       # that parses and redirects everyone to "https://", and the cause looks nothing like the
       # symptom. The filter is the whole safety of this arrangement.
-      NGINX_ENVSUBST_FILTER: "HTTPS_PORT_SUFFIX"
+      NGINX_ENVSUBST_FILTER: "HTTPS_PORT_SUFFIX|USER_HOST"
 
     volumes:
       # Read-only, and from the repository rather than baked into the image: this is the file an

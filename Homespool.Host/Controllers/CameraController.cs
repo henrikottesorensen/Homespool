@@ -140,10 +140,12 @@ public class CameraController : ControllerBase
     /// separately means the button appears when it becomes true.
     /// </para>
     /// <para>
-    /// <b>What it cannot do is tell you the codec in advance</b>, and that was measured rather than
-    /// assumed: the stream server reports none for a camera nothing is watching, and 1.9.14 has no
-    /// probe endpoint. So this answers optimistically - see <see cref="WebRtcAvailability.CanOffer"/>
-    /// - and a camera whose video WebRTC cannot carry is learned from its first refusal.
+    /// <b>The codec cannot be asked for in advance</b>, and that was measured rather than assumed:
+    /// the stream server reports none for a camera nothing is watching, and 1.9.14 has no probe
+    /// endpoint. Where the source <i>states</i> its format this says no without trying - which covers
+    /// every camera plugged into this machine, because Homespool composed that string. A network
+    /// camera's address says nothing about its codec, so it stays optimistic and is learned from its
+    /// first refusal. See <see cref="WebRtcAvailability.CanOffer"/>.
     /// </para>
     /// </remarks>
     [HttpGet]
@@ -167,7 +169,7 @@ public class CameraController : ControllerBase
             return this.NotFoundProblem("No such camera.");
         }
 
-        return TypedResults.Ok(new CameraLiveOption(_liveView.CanOffer(camera.Uuid)));
+        return TypedResults.Ok(new CameraLiveOption(_liveView.CanOffer(camera.Uuid, camera.Source)));
     }
 
     /// <summary>
@@ -226,7 +228,7 @@ public class CameraController : ControllerBase
             return this.NotFoundProblem("No such camera.");
         }
 
-        if (!_liveView.CanOffer(camera.Uuid))
+        if (!_liveView.CanOffer(camera.Uuid, camera.Source))
         {
             return this.ConflictProblem("This camera cannot be watched live.");
         }

@@ -185,6 +185,74 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
+    /// A body past the ceiling is refused before it is parsed into memory.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The websocket transport has always had this bound; the HTTP one did not, and the two carry the
+    /// same messages — so a body that would cost the socket its connection could be parsed whole here.
+    /// It takes a valid fingerprint and token to reach it, so this is a blast-radius limit rather than
+    /// a drive-by: <c>notes/duplicate-connection-identity.md</c> treats a leaked printer credential as
+    /// a thing that happens, and one should not be able to stop the server for everyone.
+    /// </para>
+    /// <para>
+    /// Answered 400 rather than 413, because firmware reads status codes here and treats every 4xx
+    /// alike — a status it has never been sent would buy nothing.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ABodyOverTheCeilingIsRefused()
+    {
+        // Arrange
+        StartWithCapturingDispatcher();
+
+        (PrinterIdentity identity, string token, int _, long _) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        using HttpClient printer = PrinterListener.CreateClient(_factory);
+
+        // Well past the 1 MiB default, and valid JSON throughout - so the only thing that can refuse
+        // it is the ceiling, not the parser.
+        string oversized = $$"""{"state":"IDLE","junk":"{{new string('x', 2 * 1024 * 1024)}}"}""";
+
+        // Act
+        using HttpRequestMessage request = Post("/p/telemetry", identity, token, oversized);
+
+        using HttpResponseMessage response =
+            await printer.SendAsync(request, TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        _dispatcher!.Calls.Should().BeEmpty("nothing over the ceiling should reach the dispatcher");
+    }
+
+    /// <summary>
+    /// The ordinary body must be nowhere near the ceiling, or the bound would be breaking real
+    /// printers rather than protecting them.
+    /// </summary>
+    [Fact]
+    public async Task AnOrdinaryBodyIsWellInsideTheCeiling()
+    {
+        // Arrange
+        StartWithCapturingDispatcher();
+
+        (PrinterIdentity identity, string token, int _, long _) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        using HttpClient printer = PrinterListener.CreateClient(_factory);
+
+        // Act
+        using HttpRequestMessage request = Post("/p/telemetry", identity, token, TelemetryBody);
+
+        using HttpResponseMessage response =
+            await printer.SendAsync(request, TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().NotBe(HttpStatusCode.BadRequest);
+        _dispatcher!.Calls.Should().NotBeEmpty("a normal telemetry post must still reach the dispatcher");
+    }
+
+    /// <summary>
     /// A body that is not JSON is the client's protocol violation, answered with 400 rather than an
     /// error of ours. On the socket the same garbage costs the connection; here the printer simply
     /// retries.

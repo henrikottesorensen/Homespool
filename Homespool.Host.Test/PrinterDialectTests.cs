@@ -65,6 +65,37 @@ public class PrinterDialectTests
     }
 
     /// <summary>
+    /// The discriminator is the SDK's own product token, not "it said something". An agent nobody
+    /// recognises keeps Buddy's path - which matters because a Buddy printer offered the SDK's
+    /// download gets a command whose inline chunk request has no URL, and firmware asserts on it.
+    /// </summary>
+    [Theory]
+    [InlineData("Prusa-Connect-SDK-Printer/0.9.0", false)]
+    [InlineData("prusa-connect-sdk-printer/1.2.3", false)]
+    [InlineData("PrusaLink/0.7.0", true)]
+    [InlineData("Mozilla/5.0", true)]
+    [InlineData("", true)]
+    public void OnlyTheSdkNamedOutrightGetsThePlainDownload(string userAgent, bool expectedBuddy)
+    {
+        PrinterClient client = new(PrinterTransport.Http, userAgent.Length == 0 ? null : userAgent);
+
+        PrinterDialect.For(client, streamsChunks: false)
+                      .Should().Be(expectedBuddy ? PrinterDialect.BuddyHttp : PrinterDialect.ConnectSdk);
+    }
+
+    /// <summary>
+    /// An agent we do not recognise is worth saying out loud: it is treated as Buddy, and that is the
+    /// assumption most likely to be wrong.
+    /// </summary>
+    [Fact]
+    public void AnUnknownAgentIsFlaggedAsUnrecognised()
+    {
+        new PrinterClient(PrinterTransport.Http, "PrusaLink/0.7.0").IsUnrecognised.Should().BeTrue();
+        new PrinterClient(PrinterTransport.Http, "Prusa-Connect-SDK-Printer/0.9.0").IsUnrecognised.Should().BeFalse();
+        PrinterClient.Anonymous(PrinterTransport.Http).IsUnrecognised.Should().BeFalse("silence is Buddy, not a mystery");
+    }
+
+    /// <summary>
     /// An actor that reports nothing must not become the newest dialect by default. The plaintext
     /// download exists for a client that identifies itself; everything else keeps Buddy's path.
     /// </summary>

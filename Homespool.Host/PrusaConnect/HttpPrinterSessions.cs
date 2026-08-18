@@ -137,6 +137,19 @@ public sealed class HttpPrinterSessions : BackgroundService
                              printerId,
                              PrinterDialect.For(connection.Client, streamsChunks: false).Name);
 
+            // Louder, because this is the case where the guess is most likely wrong. An agent we do
+            // not recognise is treated as Buddy - the safe default - but if it is in fact something
+            // new that cannot decrypt a download, its transfers will time out with nothing else said.
+            if (connection.Client.IsUnrecognised)
+            {
+                _logger.LogWarning(
+                    "Printer {PrinterId} announced itself as {UserAgent}, which is not a client this "
+                    + "server recognises. It is being treated as Buddy firmware, so it will be offered "
+                    + "an encrypted download; if its transfers time out, that assumption is why.",
+                    printerId,
+                    connection.Client.UserAgent);
+            }
+
             // Same as a socket arriving: there may be work waiting for it. The signal cannot fail
             // and carries nothing - the advancer re-reads everything.
             _queueSignal.Poke();

@@ -55,10 +55,11 @@ public sealed record PrinterDialect(string Name, bool StreamsChunks, bool Unders
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>The unidentified case is Buddy, deliberately.</b> It announces nothing at all - exactly
-    /// <c>Fingerprint</c> and <c>Token</c> (<c>connect.cpp:137</c>) - so silence is evidence rather
-    /// than the absence of it, and the only client that gets the newer path is one that names itself.
-    /// A client we have never heard of therefore behaves like the one this transport was built for.
+    /// <b>Only a client recognised by name gets the newer path.</b> The SDK is matched on its own
+    /// product token; Buddy announces nothing at all - exactly <c>Fingerprint</c> and <c>Token</c>
+    /// (<c>connect.cpp:137</c>) - and anything else, announced or silent, is treated as Buddy. That
+    /// direction is the load-bearing one: a Buddy printer handed the SDK's download gets a command
+    /// whose inline chunk request has no URL, which firmware asserts on.
     /// </para>
     /// <para>
     /// <b>Named for Buddy rather than for "firmware", because Prusa ships more than one.</b> The
@@ -74,6 +75,6 @@ public sealed record PrinterDialect(string Name, bool StreamsChunks, bool Unders
             return BuddySocket;
         }
 
-        return client?.UserAgent is null ? BuddyHttp : ConnectSdk;
+        return client?.IsConnectSdk == true ? ConnectSdk : BuddyHttp;
     }
 }

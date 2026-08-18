@@ -398,6 +398,11 @@ public static class Program
             // registration needed, unlike TelemetryWriter above - nothing else ever needs to reach it.
             builder.Services.AddHostedService<Services.TelemetryRetentionService>();
 
+            // Sweeps PrusaConnectRegistration rows whose code has expired. Nothing else ever removed
+            // one, and POST /p/register is anonymous - so without this the only bound on the table is
+            // the rate limiter, which counts requests rather than rows.
+            builder.Services.AddHostedService<Services.RegistrationRetentionService>();
+
             // Scoped so its per-request memo of "may this account touch this printer" is bounded by
             // the request, which is the only window in which the answer cannot change.
             builder.Services.AddScoped<Authorisation.TeamCapabilityLookup>();

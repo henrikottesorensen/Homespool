@@ -151,6 +151,13 @@ public class PrusaConnectPrinterController : ControllerBase
     [HttpPost]
     [Route("/p/register")]
 
+    // Eight kilobytes for four short strings, and the cap is the point: this action is anonymous, so
+    // without one a caller chooses how much of the listener's thirty-odd megabytes to spend per
+    // request. The rate limiter bounds how many requests arrive, never how large they are. Generous
+    // enough that no real printer can meet it - see RegisterPrinterRequestDTO for the measured shapes
+    // and for why refusing a real one is expensive.
+    [RequestSizeLimit(8 * 1024)]
+
     // Firmware reads the status code and the Code header; the body is deliberately empty, and
     // text/html rather than JSON because that is what Connect answers with. The 200 is said here
     // because a content result carries no metadata of its own.
@@ -186,6 +193,7 @@ public class PrusaConnectPrinterController : ControllerBase
     [EnableRateLimiting(Program.PrinterRegistrationRateLimitPolicy)]
     [HttpGet]
     [Route("/p/register")]
+    [RequestSizeLimit(8 * 1024)]
 
     // 200 carries the token in a header and nothing in the body; 202 is the one answer here with a
     // payload, telling the printer to poll again. The 401 is said here because an unauthorized

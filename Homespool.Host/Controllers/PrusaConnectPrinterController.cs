@@ -22,6 +22,16 @@ using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.DTO;
 
+// What both HTTP-transport ingest endpoints answer, and the helper behind them: named once,
+// because a union spelled out at three sites is three chances for one to drift. The file arm is a
+// command handed back on the response to a telemetry post - the pre-websocket transport's only way
+// of delivering one.
+using IngestResult =
+    Microsoft.AspNetCore.Http.HttpResults.Results<
+        Microsoft.AspNetCore.Http.HttpResults.FileContentHttpResult,
+        Microsoft.AspNetCore.Http.HttpResults.NoContent,
+        Microsoft.AspNetCore.Http.HttpResults.BadRequest>;
+
 namespace Homespool.Host.Controllers;
 
 [ApiController]
@@ -248,7 +258,7 @@ public class PrusaConnectPrinterController : ControllerBase
     [ProducesResponseType(typeof(void), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(void), StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(void), StatusCodes.Status400BadRequest)]
-    public Task<ActionResult> PostTelemetry(CancellationToken cancellationToken)
+    public Task<IngestResult> PostTelemetry(CancellationToken cancellationToken)
     {
         return IngestAsync(deliverCommand: true, cancellationToken);
     }
@@ -261,7 +271,7 @@ public class PrusaConnectPrinterController : ControllerBase
     [EnableRateLimiting(Program.PrinterHttpTransportRateLimitPolicy)]
     [ProducesResponseType(typeof(void), StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(void), StatusCodes.Status400BadRequest)]
-    public Task<ActionResult> PostEvent(CancellationToken cancellationToken)
+    public Task<IngestResult> PostEvent(CancellationToken cancellationToken)
     {
         return IngestAsync(deliverCommand: false, cancellationToken);
     }
@@ -290,7 +300,7 @@ public class PrusaConnectPrinterController : ControllerBase
     /// no socket to be open.
     /// </para>
     /// </remarks>
-    private async Task<ActionResult> IngestAsync(bool deliverCommand, CancellationToken cancellationToken)
+    private async Task<IngestResult> IngestAsync(bool deliverCommand, CancellationToken cancellationToken)
     {
         // Guaranteed present: the controller's [Authorize] only admits a request once
         // PrusaConnectPrinterAuthenticationHandler has resolved the Fingerprint header to a printer.
@@ -309,7 +319,7 @@ public class PrusaConnectPrinterController : ControllerBase
             // connection; here the request is simply refused and the printer retries.
             _logger.LogWarning(e, "Printer {PrinterId} posted a body that is not JSON.", printerId);
 
-            return BadRequest();
+            return TypedResults.BadRequest();
         }
 
         // Touched before the body is looked at: reaching us at all is the liveness signal, and a
@@ -330,7 +340,7 @@ public class PrusaConnectPrinterController : ControllerBase
                     "Printer {PrinterId} requested an inline transfer chunk over HTTP, which cannot be served.",
                     printerId);
 
-                return BadRequest();
+                return TypedResults.BadRequest();
             }
 
             if (message is not null)
@@ -341,7 +351,7 @@ public class PrusaConnectPrinterController : ControllerBase
 
         if (!deliverCommand)
         {
-            return NoContent();
+            return TypedResults.NoContent();
         }
 
         // Ask the loop, and only the loop, whether a command is waiting: the parked slot is
@@ -355,7 +365,7 @@ public class PrusaConnectPrinterController : ControllerBase
 
         if (pending is null)
         {
-            return NoContent();
+            return TypedResults.NoContent();
         }
 
         CommandWireEncoder.Body body = CommandWireEncoder.EncodeBody(pending.Command);
@@ -364,6 +374,6 @@ public class PrusaConnectPrinterController : ControllerBase
         // (command_id.cpp), so "0000002A" would parse as 2 and then choke on the A.
         Response.Headers[Headers.CommandId] = pending.CommandId.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
-        return File(body.Payload, body.ContentType);
+        return TypedResults.File(body.Payload, body.ContentType);
     }
 }

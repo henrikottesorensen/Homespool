@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Microsoft.Net.Http.Headers;
@@ -77,7 +78,7 @@ public sealed class EncryptedTransferController : ControllerBase
     [ProducesResponseType(typeof(void), StatusCodes.Status206PartialContent)]
     [ProducesResponseType(typeof(void), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(void), StatusCodes.Status416RangeNotSatisfiable)]
-    public ActionResult Fetch(string iv)
+    public Results<EncryptedTransferController.EncryptedBodyResult, NotFound, StatusCodeHttpResult> Fetch(string iv)
     {
         // The IV as it appears in the URL is what firmware built from the bytes we sent, lowercase
         // hex (make_enc_url, planner.cpp:191-206). Normalised anyway: the lookup key must match what
@@ -90,7 +91,7 @@ public sealed class EncryptedTransferController : ControllerBase
         {
             // Unknown, revoked, or the bytes are gone. All one answer to the printer, which will
             // report the transfer failed - the same thing it does for any 4xx.
-            return NotFound();
+            return TypedResults.NotFound();
         }
 
         long length = content.Length;
@@ -100,7 +101,7 @@ public sealed class EncryptedTransferController : ControllerBase
             content.Dispose();
             Response.Headers.ContentRange = $"bytes */{length}";
 
-            return StatusCode(StatusCodes.Status416RangeNotSatisfiable);
+            return TypedResults.StatusCode(StatusCodes.Status416RangeNotSatisfiable);
         }
 
         // Ownership of the content passes to the result, which disposes it when the body has been
@@ -110,11 +111,24 @@ public sealed class EncryptedTransferController : ControllerBase
 
     /// <summary>
     /// The success arm: headers, then the file encrypted from the requested offset, streamed in
-    /// <see cref="BufferSize"/> pieces. A result rather than inline in the action so the action can
-    /// keep the typed return the project requires, and so the streaming lives with the resource it
-    /// owns.
+    /// <see cref="BufferSize"/> pieces. A result rather than inline in the action so the streaming
+    /// lives with the resource it owns, and so the action's return type can name it.
     /// </summary>
-    private sealed class EncryptedBodyResult : ActionResult
+    /// <remarks>
+    /// <para>
+    /// <b>An <see cref="IResult"/>, not an <see cref="ActionResult"/>, and public rather than
+    /// private</b> - both forced by the rule in <c>AGENT-NOTES.md</c> §7 that an action's return type
+    /// names every answer it can give. A <c>Results&lt;…&gt;</c> union is built from
+    /// <see cref="IResult"/> arms, and an arm of a public action's signature cannot be a private
+    /// type.
+    /// </para>
+    /// <para>
+    /// It documents nothing of its own, which is why the action keeps
+    /// <c>[ProducesResponseType]</c> for its 200 and 206: a status this class decides at run time is
+    /// exactly the case <c>notes/typed-results.md</c> keeps the attribute for.
+    /// </para>
+    /// </remarks>
+    public sealed class EncryptedBodyResult : IResult
     {
         private readonly ITransferContent _content;
         private readonly byte[] _key;
@@ -133,10 +147,10 @@ public sealed class EncryptedTransferController : ControllerBase
             _logger = logger;
         }
 
-        public override async Task ExecuteResultAsync(ActionContext context)
+        public async Task ExecuteAsync(HttpContext httpContext)
         {
-            HttpResponse response = context.HttpContext.Response;
-            CancellationToken cancellationToken = context.HttpContext.RequestAborted;
+            HttpResponse response = httpContext.Response;
+            CancellationToken cancellationToken = httpContext.RequestAborted;
 
             using (_content)
             {

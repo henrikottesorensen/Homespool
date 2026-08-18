@@ -58,7 +58,7 @@ public interface IPrinterConnectionActor : IPrinterLink
     /// Defaulted to firmware on a socket, so an implementation that has not thought about it behaves
     /// like the client this protocol was written for rather than acquiring a newer path silently.
     /// </remarks>
-    PrinterDialect Dialect => PrinterDialect.FirmwareSocket;
+    PrinterDialect Dialect => PrinterDialect.BuddySocket;
 
     /// <summary>Posts an inbound message from the read loop. Waits when the mailbox is full, which
     /// deliberately stops the socket read and lets TCP push back on the printer.</summary>

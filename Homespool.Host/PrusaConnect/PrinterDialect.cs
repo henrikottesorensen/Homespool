@@ -35,38 +35,45 @@ namespace Homespool.Host.PrusaConnect;
 /// </param>
 public sealed record PrinterDialect(string Name, bool StreamsChunks, bool UnderstandsEncryptedDownload)
 {
-    /// <summary>Firmware on the Connect WebSocket: chunks over the socket, no HTTP fetch involved.</summary>
-    public static readonly PrinterDialect FirmwareSocket = new("firmware over websocket", true, true);
+    /// <summary>Buddy on the Connect WebSocket: chunks over the socket, no HTTP fetch involved.</summary>
+    public static readonly PrinterDialect BuddySocket = new("Buddy firmware over websocket", true, true);
 
     /// <summary>
-    /// Firmware built without websockets: telemetry posted, commands collected in the reply, and a
+    /// Buddy built without websockets: telemetry posted, commands collected in the reply, and a
     /// transfer fetched as AES-CTR ciphertext from the transfer listener.
     /// </summary>
-    public static readonly PrinterDialect FirmwareHttp = new("firmware over http", false, true);
+    public static readonly PrinterDialect BuddyHttp = new("Buddy firmware over http", false, true);
 
     /// <summary>
     /// The Python Connect SDK, which is what an MK3S+ behind a Raspberry Pi runs. Same transport as
-    /// <see cref="FirmwareHttp"/>, and a different answer about transfers.
+    /// <see cref="BuddyHttp"/>, and a different answer about transfers.
     /// </summary>
-    public static readonly PrinterDialect ConnectSdk = new("connect sdk over http", false, false);
+    public static readonly PrinterDialect ConnectSdk = new("Connect SDK over http", false, false);
 
     /// <summary>
     /// Works out the dialect from what the connection is and what the client said it was.
     /// </summary>
     /// <remarks>
-    /// <b>The unidentified case is firmware, deliberately.</b> Buddy announces nothing at all - it
-    /// sends exactly <c>Fingerprint</c> and <c>Token</c> (<c>connect.cpp:137</c>) - so silence is
-    /// evidence rather than absence of it, and the only client that gets the newer path is one that
-    /// names itself. A future client we have never heard of therefore behaves like the one this
-    /// transport was built for.
+    /// <para>
+    /// <b>The unidentified case is Buddy, deliberately.</b> It announces nothing at all - exactly
+    /// <c>Fingerprint</c> and <c>Token</c> (<c>connect.cpp:137</c>) - so silence is evidence rather
+    /// than the absence of it, and the only client that gets the newer path is one that names itself.
+    /// A client we have never heard of therefore behaves like the one this transport was built for.
+    /// </para>
+    /// <para>
+    /// <b>Named for Buddy rather than for "firmware", because Prusa ships more than one.</b> The
+    /// resin printers and the HT90 do not run this stack, and nobody here has seen what they send -
+    /// so a dialect called <c>FirmwareHttp</c> would have been claiming knowledge about clients this
+    /// project has never met. What was measured is Buddy's behaviour, and the name says only that.
+    /// </para>
     /// </remarks>
     public static PrinterDialect For(PrinterClient? client, bool streamsChunks)
     {
         if (streamsChunks)
         {
-            return FirmwareSocket;
+            return BuddySocket;
         }
 
-        return client?.UserAgent is null ? FirmwareHttp : ConnectSdk;
+        return client?.UserAgent is null ? BuddyHttp : ConnectSdk;
     }
 }

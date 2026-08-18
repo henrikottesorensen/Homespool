@@ -22,17 +22,17 @@ namespace Homespool.Host.Test;
 public class PrinterDialectTests
 {
     /// <summary>
-    /// A socket connection is firmware whatever it announces, because nothing else opens one - and
-    /// the questions the other dialects answer do not arise there.
+    /// A socket connection is Buddy whatever it announces, because nothing else opens one - and the
+    /// questions the other dialects answer do not arise there.
     /// </summary>
     [Fact]
-    public void ASocketConnectionIsFirmware()
+    public void ASocketConnectionIsBuddy()
     {
         PrinterDialect.For(PrinterClient.Anonymous(PrinterTransport.WebSocket), streamsChunks: true)
-                      .Should().Be(PrinterDialect.FirmwareSocket);
+                      .Should().Be(PrinterDialect.BuddySocket);
 
         PrinterDialect.For(new PrinterClient(PrinterTransport.WebSocket, "anything at all"), streamsChunks: true)
-                      .Should().Be(PrinterDialect.FirmwareSocket);
+                      .Should().Be(PrinterDialect.BuddySocket);
     }
 
     /// <summary>
@@ -40,13 +40,13 @@ public class PrinterDialectTests
     /// (connect.cpp:137, read 2026-08-18), so saying nothing identifies it.
     /// </summary>
     [Fact]
-    public void AClientThatAnnouncesNothingIsFirmware()
+    public void AClientThatAnnouncesNothingIsBuddy()
     {
         PrinterDialect.For(PrinterClient.Anonymous(PrinterTransport.Http), streamsChunks: false)
-                      .Should().Be(PrinterDialect.FirmwareHttp);
+                      .Should().Be(PrinterDialect.BuddyHttp);
 
-        PrinterDialect.FirmwareHttp.UnderstandsEncryptedDownload
-                      .Should().BeTrue("firmware fetches AES-CTR ciphertext and decrypts it itself");
+        PrinterDialect.BuddyHttp.UnderstandsEncryptedDownload
+                      .Should().BeTrue("Buddy fetches AES-CTR ciphertext and decrypts it itself");
     }
 
     /// <summary>
@@ -66,11 +66,11 @@ public class PrinterDialectTests
 
     /// <summary>
     /// An actor that reports nothing must not become the newest dialect by default. The plaintext
-    /// download exists for a client that identifies itself; everything else keeps firmware's path.
+    /// download exists for a client that identifies itself; everything else keeps Buddy's path.
     /// </summary>
     [Fact]
-    public void NoObservationAtAllIsFirmware()
+    public void NoObservationAtAllIsBuddy()
     {
-        PrinterDialect.For(client: null, streamsChunks: false).Should().Be(PrinterDialect.FirmwareHttp);
+        PrinterDialect.For(client: null, streamsChunks: false).Should().Be(PrinterDialect.BuddyHttp);
     }
 }

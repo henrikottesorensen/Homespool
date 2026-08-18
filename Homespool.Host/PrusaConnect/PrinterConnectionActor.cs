@@ -187,7 +187,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// <summary>
     /// Which variant of the protocol this connection is speaking - see <see cref="PrinterDialect"/>.
     /// </summary>
-    public PrinterDialect Dialect => PrinterDialect.For(Client, CanStreamChunks);
+    public PrinterDialect Dialect => PrinterDialect.For(Client, supportsInlineTransfer: CanStreamChunks);
 
     /// <summary>
     /// What is at the other end of this connection, as it announced itself.

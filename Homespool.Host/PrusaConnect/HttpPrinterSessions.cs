@@ -135,7 +135,7 @@ public sealed class HttpPrinterSessions : BackgroundService
             // file can reach it. A support question is usually about the second.
             _logger.LogDebug("Printer {PrinterId} speaks {Dialect}.",
                              printerId,
-                             PrinterDialect.For(connection.Client, streamsChunks: false).Name);
+                             PrinterDialect.For(connection.Client, supportsInlineTransfer: false).Name);
 
             // Louder, because this is the case where the guess is most likely wrong. An agent we do
             // not recognise is treated as Buddy - the safe default - but if it is in fact something

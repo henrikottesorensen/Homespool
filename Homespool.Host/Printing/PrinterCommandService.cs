@@ -218,7 +218,7 @@ public class PrinterCommandService
     {
         IPrinterLink link = await RequireLinkAsync(printerId, caller, capability, cancellationToken);
 
-        return link is IPrinterConnectionActor actor && (actor.Dialect?.StreamsChunks ?? actor.CanStreamChunks);
+        return link is IPrinterConnectionActor actor && (actor.Dialect?.SupportsInlineTransfer ?? actor.CanStreamChunks);
     }
 
     /// <summary>

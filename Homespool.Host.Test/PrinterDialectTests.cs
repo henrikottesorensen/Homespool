@@ -28,10 +28,10 @@ public class PrinterDialectTests
     [Fact]
     public void ASocketConnectionIsBuddy()
     {
-        PrinterDialect.For(PrinterClient.Anonymous(PrinterTransport.WebSocket), streamsChunks: true)
+        PrinterDialect.For(PrinterClient.Anonymous(PrinterTransport.WebSocket), supportsInlineTransfer: true)
                       .Should().Be(PrinterDialect.BuddySocket);
 
-        PrinterDialect.For(new PrinterClient(PrinterTransport.WebSocket, "anything at all"), streamsChunks: true)
+        PrinterDialect.For(new PrinterClient(PrinterTransport.WebSocket, "anything at all"), supportsInlineTransfer: true)
                       .Should().Be(PrinterDialect.BuddySocket);
     }
 
@@ -42,7 +42,7 @@ public class PrinterDialectTests
     [Fact]
     public void AClientThatAnnouncesNothingIsBuddy()
     {
-        PrinterDialect.For(PrinterClient.Anonymous(PrinterTransport.Http), streamsChunks: false)
+        PrinterDialect.For(PrinterClient.Anonymous(PrinterTransport.Http), supportsInlineTransfer: false)
                       .Should().Be(PrinterDialect.BuddyHttp);
 
         PrinterDialect.BuddyHttp.UnderstandsEncryptedDownload
@@ -57,11 +57,11 @@ public class PrinterDialectTests
     public void AnAnnouncedClientIsTheSdk()
     {
         PrinterDialect dialect = PrinterDialect.For(
-            new PrinterClient(PrinterTransport.Http, "Prusa-Connect-SDK-Printer/0.9.0"), streamsChunks: false);
+            new PrinterClient(PrinterTransport.Http, "Prusa-Connect-SDK-Printer/0.9.0"), supportsInlineTransfer: false);
 
         dialect.Should().Be(PrinterDialect.ConnectSdk);
         dialect.UnderstandsEncryptedDownload.Should().BeFalse();
-        dialect.StreamsChunks.Should().BeFalse("there is no socket to pull chunks over");
+        dialect.SupportsInlineTransfer.Should().BeFalse("the inline transfer needs a socket, and there is none");
     }
 
     /// <summary>
@@ -79,7 +79,7 @@ public class PrinterDialectTests
     {
         PrinterClient client = new(PrinterTransport.Http, userAgent.Length == 0 ? null : userAgent);
 
-        PrinterDialect.For(client, streamsChunks: false)
+        PrinterDialect.For(client, supportsInlineTransfer: false)
                       .Should().Be(expectedBuddy ? PrinterDialect.BuddyHttp : PrinterDialect.ConnectSdk);
     }
 
@@ -102,6 +102,6 @@ public class PrinterDialectTests
     [Fact]
     public void NoObservationAtAllIsBuddy()
     {
-        PrinterDialect.For(client: null, streamsChunks: false).Should().Be(PrinterDialect.BuddyHttp);
+        PrinterDialect.For(client: null, supportsInlineTransfer: false).Should().Be(PrinterDialect.BuddyHttp);
     }
 }

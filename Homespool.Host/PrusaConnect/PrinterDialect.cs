@@ -6,12 +6,19 @@ namespace Homespool.Host.PrusaConnect;
 /// <remarks>
 /// <para>
 /// <b>One named thing rather than a predicate per question.</b> Three clients speak this protocol and
-/// they differ in ways that are not independent: firmware on a socket pulls a transfer in chunks over
-/// that socket, firmware without one fetches an encrypted download it decrypts itself, and the Python
+/// they differ in ways that are not independent: firmware on a socket takes the inline transfer, firmware without one fetches an encrypted download it decrypts itself, and the Python
 /// SDK fetches a plain one because it has no decryption at all. Asking those as separate booleans
 /// spreads the same three-way choice across every caller, and each new question adds a member to the
 /// connection abstraction - which is how <c>CanStreamChunks</c> and "can it decrypt" ended up as
 /// neighbours describing one fact.
+/// </para>
+/// <para>
+/// <b>These are not disjoint capability sets, and the names say what is CHOSEN rather than what is
+/// supported.</b> Buddy is a superset: from 4.6.1, the first version with Connect at all, it carried
+/// both the encrypted download and the SDK's team-URL method, and the SDK carries only the latter.
+/// So <see cref="BuddyHttp"/> means "the encrypted download, which is what we send Buddy", not "the
+/// only thing Buddy can do". Whether the team URL would serve both - collapsing this axis entirely -
+/// is untested and recorded in <c>notes/http-transport.md</c>.
 /// </para>
 /// <para>
 /// <b>This is a dialect, not a protocol.</b> All three are Prusa Connect and share its vocabulary,
@@ -26,16 +33,17 @@ namespace Homespool.Host.PrusaConnect;
 /// </para>
 /// </remarks>
 /// <param name="Name">What to call it in a log line.</param>
-/// <param name="StreamsChunks">
-/// Whether a transfer can be pulled over the connection itself, which only a socket can do.
+/// <param name="SupportsInlineTransfer">
+/// Whether the inline transfer is available: the printer pulling a file in chunks over the same
+/// connection its commands arrive on, which only a socket can carry.
 /// </param>
 /// <param name="UnderstandsEncryptedDownload">
 /// Whether <c>START_ENCRYPTED_DOWNLOAD</c> is a command this client will answer. False for the Python
 /// SDK, which has no such command and replies to it with nothing at all - measured 2026-08-18.
 /// </param>
-public sealed record PrinterDialect(string Name, bool StreamsChunks, bool UnderstandsEncryptedDownload)
+public sealed record PrinterDialect(string Name, bool SupportsInlineTransfer, bool UnderstandsEncryptedDownload)
 {
-    /// <summary>Buddy on the Connect WebSocket: chunks over the socket, no HTTP fetch involved.</summary>
+    /// <summary>Buddy on the Connect WebSocket: the inline transfer, with no HTTP fetch involved.</summary>
     public static readonly PrinterDialect BuddySocket = new("Buddy firmware over websocket", true, true);
 
     /// <summary>
@@ -68,9 +76,9 @@ public sealed record PrinterDialect(string Name, bool StreamsChunks, bool Unders
     /// project has never met. What was measured is Buddy's behaviour, and the name says only that.
     /// </para>
     /// </remarks>
-    public static PrinterDialect For(PrinterClient? client, bool streamsChunks)
+    public static PrinterDialect For(PrinterClient? client, bool supportsInlineTransfer)
     {
-        if (streamsChunks)
+        if (supportsInlineTransfer)
         {
             return BuddySocket;
         }

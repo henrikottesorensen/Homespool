@@ -254,6 +254,9 @@ public static class Program
             // no per-request state, only the singleton SetupState.
             builder.Services.AddSingleton<Services.SetupGateMiddleware>();
 
+            // Likewise factory-activated, and it holds nothing at all.
+            builder.Services.AddSingleton<Services.SecurityHeadersMiddleware>();
+
             builder.Services.AddScoped<PrusaConnect.PrusaConnectService>()
                             .AddScoped<PrusaConnect.WebSocketHandler>()
                             .AddScoped<PrusaConnect.TokenService>()
@@ -499,6 +502,12 @@ public static class Program
                     Listeners.ForwardedHeaderScope.Predicate(printerPort, printerListenerIsProxied),
                     branch => branch.UseForwardedHeaders());
             }
+
+            // As early as anything that answers, which is the point: the headers are set on the way in,
+            // so a response short-circuited further down - an HTTPS redirect, a segregation 404, a
+            // rate-limiter 429 - carries them as well. It goes after the forwarded-headers block only
+            // because that block reads the request and writes no response.
+            app.UseMiddleware<Services.SecurityHeadersMiddleware>();
 
             // Log HTTP requests with Serilog, order of this matters.
             // Requests handled before in the pipeline are NOT logged.

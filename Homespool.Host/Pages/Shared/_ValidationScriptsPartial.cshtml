@@ -1,2 +1,22 @@
-<script src="~/lib/jquery-validation/dist/jquery.validate.min.js"></script>
-<script src="~/lib/jquery-validation-unobtrusive/dist/jquery.validate.unobtrusive.min.js"></script>
+@*
+    Client-side validation without jQuery.
+
+    aspnet-client-validation reads the same data-val-* attributes the tag helpers already emit, so
+    every asp-validation-for and asp-validation-summary in the pages is unchanged - what changes is
+    who reads them. jQuery was in this project for this partial and nothing else; no script of ours
+    ever called it.
+
+    Unlike jquery.validate.unobtrusive this does not start itself, so site.js bootstraps it. That
+    call lives there rather than in an inline block here on purpose: an inline script is one more
+    thing a Content-Security-Policy has to carry a nonce for, and the colour-mode block in _Layout
+    is already the one exception worth paying for.
+
+    Server-side validation is unaffected and remains the thing that actually decides. This partial
+    only spares somebody a round trip.
+*@
+<environment include="Development">
+    <script src="~/lib/aspnet-client-validation/dist/aspnet-validation.js"></script>
+</environment>
+<environment exclude="Development">
+    <script src="~/lib/aspnet-client-validation/dist/aspnet-validation.min.js" asp-append-version="true"></script>
+</environment>

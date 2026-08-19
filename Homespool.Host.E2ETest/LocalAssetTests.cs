@@ -70,6 +70,41 @@ public sealed class LocalAssetTests
             + "so every script and stylesheet is served from the deployment itself");
     }
 
+    /// <summary>
+    /// No view loads jQuery.
+    /// </summary>
+    /// <remarks>
+    /// It was here for <c>jquery.validate.unobtrusive</c> and nothing else - no script of this
+    /// application ever called it, and Bootstrap 5 dropped the dependency. Now that
+    /// <c>aspnet-client-validation</c> reads the same <c>data-val-*</c> attributes without it, a
+    /// reappearing jQuery tag means somebody pasted a snippet from a scaffold or an answer site,
+    /// and it is worth catching then rather than three libraries later.
+    /// </remarks>
+    [Fact]
+    public void NoViewLoadsJQuery()
+    {
+        // Arrange
+        string views = Path.Combine(RepositoryRoot(), "Homespool.Host", "Pages");
+
+        // Act
+        List<string> offenders = [];
+
+        foreach (string file in Directory.EnumerateFiles(views, "*.cshtml", SearchOption.AllDirectories))
+        {
+            foreach (string line in File.ReadLines(file))
+            {
+                if (line.Contains("<script", StringComparison.OrdinalIgnoreCase)
+                    && line.Contains("jquery", StringComparison.OrdinalIgnoreCase))
+                {
+                    offenders.Add($"{Path.GetFileName(file)}: {line.Trim()}");
+                }
+            }
+        }
+
+        // Assert
+        offenders.Should().BeEmpty("client-side validation no longer needs jQuery, and nothing else here ever did");
+    }
+
     private static string RepositoryRoot([CallerFilePath] string thisFile = "")
     {
         // <root>/Homespool.Host.E2ETest/LocalAssetTests.cs

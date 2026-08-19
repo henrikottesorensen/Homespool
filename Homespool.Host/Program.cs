@@ -153,6 +153,21 @@ public static class Program
                 options.Cookie.HttpOnly = true;
                 options.ExpireTimeSpan = TimeSpan.FromDays(1);
 
+                // Lax, written down rather than inherited. It is already the framework's default for
+                // this cookie, so this changes no behaviour - what it changes is that the value is a
+                // decision somebody can find, on the setting that is currently the ONLY thing
+                // standing between a cross-site POST and an authenticated /api call: Policies.Api
+                // accepts this cookie and no antiforgery guards those actions.
+                //
+                // NOT Strict, and that was costed rather than assumed. Strict withholds the cookie on
+                // every cross-site top-level navigation, not merely on cross-site POSTs - so every
+                // link in outgoing mail (confirm, reset, invite) would open the app signed out even in
+                // a browser that is signed in, and ConfirmEmailChange, which is designed to be clicked
+                // while signed in, would answer NotFound. What it would buy is protection against a
+                // cross-site GET with side effects, of which there are none by design: Logout is a
+                // POST and the API's GETs are reads. Real friction against a marginal gain.
+                options.Cookie.SameSite = SameSiteMode.Lax;
+
                 options.LoginPath = "/Account/Login";
                 options.AccessDeniedPath = "/Account/AccessDenied";
                 options.SlidingExpiration = true;
@@ -165,6 +180,10 @@ public static class Program
             // Add services to the container.
             builder.Services.AddAuthorization(Authorisation.Builder.Build);
 
+            // Account/Manage requires a signed-in account. That rule lives on the pages themselves as
+            // [Authorize], not here as an AuthorizeFolder convention: a reader auditing one page can
+            // see whether it is protected by looking at it, which a path string in Program.cs does not
+            // give them. The cost is that a new page under that folder has to say so itself.
             builder.Services.AddRazorPages()
                             .AddDataAnnotationsLocalization(options =>
                                 options.DataAnnotationLocalizerProvider = (_, factory) =>

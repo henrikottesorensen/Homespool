@@ -16,8 +16,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using Homespool.Host.Exceptions;
+using Homespool.Host.PrintFiles;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.DTO;
@@ -44,6 +46,7 @@ public class PrusaConnectPrinterController : ControllerBase
     private readonly HttpPrinterSessions _sessions;
     private readonly PrusaConnect.Transfers.ITransferContentStore _content;
     private readonly IHostApplicationLifetime _lifetime;
+    private readonly PrusaConnectOptions _options;
     private readonly ILogger<PrusaConnectPrinterController> _logger;
 
     public PrusaConnectPrinterController(PrusaConnectService prusaConnectService,
@@ -52,14 +55,18 @@ public class PrusaConnectPrinterController : ControllerBase
                                          HttpPrinterSessions sessions,
                                          PrusaConnect.Transfers.ITransferContentStore content,
                                          IHostApplicationLifetime lifetime,
+                                         IOptions<PrusaConnectOptions> options,
                                          ILogger<PrusaConnectPrinterController> logger)
     {
+        ArgumentNullException.ThrowIfNull(options);
+
         _prusaConnectService = prusaConnectService;
         _session = session;
         _dispatcher = dispatcher;
         _sessions = sessions;
         _content = content;
         _lifetime = lifetime;
+        _options = options.Value;
         _logger = logger;
     }
 
@@ -368,7 +375,24 @@ public class PrusaConnectPrinterController : ControllerBase
 
         try
         {
-            document = await JsonDocument.ParseAsync(Request.Body, cancellationToken: cancellationToken);
+            // The same ceiling the websocket transport has always had, from the same setting - these
+            // two carry the same messages, so a bound that differed between them would be an accident
+            // rather than a decision. Without one the whole body is parsed into memory: authenticated,
+            // so not a drive-by, but PrusaConnectOptions.MaxIncomingMessageBytes exists precisely
+            // because one leaked printer credential should not be able to stop the server for
+            // everyone.
+            await using LengthLimitingStream bounded = new(Request.Body, _options.MaxIncomingMessageBytes);
+
+            document = await JsonDocument.ParseAsync(bounded, cancellationToken: cancellationToken);
+        }
+        catch (UploadTooLargeException)
+        {
+            // Answered like any other unusable body. Firmware reads status codes here and treats every
+            // 4xx alike, so introducing a 413 it has never been sent buys nothing.
+            _logger.LogWarning("Printer {PrinterId} sent a body over the {Limit}-byte ceiling.",
+                               printerId, _options.MaxIncomingMessageBytes);
+
+            return TypedResults.BadRequest();
         }
         catch (JsonException e)
         {

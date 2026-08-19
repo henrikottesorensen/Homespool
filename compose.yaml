@@ -505,6 +505,7 @@ services:
       # would refuse to start at all on a stack with printer TLS turned off, taking the pages down
       # with it over a certificate the operator deliberately does not have.
       - ./nginx/homespool-printer.conf:/etc/nginx/homespool-printer.conf:ro
+      - ./nginx/homespool-health-access.conf:/etc/nginx/homespool-health-access.conf:ro
 
       # Straight into conf.d, unlike the printer block: there is no certificate to wait for, so
       # nothing conditions whether this listener is served. Plain HTTP, /f/* only.

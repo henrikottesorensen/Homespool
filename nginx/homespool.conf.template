@@ -64,6 +64,8 @@ server {
     # monitoring probe follows nothing, and `curl --fail` treats a 301 as success - so a redirected
     # /health would report a healthy service that was never actually reached.
     location /health {
+        include /etc/nginx/homespool-health-access.conf;
+
         set $homespool_upstream http://homespool:8080;
         include /etc/nginx/homespool-proxy.conf;
 
@@ -134,6 +136,18 @@ server {
     # and it is the reason the printer block is a separate listener rather than a location here.
     location /p/ {
         return 404;
+    }
+
+    # Its own location, because otherwise /health falls into `location /` below and the address
+    # filter never runs on the TLS listener - which is the one published to the world.
+    location /health {
+        include /etc/nginx/homespool-health-access.conf;
+
+        set $homespool_upstream http://homespool:8080;
+        include /etc/nginx/homespool-proxy.conf;
+
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
     }
 
     location / {

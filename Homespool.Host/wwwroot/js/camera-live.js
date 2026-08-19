@@ -34,6 +34,12 @@
     // for a browser that never says it is done.
     var GATHER_TIMEOUT_MS = 2000;
 
+    // How often to ask the connection whether pictures are still arriving, and how many consecutive
+    // silent checks end the view. Six seconds of nothing is well past any keyframe gap and short
+    // enough that nobody stares at a frozen frame wondering.
+    var STATS_INTERVAL_MS = 2000;
+    var STALLED_AFTER_CHECKS = 3;
+
     function ready(fn) {
         if (document.readyState !== 'loading') {
             fn();
@@ -82,8 +88,13 @@
         var video = view.querySelector('.camera-live-video');
         var status = view.querySelector('.camera-status');
 
+        // The same caption the still uses for its age. While live it says so instead, and the poller
+        // is paused, so the two never write to it at once.
+        var age = view.parentElement.querySelector('.camera-age');
+
         var connection = null;
         var deadline = null;
+        var stats = null;
 
         function say(text) {
             note.textContent = text || '';
@@ -97,6 +108,14 @@
                 window.clearTimeout(deadline);
                 deadline = null;
             }
+
+            if (stats) {
+                window.clearInterval(stats);
+                stats = null;
+            }
+
+            age.textContent = '';
+            age.classList.remove('text-success', 'fw-semibold');
 
             if (connection) {
                 connection.close();
@@ -142,6 +161,53 @@
             button.disabled = false;
             button.textContent = button.dataset.labelStop;
             say('');
+
+            watchForPictures();
+        }
+
+        // Says "live" only while bytes are actually arriving, and takes the view down when they stop.
+        //
+        // This is the whole reason there is an indicator at all. A <video> showing a printer that is
+        // not moving is indistinguishable from the still it replaced - and a label that simply said
+        // "live" because the handshake succeeded would be the same lie the age rule exists to
+        // prevent, one layer up. WebRTC can also half-die: the connection stays "connected" while
+        // media stops, which no event reports. Counting bytes is the only thing that notices.
+        function watchForPictures() {
+            var seen = 0;
+            var silent = 0;
+
+            stats = window.setInterval(function () {
+                if (!connection) {
+                    return;
+                }
+
+                connection.getStats(null).then(function (report) {
+                    var bytes = 0;
+
+                    report.forEach(function (entry) {
+                        if (entry.type === 'inbound-rtp' && entry.kind === 'video') {
+                            bytes += entry.bytesReceived || 0;
+                        }
+                    });
+
+                    if (bytes > seen) {
+                        seen = bytes;
+                        silent = 0;
+                        age.textContent = button.dataset.labelLive;
+                        age.classList.add('text-success', 'fw-semibold');
+                        return;
+                    }
+
+                    silent++;
+
+                    if (silent >= STALLED_AFTER_CHECKS) {
+                        // Back to the still, which at least tells the truth about how old it is.
+                        stop(button.dataset.labelStalled);
+                    }
+                }).catch(function () {
+                    // A closed connection answers nothing; stop() has already tidied up.
+                });
+            }, STATS_INTERVAL_MS);
         }
 
         async function start() {

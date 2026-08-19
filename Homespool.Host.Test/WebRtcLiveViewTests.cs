@@ -57,22 +57,54 @@ public sealed class WebRtcLiveViewTests : IDisposable
     }
 
     /// <summary>
-    /// Live view is offered without knowing the codec, because nothing can report it in advance —
+    /// A network camera's address says nothing about its codec, and nothing can report it in advance —
     /// measured on the board 2026-08-18: the stream server names no codec for a stream nobody is
-    /// consuming, and a still fetch closes the producer the instant the frame is served.
+    /// consuming, and a still fetch closes the producer the instant the frame is served. So it is
+    /// offered and learned from.
     /// </summary>
     [Fact]
-    public void ACameraIsOfferedLiveViewUntilItRefuses()
+    public void ANetworkCameraIsOfferedLiveViewUntilItRefuses()
     {
         WebRtcAvailability availability = new() { Candidate = "192.168.13.183:8555" };
         Guid camera = Guid.NewGuid();
 
-        availability.CanOffer(camera).Should().BeTrue("nothing can say otherwise until somebody tries");
+        availability.CanOffer(camera, "rtsp://192.168.13.217/live")
+                    .Should().BeTrue("nothing can say otherwise until somebody tries");
 
         availability.MarkUnsupported(camera);
 
-        availability.CanOffer(camera).Should().BeFalse(
+        availability.CanOffer(camera, "rtsp://192.168.13.217/live").Should().BeFalse(
             "a JPEG camera is refused permanently, so the button must not come back and fail again");
+    }
+
+    /// <summary>
+    /// The half that needs no attempt at all. This source was composed by Homespool's own camera
+    /// picker, which states the format rather than inheriting it - so a button here would be one
+    /// nobody could ever use.
+    /// </summary>
+    [Fact]
+    public void AnAttachedJpegCameraIsNeverOffered()
+    {
+        WebRtcAvailability availability = new() { Candidate = "192.168.13.183:8555" };
+
+        availability.CanOffer(
+            Guid.NewGuid(),
+            "ffmpeg:device?video=/dev/v4l/by-id/usb-046d_0821_437242E0-video-index0&input_format=mjpeg")
+                    .Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("ffmpeg:device?video=/dev/video0&input_format=mjpeg", true)]
+    [InlineData("rtsp://camera.lan/live#video=mjpeg", true)]
+    [InlineData("rtsp://camera.lan/live#video=jpeg", true)]
+    [InlineData("rtsp://192.168.13.217/live", false)]
+    [InlineData("onvif://user:pass@192.168.1.50", false)]
+    [InlineData("http://camera.lan/snapshot.jpg", false)]
+    [InlineData("rtsp://camera.lan/h264Preview_01_main", false)]
+    [InlineData("", false)]
+    public void OnlyASourceThatStatesJpegIsRefusedInAdvance(string source, bool expected)
+    {
+        WebRtcAvailability.DeclaresJpeg(source).Should().Be(expected);
     }
 
     /// <summary>
@@ -88,7 +120,7 @@ public sealed class WebRtcLiveViewTests : IDisposable
 
         availability.MarkUnsupported(webcam);
 
-        availability.CanOffer(networkCamera).Should().BeTrue();
+        availability.CanOffer(networkCamera, "rtsp://192.168.13.217/live").Should().BeTrue();
     }
 
     /// <summary>
@@ -98,7 +130,7 @@ public sealed class WebRtcLiveViewTests : IDisposable
     [Fact]
     public void NothingIsOfferedWithoutAnAddress()
     {
-        new WebRtcAvailability().CanOffer(Guid.NewGuid()).Should().BeFalse();
+        new WebRtcAvailability().CanOffer(Guid.NewGuid(), "rtsp://192.168.13.217/live").Should().BeFalse();
     }
 
     [Fact]

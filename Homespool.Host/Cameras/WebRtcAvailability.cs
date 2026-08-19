@@ -73,9 +73,56 @@ public sealed class WebRtcAvailability
     /// true about. Forgetting on restart is the cheapest correct answer.
     /// </para>
     /// </remarks>
-    public bool CanOffer(Guid cameraUuid)
+    public bool CanOffer(Guid cameraUuid, string? source)
     {
-        return IsConfigured && !_unsupported.ContainsKey(cameraUuid);
+        return IsConfigured && !DeclaresJpeg(source) && !_unsupported.ContainsKey(cameraUuid);
+    }
+
+    /// <summary>
+    /// Formats a source can state outright, and that WebRTC cannot carry.
+    /// </summary>
+    /// <remarks>
+    /// <c>input_format=mjpeg</c> is the one that matters, and it is not an inference about somebody's
+    /// hardware: it is a string <b>Homespool wrote</b>. The camera picker states the format rather
+    /// than inheriting it, because two USB cameras disagree about which format they list first and a
+    /// naive caller silently gets a per-frame transcode from one of them. The upshot is that for a
+    /// camera plugged into this machine, the source says what it sends, on our own authority.
+    /// </remarks>
+    private static readonly string[] JpegFormats = ["input_format=mjpeg", "#video=mjpeg", "#video=jpeg"];
+
+    /// <summary>
+    /// Whether a camera's source says outright that it carries JPEG.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the half of the codec question that can be answered in advance</b>, and it covers
+    /// exactly the cameras that would otherwise be offered a button guaranteed to fail — the USB
+    /// webcams, whose source Homespool composes. A network camera's address says nothing about its
+    /// codec, so those stay optimistic and are learned from the first refusal.
+    /// </para>
+    /// <para>
+    /// <b>Deliberately only what the source states.</b> Guessing from a scheme or a path — treating
+    /// <c>http://</c> or a name ending in <c>.jpg</c> as JPEG — would take a button away from cameras
+    /// that work, which is the more expensive mistake: an unnecessary refusal is invisible, where an
+    /// unnecessary attempt costs one press and explains itself.
+    /// </para>
+    /// </remarks>
+    public static bool DeclaresJpeg(string? source)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            return false;
+        }
+
+        foreach (string format in JpegFormats)
+        {
+            if (source.Contains(format, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

@@ -1065,6 +1065,12 @@
   <data name="Cameras_LiveFailed" xml:space="preserve">
     <value>Live view could not connect. Showing the still picture instead.</value>
   </data>
+  <data name="Cameras_LiveNow" xml:space="preserve">
+    <value>Live</value>
+  </data>
+  <data name="Cameras_LiveStalled" xml:space="preserve">
+    <value>The live picture stopped arriving. Showing the still picture instead.</value>
+  </data>
   <data name="Cameras_LiveUnsupported" xml:space="preserve">
     <value>This camera sends still images rather than video, so it cannot be watched live.</value>
   </data>

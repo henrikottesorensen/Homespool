@@ -55,7 +55,11 @@ namespace Homespool.Host.PrusaConnect;
 /// </param>
 public sealed record PrinterDialect(string Name, bool SupportsInlineTransfer, bool UnderstandsEncryptedDownload)
 {
-    /// <summary>Buddy on the Connect WebSocket: the inline transfer, with no HTTP fetch involved.</summary>
+    /// <summary>
+    /// Buddy on the Connect WebSocket: the inline transfer, with no HTTP fetch involved. Named for
+    /// Buddy rather than for the socket because a socket is no longer proof of Buddy - see
+    /// <see cref="For"/>.
+    /// </summary>
     public static readonly PrinterDialect BuddySocket = new("Buddy firmware over websocket", true, true);
 
     /// <summary>
@@ -90,11 +94,23 @@ public sealed record PrinterDialect(string Name, bool SupportsInlineTransfer, bo
     /// </remarks>
     public static PrinterDialect For(PrinterClient? client, bool supportsInlineTransfer)
     {
-        if (supportsInlineTransfer)
+        // The client is asked BEFORE the transport, and that order is the correction rather than a
+        // style choice. There is a half-finished websocket branch on the SDK (c0a8936, "switch
+        // telemetry and events transport from HTTP to WebSocket"), so "on a socket" will not stay a
+        // synonym for "is Buddy" - and asking the transport first would classify such a client as
+        // Buddy and offer it an inline transfer it cannot perform.
+        //
+        // NOT support for that branch, which is half finished and may land looking nothing like it
+        // does today. It is only a refusal to assume: the ordering costs nothing and the assumption
+        // would fail silently. What the branch shows is that the assumption is already shaky - it
+        // leaves download.py untouched, so transfers still go through START_CONNECT_DOWNLOAD to the
+        // team URL, and its socket sends JSON as TEXT frames while the inline transfer is binary.
+        // If it ever ships, that is when to find out what it really does rather than guess now.
+        if (client?.IsConnectSdk == true)
         {
-            return BuddySocket;
+            return ConnectSdk;
         }
 
-        return client?.IsConnectSdk == true ? ConnectSdk : BuddyHttp;
+        return supportsInlineTransfer ? BuddySocket : BuddyHttp;
     }
 }

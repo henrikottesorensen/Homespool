@@ -22,17 +22,32 @@ namespace Homespool.Host.Test;
 public class PrinterDialectTests
 {
     /// <summary>
-    /// A socket connection is Buddy whatever it announces, because nothing else opens one - and the
-    /// questions the other dialects answer do not arise there.
+    /// A socket connection from something that has not named itself is Buddy - nothing else opened
+    /// one when this was written.
     /// </summary>
     [Fact]
-    public void ASocketConnectionIsBuddy()
+    public void AnUnannouncedSocketConnectionIsBuddy()
     {
         PrinterDialect.For(PrinterClient.Anonymous(PrinterTransport.WebSocket), supportsInlineTransfer: true)
                       .Should().Be(PrinterDialect.BuddySocket);
 
-        PrinterDialect.For(new PrinterClient(PrinterTransport.WebSocket, "anything at all"), supportsInlineTransfer: true)
+        PrinterDialect.For(new PrinterClient(PrinterTransport.WebSocket, "something unrecognised"),
+                           supportsInlineTransfer: true)
                       .Should().Be(PrinterDialect.BuddySocket);
+    }
+
+    /// <summary>
+    /// But a socket is NOT proof of Buddy, and this is the case that says so: there is a
+    /// half-finished websocket branch on the SDK, and it leaves download.py untouched while sending
+    /// JSON as text frames - so such a client still fetches the team URL over HTTP and cannot do the
+    /// inline transfer, which is binary. Classifying it by transport would offer it one anyway.
+    /// </summary>
+    [Fact]
+    public void TheSdkIsTheSdkEvenOnASocket()
+    {
+        PrinterDialect.For(new PrinterClient(PrinterTransport.WebSocket, "Prusa-Connect-SDK-Printer/0.9.0"),
+                           supportsInlineTransfer: true)
+                      .Should().Be(PrinterDialect.ConnectSdk);
     }
 
     /// <summary>

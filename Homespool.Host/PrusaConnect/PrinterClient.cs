@@ -47,9 +47,12 @@ public enum PrinterTransport
 /// </remarks>
 /// <param name="Transport">Which way in it came.</param>
 /// <param name="UserAgent">
-/// What it called itself, or <see langword="null"/> where it said nothing - which is firmware.
+/// What it called itself, or <see langword="null"/> where it said nothing - which is Buddy.
 /// </param>
-public sealed record PrinterClient(PrinterTransport Transport, string? UserAgent)
+/// <param name="FirmwareVersion">
+/// The version it reported in <c>INFO</c>, or <see langword="null"/> before one has arrived.
+/// </param>
+public sealed record PrinterClient(PrinterTransport Transport, string? UserAgent, string? FirmwareVersion = null)
 {
     /// <summary>A connection whose client has not announced itself, on the given transport.</summary>
     public static PrinterClient Anonymous(PrinterTransport transport)
@@ -94,5 +97,29 @@ public sealed record PrinterClient(PrinterTransport Transport, string? UserAgent
     public bool IsUnrecognised => UserAgent is not null && !IsConnectSdk;
 
     /// <summary>What to put in a log line, without a null reading as a missing value.</summary>
-    public string Describe => UserAgent is null ? $"{Transport}, unannounced (Buddy)" : $"{Transport}, {UserAgent}";
+    public string Describe
+    {
+        get
+        {
+            string who = UserAgent ?? "unannounced (Buddy)";
+
+            return FirmwareVersion is null ? $"{Transport}, {who}" : $"{Transport}, {who}, firmware {FirmwareVersion}";
+        }
+    }
+
+    /// <summary>
+    /// The same client, with the version it has just reported.
+    /// </summary>
+    /// <remarks>
+    /// <b>Learned rather than announced, and only once <c>INFO</c> has arrived</b> - Buddy sends no
+    /// user agent, so the version is the only thing that distinguishes one Buddy from another, and it
+    /// does not turn up until the printer describes itself. Anything reading this must therefore cope
+    /// with not knowing yet, which is why it is nullable rather than defaulted to something plausible.
+    /// </remarks>
+    public PrinterClient WithFirmware(string? firmwareVersion)
+    {
+        return firmwareVersion is null || firmwareVersion == FirmwareVersion
+            ? this
+            : this with { FirmwareVersion = firmwareVersion };
+    }
 }

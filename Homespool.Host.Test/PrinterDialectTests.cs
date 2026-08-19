@@ -84,6 +84,43 @@ public class PrinterDialectTests
     }
 
     /// <summary>
+    /// The version is learned from INFO rather than announced, so a client is knowable before it is
+    /// fully known. Buddy sends no user agent at all, which makes the version the only thing that
+    /// separates one Buddy from another - and what START_CONNECT_DOWNLOAD means moved twice across
+    /// releases, so anything that ever needs to tell them apart needs this.
+    /// </summary>
+    [Fact]
+    public void TheFirmwareVersionIsLearnedRatherThanAnnounced()
+    {
+        PrinterClient client = PrinterClient.Anonymous(PrinterTransport.Http);
+
+        client.FirmwareVersion.Should().BeNull("nothing has described itself yet");
+
+        PrinterClient described = client.WithFirmware("6.2.6");
+
+        described.FirmwareVersion.Should().Be("6.2.6");
+        described.Describe.Should().Contain("firmware 6.2.6");
+
+        // The dialect does not move: the encrypted download works for every Buddy version, which is
+        // why it is what Buddy is sent and why nothing branches on the version today.
+        PrinterDialect.For(described, supportsInlineTransfer: false).Should().Be(PrinterDialect.BuddyHttp);
+    }
+
+    /// <summary>
+    /// A repeated INFO must not churn the record, and a null must not erase what is known - a printer
+    /// reports many events, and only some of them carry a version.
+    /// </summary>
+    [Fact]
+    public void LearningTheSameVersionAgainChangesNothing()
+    {
+        PrinterClient client = PrinterClient.Anonymous(PrinterTransport.Http).WithFirmware("6.2.6");
+
+        client.WithFirmware("6.2.6").Should().BeSameAs(client);
+        client.WithFirmware(null).Should().BeSameAs(client, "an event carrying no version says nothing about it");
+        client.WithFirmware("6.4.1").FirmwareVersion.Should().Be("6.4.1", "a printer that was upgraded says so");
+    }
+
+    /// <summary>
     /// An agent we do not recognise is worth saying out loud: it is treated as Buddy, and that is the
     /// assumption most likely to be wrong.
     /// </summary>

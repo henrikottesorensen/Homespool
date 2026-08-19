@@ -13,12 +13,24 @@ namespace Homespool.Host.PrusaConnect;
 /// neighbours describing one fact.
 /// </para>
 /// <para>
-/// <b>These are not disjoint capability sets, and the names say what is CHOSEN rather than what is
-/// supported.</b> Buddy is a superset: from 4.6.1, the first version with Connect at all, it carried
-/// both the encrypted download and the SDK's team-URL method, and the SDK carries only the latter.
-/// So <see cref="BuddyHttp"/> means "the encrypted download, which is what we send Buddy", not "the
-/// only thing Buddy can do". Whether the team URL would serve both - collapsing this axis entirely -
-/// is untested and recorded in <c>notes/http-transport.md</c>.
+/// <b><c>START_CONNECT_DOWNLOAD</c> means two different things, and that is why this type exists.</b>
+/// To the Python SDK it is "fetch <c>/p/teams/{team_id}/files/{hash}/raw</c>". To Buddy from v6.2.6 it
+/// is a plain alias for <c>StartInlineDownload</c> - same handler, same four arguments - so it starts
+/// an <i>inline</i> transfer over the socket. One wire name, one payload, two behaviours chosen by
+/// what is reading it.
+/// </para>
+/// <para>
+/// <b>So the two cannot be collapsed into one path, and sending the wrong one is not a soft
+/// failure.</b> A websocket-less Buddy handed <c>START_CONNECT_DOWNLOAD</c> would try to open an
+/// inline transfer over a socket it does not have, which is the <c>assert(0)</c> annotated <i>"Not
+/// used in non-websocket mode"</i>. The plain team-URL download it once had was removed in v6.0.0
+/// (<i>Rip out parsing of plain downloads</i>, 2023-10-10) and has never come back; only the SDK
+/// still implements it. Full timeline in <c>notes/http-transport.md</c>.
+/// </para>
+/// <para>
+/// <b>Which makes the conservative default load-bearing rather than tidy.</b> Anything unrecognised
+/// is treated as Buddy and sent the encrypted download, because that is the one command every client
+/// on this transport has understood in every release since Connect existed.
 /// </para>
 /// <para>
 /// <b>This is a dialect, not a protocol.</b> All three are Prusa Connect and share its vocabulary,

@@ -4,7 +4,9 @@
 #nullable disable
 
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Linq;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -115,8 +117,46 @@ public class ExternalLoginModel : PageModel
         return RedirectToPage("./Login");
     }
 
-    public IActionResult OnPost(string provider, string returnUrl = null)
+    /// <summary>
+    /// Begins sign-in with an external provider, if the named one is actually registered.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The name is checked because it arrives from the form.</b> Unchecked, it went straight to
+    /// <see cref="ChallengeResult"/>, and a scheme nobody registered throws
+    /// <see cref="InvalidOperationException"/> - so an anonymous POST of any string answered 500. No
+    /// provider is registered today, so the login page renders no buttons and the only caller is a
+    /// hand-made request; what it cost was an endpoint that faults on demand and fills the log.
+    /// </para>
+    /// <para>
+    /// <b>A name that <i>is</i> a scheme but not an external one was the stranger case.</b> Posting
+    /// <c>PrusaConnect</c> challenged the printer authentication handler and got its 401 - harmless,
+    /// and a sign-in page reaching into the printer protocol is not a thing to leave reachable.
+    /// Checking against <c>GetExternalAuthenticationSchemesAsync</c> rather than "is a scheme at all"
+    /// is what separates the two.
+    /// </para>
+    /// <para>
+    /// <b>400 rather than a message.</b> Nothing a person can do in the UI reaches this - there are no
+    /// buttons to press - so there is no human to write prose for, and inventing a localised string
+    /// for a hand-made request would be pretending otherwise. Once a provider is registered the check
+    /// passes and this path is unchanged.
+    /// </para>
+    /// <para>
+    /// The scaffold stays. External identity providers are scoped out rather than rejected
+    /// (<c>notes/phase-1.5-enrollment.md</c>, "External OIDC scoped out"), and that note carries the
+    /// trap for whoever adds one: inbound claim mapping must be turned off on the new handler, or the
+    /// short JWT names this codebase uses stop matching.
+    /// </para>
+    /// </remarks>
+    public async Task<IActionResult> OnPostAsync(string provider, string returnUrl = null)
     {
+        IEnumerable<AuthenticationScheme> external = await _signInManager.GetExternalAuthenticationSchemesAsync();
+
+        if (!external.Any(scheme => string.Equals(scheme.Name, provider, StringComparison.Ordinal)))
+        {
+            return BadRequest();
+        }
+
         // Request a redirect to the external login provider.
         string redirectUrl = Url.Page("./ExternalLogin", pageHandler: "Callback", values: new { returnUrl });
         AuthenticationProperties properties = _signInManager.ConfigureExternalAuthenticationProperties(provider, redirectUrl);

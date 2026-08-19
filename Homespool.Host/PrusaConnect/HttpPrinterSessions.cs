@@ -130,6 +130,26 @@ public sealed class HttpPrinterSessions : BackgroundService
                                    printerId,
                                    connection.Client.Describe);
 
+            // The dialect is logged separately from the client, because they answer different
+            // questions: the client is what it said, and the dialect is what that means for how a
+            // file can reach it. A support question is usually about the second.
+            _logger.LogDebug("Printer {PrinterId} speaks {Dialect}.",
+                             printerId,
+                             PrinterDialect.For(connection.Client, supportsInlineTransfer: false).Name);
+
+            // Louder, because this is the case where the guess is most likely wrong. An agent we do
+            // not recognise is treated as Buddy - the safe default - but if it is in fact something
+            // new that cannot decrypt a download, its transfers will time out with nothing else said.
+            if (connection.Client.IsUnrecognised)
+            {
+                _logger.LogWarning(
+                    "Printer {PrinterId} announced itself as {UserAgent}, which is not a client this "
+                    + "server recognises. It is being treated as Buddy firmware, so it will be offered "
+                    + "an encrypted download; if its transfers time out, that assumption is why.",
+                    printerId,
+                    connection.Client.UserAgent);
+            }
+
             // Same as a socket arriving: there may be work waiting for it. The signal cannot fail
             // and carries nothing - the advancer re-reads everything.
             _queueSignal.Poke();

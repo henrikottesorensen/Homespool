@@ -201,6 +201,7 @@ public sealed class PrintFileSenderTests : IDisposable
 
         // Firmware, which is what makes this the encrypted path.
         actor.Client.Returns(PrinterClient.Anonymous(PrinterTransport.Http));
+        actor.Dialect.Returns(PrinterDialect.BuddyHttp);
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
              .Returns<Task<CommandSendResult>>(_ => throw new InvalidOperationException("gone"));
         _registry.Register(PrinterId, actor);
@@ -280,6 +281,12 @@ public sealed class PrintFileSenderTests : IDisposable
         actor.Client.Returns(canDecryptDownloads
                                  ? PrinterClient.Anonymous(PrinterTransport.Http)
                                  : new PrinterClient(PrinterTransport.Http, "Prusa-Connect-SDK-Printer/0.9.0"));
+
+        // The dialect is what the sender asks, and a substitute answers null unless told - which
+        // would leave every printer here looking like one nothing is known about.
+        actor.Dialect.Returns(canStreamChunks
+                                  ? PrinterDialect.BuddySocket
+                                  : canDecryptDownloads ? PrinterDialect.BuddyHttp : PrinterDialect.ConnectSdk);
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
              .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
                                                             new CommandOutcome(reply, reason))));

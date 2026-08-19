@@ -218,7 +218,7 @@ public class PrinterCommandService
     {
         IPrinterLink link = await RequireLinkAsync(printerId, caller, capability, cancellationToken);
 
-        return link is IPrinterConnectionActor { CanStreamChunks: true };
+        return link is IPrinterConnectionActor actor && (actor.Dialect?.SupportsInlineTransfer ?? actor.CanStreamChunks);
     }
 
     /// <summary>
@@ -236,14 +236,15 @@ public class PrinterCommandService
         // an actor that reports no observation at all - and both answer the same way: like firmware.
         // The plaintext download is for a client that positively identifies itself, so anything
         // unidentified keeps the path this transport was built for.
+        // Two ways to know nothing about the client - a link that is not a Prusa Connect actor, and
+        // an actor reporting no dialect at all - and both answer the same way: like firmware. The
+        // plaintext download is for a client that positively identifies itself.
         if (link is not IPrinterConnectionActor actor)
         {
             return true;
         }
 
-        PrinterClient? client = actor.Client;
-
-        return client is null || client.UnderstandsEncryptedDownload;
+        return actor.Dialect?.UnderstandsEncryptedDownload ?? true;
     }
 
     /// <summary>The permission check and the registry lookup every entry point shares.</summary>

@@ -47,9 +47,12 @@ public enum PrinterTransport
 /// </remarks>
 /// <param name="Transport">Which way in it came.</param>
 /// <param name="UserAgent">
-/// What it called itself, or <see langword="null"/> where it said nothing - which is firmware.
+/// What it called itself, or <see langword="null"/> where it said nothing - which is Buddy.
 /// </param>
-public sealed record PrinterClient(PrinterTransport Transport, string? UserAgent)
+/// <param name="FirmwareVersion">
+/// The version it reported in <c>INFO</c>, or <see langword="null"/> before one has arrived.
+/// </param>
+public sealed record PrinterClient(PrinterTransport Transport, string? UserAgent, string? FirmwareVersion = null)
 {
     /// <summary>A connection whose client has not announced itself, on the given transport.</summary>
     public static PrinterClient Anonymous(PrinterTransport transport)
@@ -58,15 +61,65 @@ public sealed record PrinterClient(PrinterTransport Transport, string? UserAgent
     }
 
     /// <summary>
-    /// Whether this client understands <c>START_ENCRYPTED_DOWNLOAD</c>.
+    /// The product token the Python Connect SDK puts at the front of its user agent.
     /// </summary>
     /// <remarks>
-    /// The AES-CTR download is a Buddy feature (<c>notes/encrypted-download.md</c>); the Python SDK
-    /// has no such command and answers nothing at all, so an encrypted offer to one is a send that
-    /// times out. Measured against the real SDK 2026-08-18.
+    /// Its own, from <c>make_headers</c>: <c>f"Prusa-Connect-SDK-Printer/{__version__}"</c>. The
+    /// version follows the slash and is deliberately not matched - a client is recognised by what it
+    /// is, not by which release it is on.
     /// </remarks>
-    public bool UnderstandsEncryptedDownload => UserAgent is null;
+    public const string ConnectSdkProduct = "Prusa-Connect-SDK-Printer";
+
+    /// <summary>
+    /// Whether this is the Python Connect SDK, recognised by name.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Positive identification, not "said something".</b> An earlier version treated any non-empty
+    /// user agent as the SDK, which is the wrong way round: the SDK is the client we have measured
+    /// and can name, and everything else should keep the path this transport was built for. Getting
+    /// that backwards is not a cosmetic error - a Buddy printer handed the SDK's download would be
+    /// sent a command whose inline chunk request has no URL, and firmware asserts on it.
+    /// </para>
+    /// <para>
+    /// <b>So an unrecognised agent is Buddy</b>, which is also the safe answer if anything upstream
+    /// ever inserts one. Today nothing does: the proxy in front of the printer listener sets Host,
+    /// X-Real-IP and X-Forwarded-Proto and passes the client's own agent through untouched.
+    /// </para>
+    /// </remarks>
+    public bool IsConnectSdk =>
+        UserAgent?.StartsWith(ConnectSdkProduct, System.StringComparison.OrdinalIgnoreCase) == true;
+
+    /// <summary>
+    /// Whether this client announced something we do not recognise - worth saying out loud, because
+    /// it is treated as Buddy and that assumption is the one most likely to be wrong.
+    /// </summary>
+    public bool IsUnrecognised => UserAgent is not null && !IsConnectSdk;
 
     /// <summary>What to put in a log line, without a null reading as a missing value.</summary>
-    public string Describe => UserAgent is null ? $"{Transport}, unannounced (firmware)" : $"{Transport}, {UserAgent}";
+    public string Describe
+    {
+        get
+        {
+            string who = UserAgent ?? "unannounced (Buddy)";
+
+            return FirmwareVersion is null ? $"{Transport}, {who}" : $"{Transport}, {who}, firmware {FirmwareVersion}";
+        }
+    }
+
+    /// <summary>
+    /// The same client, with the version it has just reported.
+    /// </summary>
+    /// <remarks>
+    /// <b>Learned rather than announced, and only once <c>INFO</c> has arrived</b> - Buddy sends no
+    /// user agent, so the version is the only thing that distinguishes one Buddy from another, and it
+    /// does not turn up until the printer describes itself. Anything reading this must therefore cope
+    /// with not knowing yet, which is why it is nullable rather than defaulted to something plausible.
+    /// </remarks>
+    public PrinterClient WithFirmware(string? firmwareVersion)
+    {
+        return firmwareVersion is null || firmwareVersion == FirmwareVersion
+            ? this
+            : this with { FirmwareVersion = firmwareVersion };
+    }
 }

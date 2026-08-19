@@ -18,10 +18,22 @@ PrusaLink adds on top: it does not parse gcode, drive a serial link, or serve Pr
 
 Claiming the code is a person's job. `rig/sdk-claim.py` does that part when nobody is watching.
 
-The SDK is not vendored - install it where you run this:
+The SDK is not vendored - install it where you run this, AT THE TAG:
 
     python3 -m venv /tmp/sdkenv
-    /tmp/sdkenv/bin/pip install git+https://github.com/prusa3d/Prusa-Connect-SDK-Printer.git
+    /tmp/sdkenv/bin/pip install \
+        "git+https://github.com/prusa3d/Prusa-Connect-SDK-Printer.git@0.8.1"
+
+0.8.1 rather than HEAD, and the pin is the point. It is the newest tag, and it is what PrusaLink's
+own repository is on - so it is what runs in front of a real MK3S+. Everything after it is unpinnable:
+0.8.2 exists in the ChangeLog and has no tag, and master reports 0.9.0dev0, which the half-finished
+websocket branch also reports. An unpinned install would therefore silently test a different client
+each time, and could pick up a transport this rig says nothing about.
+
+Verified against 0.8.1 rather than assumed: register, poll, telemetry, events and a file transfer all
+pass, and the bytes come back byte-identical. The paths this exercises are unchanged between 0.8.1
+and master - the diff there is lint directives and callback type annotations - so a HEAD run is
+expected to behave the same today. That is a reason to pin, not a reason not to.
 
 Point it at the PRINTER listener (15443), not the people-facing one. With PrusaConnect__PrinterTls
 false that listener is plain HTTP, which is what makes this runnable without teaching the SDK to
@@ -100,8 +112,10 @@ def one_shot(printer):
     res = Telemetry(State.IDLE, temp_nozzle=24.5, temp_bed=23.0, material="PLA").send(
         printer.conn, printer.server, printer.make_headers())
 
-    # 204 is the ordinary answer and means "stored, nothing for you". A 200 would carry a command,
-    # which Homespool cannot send over this transport yet - see the note.
+    # 204 is the ordinary answer and means "stored, nothing for you"; a 200 carries a command, with
+    # its id in the header. Both are normal - which command, if any, is waiting is the only difference.
+    # (An earlier version of this comment said Homespool could not send commands over this transport.
+    # It can, and always could; that claim came from a run where nothing was queued.)
     report("POST /p/telemetry", res.status_code in (200, 204),
            f"HTTP {res.status_code}"
            + (f" Command-Id={res.headers['Command-Id']}" if "Command-Id" in res.headers else ""))

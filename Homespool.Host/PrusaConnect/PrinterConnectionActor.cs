@@ -185,16 +185,44 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     public bool CanStreamChunks => _connection is IChunkStreamingConnection;
 
     /// <summary>
-    /// What is at the other end of this connection, as it announced itself.
+    /// Which variant of the protocol this connection is speaking - see <see cref="PrinterDialect"/>.
+    /// </summary>
+    public PrinterDialect Dialect => PrinterDialect.For(Client, supportsInlineTransfer: CanStreamChunks);
+
+    /// <summary>
+    /// The firmware version this printer last reported, or null before it has said.
     /// </summary>
     /// <remarks>
-    /// A socket connection is not asked: firmware is the only thing that opens one, and the question
-    /// this answers - whether an encrypted download is understood - never arises there, because such
-    /// a printer is offered the inline transfer instead.
+    /// <para>
+    /// <b>Held here rather than persisted, because it belongs to this connection.</b> Firmware can be
+    /// upgraded or downgraded, and either one reboots the printer and brings up a new connection - so
+    /// a value learned here is invalidated by exactly the event that changes it, with nothing to
+    /// remember to expire. A column on the printer would have to be invalidated by hand on the one
+    /// event hardest to notice, and a stale version is worse than none: it would pick a transfer path
+    /// the printer can no longer perform.
+    /// </para>
+    /// <para>
+    /// <b>Why it matters at all:</b> Buddy sends no user agent, so the version is the only thing that
+    /// separates one Buddy from another - and they are not interchangeable. What
+    /// <c>START_CONNECT_DOWNLOAD</c> means moved twice across releases (see
+    /// <see cref="PrinterDialect"/>), so anything that ever needs to tell 4.6.1 from 6.2.6 needs this.
+    /// Nothing branches on it today; the encrypted download works for every version, which is why it
+    /// is what Buddy is sent.
+    /// </para>
     /// </remarks>
-    public PrinterClient Client => _connection is HttpPrinterConnection http
+    private string? _firmwareVersion;
+
+    /// <summary>
+    /// What is at the other end of this connection, as it announced itself and as it has since
+    /// described itself.
+    /// </summary>
+    /// <remarks>
+    /// A socket connection announces nothing at connect - only Buddy opens one - so what is known
+    /// about it arrives later, in <c>INFO</c>.
+    /// </remarks>
+    public PrinterClient Client => (_connection is HttpPrinterConnection http
         ? http.Client
-        : PrinterClient.Anonymous(PrinterTransport.WebSocket);
+        : PrinterClient.Anonymous(PrinterTransport.WebSocket)).WithFirmware(_firmwareVersion);
 
     public Task Completion { get; }
 
@@ -524,6 +552,14 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     private void HandleEvent(InboundEventMessage message)
     {
         DTO.EventMessages.EventDTO eventDto = message.Event;
+
+        // INFO is where a printer describes itself, and the version is the only thing that tells two
+        // Buddys apart - they send no user agent. Taken as it passes rather than asked for, and kept
+        // only for the life of this connection, which a firmware change ends.
+        if (message.Identity?.Firmware is { } firmware)
+        {
+            _firmwareVersion = firmware;
+        }
 
         if (_pending is not null && eventDto.CommandId == _pending.CommandId)
         {

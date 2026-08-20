@@ -501,7 +501,7 @@ public sealed class Go2RtcClient : ICameraCodecProbe
         {
             HttpClient client = _httpClientFactory.CreateClient(HttpClientName);
 
-            using StringContent content = new(document, Encoding.UTF8, "application/json");
+            using StringContent content = new(document, Encoding.UTF8, MediaTypeNames.Application.Json);
             using HttpResponseMessage response = await client
                                                        .PatchAsync(request, content, cancellationToken)
                                                        .ConfigureAwait(false);

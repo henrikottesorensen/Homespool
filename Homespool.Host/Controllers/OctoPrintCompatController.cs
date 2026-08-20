@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Net.Mime;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -267,7 +268,7 @@ public class OctoPrintCompatController : ControllerBase
     /// </remarks>
     private static ContentHttpResult Explain(int status, string message)
     {
-        return TypedResults.Text(message, "text/plain; charset=utf-8", statusCode: status);
+        return TypedResults.Text(message, $"{MediaTypeNames.Text.Plain}; charset=utf-8", statusCode: status);
     }
 
     /// <summary>

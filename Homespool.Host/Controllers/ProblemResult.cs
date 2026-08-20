@@ -1,3 +1,4 @@
+using System.Net.Mime;
 using System.Reflection;
 using System.Threading.Tasks;
 
@@ -53,7 +54,7 @@ public abstract class ProblemResult : IResult, IStatusCodeHttpResult, IValueHttp
     /// <summary>What every arm documents: its own status, a <see cref="ProblemDetails"/> body, as problem JSON.</summary>
     private protected static void Document(EndpointBuilder builder, int statusCode)
     {
-        builder.Metadata.Add(new ProducesResponseTypeMetadata(statusCode, typeof(ProblemDetails), ["application/problem+json"]));
+        builder.Metadata.Add(new ProducesResponseTypeMetadata(statusCode, typeof(ProblemDetails), [MediaTypeNames.Application.ProblemJson]));
     }
 }
 

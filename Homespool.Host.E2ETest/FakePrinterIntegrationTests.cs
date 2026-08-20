@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Net.Mime;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -828,7 +829,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
-        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+        response.Content.Headers.ContentType!.MediaType.Should().Be(MediaTypeNames.Application.ProblemJson);
 
         JsonElement problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
                                           .RootElement;

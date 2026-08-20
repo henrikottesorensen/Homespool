@@ -1,6 +1,7 @@
 using System;
 using System.Net;
 using System.Net.Http;
+using System.Net.Mime;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -51,7 +52,7 @@ public class CameraSnapshotFetcherTests
     public async Task AResponseThatIsNotAnImageIsRefused()
     {
         using RecordingHandler handler =
-            Respond(HttpStatusCode.OK, "text/html", Encoding.UTF8.GetBytes("<html>login</html>"));
+            Respond(HttpStatusCode.OK, MediaTypeNames.Text.Html, Encoding.UTF8.GetBytes("<html>login</html>"));
         CameraSnapshotFetcher fetcher = Build(handler);
 
         (await fetcher.FetchAsync(Frame, CancellationToken.None)).Should().BeNull();

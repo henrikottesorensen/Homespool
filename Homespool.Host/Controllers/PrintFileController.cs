@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using System.Net.Mime;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -155,7 +156,7 @@ public class PrintFileController : ControllerBase
 
     // The 200 is said here because a file result carries no metadata of its own; the failures say
     // theirs through the union.
-    [Produces("application/octet-stream")]
+    [Produces(MediaTypeNames.Application.Octet)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<Results<FileStreamHttpResult, ForbiddenProblem, NotFoundProblem>> Download(string fileName)
     {
@@ -178,7 +179,7 @@ public class PrintFileController : ControllerBase
         FileStream content = new(file.Path, FileMode.Open, FileAccess.Read, FileShare.Read,
                                  bufferSize: 64 * 1024, useAsync: true);
 
-        return TypedResults.File(content, "application/octet-stream", file.FileName);
+        return TypedResults.File(content, MediaTypeNames.Application.Octet, file.FileName);
     }
 
     /// <summary>Renames a file. <c>PATCH /api/v1/files/{fileName}</c>.</summary>

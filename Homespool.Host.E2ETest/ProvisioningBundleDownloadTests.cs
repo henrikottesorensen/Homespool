@@ -5,6 +5,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Mime;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -123,7 +124,7 @@ public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime, IDisposabl
 
             // Assert
             download.StatusCode.Should().Be(HttpStatusCode.OK);
-            download.Content.Headers.ContentType?.MediaType.Should().Be("application/zip");
+            download.Content.Headers.ContentType?.MediaType.Should().Be(MediaTypeNames.Application.Zip);
             download.Content.Headers.ContentDisposition?.FileName.Should().Be("homespool-bench-printer.zip",
                                                                               "a downloads folder ends up holding several of these");
 

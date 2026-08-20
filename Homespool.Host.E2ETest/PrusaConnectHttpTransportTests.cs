@@ -3,6 +3,7 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Net.Mime;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -594,7 +595,7 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime, IDisposable
     {
         StringContent content = new(body, Encoding.UTF8);
 
-        content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        content.Headers.ContentType = new MediaTypeHeaderValue(MediaTypeNames.Application.Json);
 
         return content;
     }

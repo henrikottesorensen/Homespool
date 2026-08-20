@@ -4,6 +4,7 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Net.Mime;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -412,7 +413,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime, IDisposable
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        response.Content.Headers.ContentType!.MediaType.Should().Be("text/plain");
+        response.Content.Headers.ContentType!.MediaType.Should().Be(MediaTypeNames.Text.Plain);
 
         string text = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         text.Should().NotContain("{", "a serialised object in an error dialog is the defect this guards");

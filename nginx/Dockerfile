@@ -37,6 +37,12 @@ USER 101
 COPY --chown=101:101 --chmod=755 docker-entrypoint.d/20-printer-listener.sh /docker-entrypoint.d/
 COPY --chown=101:101 --chmod=755 docker-entrypoint.d/25-self-signed-certificate.sh /docker-entrypoint.d/
 
+# Sourced rather than launched - .envsh is the entrypoint's convention for a hook that has to set
+# environment for the scripts after it, here REDIRECT_PORT_SUFFIX before envsubst renders the
+# template. The exec bit is still required: the entrypoint checks -x before sourcing too, and
+# skips a non-executable file with the same easy-to-miss one-liner.
+COPY --chown=101:101 --chmod=755 docker-entrypoint.d/15-redirect-port-suffix.envsh /docker-entrypoint.d/
+
 # Baked in rather than mounted from ./nginx like the configuration files, because this one is served
 # precisely when things are going wrong. A bind mount is one more thing that can be absent, and its
 # absence would turn "the application is still starting" into a bare 404 from the proxy.

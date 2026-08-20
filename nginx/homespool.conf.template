@@ -4,14 +4,14 @@
 #
 # A TEMPLATE, and named one since 2026-08-05. It is mounted to /etc/nginx/templates and rendered into
 # conf.d at start by the base image's 20-envsubst-on-templates.sh, which substitutes
-# ${HTTPS_PORT_SUFFIX} into the redirect below. That is not optional decoration: dropped straight into
-# conf.d as it used to be, nginx starts perfectly happily and redirects every plain-HTTP visitor to a
-# literal "https://$host${HTTPS_PORT_SUFFIX}/..." - a URL no browser can resolve, from a proxy that
-# reports itself healthy. The extension is the warning.
+# ${REDIRECT_PORT_SUFFIX} into the redirect below. That is not optional decoration: dropped straight
+# into conf.d as it used to be, nginx starts perfectly happily and redirects every plain-HTTP visitor
+# to a literal "https://$host${REDIRECT_PORT_SUFFIX}/..." - a URL no browser can resolve, from a
+# proxy that reports itself healthy. The extension is the warning.
 #
-# Only ${HTTPS_PORT_SUFFIX} is substituted; NGINX_ENVSUBST_FILTER in compose.yaml restricts it. Add a
-# variable of your own here and you must add it there too, or it stays a literal - and conversely,
-# widening that filter would blank every $host and $request_uri below.
+# Only ${REDIRECT_PORT_SUFFIX} is substituted; NGINX_ENVSUBST_FILTER in compose.yaml restricts it.
+# Add a variable of your own here and you must add it there too, or it stays a literal - and
+# conversely, widening that filter would blank every $host and $request_uri below.
 #
 # Printers use this proxy but not this file. They have their own port, server block and certificate
 # in homespool-printer.conf, installed alongside this one when the deployment has a printer leaf to
@@ -105,10 +105,12 @@ server {
     }
 
     # Everything else goes to TLS. $host carries no port, so this needs telling which one HTTPS is
-    # published on - ${HTTPS_PORT_SUFFIX} is substituted at container start from HTTPS_PORT, and is
-    # empty for the standard 443 so ordinary deployments get a clean URL. It used to assume 443 with
-    # a comment telling you to edit this line; the first person to publish HTTPS elsewhere read that
-    # comment only after being redirected into a closed port.
+    # published on - ${REDIRECT_PORT_SUFFIX} is derived from HTTPS_PORT by
+    # 15-redirect-port-suffix.envsh at container start and substituted here: empty for the standard
+    # 443 so ordinary deployments get a clean URL. Setting REDIRECT_PORT_SUFFIX in .env overrides
+    # the derivation, for the stack where the port a browser must ask for is not the published one.
+    # It used to assume 443 with a comment telling you to edit this line; the first person to
+    # publish HTTPS elsewhere read that comment only after being redirected into a closed port.
     #
     # This file is a TEMPLATE - envsubst renders it into conf.d at start. Only the variables named in
     # NGINX_ENVSUBST_FILTER are touched, which is what keeps $host and $request_uri below from being
@@ -121,7 +123,7 @@ server {
     # reaches the application as a GET with its body dropped, which looks like the request silently
     # doing nothing rather than like a redirect problem. 308 preserves the method and the body.
     location / {
-        return 308 https://$host${HTTPS_PORT_SUFFIX}$request_uri;
+        return 308 https://$host${REDIRECT_PORT_SUFFIX}$request_uri;
     }
 }
 

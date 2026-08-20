@@ -341,15 +341,21 @@ services:
       USER_HOST: "${USER_HOST:-localhost}"
 
       # The redirect from the HTTP listener has to name the port HTTPS is actually published on -
-      # $host carries none, so without this it means 443 and sends browsers to a closed door on any
-      # stack that publishes elsewhere. Empty for 443 so the common case keeps a clean URL.
-      HTTPS_PORT_SUFFIX: "${HTTPS_PORT_SUFFIX-}"
+      # $host carries none. Derived from HTTPS_PORT by 15-redirect-port-suffix.envsh at container
+      # start: empty for 443 so the common case keeps a clean URL, ":8443"-shaped otherwise.
+      # "auto" is the derivation sentinel - it means neither name below is in .env. Setting
+      # REDIRECT_PORT_SUFFIX there overrides the derivation, explicit empty included, for the
+      # deployment where a router forwards 443 inward and the browser's port is not the published
+      # one. HTTPS_PORT_SUFFIX is the setting's pre-rename name, honoured so an existing .env
+      # keeps its meaning; the new name wins when both are set.
+      HTTPS_PORT: "${HTTPS_PORT:-443}"
+      REDIRECT_PORT_SUFFIX: "${REDIRECT_PORT_SUFFIX-${HTTPS_PORT_SUFFIX-auto}}"
 
       # Restricts envsubst to those variables. WITHOUT THIS the template's own $host, $request_uri
       # and $homespool_upstream are all substituted with nothing, nginx starts on a configuration
       # that parses and redirects everyone to "https://", and the cause looks nothing like the
       # symptom. The filter is the whole safety of this arrangement.
-      NGINX_ENVSUBST_FILTER: "HTTPS_PORT_SUFFIX|USER_HOST"
+      NGINX_ENVSUBST_FILTER: "REDIRECT_PORT_SUFFIX|USER_HOST"
 
     volumes:
       # From the repository rather than baked into the image: this is the file an operator is most

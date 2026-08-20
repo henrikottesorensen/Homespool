@@ -71,7 +71,7 @@
   </resheader>
 
   <data name="Cameras_Maximise" xml:space="preserve">
-    <value>Udfyld vinduet</value>
+    <value>Fyld vinduet</value>
   </data>
   <data name="Cameras_Rescan" xml:space="preserve">
     <value>Søg efter kameraer igen</value>

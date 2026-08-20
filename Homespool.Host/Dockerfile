@@ -52,9 +52,9 @@ COPY [".config/dotnet-tools.json", ".config/"]
 RUN dotnet tool restore
 COPY . .
 WORKDIR "/src/Homespool.Host"
-# Fetch the client-side libraries (bootstrap, jquery, ...) into wwwroot/lib per libman.json. They are
-# gitignored rather than committed, so they must be materialised here before publish captures the
-# static web assets.
+# Fetch the client-side libraries (bootstrap, aspnet-client-validation) into wwwroot/lib per
+# libman.json. They are gitignored rather than committed, so they must be materialised here before
+# publish captures the static web assets.
 RUN dotnet libman restore
 # The commit this image is built from, because the image cannot work it out for itself: .dockerignore
 # excludes **/.git, so SourceLink - which stamps every local build with the commit during compilation -

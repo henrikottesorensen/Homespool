@@ -560,6 +560,9 @@
   <data name="Nav_Logout" xml:space="preserve">
     <value>Log ud</value>
   </data>
+  <data name="Nav_Admin" xml:space="preserve">
+    <value>Administration</value>
+  </data>
   <data name="Nav_Invites" xml:space="preserve">
     <value>Invitationer</value>
   </data>
@@ -1054,10 +1057,10 @@
     <value>Dette kamera sender stillbilleder frem for video, så det kan ikke ses live.</value>
   </data>
   <data name="LiveView_Title" xml:space="preserve">
-    <value>Live kameravisning</value>
+    <value>Kamerastreaming</value>
   </data>
   <data name="Nav_LiveView" xml:space="preserve">
-    <value>Live-visning</value>
+    <value>Kamerastreaming</value>
   </data>
   <data name="Nav_LiveViewTitle" xml:space="preserve">
     <value>Om kameraer kan ses live, og hvorfra</value>

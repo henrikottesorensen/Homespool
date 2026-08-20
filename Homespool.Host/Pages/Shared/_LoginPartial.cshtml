@@ -5,23 +5,6 @@
 <ul class="navbar-nav">
 @if (SignInManager.IsSignedIn(User))
 {
-    @if (User.IsInRole(AdminBootstrap.AdminRole))
-    {
-        <li class="nav-item">
-            <a id="invites" class="nav-link" asp-page="/Admin/Invites/Index">@Localiser["Nav_Invites"]</a>
-        </li>
-@*  The certificate banner tells an administrator to come here, so there has to be a here to come to.
-    Admin-only, like Invites: it is the one page that can reissue what printers verify against. *@
-        <li class="nav-item">
-            <a id="certificate" class="nav-link" asp-page="/Admin/Certificate" title="@Localiser["Nav_CertificateTitle"]">@Localiser["Nav_Certificate"]</a>
-        </li>
-@*  Same reason as the certificate page: the live-view banner names a setting, so the setting needs
-    somewhere to be. Admin-only because it decides whether this deployment contacts anyone outside
-    itself, which is not any one team's call. *@
-        <li class="nav-item">
-            <a id="live-view" class="nav-link" asp-page="/Admin/LiveView" title="@Localiser["Nav_LiveViewTitle"]">@Localiser["Nav_LiveView"]</a>
-        </li>
-    }
     <li class="nav-item">
         <a id="printers" class="nav-link" asp-page="/Printers/Index">@Localiser["Printers_Title"]</a>
     </li>
@@ -31,6 +14,33 @@
     <li class="nav-item">
         <a id="cameras" class="nav-link" asp-page="/Cameras/Index">@Localiser["Cameras_Title"]</a>
     </li>
+    @if (User.IsInRole(AdminBootstrap.AdminRole))
+    {
+@*  One menu rather than three links: these are deployment-wide settings an administrator visits
+    rarely, and spread across the bar they were three eighths of it that most accounts never see.
+    Sitting after the working pages and beside the account links puts the chrome together.
+
+    The two tooltips survive the move because they say something the label does not - which
+    certificate, and what the live-view setting decides. The sibling links whose tooltips only
+    repeated their own text lost them earlier and gain nothing here.
+
+    Neither the certificate nor the live-view entry is optional: the health banner sends an
+    administrator to one and names the setting on the other, so both need somewhere to arrive. *@
+        <li class="nav-item dropdown">
+            <a id="admin" class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">@Localiser["Nav_Admin"]</a>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li>
+                    <a id="invites" class="dropdown-item" asp-page="/Admin/Invites/Index">@Localiser["Nav_Invites"]</a>
+                </li>
+                <li>
+                    <a id="certificate" class="dropdown-item" asp-page="/Admin/Certificate" title="@Localiser["Nav_CertificateTitle"]">@Localiser["Nav_Certificate"]</a>
+                </li>
+                <li>
+                    <a id="live-view" class="dropdown-item" asp-page="/Admin/LiveView" title="@Localiser["Nav_LiveViewTitle"]">@Localiser["Nav_LiveView"]</a>
+                </li>
+            </ul>
+        </li>
+    }
     <li class="nav-item">
 @*  The username is already in the cookie - Identity writes it as ClaimTypes.Name - so naming the
     signed-in account costs no query and needs no claim of our own.

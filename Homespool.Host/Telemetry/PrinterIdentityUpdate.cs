@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace Homespool.Host.Telemetry;
 
 /// <summary>
@@ -13,8 +15,14 @@ namespace Homespool.Host.Telemetry;
 /// <param name="HasMmu">Whether an MMU is present and enabled; null when the report carried no
 /// MMU block at all, which must not clear a stored true.</param>
 /// <param name="SerialNumber">The machine's serial number.</param>
+/// <param name="Tools">
+/// Per-tool fitted hardware, or null when the report carried no <c>tools</c> block at all - which
+/// must leave the stored rows alone rather than clearing them, the same rule
+/// <paramref name="HasMmu"/> follows. An empty list means the block was there and named no tools.
+/// </param>
 public sealed record PrinterIdentityUpdate(string? Firmware,
                                            string? Model,
                                            float? NozzleDiameter,
                                            bool? HasMmu,
-                                           string? SerialNumber);
+                                           string? SerialNumber,
+                                           IReadOnlyList<PrinterToolUpdate>? Tools = null);

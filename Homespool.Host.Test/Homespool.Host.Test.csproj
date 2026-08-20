@@ -79,6 +79,27 @@
         <Content Include="keystream-fixtures.json">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </Content>
+        <!-- Real slicer output, not hand-written binary: a 3 mm cube sliced by PrusaSlicer 2.9.6's
+             CLI, one file per case the metadata reader has to get right. The CORE One pair differ
+             only in filament, so the abrasive flag is the only thing that moves between them; the
+             MK3.5 file is ASCII, exported with binary G-code switched off, because that profile
+             writes binary by default whatever the extension says. Regenerate with the commands in
+             GcodeMetadataReaderTests. -->
+        <Content Include="metadata-coreone-hf04-pla.bgcode">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </Content>
+        <Content Include="metadata-coreone-hf04-abrasive.bgcode">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </Content>
+        <Content Include="metadata-mk35-04-pla.gcode">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </Content>
+        <!-- The same MK3.5 slice with binary G-code left at the profile's default: a file named
+             .gcode whose first four bytes are GCDE. It is here because it is the trap, not an
+             exotic case - it is what that profile produces unless somebody turns binary off. -->
+        <Content Include="metadata-mk35-binary-named-gcode.gcode">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </Content>
     </ItemGroup>
 
 </Project>

@@ -42,6 +42,11 @@ COPY --chown=101:101 --chmod=755 docker-entrypoint.d/25-self-signed-certificate.
 # absence would turn "the application is still starting" into a bare 404 from the proxy.
 COPY --chown=101:101 --chmod=644 starting.html /usr/share/nginx/html/homespool-starting.html
 
+# The same page in Danish, picked by $hs_starting_suffix in homespool.conf.template. Absent, the
+# try_files there falls back to the English one, which is what makes adding a language to the
+# configuration safe before the image carrying it has been rebuilt.
+COPY --chown=101:101 --chmod=644 starting.da.html /usr/share/nginx/html/homespool-starting.da.html
+
 EXPOSE 8080
 EXPOSE 8443
 EXPOSE 15443

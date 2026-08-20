@@ -280,6 +280,50 @@ public sealed class LanguagePreferenceTests : IAsyncLifetime, IDisposable
         client.Dispose();
     }
 
+    /// <summary>
+    /// The document says which language it is in, and says the one it was rendered in.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The one localisation failure a reader cannot see and a listener cannot avoid.</b> Nothing
+    /// on screen changes when <c>&lt;html&gt;</c> carries no <c>lang</c>: the page is perfectly
+    /// Danish, every other test in this file passes, and a screen reader reads it aloud in whatever
+    /// voice it defaults to - which for Danish text in an English voice is not an accent but noise.
+    /// </para>
+    /// <para>
+    /// Asserted from the stored preference as well as from the header, because the attribute has to
+    /// follow the culture that was actually resolved rather than the request that suggested one - the
+    /// same distinction <see cref="AStoredChoiceBeatsTheBrowsersHeader"/> makes for the words.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task TheDocumentDeclaresTheLanguageItWasRenderedIn()
+    {
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "language-declared@example.com");
+
+        (await AskInAsync(client, "en-GB")).Should().Contain("<html lang=\"en\">");
+        (await AskInAsync(client, "da-DK")).Should().Contain("<html lang=\"da\">");
+
+        string page = await GetStringAsync(client, "/Account/Manage/Language");
+        await PostLanguageAsync(client, page, "da");
+
+        (await AskInAsync(client, "en-GB")).Should().Contain("<html lang=\"da\">",
+                                                             "the attribute follows the resolved culture, not the header that lost");
+
+        client.Dispose();
+    }
+
+    private static async Task<string> AskInAsync(HttpClient client, string language)
+    {
+        using HttpRequestMessage asking = new(HttpMethod.Get, "/Account/Manage/Language");
+        asking.Headers.AcceptLanguage.Add(new StringWithQualityHeaderValue(language));
+
+        using HttpResponseMessage response = await client.SendAsync(asking, TestContext.Current.CancellationToken);
+
+        return await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+    }
+
     private static async Task<string> GetStringAsync(HttpClient client, string path)
     {
         using HttpResponseMessage response = await client.GetAsync(path, TestContext.Current.CancellationToken);

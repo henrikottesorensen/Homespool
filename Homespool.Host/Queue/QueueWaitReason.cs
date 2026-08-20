@@ -18,6 +18,19 @@ public enum QueueWaitReason
     AwaitingPrinterPath,
 
     /// <summary>
+    /// The file and the printer's own report of its hardware disagree in a way that costs more than
+    /// a bad print - abrasive filament with no hardened nozzle, or a file sliced for a machine this
+    /// one is not.
+    /// </summary>
+    /// <remarks>
+    /// <b>Deliberately not routed back into the transfer path</b>, unlike
+    /// <see cref="InsufficientSpace"/>. That one has to be, because only the transfer path re-asks
+    /// the drive how much room there is; this one is recomputed from rows already in hand on every
+    /// pass, so it clears itself without anything being attempted.
+    /// </remarks>
+    IncompatibleWithPrinter,
+
+    /// <summary>
     /// The printer is not <c>Ready</c>. Includes a finished print nobody has cleared, which is the
     /// case with no backstop under it.
     /// </summary>

@@ -52,6 +52,12 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
     /// <summary>Per-slot telemetry history. Swept by cascade when its parent sample is deleted.</summary>
     public DbSet<TelemetrySlotSample> TelemetrySlotSamples { get; set; }
 
+    /// <summary>
+    /// Per-tool fitted hardware, from <c>INFO</c>. Capability rather than telemetry - see
+    /// <see cref="PrinterTool"/> for why it is not the slot state above.
+    /// </summary>
+    public DbSet<PrinterTool> PrinterTools { get; set; }
+
     /// <summary>Ownership groups. Printers belong to a team; every user has a default one.</summary>
     public DbSet<Team> Teams { get; set; }
 
@@ -305,6 +311,21 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
                   .OnDelete(DeleteBehavior.Cascade);
         });
 
+        builder.Entity<PrinterTool>(entity =>
+        {
+            // Natural composite key, like the slot state above: one row per printer per tool, which
+            // is what makes each INFO an upsert rather than a delete-and-reinsert.
+            entity.HasKey(e => new { e.PrinterId, e.ToolNumber });
+
+            // Hangs off the printer rather than off PrinterLiveState, because this is a fact about
+            // the machine and outlives any particular connection - a printer that has never sent
+            // telemetry can still have reported its tools.
+            entity.HasOne<Printer>()
+                  .WithMany()
+                  .HasForeignKey(e => e.PrinterId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
         builder.Entity<TelemetrySlotSample>(entity =>
         {
             // A sample cannot report the same slot twice; enforcing it also serves the
@@ -427,6 +448,11 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // way to reach a pair it would have refused is meddling with the tree by hand.
             entity.Property(e => e.Name)
                   .UseCollation("NOCASE");
+
+            // Text, like every other small vocabulary here: a row of this column is only ever read
+            // by somebody working out why a file was or was not checked.
+            entity.Property(e => e.MetadataState)
+                  .HasConversion<string>();
 
             // A deleted account takes its file index with it. The bytes on disk are a separate
             // question and nothing here deletes them - which is why the startup reconcile skips a

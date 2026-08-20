@@ -232,10 +232,32 @@ namespace Homespool.Data.Migrations
                     b.Property<string>("Digest")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("ExtruderCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FilamentTypes")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MetadataState")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("TEXT")
                         .UseCollation("NOCASE");
+
+                    b.Property<float?>("NozzleDiameter")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("PrinterModel")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool?>("RequiresHardenedNozzle")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool?>("RequiresHighFlowNozzle")
+                        .HasColumnType("INTEGER");
 
                     b.Property<long>("Size")
                         .HasColumnType("INTEGER");
@@ -602,6 +624,31 @@ namespace Homespool.Data.Migrations
                     b.HasKey("PrinterId");
 
                     b.ToTable("PrinterLiveStates");
+                });
+
+            modelBuilder.Entity("Homespool.Model.Entities.PrinterTool", b =>
+                {
+                    b.Property<int>("PrinterId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ToolNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Hardened")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("HighFlow")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Material")
+                        .HasColumnType("TEXT");
+
+                    b.Property<float?>("NozzleDiameter")
+                        .HasColumnType("REAL");
+
+                    b.HasKey("PrinterId", "ToolNumber");
+
+                    b.ToTable("PrinterTools");
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.PrusaConnectAuthenticationData", b =>
@@ -1192,6 +1239,15 @@ namespace Homespool.Data.Migrations
                     b.HasOne("Homespool.Model.Entities.Printer", null)
                         .WithOne()
                         .HasForeignKey("Homespool.Model.Entities.PrinterLiveState", "PrinterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Homespool.Model.Entities.PrinterTool", b =>
+                {
+                    b.HasOne("Homespool.Model.Entities.Printer", null)
+                        .WithMany()
+                        .HasForeignKey("PrinterId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

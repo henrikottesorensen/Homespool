@@ -131,6 +131,17 @@ public class DetailModel : PageModel
     public string? HoldReason { get; private set; }
 
     /// <summary>
+    /// Which hold it is, so the page can offer advice that fits it.
+    /// </summary>
+    /// <remarks>
+    /// <b>The sentence alone is not enough to advise on.</b> "Free some space and it will carry on"
+    /// is right for a full drive and actively misleading for a file whose nozzle does not match -
+    /// deleting things would achieve nothing there. The holds that are not about space carry their
+    /// own advice in their own sentence, so this only has to recognise the one that does not.
+    /// </remarks>
+    public PrintHoldReason? HoldKind { get; private set; }
+
+    /// <summary>
     /// What the queue is waiting on, or null when nothing needs saying.
     /// </summary>
     /// <remarks>
@@ -264,6 +275,8 @@ public class DetailModel : PageModel
 
         QueueSnapshot snapshot = await _snapshots.ReadAsync(statistics.Printer.Id, cancellationToken);
         MessageKey? waiting = QueueWaitDescription.For(QueueRules.Decide(snapshot), snapshot.Head?.FileName);
+
+        HoldKind = snapshot.HoldReason;
 
         WaitingOn = waiting is null ? null : _errors.For(waiting);
 

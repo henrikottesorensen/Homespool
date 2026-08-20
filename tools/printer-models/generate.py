@@ -32,7 +32,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-DEFAULT_FIRMWARE = Path.home() / "Prusa-Firmware-Buddy"
+DEFAULT_FIRMWARE = Path.home() / "Prusa" / "Prusa-Firmware-Buddy"
 SOURCE = Path("include/common/printer_model_data.hpp")
 OUTPUT = Path(__file__).resolve().parents[2] / "Homespool.Model" / "PrinterModelNames.cs"
 
@@ -133,8 +133,10 @@ public static class PrinterModelNames
     /// The model name for a <c>printer_type</c> triple, or <c>null</c> if this table has never
     /// heard of it - a printer newer than the firmware checkout this was generated from.
     /// </summary>
-    public static string? ForPrinterType(string? printerType) =>
-        printerType is not null && Names.TryGetValue(printerType, out string? name) ? name : null;
+    public static string? ForPrinterType(string? printerType)
+    {{
+        return printerType is not null && Names.TryGetValue(printerType, out string? name) ? name : null;
+    }}
 }}
 ''')
 

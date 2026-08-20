@@ -196,7 +196,48 @@ public static class PrusaTelemetryMapping
             string.IsNullOrWhiteSpace(info.PrinterType) ? null : info.PrinterType,
             info.NozzleDiameter is > 0 ? info.NozzleDiameter : null,
             info.Mmu?.Enabled,
-            string.IsNullOrWhiteSpace(info.SerialNumber) ? null : info.SerialNumber);
+            string.IsNullOrWhiteSpace(info.SerialNumber) ? null : info.SerialNumber,
+            ToToolUpdates(info.Tools));
+    }
+
+    /// <summary>
+    /// The per-tool hardware an <c>INFO</c>'s <c>tools</c> block amounts to, or null when it carried
+    /// none - which must leave what is stored alone rather than clearing it.
+    /// </summary>
+    /// <remarks>
+    /// <b>A tool whose key is not a number is skipped rather than failing the report.</b> The rest
+    /// of an <c>INFO</c> is worth having even if one entry is nonsense, and this is a wire nobody
+    /// here controls.
+    /// </remarks>
+    private static List<PrinterToolUpdate>? ToToolUpdates(Dictionary<string, InfoToolDTO>? tools)
+    {
+        if (tools is null)
+        {
+            return null;
+        }
+
+        List<PrinterToolUpdate> updates = [];
+
+        foreach ((string key, InfoToolDTO tool) in tools)
+        {
+            if (!int.TryParse(key, CultureInfo.InvariantCulture, out int toolNumber))
+            {
+                continue;
+            }
+
+            // "---" is firmware's sentinel for no filament set, not a material name - see InfoToolDTO.
+            string? material = string.IsNullOrWhiteSpace(tool.Material) || tool.Material == "---" ?
+                null :
+                tool.Material;
+
+            updates.Add(new PrinterToolUpdate(toolNumber,
+                                              tool.NozzleDiameter > 0 ? tool.NozzleDiameter : null,
+                                              tool.Hardened,
+                                              tool.HighFlow,
+                                              material));
+        }
+
+        return updates;
     }
 
     private static List<SlotUpdate> ToSlotUpdates(SlotsTelemetryDTO slot)

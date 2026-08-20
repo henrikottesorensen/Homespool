@@ -143,11 +143,11 @@ public class PrintQueueController : ControllerBase
 
         try
         {
-            QueuedPrint job = await _queue.EnqueueAsync(printer.Id, caller, body.Name, cancellationToken);
+            EnqueueOutcome outcome = await _queue.EnqueueAsync(printer.Id, caller, body.Name, cancellationToken);
 
             // Re-read so the response carries the file's name and size, which the entity does not hold.
             IReadOnlyList<QueuedPrint> queue = await _queue.ListAsync(printer.Id, caller, cancellationToken);
-            QueuedPrintReadDTO created = QueuedPrintReadDTO.FromQueuedPrint(queue.Single(entry => entry.Id == job.Id));
+            QueuedPrintReadDTO created = QueuedPrintReadDTO.FromQueuedPrint(queue.Single(entry => entry.Id == outcome.Queued.Id));
 
             // Location is the queue the entry now sits in - the same URL CreatedAtAction would have
             // composed, built through the same helper.

@@ -1,9 +1,18 @@
+@using System.Globalization
+
 @using Microsoft.AspNetCore.Hosting
 @using Microsoft.AspNetCore.Mvc.ViewEngines
 @inject IWebHostEnvironment Environment
 @inject ICompositeViewEngine Engine
 <!DOCTYPE html>
-<html>
+@* CurrentUICulture, not CurrentCulture: this attribute describes the language of the text, which is
+   the resource half. The two carry the same value here - Localisation/Registration.cs sets both from
+   one list - so the distinction costs nothing today and is the whole answer the day they diverge.
+
+   Without it a screen reader has no idea which voice to read Danish in, browsers guess the language
+   and offer to translate a page already in the reader's own, and :lang() and hyphenation have
+   nothing to match. *@
+<html lang="@CultureInfo.CurrentUICulture.TwoLetterISOLanguageName">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />

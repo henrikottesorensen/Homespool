@@ -59,4 +59,25 @@ public enum PrintHoldReason
     /// way. Collapsing them would make the page claim a certainty the printer did not give.
     /// </remarks>
     FileExistsUnknownSize,
+
+    /// <summary>
+    /// The print uses abrasive filament and the printer reports no hardened nozzle for it to pass
+    /// through.
+    /// </summary>
+    /// <remarks>
+    /// <b>Clears by itself, like the space hold and unlike the name ones.</b> The comparison is
+    /// recomputed on every pass from what the printer last reported, so fitting a hardened nozzle
+    /// and letting the printer say so lifts this with nobody pressing anything here.
+    /// </remarks>
+    AbrasiveFilamentNeedsHardenedNozzle,
+
+    /// <summary>
+    /// The file was sliced for a printer model this one cannot print for.
+    /// </summary>
+    /// <remarks>
+    /// Wear rather than a wasted print, which is why it holds rather than warning: a file sliced for
+    /// a CoreXY carries accelerations a bed slinger should not be asked to sustain. Directional -
+    /// the older machine's file on the newer one is fine and never reaches here.
+    /// </remarks>
+    IncompatiblePrinterModel,
 }

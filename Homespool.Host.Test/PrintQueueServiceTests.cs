@@ -13,8 +13,11 @@ using Microsoft.Extensions.Options;
 using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Localisation;
 using Homespool.Host.PrintFiles;
+using Homespool.Host.Printing;
 using Homespool.Host.Queue;
+using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -92,8 +95,8 @@ public sealed class PrintQueueServiceTests : IDisposable
 
         await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode", TestContext.Current.CancellationToken);
         await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "two.gcode", TestContext.Current.CancellationToken);
-        QueuedPrint third = await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "three.gcode",
-                                                     TestContext.Current.CancellationToken);
+        QueuedPrint third = (await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "three.gcode",
+                                                     TestContext.Current.CancellationToken)).Queued;
 
         // Act
         bool moved = await queue.MoveAsync(third.TrackingId, Caller.Unscoped(Alice), 0, TestContext.Current.CancellationToken);
@@ -117,8 +120,8 @@ public sealed class PrintQueueServiceTests : IDisposable
         PrintQueueService queue = NewQueue(context);
         await UploadAsync(context, "one.gcode", "two.gcode");
 
-        QueuedPrint first = await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode",
-                                                     TestContext.Current.CancellationToken);
+        QueuedPrint first = (await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode",
+                                                     TestContext.Current.CancellationToken)).Queued;
         await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "two.gcode", TestContext.Current.CancellationToken);
 
         // Act
@@ -144,8 +147,8 @@ public sealed class PrintQueueServiceTests : IDisposable
         await UploadAsync(context, "one.gcode", "two.gcode", "three.gcode");
 
         await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode", TestContext.Current.CancellationToken);
-        QueuedPrint second = await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "two.gcode",
-                                                      TestContext.Current.CancellationToken);
+        QueuedPrint second = (await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "two.gcode",
+                                                      TestContext.Current.CancellationToken)).Queued;
 
         // Act
         await queue.CancelAsync(second.TrackingId, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
@@ -246,8 +249,8 @@ public sealed class PrintQueueServiceTests : IDisposable
         PrintQueueService queue = NewQueue(context);
         await UploadAsync(context, "one.gcode");
 
-        QueuedPrint job = await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode",
-                                                   TestContext.Current.CancellationToken);
+        QueuedPrint job = (await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode",
+                                                   TestContext.Current.CancellationToken)).Queued;
 
         // Act
         bool cancelled = await queue.CancelAsync(job.TrackingId, Caller.Unscoped(Bob), TestContext.Current.CancellationToken);
@@ -272,8 +275,8 @@ public sealed class PrintQueueServiceTests : IDisposable
         PrintQueueService queue = NewQueue(context);
         await UploadForAsync(context, Bob, "one.gcode");
 
-        QueuedPrint job = await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Bob), "one.gcode",
-                                                   TestContext.Current.CancellationToken);
+        QueuedPrint job = (await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Bob), "one.gcode",
+                                                   TestContext.Current.CancellationToken)).Queued;
 
         // Act
         bool cancelled = await queue.CancelAsync(job.TrackingId, Caller.Unscoped(Bob), TestContext.Current.CancellationToken);
@@ -298,8 +301,8 @@ public sealed class PrintQueueServiceTests : IDisposable
         PrintQueueService queue = NewQueue(context);
         await UploadAsync(context, "one.gcode");
 
-        QueuedPrint job = await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode",
-                                                   TestContext.Current.CancellationToken);
+        QueuedPrint job = (await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode",
+                                                   TestContext.Current.CancellationToken)).Queued;
 
         // Act
         Func<Task> act = () => queue.CancelAsync(job.TrackingId, Caller.Unscoped(Bob), TestContext.Current.CancellationToken);
@@ -361,6 +364,171 @@ public sealed class PrintQueueServiceTests : IDisposable
     }
 
     /// <summary>A user, a team they belong to, and a printer that team owns.</summary>
+    /// <summary>
+    /// Queueing a file the printer should not print says so, and still queues it.
+    /// </summary>
+    /// <remarks>
+    /// <b>The whole point of warning here rather than refusing</b> (Henrik, 2026-08-19): the entry
+    /// exists, the person is told at the moment they pressed Queue, and the loop is what declines to
+    /// start the job while the disagreement stands. Refusing would also lose the self-clearing
+    /// property - fit the right nozzle and the held entry simply runs.
+    /// </remarks>
+    [Fact]
+    public async Task QueueingAFileThePrinterShouldNotPrintWarnsAndStillQueuesIt()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, canUse: true);
+        await UploadAsync(context, "abrasive.gcode");
+
+        printer.Model = "MK3.5";
+        context.PrinterTools.Add(new PrinterTool
+        {
+            PrinterId = printer.Id,
+            ToolNumber = 1,
+            NozzleDiameter = 0.4f,
+            Hardened = false,
+            HighFlow = false,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        PrintQueueService queue = NewQueue(context);
+
+        // The file's own account of itself, as the reader would have written it at upload.
+        PrintFile file = await context.PrintFiles.SingleAsync(row => row.Name == "abrasive.gcode",
+                                                              TestContext.Current.CancellationToken);
+        file.MetadataState = PrintFileMetadataState.Read;
+        file.PrinterModel = "COREONE";
+        file.NozzleDiameter = 0.6f;
+        file.RequiresHardenedNozzle = true;
+        file.RequiresHighFlowNozzle = true;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        EnqueueOutcome outcome = await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "abrasive.gcode",
+                                                          TestContext.Current.CancellationToken);
+
+        // Assert
+        outcome.Findings.Should().Contain(PrintCompatibilityFinding.IncompatiblePrinterModel)
+               .And.Contain(PrintCompatibilityFinding.AbrasiveFilamentNeedsHardenedNozzle)
+               .And.Contain(PrintCompatibilityFinding.NozzleDiameterMismatch)
+               .And.Contain(PrintCompatibilityFinding.HighFlowNozzleRequired);
+
+        outcome.Severity.Should().Be(PrintCompatibilitySeverity.Hold);
+        outcome.Warnings.Should().HaveCount(outcome.Findings.Count, "every finding is said out loud");
+
+        (await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken))
+            .Should().ContainSingle("the entry is created regardless - the loop is what declines to start it");
+    }
+
+    /// <summary>A file and a printer that agree produce nothing to say.</summary>
+    [Fact]
+    public async Task QueueingAFileThePrinterCanPrintSaysNothing()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, canUse: true);
+        await UploadAsync(context, "fine.gcode");
+
+        printer.Model = "MK4S";
+        context.PrinterTools.Add(new PrinterTool
+        {
+            PrinterId = printer.Id,
+            ToolNumber = 1,
+            NozzleDiameter = 0.4f,
+            Hardened = true,
+            HighFlow = true,
+        });
+
+        PrintFile file = await context.PrintFiles.SingleAsync(row => row.Name == "fine.gcode",
+                                                              TestContext.Current.CancellationToken);
+        file.MetadataState = PrintFileMetadataState.Read;
+        file.PrinterModel = "MK4S";
+        file.NozzleDiameter = 0.4f;
+        file.RequiresHardenedNozzle = false;
+        file.RequiresHighFlowNozzle = false;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        EnqueueOutcome outcome = await NewQueue(context).EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "fine.gcode",
+                                                                     TestContext.Current.CancellationToken);
+
+        outcome.Findings.Should().BeEmpty();
+        outcome.Warnings.Should().BeEmpty();
+        outcome.Severity.Should().BeNull();
+    }
+
+    /// <summary>
+    /// A queue held by a disagreement says why, in words a person reads.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the half that is easy to leave out.</b> The loop declining to start a job is
+    /// invisible: nobody is watching it, and a held queue with no reason on the page is
+    /// indistinguishable from one that stopped for no reason - the failure the hold vocabulary was
+    /// invented to fix in the first place.
+    /// </para>
+    /// <para>
+    /// It goes through <see cref="PrintHistoryService"/> rather than asserting the finding, because
+    /// the finding was never the risk: the wiring between a computed hold and the page that reads a
+    /// stored column is.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AQueueHeldByTheWrongNozzleSaysSoOnThePage()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, canUse: true);
+        await UploadAsync(context, "abrasive.gcode");
+
+        printer.Model = "MK4S";
+        context.PrinterTools.Add(new PrinterTool
+        {
+            PrinterId = printer.Id, ToolNumber = 1, NozzleDiameter = 0.4f, Hardened = false, HighFlow = true,
+        });
+
+        PrintFile file = await context.PrintFiles.SingleAsync(row => row.Name == "abrasive.gcode",
+                                                              TestContext.Current.CancellationToken);
+        file.MetadataState = PrintFileMetadataState.Read;
+        file.PrinterModel = "MK4S";
+        file.NozzleDiameter = 0.4f;
+        file.RequiresHardenedNozzle = true;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await NewQueue(context).EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "abrasive.gcode",
+                                             TestContext.Current.CancellationToken);
+
+        MessageKey? hold = await NewHistory(context).GetHoldReasonAsync(printer.Id, Caller.Unscoped(Alice),
+                                                                        TestContext.Current.CancellationToken);
+
+        hold.Should().NotBeNull("a held queue that explains nothing is the failure this exists to prevent");
+        hold!.Key.Should().Be("Queue_HoldAbrasiveFilament");
+        hold.Arguments.Should().Equal("abrasive.gcode");
+    }
+
+    /// <summary>Nothing wrong, nothing said - the banner stays off.</summary>
+    [Fact]
+    public async Task AQueueNothingIsWrongWithSaysNothing()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, canUse: true);
+        await UploadAsync(context, "fine.gcode");
+
+        printer.Model = "MK4S";
+        context.PrinterTools.Add(new PrinterTool
+        {
+            PrinterId = printer.Id, ToolNumber = 1, NozzleDiameter = 0.4f, Hardened = true, HighFlow = true,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await NewQueue(context).EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "fine.gcode",
+                                             TestContext.Current.CancellationToken);
+
+        (await NewHistory(context).GetHoldReasonAsync(printer.Id, Caller.Unscoped(Alice),
+                                                      TestContext.Current.CancellationToken))
+            .Should().BeNull();
+    }
+
     private async Task<Printer> SeedAsync(HomespoolDbContext context, bool canUse)
     {
         HSUser user = new("alice@example.com")
@@ -412,6 +580,15 @@ public sealed class PrintQueueServiceTests : IDisposable
                                   NullLogger<UserFileStore>.Instance);
 
         return new PrintFileCatalog(store, context, NullLogger<PrintFileCatalog>.Instance);
+    }
+
+    private PrintHistoryService NewHistory(HomespoolDbContext context)
+    {
+        return new PrintHistoryService(context,
+                                       new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
+                                       new QueueSnapshotReader(context,
+                                                               new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance),
+                                                               TimeProvider.System));
     }
 
     private PrintQueueService NewQueue(HomespoolDbContext context)

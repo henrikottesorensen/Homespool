@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -6,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
+using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -96,6 +98,15 @@ public class QueueSnapshotReader
                                                                    row.PrintFileId == head.PrintFileId,
                                                             cancellationToken);
 
+        Printer? printer = await _dbContext.Printers
+                                           .AsNoTracking()
+                                           .SingleOrDefaultAsync(row => row.Id == printerId, cancellationToken);
+
+        List<PrinterTool> tools = await _dbContext.PrinterTools
+                                                  .AsNoTracking()
+                                                  .Where(tool => tool.PrinterId == printerId)
+                                                  .ToListAsync(cancellationToken);
+
         return new QueueSnapshot(
             _registry.IsConnected(printerId),
             live?.Status ?? PrinterStatus.Unknown,
@@ -103,6 +114,57 @@ public class QueueSnapshotReader
                           onPrinter?.PrinterPath),
             IsTransferInFlight(onPrinter),
             printInFlight,
-            onPrinter?.HoldReason);
+            CompatibilityHold(head.PrintFile, printer, tools) ?? onPrinter?.HoldReason);
+    }
+
+    /// <summary>
+    /// The hold a file-versus-printer disagreement amounts to, or null when there is none serious
+    /// enough to stop a print.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Computed here rather than stored, which is what makes it clear itself.</b> Every other hold
+    /// is a fact somebody had to go and discover - how much room the drive has, what is already on it
+    /// - so it is written down and cleared by whoever re-discovers it. This one is a comparison of
+    /// two rows already in hand, so remembering it would only create something to forget: fit a
+    /// hardened nozzle, let the printer say so, and the next read simply finds nothing wrong.
+    /// </para>
+    /// <para>
+    /// <b>It outranks a stored hold when both apply</b>, and not merely because it is more serious.
+    /// A stored space hold routes the advancer back into the transfer path so the drive can be
+    /// re-asked; sending a file that must not be printed is harmless but pointless, and reporting
+    /// "not enough room" about a print that would damage a nozzle is the wrong sentence entirely.
+    /// </para>
+    /// <para>
+    /// <b>Only the <see cref="PrintCompatibilitySeverity.Hold"/> findings reach here.</b> A warning
+    /// belongs where a person is standing - at the queue attempt and on the page - not in a loop that
+    /// nobody is watching.
+    /// </para>
+    /// </remarks>
+    private static PrintHoldReason? CompatibilityHold(PrintFile file,
+                                                      Printer? printer,
+                                                      IReadOnlyList<PrinterTool> tools)
+    {
+        if (printer is null)
+        {
+            return null;
+        }
+
+        foreach (PrintCompatibilityFinding finding in PrintFileCompatibility.Evaluate(file, printer, tools))
+        {
+            switch (finding)
+            {
+                case PrintCompatibilityFinding.AbrasiveFilamentNeedsHardenedNozzle:
+                    return PrintHoldReason.AbrasiveFilamentNeedsHardenedNozzle;
+
+                case PrintCompatibilityFinding.IncompatiblePrinterModel:
+                    return PrintHoldReason.IncompatiblePrinterModel;
+
+                default:
+                    break;
+            }
+        }
+
+        return null;
     }
 }

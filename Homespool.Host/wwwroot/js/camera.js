@@ -71,9 +71,18 @@
             poll();
         }
 
+        // d-none rather than the hidden attribute, and this is not a style preference: the element
+        // carries d-flex, Bootstrap's display utilities are !important, and they beat hidden - so
+        // `status.hidden = true` left every message that had ever been shown painted over the
+        // picture for the life of the page. camera-live.js learned this once already; this is the
+        // same lesson in the other file.
         function show(text) {
             status.textContent = text;
-            status.hidden = false;
+            status.classList.remove('d-none');
+        }
+
+        function hideStatus() {
+            status.classList.add('d-none');
         }
 
         function poll() {
@@ -119,14 +128,18 @@
                     }
 
                     lastFrameAt = Date.now();
-                    status.hidden = true;
+                    hideStatus();
                 })
                 .catch(function () {
                     // Network or server failure. Left to the staleness check below rather than
                     // blanking immediately - one failed poll is not an unavailable camera.
                 })
                 .then(function () {
-                    if (stopped) {
+                    // yielded as well as stopped: a poll already in flight when the live view took
+                    // over would otherwise finish here and write its own caption over the live one -
+                    // and its stale branch removes the img's src, which is the live stream's source.
+                    // That is how a picture came to sit under "Camera not answering" beside "live".
+                    if (stopped || yielded) {
                         return;
                     }
 

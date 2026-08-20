@@ -788,12 +788,71 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             }
         }
 
+        await ApplyPrinterToolsAsync(context, pendingPrinterInfo, cancellationToken);
+
         static Printer Attach(HomespoolDbContext context, int printerId)
         {
             Printer stub = new() { Id = printerId };
             context.Attach(stub);
 
             return stub;
+        }
+    }
+
+    /// <summary>
+    /// Upserts the per-tool hardware rows for whichever printers reported a <c>tools</c> block.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Loaded tracked, unlike the <c>Printer</c> writeback above</b>, and the difference is
+    /// deliberate rather than an inconsistency. That one attaches stubs because it must not collide
+    /// with the live-state attach on the same key; nothing else in this class touches
+    /// <c>PrinterTool</c>, so there is no second instance to collide with - and a stub cannot work
+    /// here anyway, since an upsert has to know whether the row exists.
+    /// </para>
+    /// <para>
+    /// <b>Nothing is deleted.</b> A block naming fewer tools than are stored is "not said", not
+    /// "gone" - see <c>PrinterTool</c>. The volume makes this cheap regardless: one to five rows per
+    /// printer, written on connection rather than per telemetry message.
+    /// </para>
+    /// </remarks>
+    private static async Task ApplyPrinterToolsAsync(HomespoolDbContext context,
+                                                     Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo,
+                                                     CancellationToken cancellationToken)
+    {
+        List<int> printerIds = [.. pendingPrinterInfo.Where(p => p.Value.Tools is { Count: > 0 }).Select(p => p.Key)];
+
+        if (printerIds.Count == 0)
+        {
+            return;
+        }
+
+        List<PrinterTool> stored = await context.PrinterTools
+                                                .Where(tool => printerIds.Contains(tool.PrinterId))
+                                                .ToListAsync(cancellationToken);
+
+        foreach (int printerId in printerIds)
+        {
+            foreach (PrinterToolUpdate reported in pendingPrinterInfo[printerId].Tools!)
+            {
+                PrinterTool? row = stored.FirstOrDefault(tool => tool.PrinterId == printerId
+                                                                 && tool.ToolNumber == reported.ToolNumber);
+
+                if (row is null)
+                {
+                    row = new PrinterTool { PrinterId = printerId, ToolNumber = reported.ToolNumber };
+                    context.PrinterTools.Add(row);
+                    stored.Add(row);
+                }
+
+                // Refreshed wholesale, because every field here describes the hardware as it stands
+                // today and the printer has just told us what that is. A nozzle swap is exactly the
+                // event this table exists to hear about.
+                row.NozzleDiameter = reported.NozzleDiameter;
+                row.Hardened = reported.Hardened;
+                row.HighFlow = reported.HighFlow;
+                row.Material = reported.Material;
+            }
         }
     }
 

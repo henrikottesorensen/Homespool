@@ -1683,8 +1683,29 @@
   <data name="Queue_HoldFileExists" xml:space="preserve">
     <value>Der eksisterer allerede en fil, der hedder {0} ({1} bytes), på printeren. Vores er {2} bytes. Slet den på printeren, eller omdøb filen.</value>
   </data>
+  <data name="Queue_HoldAbrasiveFilament" xml:space="preserve">
+    <value>{0} er slicet til abrasivt filament, og printeren melder ingen hærdet dyse, som filamentet ville slide op. Monter en hærdet dyse og fortæl printeren det, eller sæt filen i kø på en printer, der har en.</value>
+  </data>
+  <data name="Queue_HoldIncompatibleModel" xml:space="preserve">
+    <value>{0} er slicet til en anden printermodel, og de hastigheder og accelerationer, den beder om, er ikke nogen, denne maskine bør køre med. Slice den til denne printer i stedet.</value>
+  </data>
   <data name="Queue_HoldFileExistsUnknownSize" xml:space="preserve">
     <value>Printeren har allerede en fil, der hedder {0}, og ville ikke oplyse dens størrelse, så det kan ikke bekræftes, at det er den samme. Slet den på printeren, eller omdøb denne.</value>
+  </data>
+  <data name="Queue_WarnAbrasiveNeedsHardened" xml:space="preserve">
+    <value>{0} er slicet til abrasivt filament, og printeren melder ingen hærdet dyse. Den er sat i kø, men den vil ikke starte, før printeren melder, at en hærdet dyse er monteret.</value>
+  </data>
+  <data name="Queue_WarnAbrasiveMayUseSoft" xml:space="preserve">
+    <value>{0} er slicet til abrasivt filament, og kun nogle af printerens dyser er hærdede. Den starter, så tjek, hvilken dyse den bruger.</value>
+  </data>
+  <data name="Queue_WarnIncompatibleModel" xml:space="preserve">
+    <value>{0} er slicet til {1}, og denne printer er en {2}. Den er sat i kø, men den vil ikke starte: de hastigheder og accelerationer, den beder om, er ikke nogen, denne maskine bør køre med.</value>
+  </data>
+  <data name="Queue_WarnNozzleDiameter" xml:space="preserve">
+    <value>{0} er slicet til en {1} mm dyse, og denne printer har {2} mm dyse monteret. Printeren vil også spørge, før den begynder, så køen vil gå i stå, når opgaven sættes i gang, indtil nogen fysisk svarer ved maskinen.</value>
+  </data>
+  <data name="Queue_WarnHighFlow" xml:space="preserve">
+    <value>{0} er slicet til et high-flow hotend, og denne printer melder en standard dyse, så den kan risikere at underekstrudere.</value>
   </data>
   <data name="Queue_WaitTransferring" xml:space="preserve">
     <value>Sender {0} til printeren.</value>

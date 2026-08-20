@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -10,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
 using Homespool.Host.Localisation;
+using Homespool.Host.PrintFiles;
 using Homespool.Host.Queue;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -83,6 +85,8 @@ public sealed class QueueHoldLanguageTests : IDisposable
                 PrintHoldReason.InsufficientSpace => "Queue_HoldInsufficientSpace",
                 PrintHoldReason.FileExistsDifferentSize => "Queue_HoldFileExists",
                 PrintHoldReason.FileExistsUnknownSize => "Queue_HoldFileExistsUnknownSize",
+                PrintHoldReason.AbrasiveFilamentNeedsHardenedNozzle => "Queue_HoldAbrasiveFilament",
+                PrintHoldReason.IncompatiblePrinterModel => "Queue_HoldIncompatibleModel",
                 _ => throw new InvalidOperationException($"{reason} has no key; add one to PrintHistoryService too."),
             };
 
@@ -90,6 +94,43 @@ public sealed class QueueHoldLanguageTests : IDisposable
             {
                 InCulture(culture, () => TestLocaliser.Shared()[key])
                     .ResourceNotFound.Should().BeFalse($"{reason} is a hold somebody will read in {culture}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Every way a file and a printer can disagree has words, in both languages.
+    /// </summary>
+    /// <remarks>
+    /// <b>Driven from the enum, like the holds above</b>, and for the same reason: these are said to
+    /// somebody at the moment they queue a file, so a finding without words would be a silent
+    /// warning - the exact failure the check exists to prevent. <c>Undefined</c> is excluded because
+    /// nothing produces it and the description throws for it deliberately.
+    /// </remarks>
+    [Fact]
+    public void EveryCompatibilityFindingHasWords()
+    {
+        PrintFile file = new()
+        {
+            Name = "bracket.bgcode",
+            PrinterModel = "COREONE",
+            NozzleDiameter = 0.6f,
+            RequiresHardenedNozzle = true,
+            RequiresHighFlowNozzle = true,
+        };
+
+        Printer printer = new() { Id = 1, Model = "MK3.5" };
+        List<PrinterTool> tools = [new() { PrinterId = 1, ToolNumber = 1, NozzleDiameter = 0.4f }];
+
+        foreach (PrintCompatibilityFinding finding in Enum.GetValues<PrintCompatibilityFinding>()
+                                                          .Where(f => f != PrintCompatibilityFinding.Undefined))
+        {
+            MessageKey key = PrintCompatibilityDescription.For(finding, file, printer, tools);
+
+            foreach (string culture in new[] { "en-GB", "da" })
+            {
+                InCulture(culture, () => TestLocaliser.Shared()[key.Key])
+                    .ResourceNotFound.Should().BeFalse($"{finding} is said to somebody queueing a file in {culture}");
             }
         }
     }

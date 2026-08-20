@@ -1733,9 +1733,37 @@
     <value>The printer already has a different file called {0}: {1} bytes there, {2} here. Delete it at the printer, or rename this one.</value>
     <comment>{0} is the file name, {1} the size on the printer, {2} the size here.</comment>
   </data>
+  <data name="Queue_HoldAbrasiveFilament" xml:space="preserve">
+    <value>{0} is sliced for abrasive filament and this printer reports no hardened nozzle, which such filament would wear open. Fit a hardened nozzle and tell the printer, or queue this on a printer that has one.</value>
+    <comment>Held rather than warned about, unlike the nozzle-size check: this one costs hardware, and a worn nozzle goes on reporting its original diameter afterwards. Lifts by itself once the printer reports a hardened nozzle.</comment>
+  </data>
+  <data name="Queue_HoldIncompatibleModel" xml:space="preserve">
+    <value>{0} is sliced for a different printer model, and the speeds and accelerations it asks for are not ones this machine should be run at. Slice it for this printer instead.</value>
+    <comment>Directional: a file sliced for an older model prints here without comment. Only a file meant for a faster machine is held.</comment>
+  </data>
   <data name="Queue_HoldFileExistsUnknownSize" xml:space="preserve">
     <value>The printer already has a file called {0} and would not say how big it is, so it cannot be confirmed as this one. Delete it at the printer, or rename this one.</value>
     <comment>Deliberately not merged with Queue_HoldFileExists: one says the file is demonstrably not ours, this one says it cannot be confirmed either way, and a reader acts differently on each.</comment>
+  </data>
+  <data name="Queue_WarnAbrasiveNeedsHardened" xml:space="preserve">
+    <value>{0} is sliced for abrasive filament and this printer reports no hardened nozzle. It has been queued, but it will not start until the printer reports that a hardened nozzle is fitted.</value>
+    <comment>Queued rather than refused: fitting a hardened nozzle and letting the printer say so releases it with nothing pressed here.</comment>
+  </data>
+  <data name="Queue_WarnAbrasiveMayUseSoft" xml:space="preserve">
+    <value>{0} is sliced for abrasive filament and only some of this printer's nozzles are hardened. It will start, so check which nozzle it uses.</value>
+    <comment>A warning rather than a hold, because which tool the print uses is settled by its tool mapping, which only the printer resolves.</comment>
+  </data>
+  <data name="Queue_WarnIncompatibleModel" xml:space="preserve">
+    <value>{0} is sliced for {1} and this printer is a {2}. It has been queued, but it will not start: the speeds and accelerations it asks for are not ones this machine should be run at.</value>
+    <comment>Directional. A file sliced for an older model is queued without comment.</comment>
+  </data>
+  <data name="Queue_WarnNozzleDiameter" xml:space="preserve">
+    <value>{0} is sliced for a {1} mm nozzle and this printer has a {2} mm nozzle fitted. The printer will ask as well before it begins, so the queue will stall when the job starts, until somebody answers in person at the machine.</value>
+    <comment>Said here because the printer's own prompt appears at the machine: for a queue nobody is standing at, being told now is the difference between fixing it and finding the queue stalled. The printer's diameter is a setting somebody maintains rather than a measurement, so this catches a forgotten nozzle change at least as often as a wrongly chosen file.</comment>
+  </data>
+  <data name="Queue_WarnHighFlow" xml:space="preserve">
+    <value>{0} is sliced for a high-flow hotend and this printer reports a standard one, so it may under-extrude.</value>
+    <comment>One direction only: a standard file on a high-flow hotend leaves capacity unused and is not worth mentioning.</comment>
   </data>
   <data name="Queue_WaitTransferring" xml:space="preserve">
     <value>Sending {0} to the printer.</value>

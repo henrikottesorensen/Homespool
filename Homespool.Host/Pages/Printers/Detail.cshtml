@@ -1,5 +1,6 @@
 @page "{uuid:guid}"
 @using Homespool.Host.PrusaConnect
+@using Homespool.Model
 @model DetailModel
 @{
     ViewData["Title"] = Model.Statistics.Printer.Name ?? Model.Statistics.Printer.Model ?? Model.Statistics.Printer.Uuid.ToString();
@@ -148,8 +149,13 @@ else
 {
     <div class="alert alert-warning" role="alert">
         <strong>@Localiser["Printers_QueueHeld"]</strong> @hold
-        <br />
-        @Localiser["Printers_FreeSomeSpace"]
+        @* Only the space hold needs advice added: deleting files does nothing for a nozzle that does
+           not match, and every other hold's own sentence already says what would clear it. *@
+        @if (Model.HoldKind == PrintHoldReason.InsufficientSpace)
+        {
+            <br />
+            @Localiser["Printers_FreeSomeSpace"]
+        }
     </div>
 }
 

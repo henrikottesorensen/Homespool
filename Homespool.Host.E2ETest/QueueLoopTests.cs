@@ -515,10 +515,11 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
     {
         using IServiceScope scope = _factory.Services.CreateScope();
 
-        QueuedPrint queued = await scope.ServiceProvider.GetRequiredService<PrintQueueService>()
-                                        .EnqueueAsync(printerId, Caller.Unscoped(userId), name, TestContext.Current.CancellationToken);
+        EnqueueOutcome outcome = await scope.ServiceProvider.GetRequiredService<PrintQueueService>()
+                                             .EnqueueAsync(printerId, Caller.Unscoped(userId), name,
+                                                           TestContext.Current.CancellationToken);
 
-        return queued.TrackingId;
+        return outcome.Queued.TrackingId;
     }
 
     private async Task<bool> OutcomeIsAsync(int printerId, PrintState outcome)

@@ -369,9 +369,15 @@ public class IndexModel : PageModel
 
         try
         {
-            await _queue.EnqueueAsync(printerId, CallerResolver.For(userId.Value, User), name, cancellationToken);
+            EnqueueOutcome outcome =
+                await _queue.EnqueueAsync(printerId, CallerResolver.For(userId.Value, User), name, cancellationToken);
 
-            (StatusMessage, StatusSuccess) = (_localiser["Files_Queued", name], true);
+            // Queued either way - the loop is what stops a print that must not happen, and this is
+            // the moment to say so while somebody is still looking at the screen.
+            (StatusMessage, StatusSuccess) = outcome.Warnings.Count == 0 ?
+                (_localiser["Files_Queued", name], true) :
+                (string.Join(' ', outcome.Warnings.Select(_errors.For)),
+                 outcome.Severity != PrintCompatibilitySeverity.Hold);
         }
         catch (PrintFileNotFoundException e)
         {

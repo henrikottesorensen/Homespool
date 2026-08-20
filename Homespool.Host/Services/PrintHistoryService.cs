@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Localisation;
+using Homespool.Host.Queue;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -49,10 +50,25 @@ public class PrintHistoryService
     private readonly HomespoolDbContext _dbContext;
     private readonly PrinterAccessService _access;
 
-    public PrintHistoryService(HomespoolDbContext dbContext, PrinterAccessService access)
+    /// <summary>
+    /// Asked what the queue is held by, rather than reading the column directly.
+    /// </summary>
+    /// <remarks>
+    /// <b>Because not every hold is a stored one.</b> The space and name holds are facts somebody
+    /// discovered and wrote down; a file-versus-printer disagreement is recomputed on every read, so
+    /// the column is empty for it and a banner reading the column alone would stay silent while the
+    /// queue visibly refused to move. One builder answers "what is in the way", exactly as it does
+    /// for the loop.
+    /// </remarks>
+    private readonly QueueSnapshotReader _snapshots;
+
+    public PrintHistoryService(HomespoolDbContext dbContext,
+                               PrinterAccessService access,
+                               QueueSnapshotReader snapshots)
     {
         _dbContext = dbContext;
         _access = access;
+        _snapshots = snapshots;
     }
 
     /// <summary>
@@ -150,8 +166,11 @@ public class PrintHistoryService
     {
         await _access.RequireAsync(printerId, caller, Capability.ViewQueue, cancellationToken);
 
+        // The file comes with it because a compatibility hold has no (file, printer) row to read a
+        // name from: it can stop a queue before anything has ever been sent to the printer.
         QueuedPrint? head = await _dbContext.QueuedPrints
                                             .AsNoTracking()
+                                            .Include(queued => queued.PrintFile)
                                             .Where(queued => queued.PrinterId == printerId)
                                             .OrderBy(queued => queued.Position)
                                             .ThenBy(queued => queued.Id)
@@ -174,6 +193,20 @@ public class PrintHistoryService
                                        OurBytes = row.PrintFile!.Size,
                                    })
                                    .SingleOrDefaultAsync(cancellationToken);
+
+        // The loop's own answer, so the banner cannot say "nothing is in the way" while the queue
+        // refuses to move. The stored columns above still supply the numbers the space and name
+        // sentences carry; the compatibility ones need only the file's name.
+        PrintHoldReason? reason = (await _snapshots.ReadAsync(printerId, cancellationToken)).HoldReason;
+
+        if (reason is PrintHoldReason.AbrasiveFilamentNeedsHardenedNozzle
+            or PrintHoldReason.IncompatiblePrinterModel)
+        {
+            return MessageKey.For(reason == PrintHoldReason.AbrasiveFilamentNeedsHardenedNozzle ?
+                                      "Queue_HoldAbrasiveFilament" :
+                                      "Queue_HoldIncompatibleModel",
+                                  hold?.FileName ?? head.PrintFile?.Name ?? string.Empty);
+        }
 
         return hold?.HoldReason switch
         {

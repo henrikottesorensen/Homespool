@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -9,6 +10,7 @@ using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
 using Homespool.Host.Exceptions;
+using Homespool.Host.PrintFiles.GCode;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -327,25 +329,84 @@ public sealed class PrintFileCatalog
     }
 
     /// <summary>Writes or refreshes the row for a file that has just been published.</summary>
+    /// <remarks>
+    /// <b>Where the file's own account of itself is read</b>, because it is the one place both
+    /// upload paths meet and the bytes have just landed on local disk. It reads a header and a tail
+    /// rather than the whole file, so the cost does not scale with the upload.
+    /// </remarks>
     private async Task IndexAsync(long userId, PublishedFile published, CancellationToken cancellationToken)
     {
         PrintFile? row = await FindRowAsync(userId, published.File.FileName, cancellationToken);
 
-        if (row is null)
-        {
-            Insert(userId, published.File, published.Digest);
-        }
-        else
-        {
-            // An overwrite: same name, same row, different bytes. Keeping the row is what lets a
-            // queued print print the replacement, which is the behaviour "overwrite" promises.
-            row.Name = published.File.FileName;
-            row.Size = published.File.Length;
-            row.Digest = published.Digest;
-            row.UploadedAt = published.File.UploadedAt;
-        }
+        row ??= Insert(userId, published.File, published.Digest);
+
+        // An overwrite reaches here with the existing row: same name, same row, different bytes.
+        // Keeping the row is what lets a queued print print the replacement, which is the behaviour
+        // "overwrite" promises - and it is also why the metadata below must be rewritten rather than
+        // filled only when absent, since the new bytes may have been sliced for something else.
+        row.Name = published.File.FileName;
+        row.Size = published.File.Length;
+        row.Digest = published.Digest;
+        row.UploadedAt = published.File.UploadedAt;
+
+        Describe(row, published.File.Path);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads what the file says it was sliced for onto <paramref name="row"/>.
+    /// </summary>
+    /// <remarks>
+    /// <b>An unreadable file is recorded, never thrown.</b> Somebody uploading something corrupt has
+    /// still uploaded a file - they own the bytes, the store holds them, and refusing the upload
+    /// over a parse would be this check deciding what may exist rather than what may be printed.
+    /// </remarks>
+    private void Describe(PrintFile row, string path)
+    {
+        GCodeMetadata? metadata = GCodeMetadataReader.ReadFile(path);
+
+        if (metadata is null)
+        {
+            _logger.LogInformation("Could not read print metadata from {FileName}", row.Name);
+        }
+
+        row.MetadataState = metadata switch
+        {
+            null => PrintFileMetadataState.Unreadable,
+            { SaysNothing: true } => PrintFileMetadataState.Silent,
+            _ => PrintFileMetadataState.Read,
+        };
+
+        row.PrinterModel = metadata?.PrinterModel;
+        row.ExtruderCount = metadata?.NozzleDiameters.Count is > 0 ? metadata.NozzleDiameters.Count : null;
+        row.NozzleDiameter = SharedNozzleDiameter(metadata);
+        row.FilamentTypes = metadata?.FilamentTypes.Count is > 0 ? string.Join(';', metadata.FilamentTypes) : null;
+        row.RequiresHardenedNozzle = metadata?.AnyFilamentAbrasive;
+        row.RequiresHighFlowNozzle = metadata?.AnyNozzleHighFlow;
+    }
+
+    /// <summary>
+    /// The one diameter every extruder in the file expects, or null if they disagree.
+    /// </summary>
+    /// <remarks>
+    /// <b>Disagreement is not a failure to parse; it is a toolchanger.</b> Collapsing it to the
+    /// first value would compare a printer's single nozzle against whichever extruder the slicer
+    /// happened to write first, which is a claim nobody can act on - so the file records no
+    /// diameter, and the comparison stays quiet rather than guessing.
+    /// </remarks>
+    private static float? SharedNozzleDiameter(GCodeMetadata? metadata)
+    {
+        if (metadata is null || metadata.NozzleDiameters.Count == 0)
+        {
+            return null;
+        }
+
+        float first = metadata.NozzleDiameters[0];
+
+        return metadata.NozzleDiameters.All(diameter => Math.Abs(diameter - first) < GCodeMetadata.NozzleDiameterTolerance) ?
+            first :
+            null;
     }
 
     private PrintFile Insert(long userId, StoredFile file, string? digest)

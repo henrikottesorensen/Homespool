@@ -71,12 +71,24 @@ public static class QueueRules
             return QueueAction.Wait(QueueWaitReason.Transferring);
         }
 
-        if (situation.HoldReason is not null)
+        if (situation.HoldReason is { } hold)
         {
             // Ahead of the transfer branch, because a blocked file is precisely one that would
             // otherwise be reported as about to be sent. The advancer discovers the block and records
             // it; this is what makes everybody reading a decision agree with the banner.
-            return QueueAction.Wait(QueueWaitReason.InsufficientSpace);
+            //
+            // The mapping is deliberately not one-to-one, and the default is the pre-existing
+            // behaviour rather than a claim: a name-collision hold has always reported itself here as
+            // InsufficientSpace, which is harmless only because the page reads the hold reason and
+            // this wait reason has no sentence of its own (QueueWaitDescription). The compatibility
+            // holds are separated out because they must NOT reach the advancer's
+            // route-back-into-transfer branch, which exists to re-ask the drive about space.
+            return QueueAction.Wait(hold switch
+            {
+                PrintHoldReason.AbrasiveFilamentNeedsHardenedNozzle => QueueWaitReason.IncompatibleWithPrinter,
+                PrintHoldReason.IncompatiblePrinterModel => QueueWaitReason.IncompatibleWithPrinter,
+                _ => QueueWaitReason.InsufficientSpace,
+            });
         }
 
         if (!head.FileHasArrived)

@@ -11,7 +11,7 @@ namespace Homespool.Model;
 /// <b>Generated - do not edit.</b> Run <c>tools/printer-models/generate.py</c> against a
 /// Prusa-Firmware-Buddy checkout to refresh it. Source of truth is that repository's
 /// <c>include/common/printer_model_data.hpp</c>; this file was generated from
-/// <c>8d06b7637</c> on 2026-07-28 and holds 17 models.
+/// <c>026c2ee1f</c> on 2026-08-19 and holds 18 models.
 /// </para>
 /// <para>
 /// The firmware checkout is a <b>developer-time</b> dependency, never a build-time one - the
@@ -46,6 +46,7 @@ public static class PrinterModelNames
         ["7.10.0"] = "COREONEINDX",
         ["8.10.0"] = "COREONEL-INDX",
         ["7.2.0"] = "COREONEOAK",
+        ["3.1.1"] = "XLP",
     };
 
     /// <summary>

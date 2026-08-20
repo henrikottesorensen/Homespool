@@ -90,10 +90,10 @@ public class PrintQueueService
     /// ordinary thing to want, and the loop transfers the bytes once regardless because the transfer
     /// belongs to <i>(file, printer)</i> rather than to the entry.
     /// </remarks>
-    public async Task<QueuedPrint> EnqueueAsync(int printerId,
-                                                Caller caller,
-                                                string fileName,
-                                                CancellationToken cancellationToken)
+    public async Task<EnqueueOutcome> EnqueueAsync(int printerId,
+                                                   Caller caller,
+                                                   string fileName,
+                                                   CancellationToken cancellationToken)
     {
         await _access.RequireAsync(printerId, caller, Capability.Print, cancellationToken);
 
@@ -132,7 +132,43 @@ public class PrintQueueService
         // poll interval.
         _signal.Poke();
 
-        return queued;
+        return await OutcomeAsync(printerId, file, queued, cancellationToken);
+    }
+
+    /// <summary>
+    /// How this file and this printer disagree, for telling whoever just queued it.
+    /// </summary>
+    /// <remarks>
+    /// <b>Read after the entry is saved, not before.</b> Nothing here can refuse the enqueue, so
+    /// there is no reason to make somebody wait on two more queries before their entry exists - and
+    /// doing it afterwards means a printer that has never reported its hardware costs one empty
+    /// lookup rather than blocking the common path.
+    /// </remarks>
+    private async Task<EnqueueOutcome> OutcomeAsync(int printerId,
+                                                    PrintFile file,
+                                                    QueuedPrint queued,
+                                                    CancellationToken cancellationToken)
+    {
+        Printer? printer = await _dbContext.Printers
+                                           .AsNoTracking()
+                                           .SingleOrDefaultAsync(row => row.Id == printerId, cancellationToken);
+
+        if (printer is null)
+        {
+            return new EnqueueOutcome(queued, [], []);
+        }
+
+        List<PrinterTool> tools = await _dbContext.PrinterTools
+                                                  .AsNoTracking()
+                                                  .Where(tool => tool.PrinterId == printerId)
+                                                  .ToListAsync(cancellationToken);
+
+        IReadOnlyList<PrintCompatibilityFinding> findings = PrintFileCompatibility.Evaluate(file, printer, tools);
+
+        return new EnqueueOutcome(
+            queued,
+            findings,
+            [.. findings.Select(finding => PrintCompatibilityDescription.For(finding, file, printer, tools))]);
     }
 
     /// <summary>

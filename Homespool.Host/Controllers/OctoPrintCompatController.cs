@@ -234,6 +234,10 @@ public class OctoPrintCompatController : ControllerBase
         {
             try
             {
+                // The findings are dropped here on purpose: this is the endpoint PrusaSlicer posts to,
+                // whose response shape is not ours to extend and whose caller is a slicer rather than a
+                // reader. A holding finding still stops the print at the loop, and the person sees it on
+                // the printer's page - which is where they would look after pressing Send anyway.
                 await _queue.EnqueueAsync(printer.Id, CallerResolver.For(owner, User), stored.FileName, cancellationToken);
             }
             catch (TeamAccessDeniedException)

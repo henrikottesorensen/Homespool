@@ -234,7 +234,14 @@ namespace Homespool.Data.Migrations
                     Name = table.Column<string>(type: "TEXT", nullable: false, collation: "NOCASE"),
                     Size = table.Column<long>(type: "INTEGER", nullable: false),
                     Digest = table.Column<string>(type: "TEXT", nullable: true),
-                    UploadedAt = table.Column<long>(type: "INTEGER", nullable: false)
+                    UploadedAt = table.Column<long>(type: "INTEGER", nullable: false),
+                    MetadataState = table.Column<string>(type: "TEXT", nullable: false),
+                    PrinterModel = table.Column<string>(type: "TEXT", nullable: true),
+                    NozzleDiameter = table.Column<float>(type: "REAL", nullable: true),
+                    ExtruderCount = table.Column<int>(type: "INTEGER", nullable: true),
+                    FilamentTypes = table.Column<string>(type: "TEXT", nullable: true),
+                    RequiresHardenedNozzle = table.Column<bool>(type: "INTEGER", nullable: true),
+                    RequiresHighFlowNozzle = table.Column<bool>(type: "INTEGER", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -431,6 +438,28 @@ namespace Homespool.Data.Migrations
                     table.PrimaryKey("PK_PrinterLiveStates", x => x.PrinterId);
                     table.ForeignKey(
                         name: "FK_PrinterLiveStates_Printers_PrinterId",
+                        column: x => x.PrinterId,
+                        principalTable: "Printers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "PrinterTools",
+                columns: table => new
+                {
+                    PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
+                    ToolNumber = table.Column<int>(type: "INTEGER", nullable: false),
+                    NozzleDiameter = table.Column<float>(type: "REAL", nullable: true),
+                    Hardened = table.Column<bool>(type: "INTEGER", nullable: false),
+                    HighFlow = table.Column<bool>(type: "INTEGER", nullable: false),
+                    Material = table.Column<string>(type: "TEXT", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PrinterTools", x => new { x.PrinterId, x.ToolNumber });
+                    table.ForeignKey(
+                        name: "FK_PrinterTools_Printers_PrinterId",
                         column: x => x.PrinterId,
                         principalTable: "Printers",
                         principalColumn: "Id",
@@ -935,6 +964,9 @@ namespace Homespool.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "PrinterLiveSlotStates");
+
+            migrationBuilder.DropTable(
+                name: "PrinterTools");
 
             migrationBuilder.DropTable(
                 name: "PrintFilesOnPrinters");

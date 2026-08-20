@@ -92,6 +92,72 @@ public class PrintFile
     /// </summary>
     public DateTimeOffset UploadedAt { get; set; }
 
+    /// <summary>
+    /// How much is known about what this file was sliced for - and in particular whether the
+    /// columns below are null because the file said nothing or because nobody could read it.
+    /// </summary>
+    public PrintFileMetadataState MetadataState { get; set; }
+
+    /// <summary>
+    /// The model the slicer sliced for, in <i>the slicer's</i> vocabulary - <c>COREONE</c>,
+    /// <c>MK3.5</c>, <c>MK4IS</c>.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not comparable to <c>Printer.Model</c> as a string.</b> Firmware reports <c>MK4</c> where
+    /// the slicer writes <c>MK4IS</c>, and <c>MINI</c> where it writes <c>MINIIS</c>, so the two
+    /// vocabularies meet through a mapping and never through equality.
+    /// </remarks>
+    public string? PrinterModel { get; set; }
+
+    /// <summary>
+    /// The nozzle diameter in millimetres the file expects, or null when it did not say - or when
+    /// its extruders disagree, which only a toolchanger's can.
+    /// </summary>
+    /// <remarks>
+    /// <b>Compared with a tolerance, never for equality</b>, matching firmware's own check
+    /// (<c>gcode_compatibility.cpp</c> allows 0.001 mm). It is a <c>float</c> for symmetry with
+    /// <c>Printer.NozzleDiameter</c>; nothing filters on it in SQL, which is the thing
+    /// <c>notes/floating-point.md</c> warns about.
+    /// </remarks>
+    public float? NozzleDiameter { get; set; }
+
+    /// <summary>
+    /// How many extruders the file was sliced for, from the count of nozzle diameters it lists.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not the number of filaments.</b> An MMU print carries five filament types and one nozzle,
+    /// because they all pass through it; a toolchanger carries one of each per tool. So this is what
+    /// says whether single-tool reasoning applies to the file at all.
+    /// </remarks>
+    public int? ExtruderCount { get; set; }
+
+    /// <summary>
+    /// Every filament the print uses, semicolon-separated exactly as the slicer wrote them, e.g.
+    /// <c>PLA</c> or <c>PLA;PETG</c>.
+    /// </summary>
+    public string? FilamentTypes { get; set; }
+
+    /// <summary>
+    /// Whether any filament in the print is abrasive, so the nozzle it passes through has to be
+    /// hardened. Null when the file did not say.
+    /// </summary>
+    /// <remarks>
+    /// <b>Any, not each, and this is the one that costs hardware.</b> Fibre-filled filament through
+    /// a soft nozzle wears the bore open, and the worn nozzle goes on reporting its original
+    /// diameter for ever after - so the damage also silently poisons the diameter check beside it.
+    /// </remarks>
+    public bool? RequiresHardenedNozzle { get; set; }
+
+    /// <summary>
+    /// Whether the print was sliced for a high-flow hotend. Null when the file did not say.
+    /// </summary>
+    /// <remarks>
+    /// <b>Directional.</b> A high-flow file asks a standard hotend for more melt than it can
+    /// deliver and under-extrudes; a standard file on a high-flow hotend merely leaves capacity
+    /// unused, and is not worth saying anything about.
+    /// </remarks>
+    public bool? RequiresHighFlowNozzle { get; set; }
+
     /// <summary>Queue entries waiting to print this file.</summary>
     /// <remarks>
     /// The reason deleting a file with entries is refused rather than cascaded - see

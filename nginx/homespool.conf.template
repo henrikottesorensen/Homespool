@@ -150,33 +150,24 @@ server {
         proxy_send_timeout 300s;
     }
 
-    # The live MJPEG stream, unbuffered and allowed to run - and the unbuffering is not a
-    # performance tweak, it is what stops a closed browser tab holding a camera open for ever.
+    # The live MJPEG stream, which exists as its own location for one reason: it is allowed to run
+    # for as long as somebody watches, and nothing else here should be.
     #
-    # `location /` buffers, which for an ordinary response is right. For this stream it is ruinous:
-    # with buffering on, nginx goes on reading an upstream response after the client has gone, to
-    # free the upstream quickly. That is sound for a response that ends, and this one never does -
-    # so the application never learns the viewer left, goes on relaying, and the stream server goes
-    # on running the ffmpeg behind it. Measured 2026-08-19: a USB camera left at 100% of a core with
-    # /dev/video0 held open, which is exclusive, so every still afterwards answered 204 and the
-    # camera looked dead until the process was killed by hand. Nothing in the logs said so - the
-    # request had not finished, so nginx had not logged it at all.
+    # Unbuffering is what stops a closed browser tab holding a camera open for ever, and it now
+    # comes from homespool-proxy.conf, which turns buffering off for every path - see the reasoning
+    # there, which this stream is the worked example of. The application also sends
+    # X-Accel-Buffering: no on the response, kept as belt and braces for a deployment whose proxy
+    # configuration lags the application's.
     #
-    # The application also sends X-Accel-Buffering: no on that response, which should do the same
-    # thing on its own. It is kept as well rather than instead: this is the layer that can be
-    # reasoned about from the proxy alone, and the leak it prevents is silent.
-    #
-    # Scoped to the stream alone, not /api/v1/cameras/: the 1h timeout is right for a view somebody
-    # is watching and wrong for everything else - a hung frame request should die at the ordinary
-    # timeout, not dangle for an hour.
+    # Scoped to the stream alone, not to /api/v1/cameras/: the 1h timeout is right for a view
+    # somebody is watching and wrong for everything else - a hung frame request should die at the
+    # ordinary timeout, not dangle for an hour.
     location ~ ^/api/v1/cameras/[0-9a-fA-F-]+/stream\.mjpeg$ {
         set $homespool_upstream http://homespool:8080;
         include /etc/nginx/homespool-proxy.conf;
 
-        proxy_buffering off;
-
         # A live view is watched for as long as somebody is interested, so there is no meaningful
-        # ceiling here - only the disconnect above, which the unbuffering lets arrive.
+        # ceiling here - only the viewer's disconnect, which the unbuffering lets arrive.
         proxy_read_timeout 1h;
         proxy_send_timeout 1h;
     }

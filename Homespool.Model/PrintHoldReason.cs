@@ -39,7 +39,7 @@ public enum PrintHoldReason
     /// Clears by itself: the loop re-checks, so somebody who deletes something at the panel sees the
     /// queue resume without pressing anything here.
     /// </remarks>
-    InsufficientSpace,
+    InsufficientSpace = 1,
 
     /// <summary>
     /// The printer already holds a different file under this name, and said how big it is.
@@ -48,7 +48,7 @@ public enum PrintHoldReason
     /// Held rather than failed, because the queue entry is still wanted - see
     /// <c>PrintFileOnPrinter</c>'s remarks on holding like a spooler.
     /// </remarks>
-    FileExistsDifferentSize,
+    FileExistsDifferentSize = 2,
 
     /// <summary>
     /// The printer already holds a file under this name and would not say how big it is.
@@ -58,7 +58,7 @@ public enum PrintHoldReason
     /// things to a reader: one is demonstrably not our file, the other cannot be confirmed either
     /// way. Collapsing them would make the page claim a certainty the printer did not give.
     /// </remarks>
-    FileExistsUnknownSize,
+    FileExistsUnknownSize = 3,
 
     /// <summary>
     /// The print uses abrasive filament and the printer reports no hardened nozzle for it to pass
@@ -69,7 +69,7 @@ public enum PrintHoldReason
     /// recomputed on every pass from what the printer last reported, so fitting a hardened nozzle
     /// and letting the printer say so lifts this with nobody pressing anything here.
     /// </remarks>
-    AbrasiveFilamentNeedsHardenedNozzle,
+    AbrasiveFilamentNeedsHardenedNozzle = 4,
 
     /// <summary>
     /// The file was sliced for a printer model this one cannot print for.
@@ -79,5 +79,5 @@ public enum PrintHoldReason
     /// a CoreXY carries accelerations a bed slinger should not be asked to sustain. Directional -
     /// the older machine's file on the newer one is fine and never reaches here.
     /// </remarks>
-    IncompatiblePrinterModel,
+    IncompatiblePrinterModel = 5,
 }

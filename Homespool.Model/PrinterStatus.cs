@@ -15,42 +15,42 @@ public enum PrinterStatus
     /// Connected, but no state has been heard yet — a real few seconds after a printer connects,
     /// not an error. Server-synthesised; no protocol puts this on the wire.
     /// </summary>
-    Unknown,
+    Unknown = 1,
 
     /// <summary>Powered and doing nothing.</summary>
-    Idle,
+    Idle = 2,
 
     /// <summary>
     /// Occupied outside a print job — heating, homing, running a macro, serving its own UI.
     /// </summary>
-    Busy,
+    Busy = 3,
 
     /// <summary>Running a print job.</summary>
-    Printing,
+    Printing = 4,
 
     /// <summary>A print job is paused and resumable.</summary>
-    Paused,
+    Paused = 5,
 
     /// <summary>A print job ran to completion and its result is still on the bed.</summary>
-    Finished,
+    Finished = 6,
 
     /// <summary>A print job was cancelled before completion.</summary>
-    Stopped,
+    Stopped = 7,
 
     /// <summary>A fault state needing intervention beyond the current job.</summary>
-    Error,
+    Error = 8,
 
     /// <summary>
     /// The printer is asking for a person — a dialog, a filament prompt, a crash recovery.
     /// </summary>
-    Attention,
+    Attention = 9,
 
     /// <summary>
     /// Deliberately marked ready for the next job — a person's assertion that the bed is clear,
     /// never inferred. On Prusa Connect the printer owns this state; a protocol without the
     /// concept has it owned by Homespool instead.
     /// </summary>
-    Ready,
+    Ready = 10,
 
     /// <summary>
     /// Kept for parity with Connect's <c>Printer-read.state</c> app vocabulary and currently
@@ -58,11 +58,11 @@ public enum PrinterStatus
     /// <c>ParseWireState</c> — the only writer of a live status — never produces it. Do not
     /// expect it in data.
     /// </summary>
-    Manipulating,
+    Manipulating = 11,
 
     /// <summary>
     /// Not connected. A server verdict about the connection, not a report from the printer;
     /// no protocol puts this on the wire.
     /// </summary>
-    Offline,
+    Offline = 12,
 }

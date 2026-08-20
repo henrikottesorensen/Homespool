@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20260820115820_InitialCreate")]
+    [Migration("20260820162112_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -415,14 +415,16 @@ namespace Homespool.Data.Migrations
                     b.Property<string>("SerialNumber")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("Status")
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<int>("TeamId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("Type")
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<long>("UpdatedAt")
                         .HasColumnType("INTEGER");
@@ -465,8 +467,9 @@ namespace Homespool.Data.Migrations
                     b.Property<string>("Reason")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("Status")
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<long>("Timestamp")
                         .HasColumnType("INTEGER");
@@ -597,8 +600,9 @@ namespace Homespool.Data.Migrations
                     b.Property<int?>("Speed")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("Status")
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<float?>("TargetBedTemperature")
                         .HasColumnType("REAL");
@@ -922,8 +926,9 @@ namespace Homespool.Data.Migrations
                     b.Property<int?>("Speed")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("Status")
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<float?>("TargetBedTemperature")
                         .HasColumnType("REAL");

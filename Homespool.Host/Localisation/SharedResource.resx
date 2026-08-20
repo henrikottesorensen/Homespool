@@ -73,6 +73,9 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
 
+  <data name="Cameras_Maximise" xml:space="preserve">
+    <value>Fill the window</value>
+  </data>
   <data name="Cameras_Rescan" xml:space="preserve">
     <value>Look for cameras again</value>
   </data>
@@ -90,6 +93,9 @@
   </data>
   <data name="Cameras_ResolutionDefault" xml:space="preserve">
     <value>The camera's default</value>
+  </data>
+  <data name="Cameras_Restore" xml:space="preserve">
+    <value>Back to the page</value>
   </data>
   <data name="PrinterStatus_Connected" xml:space="preserve">
     <value>Connected</value>

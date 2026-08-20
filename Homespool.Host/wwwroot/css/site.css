@@ -207,3 +207,77 @@ body {
   border-color: var(--bs-primary);
   background-color: var(--bs-secondary-bg);
 }
+
+/* Maximising a camera, and the one rule the whole thing turns on: the picture does NOT move.
+   A live MJPEG stream lives in that <img>; reparenting it into an overlay would restart the load,
+   which drops the stream and opens a fresh connection through the relay. So the panel is blown up
+   where it already sits and nothing is appended anywhere.
+
+   Deliberately not the Fullscreen API. iOS Safari grants fullscreen to <video> only, and both the
+   still and the MJPEG live view are an <img> - so requestFullscreen would work on a desktop and do
+   nothing at all on the platform this feature is most wanted on. This behaves the same everywhere,
+   for both transports, in less code. */
+.camera-maximise {
+  position: absolute;
+  top: .4rem;
+  right: .4rem;
+
+  /* Bootstrap's `.ratio > *` stretches every child to 100% x 100% and out-specifies a single class,
+     so without these the "icon" is an invisible slab over the whole picture - which also means a
+     click anywhere on the image maximises it. Measured in a harness, not guessed. */
+  left: auto;
+  bottom: auto;
+  width: auto;
+  height: auto;
+
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  padding: .25rem .35rem;
+  line-height: 1;
+  color: #fff;
+
+  /* Its own translucent ground rather than a themed button: it sits on a photograph, and a
+     picture can be any colour underneath it. */
+  background-color: rgba(0, 0, 0, .45);
+  border: 0;
+  border-radius: var(--bs-border-radius);
+  opacity: .75;
+  transition: opacity .15s ease-in-out, background-color .15s ease-in-out;
+}
+
+.camera-maximise:hover,
+.camera-maximise:focus-visible {
+  opacity: 1;
+  background-color: rgba(0, 0, 0, .7);
+  color: #fff;
+}
+
+/* The maximised panel. Bootstrap's .ratio sets a padding-top aspect box, which has to be undone
+   or the fixed element keeps the 16:9 height of the small one. */
+.camera-view-maximised {
+  position: fixed;
+  inset: 0;
+  z-index: 1080;                    /* above Bootstrap's modal backdrop (1050) and offcanvas */
+  margin: 0;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background-color: rgba(0, 0, 0, .92);
+}
+
+.camera-view-maximised::before {
+  content: none;                    /* the .ratio spacer */
+}
+
+/* object-fit-contain already letterboxes rather than distorts; this only gives it the room. */
+.camera-view-maximised .camera-image,
+.camera-view-maximised .camera-live-video {
+  width: 100%;
+  height: 100%;
+}
+
+/* While one panel is maximised the page behind it must not scroll under the finger, which on iOS
+   is otherwise the first thing that happens to a full-screen overlay. */
+body.camera-maximised-open {
+  overflow: hidden;
+}

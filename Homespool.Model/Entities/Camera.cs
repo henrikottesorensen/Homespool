@@ -45,6 +45,12 @@ public class Camera
     public const int SourceMaxLength = 2048;
 
     /// <summary>
+    /// Maximum length of <see cref="Resolution"/>. Enough for <c>2592x1944</c> and a good deal more;
+    /// the value is validated against what the camera reports rather than by this.
+    /// </summary>
+    public const int ResolutionMaxLength = 16;
+
+    /// <summary>
     /// Surrogate primary key.
     /// </summary>
     /// <remarks>
@@ -91,6 +97,33 @@ public class Camera
     /// </para>
     /// </remarks>
     public string Source { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The capture size asked of a camera attached to this machine, as <c>WIDTHxHEIGHT</c>, or
+    /// <see langword="null"/> to take whatever the camera offers by default.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Stored beside <see cref="Source"/> rather than read out of it</b>, although the source
+    /// string carries the same number in its <c>video_size</c> parameter. The source is composed
+    /// from this, never the other way round: a picker that had to parse its own output back in
+    /// order to show what is selected is one regular expression away from disagreeing with the
+    /// thing it configured.
+    /// </para>
+    /// <para>
+    /// <b>Null is a real answer and the default one.</b> It means no <c>video_size</c> is stated at
+    /// all, so the camera and ffmpeg settle it between them — which is the honest thing to offer
+    /// somebody who has no opinion, and avoids Homespool naming a size no particular camera is
+    /// obliged to support.
+    /// </para>
+    /// <para>
+    /// <b>Only meaningful for an attached camera.</b> A network camera's resolution is configured on
+    /// the camera, by whichever of a dozen mechanisms its firmware provides, and nothing here can
+    /// or should reach it - so this stays null for those and the picker does not offer it.
+    /// </para>
+    /// </remarks>
+    [MaxLength(ResolutionMaxLength)]
+    public string? Resolution { get; set; }
 
     /// <summary>
     /// The printer this camera watches, or null if it is not bound to one.

@@ -93,13 +93,79 @@ public class CameraService
     }
 
     /// <summary>
+    /// The MJPEG capture sizes each of these devices offers, keyed by the by-id name the picker uses.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Two vocabularies meet here.</b> Homespool names devices by their stable by-id entry, and
+    /// the stream server enumerates <c>/dev/videoN</c> nodes; the symlink between them is readable
+    /// without being followable, which is what lets this join the two without the application ever
+    /// holding a capability to open a camera. See <see cref="LocalCameraDevices.NodeFor"/>.
+    /// </para>
+    /// <para>
+    /// <b>A device with no entry is not an error.</b> The stream server enumerates once per process,
+    /// so anything plugged in since it started is simply absent - the picker offers "whatever the
+    /// camera provides" for those, and the rescan button restarts the sidecar for somebody who
+    /// wants the list.
+    /// </para>
+    /// </remarks>
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> DeviceResolutionsAsync(
+        IReadOnlyList<LocalCameraDevice> devices,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(devices);
+
+        Dictionary<string, IReadOnlyList<string>> byDevice = new(StringComparer.Ordinal);
+
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? byNode =
+            await _streamServer.ListDeviceFormatsAsync(cancellationToken).ConfigureAwait(false);
+
+        if (byNode is null)
+        {
+            return byDevice;
+        }
+
+        foreach (LocalCameraDevice device in devices)
+        {
+            if (_devices.NodeFor(device.Name) is { } node && byNode.TryGetValue(node, out IReadOnlyList<string>? sizes))
+            {
+                byDevice[device.Name] = sizes;
+            }
+        }
+
+        return byDevice;
+    }
+
+    /// <summary>
+    /// Restarts the stream server so it enumerates attached cameras again.
+    /// </summary>
+    /// <remarks>
+    /// <b>The only way, and it is not free.</b> The stream server reads the device list once per
+    /// process and caches it for its lifetime, so a camera plugged in afterwards cannot appear
+    /// without a restart - which drops any live view and interrupts stills for a few seconds.
+    /// Registered streams and the WebRTC candidate survive it, being written to the sidecar's own
+    /// configuration. Offered as a button rather than done automatically, because the cost belongs
+    /// to whoever chose to pay it.
+    /// </remarks>
+    public Task<bool> RescanDevicesAsync(CancellationToken cancellationToken)
+    {
+        return _streamServer.RestartAsync(cancellationToken);
+    }
+
+    /// <summary>
     /// Adds a camera, registers it, and finds out whether it actually produces a picture.
     /// </summary>
+    /// <remarks>
+    /// <paramref name="resolution"/> is the capture size asked of an attached camera, or null for
+    /// whatever it offers - stored beside the source it was composed into, and null for every
+    /// network camera. See <see cref="Camera.Resolution"/>.
+    /// </remarks>
     public async Task<CameraSaveOutcome> CreateAsync(Caller caller,
                                                      int teamId,
                                                      string? name,
                                                      string source,
                                                      int? printerId,
+                                                     string? resolution,
                                                      CancellationToken cancellationToken)
     {
         CameraSaveOutcome? refusal = await CheckPermittedAsync(caller, teamId, source, cancellationToken)
@@ -130,6 +196,7 @@ public class CameraService
             Uuid = Guid.NewGuid(),
             Name = string.IsNullOrWhiteSpace(name) ? null : name.Trim(),
             Source = source.Trim(),
+            Resolution = string.IsNullOrWhiteSpace(resolution) ? null : resolution.Trim(),
             TeamId = teamId,
             PrinterId = printerId,
             CreatedAt = now,
@@ -145,13 +212,24 @@ public class CameraService
     /// <summary>
     /// Changes a camera. Re-registers it, and forgets any frame from the old source.
     /// </summary>
+    /// <remarks>
+    /// <paramref name="resolution"/> decides the capture size of an attached camera, and the source
+    /// is recomposed from it - see <see cref="LocalCameraDevices.WithResolution"/> for why the
+    /// resolution wins rather than whatever <c>video_size</c> the submitted source carried.
+    /// </remarks>
     public async Task<CameraSaveOutcome> UpdateAsync(Caller caller,
                                                      Guid uuid,
                                                      string? name,
                                                      string source,
                                                      int? printerId,
+                                                     string? resolution,
                                                      CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(source);
+
+        resolution = string.IsNullOrWhiteSpace(resolution) ? null : resolution.Trim();
+        source = LocalCameraDevices.WithResolution(source.Trim(), resolution);
+
         Camera? camera = await _access
                                .FindAsync(uuid, caller, Capability.ManageCamera, cancellationToken)
                                .ConfigureAwait(false);
@@ -184,6 +262,10 @@ public class CameraService
 
         camera.Name = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
         camera.Source = source.Trim();
+
+        // Null for a network camera whatever was submitted: nothing here reaches its settings, so a
+        // stored size would be a claim this application cannot make good on.
+        camera.Resolution = CameraSourcePolicy.IsLocalDevice(camera.Source) ? resolution : null;
         camera.PrinterId = printerId;
         camera.UpdatedAt = _timeProvider.GetUtcNow();
 

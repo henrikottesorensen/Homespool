@@ -73,6 +73,24 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
 
+  <data name="Cameras_Rescan" xml:space="preserve">
+    <value>Look for cameras again</value>
+  </data>
+  <data name="Cameras_RescanHelp" xml:space="preserve">
+    <value>Restarts the camera stream server so a newly plugged-in camera is found. Live views stop for a few seconds.</value>
+  </data>
+  <data name="Cameras_RescanUnconfirmed" xml:space="preserve">
+    <value>The camera stream server was asked to restart but did not confirm it. Reload in a moment to see the attached cameras.</value>
+  </data>
+  <data name="Cameras_Rescanned" xml:space="preserve">
+    <value>The camera stream server restarted and read the attached cameras again.</value>
+  </data>
+  <data name="Cameras_Resolution" xml:space="preserve">
+    <value>Resolution</value>
+  </data>
+  <data name="Cameras_ResolutionDefault" xml:space="preserve">
+    <value>The camera's default</value>
+  </data>
   <data name="PrinterStatus_Connected" xml:space="preserve">
     <value>Connected</value>
     <comment>Shown for Undefined and Unknown alike: the printer is talking to us but has not said what it is doing.</comment>

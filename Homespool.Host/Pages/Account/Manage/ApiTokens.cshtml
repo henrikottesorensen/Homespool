@@ -36,6 +36,19 @@
                 <p class="text-muted small">@Localiser["Tokens_ScopeHint"]</p>
                 <span asp-validation-for="Input.Scope" class="text-danger d-block mb-2"></span>
 
+                @* Real submits with their own handlers, so they set the boxes with scripting off too.
+                   token-scope.js cancels the post and does it here instead; formnovalidate is for the
+                   case where that file is the one thing that did not load, so the fallback is not then
+                   blocked by a name nobody has typed yet. *@
+                <div class="d-flex gap-2 mb-3">
+                    <button type="submit" asp-page-handler="TickAll" formnovalidate
+                            data-tick-all="Input.Scope"
+                            class="btn btn-sm btn-outline-secondary">@Localiser["Tokens_TickAll"]</button>
+                    <button type="submit" asp-page-handler="UntickAll" formnovalidate
+                            data-untick-all="Input.Scope"
+                            class="btn btn-sm btn-outline-secondary">@Localiser["Tokens_UntickAll"]</button>
+                </div>
+
                 @foreach (var group in Homespool.Host.Localisation.CapabilityText.Groups)
                 {
                     <div class="mb-2">
@@ -98,4 +111,5 @@ else
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
+    <script src="~/js/token-scope.js" asp-append-version="true"></script>
 }

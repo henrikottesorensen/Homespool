@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Net.Mime;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -32,7 +33,7 @@ namespace Homespool.Host.Cameras;
 /// for ordinary restarts.
 /// </para>
 /// </remarks>
-public sealed class Go2RtcClient
+public sealed class Go2RtcClient : ICameraCodecProbe
 {
     /// <summary>Name of the <see cref="IHttpClientFactory"/> client used for the sidecar.</summary>
     public const string HttpClientName = "go2rtc";
@@ -49,6 +50,12 @@ public sealed class Go2RtcClient
     /// only the body said which.
     /// </remarks>
     private const string CodecsNotMatched = "codecs not matched";
+
+    /// <summary>
+    /// The port the sidecar's RTSP side listens on. go2rtc's default, and Homespool owns the
+    /// sidecar's configuration, so nothing moves it.
+    /// </summary>
+    private const int RtspPort = 8554;
 
     /// <summary>
     /// How often to say that the sidecar has no credential. Once a minute, because the frame endpoint
@@ -133,6 +140,57 @@ public sealed class Go2RtcClient
 
         return new Uri(
             $"{BaseAddress().TrimEnd('/')}/api/frame.jpeg?src={streamName.ToString("D", CultureInfo.InvariantCulture)}");
+    }
+
+    /// <summary>
+    /// Where a camera's continuous MJPEG stream (<c>multipart/x-mixed-replace</c>) is served from, or
+    /// <see langword="null"/> when the sidecar has no credential and is therefore not used.
+    /// </summary>
+    /// <remarks>
+    /// Same derivation rule as <see cref="FrameUrl"/>: a function of the base address and the stream
+    /// name, never stored. The path must be on the sidecar's <c>allow_paths</c> list in
+    /// <c>compose.yaml</c>, which enforces by not registering the handler - a path left off answers
+    /// a bare 404 that looks exactly like a wrong address.
+    /// </remarks>
+    public Uri? MjpegStreamUrl(Guid streamName)
+    {
+        if (!IsUsable())
+        {
+            return null;
+        }
+
+        return new Uri($"{BaseAddress().TrimEnd('/')}/api/stream.mjpeg?src={streamName.ToString("D", CultureInfo.InvariantCulture)}");
+    }
+
+    /// <summary>
+    /// Opens a camera's MJPEG stream. The caller owns the response and must dispose it; the body is
+    /// unbounded and is read as it arrives.
+    /// </summary>
+    /// <remarks>
+    /// The named client's default 100-second timeout would cut a stream off mid-watch, so it is
+    /// lifted on this instance only; the caller's token is what ends the read.
+    /// </remarks>
+    public async Task<HttpResponseMessage?> OpenMjpegStreamAsync(Guid streamName, CancellationToken cancellationToken)
+    {
+        if (MjpegStreamUrl(streamName) is not { } url)
+        {
+            return null;
+        }
+
+        HttpClient client = _httpClientFactory.CreateClient(HttpClientName);
+        client.Timeout = Timeout.InfiniteTimeSpan;
+
+        try
+        {
+            return await client
+                         .GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+                         .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+        {
+            _logger.LogWarning("The stream server's MJPEG stream could not be opened: {Message}", exception.Message);
+            return null;
+        }
     }
 
     /// <summary>
@@ -273,6 +331,165 @@ public sealed class Go2RtcClient
             return null;
         }
     }
+
+    /// <summary>
+    /// The MJPEG capture sizes each attached camera offers, keyed by its <c>/dev/videoN</c> node, or
+    /// <see langword="null"/> when the stream server could not be asked.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Asked of the sidecar because only it can answer.</b> Homespool lists camera *names* from a
+    /// read-only mount and deliberately holds no capability to open one (see
+    /// <see cref="LocalCameraDevices"/>), so enumerating formats has to happen where the devices
+    /// actually are. <c>/api/ffmpeg/devices</c> runs <c>ffmpeg -list_formats</c> across every
+    /// <c>/dev/video*</c> and reports each format's sizes in its <c>info</c> field.
+    /// </para>
+    /// <para>
+    /// <b>MJPEG entries only.</b> Every device reports its raw format too, and taking that would
+    /// undo the reason <see cref="LocalCameraDevices.SourceFor"/> states <c>input_format=mjpeg</c>
+    /// in the first place - a transcode per frame, invisibly.
+    /// </para>
+    /// <para>
+    /// <b>The sizes come back unsorted and sometimes duplicated</b> - measured on the board
+    /// 2026-08-20, where one camera listed <c>640x480</c> first and another repeated
+    /// <c>1280x720</c>. They are ordered by pixel count and de-duplicated here rather than in a
+    /// view, because every reader wants the same thing and none of them wants the camera's order.
+    /// </para>
+    /// <para>
+    /// <b>The sidecar caches this for the life of its process</b>, so a camera plugged in afterwards
+    /// is absent until it restarts. That is what the rescan button on the cameras page is for; there
+    /// is no cheaper way, and pretending otherwise would leave somebody staring at a list that
+    /// cannot include what they just plugged in.
+    /// </para>
+    /// </remarks>
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>?> ListDeviceFormatsAsync(
+        CancellationToken cancellationToken)
+    {
+        if (!IsUsable())
+        {
+            return null;
+        }
+
+        Uri request = new($"{BaseAddress().TrimEnd('/')}/api/ffmpeg/devices");
+
+        try
+        {
+            HttpClient client = _httpClientFactory.CreateClient(HttpClientName);
+
+            using HttpResponseMessage response = await client.GetAsync(request, cancellationToken)
+                                                             .ConfigureAwait(false);
+
+            // "no sources" is a 404 and means this machine has no cameras attached, which is the
+            // ordinary case and not a failure - it must not read as "could not be asked".
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "The stream server would not list devices: {StatusCode}.", (int)response.StatusCode);
+                return null;
+            }
+
+            DeviceListing? listing = await response.Content
+                                                   .ReadFromJsonAsync<DeviceListing>(cancellationToken)
+                                                   .ConfigureAwait(false);
+
+            return ParseDeviceFormats(listing?.Sources);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            _logger.LogDebug("The stream server's devices could not be listed: {Message}", exception.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Turns the sidecar's device listing into sizes by node, keeping MJPEG only.
+    /// </summary>
+    /// <remarks>
+    /// Public and static so the parse is testable without a sidecar; the shapes it reads are pinned
+    /// by the tests against strings captured from the real thing.
+    /// </remarks>
+    public static IReadOnlyDictionary<string, IReadOnlyList<string>> ParseDeviceFormats(
+        IReadOnlyList<DeviceSource>? sources)
+    {
+        Dictionary<string, IReadOnlyList<string>> byNode = new(StringComparer.Ordinal);
+
+        foreach (DeviceSource source in sources ?? [])
+        {
+            if (source.Url is null || source.Info is null || !source.Url.Contains("input_format=mjpeg", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (NodeFromUrl(source.Url) is not { } node)
+            {
+                continue;
+            }
+
+            List<string> sizes = source.Info
+                                       .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                                       .Where(IsSize)
+                                       .Distinct(StringComparer.Ordinal)
+                                       .OrderBy(Pixels)
+                                       .ToList();
+
+            if (sizes.Count > 0)
+            {
+                byNode[node] = sizes;
+            }
+        }
+
+        return byNode;
+    }
+
+    /// <summary>The <c>video=</c> parameter of a device URL, as a bare node name.</summary>
+    private static string? NodeFromUrl(string url)
+    {
+        const string Marker = "video=/dev/";
+
+        int at = url.IndexOf(Marker, StringComparison.Ordinal);
+        if (at < 0)
+        {
+            return null;
+        }
+
+        int start = at + Marker.Length;
+        int end = url.IndexOf('&', start);
+
+        return end < 0 ? url[start..] : url[start..end];
+    }
+
+    /// <summary><c>WIDTHxHEIGHT</c>, and nothing else - the info field is free text.</summary>
+    private static bool IsSize(string value)
+    {
+        string[] parts = value.Split('x');
+
+        return parts.Length == 2
+               && int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out int w)
+               && int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out int h)
+               && w > 0 && h > 0;
+    }
+
+    private static long Pixels(string size)
+    {
+        string[] parts = size.Split('x');
+
+        return long.Parse(parts[0], CultureInfo.InvariantCulture)
+               * long.Parse(parts[1], CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>One entry of the stream server's device listing.</summary>
+    /// <param name="Name">The format's human name, such as <c>Motion-JPEG</c>.</param>
+    /// <param name="Info">Space-separated capture sizes, in the camera's own order.</param>
+    /// <param name="Url">A composed source for the device, which is where the node name is read from.</param>
+    public sealed record DeviceSource(string? Name, string? Info, string? Url);
+
+    /// <summary>The envelope <c>/api/ffmpeg/devices</c> answers with.</summary>
+    public sealed record DeviceListing(IReadOnlyList<DeviceSource>? Sources);
 
     /// <summary>
     /// Exchanges a browser's WebRTC offer for the sidecar's answer.
@@ -444,7 +661,7 @@ public sealed class Go2RtcClient
         {
             HttpClient client = _httpClientFactory.CreateClient(HttpClientName);
 
-            using StringContent content = new(document, Encoding.UTF8, "application/json");
+            using StringContent content = new(document, Encoding.UTF8, MediaTypeNames.Application.Json);
             using HttpResponseMessage response = await client
                                                        .PatchAsync(request, content, cancellationToken)
                                                        .ConfigureAwait(false);
@@ -517,6 +734,174 @@ public sealed class Go2RtcClient
             _logger.LogDebug("The stream server did not answer a restart cleanly: {Message}", exception.Message);
             return false;
         }
+    }
+
+    /// <summary>
+    /// Longest a codec probe may take, connection included. An RTSP DESCRIBE makes the sidecar open
+    /// the camera, and a cold USB camera spins up an ffmpeg first - measured ~0.6s; an RTSP camera
+    /// answers a connect in well under a second. Anything slower is a camera that is not answering.
+    /// </summary>
+    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(8);
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <para>
+    /// <b>Asked over RTSP, because the HTTP API will not say.</b> Measured (Pi 3, 1.9.14,
+    /// 2026-08-18 and again 2026-08-20): <c>/api/streams</c> names a camera's codecs only while
+    /// some consumer holds the stream open, and forgets them the moment it closes. A DESCRIBE is
+    /// itself the consumer: the sidecar connects the camera to build the SDP, answers with its
+    /// codecs, and releases it when the connection drops - one question, one answer, any codec.
+    /// </para>
+    /// <para>
+    /// <b>The RTSP port carries no credential</b>, unlike the HTTP API. That is acceptable for the
+    /// same reason it is unavoidable: the port is not published outside the Compose network, so the
+    /// only thing that can ask is something already inside - and the gate below keeps the rule that
+    /// an uncredentialed sidecar is not used at all.
+    /// </para>
+    /// </remarks>
+    public async Task<IReadOnlySet<string>?> ProbeCodecsAsync(Guid streamName, CancellationToken cancellationToken)
+    {
+        if (!IsUsable())
+        {
+            return null;
+        }
+
+        Uri baseAddress = new(BaseAddress());
+        string name = streamName.ToString("D", CultureInfo.InvariantCulture);
+
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(ProbeTimeout);
+
+        try
+        {
+            using System.Net.Sockets.TcpClient tcp = new();
+            await tcp.ConnectAsync(baseAddress.Host, RtspPort, deadline.Token).ConfigureAwait(false);
+
+            System.IO.Stream wire = tcp.GetStream();
+
+            byte[] request = Encoding.ASCII.GetBytes(
+                $"DESCRIBE rtsp://{baseAddress.Host}:{RtspPort}/{name} RTSP/1.0\r\n"
+                + "CSeq: 1\r\n"
+                + "Accept: application/sdp\r\n"
+                + "User-Agent: Homespool\r\n\r\n");
+
+            await wire.WriteAsync(request, deadline.Token).ConfigureAwait(false);
+
+            string answer = await ReadRtspAnswerAsync(wire, deadline.Token).ConfigureAwait(false);
+
+            if (!answer.StartsWith("RTSP/1.0 200", StringComparison.Ordinal))
+            {
+                _logger.LogWarning(
+                    "The stream server refused a codec probe for {StreamName}: {StatusLine}.",
+                    streamName,
+                    answer.Split('\r')[0]);
+
+                return null;
+            }
+
+            return ParseSdpVideoCodecs(answer);
+        }
+        catch (Exception exception) when (exception is System.Net.Sockets.SocketException
+                                                    or System.IO.IOException
+                                                    or OperationCanceledException)
+        {
+            // The camera is off, unreachable, or slower than any working camera - all of which mean
+            // "no answer today", which the caller must not remember as "no".
+            _logger.LogDebug("Codec probe for {StreamName} got no answer: {Message}", streamName, exception.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The video codecs named by an SDP document, upper-cased as the SDP writes them
+    /// (<c>H264</c>, <c>JPEG</c>, ...). Audio sections are ignored; a live view is a picture.
+    /// </summary>
+    /// <remarks>
+    /// Public and static so the parse is testable without a socket; the SDP grammar it relies on is
+    /// two lines - <c>m=</c> opens a media section, <c>a=rtpmap:&lt;pt&gt; &lt;codec&gt;/&lt;clock&gt;</c>
+    /// names the codec - and both are RFC 8866, not go2rtc.
+    /// </remarks>
+    public static IReadOnlySet<string> ParseSdpVideoCodecs(string sdp)
+    {
+        HashSet<string> codecs = new(StringComparer.OrdinalIgnoreCase);
+        bool inVideo = false;
+
+        foreach (string raw in sdp.Split('\n'))
+        {
+            string line = raw.TrimEnd('\r');
+
+            if (line.StartsWith("m=", StringComparison.Ordinal))
+            {
+                inVideo = line.StartsWith("m=video", StringComparison.Ordinal);
+            }
+            else if (inVideo && line.StartsWith("a=rtpmap:", StringComparison.Ordinal))
+            {
+                // "a=rtpmap:96 H264/90000" - the codec sits between the first space and the slash.
+                int space = line.IndexOf(' ', StringComparison.Ordinal);
+                int slash = line.IndexOf('/', StringComparison.Ordinal);
+
+                if (space > 0 && slash > space)
+                {
+                    codecs.Add(line[(space + 1)..slash]);
+                }
+            }
+        }
+
+        return codecs;
+    }
+
+    /// <summary>
+    /// Reads an RTSP response - status line, headers, and as much body as <c>Content-Length</c>
+    /// promises - as one string. RTSP frames exactly like HTTP/1.0, which is what makes this small.
+    /// </summary>
+    private static async Task<string> ReadRtspAnswerAsync(System.IO.Stream wire, CancellationToken cancellationToken)
+    {
+        byte[] buffer = new byte[16 * 1024];
+        int length = 0;
+
+        while (true)
+        {
+            int read = await wire
+                             .ReadAsync(buffer.AsMemory(length, buffer.Length - length), cancellationToken)
+                             .ConfigureAwait(false);
+
+            if (read == 0)
+            {
+                break;
+            }
+
+            length += read;
+
+            string text = Encoding.ASCII.GetString(buffer, 0, length);
+            int headerEnd = text.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+
+            if (headerEnd < 0)
+            {
+                if (length == buffer.Length)
+                {
+                    break; // not an RTSP answer; give back what there is and let the caller refuse it
+                }
+
+                continue;
+            }
+
+            int promised = 0;
+            foreach (string line in text[..headerEnd].Split('\n'))
+            {
+                if (line.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase))
+                {
+                    _ = int.TryParse(line["Content-Length:".Length..].Trim(), NumberStyles.Integer,
+                                     CultureInfo.InvariantCulture, out promised);
+                }
+            }
+
+            if (length >= headerEnd + 4 + promised || length == buffer.Length)
+            {
+                break;
+            }
+        }
+
+        return Encoding.ASCII.GetString(buffer, 0, length);
     }
 
     private string BaseAddress()

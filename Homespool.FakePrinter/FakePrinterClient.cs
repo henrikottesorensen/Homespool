@@ -8,6 +8,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Net.Mime;
 using System.Net.WebSockets;
 using System.Text.Json;
 using System.Threading;
@@ -351,7 +352,7 @@ public sealed class FakePrinterClient : IAsyncDisposable
         AddUserAgentHeaders(request);
 
         request.Content = new ByteArrayContent(payload);
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue(MediaTypeNames.Application.Json);
 
         using HttpResponseMessage response = await httpClient.SendAsync(request, cancellationToken);
 
@@ -371,7 +372,7 @@ public sealed class FakePrinterClient : IAsyncDisposable
 
         ServerCommandKind kind = response.Content.Headers.ContentType?.MediaType switch
         {
-            "application/json" => ServerCommandKind.Json,
+            MediaTypeNames.Application.Json => ServerCommandKind.Json,
             "text/x.gcode" or "text/x-gcode" => ServerCommandKind.Gcode,
             _ => ServerCommandKind.Undefined,
         };

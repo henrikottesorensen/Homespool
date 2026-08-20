@@ -1,21 +1,23 @@
-// Live camera view, over WebRTC, behind a button under each picture.
+// Live camera view, behind a button under each picture.
 //
-// The still that camera.js polls is the default and stays the fallback. This is the opt-in: press
-// the button and the <img> is replaced by a <video> carrying the camera's own H.264 with nothing
-// re-encoded anywhere; press it again, or fail to connect, and the still comes back.
+// The still that camera.js polls is the default and stays the fallback. This is the opt-in, and
+// the server names the transport when asked: an H.264 camera gets WebRTC into a <video> with
+// nothing re-encoded anywhere; a JPEG camera gets the relayed multipart stream in the still's own
+// <img>, which every browser renders natively. Press the button again, or fail to connect, and the
+// still comes back.
 //
 // Three things about this are deliberate and easy to undo by accident:
 //
-//   The server decides whether the button exists. WebRTC does not carry the JPEG a USB webcam
-//   produces, and only the stream server knows a camera's codec - so /live is asked rather than
-//   guessed, and it is asked from here rather than answered while the page rendered, because a
-//   camera the sidecar has not yet connected to reports no codec at all.
+//   The server decides whether the button exists, and which transport it starts. The camera's
+//   codec is probed server-side (see CameraLiveAvailability) - and /live is asked from here rather
+//   than answered while the page rendered, because the first ask may need the camera to answer,
+//   which it does not do while it is off.
 //
-//   Failure has a deadline. This is the one transport that can negotiate successfully and then
-//   deliver nothing - it happens whenever the address the browser is told to use is not one it can
-//   reach - and a WebRTC connection in that state reports no error at all. So a timer is the only
-//   thing that can notice, and when it fires the picture goes back to the still and says so. A
-//   confident black rectangle is the failure this whole feature has to avoid.
+//   Failure has a deadline. WebRTC can negotiate successfully and then deliver nothing - it
+//   happens whenever the address the browser is told to use is not one it can reach - and a
+//   connection in that state reports no error at all. So a timer is the only thing that can
+//   notice, and when it fires the picture goes back to the still and says so. A confident black
+//   rectangle is the failure this whole feature has to avoid.
 //
 //   A hidden tab stops watching. The stream server does the work only while somebody is consuming,
 //   which is the same principle the polled still follows - a background tab must not hold a camera
@@ -39,6 +41,11 @@
     // enough that nobody stares at a frozen frame wondering.
     var STATS_INTERVAL_MS = 2000;
     var STALLED_AFTER_CHECKS = 3;
+
+    // How often to ask an MJPEG <img> whether it has decoded anything yet. Short, because a JPEG
+    // stream produces its first frame immediately and this interval is the whole of the delay
+    // between the picture appearing and the page admitting it has.
+    var MJPEG_POLL_MS = 200;
 
     function ready(fn) {
         if (document.readyState !== 'loading') {
@@ -96,6 +103,16 @@
         var deadline = null;
         var stats = null;
 
+        // Which way the server said to watch - 'webrtc' or 'mjpeg' - decided there from the
+        // camera's probed codec. For 'mjpeg' the still's own <img> is pointed at the relayed
+        // multipart stream, which every browser renders natively.
+        var transport = null;
+        var streaming = false;
+
+        // The MJPEG path's poll for "has a frame decoded yet". Separate from the WebRTC path's
+        // stats interval because they watch different things and stop() must clear both.
+        var framePoll = null;
+
         function say(text) {
             note.textContent = text || '';
         }
@@ -114,12 +131,27 @@
                 stats = null;
             }
 
+            if (framePoll) {
+                window.clearInterval(framePoll);
+                framePoll = null;
+            }
+
             age.textContent = '';
             age.classList.remove('text-success', 'fw-semibold');
 
             if (connection) {
                 connection.close();
                 connection = null;
+            }
+
+            if (streaming) {
+                // Dropping the src is what closes the connection, which is what lets the relay and
+                // then the sidecar release the camera. The poller puts its next still back in.
+                streaming = false;
+                image.onload = null;
+                image.onerror = null;
+                image.removeAttribute('src');
+                image.classList.add('d-none');
             }
 
             video.srcObject = null;
@@ -268,16 +300,9 @@
                 });
 
                 if (!response.ok) {
-                    // 409 is the server saying this camera can never be watched live - its video is
-                    // JPEG, which WebRTC does not carry. It is the only moment that can be known,
-                    // because nothing reports a camera's codec until something consumes it. So the
-                    // button goes away rather than staying to fail again.
-                    if (response.status === 409) {
-                        stop(button.dataset.labelUnsupported);
-                        controls.classList.add('d-none');
-                        return;
-                    }
-
+                    // 409 included: the server re-checks the transport per request, and a refusal
+                    // here is per-session (a browser whose offer carries none of the camera's
+                    // codecs). The button stays - another browser may succeed.
                     stop(button.dataset.labelFailed);
                     return;
                 }
@@ -297,17 +322,101 @@
             }
         }
 
+        // Live view for a JPEG camera: the same <img> the poller fills is pointed at the relayed
+        // multipart stream, which every browser renders natively (measured in Safari 26.5 on
+        // 2026-08-19, where it was long believed not to work).
+        //
+        // "Live" here means the picture has a non-zero size, which is as much as an <img> will say:
+        // there is no byte counter to watch the way the WebRTC path does, so a stream that stops
+        // sending shows a frozen frame rather than being taken down. The server refusing to answer
+        // until a frame has actually arrived covers the case that matters - see the Stream action -
+        // and the rest is left to the viewer noticing. A stall detector was considered and
+        // deliberately not built: the only way to see frames change on an <img> is sampling it
+        // through a canvas, which is unverified on the one engine this path exists for, and a wrong
+        // detector tears down a working stream - the exact failure this file already had once.
+        function startMjpeg() {
+            button.disabled = true;
+            button.textContent = button.dataset.labelConnecting;
+            say('');
+
+            view.dispatchEvent(new CustomEvent('camera-live-started'));
+            streaming = true;
+
+            // The picture is cleared before the stream is attached, and that is load-bearing rather
+            // than tidiness: the only thing an <img> will tell you about a multipart stream is its
+            // size, and the still it replaces came from the same camera at the same size - so
+            // "has a frame arrived" is unanswerable unless naturalWidth is first driven to zero.
+            // Measured in Safari 26.5 (2026-08-19): the stream plays, and no load event arrives for
+            // it, so comparing sizes reported failure while frames were visibly decoding.
+            image.removeAttribute('src');
+            image.classList.add('d-none');
+            status.classList.remove('d-none');
+
+            function watchingMjpeg() {
+                if (deadline) {
+                    window.clearTimeout(deadline);
+                    deadline = null;
+                }
+
+                if (framePoll) {
+                    window.clearInterval(framePoll);
+                    framePoll = null;
+                }
+
+                status.classList.add('d-none');
+                image.classList.remove('d-none');
+                button.disabled = false;
+                button.textContent = button.dataset.labelStop;
+                age.textContent = button.dataset.labelLive;
+                age.classList.add('text-success', 'fw-semibold');
+                say('');
+            }
+
+            deadline = window.setTimeout(function () {
+                if (streaming) {
+                    stop(button.dataset.labelFailed);
+                }
+            }, CONNECT_TIMEOUT_MS);
+
+            // Polled rather than waited for, because the event does not come. A multipart <img>
+            // fires load per part in Chrome and Firefox and not at all in Safari, so the event is
+            // kept as the fast path and a non-zero size is what actually decides - it can only
+            // become non-zero here by a frame off this stream having been decoded.
+            framePoll = window.setInterval(function () {
+                if (streaming && image.naturalWidth > 0) {
+                    watchingMjpeg();
+                }
+            }, MJPEG_POLL_MS);
+
+            image.onload = function () {
+                if (streaming) {
+                    watchingMjpeg();
+                }
+            };
+
+            image.onerror = function () {
+                if (streaming) {
+                    stop(button.dataset.labelFailed);
+                }
+            };
+
+            image.src = view.dataset.cameraStream;
+            image.classList.remove('d-none');
+        }
+
         button.addEventListener('click', function () {
-            if (connection) {
+            if (connection || streaming) {
                 // A viewer stopping deliberately is not a failure and gets no message.
                 stop('');
+            } else if (transport === 'mjpeg') {
+                startMjpeg();
             } else {
                 start();
             }
         });
 
         document.addEventListener('visibilitychange', function () {
-            if (document.hidden && connection) {
+            if (document.hidden && (connection || streaming)) {
                 stop('');
             }
         });
@@ -321,6 +430,7 @@
             })
             .then(function (option) {
                 if (option && option.available) {
+                    transport = option.transport;
                     controls.classList.remove('d-none');
                 }
             })

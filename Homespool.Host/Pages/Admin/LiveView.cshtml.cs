@@ -43,13 +43,13 @@ public class LiveViewModel : PageModel
 {
     private readonly DeploymentSettingStore _settings;
     private readonly WebRtcSidecarWriter _writer;
-    private readonly WebRtcAvailability _availability;
+    private readonly CameraLiveAvailability _availability;
     private readonly IOptions<CameraOptions> _cameras;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public LiveViewModel(DeploymentSettingStore settings,
                          WebRtcSidecarWriter writer,
-                         WebRtcAvailability availability,
+                         CameraLiveAvailability availability,
                          IOptions<CameraOptions> cameras,
                          IStringLocalizer<SharedResource> localiser)
     {

@@ -57,9 +57,16 @@ public static class Registration
         // The one answer to "what is this camera called", so pages and endpoints cannot disagree.
         services.AddSingleton<CameraDisplayNames>();
 
-        // Holds the WebRTC address worked out at startup, for the endpoint and the health check to
-        // read. Singleton because it is that answer, and a scoped one would be empty.
-        services.AddSingleton<WebRtcAvailability>();
+        // How each camera can be watched live: probed codecs, remembered for the life of the
+        // process, plus the WebRTC address worked out at startup. Singleton because it is those
+        // answers, and a scoped one would forget them between requests.
+        services.AddSingleton<CameraLiveAvailability>();
+
+        // The codec question is asked of the sidecar, so its answerer is the sidecar's chokepoint.
+        services.AddSingleton<ICameraCodecProbe>(provider => provider.GetRequiredService<Go2RtcClient>());
+
+        // Opens the live MJPEG stream and proves a frame arrived before the endpoint answers.
+        services.AddSingleton<CameraStreamRelay>();
 
         // Writes the sidecar's WebRTC configuration. Singleton because it holds nothing per request
         // and both its callers - startup, and the settings page - want the same one.

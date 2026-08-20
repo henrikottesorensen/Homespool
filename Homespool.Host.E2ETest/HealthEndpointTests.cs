@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Net.Mime;
 using System.Text.Json;
 using System.Threading.Tasks;
 
@@ -85,7 +86,7 @@ public sealed class HealthEndpointTests : IAsyncLifetime, IDisposable
         string body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
+        response.Content.Headers.ContentType!.MediaType.Should().Be(MediaTypeNames.Application.Json);
 
         using JsonDocument document = JsonDocument.Parse(body);
 

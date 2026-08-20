@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Mime;
 using System.Reflection;
 using System.Threading.Tasks;
 
@@ -136,7 +137,7 @@ public class ControllerResponseDocumentationTests
             from response in Documented(arm, action)
             where response.StatusCode >= 400
                   && (response.Type != typeof(ProblemDetails)
-                      || !response.ContentTypes.SequenceEqual(["application/problem+json"]))
+                      || !response.ContentTypes.SequenceEqual([MediaTypeNames.Application.ProblemJson]))
             select $"{controller.Name}.{action.Name} documents {response.StatusCode} through {arm.Name} "
                    + $"as {response.Type?.Name ?? "nothing"} [{string.Join(", ", response.ContentTypes)}]").ToList();
 
@@ -164,7 +165,7 @@ public class ControllerResponseDocumentationTests
         IProducesResponseTypeMetadata notFound = Documented(typeof(NotFoundProblem), anyAction).Should().ContainSingle().Subject;
         notFound.StatusCode.Should().Be(StatusCodes.Status404NotFound);
         notFound.Type.Should().Be(typeof(ProblemDetails));
-        notFound.ContentTypes.Should().Equal("application/problem+json");
+        notFound.ContentTypes.Should().Equal(MediaTypeNames.Application.ProblemJson);
 
         IProducesResponseTypeMetadata ok = Documented(typeof(Ok<string>), anyAction).Should().ContainSingle().Subject;
         ok.StatusCode.Should().Be(StatusCodes.Status200OK);

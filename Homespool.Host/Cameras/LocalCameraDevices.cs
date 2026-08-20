@@ -65,12 +65,95 @@ public sealed class LocalCameraDevices
     /// and produces a different image at the encoder's own quality. Same command, same board,
     /// invisibly worse.
     /// </remarks>
-    public static string SourceFor(string deviceName, int width = 1280, int height = 720)
+    /// <param name="deviceName">The by-id entry naming the camera.</param>
+    /// <param name="resolution">
+    /// <c>WIDTHxHEIGHT</c> to ask for, or <see langword="null"/> to state no size at all - which
+    /// leaves the camera and ffmpeg to settle it, and is what a camera row's null resolution
+    /// means. A size nobody asked for is a size somebody has to discover was chosen for them.
+    /// </param>
+    public static string SourceFor(string deviceName, string? resolution = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(deviceName);
 
-        return $"ffmpeg:device?video={ByIdDirectory}/{deviceName}"
-               + $"&input_format=mjpeg&video_size={width}x{height}";
+        string source = $"ffmpeg:device?video={ByIdDirectory}/{deviceName}&input_format=mjpeg";
+
+        return string.IsNullOrWhiteSpace(resolution) ? source : $"{source}&video_size={resolution}";
+    }
+
+    /// <summary>
+    /// The by-id device name a source string reads, or <see langword="null"/> when it reads none.
+    /// </summary>
+    public static string? DeviceNameFrom(string? source)
+    {
+        const string VideoParameter = "video=";
+
+        if (source is null)
+        {
+            return null;
+        }
+
+        int start = source.IndexOf(VideoParameter, StringComparison.Ordinal);
+        if (start < 0)
+        {
+            return null;
+        }
+
+        start += VideoParameter.Length;
+
+        int end = source.IndexOf('&', start);
+        string path = end < 0 ? source[start..] : source[start..end];
+
+        int slash = path.LastIndexOf('/');
+        string deviceName = slash < 0 ? path : path[(slash + 1)..];
+
+        return deviceName.Length == 0 ? null : deviceName;
+    }
+
+    /// <summary>
+    /// The same source with its capture size set to <paramref name="resolution"/>, or with no size
+    /// stated when that is null.
+    /// </summary>
+    /// <remarks>
+    /// <b>Recomposed rather than patched.</b> An edit form lets somebody change the source text and
+    /// the size in one submission, and a rewrite that tried to honour both would have to guess which
+    /// they meant. Rebuilding from the device the submitted source names keeps one rule - the
+    /// resolution decides <c>video_size</c>, always - so the row and the string it produced cannot
+    /// disagree. A source naming no device is returned untouched: a network camera's size is
+    /// configured on the camera.
+    /// </remarks>
+    public static string WithResolution(string source, string? resolution)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        return DeviceNameFrom(source) is { } deviceName && CameraSourcePolicy.IsLocalDevice(source)
+            ? SourceFor(deviceName, resolution)
+            : source;
+    }
+
+    /// <summary>
+    /// The <c>/dev/videoN</c> node a by-id entry points at, or <see langword="null"/> when the link
+    /// cannot be read.
+    /// </summary>
+    /// <remarks>
+    /// <b>Reads the link's text, and deliberately does not follow it.</b> The target does not exist
+    /// inside this container and must not - see the class remarks - so this asks what the symlink
+    /// says rather than where it leads. That is enough to match a by-id name against the stream
+    /// server's device list, which enumerates nodes.
+    /// </remarks>
+    public string? NodeFor(string deviceName)
+    {
+        try
+        {
+            FileSystemInfo? target = File.ResolveLinkTarget(Path.Combine(ByIdDirectory, deviceName), returnFinalTarget: false);
+
+            // "../../video0" - only the last segment is wanted, and it is not resolved against disk.
+            return target is null ? null : Path.GetFileName(target.Name);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogDebug("Could not read the device link for {Device}: {Message}", deviceName, exception.Message);
+            return null;
+        }
     }
 
     /// <summary>

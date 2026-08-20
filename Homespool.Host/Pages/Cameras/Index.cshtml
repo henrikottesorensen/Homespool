@@ -93,6 +93,30 @@ else
             <input class="form-control" id="edit-source" name="source" value="@Model.Editing.Source" required />
         </div>
 
+        @* Only for a camera plugged into this server: a network camera's size is set on the camera
+           itself, by whichever of a dozen mechanisms its firmware provides, and nothing here can
+           reach it. The list is what the camera reports; the default entry is always available,
+           including for a camera the stream server has not enumerated. *@
+        @if (Homespool.Host.Pages.Cameras.IndexModel.IsAttached(Model.Editing))
+        {
+            <div class="col-md-2">
+                <label class="form-label" for="edit-resolution">@Localiser["Cameras_Resolution"]</label>
+                <select class="form-select" id="edit-resolution" name="resolution">
+                    <option value="">@Localiser["Cameras_ResolutionDefault"]</option>
+                    @foreach (var size in Model.EditingResolutions)
+                    {
+                        <option value="@size" selected="@(size == Model.Editing.Resolution)">@size</option>
+                    }
+                    @* A size chosen before the camera was re-enumerated, or on another machine, must
+                       still show as selected rather than silently reverting to the default. *@
+                    @if (Model.Editing.Resolution is { Length: > 0 } current && !Model.EditingResolutions.Contains(current))
+                    {
+                        <option value="@current" selected>@current</option>
+                    }
+                </select>
+            </div>
+        }
+
         <div class="col-md-2">
             <label class="form-label" for="edit-printer">@Localiser["Common_Printer"]</label>
             <select class="form-select" id="edit-printer" name="printerId">
@@ -181,11 +205,25 @@ else
 
         <div class="col-md-4">
             <label class="form-label" for="attach-device">@Localiser["Cameras_Device"]</label>
-            <select class="form-select" id="attach-device" name="device" required>
+            <select class="form-select" id="attach-device" name="device" required
+                    data-resolution-target="attach-resolution">
                 @foreach (var device in Model.AvailableDevices)
                 {
-                    <option value="@device.Name">@device.Description</option>
+                    @* The sizes ride along on the option so the select beside this can be
+                       repopulated without a round trip. Empty for a device the stream server has
+                       not enumerated - see the rescan button below. *@
+                    <option value="@device.Name"
+                            data-sizes="@(Model.DeviceResolutions.TryGetValue(device.Name, out var sizes) ? string.Join(' ', sizes) : string.Empty)">@device.Description</option>
                 }
+            </select>
+        </div>
+
+        @* "Whatever the camera provides" is the default and always available: a camera the stream
+           server has not enumerated still has to be addable, and no size at all is a valid source. *@
+        <div class="col-md-2">
+            <label class="form-label" for="attach-resolution">@Localiser["Cameras_Resolution"]</label>
+            <select class="form-select" id="attach-resolution" name="resolution">
+                <option value="">@Localiser["Cameras_ResolutionDefault"]</option>
             </select>
         </div>
 
@@ -214,6 +252,15 @@ else
             <button type="submit" class="btn btn-primary">@Localiser["Common_Add"]</button>
         </div>
     </form>
+
+    @* Its own form, because it is a different action with a different cost - and the cost is in the
+       button's own help text rather than a surprise, following the Set Ready and STUN prompts. The
+       stream server reads the device list once per process, so a camera plugged in after it started
+       cannot appear any other way. *@
+    <form method="post" asp-page-handler="Rescan" class="mt-2">
+        <button type="submit" class="btn btn-outline-secondary btn-sm">@Localiser["Cameras_Rescan"]</button>
+        <span class="text-body-secondary small ms-2">@Localiser["Cameras_RescanHelp"]</span>
+    </form>
 }
 else if (Model.IsAdministrator)
 {
@@ -221,4 +268,8 @@ else if (Model.IsAdministrator)
         @Localiser["Cameras_NoneUnclaimed"]
         @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Cameras_DeviceLineIn"].Value, "<code>devices:</code>", "<code>compose.yaml</code>"))
     </p>
+}
+
+@section Scripts {
+    <script src="~/js/camera-resolution.js" asp-append-version="true"></script>
 }

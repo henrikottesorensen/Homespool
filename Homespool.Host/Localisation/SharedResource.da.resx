@@ -70,6 +70,24 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
 
+  <data name="Cameras_Rescan" xml:space="preserve">
+    <value>Søg efter kameraer igen</value>
+  </data>
+  <data name="Cameras_RescanHelp" xml:space="preserve">
+    <value>Genstarter kamerastrømserveren, så et nyligt tilsluttet kamera bliver fundet. Live-visninger vil stoppe i nogle få sekunder.</value>
+  </data>
+  <data name="Cameras_RescanUnconfirmed" xml:space="preserve">
+    <value>Kamerastrømserveren blev bedt om at genstarte, men bekræftede det ikke. Genindlæs om et øjeblik for at se de tilsluttede kameraer.</value>
+  </data>
+  <data name="Cameras_Rescanned" xml:space="preserve">
+    <value>Kamerastrømserveren genstartede og genindlæste de tilsluttede kameraer igen.</value>
+  </data>
+  <data name="Cameras_Resolution" xml:space="preserve">
+    <value>Opløsning</value>
+  </data>
+  <data name="Cameras_ResolutionDefault" xml:space="preserve">
+    <value>Standard indstillingen for kameraet</value>
+  </data>
   <data name="PrinterStatus_Connected" xml:space="preserve">
     <value>Forbundet</value>
   </data>
@@ -559,6 +577,9 @@
   </data>
   <data name="Nav_Logout" xml:space="preserve">
     <value>Log ud</value>
+  </data>
+  <data name="Nav_Admin" xml:space="preserve">
+    <value>Administration</value>
   </data>
   <data name="Nav_Invites" xml:space="preserve">
     <value>Invitationer</value>
@@ -1050,14 +1071,11 @@
   <data name="Cameras_LiveStalled" xml:space="preserve">
     <value>Live-billedet holdt op med at komme. Viser stillbilledet i stedet for.</value>
   </data>
-  <data name="Cameras_LiveUnsupported" xml:space="preserve">
-    <value>Dette kamera sender stillbilleder frem for video, så det kan ikke ses live.</value>
-  </data>
   <data name="LiveView_Title" xml:space="preserve">
-    <value>Live kameravisning</value>
+    <value>Kamerastreaming</value>
   </data>
   <data name="Nav_LiveView" xml:space="preserve">
-    <value>Live-visning</value>
+    <value>Kamerastreaming</value>
   </data>
   <data name="Nav_LiveViewTitle" xml:space="preserve">
     <value>Om kameraer kan ses live, og hvorfra</value>

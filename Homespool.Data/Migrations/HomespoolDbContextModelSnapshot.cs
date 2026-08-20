@@ -69,6 +69,10 @@ namespace Homespool.Data.Migrations
                     b.Property<int?>("PrinterId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Resolution")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Source")
                         .IsRequired()
                         .HasMaxLength(2048)

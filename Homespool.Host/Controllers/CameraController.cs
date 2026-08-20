@@ -1,10 +1,13 @@
 using System;
 using System.Globalization;
+using System.IO;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -43,18 +46,21 @@ public class CameraController : ControllerBase
     private readonly CameraAccessService _access;
     private readonly CameraFrameCache _frames;
     private readonly Go2RtcClient _streamServer;
-    private readonly WebRtcAvailability _liveView;
+    private readonly CameraStreamRelay _relay;
+    private readonly CameraLiveAvailability _liveView;
     private readonly UserManager<HSUser> _userManager;
 
     public CameraController(CameraAccessService access,
                             CameraFrameCache frames,
                             Go2RtcClient streamServer,
-                            WebRtcAvailability liveView,
+                            CameraStreamRelay relay,
+                            CameraLiveAvailability liveView,
                             UserManager<HSUser> userManager)
     {
         _access = access;
         _frames = frames;
         _streamServer = streamServer;
+        _relay = relay;
         _liveView = liveView;
         _userManager = userManager;
     }
@@ -140,12 +146,10 @@ public class CameraController : ControllerBase
     /// separately means the button appears when it becomes true.
     /// </para>
     /// <para>
-    /// <b>The codec cannot be asked for in advance</b>, and that was measured rather than assumed:
-    /// the stream server reports none for a camera nothing is watching, and 1.9.14 has no probe
-    /// endpoint. Where the source <i>states</i> its format this says no without trying - which covers
-    /// every camera plugged into this machine, because Homespool composed that string. A network
-    /// camera's address says nothing about its codec, so it stays optimistic and is learned from its
-    /// first refusal. See <see cref="WebRtcAvailability.CanOffer"/>.
+    /// <b>The first ask may open the camera briefly.</b> The codec is probed over RTSP the first
+    /// time it is needed and remembered for the life of the process - see
+    /// <see cref="CameraLiveAvailability"/> for how, and for why a camera that does not answer gets
+    /// no button rather than a hopeful one.
     /// </para>
     /// </remarks>
     [HttpGet]
@@ -169,7 +173,109 @@ public class CameraController : ControllerBase
             return this.NotFoundProblem("No such camera.");
         }
 
-        return TypedResults.Ok(new CameraLiveOption(_liveView.CanOffer(camera.Uuid, camera.Source)));
+        LiveTransport transport = await _liveView.HowToWatchAsync(camera.Uuid, cancellationToken)
+                                                 .ConfigureAwait(false);
+
+        return TypedResults.Ok(transport == LiveTransport.None
+            ? new CameraLiveOption(false)
+            : new CameraLiveOption(true, transport));
+    }
+
+    /// <summary>
+    /// The camera's continuous MJPEG stream, relayed from the stream server.
+    /// <c>GET /api/v1/cameras/{uuid}/stream.mjpeg</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>How a JPEG camera is watched live</b>: WebRTC does not carry JPEG, and every frame of this
+    /// stream is complete, so it starts instantly where H.264 waits for a keyframe. The browser side
+    /// is a plain <c>&lt;img&gt;</c>, which every engine tested renders - the same mechanism Home
+    /// Assistant's camera proxy relies on.
+    /// </para>
+    /// <para>
+    /// Relayed rather than linked for the reason at the top of this class: the browser is never
+    /// pointed at the sidecar. The body is copied through as it arrives and ends when the viewer
+    /// goes away (<see cref="HttpContext.RequestAborted"/>), which is also what releases the
+    /// sidecar's consumer and lets the camera go idle again.
+    /// </para>
+    /// <para>
+    /// <c>EmptyHttpResult</c> stands for success in the union because the streaming has already
+    /// happened by the time anything is returned: the body is written as it is read, and the result
+    /// object's only job is to not touch what was streamed.
+    /// </para>
+    /// </remarks>
+    [HttpGet]
+    [Route("{uuid:guid}/stream.mjpeg")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status502BadGateway)]
+    public async Task<Results<EmptyHttpResult, ForbiddenProblem, NotFoundProblem, ConflictProblem, BadGatewayProblem>> Stream(
+        Guid uuid,
+        CancellationToken cancellationToken)
+    {
+        long? userId = UserId();
+        if (userId is null)
+        {
+            return this.NoAccount();
+        }
+
+        Camera? camera = await _access
+                               .FindAsync(uuid, CallerResolver.For(userId.Value, User), Capability.ViewCamera, cancellationToken)
+                               .ConfigureAwait(false);
+
+        if (camera is null)
+        {
+            return this.NotFoundProblem("No such camera.");
+        }
+
+        // Re-checked rather than trusted, following WebRtc below: this endpoint is reachable on its
+        // own, and relaying a camera whose codec the stream cannot carry would tie up the first-frame
+        // wait for an answer that is already known.
+        if (await _liveView.HowToWatchAsync(camera.Uuid, cancellationToken).ConfigureAwait(false)
+            != LiveTransport.Mjpeg)
+        {
+            return this.ConflictProblem("This camera is not watched over MJPEG.");
+        }
+
+        // Nothing is answered until a whole frame has arrived - the relay proves the camera is
+        // producing pictures before 200 is committed, because the stream server cannot (it answers
+        // success before it knows). See CameraStreamRelay.
+        using LiveMjpegStream? live = await _relay.OpenAsync(camera.Uuid, cancellationToken)
+                                                  .ConfigureAwait(false);
+
+        if (live is null)
+        {
+            return this.BadGatewayProblem("The camera produced no pictures.");
+        }
+
+        Response.StatusCode = StatusCodes.Status200OK;
+        Response.ContentType = live.ContentType;
+        Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
+        Response.Headers.Pragma = "no-cache";
+
+        // The front proxy buffers upstream responses by default, which would hold every frame back;
+        // nginx honours this header per response, so the compose deployment needs no config change.
+        Response.Headers["X-Accel-Buffering"] = "no";
+
+        // Response buffering would hold frames back until some threshold, which for a stream that
+        // never ends means never. Kestrel flushes on each write once buffering is off.
+        HttpContext.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
+
+        try
+        {
+            // The relay also puts back each frame's missing Huffman tables - the reason Safari
+            // showed nothing while every other browser played. See MjpegDhtRelay.
+            await live.CopyToAsync(Response.Body, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is OperationCanceledException
+                                                    or IOException
+                                                    or HttpRequestException)
+        {
+            // The viewer left, or the sidecar closed the stream. Either way the answer has already
+            // started and there is nobody to tell.
+        }
+
+        return TypedResults.Empty;
     }
 
     /// <summary>
@@ -228,22 +334,21 @@ public class CameraController : ControllerBase
             return this.NotFoundProblem("No such camera.");
         }
 
-        if (!_liveView.CanOffer(camera.Uuid, camera.Source))
+        if (await _liveView.HowToWatchAsync(camera.Uuid, cancellationToken).ConfigureAwait(false)
+            != LiveTransport.Webrtc)
         {
-            return this.ConflictProblem("This camera cannot be watched live.");
+            return this.ConflictProblem("This camera cannot be watched over WebRTC.");
         }
 
         WebRtcOffer answer = await _streamServer.OfferAsync(camera.Uuid, offer.Sdp, cancellationToken)
                                                 .ConfigureAwait(false);
 
-        // A permanent fact about the camera rather than a failure of this request, so it is
-        // remembered: the page hides the button on this answer, and every later page never shows it.
-        // This is the only moment a camera's codec can be learned - nothing reports it beforehand.
+        // Still possible despite the codec check above: the probe answers for the camera, and this
+        // refusal is per-session - a browser whose offer carries none of the codecs the camera
+        // produces (H.265 in Firefox) is refused here, visibly, after one press.
         if (answer.Outcome == WebRtcOfferOutcome.CodecUnsupported)
         {
-            _liveView.MarkUnsupported(camera.Uuid);
-
-            return this.ConflictProblem("This camera cannot be watched live.");
+            return this.ConflictProblem("This camera cannot be watched over WebRTC.");
         }
 
         if (answer.Outcome != WebRtcOfferOutcome.Answered || answer.Sdp is null)

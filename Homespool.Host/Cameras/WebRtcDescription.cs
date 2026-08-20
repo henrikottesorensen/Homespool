@@ -29,7 +29,7 @@ public sealed record WebRtcDescription(
 /// <remarks>
 /// <b>The three outcomes are not three flavours of failure — the middle one is a fact about the
 /// camera.</b> Nothing can tell Homespool a camera's codec before somebody tries to watch it (see
-/// <see cref="WebRtcAvailability"/>), so the refusal is where that is learned, and it has to be
+/// <see cref="CameraLiveAvailability"/>), so the refusal is where that is learned, and it has to be
 /// distinguishable from a camera that is merely unplugged.
 /// </remarks>
 public enum WebRtcOfferOutcome

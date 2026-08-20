@@ -63,6 +63,35 @@
     });
 })();
 
+// Start client-side validation, which aspnet-client-validation does not do for itself. Its
+// predecessor, jquery.validate.unobtrusive, started on its own - so this call is the entire
+// behavioural difference between the two libraries as this application uses them.
+//
+// Deferred to DOMContentLoaded for two reasons that both matter. _ValidationScriptsPartial renders
+// into the Scripts section, which _Layout places *after* this file, so aspnetValidation does not
+// exist yet while this line is being read. And the library needs the form in the document to attach
+// to it at all.
+//
+// Guarded because most pages render no form and therefore never load the library. An absent
+// validator is the normal case here, not a failure.
+//
+// If this never runs, validation falls back to the server, which was always the thing that decides:
+// the page posts, is rejected, and comes back with the same messages rendered by the same tag
+// helpers. The cost of failure is a round trip, not an accepted bad value.
+document.addEventListener("DOMContentLoaded", function () {
+    "use strict";
+
+    if (typeof aspnetValidation === "undefined") {
+        return;
+    }
+
+    var validation = new aspnetValidation.ValidationService();
+
+    // watch:true so fields added after load are picked up. Nothing here does that today; it costs a
+    // MutationObserver and removes a trap from whoever adds the first dynamic form.
+    validation.bootstrap({ watch: true });
+});
+
 // Copy-to-clipboard for a value that exists to be pasted somewhere else - the print host address on
 // a printer's page, which goes into a slicer's settings and nowhere else.
 //

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using System.Net.Mime;
 using System.Text.Json;
 using System.Threading.Tasks;
 
@@ -153,6 +154,21 @@ public static class Program
                 options.Cookie.HttpOnly = true;
                 options.ExpireTimeSpan = TimeSpan.FromDays(1);
 
+                // Lax, written down rather than inherited. It is already the framework's default for
+                // this cookie, so this changes no behaviour - what it changes is that the value is a
+                // decision somebody can find, on the setting that is currently the ONLY thing
+                // standing between a cross-site POST and an authenticated /api call: Policies.Api
+                // accepts this cookie and no antiforgery guards those actions.
+                //
+                // NOT Strict, and that was costed rather than assumed. Strict withholds the cookie on
+                // every cross-site top-level navigation, not merely on cross-site POSTs - so every
+                // link in outgoing mail (confirm, reset, invite) would open the app signed out even in
+                // a browser that is signed in, and ConfirmEmailChange, which is designed to be clicked
+                // while signed in, would answer NotFound. What it would buy is protection against a
+                // cross-site GET with side effects, of which there are none by design: Logout is a
+                // POST and the API's GETs are reads. Real friction against a marginal gain.
+                options.Cookie.SameSite = SameSiteMode.Lax;
+
                 options.LoginPath = "/Account/Login";
                 options.AccessDeniedPath = "/Account/AccessDenied";
                 options.SlidingExpiration = true;
@@ -165,6 +181,10 @@ public static class Program
             // Add services to the container.
             builder.Services.AddAuthorization(Authorisation.Builder.Build);
 
+            // Account/Manage requires a signed-in account. That rule lives on the pages themselves as
+            // [Authorize], not here as an AuthorizeFolder convention: a reader auditing one page can
+            // see whether it is protected by looking at it, which a path string in Program.cs does not
+            // give them. The cost is that a new page under that folder has to say so itself.
             builder.Services.AddRazorPages()
                             .AddDataAnnotationsLocalization(options =>
                                 options.DataAnnotationLocalizerProvider = (_, factory) =>
@@ -253,6 +273,9 @@ public static class Program
             // Factory-activated (IMiddleware) so it is resolved from the container. Singleton: it holds
             // no per-request state, only the singleton SetupState.
             builder.Services.AddSingleton<Services.SetupGateMiddleware>();
+
+            // Likewise factory-activated, and it holds nothing at all.
+            builder.Services.AddSingleton<Services.SecurityHeadersMiddleware>();
 
             builder.Services.AddScoped<PrusaConnect.PrusaConnectService>()
                             .AddScoped<PrusaConnect.WebSocketHandler>()
@@ -499,6 +522,12 @@ public static class Program
                     Listeners.ForwardedHeaderScope.Predicate(printerPort, printerListenerIsProxied),
                     branch => branch.UseForwardedHeaders());
             }
+
+            // As early as anything that answers, which is the point: the headers are set on the way in,
+            // so a response short-circuited further down - an HTTPS redirect, a segregation 404, a
+            // rate-limiter 429 - carries them as well. It goes after the forwarded-headers block only
+            // because that block reads the request and writes no response.
+            app.UseMiddleware<Services.SecurityHeadersMiddleware>();
 
             // Log HTTP requests with Serilog, order of this matters.
             // Requests handled before in the pipeline are NOT logged.
@@ -994,7 +1023,7 @@ public static class Program
     /// </remarks>
     private static Task WriteHealthResponseAsync(HttpContext context, HealthReport report)
     {
-        context.Response.ContentType = "application/json";
+        context.Response.ContentType = MediaTypeNames.Application.Json;
 
         return context.Response.WriteAsync(JsonSerializer.Serialize(new
         {

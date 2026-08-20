@@ -3,6 +3,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -35,6 +36,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// Revocation does redirect, because there is nothing secret to carry.
 /// </para>
 /// </remarks>
+[Authorize]
 public class ApiTokensModel : PageModel
 {
     private readonly ApiTokenService _tokens;

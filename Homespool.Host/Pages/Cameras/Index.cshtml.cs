@@ -77,6 +77,16 @@ public class IndexModel : PageModel
     /// <remarks>Always empty for a non-administrator, since they could not claim one anyway.</remarks>
     public IReadOnlyList<LocalCameraDevice> AvailableDevices { get; private set; } = [];
 
+    /// <summary>
+    /// The MJPEG capture sizes each attached device offers, keyed by its by-id name. Empty for a
+    /// device the stream server has not enumerated - which is what the rescan button is for.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> DeviceResolutions { get; private set; } =
+        new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+
+    /// <summary>The sizes the camera being edited offers, empty when it is not an attached one.</summary>
+    public IReadOnlyList<string> EditingResolutions { get; private set; } = [];
+
     /// <summary>Teams this account may add a camera to.</summary>
     public IReadOnlyList<Team> Teams { get; private set; } = [];
 
@@ -127,6 +137,18 @@ public class IndexModel : PageModel
             Editing = await _access
                             .FindAsync(uuid, CallerResolver.For(userId.Value, User), Capability.ManageCamera, cancellationToken)
                             .ConfigureAwait(false);
+
+            // The camera being edited holds its device, so it is not in AvailableDevices - that list
+            // is deliberately the unclaimed ones. Its sizes are asked for separately.
+            if (Editing is not null && LocalCameraDevices.DeviceNameFrom(Editing.Source) is { } device
+                && CameraSourcePolicy.IsLocalDevice(Editing.Source))
+            {
+                IReadOnlyDictionary<string, IReadOnlyList<string>> byDevice = await _cameras
+                    .DeviceResolutionsAsync([new LocalCameraDevice(device, device)], cancellationToken)
+                    .ConfigureAwait(false);
+
+                EditingResolutions = byDevice.TryGetValue(device, out IReadOnlyList<string>? sizes) ? sizes : [];
+            }
         }
 
         return Page();
@@ -145,10 +167,49 @@ public class IndexModel : PageModel
         }
 
         CameraSaveOutcome outcome = await _cameras
-                                          .CreateAsync(CallerResolver.For(userId.Value, User), teamId, name, source, printerId, cancellationToken)
+                                          .CreateAsync(CallerResolver.For(userId.Value, User), teamId, name, source, printerId, resolution: null, cancellationToken)
                                           .ConfigureAwait(false);
 
         Report(outcome);
+
+        return RedirectToPage();
+    }
+
+    /// <summary>
+    /// Restarts the stream server so it reads the attached devices again.
+    /// </summary>
+    /// <remarks>
+    /// <b>Administrator only, like claiming a device.</b> The cost falls on everybody watching a
+    /// camera, and the thing it fixes - a device list that predates a camera being plugged in - is a
+    /// property of the server rather than of a team. See <see cref="CameraService.RescanDevicesAsync"/>
+    /// for why a restart is the only mechanism.
+    /// </remarks>
+    public async Task<IActionResult> OnPostRescanAsync(CancellationToken cancellationToken)
+    {
+        long? userId = UserId();
+        if (userId is null)
+        {
+            return Forbid();
+        }
+
+        if (!await _access.IsAdministratorAsync(userId.Value, cancellationToken).ConfigureAwait(false))
+        {
+            return Forbid();
+        }
+
+        bool restarted = await _cameras.RescanDevicesAsync(cancellationToken).ConfigureAwait(false);
+
+        // A sidecar that drops the connection while restarting is doing as it was asked, so an
+        // unacknowledged restart is reported as the ordinary outcome - the reloaded device list is
+        // the honest answer either way.
+        if (restarted)
+        {
+            Message = _localiser["Cameras_Rescanned"];
+        }
+        else
+        {
+            Warning = _localiser["Cameras_RescanUnconfirmed"];
+        }
 
         return RedirectToPage();
     }
@@ -157,6 +218,7 @@ public class IndexModel : PageModel
                                                             string device,
                                                             int teamId,
                                                             int? printerId,
+                                                            string? resolution,
                                                             CancellationToken cancellationToken)
     {
         long? userId = UserId();
@@ -167,10 +229,10 @@ public class IndexModel : PageModel
 
         // The source is built here rather than typed, which is what puts input_format=mjpeg on it -
         // the setting whose absence costs a transcode per frame and is invisible when wrong.
-        string source = LocalCameraDevices.SourceFor(device);
+        string source = LocalCameraDevices.SourceFor(device, resolution);
 
         CameraSaveOutcome outcome = await _cameras
-                                          .CreateAsync(CallerResolver.For(userId.Value, User), teamId, name, source, printerId, cancellationToken)
+                                          .CreateAsync(CallerResolver.For(userId.Value, User), teamId, name, source, printerId, resolution, cancellationToken)
                                           .ConfigureAwait(false);
 
         Report(outcome);
@@ -182,6 +244,7 @@ public class IndexModel : PageModel
                                                      string? name,
                                                      string source,
                                                      int? printerId,
+                                                     string? resolution,
                                                      CancellationToken cancellationToken)
     {
         long? userId = UserId();
@@ -191,7 +254,7 @@ public class IndexModel : PageModel
         }
 
         CameraSaveOutcome outcome = await _cameras
-                                          .UpdateAsync(CallerResolver.For(userId.Value, User), uuid, name, source, printerId, cancellationToken)
+                                          .UpdateAsync(CallerResolver.For(userId.Value, User), uuid, name, source, printerId, resolution, cancellationToken)
                                           .ConfigureAwait(false);
 
         Report(outcome);
@@ -250,6 +313,10 @@ public class IndexModel : PageModel
         Printers = await _printers.ListPrintersForUserAsync(CallerResolver.For(userId, User), cancellationToken).ConfigureAwait(false);
 
         AvailableDevices = IsAdministrator ? await _cameras.AvailableDevicesAsync(cancellationToken).ConfigureAwait(false) : [];
+
+        DeviceResolutions = IsAdministrator && AvailableDevices.Count > 0
+            ? await _cameras.DeviceResolutionsAsync(AvailableDevices, cancellationToken).ConfigureAwait(false)
+            : new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
     }
 
     private void Report(CameraSaveOutcome outcome)

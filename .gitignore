@@ -7,8 +7,9 @@ riderModule.iml
 **/.DS_Store
 **/*.user
 
-# Client-side libraries restored by LibMan from libman.json (bootstrap, jquery, ...). Not committed;
-# `dotnet libman restore` (or Rider/VS on build, or the Docker build stage) materialises them.
+# Client-side libraries restored by LibMan from libman.json (bootstrap, aspnet-client-validation).
+# Not committed; `dotnet libman restore` (or Rider/VS on build, or the Docker build stage)
+# materialises them.
 Homespool.Host/wwwroot/lib/
 
 # Working memo / session handoff notes (local only). No trailing slash on either: both are

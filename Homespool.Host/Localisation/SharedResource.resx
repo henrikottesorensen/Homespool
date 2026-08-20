@@ -73,6 +73,24 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
 
+  <data name="Cameras_Rescan" xml:space="preserve">
+    <value>Look for cameras again</value>
+  </data>
+  <data name="Cameras_RescanHelp" xml:space="preserve">
+    <value>Restarts the camera stream server so a newly plugged-in camera is found. Live views stop for a few seconds.</value>
+  </data>
+  <data name="Cameras_RescanUnconfirmed" xml:space="preserve">
+    <value>The camera stream server was asked to restart but did not confirm it. Reload in a moment to see the attached cameras.</value>
+  </data>
+  <data name="Cameras_Rescanned" xml:space="preserve">
+    <value>The camera stream server restarted and read the attached cameras again.</value>
+  </data>
+  <data name="Cameras_Resolution" xml:space="preserve">
+    <value>Resolution</value>
+  </data>
+  <data name="Cameras_ResolutionDefault" xml:space="preserve">
+    <value>The camera's default</value>
+  </data>
   <data name="PrinterStatus_Connected" xml:space="preserve">
     <value>Connected</value>
     <comment>Shown for Undefined and Unknown alike: the printer is talking to us but has not said what it is doing.</comment>
@@ -580,6 +598,10 @@
   <data name="Nav_Logout" xml:space="preserve">
     <value>Logout</value>
   </data>
+  <data name="Nav_Admin" xml:space="preserve">
+    <value>Admin</value>
+    <comment>The menu in the header holding the administrator-only pages. Short because it is a nav label, not a page title.</comment>
+  </data>
   <data name="Nav_Invites" xml:space="preserve">
     <value>Invites</value>
   </data>
@@ -1071,14 +1093,12 @@
   <data name="Cameras_LiveStalled" xml:space="preserve">
     <value>The live picture stopped arriving. Showing the still picture instead.</value>
   </data>
-  <data name="Cameras_LiveUnsupported" xml:space="preserve">
-    <value>This camera sends still images rather than video, so it cannot be watched live.</value>
-  </data>
   <data name="LiveView_Title" xml:space="preserve">
-    <value>Live camera view</value>
+    <value>Camera streaming</value>
   </data>
   <data name="Nav_LiveView" xml:space="preserve">
-    <value>Live view</value>
+    <value>Camera streaming</value>
+    <comment>The Admin menu entry for the /Admin/LiveView page. The key follows the page name, as its sibling nav keys do; the label does not have to.</comment>
   </data>
   <data name="Nav_LiveViewTitle" xml:space="preserve">
     <value>Whether cameras can be watched live, and from where</value>

@@ -32,10 +32,7 @@
         <link rel="stylesheet" href="~/css/site.css" />
     </environment>
     <environment exclude="Development">
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
-              integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous"
-              asp-fallback-href="~/lib/bootstrap/dist/css/bootstrap.min.css"
-              asp-fallback-test-class="sr-only" asp-fallback-test-property="position" asp-fallback-test-value="absolute" />
+        <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" asp-append-version="true" />
         <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     </environment>
 </head>
@@ -110,23 +107,31 @@
     </footer>
 
     <environment include="Development">
-        <script src="~/lib/jquery/dist/jquery.js"></script>
         <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.js"></script>
         <script src="~/js/site.js" asp-append-version="true"></script>
     </environment>
+    @*
+        Local, not a CDN, and that is a deliberate reversal of the scaffold's default.
+
+        This is a self-hosted appliance whose whole job is to run on a LAN with printers on it. A
+        deployment with no route to the internet is an ordinary deployment here, not a degraded one,
+        and the CDN arrangement made every production page load depend on reaching cdnjs.cloudflare.com
+        and cdn.jsdelivr.net before falling back. The files are already vendored - libman.json pins
+        them and the fallback pointed at them - so serving them directly costs nothing and removes
+        two third parties from the page.
+
+        It also fixes two things that were quietly wrong. The CDN pinned jQuery 3.5.1 while
+        wwwroot/lib holds 3.7.1, so production ran a 2020 build, development ran a 2023 one, and a
+        CDN outage silently swapped production onto a version its integrity hash did not cover. And
+        the stylesheet's fallback test asked for the class "sr-only", which Bootstrap 5 renamed to
+        "visually-hidden" - so the test could never pass and production loaded the local copy on top
+        of the CDN one every time.
+
+        This is also what makes a real Content-Security-Policy affordable: with no third-party
+        script hosts, script-src reduces to 'self' plus a nonce for the colour-mode block in <head>.
+    *@
     <environment exclude="Development">
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"
-                asp-fallback-src="~/lib/jquery/dist/jquery.min.js"
-                asp-fallback-test="window.jQuery"
-                crossorigin="anonymous"
-                integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2">
-        </script>
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
-                asp-fallback-src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"
-                asp-fallback-test="window.bootstrap"
-                crossorigin="anonymous"
-                integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI">
-        </script>
+        <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js" asp-append-version="true"></script>
         <script src="~/js/site.js" asp-append-version="true"></script>
     </environment>
 

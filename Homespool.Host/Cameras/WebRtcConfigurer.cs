@@ -60,7 +60,7 @@ public sealed class WebRtcConfigurer : IHostedService
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
 
     private readonly WebRtcSidecarWriter _writer;
-    private readonly WebRtcAvailability _availability;
+    private readonly CameraLiveAvailability _availability;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOptions<CameraOptions> _cameras;
     private readonly IOptions<PrusaConnectOptions> _connect;
@@ -69,7 +69,7 @@ public sealed class WebRtcConfigurer : IHostedService
     private readonly ILogger<WebRtcConfigurer> _logger;
 
     public WebRtcConfigurer(WebRtcSidecarWriter writer,
-                            WebRtcAvailability availability,
+                            CameraLiveAvailability availability,
                             IServiceScopeFactory scopeFactory,
                             IOptions<CameraOptions> cameras,
                             IOptions<PrusaConnectOptions> connect,

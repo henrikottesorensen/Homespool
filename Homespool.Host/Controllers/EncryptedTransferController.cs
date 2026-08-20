@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Linq;
+using System.Net.Mime;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -163,7 +164,7 @@ public sealed class EncryptedTransferController : ControllerBase
 
                 response.StatusCode = partial ? StatusCodes.Status206PartialContent : StatusCodes.Status200OK;
                 response.ContentLength = count;
-                response.ContentType = "application/octet-stream";
+                response.ContentType = MediaTypeNames.Application.Octet;
                 response.Headers[ContentEncryptionModeHeader] = AesCtr;
 
                 if (partial)

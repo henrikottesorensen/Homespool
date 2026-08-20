@@ -52,7 +52,7 @@ public enum PrintState
     /// the signal for when a print actually begins.
     /// </para>
     /// </remarks>
-    Starting,
+    Starting = 1,
 
     /// <summary>
     /// The printer has reported itself printing. Paired with a null <c>EndedAt</c>.
@@ -62,24 +62,24 @@ public enum PrintState
     /// once telemetry actually says <c>PRINTING</c>. That is what makes "no longer printing" mean
     /// something: a row that never got here was never printing, so it cannot have finished.
     /// </remarks>
-    Printing,
+    Printing = 2,
 
     /// <summary>The printer reached its finished screen.</summary>
-    Finished,
+    Finished = 3,
 
     /// <summary>
     /// Cancelled - here or at the panel, which <c>PrintJob.StoppedByUserId</c> tells apart, naming
     /// the person when it was here.
     /// </summary>
-    Stopped,
+    Stopped = 4,
 
     /// <summary>Refused, or ended somewhere nothing else explains. <c>PrintJob.Reason</c> says what.</summary>
-    Failed,
+    Failed = 5,
 
     /// <summary>
     /// It stopped being observable without saying how - most plausibly a restart across which the
     /// firmware job id mapping was lost. Recorded as its own outcome rather than guessed at, and
     /// distinct from <see cref="Undefined"/>, which means nobody looked.
     /// </summary>
-    Unknown,
+    Unknown = 6,
 }

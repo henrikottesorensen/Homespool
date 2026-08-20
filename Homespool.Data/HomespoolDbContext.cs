@@ -162,6 +162,15 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
                   .WithMany()
                   .HasForeignKey(e => e.TeamId)
                   .OnDelete(DeleteBehavior.Restrict);
+
+            // Text, like every enum column here: legible in a raw SQLite session, and the enum's
+            // declaration order stops being part of the schema. One row per printer, so nothing is
+            // being traded away for it.
+            entity.Property(e => e.Type)
+                  .HasConversion<string>();
+
+            entity.Property(e => e.Status)
+                  .HasConversion<string>();
         });
 
         builder.Entity<Camera>(entity =>
@@ -285,6 +294,11 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
                   .WithOne()
                   .HasForeignKey<PrinterLiveState>(e => e.PrinterId)
                   .OnDelete(DeleteBehavior.Cascade);
+
+            // Text, as everywhere else. This table is upserted rather than appended to and never
+            // grows, so the wider column is paid once per printer instead of once per message.
+            entity.Property(e => e.Status)
+                  .HasConversion<string>();
         });
 
         builder.Entity<TelemetrySample>(entity =>
@@ -298,6 +312,20 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
                   .WithMany()
                   .HasForeignKey(e => e.PrinterId)
                   .OnDelete(DeleteBehavior.Cascade);
+
+            // Text, as everywhere else - and this is the one table where it costs anything, so the
+            // measurement is here rather than left to be re-derived. One printer's full 14-day
+            // retention window at 1 Hz is 1.2M rows: 139 MiB with an integer status against 146 MiB
+            // with the name, so +4.6% while printing and +2.8% while idle. It cannot be worse than
+            // that, because a 39-column row pays its ~39 bytes of header whether or not the columns
+            // are null - the status is a few bytes on top of a row that is mostly overhead.
+            //
+            // Which is also why this column is the wrong place to economise: the table costs over
+            // 100 MiB per printer per window either way, and that is the dense-sample-at-1-Hz
+            // decision rather than this. Halving the rate or shortening retention saves ten times
+            // what an integer here would.
+            entity.Property(e => e.Status)
+                  .HasConversion<string>();
         });
 
         builder.Entity<PrinterLiveSlotState>(entity =>
@@ -358,6 +386,12 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // Stored as text: readable in a raw SQLite session, and immune to reordering of
             // the enum. The volume does not justify the two bytes saved.
             entity.Property(e => e.EventType)
+                  .HasConversion<string>();
+
+            // The same, and this row is the clearest argument for the rule: an event reading
+            // EventType "StateChanged" beside Status 9 is half-decoded, and the half needing a
+            // lookup is the half it was opened for.
+            entity.Property(e => e.Status)
                   .HasConversion<string>();
         });
 

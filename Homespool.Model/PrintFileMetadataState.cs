@@ -28,14 +28,14 @@ public enum PrintFileMetadataState
     Undefined = 0,
 
     /// <summary>Nobody has looked yet - the row predates the reader.</summary>
-    Unread,
+    Unread = 1,
 
     /// <summary>Looked, and the file is not one this can parse. Corruption, or a container nobody knows.</summary>
-    Unreadable,
+    Unreadable = 2,
 
     /// <summary>Read cleanly, and it carried no slicer configuration at all.</summary>
-    Silent,
+    Silent = 3,
 
     /// <summary>Read cleanly, and the columns beside this one carry what it said.</summary>
-    Read,
+    Read = 4,
 }

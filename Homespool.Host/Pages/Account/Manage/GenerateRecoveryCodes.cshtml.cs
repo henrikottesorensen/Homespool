@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -19,6 +20,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.Pages.Account.Manage;
 
+[Authorize]
 public class GenerateRecoveryCodesModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;

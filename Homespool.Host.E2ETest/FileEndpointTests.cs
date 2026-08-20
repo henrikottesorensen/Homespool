@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Net.Mime;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -158,7 +159,7 @@ public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
         // And the body really is the ProblemDetails the OpenAPI document promises. Asserted on a live
         // response rather than on the attribute, because the attribute was the thing that turned out
         // to be describing a shape the endpoint did not return - see OpenApiDocumentTests.
-        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+        response.Content.Headers.ContentType!.MediaType.Should().Be(MediaTypeNames.Application.ProblemJson);
 
         JsonElement problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
                                           .RootElement;

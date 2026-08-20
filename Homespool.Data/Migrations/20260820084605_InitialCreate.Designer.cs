@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20260818065035_InitialCreate")]
+    [Migration("20260820084605_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -71,6 +71,10 @@ namespace Homespool.Data.Migrations
 
                     b.Property<int?>("PrinterId")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("Resolution")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Source")
                         .IsRequired()

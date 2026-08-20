@@ -1,4 +1,5 @@
 using System;
+using System.Net.Mime;
 using System.Text;
 using System.Text.Json;
 
@@ -22,7 +23,7 @@ public static class CommandWireEncoder
     private const int HeaderLength = 9;
 
     /// <summary>The <c>Content-Type</c> firmware parses as a JSON command.</summary>
-    public const string JsonContentType = "application/json";
+    public const string JsonContentType = MediaTypeNames.Application.Json;
 
     /// <summary>The <c>Content-Type</c> firmware parses as a gcode command.</summary>
     public const string GcodeContentType = "text/x.gcode";

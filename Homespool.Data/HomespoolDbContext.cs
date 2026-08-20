@@ -177,6 +177,11 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
                   .IsRequired()
                   .HasMaxLength(Camera.SourceMaxLength);
 
+            // Nullable on purpose: null is "whatever the camera offers", which is the default and a
+            // real answer rather than a missing one. See Camera.Resolution.
+            entity.Property(e => e.Resolution)
+                  .HasMaxLength(Camera.ResolutionMaxLength);
+
             // Same reasoning as Printer: deleting a team that still owns cameras should fail
             // loudly rather than quietly take them.
             entity.HasOne(e => e.Team)

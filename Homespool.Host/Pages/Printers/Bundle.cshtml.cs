@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Net.Mime;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -79,7 +80,7 @@ public class BundleModel : PageModel
         _logger.LogInformation("Provisioning bundle downloaded for printer {PrinterId}, addressed to {Hostname}.",
                                printerId, hostname);
 
-        return File(bundle, "application/zip", FileNameFor(printerName, printerId));
+        return File(bundle, MediaTypeNames.Application.Zip, FileNameFor(printerName, printerId));
     }
 
     /// <summary>

@@ -70,6 +70,24 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
 
+  <data name="Cameras_Rescan" xml:space="preserve">
+    <value>Søg efter kameraer igen</value>
+  </data>
+  <data name="Cameras_RescanHelp" xml:space="preserve">
+    <value>Genstarter kamerastrømserveren, så et nyligt tilsluttet kamera bliver fundet. Live-visninger vil stoppe i nogle få sekunder.</value>
+  </data>
+  <data name="Cameras_RescanUnconfirmed" xml:space="preserve">
+    <value>Kamerastrømserveren blev bedt om at genstarte, men bekræftede det ikke. Genindlæs om et øjeblik for at se de tilsluttede kameraer.</value>
+  </data>
+  <data name="Cameras_Rescanned" xml:space="preserve">
+    <value>Kamerastrømserveren genstartede og genindlæste de tilsluttede kameraer igen.</value>
+  </data>
+  <data name="Cameras_Resolution" xml:space="preserve">
+    <value>Opløsning</value>
+  </data>
+  <data name="Cameras_ResolutionDefault" xml:space="preserve">
+    <value>Standard indstillingen for kameraet</value>
+  </data>
   <data name="PrinterStatus_Connected" xml:space="preserve">
     <value>Forbundet</value>
   </data>

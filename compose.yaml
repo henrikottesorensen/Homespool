@@ -353,6 +353,14 @@ services:
     # it. It is on this list because Homespool proxies that exchange, so the browser still talks only
     # to Homespool - the same arrangement as /api/frame.jpeg, one path further along.
     #
+    # /api/ffmpeg/devices is how the camera picker offers a resolution: it runs ffmpeg -list_formats
+    # over every /dev/video* and reports each one's capture sizes. Homespool cannot ask this itself -
+    # it lists camera names from a read-only mount and deliberately holds no capability to open one
+    # (LocalCameraDevices) - so the question has to be put where the devices are. It discloses model
+    # names and formats to something that has already passed the credential, and writes nothing. Its
+    # answer is cached by the sidecar for the life of its process, which is what the rescan button on
+    # the cameras page restarts.
+    #
     # /api/stream.mjpeg costs exactly what /api/frame.jpeg costs and is the same shape: a stream name
     # in the query, pictures out, no way to write anything. It is relayed by Homespool like the rest,
     # so the browser still never reaches this port. Added 2026-08-19 - and leaving it out is not a
@@ -398,7 +406,7 @@ services:
       # unprompted and puts this deployment's public address into every offer, which for a project
       # whose premise is not routing through somebody else's infrastructure should be asked for
       # rather than inherited. LAN viewing is unaffected either way.
-      - '{"api":{"username":"${GO2RTC_USERNAME:-}","password":"${GO2RTC_PASSWORD:-}","allow_paths":["/api/streams","/api/frame.jpeg","/api/stream.mjpeg","/api/webrtc","/api/config","/api/restart"]}}'
+      - '{"api":{"username":"${GO2RTC_USERNAME:-}","password":"${GO2RTC_PASSWORD:-}","allow_paths":["/api/streams","/api/frame.jpeg","/api/stream.mjpeg","/api/webrtc","/api/config","/api/restart","/api/ffmpeg/devices"]}}'
 
       # DEVELOPER: swap the line above for this one to get the web interface back - it is how stream
       # types get tested by hand. Omitting allow_paths entirely is how go2rtc means "unrestricted",

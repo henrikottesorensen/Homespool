@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using System.Net.Mime;
 using System.Text.Json;
 using System.Threading.Tasks;
 
@@ -1022,7 +1023,7 @@ public static class Program
     /// </remarks>
     private static Task WriteHealthResponseAsync(HttpContext context, HealthReport report)
     {
-        context.Response.ContentType = "application/json";
+        context.Response.ContentType = MediaTypeNames.Application.Json;
 
         return context.Response.WriteAsync(JsonSerializer.Serialize(new
         {

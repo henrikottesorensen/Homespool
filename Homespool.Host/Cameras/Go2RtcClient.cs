@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Net.Mime;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -332,6 +333,165 @@ public sealed class Go2RtcClient : ICameraCodecProbe
     }
 
     /// <summary>
+    /// The MJPEG capture sizes each attached camera offers, keyed by its <c>/dev/videoN</c> node, or
+    /// <see langword="null"/> when the stream server could not be asked.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Asked of the sidecar because only it can answer.</b> Homespool lists camera *names* from a
+    /// read-only mount and deliberately holds no capability to open one (see
+    /// <see cref="LocalCameraDevices"/>), so enumerating formats has to happen where the devices
+    /// actually are. <c>/api/ffmpeg/devices</c> runs <c>ffmpeg -list_formats</c> across every
+    /// <c>/dev/video*</c> and reports each format's sizes in its <c>info</c> field.
+    /// </para>
+    /// <para>
+    /// <b>MJPEG entries only.</b> Every device reports its raw format too, and taking that would
+    /// undo the reason <see cref="LocalCameraDevices.SourceFor"/> states <c>input_format=mjpeg</c>
+    /// in the first place - a transcode per frame, invisibly.
+    /// </para>
+    /// <para>
+    /// <b>The sizes come back unsorted and sometimes duplicated</b> - measured on the board
+    /// 2026-08-20, where one camera listed <c>640x480</c> first and another repeated
+    /// <c>1280x720</c>. They are ordered by pixel count and de-duplicated here rather than in a
+    /// view, because every reader wants the same thing and none of them wants the camera's order.
+    /// </para>
+    /// <para>
+    /// <b>The sidecar caches this for the life of its process</b>, so a camera plugged in afterwards
+    /// is absent until it restarts. That is what the rescan button on the cameras page is for; there
+    /// is no cheaper way, and pretending otherwise would leave somebody staring at a list that
+    /// cannot include what they just plugged in.
+    /// </para>
+    /// </remarks>
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>?> ListDeviceFormatsAsync(
+        CancellationToken cancellationToken)
+    {
+        if (!IsUsable())
+        {
+            return null;
+        }
+
+        Uri request = new($"{BaseAddress().TrimEnd('/')}/api/ffmpeg/devices");
+
+        try
+        {
+            HttpClient client = _httpClientFactory.CreateClient(HttpClientName);
+
+            using HttpResponseMessage response = await client.GetAsync(request, cancellationToken)
+                                                             .ConfigureAwait(false);
+
+            // "no sources" is a 404 and means this machine has no cameras attached, which is the
+            // ordinary case and not a failure - it must not read as "could not be asked".
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "The stream server would not list devices: {StatusCode}.", (int)response.StatusCode);
+                return null;
+            }
+
+            DeviceListing? listing = await response.Content
+                                                   .ReadFromJsonAsync<DeviceListing>(cancellationToken)
+                                                   .ConfigureAwait(false);
+
+            return ParseDeviceFormats(listing?.Sources);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            _logger.LogDebug("The stream server's devices could not be listed: {Message}", exception.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Turns the sidecar's device listing into sizes by node, keeping MJPEG only.
+    /// </summary>
+    /// <remarks>
+    /// Public and static so the parse is testable without a sidecar; the shapes it reads are pinned
+    /// by the tests against strings captured from the real thing.
+    /// </remarks>
+    public static IReadOnlyDictionary<string, IReadOnlyList<string>> ParseDeviceFormats(
+        IReadOnlyList<DeviceSource>? sources)
+    {
+        Dictionary<string, IReadOnlyList<string>> byNode = new(StringComparer.Ordinal);
+
+        foreach (DeviceSource source in sources ?? [])
+        {
+            if (source.Url is null || source.Info is null || !source.Url.Contains("input_format=mjpeg", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (NodeFromUrl(source.Url) is not { } node)
+            {
+                continue;
+            }
+
+            List<string> sizes = source.Info
+                                       .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                                       .Where(IsSize)
+                                       .Distinct(StringComparer.Ordinal)
+                                       .OrderBy(Pixels)
+                                       .ToList();
+
+            if (sizes.Count > 0)
+            {
+                byNode[node] = sizes;
+            }
+        }
+
+        return byNode;
+    }
+
+    /// <summary>The <c>video=</c> parameter of a device URL, as a bare node name.</summary>
+    private static string? NodeFromUrl(string url)
+    {
+        const string Marker = "video=/dev/";
+
+        int at = url.IndexOf(Marker, StringComparison.Ordinal);
+        if (at < 0)
+        {
+            return null;
+        }
+
+        int start = at + Marker.Length;
+        int end = url.IndexOf('&', start);
+
+        return end < 0 ? url[start..] : url[start..end];
+    }
+
+    /// <summary><c>WIDTHxHEIGHT</c>, and nothing else - the info field is free text.</summary>
+    private static bool IsSize(string value)
+    {
+        string[] parts = value.Split('x');
+
+        return parts.Length == 2
+               && int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out int w)
+               && int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out int h)
+               && w > 0 && h > 0;
+    }
+
+    private static long Pixels(string size)
+    {
+        string[] parts = size.Split('x');
+
+        return long.Parse(parts[0], CultureInfo.InvariantCulture)
+               * long.Parse(parts[1], CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>One entry of the stream server's device listing.</summary>
+    /// <param name="Name">The format's human name, such as <c>Motion-JPEG</c>.</param>
+    /// <param name="Info">Space-separated capture sizes, in the camera's own order.</param>
+    /// <param name="Url">A composed source for the device, which is where the node name is read from.</param>
+    public sealed record DeviceSource(string? Name, string? Info, string? Url);
+
+    /// <summary>The envelope <c>/api/ffmpeg/devices</c> answers with.</summary>
+    public sealed record DeviceListing(IReadOnlyList<DeviceSource>? Sources);
+
+    /// <summary>
     /// Exchanges a browser's WebRTC offer for the sidecar's answer.
     /// </summary>
     /// <remarks>
@@ -501,7 +661,7 @@ public sealed class Go2RtcClient : ICameraCodecProbe
         {
             HttpClient client = _httpClientFactory.CreateClient(HttpClientName);
 
-            using StringContent content = new(document, Encoding.UTF8, "application/json");
+            using StringContent content = new(document, Encoding.UTF8, MediaTypeNames.Application.Json);
             using HttpResponseMessage response = await client
                                                        .PatchAsync(request, content, cancellationToken)
                                                        .ConfigureAwait(false);

@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Mime;
 using System.Text.Json;
 using System.Threading.Tasks;
 
@@ -164,7 +165,7 @@ public sealed class OpenApiDocumentTests : IAsyncLifetime, IDisposable
 
         // Assert
         content.EnumerateObject().Select(mediaType => mediaType.Name)
-               .Should().Equal(["application/problem+json"], "the arm says the content type it writes, and only that");
+               .Should().Equal([MediaTypeNames.Application.ProblemJson], "the arm says the content type it writes, and only that");
     }
 
     /// <summary>

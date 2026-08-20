@@ -59,7 +59,7 @@ public class SourceFileEncodingTests
     {
         ".cs", ".cshtml", ".csproj", ".slnx", ".props", ".targets",
         ".json", ".jsonopenapi", ".yaml", ".yml",
-        ".js", ".css", ".md", ".sh", ".txt", ".example",
+        ".js", ".css", ".html", ".md", ".sh", ".txt", ".example",
     };
 
     /// <summary>Files worth checking that have no extension, or whose whole name is the extension.</summary>

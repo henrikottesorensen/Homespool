@@ -25,6 +25,35 @@ map $http_upgrade $connection_upgrade {
     ''      close;
 }
 
+# Which language the holding page is served in, for @starting at the bottom of this file. A map
+# because it has to be decided at http level, not where it is used.
+#
+# The browser is the only thing that can be asked. The application stores a language on the account
+# and that is what every other page follows - but this page exists precisely when the application is
+# not answering, so the account, and the database it lives in, are exactly what is unavailable. A
+# reader whose account is Danish and whose browser says English gets English here, once, for as long
+# as the outage lasts.
+#
+# QUOTED, and that is not decoration: a `;` inside an unquoted map pattern ends the directive, and
+# nginx reports "invalid number of the map parameters" pointing at the line rather than at the
+# character.
+#
+# Matches the FIRST tag only, and ignores q-values, which nginx cannot parse. Browsers send their
+# list in preference order, so this agrees with them; a hand-written `en;q=0.7,da;q=0.9` gets English
+# where the application itself would give Danish. The word boundary is what keeps "dansk" - a
+# language tag nobody sends, but a header nobody validates either - out of the Danish arm.
+map $http_accept_language $hs_starting_language {
+    default                                 en;
+    "~*^[\s]*da([-_][A-Za-z]+)?([,;]|$)"    da;
+}
+
+# Kept separate from the language so the file name is the only thing that knows about file names.
+# English is the neutral file and takes no suffix, the same shape SharedResource.resx uses.
+map $hs_starting_language $hs_starting_suffix {
+    default  "";
+    da       ".da";
+}
+
 # Anything whose Host this deployment does not recognise is refused here, before it can reach a
 # server block that would answer it. Two of these, because a default server is per-listener.
 #
@@ -199,7 +228,24 @@ server {
     # Served from the image, not from the mounted configuration directory - see the proxy Dockerfile.
     location @starting {
         root /usr/share/nginx/html;
-        try_files /homespool-starting.html =503;
+
+        # Falls back to the English page rather than to =503, which is what lets the configuration
+        # and the image be out of step: this file is bind-mounted and changes on a restart, the
+        # pages are baked into the proxy image and change only on a rebuild. A proxy still running
+        # an older image simply serves English. Note the header below then says `da` about an
+        # English page - a lie confined to that window, and better than the alternative, which is
+        # no page at all.
+        try_files /homespool-starting$hs_starting_suffix.html /homespool-starting.html =503;
+
+        add_header Content-Language $hs_starting_language always;
+        add_header Vary Accept-Language always;
+
+        # Said in the header as well as in the page's own <meta charset>. The meta tag is what a
+        # browser honours when the header is silent, and it is inside the first 1024 bytes where the
+        # standard requires it - but Danish is the first non-ASCII this page has ever carried, and a
+        # holding page rendering its own apology as mojibake is a bad first impression of a
+        # deployment that is merely slow.
+        charset utf-8;
 
         # The page refreshes itself, but say so in the headers too, for anything that is not a
         # browser. no-store because the next request may well succeed, and a cached holding page

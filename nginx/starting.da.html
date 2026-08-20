@@ -1,30 +1,16 @@
 <!doctype html>
 <!--
-  Served by the proxy when the application is not answering yet - see homespool.conf.template's @starting.
+  Den danske udgave af starting.html - se den fil for hvorfor siden ikke henter noget som helst.
 
-  Self-contained on purpose: no fonts, no scripts, no images. This page is shown at the exact moment
-  nothing else on the deployment works, so anything it fetched would be a second thing to fail.
-
-  That is why the mark below is inline SVG rather than <img src="/img/homespool-mark.svg">. The
-  application serves that file, and the application is precisely what is not answering yet - the
-  logo would be a broken image on the one page whose job is to look calm. Inline costs a few
-  hundred bytes and cannot fail on its own.
-
-  The refresh is a meta tag rather than JavaScript for the same reason, and because the whole page is
-  a dozen lines of markup that a browser can render before the stylesheet is parsed.
-
-  starting.da.html is the same page in Danish, chosen by the proxy from Accept-Language - see
-  $hs_starting_language in homespool.conf.template. The application's own resources cannot reach
-  here, since the application is what is not answering, so the two files are a translation this
-  repository holds in two places rather than one. Keep them in step: same markup, same classes, same
-  number of paragraphs, only the words and lang differ. StartingPageTests is what says so.
+  De to filer skal holdes i takt: samme markup, samme klasser, samme antal afsnit. Kun teksten og
+  lang-attributten adskiller dem. StartingPageTests holder øje med det.
 -->
-<html lang="en">
+<html lang="da">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="5">
-<title>Homespool is starting</title>
+<title>Homespool starter</title>
 <style>
   :root { color-scheme: light dark; }
   body {
@@ -64,11 +50,11 @@
       <ellipse cx="55.5" cy="55.55" rx="6.5" ry="8.2"/>
     </g>
   </svg>
-  <h1>Homespool is starting</h1>
-  <p>The server is coming up. This page refreshes itself every few seconds.</p>
+  <h1>Homespool starter</h1>
+  <p>Serveren er ved at starte. Denne side genindlæser sig selv med få sekunders mellemrum.</p>
   <p class="quiet">
-    First start takes longer &mdash; the database is being prepared. On a Raspberry&nbsp;Pi that can
-    take a few minutes.
+    Første opstart tager længere &mdash; databasen bliver gjort klar. På en Raspberry&nbsp;Pi kan det
+    tage et par minutter.
   </p>
   <div class="bar"></div>
 </main>

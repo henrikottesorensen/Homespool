@@ -219,14 +219,14 @@ body {
    for both transports, in less code. */
 .camera-maximise {
   position: absolute;
-  top: .4rem;
   right: .4rem;
+  bottom: .4rem;
 
   /* Bootstrap's `.ratio > *` stretches every child to 100% x 100% and out-specifies a single class,
      so without these the "icon" is an invisible slab over the whole picture - which also means a
      click anywhere on the image maximises it. Measured in a harness, not guessed. */
+  top: auto;
   left: auto;
-  bottom: auto;
   width: auto;
   height: auto;
 

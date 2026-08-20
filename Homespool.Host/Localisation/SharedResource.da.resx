@@ -1947,12 +1947,18 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>Hvad denne token må</value>
   </data>
   <data name="Tokens_ScopeHint" xml:space="preserve">
-    <value>En token kan aldrig mere end dig selv. Fjern fluebenet ved alt, som scriptet ikke har brug for.</value>
+    <value>En token kan aldrig mere end dig selv. Sæt kun flueben ved det, scriptet har brug for.</value>
   </data>
   <data name="Tokens_ScopeColumn" xml:space="preserve">
     <value>Rettigheder</value>
   </data>
   <data name="Tokens_ScopeRequired" xml:space="preserve">
     <value>Vælg mindst én ting, denne token må.</value>
+  </data>
+  <data name="Tokens_UntickAll" xml:space="preserve">
+    <value>Fjern alle flueben</value>
+  </data>
+  <data name="Tokens_TickAll" xml:space="preserve">
+    <value>Sæt alle flueben</value>
   </data>
 </root>

@@ -66,11 +66,11 @@ public sealed class ApiTokenScopeFormTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
-    /// Every capability a token can carry has a checkbox, and every one of them is ticked when the
-    /// form opens - so narrowing is deliberate and the default is the credential somebody expects.
+    /// Every capability a token can carry has a checkbox, and <b>not one of them is ticked when the
+    /// form opens</b> - so every capability a token ends up with is one somebody chose.
     /// </summary>
     [Fact]
-    public async Task TheFormOffersEveryCapabilityAndOpensWithAllOfThemTicked()
+    public async Task TheFormOffersEveryCapabilityAndOpensWithNoneOfThemTicked()
     {
         // Arrange
         (HSUser _, HttpClient client) =
@@ -97,6 +97,8 @@ public sealed class ApiTokenScopeFormTests : IAsyncLifetime, IDisposable
             // Bootstrap renders a ticked box as a bare checked attribute; one per capability.
             page.Split("form-check-input").Length.Should()
                 .Be(CapabilitySet.Everything.Count + 1, "one checkbox per capability and no more");
+
+            page.Should().NotContain("checked", "a new token starts powerless, not maximal");
         }
     }
 
@@ -130,6 +132,128 @@ public sealed class ApiTokenScopeFormTests : IAsyncLifetime, IDisposable
                                                    .ToList();
 
             unlabelled.Should().BeEmpty("a resource key on the page means the label is missing");
+        }
+    }
+
+    /// <summary>
+    /// <b>Both buttons work with scripting off.</b> They are real submits with handlers behind them,
+    /// and this drives exactly the path a browser that never ran <c>token-scope.js</c> takes - out to
+    /// every box ticked and back to none.
+    /// </summary>
+    /// <remarks>
+    /// The half a page-model test cannot see is that the boxes <i>render</i> in the state the handler
+    /// chose. Setting <c>Input.Scope</c> and the view reading it are two separate things to be right
+    /// about, and only the rendered page proves both.
+    /// </remarks>
+    [Fact]
+    public async Task BothButtonsSetEveryBoxWithoutScripting()
+    {
+        // Arrange
+        (HSUser _, HttpClient client) =
+            await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "ticker@example.com");
+
+        using (client)
+        {
+            string opened = await client.GetStringAsync("/Account/Manage/ApiTokens",
+                                                        TestContext.Current.CancellationToken);
+
+            // Act - out. Nothing is ticked yet, so the form carries the half-typed name and no scope.
+            using FormUrlEncodedContent tick = new(
+            [
+                new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(opened)),
+                new KeyValuePair<string, string>("Input.Name", "half-typed"),
+            ]);
+
+            using HttpResponseMessage ticked = await client.PostAsync(
+                "/Account/Manage/ApiTokens?handler=TickAll", tick, TestContext.Current.CancellationToken);
+
+            string tickedPage = await ticked.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+            // Assert - out
+            ticked.StatusCode.Should().Be(HttpStatusCode.OK,
+                                          "redirected to {0}", ticked.Headers.Location?.ToString() ?? "(none)");
+
+            // Razor renders a bool attribute as checked="checked" when true and omits it entirely when
+            // false, so the pair is what to count - "checked" alone appears twice per ticked box.
+            tickedPage.Split("checked=\"checked\"").Length.Should()
+                      .Be(CapabilitySet.Everything.Count + 1, "every box, and only the boxes");
+            tickedPage.Should().Contain("half-typed", "a round trip must not cost what was typed");
+
+            // Act - back, with everything the ticked page would now submit.
+            using FormUrlEncodedContent untick = new(
+            [
+                new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(tickedPage)),
+                new KeyValuePair<string, string>("Input.Name", "half-typed"),
+                .. CapabilitySet.Everything.Select(
+                    capability => new KeyValuePair<string, string>("Input.Scope", capability.ToString())),
+            ]);
+
+            using HttpResponseMessage cleared = await client.PostAsync(
+                "/Account/Manage/ApiTokens?handler=UntickAll", untick, TestContext.Current.CancellationToken);
+
+            string clearedPage = await cleared.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+            // Assert - back
+            cleared.StatusCode.Should().Be(HttpStatusCode.OK);
+            clearedPage.Should().Contain($"id=\"scope-{Capability.Print}\"", "the boxes are still on the page");
+            clearedPage.Should().NotContain("checked", "every box is clear again");
+
+            // Neither button minted anything, and neither complained about the unfinished form.
+            using IServiceScope scope = _factory.Services.CreateScope();
+            scope.ServiceProvider.GetRequiredService<Homespool.Data.HomespoolDbContext>()
+                 .ApiTokens.Should().BeEmpty("setting boxes is not minting");
+        }
+    }
+
+    /// <summary>
+    /// <b>A token with no capabilities is refused by the real form.</b> Now that the picker opens
+    /// empty, submitting an empty scope is what happens if it is never noticed - so this is the check
+    /// standing between a name typed in a hurry and a credential that silently does nothing.
+    /// </summary>
+    /// <remarks>
+    /// Driven over HTTP rather than from the page model, because the page-model test supplies the
+    /// <c>ModelState</c> error itself and so cannot see whether <c>[MinLength(1)]</c> is on the
+    /// property at all. This one posts a real form and lets binding decide.
+    /// </remarks>
+    [Fact]
+    public async Task AFormWithNothingTickedMintsNothingAndSaysWhy()
+    {
+        // Arrange
+        (HSUser _, HttpClient client) =
+            await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "scopeless@example.com");
+
+        using (client)
+        {
+            string opened = await client.GetStringAsync("/Account/Manage/ApiTokens",
+                                                        TestContext.Current.CancellationToken);
+
+            // A complete name and not one capability - the form as somebody who missed the picker
+            // entirely would submit it.
+            using FormUrlEncodedContent form = new(
+            [
+                new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(opened)),
+                new KeyValuePair<string, string>("Input.Name", "in-a-hurry"),
+            ]);
+
+            // Act
+            using HttpResponseMessage response =
+                await client.PostAsync("/Account/Manage/ApiTokens", form, TestContext.Current.CancellationToken);
+
+            string page = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+            // Assert
+            response.StatusCode.Should().Be(HttpStatusCode.OK, "the form comes back rather than redirecting");
+
+            using IServiceScope scope = _factory.Services.CreateScope();
+            scope.ServiceProvider.GetRequiredService<Homespool.Data.HomespoolDbContext>()
+                 .ApiTokens.Should().BeEmpty("a scopeless token is refused");
+
+            page.Should().NotContain(ApiTokenService.Prefix, "and no secret is shown");
+
+            // The refusal has to say what to do about it, in the reader's language rather than as a
+            // resource key - the failure `EveryCapabilityIsLabelledRatherThanNamedByItsKey` guards.
+            page.Should().Contain("Choose at least one thing this token may do.");
+            page.Should().NotContain("Tokens_ScopeRequired");
         }
     }
 }

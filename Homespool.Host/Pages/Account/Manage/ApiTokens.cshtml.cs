@@ -87,7 +87,14 @@ public class ApiTokensModel : PageModel
         /// <b>At least one is required, though an empty scope is representable on purpose.</b> A token
         /// that can do nothing is a thing the model must be able to express - it is what keeps "empty"
         /// from being overloaded to mean "unrestricted" - but nobody arrives at this form intending to
-        /// mint one, so unticking everything is far likelier to be a slip than a wish.
+        /// mint one.
+        /// <para>
+        /// <b>The refusal carries more weight now the form opens empty</b>, because submitting an
+        /// empty scope stopped needing a deliberate untick and became the thing that happens if the
+        /// picker is not noticed at all. It is the one check standing between "I typed a name and
+        /// pressed the button" and a credential that silently does nothing, which is a failure the
+        /// script only discovers later and reads as a bug rather than as a scope.
+        /// </para>
         /// </remarks>
         [MinLength(1, ErrorMessage = "Tokens_ScopeRequired")]
         public IList<Capability> Scope { get; set; } = [];
@@ -95,9 +102,12 @@ public class ApiTokensModel : PageModel
 
     public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
     {
-        // Everything ticked, so the form opens on the credential somebody expects and narrowing is a
-        // deliberate act rather than a chore. It is also exactly what tokens were before scopes.
-        Input.Scope = [.. CapabilitySet.Everything];
+        // Nothing ticked. A credential's default has to be the powerless one: what somebody does not
+        // think about should be what they cannot do, and every box already ticked is a decision made
+        // on their behalf and in the wrong direction. Tick all is one click away for the rare token
+        // that genuinely wants everything, so the ergonomic cost falls on that case rather than on
+        // every deliberately-scoped one.
+        Input.Scope = [];
 
         return await LoadAsync(cancellationToken) ? Page() : NotFound();
     }
@@ -127,7 +137,11 @@ public class ApiTokensModel : PageModel
                                user.Id, token.Id, token.Scope);
 
         CreatedToken = plaintext;
-        Input = new InputModel { Scope = [.. CapabilitySet.Everything] };
+
+        // A fresh empty form rather than the scope just minted. Carrying it over would make the next
+        // token default to the last one's rights, which is the same failure as defaulting to
+        // everything - only quieter, because it looks like it was chosen.
+        Input = new InputModel();
 
         // The secret is in this response body and must not outlive it. POST responses are already
         // non-cacheable under RFC 9111 absent explicit freshness information, which nothing here
@@ -141,6 +155,61 @@ public class ApiTokensModel : PageModel
         Tokens = await _tokens.ListAsync(user.Id, cancellationToken);
 
         return Page();
+    }
+
+    /// <summary>
+    /// Clears every box, so narrowing a token to the two capabilities a script needs is one click and
+    /// two ticks rather than nine unticks.
+    /// </summary>
+    public Task<IActionResult> OnPostUntickAllAsync(CancellationToken cancellationToken)
+    {
+        return ReopenWithScopeAsync([], cancellationToken);
+    }
+
+    /// <summary>
+    /// Ticks every box again, for somebody who cleared them and changed their mind.
+    /// </summary>
+    /// <remarks>
+    /// <b>Worth knowing that this makes a maximal token one click away</b>, which cuts slightly
+    /// against the narrowing the picker exists to encourage. It is here anyway: the form already opens
+    /// in this state, so the button reaches nothing a reload would not, and a lone <i>untick</i> with
+    /// no way back is a trap of its own.
+    /// </remarks>
+    public Task<IActionResult> OnPostTickAllAsync(CancellationToken cancellationToken)
+    {
+        return ReopenWithScopeAsync([.. CapabilitySet.Everything], cancellationToken);
+    }
+
+    /// <summary>
+    /// Renders the form again with <paramref name="scope"/> ticked, keeping whatever has been typed
+    /// into it and complaining about nothing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The two buttons post rather than being script-only controls.</b> A button that does nothing
+    /// where scripting is off looks broken, which is the failure <c>toggle-submit.js</c> is already
+    /// designed against; here the round trip <i>is</i> the fallback. <c>token-scope.js</c> sets the
+    /// boxes in the browser and cancels the submit, so this is what a browser without scripting
+    /// reaches rather than what anybody normally gets.
+    /// </para>
+    /// <para>
+    /// <b>Validation is dropped rather than run.</b> Binding has already recorded that
+    /// <see cref="InputModel.Name"/> is required and that the scope was too short, against a form
+    /// nobody has finished filling in. Neither button is an attempt to mint anything, so reporting
+    /// either would be scolding somebody for a step they have not reached yet.
+    /// </para>
+    /// </remarks>
+    private async Task<IActionResult> ReopenWithScopeAsync(IList<Capability> scope,
+                                                           CancellationToken cancellationToken)
+    {
+        // Cleared rather than merely ignored: the tag helpers render from ModelState in preference to
+        // the model, so leaving the errors in place would print them beside the fields. Input keeps
+        // what was typed, which is what the fields fall back to.
+        ModelState.Clear();
+
+        Input.Scope = scope;
+
+        return await LoadAsync(cancellationToken) ? Page() : NotFound();
     }
 
     public async Task<IActionResult> OnPostRevokeAsync(long id, CancellationToken cancellationToken)

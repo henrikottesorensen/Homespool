@@ -2018,12 +2018,18 @@ A stick that already works with your printer is the right stick. If you are form
     <value>What this token may do</value>
   </data>
   <data name="Tokens_ScopeHint" xml:space="preserve">
-    <value>A token can never do more than you can. Untick anything the script does not need.</value>
+    <value>A token can never do more than you can. Tick only what the script needs.</value>
   </data>
   <data name="Tokens_ScopeColumn" xml:space="preserve">
     <value>Permissions</value>
   </data>
   <data name="Tokens_ScopeRequired" xml:space="preserve">
     <value>Choose at least one thing this token may do.</value>
+  </data>
+  <data name="Tokens_UntickAll" xml:space="preserve">
+    <value>Untick all</value>
+  </data>
+  <data name="Tokens_TickAll" xml:space="preserve">
+    <value>Tick all</value>
   </data>
 </root>

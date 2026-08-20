@@ -61,7 +61,12 @@ re-enrol it.
 ## Tokens: what a credential may do
 
 A personal access token is created under **Account → API tokens**, and you choose what it may do when
-you create it. Every box is ticked to begin with; untick anything the script does not need.
+you create it. **Nothing is ticked to begin with** — tick what the script needs, and nothing else. A
+token you create without thinking about this can do nothing at all, which is the intended direction to
+fail in; **Tick all** is there for the rare key that genuinely wants everything.
+
+**A token with no capabilities is refused.** You will be asked to choose at least one rather than
+handed a credential that fails on its first call.
 
 **A token can never do more than you can.** What it may do is what your memberships allow *and* what
 its scope names — narrowing only. Ticking `ManagePrinter` on a token does not let it manage a printer

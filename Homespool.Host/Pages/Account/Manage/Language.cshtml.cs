@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -28,6 +29,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// every alert in the deployment's default language.
 /// </para>
 /// </remarks>
+[Authorize]
 public class LanguageModel : PageModel
 {
     /// <summary>The form value meaning "no stored preference".</summary>

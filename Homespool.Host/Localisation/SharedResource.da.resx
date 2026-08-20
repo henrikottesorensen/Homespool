@@ -1050,9 +1050,6 @@
   <data name="Cameras_LiveStalled" xml:space="preserve">
     <value>Live-billedet holdt op med at komme. Viser stillbilledet i stedet for.</value>
   </data>
-  <data name="Cameras_LiveUnsupported" xml:space="preserve">
-    <value>Dette kamera sender stillbilleder frem for video, så det kan ikke ses live.</value>
-  </data>
   <data name="LiveView_Title" xml:space="preserve">
     <value>Live kameravisning</value>
   </data>

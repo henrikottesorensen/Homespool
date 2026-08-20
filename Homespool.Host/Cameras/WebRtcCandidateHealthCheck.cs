@@ -33,19 +33,19 @@ namespace Homespool.Host.Cameras;
 /// </para>
 /// <para>
 /// <b>It reports rather than re-derives.</b> The address is worked out once by
-/// <see cref="WebRtcConfigurer"/> and read here through <see cref="WebRtcAvailability"/>, so what the
+/// <see cref="WebRtcConfigurer"/> and read here through <see cref="CameraLiveAvailability"/>, so what the
 /// banner says and what the sidecar was told cannot drift apart — a second computation could reach a
 /// different answer, since it depends on a name resolving.
 /// </para>
 /// </remarks>
 public sealed class WebRtcCandidateHealthCheck : IHealthCheck
 {
-    private readonly WebRtcAvailability _availability;
+    private readonly CameraLiveAvailability _availability;
     private readonly IOptions<CameraOptions> _cameras;
     private readonly IOptions<PrusaConnectOptions> _connect;
     private readonly HomespoolDbContext _dbContext;
 
-    public WebRtcCandidateHealthCheck(WebRtcAvailability availability,
+    public WebRtcCandidateHealthCheck(CameraLiveAvailability availability,
                                       IOptions<CameraOptions> cameras,
                                       IOptions<PrusaConnectOptions> connect,
                                       HomespoolDbContext dbContext)

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Threading;
@@ -31,7 +32,7 @@ namespace Homespool.Host.Test;
 /// working. So the sentence in the banner is the entire diagnosis, and which sentence it is decides
 /// whether the operator checks the right setting.
 /// </remarks>
-public sealed class WebRtcLiveViewTests : IDisposable
+public sealed class CameraLiveAvailabilityTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-webrtc-{Guid.NewGuid():N}.db");
 
@@ -57,80 +58,140 @@ public sealed class WebRtcLiveViewTests : IDisposable
     }
 
     /// <summary>
-    /// A network camera's address says nothing about its codec, and nothing can report it in advance —
-    /// measured on the board 2026-08-18: the stream server names no codec for a stream nobody is
-    /// consuming, and a still fetch closes the producer the instant the frame is served. So it is
-    /// offered and learned from.
+    /// The transport is decided from the codec the stream server reports, and go2rtc's own lists
+    /// decide the mapping: its WebRTC consumer carries H264/H265/VP8/VP9/AV1, and its MJPEG stream
+    /// carries JPEG alone - measured 2026-08-19, when an H.264 camera answered its multipart request
+    /// with 200 and then silence.
+    /// </summary>
+    [Theory]
+    [InlineData("JPEG", LiveTransport.Mjpeg)]
+    [InlineData("H264", LiveTransport.Webrtc)]
+    [InlineData("H265", LiveTransport.Webrtc)]
+    [InlineData("HEVC-weirdness", LiveTransport.None)]
+    public async Task TheCodecDecidesTheTransport(string codec, LiveTransport expected)
+    {
+        CameraLiveAvailability availability = new(ProbeAnswering(codec))
+        {
+            Candidate = "192.168.13.183:8555",
+        };
+
+        (await availability.HowToWatchAsync(Guid.NewGuid(), CancellationToken.None)).Should().Be(expected);
+    }
+
+    /// <summary>
+    /// With no address, WebRTC is not offered whatever the camera can do - there would be nowhere to
+    /// send the video. The MJPEG stream needs no address, because it travels through Homespool over
+    /// the same HTTP the page came on.
     /// </summary>
     [Fact]
-    public void ANetworkCameraIsOfferedLiveViewUntilItRefuses()
+    public async Task WithoutAnAddressOnlyTheMjpegStreamIsOffered()
     {
-        WebRtcAvailability availability = new() { Candidate = "192.168.13.183:8555" };
+        CameraLiveAvailability unconfigured = new(ProbeAnswering("H264"));
+
+        (await unconfigured.HowToWatchAsync(Guid.NewGuid(), CancellationToken.None))
+            .Should().Be(LiveTransport.None);
+
+        CameraLiveAvailability jpeg = new(ProbeAnswering("JPEG"));
+
+        (await jpeg.HowToWatchAsync(Guid.NewGuid(), CancellationToken.None))
+            .Should().Be(LiveTransport.Mjpeg);
+    }
+
+    /// <summary>
+    /// One probe per camera per process: the codec is a property of the hardware, and a DESCRIBE
+    /// makes the stream server open the camera, so asking on every page load would keep it awake
+    /// for nobody.
+    /// </summary>
+    [Fact]
+    public async Task ACameraIsProbedOnceAndRemembered()
+    {
+        ICameraCodecProbe probe = ProbeAnswering("JPEG");
+        CameraLiveAvailability availability = new(probe);
         Guid camera = Guid.NewGuid();
 
-        availability.CanOffer(camera, "rtsp://192.168.13.217/live")
-                    .Should().BeTrue("nothing can say otherwise until somebody tries");
+        await availability.HowToWatchAsync(camera, CancellationToken.None);
+        await availability.HowToWatchAsync(camera, CancellationToken.None);
 
-        availability.MarkUnsupported(camera);
-
-        availability.CanOffer(camera, "rtsp://192.168.13.217/live").Should().BeFalse(
-            "a JPEG camera is refused permanently, so the button must not come back and fail again");
+        await probe.Received(1).ProbeCodecsAsync(camera, Arg.Any<CancellationToken>());
     }
 
     /// <summary>
-    /// The half that needs no attempt at all. This source was composed by Homespool's own camera
-    /// picker, which states the format rather than inheriting it - so a button here would be one
-    /// nobody could ever use.
+    /// A probe that gets no answer means the camera is off, not that it cannot - so it is asked
+    /// again, and the button appears when the camera comes back without anyone restarting anything.
     /// </summary>
     [Fact]
-    public void AnAttachedJpegCameraIsNeverOffered()
+    public async Task ACameraThatDidNotAnswerIsAskedAgain()
     {
-        WebRtcAvailability availability = new() { Candidate = "192.168.13.183:8555" };
+        ICameraCodecProbe probe = Substitute.For<ICameraCodecProbe>();
+        Guid camera = Guid.NewGuid();
 
-        availability.CanOffer(
-            Guid.NewGuid(),
-            "ffmpeg:device?video=/dev/v4l/by-id/usb-046d_0821_437242E0-video-index0&input_format=mjpeg")
-                    .Should().BeFalse();
-    }
+        probe.ProbeCodecsAsync(camera, Arg.Any<CancellationToken>())
+             .Returns((IReadOnlySet<string>?)null, new HashSet<string> { "JPEG" });
 
-    [Theory]
-    [InlineData("ffmpeg:device?video=/dev/video0&input_format=mjpeg", true)]
-    [InlineData("rtsp://camera.lan/live#video=mjpeg", true)]
-    [InlineData("rtsp://camera.lan/live#video=jpeg", true)]
-    [InlineData("rtsp://192.168.13.217/live", false)]
-    [InlineData("onvif://user:pass@192.168.1.50", false)]
-    [InlineData("http://camera.lan/snapshot.jpg", false)]
-    [InlineData("rtsp://camera.lan/h264Preview_01_main", false)]
-    [InlineData("", false)]
-    public void OnlyASourceThatStatesJpegIsRefusedInAdvance(string source, bool expected)
-    {
-        WebRtcAvailability.DeclaresJpeg(source).Should().Be(expected);
+        CameraLiveAvailability availability = new(probe);
+
+        (await availability.HowToWatchAsync(camera, CancellationToken.None)).Should().Be(LiveTransport.None);
+        (await availability.HowToWatchAsync(camera, CancellationToken.None)).Should().Be(LiveTransport.Mjpeg);
     }
 
     /// <summary>
-    /// The refusal is about one camera, not about the deployment. An MJPEG webcam beside an H.264
-    /// camera must not take the button away from its neighbour.
+    /// A source edit forgets the probed codec - a different camera can be put at the same address,
+    /// and the remembered answer belongs to the hardware, not the row.
     /// </summary>
     [Fact]
-    public void OneCamerasRefusalDoesNotSilenceAnother()
+    public async Task ForgettingACameraMakesTheNextAskProbeAgain()
     {
-        WebRtcAvailability availability = new() { Candidate = "192.168.13.183:8555" };
-        Guid webcam = Guid.NewGuid();
-        Guid networkCamera = Guid.NewGuid();
+        ICameraCodecProbe probe = ProbeAnswering("JPEG");
+        CameraLiveAvailability availability = new(probe);
+        Guid camera = Guid.NewGuid();
 
-        availability.MarkUnsupported(webcam);
+        await availability.HowToWatchAsync(camera, CancellationToken.None);
+        availability.Forget(camera);
+        await availability.HowToWatchAsync(camera, CancellationToken.None);
 
-        availability.CanOffer(networkCamera, "rtsp://192.168.13.217/live").Should().BeTrue();
+        await probe.Received(2).ProbeCodecsAsync(camera, Arg.Any<CancellationToken>());
     }
 
     /// <summary>
-    /// With no address, nothing is offered whatever the camera can do — there would be nowhere to
-    /// send the video.
+    /// The SDP grammar the probe relies on, against the answers the real sidecar gave on
+    /// 2026-08-20 - and the audio section must not leak codecs into a video decision.
     /// </summary>
     [Fact]
-    public void NothingIsOfferedWithoutAnAddress()
+    public void TheSdpParserReadsVideoCodecsAndOnlyThose()
     {
-        new WebRtcAvailability().CanOffer(Guid.NewGuid(), "rtsp://192.168.13.217/live").Should().BeFalse();
+        const string sdp = "RTSP/1.0 200 OK\r\nCSeq: 1\r\nContent-Length: 120\r\n\r\n"
+                           + "v=0\r\no=- 0 0 IN IP4 0.0.0.0\r\n"
+                           + "m=video 0 RTP/AVP 96\r\na=rtpmap:96 H264/90000\r\n"
+                           + "m=audio 0 RTP/AVP 97\r\na=rtpmap:97 MPEG4-GENERIC/16000\r\n";
+
+        Go2RtcClient.ParseSdpVideoCodecs(sdp).Should().BeEquivalentTo(["H264"]);
+
+        Go2RtcClient.ParseSdpVideoCodecs("m=video 0 RTP/AVP 26\r\na=rtpmap:26 JPEG/90000\r\n")
+                    .Should().BeEquivalentTo(["JPEG"]);
+    }
+
+    /// <summary>
+    /// The wire names are the page contract - camera-live.js switches on them - so a rename in the
+    /// enum must fail here rather than as a button that silently does nothing.
+    /// </summary>
+    [Fact]
+    public void TheTransportSerialisesToTheNamesThePageSwitchesOn()
+    {
+        System.Text.Json.JsonSerializer.Serialize(new CameraLiveOption(true, LiveTransport.Webrtc))
+              .Should().Contain("\"webrtc\"");
+
+        System.Text.Json.JsonSerializer.Serialize(new CameraLiveOption(true, LiveTransport.Mjpeg))
+              .Should().Contain("\"mjpeg\"");
+    }
+
+    private static ICameraCodecProbe ProbeAnswering(string codec)
+    {
+        ICameraCodecProbe probe = Substitute.For<ICameraCodecProbe>();
+
+        probe.ProbeCodecsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+             .Returns(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { codec });
+
+        return probe;
     }
 
     [Fact]
@@ -219,7 +280,7 @@ public sealed class WebRtcLiveViewTests : IDisposable
                                                             string printerHost = "",
                                                             string configured = "")
     {
-        WebRtcAvailability availability = new() { Candidate = candidate };
+        CameraLiveAvailability availability = new(Substitute.For<ICameraCodecProbe>()) { Candidate = candidate };
 
         WebRtcCandidateHealthCheck check = new(
             availability,

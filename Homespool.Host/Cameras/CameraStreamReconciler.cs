@@ -32,22 +32,38 @@ namespace Homespool.Host.Cameras;
 /// Homespool are removed at the point of deletion, where the intent is unambiguous.
 /// </para>
 /// <para>
+/// <b>It also warms the codec memo</b>, because that memo is empty on every start and the first
+/// page would otherwise pay for the probe - and lose, on the case that matters: measured
+/// 2026-08-20, the first DESCRIBE against a cold USB camera during stack start ran past its
+/// deadline, and the live button was missing until somebody reloaded. Probed here instead, where
+/// nobody is waiting.
+/// </para>
+/// <para>
 /// Follows <c>PrintFileReconciler</c>: a one-shot at startup rather than a loop, because the thing
 /// it heals only changes when something outside the application does.
 /// </para>
 /// </remarks>
 public sealed class CameraStreamReconciler : BackgroundService
 {
+    /// <summary>
+    /// How long to wait before giving a failed startup probe its one retry. The failure it answers
+    /// is the probe racing the rest of the stack's start, and a few seconds is what that race needs.
+    /// </summary>
+    private static readonly TimeSpan ProbeRetryDelay = TimeSpan.FromSeconds(5);
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly Go2RtcClient _streamServer;
+    private readonly CameraLiveAvailability _liveView;
     private readonly ILogger<CameraStreamReconciler> _logger;
 
     public CameraStreamReconciler(IServiceScopeFactory scopeFactory,
                                   Go2RtcClient streamServer,
+                                  CameraLiveAvailability liveView,
                                   ILogger<CameraStreamReconciler> logger)
     {
         _scopeFactory = scopeFactory;
         _streamServer = streamServer;
+        _liveView = liveView;
         _logger = logger;
     }
 
@@ -100,6 +116,23 @@ public sealed class CameraStreamReconciler : BackgroundService
             if (restored > 0)
             {
                 _logger.LogInformation("Registered {Count} cameras the stream server did not have.", restored);
+            }
+
+            // Sequentially, deliberately: two probes against one USB device would contend for it,
+            // and nobody is waiting on this path.
+            foreach (Camera camera in cameras)
+            {
+                if (await _liveView.HowToWatchAsync(camera.Uuid, stoppingToken).ConfigureAwait(false)
+                    != LiveTransport.None)
+                {
+                    continue;
+                }
+
+                // One retry. A None here is either a definite "no transport" - in which case the
+                // memo answers and the second ask costs nothing - or a camera that did not answer,
+                // most likely because it is still waking up alongside everything else.
+                await Task.Delay(ProbeRetryDelay, stoppingToken).ConfigureAwait(false);
+                _ = await _liveView.HowToWatchAsync(camera.Uuid, stoppingToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

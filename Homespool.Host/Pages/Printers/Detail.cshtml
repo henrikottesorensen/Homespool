@@ -40,7 +40,8 @@
                     <div class="camera-view ratio ratio-16x9 border rounded bg-body-tertiary overflow-hidden"
                          data-camera-frame="@Url.Action("Frame", "Camera", new { uuid = camera.Uuid })"
                          data-camera-live="@Url.Action("Live", "Camera", new { uuid = camera.Uuid })"
-                         data-camera-webrtc="@Url.Action("WebRtc", "Camera", new { uuid = camera.Uuid })">
+                         data-camera-webrtc="@Url.Action("WebRtc", "Camera", new { uuid = camera.Uuid })"
+                         data-camera-stream="@Url.Action("Stream", "Camera", new { uuid = camera.Uuid })">
                         @* Empty until a frame arrives. An img with no src draws nothing, which is
                            what "no picture yet" should look like - not a broken-image icon. *@
                         <img class="camera-image w-100 h-100 object-fit-contain d-none" alt="" />
@@ -70,7 +71,6 @@
                                 data-label-stop="@Localiser["Cameras_StopLive"]"
                                 data-label-connecting="@Localiser["Cameras_LiveConnecting"]"
                                 data-label-failed="@Localiser["Cameras_LiveFailed"]"
-                                data-label-unsupported="@Localiser["Cameras_LiveUnsupported"]"
                                 data-label-live="@Localiser["Cameras_LiveNow"]"
                                 data-label-stalled="@Localiser["Cameras_LiveStalled"]">@Localiser["Cameras_WatchLive"]</button>
                         <span class="camera-live-note small text-body-secondary" role="status"></span>

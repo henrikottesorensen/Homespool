@@ -43,6 +43,7 @@ public class CameraService
     private readonly Go2RtcClient _streamServer;
     private readonly ICameraSnapshotFetcher _fetcher;
     private readonly CameraFrameCache _frames;
+    private readonly CameraLiveAvailability _liveView;
     private readonly LocalCameraDevices _devices;
     private readonly TimeProvider _timeProvider;
     private readonly IOptions<CameraOptions> _options;
@@ -53,6 +54,7 @@ public class CameraService
                          Go2RtcClient streamServer,
                          ICameraSnapshotFetcher fetcher,
                          CameraFrameCache frames,
+                         CameraLiveAvailability liveView,
                          LocalCameraDevices devices,
                          TimeProvider timeProvider,
                          IOptions<CameraOptions> options)
@@ -63,6 +65,7 @@ public class CameraService
         _streamServer = streamServer;
         _fetcher = fetcher;
         _frames = frames;
+        _liveView = liveView;
         _devices = devices;
         _timeProvider = timeProvider;
         _options = options;
@@ -187,8 +190,10 @@ public class CameraService
         await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         // Whatever is cached came from the old source. Keeping it would show the previous camera
-        // under the new one's name for up to the maximum age.
+        // under the new one's name for up to the maximum age - and the probed codec belongs to the
+        // hardware at the old address, so it goes the same way.
         _frames.Forget(camera.Id);
+        _liveView.Forget(camera.Uuid);
 
         return await RegisterAndProveAsync(camera, cancellationToken).ConfigureAwait(false);
     }
@@ -219,6 +224,7 @@ public class CameraService
         await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         _frames.Forget(camera.Id);
+        _liveView.Forget(camera.Uuid);
         await _streamServer.DeleteStreamAsync(camera.Uuid, cancellationToken).ConfigureAwait(false);
 
         return true;
@@ -295,6 +301,13 @@ public class CameraService
 
         if (frame is not null)
         {
+            // The camera just proved it is on, which is the one moment a codec probe is guaranteed
+            // to get an answer - so the live-view button is warm before any page asks, instead of
+            // the first viewer paying for the probe. The answer is thrown away here because the
+            // availability remembers it; a failure costs nothing, since the next /live ask probes
+            // again anyway.
+            _ = await _liveView.HowToWatchAsync(camera.Uuid, cancellationToken).ConfigureAwait(false);
+
             return CameraSaveOutcome.Working(camera);
         }
 

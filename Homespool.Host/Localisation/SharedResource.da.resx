@@ -985,7 +985,7 @@
     <value>Alle API-tokens på kontoen er tilbagekaldt. Scripts, der bruger et, skal have et nyt token, som du kan oprette under {0}.</value>
   </data>
   <data name="Files_DropHere" xml:space="preserve">
-    <value>Slip en fil her, eller vælg en. .gcode, .bgcode, .gco eller .bgc, op til {0}.</value>
+    <value>Slip en fil her for at uploade den, eller vælg en. .gcode, .bgcode, .gco eller .bgc, op til {0}.</value>
   </data>
   <data name="Printers_AddIntro" xml:space="preserve">
     <value>Klargør en printer og et token på forhånd, til en USB-nøgle - printeren behøver ikke kontakte serveren først. Printeren tilmelder sig selv, i det øjeblik den forbinder med sit token.</value>

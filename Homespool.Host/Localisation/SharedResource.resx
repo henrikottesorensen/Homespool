@@ -1007,7 +1007,7 @@
     <value>Any API tokens on the account have been revoked. Scripts using one will need a new token, which you can create under {0}.</value>
   </data>
   <data name="Files_DropHere" xml:space="preserve">
-    <value>Drop a file here, or choose one. .gcode, .bgcode, .gco or .bgc, up to {0}.</value>
+    <value>Drop a file here to upload it, or choose one. .gcode, .bgcode, .gco or .bgc, up to {0}.</value>
   </data>
   <data name="Printers_AddIntro" xml:space="preserve">
     <value>Provisions a printer and a token up front, for a USB stick - no need for the printer to contact this server first. The printer enrols itself the moment it connects using the token.</value>

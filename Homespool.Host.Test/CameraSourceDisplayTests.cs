@@ -115,4 +115,52 @@ public sealed class CameraSourceDisplayTests
                            .Should()
                            .Be("rtsp://admin:****@192.168.1.50/live");
     }
+
+    [Theory]
+    [InlineData("rtsp://admin:hunter2@192.168.1.50/live", "rtsp://192.168.1.50/live", "admin", "hunter2")]
+    [InlineData("onvif://user:pass@192.168.1.123:80", "onvif://192.168.1.123:80", "user", "pass")]
+    [InlineData("rtsp://admin@192.168.1.50/live", "rtsp://192.168.1.50/live", "admin", null)]
+    [InlineData("rtsp://192.168.1.50/live", "rtsp://192.168.1.50/live", null, null)]
+    [InlineData("ffmpeg:device?video=/dev/video0", "ffmpeg:device?video=/dev/video0", null, null)]
+    public void ASourceComesApartIntoAnAddressAndACredential(string source,
+                                                             string address,
+                                                             string? user,
+                                                             string? password)
+    {
+        CameraSourceParts parts = CameraSourceDisplay.SplitCredential(source);
+
+        parts.Address.Should().Be(address);
+        parts.User.Should().Be(user);
+        parts.Password.Should().Be(password);
+    }
+
+    [Theory]
+    [InlineData("rtsp://192.168.1.50/live", "admin", "hunter2", "rtsp://admin:hunter2@192.168.1.50/live")]
+    [InlineData("rtsp://192.168.1.50/live", "admin", null, "rtsp://admin@192.168.1.50/live")]
+    [InlineData("rtsp://192.168.1.50/live", null, null, "rtsp://192.168.1.50/live")]
+    [InlineData("ffmpeg:device?video=/dev/video0", "admin", "x", "ffmpeg:device?video=/dev/video0")]
+    public void AnAddressAndACredentialGoBackTogether(string address,
+                                                      string? user,
+                                                      string? password,
+                                                      string expected)
+    {
+        CameraSourceDisplay.WithCredential(address, user, password).Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("rtsp://admin:hunter2@192.168.1.50/live")]
+    [InlineData("onvif://user:pass@192.168.1.123:80")]
+    [InlineData("rtsp://admin@192.168.1.50/live")]
+    [InlineData("rtsp://192.168.1.50/live")]
+    [InlineData("ffmpeg:device?video=/dev/video0&input_format=mjpeg")]
+    public void TakingASourceApartAndPuttingItBackChangesNothing(string source)
+    {
+        // The round trip is what the stream server depends on: the sidecar has to receive the source
+        // byte for byte, or it dials a subtly different address than the one that was checked.
+        CameraSourceParts parts = CameraSourceDisplay.SplitCredential(source);
+
+        CameraSourceDisplay.WithCredential(parts.Address, parts.User, parts.Password)
+                           .Should()
+                           .Be(source);
+    }
 }

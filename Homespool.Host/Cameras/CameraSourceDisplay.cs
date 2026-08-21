@@ -131,6 +131,61 @@ public static class CameraSourceDisplay
     }
 
     /// <summary>
+    /// Separates a source into the address and the credential it carries, so the two can be stored
+    /// apart - the address in the clear, the password protected.
+    /// </summary>
+    /// <param name="source">The source as somebody typed it.</param>
+    /// <returns>
+    /// The three parts. A source carrying no credential is its own address, with both other parts
+    /// null - which is most cameras, and every attached one.
+    /// </returns>
+    public static CameraSourceParts SplitCredential(string source)
+    {
+        if (!TryFindUserInfo(source, out int start, out int length))
+        {
+            return new CameraSourceParts(source, null, null);
+        }
+
+        string userInfo = source.Substring(start, length);
+        int separator = userInfo.IndexOf(':');
+        string address = source.Remove(start, length + 1);
+
+        return separator < 0
+            ? new CameraSourceParts(address, userInfo, null)
+            : new CameraSourceParts(address, userInfo[..separator], userInfo[(separator + 1)..]);
+    }
+
+    /// <summary>
+    /// Puts a credential into an address - the inverse of <see cref="SplitCredential"/>.
+    /// </summary>
+    /// <remarks>
+    /// Serves both readers, which is why it is one method: the sidecar is handed the real password,
+    /// and the edit form is handed <see cref="HiddenPassword"/>. Neither caller has to know how a
+    /// userinfo component is spelled.
+    /// </remarks>
+    /// <param name="address">A source with no credential in it.</param>
+    /// <param name="user">The user name, or null for no credential at all.</param>
+    /// <param name="password">The password, or null for a user name on its own.</param>
+    public static string WithCredential(string address, string? user, string? password)
+    {
+        if (string.IsNullOrEmpty(user))
+        {
+            return address;
+        }
+
+        int scheme = address.IndexOf("://", StringComparison.Ordinal);
+        if (scheme < 0)
+        {
+            // Not a URL - an attached camera's ffmpeg:device source. Nothing to put a credential in.
+            return address;
+        }
+
+        string credential = password is null ? $"{user}@" : $"{user}:{password}@";
+
+        return address.Insert(scheme + 3, credential);
+    }
+
+    /// <summary>
     /// Locates the userinfo component - everything between <c>://</c> and the <c>@</c> that ends it.
     /// </summary>
     private static bool TryFindUserInfo(string source, out int start, out int length)
@@ -182,3 +237,9 @@ public static class CameraSourceDisplay
         return true;
     }
 }
+
+/// <summary>A camera source taken apart: the address, and the credential that was in it.</summary>
+/// <param name="Address">The source with no credential in it.</param>
+/// <param name="User">The user name, or null when the source carried none.</param>
+/// <param name="Password">The password, or null when the source carried none.</param>
+public sealed record CameraSourceParts(string Address, string? User, string? Password);

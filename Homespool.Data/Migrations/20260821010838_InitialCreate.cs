@@ -341,6 +341,8 @@ namespace Homespool.Data.Migrations
                     Uuid = table.Column<Guid>(type: "TEXT", nullable: false),
                     Name = table.Column<string>(type: "TEXT", maxLength: 128, nullable: true),
                     Source = table.Column<string>(type: "TEXT", maxLength: 2048, nullable: false),
+                    CredentialUser = table.Column<string>(type: "TEXT", maxLength: 128, nullable: true),
+                    CredentialSecret = table.Column<string>(type: "TEXT", maxLength: 1024, nullable: true),
                     Resolution = table.Column<string>(type: "TEXT", maxLength: 16, nullable: true),
                     PrinterId = table.Column<int>(type: "INTEGER", nullable: true),
                     TeamId = table.Column<int>(type: "INTEGER", nullable: false),

@@ -55,6 +55,8 @@ public static class Registration
         services.AddSingleton<UsbDeviceNames>();
 
         // The one answer to "what is this camera called", so pages and endpoints cannot disagree.
+        services.AddSingleton<CameraCredentialProtector>();
+
         services.AddSingleton<CameraDisplayNames>();
 
         // How each camera can be watched live: probed codecs, remembered for the life of the

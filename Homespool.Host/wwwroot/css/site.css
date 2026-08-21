@@ -296,6 +296,17 @@ body.camera-maximised-open {
   padding: 1rem 1.25rem;
 }
 
+/* The status badge, and the one thing on the card allowed to be loud. It is the answer to the
+   question the page exists for, so it is sized to be read from across a workshop rather than from
+   reading distance - Henrik asked for it bigger while dogfooding, and it was carrying the same
+   1rem as the body text around it.
+
+   Only the font-size is set. Bootstrap's .badge pads in em, so the pill grows with the text and
+   keeps its proportions rather than needing a second number kept in step. */
+.printer-status-badge {
+  font-size: 1.35rem;
+}
+
 /* A stale region keeps what it last fetched rather than emptying, so this has to say "old" without
    saying "broken": the printer may be perfectly well and the browser merely offline. Faded, not
    greyed out, and only after several failed intervals - see live-region.js. */

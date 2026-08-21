@@ -19,11 +19,11 @@
                reading of a row nobody has written to since it left. *@
             @if (!Model.Connected)
             {
-                <span class="badge fs-6 @PrinterStatusBadge.Absent">@Localiser["Printers_NotConnected"]</span>
+                <span class="badge printer-status-badge @PrinterStatusBadge.Absent">@Localiser["Printers_NotConnected"]</span>
             }
             else
             {
-                <span class="badge fs-6 @PrinterStatusBadge.For(liveState?.Status)">@Model.StatusWord(liveState?.Status)</span>
+                <span class="badge printer-status-badge @PrinterStatusBadge.For(liveState?.Status)">@Model.StatusWord(liveState?.Status)</span>
             }
 
             @if (liveState is not null)

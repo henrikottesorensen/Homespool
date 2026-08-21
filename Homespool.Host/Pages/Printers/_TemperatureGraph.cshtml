@@ -1,0 +1,109 @@
+@using System.Globalization
+@model DetailModel
+
+@* Inline SVG, drawn from geometry worked out in TemperatureChart. No charting library: everything
+   this deployment serves it serves itself (notes/client-side-assets.md), and two lines and an axis
+   are smaller to write than a library is to vendor.
+
+   Colours come from site.css rather than from attributes here, so both themes are answered in one
+   place and neither is a hard-coded hex sitting in markup.
+
+   Every <text> below is wrapped in a <g>, and that is not decoration. Razor owns the <text> tag as
+   its own markup-transition syntax, so an SVG <text> written directly inside a code block fails the
+   build with RZ1023 - "<text> tags cannot contain attributes". Nested inside a real element it is
+   parsed as ordinary markup. Verified against the compiler rather than worked around by guessing. *@
+
+@{
+    var culture = CultureInfo.CurrentCulture;
+    var chart = Model.Chart;
+
+    @* SVG parses only a full stop, whatever the reader's culture, so every coordinate is invariant.
+       The values *inside* the labels are the opposite case and are formatted in the culture. *@
+    string Px(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+}
+
+<figure class="printer-graph mb-0">
+    @if (chart is null)
+    {
+        <p class="text-body-secondary mb-0">@Localiser["Printers_GraphNothing"]</p>
+    }
+    else
+    {
+        <svg class="printer-graph-svg" role="img" aria-label="@Localiser["Printers_GraphLabel"]"
+             viewBox="0 0 @Px(TemperatureChart.Width) @Px(TemperatureChart.Height)"
+             preserveAspectRatio="xMidYMid meet">
+
+            @* Gridlines and their labels first, so every trace sits on top of them. *@
+            @foreach (var tick in chart.TemperatureTicks)
+            {
+                <g class="printer-graph-tick">
+                    <line class="printer-graph-grid"
+                          x1="@Px(TemperatureChart.BaselineLeft)" x2="@Px(TemperatureChart.BaselineRight)"
+                          y1="@Px(tick.Y)" y2="@Px(tick.Y)" />
+
+                    <text class="printer-graph-axis" text-anchor="end" dominant-baseline="middle"
+                          x="@Px(TemperatureChart.BaselineLeft - 6)" y="@Px(tick.Y)">@tick.Value.ToString("0", culture)</text>
+                </g>
+            }
+
+            @foreach (var tick in chart.TimeTicks)
+            {
+                <g class="printer-graph-tick">
+                    <text class="printer-graph-axis" text-anchor="@tick.Anchor"
+                          x="@Px(tick.X)" y="@Px(TemperatureChart.BaselineY + 14)">@tick.At.ToLocalTime().ToString("t", culture)</text>
+                </g>
+            }
+
+            @* Setpoints under their measurements: the interesting line is the one the printer
+               achieved, and a dashed target behind it reads as the thing being aimed at. *@
+            @if (chart.TargetBedPath.Length > 0)
+            {
+                <path class="printer-graph-target printer-graph-bed" d="@chart.TargetBedPath" />
+            }
+
+            @if (chart.TargetNozzlePath.Length > 0)
+            {
+                <path class="printer-graph-target printer-graph-nozzle" d="@chart.TargetNozzlePath" />
+            }
+
+            @if (chart.BedPath.Length > 0)
+            {
+                <path class="printer-graph-trace printer-graph-bed" d="@chart.BedPath" />
+            }
+
+            @if (chart.NozzlePath.Length > 0)
+            {
+                <path class="printer-graph-trace printer-graph-nozzle" d="@chart.NozzlePath" />
+            }
+
+            <line class="printer-graph-axis-line"
+                  x1="@Px(TemperatureChart.BaselineLeft)" x2="@Px(TemperatureChart.BaselineRight)"
+                  y1="@Px(TemperatureChart.BaselineY)" y2="@Px(TemperatureChart.BaselineY)" />
+        </svg>
+
+        <figcaption class="d-flex flex-wrap justify-content-between gap-2 small text-body-secondary mt-1">
+            <span class="d-flex flex-wrap gap-3">
+                <span><span class="printer-graph-key printer-graph-nozzle"></span>@Localiser["Printers_Nozzle"]</span>
+                <span><span class="printer-graph-key printer-graph-bed"></span>@Localiser["Printers_Bed"]</span>
+                <span><span class="printer-graph-key printer-graph-key-target"></span>@Localiser["Printers_GraphTarget"]</span>
+            </span>
+
+            @* Says which window is on screen, because it is not a fixed one: a running print sets it,
+               and without this the same graph would silently mean an hour on one visit and nine on
+               the next. *@
+            <span>
+                @if (Model.ChartFollowsJob)
+                {
+                    @Localiser["Printers_GraphSincePrintStarted"]
+                }
+                else
+                {
+                    @* Through Plural, because this is a counted noun and the idle window is exactly
+                       one hour - so the naive form read "the last 1 hours" on every printer that was
+                       not printing, which is most of them most of the time. *@
+                    @Plural.Format(Localiser, "Printers_GraphLastHours", (int)Math.Round(Model.ChartWindow.TotalHours))
+                }
+            </span>
+        </figcaption>
+    }
+</figure>

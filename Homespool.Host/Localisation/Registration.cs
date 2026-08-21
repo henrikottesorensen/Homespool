@@ -65,6 +65,10 @@ public static class Registration
         // And the same again for intents, whose own Name is documented as being for logs.
         services.AddScoped<PrinterIntentText>();
 
+        // And for "3 minutes ago", which the printer page's self-refreshing status card needs so that
+        // a stale view cannot pass for a live one.
+        services.AddScoped<RelativeTimeText>();
+
         return services;
     }
 

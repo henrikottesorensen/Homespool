@@ -1,0 +1,157 @@
+@using System.Globalization
+@using Homespool.Model
+@model DetailModel
+
+@* The one thing this page exists to answer, and the only part that refreshes itself. Everything
+   here is derived from the last telemetry message, so it is all equally old - which is what the age
+   in the corner is for. Controls are deliberately outside: this markup is replaced every couple of
+   seconds, and a select being replaced under somebody's cursor loses their choice. *@
+
+@{
+    var liveState = Model.Statistics.LiveState;
+    var culture = CultureInfo.CurrentCulture;
+}
+
+<div class="printer-status card">
+    <div class="card-body">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+            @* Connected first, because a status word for a printer that is not there would be a
+               reading of a row nobody has written to since it left. *@
+            @if (!Model.Connected)
+            {
+                <span class="badge fs-6 @PrinterStatusBadge.Absent">@Localiser["Printers_NotConnected"]</span>
+            }
+            else
+            {
+                <span class="badge fs-6 @PrinterStatusBadge.For(liveState?.Status)">@Model.StatusWord(liveState?.Status)</span>
+            }
+
+            @if (liveState is not null)
+            {
+                <span class="text-body-secondary small">
+                    @Localiser["Printers_Updated", Model.LastSeenDescription(liveState.LastSeenAt)]
+                </span>
+            }
+        </div>
+
+        @if (liveState is null)
+        {
+            <p class="text-body-secondary mb-0">@Localiser["Printers_NoTelemetry"]</p>
+        }
+        else
+        {
+            @* The job block, and only when there is a job. The printer stops sending it the moment a
+               print ends - PrinterLiveStateMerger clears the block as a unit - so its absence is
+               firmware's own answer rather than something inferred from the status. *@
+            @if (Model.ActivePrint is { } active || liveState.Progress is not null)
+            {
+                <div class="printer-status-job mb-3">
+                    <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2">
+                        @if (Model.ActivePrint is { } job)
+                        {
+                            <span class="typed-name fw-semibold">@job.FileName</span>
+                        }
+                        else
+                        {
+                            @* A print started at the printer's own panel has no row here. It is still
+                               a print, and its progress is still worth showing. *@
+                            <span class="text-body-secondary">@Localiser["Printers_PrintingNow"]</span>
+                        }
+
+                        @if (liveState.TimeRemaining is { } remaining)
+                        {
+                            <span>@Localiser["Printers_TimeLeft", TimeSpan.FromSeconds(remaining).ToString("g", culture)]</span>
+                        }
+                    </div>
+
+                    @if (liveState.Progress is { } progress)
+                    {
+                        <div class="progress my-1" role="progressbar" aria-label="@Localiser["Printers_Progress"]"
+                             aria-valuenow="@progress" aria-valuemin="0" aria-valuemax="100">
+                            <div class="progress-bar" style="width: @progress.ToString(CultureInfo.InvariantCulture)%"></div>
+                        </div>
+
+                        <div class="d-flex justify-content-between small text-body-secondary">
+                            <span>@progress.ToString(culture)%</span>
+
+                            @if (liveState.TimePrinting is { } elapsed)
+                            {
+                                <span>@Localiser["Printers_TimeElapsed", TimeSpan.FromSeconds(elapsed).ToString("g", culture)]</span>
+                            }
+                        </div>
+                    }
+
+                    @if (Model.ActivePrint?.State == PrintState.Starting)
+                    {
+                        @* Starting is not yet printing - the printer has accepted the command and is
+                           heating. Saying "printing" through that window would be a small lie the page
+                           tells every single time. *@
+                        <span class="badge text-bg-secondary">@Localiser["Printers_Starting"]</span>
+                    }
+                </div>
+            }
+
+            @* Only rendered when the printer actually reports it: the firmware emits
+               filament_change_in only while a pause is scheduled (render.cpp:164, gated on
+               time_to_pause), so on a print with no M600 the field is absent rather than zero. A
+               "-" row would imply "no swap due" on every ordinary print, which is noise. *@
+            @if (liveState.TimeToFilamentChange is { } untilChange)
+            {
+                <div class="alert alert-warning py-2 px-3 mb-3" role="alert">
+                    @Localiser["Printers_FilamentChangeIn"]
+                    <strong>@TimeSpan.FromSeconds(untilChange).ToString("g", culture)</strong>
+                </div>
+            }
+
+            @* Built here rather than inline on the tag helper: a Localiser lookup carries double
+               quotes of its own, and nesting those inside an attribute is a parse error. *@
+            var nozzleTile = new HeaterTile(Localiser["Printers_Nozzle"].Value, Model.Nozzle);
+            var bedTile = new HeaterTile(Localiser["Printers_Bed"].Value, Model.Bed);
+
+            <div class="row row-cols-1 row-cols-sm-3 g-2 mb-0">
+                <div class="col">
+                    <partial name="_HeaterTile" model="nozzleTile" />
+                </div>
+                <div class="col">
+                    <partial name="_HeaterTile" model="bedTile" />
+                </div>
+                <div class="col">
+                    <div class="printer-metric h-100">
+                        <div class="printer-metric-label">@Localiser["Printers_Material"]</div>
+                        <div class="printer-metric-value">@(liveState.Material ?? "—")</div>
+                        <div class="printer-metric-note">
+                            @if (liveState.Speed is { } speed && liveState.Flow is { } flow)
+                            {
+                                @Localiser["Printers_SpeedAndFlow", speed, flow]
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* The queue holds behind a file it cannot send, like a spooler - so the reason has to be
+           here, or a held queue is indistinguishable from one that stopped for no reason. *@
+        @if (Model.HoldReason is { } hold)
+        {
+            <div class="alert alert-warning mt-3 mb-0" role="alert">
+                <strong>@Localiser["Printers_QueueHeld"]</strong> @hold
+                @* Only the space hold needs advice added: deleting files does nothing for a nozzle
+                   that does not match, and every other hold's own sentence already says what would
+                   clear it. *@
+                @if (Model.HoldKind == PrintHoldReason.InsufficientSpace)
+                {
+                    <br />
+                    @Localiser["Printers_FreeSomeSpace"]
+                }
+            </div>
+        }
+
+        @* Not a stall to worry about - it is the loop explaining itself. Absent when another part of
+           this page already says it, which is why there is no message while a print is starting. *@
+        @if (Model.WaitingOn is { } waiting)
+        {
+            <p class="text-body-secondary small mt-3 mb-0">@waiting</p>
+        }
+    </div>
+</div>

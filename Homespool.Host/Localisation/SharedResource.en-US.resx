@@ -74,8 +74,8 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
 
-  <data name="Printers_TemperatureTarget" xml:space="preserve">
-    <value>{0} °C / target {1} °C</value>
+  <data name="Printers_Degrees" xml:space="preserve">
+    <value>{0} °C</value>
     <comment>The unit is stated because the reader cannot be assumed to default to Celsius - this has been seen going wrong in support channels, with 215 read as Fahrenheit. en-GB and da leave it off, where the assumption is safe.</comment>
   </data>
 </root>

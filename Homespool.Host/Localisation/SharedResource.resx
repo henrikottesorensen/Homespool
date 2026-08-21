@@ -384,14 +384,8 @@
   <data name="Printers_BackToList" xml:space="preserve">
     <value>← Back to printers</value>
   </data>
-  <data name="Printers_CurrentStatus" xml:space="preserve">
-    <value>Current status</value>
-  </data>
   <data name="Printers_NotConnected" xml:space="preserve">
     <value>Not connected</value>
-  </data>
-  <data name="Printers_LastSeen" xml:space="preserve">
-    <value>Last seen</value>
   </data>
   <data name="Printers_Nozzle" xml:space="preserve">
     <value>Nozzle</value>
@@ -399,32 +393,14 @@
   <data name="Printers_Bed" xml:space="preserve">
     <value>Bed</value>
   </data>
-  <data name="Printers_NozzleTemp" xml:space="preserve">
-    <value>Nozzle temperature</value>
-  </data>
-  <data name="Printers_BedTemp" xml:space="preserve">
-    <value>Bed temperature</value>
-  </data>
   <data name="Printers_Temperature" xml:space="preserve">
     <value>Temperature</value>
   </data>
   <data name="Printers_Material" xml:space="preserve">
     <value>Material</value>
   </data>
-  <data name="Printers_Speed" xml:space="preserve">
-    <value>Speed</value>
-  </data>
-  <data name="Printers_Flow" xml:space="preserve">
-    <value>Flow</value>
-  </data>
   <data name="Printers_Progress" xml:space="preserve">
     <value>Progress</value>
-  </data>
-  <data name="Printers_TimePrinting" xml:space="preserve">
-    <value>Time printing</value>
-  </data>
-  <data name="Printers_TimeRemaining" xml:space="preserve">
-    <value>Time remaining</value>
   </data>
   <data name="Printers_FilamentChangeIn" xml:space="preserve">
     <value>Filament change in</value>
@@ -434,9 +410,6 @@
   </data>
   <data name="Printers_Starting" xml:space="preserve">
     <value>starting</value>
-  </data>
-  <data name="Printers_StartedAt" xml:space="preserve">
-    <value>Started {0}</value>
   </data>
   <data name="Printers_PrintHistory" xml:space="preserve">
     <value>Print history</value>
@@ -450,14 +423,8 @@
   <data name="Printers_NoEvents" xml:space="preserve">
     <value>No events yet.</value>
   </data>
-  <data name="Printers_RecentTelemetry" xml:space="preserve">
-    <value>Recent telemetry</value>
-  </data>
   <data name="Printers_NoTelemetry" xml:space="preserve">
     <value>No telemetry yet.</value>
-  </data>
-  <data name="Printers_NoTelemetryHistory" xml:space="preserve">
-    <value>No telemetry history yet.</value>
   </data>
   <data name="Printers_QueueHeld" xml:space="preserve">
     <value>The queue is held.</value>
@@ -476,9 +443,6 @@
   </data>
   <data name="Printers_ApiTokenLink" xml:space="preserve">
     <value>personal access token</value>
-  </data>
-  <data name="Printers_PrintersListLink" xml:space="preserve">
-    <value>printers list</value>
   </data>
   <data name="Common_Event" xml:space="preserve">
     <value>Event</value>
@@ -518,7 +482,7 @@
     <comment>The braces are PrusaSlicer's own menu labels and a link, kept English: they have to match what a person sees in the slicer, which this application does not author.</comment>
   </data>
   <data name="Printers_PreheatWarning" xml:space="preserve">
-    <value>Both are refused while the printer is busy, {0}: changing a heater&apos;s target mid-print ruins the print without ending it, and the printer will not refuse it on your behalf. To stop a print, use the controls on the {1}.</value>
+    <value>Both are refused while the printer is busy, {0}: changing a heater&apos;s target mid-print ruins the print without ending it, and the printer will not refuse it on your behalf.</value>
   </data>
   <data name="Printers_CoolingIncluded" xml:space="preserve">
     <value>cooling included</value>
@@ -1169,9 +1133,6 @@
   <data name="LiveView_RestartWarning" xml:space="preserve">
     <value>Changing this restarts the camera stream server, which interrupts anyone watching for a moment. Cameras and still pictures are unaffected.</value>
   </data>
-  <data name="Printers_TemperatureTarget" xml:space="preserve">
-    <value>{0}° / target {1}°</value>
-  </data>
   <data name="Account_AccessDeniedTitle" xml:space="preserve">
     <value>Access denied</value>
   </data>
@@ -1612,9 +1573,6 @@
   <data name="Invites_NewAccountOwnTeam" xml:space="preserve">
     <value>New account (its own team)</value>
   </data>
-  <data name="Cameras_JustNow" xml:space="preserve">
-    <value>just now</value>
-  </data>
   <data name="Cameras_SecondsAgo" xml:space="preserve">
     <value>{0}s ago</value>
   </data>
@@ -2031,5 +1989,88 @@ A stick that already works with your printer is the right stick. If you are form
   </data>
   <data name="Tokens_TickAll" xml:space="preserve">
     <value>Tick all</value>
+  <data name="Common_JustNow" xml:space="preserve">
+    <value>just now</value>
+  </data>
+  <data name="Common_SecondsAgo_One" xml:space="preserve">
+    <value>{0} second ago</value>
+  </data>
+  <data name="Common_SecondsAgo_Other" xml:space="preserve">
+    <value>{0} seconds ago</value>
+  </data>
+  <data name="Common_MinutesAgo_One" xml:space="preserve">
+    <value>{0} minute ago</value>
+  </data>
+  <data name="Common_MinutesAgo_Other" xml:space="preserve">
+    <value>{0} minutes ago</value>
+  </data>
+  <data name="Common_HoursAgo_One" xml:space="preserve">
+    <value>{0} hour ago</value>
+  </data>
+  <data name="Common_HoursAgo_Other" xml:space="preserve">
+    <value>{0} hours ago</value>
+  </data>
+  <data name="Common_DaysAgo_One" xml:space="preserve">
+    <value>{0} day ago</value>
+  </data>
+  <data name="Common_DaysAgo_Other" xml:space="preserve">
+    <value>{0} days ago</value>
+  </data>
+  <data name="Printers_Updated" xml:space="preserve">
+    <value>Updated {0}</value>
+  </data>
+  <data name="Printers_TimeLeft" xml:space="preserve">
+    <value>{0} left</value>
+  </data>
+  <data name="Printers_TimeElapsed" xml:space="preserve">
+    <value>{0} elapsed</value>
+  </data>
+  <data name="Printers_SpeedAndFlow" xml:space="preserve">
+    <value>Speed {0}%, flow {1}%</value>
+  </data>
+  <data name="Printers_HeaterHeatingTo" xml:space="preserve">
+    <value>heating to {0}</value>
+  </data>
+  <data name="Printers_HeaterAtTarget" xml:space="preserve">
+    <value>at target {0}</value>
+  </data>
+  <data name="Printers_HeaterCoolingTo" xml:space="preserve">
+    <value>cooling to {0}</value>
+  </data>
+  <data name="Printers_HeaterCooling" xml:space="preserve">
+    <value>cooling</value>
+  </data>
+  <data name="Printers_HeaterOff" xml:space="preserve">
+    <value>off</value>
+  </data>
+  <data name="Printers_GraphNothing" xml:space="preserve">
+    <value>This printer has reported no temperatures over this period.</value>
+  </data>
+  <data name="Printers_GraphLabel" xml:space="preserve">
+    <value>Nozzle and bed temperature over time</value>
+  </data>
+  <data name="Printers_GraphTarget" xml:space="preserve">
+    <value>target</value>
+  </data>
+  <data name="Printers_GraphSincePrintStarted" xml:space="preserve">
+    <value>since this print started</value>
+  </data>
+  <data name="Printers_GraphLastHours_One" xml:space="preserve">
+    <value>the last hour</value>
+  </data>
+  <data name="Printers_GraphLastHours_Other" xml:space="preserve">
+    <value>the last {0} hours</value>
+  </data>
+  <data name="Printers_Degrees" xml:space="preserve">
+    <value>{0}°</value>
+  </data>
+  <data name="Printers_Reprint" xml:space="preserve">
+    <value>Print again</value>
+  </data>
+  <data name="Printers_ReprintFile" xml:space="preserve">
+    <value>Print {0} again</value>
+  </data>
+  <data name="Printers_ReprintNotYours" xml:space="preserve">
+    <value>Only whoever queued a print can print it again — the file is looked up among your own.</value>
   </data>
 </root>

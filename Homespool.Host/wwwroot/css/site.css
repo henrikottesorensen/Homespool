@@ -281,3 +281,177 @@ body {
 body.camera-maximised-open {
   overflow: hidden;
 }
+
+/* ---------------------------------------------------------------------------------------------
+   The printer page's status card, its metric tiles and its temperature graph.
+
+   Every colour below is a Bootstrap CSS variable rather than a literal, which is what makes the
+   whole block answer both themes at once - the same discipline §1 of notes/visual-identity.md
+   argues for, and for the same reason: a hex written here is a hex that is wrong in one mode. */
+
+/* The card is deliberately plain. It carries the loudest thing on the page - a status badge in a
+   semantic colour - and a border or a tint around that would be a second voice saying the same
+   thing more quietly. */
+.printer-status .card-body {
+  padding: 1rem 1.25rem;
+}
+
+/* A stale region keeps what it last fetched rather than emptying, so this has to say "old" without
+   saying "broken": the printer may be perfectly well and the browser merely offline. Faded, not
+   greyed out, and only after several failed intervals - see live-region.js. */
+[data-live-stale] {
+  opacity: .55;
+  transition: opacity .3s ease-in-out;
+}
+
+/* One reading and what it means. Quiet ground rather than a bordered box: three of these sit in a
+   row inside a card that already has edges, and nesting borders reads as a table. */
+.printer-metric {
+  padding: .625rem .75rem;
+  background-color: var(--bs-tertiary-bg);
+  border-radius: var(--bs-border-radius);
+}
+
+.printer-metric-label {
+  font-size: .8125rem;
+  color: var(--bs-secondary-color);
+}
+
+/* Big, because this is the number somebody came to read. Tabular figures so a temperature climbing
+   through 99 to 100 does not shift the degree sign sideways once a second. */
+.printer-metric-value {
+  font-size: 1.5rem;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Reserved whether or not there is a note, so a tile with nothing to say is the same height as the
+   two beside it rather than making the row ragged. */
+.printer-metric-note {
+  min-height: 1.25rem;
+  font-size: .8125rem;
+  color: var(--bs-secondary-color);
+}
+
+/* Heating is the one state worth a colour: it is the only one that says "wait". At-target, cooling
+   and off are all resting states and stay grey, on the same reasoning as the badge palette - a rack
+   of idle printers should not glow. */
+.printer-metric-heating .printer-metric-note {
+  color: var(--bs-warning-text-emphasis);
+}
+
+/* The graph. Fills its column and keeps its aspect from the viewBox, so there is no second place
+   where the drawing's proportions are decided. */
+.printer-graph-svg {
+  width: 100%;
+  height: auto;
+}
+
+/* currentColor throughout, so the axis furniture inherits body ink and is legible in both themes
+   with nothing declared twice. */
+.printer-graph-grid,
+.printer-graph-axis-line {
+  stroke: currentColor;
+  stroke-width: 1;
+}
+
+.printer-graph-grid {
+  opacity: .12;
+}
+
+.printer-graph-axis-line {
+  opacity: .35;
+}
+
+.printer-graph-axis {
+  fill: currentColor;
+  opacity: .6;
+  font-size: 11px;
+}
+
+.printer-graph-trace {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The setpoint, behind its measurement. Dashed and thinner, because it is what was asked for rather
+   than what happened. */
+.printer-graph-target {
+  fill: none;
+  stroke-width: 1.25;
+  stroke-dasharray: 4 4;
+  opacity: .55;
+}
+
+/* Two hues, and they are the two the rest of the application already spends: the brand blue for the
+   bed and Bootstrap's danger red for the nozzle, which is the hotter of the two and the one that
+   burns. Not chosen for prettiness - they have to survive being told apart at a glance, on a phone,
+   in both themes. */
+.printer-graph-nozzle {
+  stroke: var(--bs-danger);
+}
+
+.printer-graph-bed {
+  stroke: var(--homespool-blue);
+}
+
+/* The legend's swatch. A line rather than a block, so it reads as the same thing as the trace it
+   names. */
+.printer-graph-key {
+  display: inline-block;
+  width: 1rem;
+  height: 0;
+  margin-right: .35rem;
+  vertical-align: middle;
+  border-top: 2px solid currentColor;
+}
+
+.printer-graph-key.printer-graph-nozzle {
+  border-top-color: var(--bs-danger);
+}
+
+.printer-graph-key.printer-graph-bed {
+  border-top-color: var(--homespool-blue);
+}
+
+.printer-graph-key-target {
+  border-top-style: dashed;
+  opacity: .7;
+}
+
+/* The graph is one drawing scaled to its column, so everything in it shrinks together - and on a
+   phone the whole 720-unit box lands in about 350 real pixels. At that scale an 11-unit label renders
+   at roughly five pixels and the axis becomes decoration.
+
+   These are user units, not pixels: they are measured against the viewBox and then scaled with it, so
+   raising them here is what keeps the label the same *real* size on a narrow screen. Measured in the
+   browser rather than reasoned about, because the two kinds of pixel are easy to confuse. */
+@media (max-width: 575.98px) {
+  .printer-graph-axis {
+    font-size: 22px;
+  }
+
+  .printer-graph-trace {
+    stroke-width: 4;
+  }
+
+  .printer-graph-target {
+    stroke-width: 2.5;
+    stroke-dasharray: 8 8;
+  }
+}
+
+/* History and setup, closed by default. The summary is styled as a heading because that is what it
+   replaced - three <h2>s and seventy rows of table underneath them. */
+.printer-archive {
+  padding: .5rem 0;
+  border-top: 1px solid var(--bs-border-color);
+}
+
+.printer-archive > summary {
+  cursor: pointer;
+  font-size: 1.125rem;
+  padding: .25rem 0;
+}

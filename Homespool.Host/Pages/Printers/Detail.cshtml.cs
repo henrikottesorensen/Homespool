@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -17,17 +18,22 @@ using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Queue;
 using Homespool.Host.Services;
+using Homespool.Host.Telemetry;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Printers;
 
 /// <summary>
-/// One printer's live status plus recent telemetry/event history - the first reader of
-/// <see cref="PrinterLiveState"/>/<see cref="Model.Entities.TelemetrySample"/>/
-/// <see cref="Model.Entities.PrinterEvent"/> anywhere in the app - and its print queue.
+/// One printer's state, its queue, and the controls that change what it is doing.
 /// </summary>
 /// <remarks>
+/// <para>
+/// <b>The page is arranged around one question - what is this printer doing right now.</b> The
+/// status card answers it; everything that is a record rather than a state (finished prints, the
+/// event log) is behind a disclosure, because a page whose height is dominated by history buries the
+/// thing somebody opened it for.
+/// </para>
 /// <para>
 /// <b>The queue lives here rather than on a page of its own</b> because it belongs to one printer and
 /// reads as part of its status: what it is doing, then what it will do next. Reordering and
@@ -35,9 +41,14 @@ namespace Homespool.Host.Pages.Printers;
 /// a print later.
 /// </para>
 /// <para>
-/// <b>The queue's own buttons send nothing; three other controls here do</b> - preheat, cool down and
-/// Set ready. The distinction worth keeping is not page-versus-service but queue-versus-printer: an
-/// edit to the list changes what will happen, and these three change what the machine is doing now.
+/// <b>The queue's own buttons send nothing; the control strip does</b> - pause, resume, stop,
+/// preheat, cool down and Set ready. The distinction worth keeping is not page-versus-service but
+/// queue-versus-printer: an edit to the list changes what will happen, and the strip changes what the
+/// machine is doing now.
+/// </para>
+/// <para>
+/// <b><see cref="OnGetStatusAsync"/> is the same card, alone, for the poll that keeps it current</b> -
+/// see its own remarks for why the answer is rendered HTML rather than JSON.
 /// </para>
 /// </remarks>
 [Authorize]
@@ -53,6 +64,11 @@ public class DetailModel : PageModel
     private readonly CameraDisplayNames _cameraNames;
     private readonly PrinterConnectionRegistry _connectionRegistry;
     private readonly PrinterCommandService _commands;
+    private readonly PrintStopService _stops;
+    private readonly PrinterStatusText _statusText;
+    private readonly PrinterIntentText _intents;
+    private readonly RelativeTimeText _ages;
+    private readonly TimeProvider _timeProvider;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ErrorText _errors;
     private readonly UserManager<HSUser> _userManager;
@@ -67,6 +83,11 @@ public class DetailModel : PageModel
                        CameraDisplayNames cameraNames,
                        PrinterConnectionRegistry connectionRegistry,
                        PrinterCommandService commands,
+                       PrintStopService stops,
+                       PrinterStatusText statusText,
+                       PrinterIntentText intents,
+                       RelativeTimeText ages,
+                       TimeProvider timeProvider,
                        IStringLocalizer<SharedResource> localiser,
                        ErrorText errors,
                        UserManager<HSUser> userManager)
@@ -81,6 +102,11 @@ public class DetailModel : PageModel
         _cameraNames = cameraNames;
         _connectionRegistry = connectionRegistry;
         _commands = commands;
+        _stops = stops;
+        _statusText = statusText;
+        _intents = intents;
+        _ages = ages;
+        _timeProvider = timeProvider;
         _localiser = localiser;
         _errors = errors;
         _userManager = userManager;
@@ -102,6 +128,42 @@ public class DetailModel : PageModel
     /// <summary>Usernames for whoever stopped any of <see cref="History"/>, keyed by user id.</summary>
     public IReadOnlyDictionary<long, string> StopperNames { get; private set; } = new Dictionary<long, string>();
 
+    /// <summary>Who is reading the page, for the one row-level decision it has to make.</summary>
+    private long _readerId;
+
+    /// <summary>
+    /// Whether this finished print may be run again from here.
+    /// </summary>
+    /// <remarks>
+    /// <b>Your own prints only</b> - see <see cref="OnPostReprintAsync"/> for why that is about
+    /// printing the right file rather than about permission. <see cref="CanUse"/> as well, because
+    /// reprinting is still queueing, and somebody who may only watch this printer may not.
+    /// </remarks>
+    public bool CanReprint(PrintJob job)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+
+        return CanUse && job.QueuedByUserId == _readerId;
+    }
+
+    /// <summary>The nozzle, and whether it is climbing towards a setpoint or sitting on one.</summary>
+    public HeaterReading Nozzle { get; private set; } = new(null, null, HeaterState.Unknown);
+
+    /// <summary>The bed, likewise.</summary>
+    public HeaterReading Bed { get; private set; } = new(null, null, HeaterState.Unknown);
+
+    /// <summary>The temperature graph, or null when the printer reported nothing in the window.</summary>
+    public TemperatureChart? Chart { get; private set; }
+
+    /// <summary>The window <see cref="Chart"/> covers, for the caption that says what is being shown.</summary>
+    public TimeSpan ChartWindow { get; private set; }
+
+    /// <summary>
+    /// Whether <see cref="ChartWindow"/> is the running print's own length rather than the idle
+    /// default, so the caption can say which.
+    /// </summary>
+    public bool ChartFollowsJob { get; private set; }
+
     /// <summary>
     /// How a stopped print says who stopped it - the qualifier after the outcome, never on its own.
     /// </summary>
@@ -121,6 +183,25 @@ public class DetailModel : PageModel
         return StopperNames.TryGetValue(stopper, out string? name) ?
             _localiser["Printers_StoppedByPerson", name] :
             _localiser["Printers_StoppedFromHere"];
+    }
+
+    /// <summary>What the printer's status is called, in the reader's language.</summary>
+    public string StatusWord(PrinterStatus? status)
+    {
+        return _statusText.For(status);
+    }
+
+    /// <summary>
+    /// How long ago the last telemetry landed, in words.
+    /// </summary>
+    /// <remarks>
+    /// <b>The card's honesty check.</b> It refreshes itself, so without an age on it a printer that
+    /// stopped answering four minutes ago is indistinguishable from one answering now - the exact
+    /// confusion a live view is meant to remove.
+    /// </remarks>
+    public string LastSeenDescription(DateTimeOffset at)
+    {
+        return _ages.Since(at, _timeProvider.GetUtcNow());
     }
 
     /// <summary>
@@ -207,10 +288,6 @@ public class DetailModel : PageModel
     public bool StatusSuccess { get; set; }
 
     /// <summary>
-    /// An unknown uuid and one the caller can't read both return <see cref="NotFoundResult"/> -
-    /// matching <c>GetPrinterForUserAsync</c>'s "same 404 either way" rule.
-    /// </summary>
-    /// <summary>
     /// The cameras watching this printer that the caller may see. Empty is the ordinary case.
     /// </summary>
     public IReadOnlyList<Camera> Cameras { get; private set; } = [];
@@ -228,6 +305,10 @@ public class DetailModel : PageModel
         return _cameraNames.For(camera, _localiser["Cameras_Numbered", index + 1]);
     }
 
+    /// <summary>
+    /// An unknown uuid and one the caller can't read both return <see cref="NotFoundResult"/> -
+    /// matching <c>GetPrinterForUserAsync</c>'s "same 404 either way" rule.
+    /// </summary>
     public async Task<IActionResult> OnGetAsync(Guid uuid, CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
@@ -238,40 +319,125 @@ public class DetailModel : PageModel
             return Forbid();
         }
 
+        Caller caller = CallerResolver.For(user, User);
+
+        if (!await LoadStatusAsync(uuid, caller, cancellationToken))
+        {
+            return NotFound();
+        }
+
+        _readerId = caller.UserId;
+
+        CanManage = await _access.AllowsAsync(Statistics.Printer.Id, caller, Capability.ManagePrinter, cancellationToken);
+
+        SlicerUrl = $"{Request.Scheme}://{Request.Host}/compat/octoprint/{Statistics.Printer.Uuid}/";
+
+        Presets = FilamentPreset.For(Statistics.Printer.Model);
+
+        Queue = await _queueService.ListAsync(Statistics.Printer.Id, caller, cancellationToken);
+        History = await _historyService.ListAsync(Statistics.Printer.Id, caller, cancellationToken);
+        StopperNames = await _historyService.GetStopperNamesAsync(History, cancellationToken);
+
+        Cameras = await _cameraAccess.ListForPrinterAsync(Statistics.Printer.Id, caller, cancellationToken);
+
+        await LoadChartAsync(uuid, caller, cancellationToken);
+
+        return Page();
+    }
+
+    /// <summary>
+    /// The status card on its own, for the poll that keeps it current.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>It answers with rendered HTML rather than JSON, and that is the load-bearing choice.</b>
+    /// Every word on the card is localised and every number is culture-formatted - a comma decimal
+    /// separator in <c>da</c>, a temperature widened by SQLite that has to be narrowed before it is
+    /// printed (<c>notes/floating-point.md</c>). Answering with JSON would mean a second
+    /// implementation of all of that in JavaScript, kept in step by hand, with the resource files
+    /// unable to see it. Rendering it here means the poll costs one partial and no vocabulary at all
+    /// on the client.
+    /// </para>
+    /// <para>
+    /// <b>The control strip is deliberately not in this partial.</b> It carries a filament
+    /// <c>select</c>, and replacing the markup underneath somebody every two seconds would reset
+    /// their choice mid-press. Controls change what the printer does; this changes what the page
+    /// says.
+    /// </para>
+    /// </remarks>
+    public async Task<IActionResult> OnGetStatusAsync(Guid uuid, CancellationToken cancellationToken)
+    {
+        HSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return Forbid();
+        }
+
+        if (!await LoadStatusAsync(uuid, CallerResolver.For(user, User), cancellationToken))
+        {
+            return NotFound();
+        }
+
+        return Partial("_PrinterStatus", this);
+    }
+
+    /// <summary>
+    /// The temperature graph on its own, on a slower poll than the card above it.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="OnGetStatusAsync"/> because it is a different cost and a different
+    /// rate: a day-long window aggregates a lot of rows, and a graph of a print redrawn every two
+    /// seconds would look identical each time.
+    /// </remarks>
+    public async Task<IActionResult> OnGetGraphAsync(Guid uuid, CancellationToken cancellationToken)
+    {
+        HSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return Forbid();
+        }
+
+        Caller caller = CallerResolver.For(user, User);
+
+        if (!await LoadStatusAsync(uuid, caller, cancellationToken))
+        {
+            return NotFound();
+        }
+
+        await LoadChartAsync(uuid, caller, cancellationToken);
+
+        return Partial("_TemperatureGraph", this);
+    }
+
+    /// <summary>Everything the status card shows. Shared by the page and its poll.</summary>
+    /// <returns>False when there is no such printer, or none this caller may read.</returns>
+    private async Task<bool> LoadStatusAsync(Guid uuid, Caller caller, CancellationToken cancellationToken)
+    {
         PrinterStatistics? statistics =
-            await _printerQueryService.GetPrinterStatisticsForUserAsync(uuid, CallerResolver.For(user, User), cancellationToken);
+            await _printerQueryService.GetPrinterStatisticsForUserAsync(uuid, caller, cancellationToken);
 
         if (statistics is null)
         {
-            return NotFound();
+            return false;
         }
 
         Statistics = statistics;
         Connected = _connectionRegistry.IsConnected(statistics.Printer.Id);
 
-        CanUse = await _access.AllowsAsync(statistics.Printer.Id, CallerResolver.For(user, User), Capability.Print,
-                                           cancellationToken);
+        CanUse = await _access.AllowsAsync(statistics.Printer.Id, caller, Capability.Print, cancellationToken);
 
-        CanManage = await _access.AllowsAsync(statistics.Printer.Id, CallerResolver.For(user, User), Capability.ManagePrinter,
-                                              cancellationToken);
+        Nozzle = HeaterReading.For(statistics.LiveState?.NozzleTemperature, statistics.LiveState?.TargetNozzleTemperature);
+        Bed = HeaterReading.For(statistics.LiveState?.BedTemperature, statistics.LiveState?.TargetBedTemperature);
 
-        SlicerUrl = $"{Request.Scheme}://{Request.Host}/compat/octoprint/{statistics.Printer.Uuid}/";
-
-        Presets = FilamentPreset.For(statistics.Printer.Model);
-
-        Queue = await _queueService.ListAsync(statistics.Printer.Id, CallerResolver.For(user, User), cancellationToken);
-        ActivePrint = await _historyService.GetActiveAsync(statistics.Printer.Id, CallerResolver.For(user, User), cancellationToken);
-        History = await _historyService.ListAsync(statistics.Printer.Id, CallerResolver.For(user, User), cancellationToken);
-        StopperNames = await _historyService.GetStopperNamesAsync(History, cancellationToken);
+        ActivePrint = await _historyService.GetActiveAsync(statistics.Printer.Id, caller, cancellationToken);
 
         // Both of these arrive as keys and are said here, which is the only place that knows who is
         // reading. The loop that recorded the hold had no request to take a culture from.
-        MessageKey? hold = await _historyService.GetHoldReasonAsync(
-            statistics.Printer.Id, CallerResolver.For(user, User), cancellationToken);
+        MessageKey? hold = await _historyService.GetHoldReasonAsync(statistics.Printer.Id, caller, cancellationToken);
 
         HoldReason = hold is null ? null : _errors.For(hold);
-
-        Cameras = await _cameraAccess.ListForPrinterAsync(statistics.Printer.Id, CallerResolver.For(user, User), cancellationToken);
 
         QueueSnapshot snapshot = await _snapshots.ReadAsync(statistics.Printer.Id, cancellationToken);
         MessageKey? waiting = QueueWaitDescription.For(QueueRules.Decide(snapshot), snapshot.Head?.FileName);
@@ -280,7 +446,21 @@ public class DetailModel : PageModel
 
         WaitingOn = waiting is null ? null : _errors.For(waiting);
 
-        return Page();
+        return true;
+    }
+
+    /// <summary>Reads the temperature window and works out its drawing.</summary>
+    private async Task LoadChartAsync(Guid uuid, Caller caller, CancellationToken cancellationToken)
+    {
+        (DateTimeOffset from, DateTimeOffset to) = TemperatureWindow.For(Statistics.LiveState, _timeProvider.GetUtcNow());
+
+        ChartWindow = to - from;
+        ChartFollowsJob = Statistics.LiveState?.TimePrinting is > 0;
+
+        TemperatureSeries? series =
+            await _printerQueryService.GetTemperatureSeriesAsync(uuid, caller, from, to, cancellationToken);
+
+        Chart = series is null ? null : TemperatureChart.For(series);
     }
 
     /// <summary>Moves a queued print to a new position.</summary>
@@ -317,6 +497,98 @@ public class DetailModel : PageModel
                 (_localiser["Printers_JobRemoved"].Value, true) :
                 (_localiser["Printers_JobGone"].Value, false);
         }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Queues one of your own finished prints again.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Only the person who queued a print may print it again, and that is a correctness rule
+    /// rather than a permission one</b> (Henrik, 2026-08-20). The file is resolved by name in the
+    /// caller's own tree - <see cref="PrintJob.FileName"/> is a record of what ran, not a pointer at
+    /// it - so offering the button on somebody else's row would offer to print <em>your</em>
+    /// <c>bracket.bgcode</c> under the impression you were repeating <em>theirs</em>. Two people on
+    /// one team having different models under one name is ordinary, and the failure is silent: it
+    /// prints, and prints the wrong thing.
+    /// </para>
+    /// <para>
+    /// <b>The post carries the history row's handle, not a filename.</b> So this means "print that row
+    /// again" rather than "queue this name", which is what the button says, and the ownership check
+    /// has a row to make it against. A caller can still queue any of their own files - that is what
+    /// the Files page is for - so this is not a boundary, it is the handler meaning what it says.
+    /// </para>
+    /// <para>
+    /// It queues rather than prints. The producer loop is what turns the head of the queue into a
+    /// transfer and a print, and it advances only when the printer is ready - so a reprint takes the
+    /// same route as every other way a file reaches a printer.
+    /// </para>
+    /// </remarks>
+    public Task<IActionResult> OnPostReprintAsync(Guid uuid, Guid id, CancellationToken cancellationToken)
+    {
+        return ActAsync(uuid, async (caller, printer) =>
+        {
+            PrintJob? job = await _historyService.FindAsync(printer.Id, id, caller, cancellationToken);
+
+            if (job is null)
+            {
+                return (_localiser["Printers_JobGone"].Value, false);
+            }
+
+            // Re-checked rather than merely not rendered - the same rule this page states for every
+            // other control. Nothing here is destructive, but a print is a physical outcome and this
+            // one would be quietly the wrong file.
+            if (job.QueuedByUserId != caller.UserId)
+            {
+                return (_localiser["Printers_ReprintNotYours"].Value, false);
+            }
+
+            try
+            {
+                EnqueueOutcome outcome = await _queueService.EnqueueAsync(printer.Id, caller, job.FileName, cancellationToken);
+
+                // Queued either way - the loop is what stops a print that must not happen, and this is
+                // the moment to say so while somebody is still looking at the screen. Files_Queued
+                // rather than a printer-prefixed twin of it: the sentence is the same one, and a
+                // second key holding it would be a second thing to translate and to let drift.
+                return outcome.Warnings.Count == 0 ?
+                    (_localiser["Files_Queued", job.FileName].Value, true) :
+                    (string.Join(' ', outcome.Warnings.Select(_errors.For)),
+                     outcome.Severity != PrintCompatibilitySeverity.Hold);
+            }
+            catch (PrintFileNotFoundException e)
+            {
+                return (_errors.For(e), false);
+            }
+        }, cancellationToken);
+    }
+
+    /// <summary>Pauses the running print.</summary>
+    /// <remarks>
+    /// <b>Gated on being connected, not on whether a print is actually running.</b> The firmware's own
+    /// refusal - "No print to pause" - is the real guard and is a better sentence than any this page
+    /// could compose from a status that is a second old.
+    /// </remarks>
+    public Task<IActionResult> OnPostPauseAsync(Guid uuid, CancellationToken cancellationToken)
+    {
+        return SendIntentAsync(uuid, new PausePrint(), cancellationToken);
+    }
+
+    /// <summary>Resumes a paused print.</summary>
+    public Task<IActionResult> OnPostResumeAsync(Guid uuid, CancellationToken cancellationToken)
+    {
+        return SendIntentAsync(uuid, new ResumePrint(), cancellationToken);
+    }
+
+    /// <summary>Stops whatever this printer is running.</summary>
+    /// <remarks>
+    /// Through <see cref="PrintStopService"/> rather than straight to
+    /// <see cref="PrinterCommandService"/>, unlike the two above it: a stop is the one whose cause the
+    /// printer cannot report afterwards, so who pressed it is noted as it is sent.
+    /// </remarks>
+    public Task<IActionResult> OnPostStopAsync(Guid uuid, CancellationToken cancellationToken)
+    {
+        return SendIntentAsync(uuid, new StopPrint(), cancellationToken, _stops.StopAsync);
     }
 
     /// <summary>
@@ -407,7 +679,39 @@ public class DetailModel : PageModel
     }
 
     /// <summary>
-    /// The half both handlers share: resolve the caller and the printer, run the action, and come
+    /// Sends one of the three print-control intents and reports what the printer said back.
+    /// </summary>
+    /// <remarks>
+    /// <b>The printer's own answer is reported, not merely the fact that a command left.</b> A
+    /// refusal comes back as <c>Rejected</c> or <c>Failed</c> carrying firmware's wording, and
+    /// swallowing it would have the page claim a stop succeeded when the printer declined it. The
+    /// <paramref name="send"/> override exists for the one intent that needs more than
+    /// <see cref="PrinterCommandService"/>: a stop records who asked for it as it goes.
+    /// </remarks>
+    private Task<IActionResult> SendIntentAsync(Guid uuid,
+                                                IPrinterIntent intent,
+                                                CancellationToken cancellationToken,
+                                                Func<int, Caller, CancellationToken, Task<CommandOutcome?>>? send = null)
+    {
+        return ActAsync(uuid, async (caller, printer) =>
+        {
+            CommandOutcome? outcome = send is null ?
+                await _commands.SendCommandAsync(printer.Id, intent, caller, cancellationToken) :
+                await send(printer.Id, caller, cancellationToken);
+
+            // Null means the command was written and no answer is expected of it. All three of these
+            // are answered, so this is a guard rather than a live case.
+            return outcome?.EventType switch
+            {
+                PrinterEventType.Rejected or PrinterEventType.Failed =>
+                    (_localiser["Printers_CommandRejected", _intents.For(intent), outcome!.Reason ?? string.Empty].Value, false),
+                _ => (_localiser["Printers_CommandSent", _intents.For(intent)].Value, true),
+            };
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// The half every handler shares: resolve the caller and the printer, run the action, and come
     /// back to the page with something to say.
     /// </summary>
     /// <remarks>

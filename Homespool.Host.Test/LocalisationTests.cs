@@ -372,23 +372,24 @@ public sealed class LocalisationTests
     /// A reader in the United States does not assume Celsius, and 215 °F is a plausible-looking bed
     /// temperature and a wrong nozzle one - so the unit is stated there and left off where the
     /// assumption is safe.
+    /// <para>
+    /// <b>The key moved when the printer page was rebuilt around a status card.</b> It was
+    /// <c>Printers_TemperatureTarget</c>, a whole "215.0 / target 215.0" line, and the card shows the
+    /// two numbers in separate places - so the unit rule now lives on <c>Printers_Degrees</c>, which
+    /// every one of them is rendered through. Carrying the override across mattered more than the
+    /// wording it used to sit in.
+    /// </para>
     /// </remarks>
     [Fact]
     public void AmericanEnglishStatesTheTemperatureUnit()
     {
         IStringLocalizer<SharedResource> localiser = Localiser();
 
-        InCulture("en-US", () =>
-            localiser["Printers_TemperatureTarget", "215.0", "215.0"].Value
-                     .Should().Be("215.0 °C / target 215.0 °C"));
+        InCulture("en-US", () => localiser["Printers_Degrees", "215"].Value.Should().Be("215 °C"));
 
-        InCulture("en-GB", () =>
-            localiser["Printers_TemperatureTarget", "215.0", "215.0"].Value
-                     .Should().Be("215.0° / target 215.0°"));
+        InCulture("en-GB", () => localiser["Printers_Degrees", "215"].Value.Should().Be("215°"));
 
-        InCulture("da", () =>
-            localiser["Printers_TemperatureTarget", "215,0", "215,0"].Value
-                     .Should().Be("215,0° / mål 215,0°"));
+        InCulture("da", () => localiser["Printers_Degrees", "215"].Value.Should().Be("215°"));
     }
 
     /// <summary>

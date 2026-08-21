@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -103,6 +104,27 @@ public class PrintHistoryService
                                .ThenByDescending(job => job.Id)
                                .Take(RecentCount)
                                .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// One finished print on this printer, by the handle it has carried since it was queued.
+    /// </summary>
+    /// <remarks>
+    /// <b>Keyed on <see cref="PrintJob.TrackingId"/> rather than the row id</b>, matching the queue's
+    /// own controls: it is the handle minted at enqueue and carried through every stage, so it is what
+    /// a page already has to hand and the only one worth putting in a form.
+    /// </remarks>
+    public async Task<PrintJob?> FindAsync(int printerId,
+                                           Guid trackingId,
+                                           Caller caller,
+                                           CancellationToken cancellationToken)
+    {
+        await _access.RequireAsync(printerId, caller, Capability.ViewHistory, cancellationToken);
+
+        return await _dbContext.PrintJobs
+                               .AsNoTracking()
+                               .SingleOrDefaultAsync(job => job.PrinterId == printerId && job.TrackingId == trackingId,
+                                                     cancellationToken);
     }
 
     /// <summary>

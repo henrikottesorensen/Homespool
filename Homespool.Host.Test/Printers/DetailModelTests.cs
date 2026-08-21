@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -18,6 +19,7 @@ using NSubstitute;
 using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Cameras;
+using Homespool.Host.Localisation;
 using Homespool.Host.Pages.Printers;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
@@ -102,6 +104,10 @@ public sealed class DetailModelTests : IDisposable
 
         QueueSnapshotReader snapshots = new(context, connectionRegistry, TimeProvider.System);
 
+        // One localiser, shared by the page and by the three text services it now holds, so a word
+        // inside a sentence reads in the same language as the sentence.
+        IStringLocalizer<SharedResource> localiser = TestLocaliser.Shared();
+
         DetailModel model = new(new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System),
                                 queueService,
 
@@ -120,9 +126,15 @@ public sealed class DetailModelTests : IDisposable
 
                                 // Null for the same reason the preheat service above takes one: these
                                 // cases never press Set ready, and a page that would refuse anyway is
-                                // the honest backdrop.
+                                // the honest backdrop. The stop service is null on the same grounds -
+                                // it would need a connected printer to do anything.
                                 commands: null!,
-                                TestLocaliser.Shared(),
+                                stops: null!,
+                                new PrinterStatusText(localiser),
+                                new PrinterIntentText(localiser),
+                                new RelativeTimeText(localiser),
+                                TimeProvider.System,
+                                localiser,
                                 TestLocaliser.Errors(),
                                 users)
         {

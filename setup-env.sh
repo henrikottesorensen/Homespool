@@ -1175,17 +1175,24 @@ ask_ports() {
     plan_set PORT "$http"
     plan_set HTTPS_PORT "$https"
 
-    # Derived and then confirmed rather than set silently, because the two are not the same fact.
-    # HTTPS_PORT is where Docker publishes on THIS machine; the suffix is the port a browser should
-    # ask for, and they differ the moment a router forwards 443 inward or a tunnel sits in front.
-    if [ "$https" = 443 ]; then
-        suffix=""
-    else
-        suffix=":$https"
-    fi
+    # The redirect's port suffix is derived from HTTPS_PORT by the proxy at start, so it is only
+    # written when the two are not the same fact - the port a browser should ask for differs from
+    # the published one the moment a router forwards 443 inward or a tunnel sits in front. A value
+    # already in the file overrides that derivation (under either name - compose.yaml still honours
+    # the pre-rename HTTPS_PORT_SUFFIX), so saying "no" here must refresh it rather than leave it
+    # stale against a port that just changed; writing the new name is the refresh, since it wins.
     say
-    say $"  Plain-HTTP visitors are redirected to HTTPS, and the redirect has to name the port a BROWSER should ask for - which is not necessarily the one published here, if anything forwards to this machine."
-    plan_set HTTPS_PORT_SUFFIX "$(ask "  Port suffix in the redirect" "$suffix")"
+    if ask_yes_no "  Do browsers reach this machine through a forward or tunnel, on a different port" n; then
+        say $"  The redirect has to name the port a BROWSER should ask for - \":8443\" form, or empty for 443."
+        plan_set REDIRECT_PORT_SUFFIX "$(ask "  Port suffix in the redirect" "$(env_get REDIRECT_PORT_SUFFIX)")"
+    elif key_present "$env_file" REDIRECT_PORT_SUFFIX || key_present "$env_file" HTTPS_PORT_SUFFIX; then
+        if [ "$https" = 443 ]; then
+            suffix=""
+        else
+            suffix=":$https"
+        fi
+        plan_set REDIRECT_PORT_SUFFIX "$suffix"
+    fi
 }
 
 ask_smtp() {

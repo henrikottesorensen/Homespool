@@ -12,68 +12,48 @@ services:
         HOMESPOOL_GITREF: "${HOMESPOOL_GITREF:-}"
 
     # Pinned, because Docker otherwise derives it from the container id - a new name on every
-    # recreation. The printer certificate carries this machine's hostname and is issued once and then
-    # frozen, so an unpinned name goes stale the moment the container is replaced: the certificate
-    # keeps vouching for a name that no longer resolves, and the provisioning page cannot tell that
-    # dead name from a LAN name it simply cannot resolve from in here - so it offers it.
-    #
-    # Pinning makes it resolve to this container's own address, always, which is precisely what marks
-    # it unusable by a printer and keeps it off the list. It also stops the certificate's names
-    # churning between reissues, and makes the logs say "homespool" rather than a hex id.
+    # recreation. The printer certificate carries this name and is issued once, so an unpinned name
+    # would churn between reissues and go stale the moment the container is replaced; pinning also
+    # keeps the provisioning page able to recognise it (the resolve-to-judge rule,
+    # Homespool.Notes notes/usb-provisioning-bundle.md) and the logs saying "homespool" rather than
+    # a hex id.
     hostname: homespool
 
     # NOTHING is published from this container. All three listeners - people on 8080, printers on
     # 15443, transfers on 15080 - stay inside this network, and the proxy below is the single way in
-    # to any of them. That is what makes
-    # X-Real-IP worth trusting on both of them: a client that could reach Kestrel directly could
-    # simply write that header itself.
+    # to any of them. That is what makes X-Real-IP worth trusting: a client that could reach Kestrel
+    # directly could simply write that header itself.
     #
-    # The printer port used to be published here, serving TLS from this container. It stopped because
-    # .NET cannot serve that TLS correctly: SslStream ignores the max_fragment_length a printer
-    # negotiates, so records arrive far larger than the kilobyte of plaintext the firmware holds, and
-    # file transfers fail. OpenSSL honours it, nginx is OpenSSL. See notes/tls-by-default.md,
-    # "Decision 3a's premise has shifted", and nginx/homespool-printer.conf.
+    # The printer port is not served TLS from here because .NET cannot serve that TLS correctly:
+    # SslStream emits records far larger than the kilobyte of plaintext the firmware holds - a real
+    # limit the printer never advertises - and file transfers fail. nginx (OpenSSL) can be capped;
+    # see notes/tls-by-default.md and nginx/homespool-printer.conf.
     #
     # To read the printer wire in the clear, use the plaintext override rather than adding a port
-    # here: `docker compose -f compose.yaml -f compose.plaintext.yaml up`. It publishes this
-    # container's printer port and takes the proxy out of that path, which is what PRINTER_TLS=false
-    # means from both ends at once.
+    # here: `docker compose -f compose.yaml -f compose.plaintext.yaml up`.
 
-    # So that a mail server on the HOST is addressable the same way everywhere. Docker Desktop
-    # resolves host.docker.internal on its own; plain Linux Docker does not, and without this line
-    # the obvious answer for "my mail server runs on this machine" works on a Mac and fails on the
-    # server somebody actually deploys to. localhost cannot be that answer - inside here it is this
-    # container, which is what makes the failure read as "connection refused" from a mail server
-    # that is plainly running.
+    # So that a mail server on the HOST is addressable the same way everywhere: Docker Desktop
+    # resolves host.docker.internal on its own, plain Linux Docker does not - without this line
+    # "my mail server runs on this machine" works on a Mac and fails with "connection refused" on
+    # the server somebody actually deploys to.
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+    # Compose reads .env only for ${...} substitution: a variable not mapped in this block never
+    # reaches the container at all. Setting an App__Key directly in .env does nothing, silently.
     environment:
-      # The zone every timestamp a person reads is rendered in. A container with no TZ is UTC, and
-      # the rendering is server-side rather than in the browser - print history, uploads, invitations
-      # and token pages all call ToLocalTime() - so without this a print that started at 21:00 is
-      # shown as 19:00, and an invitation email states an expiry in a zone its reader does not live
-      # in. Stored times are unaffected: they are DateTimeOffset in Unix milliseconds, so this
-      # changes presentation only and can be corrected later without touching data.
-      #
-      # UTC by default, which is what every deployment already had.
+      # The zone every timestamp a person reads is rendered in - rendering is server-side
+      # (ToLocalTime), so a container left on the UTC default shows people UTC times. Presentation
+      # only: stored times are DateTimeOffset in Unix milliseconds and unaffected.
       TZ: "${TZ:-UTC}"
 
       # Point SQLite at the mounted volume. appsettings.json keeps a relative path so that
       # running outside a container still works.
       ConnectionStrings__HomespoolDb: "Data Source=/app/data/Homespool.Sqlite"
 
-      # Floor on how often a printer's telemetry is stored, in seconds. 0 keeps every sample, which
-      # is the default and the right answer on a machine with a real disk.
-      #
-      # Exposed because the deployment that most wants to change it is the one least able to reach
-      # appsettings.json: SQLite on an SD card, where telemetry is the dominant write and cards die
-      # of writes. At roughly one sample per second per printer, a floor of 10 removes about 90% of
-      # them. Retention is not an alternative - deleting rows is writing too.
-      #
-      # Named here rather than left to .env, because compose reads .env only for ${...}
-      # substitution: a variable not mapped in this block never reaches the container at all.
-      # Setting Storage__MinimumSampleIntervalSeconds directly in .env does nothing, silently.
+      # Floor on how often a printer's telemetry is stored, in seconds; 0 keeps every sample, the
+      # right answer on a machine with a real disk. Raise it on an SD card, where telemetry is the
+      # dominant write and cards die of writes - Homespool.Notes notes/sd-card-performance.md.
       Storage__MinimumSampleIntervalSeconds: "${TELEMETRY_MIN_SAMPLE_INTERVAL_SECONDS:-0}"
 
       # Cameras. The sidecar is addressed by service name on this network; nothing about a camera
@@ -89,14 +69,10 @@ services:
       Cameras__ApiPassword: "${GO2RTC_PASSWORD:-}"
 
       # An override for the address a browser is told to send WebRTC media to, and empty is the
-      # ordinary case: left empty, Homespool works it out by resolving PrinterHost, which is the only
-      # route to this machine's real address from inside a container - every interface this process
-      # can see belongs to the container network. It writes the answer to the sidecar at startup.
-      #
-      # Set it when that derivation cannot be right: a router forwarding a port inward, a tunnel, or
-      # anything where the address a browser must use is not the address this machine has. Same shape
-      # as HTTPS_PORT_SUFFIX beside HTTPS_PORT - a second setting for something the first appears to
-      # know, because the moment anything sits in front they stop being the same fact.
+      # ordinary case: Homespool derives it by resolving PrinterHost - the only route to this
+      # machine's real address from inside a container - and writes it to the sidecar at startup.
+      # Set it when that derivation cannot be right: a router forwarding a port inward, a tunnel,
+      # anything where the address a browser must use is not the address this machine has.
       Cameras__WebRtcCandidate: "${WEBRTC_CANDIDATE:-}"
 
       # The published side of the sidecar's media port, which is the number a browser connects to and
@@ -105,71 +81,46 @@ services:
       # when WEBRTC_CANDIDATE names a port of its own.
       Cameras__WebRtcPort: "${WEBRTC_PORT:-8555}"
 
-      # Which STUN server is contacted IF an administrator allows it, on the Live view page. Nothing
-      # contacts it otherwise: the default is off, because reaching out to somebody else's server
-      # should be a choice in a project whose premise is that nothing leaves your network. The
-      # default address is go2rtc's own, so allowing it contacts whoever go2rtc would have.
-      #
-      # One address rather than a list, deliberately: whether the sidecar already has this applied is
-      # decided by looking for this exact string in its configuration, which stays honest with one
-      # value and would need a parser with several. Point it at your own coturn if you would rather
-      # not use a public one.
+      # Which STUN server is contacted IF an administrator allows it, on the Live view page; the
+      # default is off, and nothing contacts it otherwise. The default address is go2rtc's own, so
+      # allowing it contacts whoever go2rtc would have; point it at your own coturn if you would
+      # rather not use a public one. One address rather than a list: whether the sidecar already has
+      # it applied is decided by exact string comparison, which stays honest with one value.
       Cameras__WebRtcStunServer: "${WEBRTC_STUN_SERVER:-stun:stun.l.google.com:19302}"
 
-      # What a printer is told to use for enrolment. PrinterHost is required for USB-key
-      # provisioning (Printers -> Add printer): the page cannot produce a usable ini snippet - and
-      # refuses to - until it is set. It should also be one of the names in the certificate, which
-      # is minted on first run over every address this machine could see then; if it is set before
-      # the first start, it is covered by construction.
-      #
-      # PrinterPort is the host side of the printer mapping, which now belongs to the proxy - it is
-      # the number every provisioning bundle tells a printer to use, so it must match whatever is
-      # published there. PrinterTls is one switch for both ends - the tls line written into every ini,
-      # and whether a leaf is issued for the proxy to present - so the two cannot disagree: with it
-      # off nothing is issued, and the proxy has nothing to serve even if somebody wired it up anyway.
-      # Setting it false is a testing tool for reading the wire, never a deployment choice; startup
-      # says so, and compose.plaintext.yaml is how it is meant to be done.
-
-      # Which peer may speak for the client - the network below, which is the proxy's and nothing
-      # else's. Defaulted rather than left empty now that we ship the proxy: shipping it is what
-      # makes its address knowable, which was the whole difficulty with KnownProxies/KnownNetworks.
-      # Empty would mean the forwarded-headers middleware is not registered at all, and links in
+      # Which peer may speak for the client - the proxy's network below, and nothing else. It must
+      # agree with PROXY_SUBNET: change one and you must change the other, or forwarded headers are
+      # silently ignored. Empty would mean the middleware is not registered at all, and links in
       # outgoing mail would say http:// while every logged client address was the proxy's.
-      #
-      # It must agree with PROXY_SUBNET below. Change one and you must change the other, or the
-      # headers are silently ignored again.
       XForwarded__KnownNetworks__0: "${PROXY_NETWORK:-172.28.0.0/16}"
 
-      # The same range again, for a different question: which addresses exist only in here. Detection
-      # inside a container sees the container, so without this the provisioning page would offer an
-      # address no printer on your network can route to, looking exactly as reasonable as the real one.
-      #
-      # Fed from the same variable deliberately - one network, one value, no way for them to drift. If
-      # you change PROXY_SUBNET, this follows, and the page keeps recognising what it should not offer.
+      # The same range for a different question: which addresses exist only in here, so the
+      # provisioning page does not offer an address no printer on your network can route to. Fed
+      # from the same variable deliberately - one network, one value, no way for them to drift.
       Certificates__ContainerNetworks__0: "${PROXY_NETWORK:-172.28.0.0/16}"
 
-      # Which Host headers this process will answer at all. "*" (appsettings.json) means any, and
-      # that is what made a password-reset link forgeable: Url.Page builds an absolute URL from
-      # Request.Host, so whoever chose the Host chose where the emailed token pointed. The proxy
-      # refuses an unknown Host as well; this is the same rule inside the application, because a
-      # proxy is not the only way to reach it.
-      #
-      # Composed from the addresses this deployment already knows rather than a list of its own, so
-      # there is nothing extra to keep in step:
+      # Which Host headers this process answers at all - the proxy refuses an unknown Host, and this
+      # is the same rule inside the application, because a proxy is not the only way to reach it.
+      # Composed from the addresses this deployment already knows:
       #
       #   USER_HOST     what people browse to
-      #   PRINTER_HOST  what printers connect to - and their Host header reaches this process too,
-      #                 through the proxy's printer listener, so leaving it out answers every printer
-      #                 400 while the pages look fine
+      #   PRINTER_HOST  what printers connect to - their Host header reaches this process too, so
+      #                 leaving it out answers every printer 400 while the pages look fine
       #   localhost     the container health check, which curls itself
       #
-      # SEMICOLONS, not commas - that is the framework's separator. The match ignores the port.
-      #
-      # If this deployment is reached by a name that is in neither variable - a second DNS name, or
-      # its bare IP address - add it here, or requests to it are refused with 400 before anything
-      # else runs. That is the cost of the setting, and it is why USER_HOST stopped being cosmetic.
+      # SEMICOLONS, not commas - the framework's separator. The match ignores the port. A name in
+      # neither variable - a second DNS name, the bare IP address - must be added here, or requests
+      # to it are refused with 400 before anything else runs.
       AllowedHosts: "${USER_HOST:-localhost};${PRINTER_HOST:-localhost};localhost"
 
+      # PrinterHost is what a printer is told to use: required for USB-key provisioning - the Add
+      # printer page refuses to produce an ini snippet without it - and should be one of the names
+      # in the certificate, which it is by construction if set before the first start. PrinterPort
+      # must match the proxy's published printer port below - it is the number written into every
+      # provisioning bundle. PrinterTls is one switch for both ends - the tls line written into
+      # every ini, and whether a leaf is issued for the proxy to present - so the two cannot
+      # disagree. Setting it false is a testing tool, never a deployment choice; startup says so,
+      # and compose.plaintext.yaml is how it is meant to be done.
       PrusaConnect__PrinterHost: "${PRINTER_HOST:-}"
       PrusaConnect__PrinterPort: "${PRINTER_PORT:-15443}"
       PrusaConnect__PrinterTls: "${PRINTER_TLS:-true}"
@@ -188,16 +139,9 @@ services:
       Smtp__Port: "${SMTP_PORT:-587}"
       # true for implicit TLS on port 465; false for STARTTLS on 587.
       Smtp__UseImplicitTls: "${SMTP_USE_IMPLICIT_TLS:-false}"
-
-      # No encryption at all. The application has always supported this and there was no way to
-      # reach it from here, so ".env.example: 25 for unencrypted" was advice that could not be
-      # taken: with implicit TLS off the sender uses SecureSocketOptions.StartTls, which REQUIRES
-      # the upgrade and fails with "does not support the STARTTLS extension" against a server that
-      # offers none. That refusal is right on 587 - falling back would put credentials on the wire -
-      # but it left a local test inbox unreachable.
-      #
-      # It puts mail and any credentials in the clear, so it is for a mail server on this same
-      # machine and nothing else.
+      # No encryption at all - mail and any credentials in the clear, so for a mail server on this
+      # same machine and nothing else. (With this false, STARTTLS is required rather than attempted:
+      # a server offering none is refused, not sent credentials in the clear.)
       Smtp__DisableTls: "${SMTP_DISABLE_TLS:-false}"
       Smtp__UserName: "${SMTP_USERNAME:-}"
       # Never put the real password here - compose.yaml is committed. Put SMTP_PASSWORD in a
@@ -212,184 +156,90 @@ services:
     volumes:
       - homespool-data:/app/data
 
-      # The leaf the proxy presents to printers, and its key. A separate volume from the one above,
-      # and that separation is the point rather than tidiness: the authority's private key lives in
-      # /app/data/certificates, and whoever holds it can mint a certificate every provisioned printer
-      # will believe, permanently and with no revocation to stop it. The proxy is the container facing
-      # the network, so it gets the replaceable half and never the other one.
+      # A separate volume from the one above, deliberately - it holds only what is safe to hand
+      # the network-facing container. See the volumes block at the bottom.
       - homespool-printer-leaf:/app/data/proxy-certificates
 
-      # Camera *names*, and deliberately not camera access. These directories hold udev's stable
-      # symlinks; the devices they point at are passed only to the camera service below, so inside
-      # this container the links are listable and their targets do not resolve. That is what lets
-      # the UI offer a list of attached cameras while holding no ability to open one.
-      #
-      # Safe when the host has no cameras at all: unlike `devices:`, a bind mount of a missing path
-      # is created empty rather than failing the container. The list is then simply empty, which is
-      # what "nothing attached" should look like.
+      # Camera *names*, deliberately not camera access: udev's stable symlinks are listable in
+      # here, but the devices they point at are passed only to the camera service below, so the
+      # targets do not resolve. Safe when the host has no cameras at all - unlike `devices:`, a
+      # bind mount of a missing path is created empty rather than failing the container.
       - /dev/v4l/by-id:/dev/v4l/by-id:ro
       - /dev/v4l/by-path:/dev/v4l/by-path:ro
 
     networks:
       - homespool
 
-    # The outermost of three shutdown budgets, and the only one Docker enforces: SIGTERM, then
-    # SIGKILL after this. The other two are inside the app - TelemetryWriter's final flush (~6.25 s
-    # worst case, both attempts timing out) and HostOptions.ShutdownTimeout, derived from it with
-    # margin at 12.75 s - and both are sized to finish inside this value.
-    #
-    # It is set explicitly because the default is 10 s and the app used to need 30: shutdown flush
-    # attempts that could each block for ~10 s against a locked database. Every such shutdown was
-    # killed part-way through the drain, which lost the buffered telemetry *and* the log line saying
-    # how much was lost. Now the app gives up first and reports, which is the whole point of
-    # ordering these three.
-    #
-    # Raise it if a deployment ever needs a longer drain; do not lower it below the app's own
-    # timeout, or the SIGKILL lands mid-flush again and the report is lost with it.
+    # The outermost of three shutdown budgets and the only one Docker enforces: SIGTERM, then
+    # SIGKILL after this. The app's own two - TelemetryWriter's final flush and
+    # HostOptions.ShutdownTimeout - are sized to finish inside it pinned by 
+    # TelemetryWriterShutdownBudgetTests). Raise it if a deployment ever needs a longer drain;
+    # never lower it below the app's own timeout, or the SIGKILL lands mid-flush
+    # and the report of what was lost is lost with it.
     stop_grace_period: 15s
 
-    # No healthcheck block is needed: the image declares one against /health/live, so
-    # `docker compose ps` shows healthy/unhealthy out of the box, and `depends_on:
-    # condition: service_healthy` works against this service.
-    #
-    # /health/live answers only for faults a restart would fix - today, the telemetry drain loop
-    # having stopped. It stays healthy while the database is rejecting writes, because restarting
-    # would not fix that and would discard everything still buffered.
-    #
-    # /health is the fuller report and the one to point monitoring at: same information plus
-    # whether telemetry is actually reaching the database, as JSON, with counters. Both are
-    # anonymous and exempt from the setup gate, so they answer before the first administrator
-    # exists. Alert on /health; never restart on it.
+    # No healthcheck block is needed: the image declares one against /health/live, which answers
+    # only for faults a restart would fix - it deliberately stays healthy while the database is
+    # rejecting writes, because restarting would not fix that and would discard everything still
+    # buffered. /health is the fuller report and the one to point monitoring at. Alert on /health;
+    # never restart on it.
 
-  # The front door for everything, and the reason "TLS by default" is true of a fresh
-  # `docker compose up` rather than of a deployment somebody finished configuring. It terminates TLS
-  # for pages and /api on one port and for printers on another, and passes plain HTTP to the app over
-  # this network.
-  #
-  # Printers DO come through here, which reverses what this file used to say two ways up. They have
-  # their own port, their own server block and their own certificate - the ECDSA leaf the app mints,
-  # which is also the one on the provisioning USB stick - and none of that is shared with the
-  # browser's. It is not a preference: .NET cannot serve that TLS correctly, and OpenSSL can. See
-  # nginx/homespool-printer.conf.
-  #
-  # Replacing this with a Traefik, Caddy or nginx of your own is still supported for the people-facing
-  # half - the app only needs XForwarded__KnownNetworks to name yours - but the printer half is
-  # fussier than a normal reverse proxy: exactly one certificate presented, no chain, one ciphersuite,
-  # no response buffering, and OpenSSL rather than Go's crypto/tls. Read homespool-printer.conf before
-  # substituting anything for that half.
-  # Reads cameras, so Homespool does not have to know how. go2rtc ingests RTSP, ONVIF, HTTP and
-  # V4L2 and re-serves every one of them as a plain JPEG over HTTP - which is why there is no camera
-  # protocol anywhere in the application, and why the official Prusa Buddy Camera is an ordinary
-  # entry in a list rather than a special case.
+  # go2rtc reads cameras, so Homespool does not have to know how: go2rtc ingests RTSP, ONVIF, HTTP
+  # and V4L2 and re-serves every one of them as a plain JPEG over HTTP,
+  # which is why there is no camera protocol anywhere in the application.
   #
   # Homespool owns this container's configuration: cameras are added in Homespool, which registers
-  # them here over the API. Do not edit go2rtc.yaml by hand - it is written by the sidecar itself
-  # when a stream is added, and a camera described in two places is a camera described wrongly in
-  # one of them.
+  # them here over the API. Do not edit go2rtc.yaml by hand - it is written by the sidecar itself,
+  # and a camera described in two places is a camera described wrongly in one of them.
   #
-  # Its API has no authentication of its own beyond the credential below, which is why its API port
-  # is not published: it is reachable from inside this stack and from nowhere else. Do not publish
-  # 1984 - every viewing path goes through Homespool, which is where the per-camera permission check
-  # lives.
+  # Do not publish 1984: the API's one credential cannot say which streams a caller may see, so
+  # every viewing path goes through Homespool, where the per-camera permission check lives.
   #
-  # 8555 IS published, and it is the one exception rather than a softening of that rule. It carries
-  # WebRTC media only, which is SRTP straight from this container to a browser and cannot be proxied
-  # by anything - so live view exists on this port or not at all. What bounds it is that media needs
-  # the ICE credentials from a signalling exchange, and signalling goes through Homespool like
-  # everything else: the open port on its own hands out nothing. Delete the ports block below to turn
-  # live view off; the still on the printer page is unaffected and keeps working.
+  # 8555 IS published, and it is the one exception: WebRTC media is SRTP straight from this
+  # container to a browser and cannot be proxied by anything, so live view exists on this port or
+  # not at all. Signalling still goes through Homespool like everything else, so the open port on
+  # its own hands out nothing. Delete the ports block below to turn live view off; the still on the
+  # printer page keeps working.
   go2rtc:
-    # Pinned by digest rather than :latest, and this exact digest is deliberate: it is 1.9.14, which
-    # is what :latest resolves to anyway, AND it is the same digest pi/decode-bench.sh pins. So the
-    # sidecar that runs is the sidecar that was measured, and the decode figures in
-    # Homespool.Notes notes/camera-support.md describe this image rather than one adjacent to it.
-    # That script's own comment makes the argument at greater length.
+    # Pinned by digest: this is 1.9.14, the same digest pi/decode-bench.sh pins, so the sidecar
+    # that runs is the sidecar that was measured. Upstream publishes no floating 1.9 or 1 tag, so
+    # an exact pin is the only option that does not drift; bumping is manual and rare, and the
+    # bench script's pin moves with this one. The tag survey and the decode figures are in
+    # Homespool.Notes notes/camera-support.md.
     #
-    # Not :master, though it carries a newer date: its last functional change was 2026-03-17 (the
-    # rest is documentation), nothing in the delta is a security fix, and none of it touches what we
-    # use - PUT /api/streams, GET /api/frame.jpeg, and basic auth. A rolling branch tag is :latest
-    # wearing a different name. There is no floating 1.9 or 1 tag to take patches from; upstream
-    # publishes only exact versions, :latest and :master, so an exact pin is the only option that
-    # does not drift. Bumping is manual and rare - two to four releases a year, with a six-month gap
-    # on record.
-    #
-    # Plain, not -hardware: that variant is linux/amd64 ONLY and would not pull on a Pi at all. It is
-    # for Intel/AMD/NVIDIA desktop GPUs; the Pi's bcm2835 decoder is reached through stock ffmpeg's
-    # v4l2m2m in this image. (-rockchip is arm64 but for Rockchip SoCs, not Broadcom.)
+    # Plain, not -hardware: that variant is linux/amd64 ONLY and would not pull on a Pi at all.
     image: alexxit/go2rtc@sha256:675c318b23c06fd862a61d262240c9a63436b4050d177ffc68a32710d9e05bae  # 1.9.14
 
-    # The credential is passed on the command line rather than written into go2rtc.yaml, and that is
-    # deliberate twice over: Homespool rewrites that file when it registers a camera, so a credential
-    # living there would have to survive every merge; and writing it there in the first place would
-    # mean authenticating to a server that is not yet configured.
-    #
-    # Its authentication is one credential for the whole API - it cannot say which streams a caller
-    # may see - so this is not the access control. Homespool still proxies every viewing path and
-    # applies the camera's own permission check.
-    #
-    # It is required all the same, and Homespool enforces that rather than this file: with these
-    # empty it refuses to use the sidecar at all, because go2rtc's API takes a source address as a
-    # parameter and supports command sources, so an unauthenticated one runs whatever anything that
-    # can reach it asks for - and a camera address typed into Homespool is a way to reach it. The
-    # unpublished port protects it from outside; the credential is what protects it from inside.
-    # Enforced there rather than with a `${VAR:?}` here so that an existing deployment can still run
-    # `docker compose down`, and so the rule holds for anything not started by Compose at all.
+    # The credential is on the command line rather than in go2rtc.yaml, because Homespool rewrites
+    # that file when it registers a camera. It is one credential for the whole API - not the access
+    # control; Homespool still proxies every viewing path and applies the per-camera check. It is
+    # required all the same: an unauthenticated go2rtc runs command sources for anything that can
+    # reach it. Homespool enforces that rather than a `${VAR:?}` here, so an existing deployment
+    # can still run `docker compose down`.
     #
     # GO2RTC_PASSWORD comes from .env and is given to both containers, so the two cannot drift.
+    # An empty *username* is the off switch, and it has to be: measured 2026-08-09, a username with
+    # an empty password turns authentication ON with an empty key and answers 401 to everything,
+    # including Homespool. Set the pair together or not at all - half of it is worse than none.
     #
-    # An empty *username* is the off switch, and it has to be: measured 2026-08-09, a username with an
-    # empty password turns authentication ON with an empty key and answers 401 to everything,
-    # including Homespool. So the pair is set together or not at all - half of it is worse than none.
-    # allow_paths is an allowlist of API paths, and go2rtc applies it by never registering the
-    # others with its mux at all - so a path left out answers 404 because no handler exists, rather
-    # than being refused at request time. These five are the only ones Homespool calls
-    # (Go2RtcClient): /api/streams to register, replace, list and remove, /api/frame.jpeg to read a
-    # still, /api/stream.mjpeg to read a continuous one, /api/webrtc to exchange one SDP offer for an
-    # answer on behalf of a browser that has already passed the camera's permission check, and
-    # /api/config plus /api/restart to write the WebRTC candidate at startup. Everything else in the
-    # default 45 goes, api/exit among them.
-    #
-    # /api/webrtc is signalling, not media: it answers with an SDP and the pictures never travel over
-    # it. It is on this list because Homespool proxies that exchange, so the browser still talks only
-    # to Homespool - the same arrangement as /api/frame.jpeg, one path further along.
-    #
-    # /api/ffmpeg/devices is how the camera picker offers a resolution: it runs ffmpeg -list_formats
-    # over every /dev/video* and reports each one's capture sizes. Homespool cannot ask this itself -
-    # it lists camera names from a read-only mount and deliberately holds no capability to open one
-    # (LocalCameraDevices) - so the question has to be put where the devices are. It discloses model
-    # names and formats to something that has already passed the credential, and writes nothing. Its
-    # answer is cached by the sidecar for the life of its process, which is what the rescan button on
-    # the cameras page restarts.
-    #
-    # /api/stream.mjpeg costs exactly what /api/frame.jpeg costs and is the same shape: a stream name
-    # in the query, pictures out, no way to write anything. It is relayed by Homespool like the rest,
-    # so the browser still never reaches this port. Added 2026-08-19 - and leaving it out is not a
-    # refusal a caller can read, because the allowlist works by not registering the handler: the
-    # symptom is a bare 404 that looks exactly like a wrong path or a stale go2rtc, which cost an
-    # evening once already.
-    #
-    # /api/config and /api/restart were deliberately OFF this list on 2026-08-18 and are deliberately
-    # back on it, so the cost is written down rather than rediscovered: /api/restart stops every
-    # camera for anything that can reach this port, and /api/config can carry a camera's RTSP
-    # credentials when its source embeds user:pass. What buys that back is that Homespool now owns
-    # the WebRTC candidate instead of an operator maintaining it in .env - see WebRtcConfigurer. The
-    # address a browser must be told to send media to cannot be discovered from inside this stack any
-    # other way: the application container sees only container addresses, so an address it did not
-    # write is one it could never check either. Both paths still sit behind the credential.
+    # allow_paths lists exactly the endpoints Go2RtcClient calls; each path's why is in
+    # Homespool.Notes notes/camera-support.md. go2rtc applies the list by never registering the
+    # other paths with its mux, so a missing path answers a bare 404 - distinguishable from "no
+    # such stream" only by the body: Go's mux says "404 page not found", a registered handler says
+    # go2rtc's own "stream not found". Any new endpoint Homespool calls needs this list edited, and
+    # nothing will tell you so.
     #
     # WITH A LEADING SLASH, and that is measured rather than read (Pi 3, go2rtc 1.9.14, 2026-08-17).
     # The source registers these as HandleFunc("api/streams", ...) and filters on that argument,
     # which reads as though the allowlist wants the bare form - it does not, and this comment said
     # the opposite until it was run. Without the slash EVERY path 404s, including the allowed ones,
-    # so every camera stops working. The check that separates "not registered" from "no such stream"
-    # is the body: Go's mux answers "404 page not found", while a registered handler answers
-    # go2rtc's own "stream not found".
+    # so every camera stops working.
     #
-    # What this is NOT: closing a remote-execution hole. go2rtc's streams.Validate already refuses
-    # sources whose scheme it marks insecure (exec, echo) on the path that creates a stream, so that
-    # chain does not run - see Homespool.Notes notes/security-audit-2026-08-17.md, which rated it too
-    # high before that function was found. This removes denial-of-service and credential-reading
-    # surface on an unpublished port, cheaply. Worth having, not urgent.
+    # /api/config and /api/restart cost what they say: restart stops every camera for anything
+    # holding the credential, and config can carry a camera's RTSP password when its source embeds
+    # one. What buys that back is Homespool owning the WebRTC candidate (WebRtcConfigurer) - an
+    # address it did not write is one it could never check. What this list is NOT is closing a
+    # remote-execution hole - see Homespool.Notes notes/security-audit-2026-08-17.md.
     command:
       - go2rtc
       - -c
@@ -397,24 +247,17 @@ services:
       - -c
 
       # Hardened, and the default deliberately: a fresh deployment is restricted without anyone
-      # choosing it, and only a developer opts out.
-      #
-      # Nothing about webrtc is set here on purpose, though it would fit: the candidate is written by
-      # Homespool over /api/config at startup, because it has to be recomputed when this machine's
-      # address moves and a value frozen into a command line cannot be. ice_servers is written the
-      # same way and defaults to empty - left alone, go2rtc contacts a third-party STUN server
-      # unprompted and puts this deployment's public address into every offer, which for a project
-      # whose premise is not routing through somebody else's infrastructure should be asked for
-      # rather than inherited. LAN viewing is unaffected either way.
+      # choosing it, and only a developer opts out. Nothing about webrtc is set here on purpose -
+      # the candidate and ice_servers are written by Homespool over /api/config at startup, because
+      # a value frozen into a command line cannot follow this machine's address. ice_servers
+      # defaults to empty: left alone, go2rtc contacts a third-party STUN server unprompted.
       - '{"api":{"username":"${GO2RTC_USERNAME:-}","password":"${GO2RTC_PASSWORD:-}","allow_paths":["/api/streams","/api/frame.jpeg","/api/stream.mjpeg","/api/webrtc","/api/config","/api/restart","/api/ffmpeg/devices"]}}'
 
-      # DEVELOPER: swap the line above for this one to get the web interface back - it is how stream
-      # types get tested by hand. Omitting allow_paths entirely is how go2rtc means "unrestricted",
-      # so this needs no list of its own; a curated developer list would be guesswork about which
-      # paths the UI needs, and a half-working UI is worse than none.
-      #
-      # One line swapped rather than a second -c: whether a second '{"api":{...}}' merges with this
-      # one or replaces it is untested, and if it replaced it the credential would go with it.
+      # DEVELOPER: swap the line above for this one to get the web interface back - it is how
+      # stream types get tested by hand, and omitting allow_paths entirely is how go2rtc means
+      # "unrestricted". One line swapped rather than a second -c: whether a second '{"api":{...}}'
+      # merges with this one or replaces it is untested, and if it replaced it the credential would
+      # go with it.
       # - '{"api":{"username":"${GO2RTC_USERNAME:-}","password":"${GO2RTC_PASSWORD:-}"}}'
 
     # Named, because Cameras__StreamServerBaseUrl points at it by name rather than by address.
@@ -422,38 +265,33 @@ services:
 
     # WebRTC media, and the only port this container publishes. Both protocols, because ICE prefers
     # UDP and falls back to TCP through a network that will not pass it - publishing one of the two
-    # gives a browser that needs the other the same silent black screen the candidate does.
-    #
-    # The host side is what a browser connects to, so it is the number Homespool puts in the
-    # candidate it writes - which is why the application is told it too, below. The container side
-    # stays 8555 because that is where go2rtc listens.
+    # gives a browser that needs the other the same silent black screen the candidate does. The
+    # host side is what a browser connects to, so it is the number in the candidate Homespool
+    # writes; the container side stays 8555 because that is where go2rtc listens.
     ports:
       - "${WEBRTC_PORT:-8555}:8555/tcp"
       - "${WEBRTC_PORT:-8555}:8555/udp"
 
-    # Cameras plugged into this machine, granted as a class rather than named one at a time
-    # Major 81 is video4linux, where it covers both USB webcams and the Pi's built-in codec nodes.
-    #
-    # Why not `devices:` naming each camera: an entry naming a device that does not exist stops the
-    # container from starting, so it could never ship enabled - and Homespool's camera picker would
-    # then list a camera it cannot actually open until somebody edits this file and restarts. A list
-    # that means "present" rather than "usable" is the thing that arrangement was supposed to avoid.
+    # Cameras plugged into this machine, granted as a class: major 81 is video4linux, covering USB
+    # webcams and the Pi's codec nodes both. Not `devices:` naming each camera, because an entry
+    # naming a device that does not exist stops the container from starting - it could never ship
+    # enabled.
     #
     # What it costs, stated plainly: this container can open any video device on the machine, and
-    # sees the names of everything in /dev. The cgroup rule is what grants access; the bind mount
-    # only makes the nodes visible. If you would rather narrow it - a machine with capture hardware
-    # that has nothing to do with printing, say - delete both lines below and name each camera:
+    # sees the names of everything in /dev. If you would rather narrow it, delete both lines below
+    # and name each camera:
     #
     #   devices:
     #     - /dev/v4l/by-id/usb-046d_0821_437242E0-video-index0
     #
     # using a by-id path, never /dev/video0: node numbers are handed out in enumeration order, and
-    # on this project's test board one camera took video0 from another inside a single session.
+    # one camera has been seen taking video0 from another inside a single session.
     device_cgroup_rules:
       - "c 81:* rmw"
 
     volumes:
       - homespool-go2rtc-config:/config
+      # Visibility only - the cgroup rule above is what grants access.
       - /dev:/dev
 
     networks:
@@ -461,6 +299,17 @@ services:
 
     restart: unless-stopped
 
+  # The front door for everything, and the reason "TLS by default" is true of a fresh
+  # `docker compose up` rather than of a deployment somebody finished configuring. It terminates
+  # TLS for pages and /api on one port and for printers on another - their own server block and
+  # their own certificate, the ECDSA leaf the app mints - and passes plain HTTP to the app over
+  # this network.
+  #
+  # Replacing this with a Traefik, Caddy or nginx of your own is supported for the people-facing
+  # half - the app only needs XForwarded__KnownNetworks to name yours - but the printer half is
+  # fussier than a normal reverse proxy: exactly one certificate presented, no chain, one
+  # ciphersuite, no response buffering, and OpenSSL rather than Go's crypto/tls. Read
+  # nginx/homespool-printer.conf before substituting anything for that half.
   proxy:
     image: homespool-proxy
     build:
@@ -470,96 +319,84 @@ services:
       - "${PORT:-80}:8080"
       - "${HTTPS_PORT:-443}:8443"
 
-      # What a printer connects to, and it must match PrusaConnect__PrinterPort above - that is the
-      # number written into every provisioning bundle. 15443 rather than 443 on both sides: containers
-      # here run as non-root users and cannot bind 443, and 443 on the host belongs to the browser,
-      # since a URL carrying a port number is a daily papercut while a printer's port is typed by no one.
+      # What a printer connects to; it must match PrusaConnect__PrinterPort above - that is the
+      # number written into every provisioning bundle. 15443 rather than 443 on both sides:
+      # containers here run as non-root and cannot bind 443, and 443 on the host belongs to the
+      # browser.
       - "${PRINTER_PORT:-15443}:15443"
 
-      # What a printer fetches an encrypted download from - the number in every
-      # START_ENCRYPTED_DOWNLOAD, so it must match PrusaConnect__TransferPort above. Plain HTTP,
-      # deliberately and permanently: the printer cannot open a TLS socket for this. The body is
-      # ciphertext, the port serves nothing else, and it is a LAN proposition - see
-      # nginx/homespool-transfer.conf before publishing it any further than that.
+      # What a printer fetches an encrypted download from; it must match PrusaConnect__TransferPort
+      # above. Plain HTTP, deliberately and permanently: the printer cannot open a TLS socket for
+      # this, and the body is ciphertext. See nginx/homespool-transfer.conf before publishing it
+      # any further than the LAN.
       - "${TRANSFER_PORT:-15080}:15080"
 
     environment:
-      # The same zone the application uses, so the two logs can be read side by side. Without it the
-      # proxy stamps every access line UTC while the application stamps its own local, and correlating
-      # a request across them means doing arithmetic. Not read by the template - envsubst is filtered
-      # to HTTPS_PORT_SUFFIX below - only by nginx's own timestamps.
+      # The same zone the application uses, so the two logs can be read side by side without
+      # arithmetic. Only nginx's own timestamps read it - envsubst is filtered below.
       TZ: "${TZ:-UTC}"
 
       # Only used to name the self-signed certificate generated on first start. Browsers will warn
-      # whatever this says - the certificate is signed by nobody - so it is cosmetic until you
-      # replace the certificate with one of your own.
+      # whatever this says, so it is cosmetic until you replace the certificate with your own.
       USER_HOST: "${USER_HOST:-localhost}"
 
       # The redirect from the HTTP listener has to name the port HTTPS is actually published on -
-      # $host carries none, so without this it means 443 and sends browsers to a closed door on any
-      # stack that publishes elsewhere. Empty for 443 so the common case keeps a clean URL.
-      HTTPS_PORT_SUFFIX: "${HTTPS_PORT_SUFFIX-}"
+      # $host carries none. Derived from HTTPS_PORT by 15-redirect-port-suffix.envsh at container
+      # start: empty for 443 so the common case keeps a clean URL, ":8443"-shaped otherwise.
+      # "auto" is the derivation sentinel - it means neither name below is in .env. Setting
+      # REDIRECT_PORT_SUFFIX there overrides the derivation, explicit empty included, for the
+      # deployment where a router forwards 443 inward and the browser's port is not the published
+      # one. HTTPS_PORT_SUFFIX is the setting's pre-rename name, honoured so an existing .env
+      # keeps its meaning; the new name wins when both are set.
+      HTTPS_PORT: "${HTTPS_PORT:-443}"
+      REDIRECT_PORT_SUFFIX: "${REDIRECT_PORT_SUFFIX-${HTTPS_PORT_SUFFIX-auto}}"
 
-      # Restricts envsubst to that one variable. WITHOUT THIS the template's own $host, $request_uri
+      # Restricts envsubst to those variables. WITHOUT THIS the template's own $host, $request_uri
       # and $homespool_upstream are all substituted with nothing, nginx starts on a configuration
       # that parses and redirects everyone to "https://", and the cause looks nothing like the
       # symptom. The filter is the whole safety of this arrangement.
-      NGINX_ENVSUBST_FILTER: "HTTPS_PORT_SUFFIX|USER_HOST"
+      NGINX_ENVSUBST_FILTER: "REDIRECT_PORT_SUFFIX|USER_HOST"
 
     volumes:
-      # Read-only, and from the repository rather than baked into the image: this is the file an
-      # operator is most likely to want to change (HSTS, a hostname, an extra header), and a mount
-      # makes that an edit and a restart instead of a rebuild.
-      # A template rather than straight into conf.d: the entrypoint renders it there, substituting
-      # the HTTPS port into the redirect. Still the file an operator edits, still a mount so that is
-      # an edit and a restart rather than a rebuild - only the path it lands on has moved.
+      # From the repository rather than baked into the image: this is the file an operator is most
+      # likely to want to change (HSTS, a hostname, an extra header), and a mount makes that an
+      # edit and a restart instead of a rebuild. A template rather than straight into conf.d - the
+      # entrypoint renders it there, substituting the HTTPS port into the redirect.
       - ./nginx/homespool.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./nginx/homespool-proxy.conf:/etc/nginx/homespool-proxy.conf:ro
 
-      # NOT into conf.d, deliberately. The entrypoint hook copies it there only when this deployment
-      # has a printer leaf to serve; dropped straight into conf.d it would be unconditional, and nginx
-      # would refuse to start at all on a stack with printer TLS turned off, taking the pages down
-      # with it over a certificate the operator deliberately does not have.
+      # NOT into conf.d, deliberately: the entrypoint hook copies it there only when this
+      # deployment has a printer leaf to serve. Dropped straight into conf.d it would be
+      # unconditional, and nginx would refuse to start at all on a stack with printer TLS turned
+      # off, taking the pages down with it over a certificate the operator deliberately does not
+      # have.
       - ./nginx/homespool-printer.conf:/etc/nginx/homespool-printer.conf:ro
       - ./nginx/homespool-health-access.conf:/etc/nginx/homespool-health-access.conf:ro
 
-      # Straight into conf.d, unlike the printer block: there is no certificate to wait for, so
-      # nothing conditions whether this listener is served. Plain HTTP, /f/* only.
+      # Straight into conf.d, unlike the printer block: there is no certificate to wait for. Plain
+      # HTTP, /f/* only.
       - ./nginx/homespool-transfer.conf:/etc/nginx/conf.d/homespool-transfer.conf:ro
 
-      # Holds the user-facing certificate. Named rather than a bind mount so the directory keeps the
+      # The user-facing certificate. Named rather than a bind mount so the directory keeps the
       # ownership the image gave it - an unprivileged nginx has to be able to write the self-signed
       # one it generates, and a host directory would arrive owned by whoever created it.
       - homespool-proxy-certs:/etc/nginx/certs
 
-      # And the printer-facing one, written by the app, read-only here. Read-only because this side
-      # never has any business changing it: reissue is the app's, through Admin -> Printer
-      # certificate, and a proxy that could rewrite the leaf could serve printers a certificate the
-      # app knows nothing about.
+      # The printer-facing leaf, written by the app. Read-only because reissue is the app's,
+      # through Admin -> Printer certificate - a proxy that could rewrite the leaf could serve
+      # printers a certificate the app knows nothing about.
       - homespool-printer-leaf:/etc/nginx/printer-certs:ro
 
     networks:
       - homespool
 
-    # service_started, not service_healthy - changed 2026-08-02, and the reasoning it replaces is
-    # worth keeping because it was correct about the risk.
-    #
-    # It used to wait for health, because the app writes the printer leaf on its startup path and
-    # 20-printer-listener.sh reads it at start to decide whether to serve the printer listener at
-    # all: start them together and the loser is a proxy that came up without printers and says
-    # nothing about it until one fails to connect.
-    #
-    # What that cost was a closed port for the whole of startup. On a Raspberry Pi the first boot
-    # migrates a database before it reports healthy, so `http://homespool.local` refused connections
-    # for minutes and read as a broken deployment - it was reported as one.
-    #
-    # The race is now handled where it actually lives rather than by delaying the whole proxy:
-    # 20-printer-listener.sh keeps its short wait for the ordinary restart, and otherwise watches for
-    # the leaf in the background and reloads nginx when it appears. So the printer listener still
-    # never comes up without a certificate; it just no longer holds the pages hostage while it waits.
-    #
-    # Note what this gives up: "nginx is running" no longer implies "the application was healthy at
-    # least once". Anything that reasons that way needs to stop.
+    # service_started, not service_healthy: waiting for health kept every port closed for the whole
+    # of startup, and a first boot on a Raspberry Pi migrates a database before it reports healthy -
+    # minutes of refused connections, reported as a broken deployment. The race this used to guard
+    # lives in 20-printer-listener.sh now, which watches for the printer leaf and reloads nginx
+    # when it appears, so the printer listener still never serves without a certificate. What is
+    # given up: "nginx is running" no longer implies the application was healthy at least once, and
+    # anything that reasons that way needs to stop.
     depends_on:
       homespool:
         condition: service_started
@@ -567,12 +404,10 @@ services:
     restart: unless-stopped
 
 networks:
-  # Pinned rather than left to Docker's allocator, so XForwarded__KnownNetworks can name it. That
-  # is the whole reason shipping our own proxy simplifies this: the trusted range stops being
-  # something the operator has to discover and becomes something we chose.
-  #
-  # Change the subnet if it collides with something on your host, and change PROXY_NETWORK in .env
-  # to match - the two must agree or forwarded headers are silently ignored.
+  # Pinned rather than left to Docker's allocator, so XForwarded__KnownNetworks can name it - the
+  # trusted range stops being something the operator has to discover and becomes something we
+  # chose. Change the subnet if it collides with something on your host, and change PROXY_NETWORK
+  # in .env to match - the two must agree or forwarded headers are silently ignored.
   homespool:
     ipam:
       config:
@@ -585,18 +420,19 @@ volumes:
   homespool-data:
 
   # The user-facing certificate, self-signed on first start unless you put your own here. Kept
-  # across container replacement so that the exception someone clicked through in their browser
-  # keeps meaning something - a certificate regenerated on every start teaches people that the
-  # warning is noise.
+  # across container replacement so the exception someone clicked through keeps meaning something -
+  # a certificate regenerated on every start teaches people that the warning is noise.
   homespool-proxy-certs:
 
   # go2rtc's own configuration, written by go2rtc when Homespool registers a camera. Kept across
-  # container replacement so cameras survive one - the startup reconciler re-registers anything lost,
-  # but a volume means it usually has nothing to do.
+  # container replacement so cameras survive one - the startup reconciler re-registers anything
+  # lost, but a volume means it usually has nothing to do.
   homespool-go2rtc-config:
 
-  # The printer-facing leaf and its key, in PEM: written by the app, read by the proxy. Deliberately
-  # NOT part of homespool-data, which holds the certificate authority's private key - the one
-  # secret here that cannot be rotated without a USB visit to every printer. This volume holds only
-  # what is safe to hand the network-facing container.
+  # The printer-facing leaf and its key, in PEM: written by the app, read by the proxy.
+  # Deliberately NOT part of homespool-data, which holds the certificate authority's private key -
+  # the one secret here that cannot be rotated without a USB visit to every printer, and whoever
+  # holds it can mint a certificate every provisioned printer will believe, permanently, with no
+  # revocation to stop it. This volume holds only what is safe to hand the network-facing
+  # container.
   homespool-printer-leaf:

@@ -108,33 +108,6 @@ public class IndexModel : PageModel
         PrinterStatus? LiveStatus);
 
     /// <summary>
-    /// The badge colour for a status - semantic, so what needs a person reads at a glance.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Three tiers and a default: <b>danger</b> for the two that need somebody now,
-    /// <b>success</b> for a printer doing what it was asked, and <b>secondary</b> for every resting
-    /// state, so a listing of idle printers stays quiet instead of glowing green.
-    /// </para>
-    /// <para>
-    /// <b>Not localised, and worth noticing beside <see cref="StatusText"/>.</b> This returns a CSS
-    /// class name — a value Bootstrap parses, not one a person reads — so translating it would
-    /// produce a class that styles nothing. Same enum, same row of the page, opposite sides of the
-    /// machine-text boundary.
-    /// </para>
-    /// </remarks>
-    public static string StatusBadgeClass(PrinterStatus? status)
-    {
-        return status switch
-        {
-            PrinterStatus.Error or PrinterStatus.Attention => "text-bg-danger",
-            PrinterStatus.Paused => "text-bg-warning",
-            PrinterStatus.Printing or PrinterStatus.Ready => "text-bg-success",
-            _ => "text-bg-secondary",
-        };
-    }
-
-    /// <summary>
     /// What a connected printer's status says, in a person's words rather than the enum's — and in
     /// their language. See <see cref="Localisation.PrinterStatusText"/>.
     /// </summary>

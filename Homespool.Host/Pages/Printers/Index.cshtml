@@ -52,13 +52,13 @@ else
                 <td>
                     @if (row.Connected)
                     {
-                        <span class="badge @IndexModel.StatusBadgeClass(row.LiveStatus)">@Model.StatusText(row.LiveStatus)</span>
+                        <span class="badge @PrinterStatusBadge.For(row.LiveStatus)">@Model.StatusText(row.LiveStatus)</span>
                     }
                     else if (row.Enrolled)
                     {
                         @* Enrolled and absent. "Offline" is the actionable half; the reissue button
                            beside it already says the credential is in place. *@
-                        <span class="badge border border-secondary text-body-secondary">@Localiser["PrinterStatus_Offline"]</span>
+                        <span class="badge @PrinterStatusBadge.Absent">@Localiser["PrinterStatus_Offline"]</span>
                     }
                     else if (row.AwaitingUsbProvisioning)
                     {
@@ -68,7 +68,7 @@ else
                     }
                     else
                     {
-                        <span class="badge border border-secondary text-body-secondary">@Localiser["Printers_AwaitingAny"]</span>
+                        <span class="badge @PrinterStatusBadge.Absent">@Localiser["Printers_AwaitingAny"]</span>
                     }
                 </td>
                 <td>

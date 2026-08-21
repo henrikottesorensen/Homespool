@@ -181,10 +181,13 @@ cp "$repo_root/.env.example"  "$payload_dir/"
 # SMTP or repoint PRINTER_HOST later. Mode carried explicitly: systemd ExecStart needs it executable,
 # and cp -a into the image preserves whatever arrives here.
 install -m 0755 "$repo_root/setup-env.sh" "$payload_dir/setup-env.sh"
-# Only the three files compose bind-mounts. The rest of nginx/ is baked into the proxy image already.
-cp "$repo_root/nginx/homespool.conf.template" "$payload_dir/nginx/"
-cp "$repo_root/nginx/homespool-proxy.conf"   "$payload_dir/nginx/"
-cp "$repo_root/nginx/homespool-printer.conf" "$payload_dir/nginx/"
+# The whole directory, deliberately. A hand-list of just the files compose bind-mounts drifted when
+# two mounts were added without it noticing - and a missing bind source is not a merely absent
+# config: Docker on the card invents the path as an empty directory, nginx hits it through an
+# include, and the proxy never starts (notes/tls-by-default.md, "The file is named for what it
+# is"). The directory is also compose.yaml's build context for the proxy, so shipping it whole
+# keeps the card's compose project self-consistent. It is 64 KB against ~550 MB of images.
+cp -R "$repo_root/nginx/." "$payload_dir/nginx/"
 
 # Deliberately NOT into the payload. This tarball never reaches the card: it is loaded into the
 # card's Docker store during the build (step 4), so the Pi boots with the images already unpacked.

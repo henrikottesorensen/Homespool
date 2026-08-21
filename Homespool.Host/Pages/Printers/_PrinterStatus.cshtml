@@ -147,11 +147,38 @@
             </div>
         }
 
-        @* Not a stall to worry about - it is the loop explaining itself. Absent when another part of
-           this page already says it, which is why there is no message while a print is starting. *@
+        @* Two voices, because there are two kinds of wait. Transferring and awaiting-a-path are the
+           loop working and want a footnote; a printer that is not Ready is the queue stopped on
+           something only a person does, and a footnote is what it got until somebody sat wondering
+           why their print had not started. The rule that only a person offers a printer up for work
+           is stated nowhere else, and it is exactly what makes a working queue look broken. *@
         @if (Model.WaitingOn is { } waiting)
         {
-            <p class="text-body-secondary small mt-3 mb-0">@waiting</p>
+            @if (Model.WaitingOnAPerson)
+            {
+                <div class="alert alert-info d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3 mb-0"
+                     role="alert">
+                    <span>@waiting</span>
+
+                    @* The remedy beside the reason, so the shortest path from "why has this not
+                       started" to fixed is one press. This is inside the refreshed region, unlike
+                       every other control - and it is the one that can be: Bootstrap delegates
+                       data-bs-toggle from the document, so a button replaced every two seconds still
+                       opens the dialog, and a trigger holds no half-finished input to lose the way
+                       the filament select does. *@
+                    @if (Model.CanUse && Model.Statistics.Printer.RemoteReadyAllowed)
+                    {
+                        <button type="button" class="btn btn-sm btn-primary"
+                                data-bs-toggle="modal" data-bs-target="#set-ready">
+                            @Localiser["Intent_SetPrinterReady"]
+                        </button>
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="text-body-secondary small mt-3 mb-0">@waiting</p>
+            }
         }
     </div>
 </div>

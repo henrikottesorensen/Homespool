@@ -233,6 +233,30 @@ public class DetailModel : PageModel
     public string? WaitingOn { get; private set; }
 
     /// <summary>
+    /// Which wait it is, so the page can treat the one a person has to clear differently from the
+    /// ones the loop clears by itself.
+    /// </summary>
+    /// <remarks>
+    /// <b>The distinction the sentence alone could not make, and it cost somebody an evening</b>
+    /// (Henrik, 2026-08-21, dogfooding): a queued print had not started, the printer was <c>Idle</c>
+    /// rather than <c>Ready</c>, and the explanation was on the page as grey footnote text below the
+    /// temperature tiles. <c>Transferring</c> and <c>AwaitingPrinterPath</c> are the loop working and
+    /// deserve a footnote; <see cref="QueueWaitReason.PrinterNotAvailable"/> is the queue waiting on a
+    /// person and needs to look like it.
+    /// </remarks>
+    public QueueWaitReason? WaitingReason { get; private set; }
+
+    /// <summary>
+    /// Whether the queue is stopped on something only a person can clear.
+    /// </summary>
+    /// <remarks>
+    /// The knowledge lives with the sentences rather than here - see
+    /// <see cref="QueueWaitDescription.NeedsAPerson"/>, which is where the reasons are already sorted
+    /// into those the loop clears and those it does not.
+    /// </remarks>
+    public bool WaitingOnAPerson => QueueWaitDescription.NeedsAPerson(WaitingReason);
+
+    /// <summary>
     /// Whether the caller may change the queue, which decides whether the controls render at all.
     /// </summary>
     /// <remarks>
@@ -440,10 +464,12 @@ public class DetailModel : PageModel
         HoldReason = hold is null ? null : _errors.For(hold);
 
         QueueSnapshot snapshot = await _snapshots.ReadAsync(statistics.Printer.Id, cancellationToken);
-        MessageKey? waiting = QueueWaitDescription.For(QueueRules.Decide(snapshot), snapshot.Head?.FileName);
+        QueueAction decision = QueueRules.Decide(snapshot);
+        MessageKey? waiting = QueueWaitDescription.For(decision, snapshot.Head?.FileName);
 
         HoldKind = snapshot.HoldReason;
 
+        WaitingReason = decision.Kind == QueueActionKind.Wait ? decision.Reason : null;
         WaitingOn = waiting is null ? null : _errors.For(waiting);
 
         return true;

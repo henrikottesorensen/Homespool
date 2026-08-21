@@ -258,6 +258,35 @@ public class QueueRulesTests
         (sentence is not null).Should().Be(expected);
     }
 
+    /// <summary>
+    /// Of the reasons that get a sentence, only the printer not being ready is the queue stopped on a
+    /// person - and that is what decides whether the page states it or whispers it.
+    /// </summary>
+    /// <remarks>
+    /// <b>Every member, so a new reason cannot be added without deciding this about it.</b> The
+    /// defect this guards was not a wrong sentence, it was a right one rendered as grey footnote text
+    /// while somebody sat wondering why their queued print had not started.
+    /// </remarks>
+    [Theory]
+    [InlineData(QueueWaitReason.Undefined, false)]
+    [InlineData(QueueWaitReason.Transferring, false)]
+    [InlineData(QueueWaitReason.AwaitingPrinterPath, false)]
+    [InlineData(QueueWaitReason.PrintStarting, false)]
+    [InlineData(QueueWaitReason.IncompatibleWithPrinter, false)]
+    [InlineData(QueueWaitReason.InsufficientSpace, false)]
+    [InlineData(QueueWaitReason.PrinterNotAvailable, true)]
+    public void OnlyAPrinterThatIsNotReadyIsWaitingOnAPerson(QueueWaitReason reason, bool expected)
+    {
+        QueueWaitDescription.NeedsAPerson(reason).Should().Be(expected);
+    }
+
+    /// <summary>No wait at all is not a wait on anybody.</summary>
+    [Fact]
+    public void NotWaitingIsNotWaitingOnAPerson()
+    {
+        QueueWaitDescription.NeedsAPerson(null).Should().BeFalse();
+    }
+
     /// <summary>A queue that is moving needs no explanation at all.</summary>
     [Fact]
     public void AnActionThatIsNotAWaitSaysNothing()

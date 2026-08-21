@@ -55,4 +55,30 @@ public static class QueueWaitDescription
             _ => null,
         };
     }
+
+    /// <summary>
+    /// Whether a wait is the queue stopped on a <em>person</em> rather than on itself.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Of the reasons this class gives a sentence to</b>, and that is the whole scope: transferring
+    /// and awaiting-a-path are the loop working and clear themselves, so they want a footnote.
+    /// <see cref="QueueWaitReason.PrinterNotAvailable"/> clears when somebody says the printer may
+    /// take work, and nothing else on the page states that rule.
+    /// </para>
+    /// <para>
+    /// <b>InsufficientSpace also needs a person and is deliberately false</b> - it is not a case this
+    /// predicate covers, because <see cref="For"/> gives it no sentence at all. Its own banner carries
+    /// the two numbers, and answering true here would put a second voice beside it.
+    /// </para>
+    /// <para>
+    /// <b>Written after somebody sat wondering why a queued print had not started</b> (Henrik,
+    /// 2026-08-21). The printer was <c>Idle</c>, the sentence was on the page, and it was grey
+    /// footnote text under the temperature tiles. The words were right and the weight was wrong.
+    /// </para>
+    /// </remarks>
+    public static bool NeedsAPerson(QueueWaitReason? reason)
+    {
+        return reason == QueueWaitReason.PrinterNotAvailable;
+    }
 }

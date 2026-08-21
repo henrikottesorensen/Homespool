@@ -239,6 +239,11 @@ public class CameraService
             return CameraSaveOutcome.Refused("Cameras_NotFoundOrNotYours");
         }
 
+        // The edit form is shown the password as a placeholder, so an edit that did not touch it
+        // posts the placeholder back. Put the stored one in before anything reads this source:
+        // the policy check resolves it and the row stores it, and both need the real credential.
+        source = CameraSourceDisplay.RestoreHiddenPassword(source, camera.Source);
+
         CameraSaveOutcome? refusal = await CheckPermittedAsync(caller, camera.TeamId, source, cancellationToken)
             .ConfigureAwait(false);
 

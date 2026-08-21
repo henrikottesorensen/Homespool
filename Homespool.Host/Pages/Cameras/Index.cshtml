@@ -1,5 +1,6 @@
 @page
 @model Homespool.Host.Pages.Cameras.IndexModel
+@using Homespool.Host.Cameras
 @{
     ViewData["Title"] = Localiser["Cameras_Title"].Value;
 }
@@ -50,7 +51,7 @@ else
                                 <span class="badge border border-secondary text-body-secondary ms-1">@Localiser["Cameras_Attached"]</span>
                             }
                         </td>
-                        <td><code class="small">@camera.Source</code></td>
+                        <td><code class="small">@CameraSourceDisplay.WithoutCredential(camera.Source)</code></td>
                         <td class="typed-name">@(camera.Printer?.Name ?? camera.Printer?.Model ?? "—")</td>
                         <td>
                             @if (age is null)
@@ -90,7 +91,7 @@ else
 
         <div class="col-md-5">
             <label class="form-label" for="edit-source">@Localiser["Cameras_Source"]</label>
-            <input class="form-control" id="edit-source" name="source" value="@Model.Editing.Source" required />
+            <input class="form-control" id="edit-source" name="source" value="@CameraSourceDisplay.WithHiddenPassword(Model.Editing.Source)" required />
         </div>
 
         @* Only for a camera plugged into this server: a network camera's size is set on the camera

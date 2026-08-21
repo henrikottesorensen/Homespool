@@ -103,15 +103,16 @@ services:
       # is the same rule inside the application, because a proxy is not the only way to reach it.
       # Composed from the addresses this deployment already knows:
       #
-      #   USER_HOST     what people browse to
+      #   USER_HOSTS    what people browse to - itself a list, which is why this composes cleanly
       #   PRINTER_HOST  what printers connect to - their Host header reaches this process too, so
       #                 leaving it out answers every printer 400 while the pages look fine
       #   localhost     the container health check, which curls itself
       #
-      # SEMICOLONS, not commas - the framework's separator. The match ignores the port. A name in
-      # neither variable - a second DNS name, the bare IP address - must be added here, or requests
-      # to it are refused with 400 before anything else runs.
-      AllowedHosts: "${USER_HOST:-localhost};${PRINTER_HOST:-localhost};localhost"
+      # SEMICOLONS, not commas - the framework's separator, and the reason USER_HOSTS uses one too:
+      # its names need no conversion to be spliced in here. The match ignores the port. A name in
+      # neither variable is refused with 400 before anything else runs, so add it to USER_HOSTS
+      # rather than here - this line is composed, not maintained.
+      AllowedHosts: "${USER_HOSTS:-localhost};${PRINTER_HOST:-localhost};localhost"
 
       # PrinterHost is what a printer is told to use: required for USB-key provisioning - the Add
       # printer page refuses to produce an ini snippet without it - and should be one of the names
@@ -336,9 +337,16 @@ services:
       # arithmetic. Only nginx's own timestamps read it - envsubst is filtered below.
       TZ: "${TZ:-UTC}"
 
-      # Only used to name the self-signed certificate generated on first start. Browsers will warn
-      # whatever this says, so it is cosmetic until you replace the certificate with your own.
-      USER_HOST: "${USER_HOST:-localhost}"
+      # The names this proxy answers to - server_name in both user-facing blocks, and the subject and
+      # subject-alternative names of the self-signed certificate generated on first start. A
+      # semicolon-separated list; 16-user-server-names.envsh derives the space-separated form nginx
+      # wants, and 25-self-signed-certificate.sh splits it for the certificate.
+      #
+      # Renamed from USER_HOST, which is NOT read as a fallback: a .env still carrying the old name
+      # falls to localhost here, and every other name this machine answers to is then refused. The
+      # failure is total and immediate rather than subtle, which is why it is a rename rather than
+      # an alias - see .env.example.
+      USER_HOSTS: "${USER_HOSTS:-localhost}"
 
       # The redirect from the HTTP listener has to name the port HTTPS is actually published on -
       # $host carries none. Derived from HTTPS_PORT by 15-redirect-port-suffix.envsh at container
@@ -355,7 +363,7 @@ services:
       # and $homespool_upstream are all substituted with nothing, nginx starts on a configuration
       # that parses and redirects everyone to "https://", and the cause looks nothing like the
       # symptom. The filter is the whole safety of this arrangement.
-      NGINX_ENVSUBST_FILTER: "REDIRECT_PORT_SUFFIX|USER_HOST"
+      NGINX_ENVSUBST_FILTER: "REDIRECT_PORT_SUFFIX|USER_SERVER_NAMES"
 
     volumes:
       # From the repository rather than baked into the image: this is the file an operator is most

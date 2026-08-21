@@ -9,9 +9,15 @@
 # to a literal "https://$host${REDIRECT_PORT_SUFFIX}/..." - a URL no browser can resolve, from a
 # proxy that reports itself healthy. The extension is the warning.
 #
-# Only ${REDIRECT_PORT_SUFFIX} is substituted; NGINX_ENVSUBST_FILTER in compose.yaml restricts it.
-# Add a variable of your own here and you must add it there too, or it stays a literal - and
-# conversely, widening that filter would blank every $host and $request_uri below.
+# Only ${REDIRECT_PORT_SUFFIX} and ${USER_SERVER_NAMES} are substituted; NGINX_ENVSUBST_FILTER in
+# compose.yaml restricts it. Add a variable of your own here and you must add it there too, or it
+# stays a literal - and conversely, widening that filter would blank every $host and $request_uri
+# below.
+#
+# ${USER_SERVER_NAMES} is USER_HOSTS with its semicolons turned into spaces, derived by
+# 16-user-server-names.envsh at container start. The conversion is why the raw variable is not used
+# here: a semicolon ends a directive, so a two-name USER_HOSTS dropped straight in would make the
+# second name an unknown directive and nginx would refuse to start.
 #
 # Printers use this proxy but not this file. They have their own port, server block and certificate
 # in homespool-printer.conf, installed alongside this one when the deployment has a printer leaf to
@@ -66,9 +72,10 @@ map $hs_starting_language $hs_starting_suffix {
 # that trade reads wrong for your deployment, `return 421;` instead - it costs an attacker nothing
 # they did not already know and tells the owner what happened.
 #
-# So USER_HOST is no longer cosmetic. A name that reaches this deployment and is not in it - a second
-# DNS name, the bare IP - is refused. AllowedHosts in compose.yaml carries the same list for the
-# application, since a proxy is not the only way in.
+# So USER_HOSTS is no longer cosmetic. A name that reaches this deployment and is not in it is
+# refused - which is why it is a list: a machine answering to a second DNS name or to its bare IP
+# address needs every one of them named there, semicolon-separated. AllowedHosts in compose.yaml is
+# composed from the same variable, since a proxy is not the only way in.
 server {
     listen 8080 default_server;
     return 444;
@@ -87,7 +94,7 @@ server {
 
 server {
     listen 8080;
-    server_name ${USER_HOST} localhost;
+    server_name ${USER_SERVER_NAMES} localhost;
 
     # Not redirected, and this is the same reasoning Program.cs applies to its own redirection: a
     # monitoring probe follows nothing, and `curl --fail` treats a 301 as success - so a redirected
@@ -130,7 +137,7 @@ server {
 server {
     listen 8443 ssl;
     http2 on;
-    server_name ${USER_HOST} localhost;
+    server_name ${USER_SERVER_NAMES} localhost;
 
     # Generated on first start by /docker-entrypoint.d/25-self-signed-certificate.sh unless the
     # volume already holds a certificate. Replace both files to use your own.

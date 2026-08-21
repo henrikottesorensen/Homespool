@@ -943,8 +943,8 @@ ask_user_host() {
     say
     local suggestion
     suggestion="$(suggested_user_host)"
-    say $"The name people type in a browser. Cosmetic - it names the self-signed certificate, and a browser warns about that certificate whatever name it carries."
-    plan_set USER_HOST "$(ask "  Name" "$suggestion")"
+    say $"The name people type in a browser. Anything reaching this deployment under a name that is not here is refused, so give every name that should work - separated by semicolons, as in name1.tld;name2.tld. They all go into the self-signed certificate too, though a browser warns about that certificate whatever it carries."
+    plan_set USER_HOSTS "$(ask "  Name" "$suggestion")"
 }
 
 ask_timezone() {
@@ -955,9 +955,14 @@ ask_timezone() {
 
 # This machine's own name, mDNS-qualified, which is the answer on a board handed its address by
 # DHCP: the lease can move and the name still resolves. Anything already chosen wins over it.
+#
+# ONE name is suggested even though USER_HOSTS takes a list, and deliberately: the second name is
+# knowledge about the network that this script does not have, and a list assembled from guesses is a
+# list somebody has to read and prune rather than an answer they can accept. The prompt says the list
+# is available; what to put in it is theirs.
 suggested_user_host() {
     local current suggestion
-    current="$(env_get USER_HOST)"
+    current="$(env_get USER_HOSTS)"
     if [ -n "$current" ] && [ "$current" != localhost ]; then
         echo "$current"
         return 0
@@ -1080,11 +1085,11 @@ search_domains() {
         /etc/resolv.conf 2>/dev/null
 }
 
-# The best single name, for USER_HOST - which a browser resolves, so .local is fine there.
+# The best single name, for USER_HOSTS - which a browser resolves, so .local is fine there.
 # The addresses ARE passed, so reverse DNS gets a say here too.
 #
 # Withholding them was a mistake with a visible result: PRINTER_HOST was offered homespool.lan while
-# USER_HOST suggested homespool.local, two names for one machine on one screen. The reason given was
+# USER_HOSTS suggested homespool.local, two names for one machine on one screen. The reason given was
 # that a browser resolves mDNS perfectly well - true, and not a reason to prefer it. If the network
 # publishes a real name, that is the name, and one the operator can also use for the printers.
 #
@@ -1124,7 +1129,7 @@ name_candidate_one() {
 
     # A .local name only survives if UNICAST DNS serves it. Buddy broadcasts its presence over mDNS
     # but cannot resolve it, so an mDNS-only name is one a printer can never reach - however well it
-    # works from a browser, which is the trap. USER_HOST keeps .local for exactly the opposite
+    # works from a browser, which is the trap. USER_HOSTS keeps .local for exactly the opposite
     # reason: the thing resolving it there is a desktop, which does mDNS perfectly well.
     #
     # Not a blanket exclusion, because .local was only reserved for mDNS in 2013 and networks built
@@ -1349,7 +1354,7 @@ auto_answer() {
 
     say $"Detected $address as the address printers reach this server on."
     plan_set PRINTER_HOST "$address"
-    plan_set USER_HOST "$(suggested_user_host)"
+    plan_set USER_HOSTS "$(suggested_user_host)"
     plan_set TZ "$(detect_timezone)"
     ensure_go2rtc_credential
 

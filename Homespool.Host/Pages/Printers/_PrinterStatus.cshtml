@@ -108,13 +108,42 @@
             var nozzleTile = new HeaterTile(Localiser["Printers_Nozzle"].Value, Model.Nozzle);
             var bedTile = new HeaterTile(Localiser["Printers_Bed"].Value, Model.Bed);
 
-            <div class="row row-cols-1 row-cols-sm-3 g-2 mb-0">
+            @* The air around the print, on the printers that measure it - and only one of the two ever
+               appears. A chamber carries a setpoint, so it reads as an ordinary heater whatever warms
+               it. An enclosure arrives with no target beside it, so it shows its temperature and
+               nothing underneath rather than being called "off" at room temperature: what is missing
+               is the half of the reading that would answer that, not necessarily a heater. *@
+            HeaterTile? ambientTile = null;
+
+            if (liveState.ChamberTemperature is not null)
+            {
+                ambientTile = new HeaterTile(
+                    Localiser["Printers_Chamber"].Value,
+                    HeaterReading.For(liveState.ChamberTemperature, liveState.ChamberTargetTemperature));
+            }
+            else if (liveState.EnclosureTemperature is { } enclosure)
+            {
+                ambientTile = new HeaterTile(
+                    Localiser["Printers_Enclosure"].Value,
+                    new HeaterReading(enclosure, null, HeaterState.Measured));
+            }
+
+            @* Four across only when there is a fourth. Most printers have three, and a fixed
+               four-column grid would leave them a gap where the chamber is not. *@
+            <div class="row row-cols-1 g-2 mb-0 @(ambientTile is null ? "row-cols-sm-3" : "row-cols-sm-2 row-cols-lg-4")">
                 <div class="col">
                     <partial name="_HeaterTile" model="nozzleTile" />
                 </div>
                 <div class="col">
                     <partial name="_HeaterTile" model="bedTile" />
                 </div>
+
+                @if (ambientTile is { } ambient)
+                {
+                    <div class="col">
+                        <partial name="_HeaterTile" model="ambient" />
+                    </div>
+                }
                 <div class="col">
                     <div class="printer-metric h-100">
                         <div class="printer-metric-label">@Localiser["Printers_Material"]</div>

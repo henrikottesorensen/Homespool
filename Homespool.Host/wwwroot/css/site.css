@@ -408,6 +408,22 @@ body.camera-maximised-open {
   stroke: var(--homespool-blue);
 }
 
+/* The air around the print, on the printers that measure it. Two sensors rather than one under two
+   names - a managed chamber aims at a setpoint, a fitted enclosure only reports - so they get a hue
+   each even though no hardware reports both. Teal and purple because red and blue are spoken for,
+   and both stay distinguishable from those two at a glance on a phone.
+
+   Fixed hues in both themes, like the nozzle and bed above them. Purple is the weaker of the two on
+   a dark ground; it is a 2px line with a named key beside it, and it is the trace least likely ever
+   to be drawn. */
+.printer-graph-chamber {
+  stroke: var(--bs-teal);
+}
+
+.printer-graph-enclosure {
+  stroke: var(--bs-purple);
+}
+
 /* The legend's swatch. A line rather than a block, so it reads as the same thing as the trace it
    names. */
 .printer-graph-key {
@@ -425,6 +441,14 @@ body.camera-maximised-open {
 
 .printer-graph-key.printer-graph-bed {
   border-top-color: var(--homespool-blue);
+}
+
+.printer-graph-key.printer-graph-chamber {
+  border-top-color: var(--bs-teal);
+}
+
+.printer-graph-key.printer-graph-enclosure {
+  border-top-color: var(--bs-purple);
 }
 
 .printer-graph-key-target {

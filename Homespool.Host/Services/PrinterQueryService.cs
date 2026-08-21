@@ -337,7 +337,10 @@ public class PrinterQueryService
                         AVG("NozzleTemperature") AS "Nozzle",
                         AVG("BedTemperature") AS "Bed",
                         MAX("TargetNozzleTemperature") AS "TargetNozzle",
-                        MAX("TargetBedTemperature") AS "TargetBed"
+                        MAX("TargetBedTemperature") AS "TargetBed",
+                        AVG("ChamberTemperature") AS "Chamber",
+                        MAX("ChamberTargetTemperature") AS "TargetChamber",
+                        AVG("EnclosureTemperature") AS "Enclosure"
                  FROM "TelemetrySamples"
                  WHERE "PrinterId" = {printerId}
                    AND "Timestamp" >= {fromMs}
@@ -354,7 +357,10 @@ public class PrinterQueryService
                                                     row.Nozzle,
                                                     row.Bed,
                                                     row.TargetNozzle,
-                                                    row.TargetBed))
+                                                    row.TargetBed,
+                                                    row.Chamber,
+                                                    row.TargetChamber,
+                                                    row.Enclosure))
                 .ToList());
     }
 
@@ -381,6 +387,12 @@ public class PrinterQueryService
         public double? TargetNozzle { get; set; }
 
         public double? TargetBed { get; set; }
+
+        public double? Chamber { get; set; }
+
+        public double? TargetChamber { get; set; }
+
+        public double? Enclosure { get; set; }
     }
 }
 

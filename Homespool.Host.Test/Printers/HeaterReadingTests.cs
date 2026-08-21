@@ -40,6 +40,19 @@ public sealed class HeaterReadingTests
         HeaterReading.For(current, target).State.Should().NotBe(HeaterState.Undefined);
     }
 
+    /// <summary>
+    /// A sensor the wire does not aim is never inferred from a pair of numbers - it is constructed,
+    /// because a missing target legitimately means "off" for anything that is a heater.
+    /// </summary>
+    [Theory]
+    [InlineData(25f, null)]
+    [InlineData(60f, null)]
+    [InlineData(45f, 0f)]
+    public void AMeasuredSensorIsNeverInferred(float? current, float? target)
+    {
+        HeaterReading.For(current, target).State.Should().NotBe(HeaterState.Measured);
+    }
+
     /// <summary>A heater nobody has heard from says nothing at all.</summary>
     [Fact]
     public void NoReadingIsUnknown()

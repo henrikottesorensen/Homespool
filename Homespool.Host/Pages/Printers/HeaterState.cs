@@ -36,4 +36,27 @@ public enum HeaterState
 
     /// <summary>At its setpoint, within the tolerance below.</summary>
     AtTarget = 5,
+
+    /// <summary>
+    /// A temperature with no setpoint beside it, so there is nothing to compare it against.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A fitted enclosure, whose telemetry carries a temperature and no setpoint.</b> That is a
+    /// gap in what is reported, not a claim about the hardware - an enclosure may well be heated. So
+    /// the heater questions have no answer here: 25°C is neither "off" nor "at target", and saying
+    /// either would be inventing the missing half.
+    /// </para>
+    /// <para>
+    /// <b>The distinction is a setpoint on the wire, never which element does the work.</b> A chamber
+    /// reports one and reads as an ordinary heater whatever warms it - a bed, a chamber heater, a
+    /// printer this application has not met yet.
+    /// </para>
+    /// <para>
+    /// <see cref="HeaterReading.For"/> never produces this: it reads a pair of numbers and a missing
+    /// target means "off" for a heater. A caller holding a sensor the wire does not aim constructs it
+    /// directly.
+    /// </para>
+    /// </remarks>
+    Measured = 6,
 }

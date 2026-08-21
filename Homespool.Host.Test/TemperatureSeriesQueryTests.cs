@@ -250,6 +250,64 @@ public sealed class TemperatureSeriesQueryTests : IDisposable
     }
 
     /// <summary>
+    /// A chamber and an enclosure come back through the same bucketing, and a printer that reports
+    /// neither leaves them null rather than zero.
+    /// </summary>
+    /// <remarks>
+    /// The column names are matched by EF against an unmapped type, so a typo in the SQL is a silent
+    /// null rather than a compile error - which is what this actually guards.
+    /// </remarks>
+    [Fact]
+    public async Task AChamberAndAnEnclosureAreBucketedToo()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer withChamber = await AddPrinterAsync(context, userId: 1);
+        Printer plain = await AddPrinterAsync(context, userId: 1);
+
+        List<TelemetrySample> samples = [];
+
+        for (int second = 0; second < 120; second++)
+        {
+            samples.Add(new TelemetrySample
+            {
+                PrinterId = withChamber.Id,
+                Timestamp = Start.AddSeconds(second),
+                Status = PrinterStatus.Printing,
+                NozzleTemperature = 215,
+                BedTemperature = 60,
+                ChamberTemperature = 38 + (second / 60f),
+                ChamberTargetTemperature = 40,
+                EnclosureTemperature = 31,
+            });
+        }
+
+        context.TelemetrySamples.AddRange(samples);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await AddSamplesAsync(context, plain.Id, seconds: 120, second => (215, 60, 215, 60));
+
+        TemperatureSeries chambered = (await ServiceFor(context).GetTemperatureSeriesAsync(
+            withChamber.Uuid, Caller.Unscoped(1), Start, Start.AddMinutes(2), CancellationToken.None))!;
+
+        chambered.Points.Should().AllSatisfy(point =>
+        {
+            point.Chamber.Should().BeInRange(38, 40);
+            point.TargetChamber.Should().Be(40);
+            point.Enclosure.Should().Be(31);
+        });
+
+        TemperatureSeries bare = (await ServiceFor(context).GetTemperatureSeriesAsync(
+            plain.Uuid, Caller.Unscoped(1), Start, Start.AddMinutes(2), CancellationToken.None))!;
+
+        bare.Points.Should().AllSatisfy(point =>
+        {
+            point.Chamber.Should().BeNull();
+            point.TargetChamber.Should().BeNull();
+            point.Enclosure.Should().BeNull();
+        });
+    }
+
+    /// <summary>
     /// The same 404 rule the rest of this service follows: a printer the caller cannot view answers
     /// null, so a graph never confirms a uuid belongs to somebody else's team.
     /// </summary>

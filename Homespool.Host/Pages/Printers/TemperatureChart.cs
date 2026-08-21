@@ -75,7 +75,10 @@ public sealed class TemperatureChart
                              string nozzlePath,
                              string bedPath,
                              string targetNozzlePath,
-                             string targetBedPath)
+                             string targetBedPath,
+                             string chamberPath,
+                             string targetChamberPath,
+                             string enclosurePath)
     {
         Ceiling = ceiling;
         TemperatureTicks = temperatureTicks;
@@ -84,6 +87,9 @@ public sealed class TemperatureChart
         BedPath = bedPath;
         TargetNozzlePath = targetNozzlePath;
         TargetBedPath = targetBedPath;
+        ChamberPath = chamberPath;
+        TargetChamberPath = targetChamberPath;
+        EnclosurePath = enclosurePath;
     }
 
     /// <summary>The top of the temperature axis, in degrees.</summary>
@@ -106,6 +112,24 @@ public sealed class TemperatureChart
 
     /// <summary>The bed setpoint.</summary>
     public string TargetBedPath { get; }
+
+    /// <summary>
+    /// The chamber trace, empty on a printer without a managed chamber - which is most of them.
+    /// </summary>
+    /// <remarks>
+    /// <b>Empty rather than flat.</b> A printer that reports no chamber is not a printer whose
+    /// chamber is at zero, and the view draws nothing at all rather than a line along the axis.
+    /// </remarks>
+    public string ChamberPath { get; }
+
+    /// <summary>The chamber setpoint. Empty unless the printer both has a chamber and aims it.</summary>
+    public string TargetChamberPath { get; }
+
+    /// <summary>
+    /// The enclosure trace, empty unless an enclosure is fitted. Never accompanied by a setpoint -
+    /// the wire carries no target for it.
+    /// </summary>
+    public string EnclosurePath { get; }
 
     /// <summary>The y of the axis itself, for the view to draw the baseline.</summary>
     public static double BaselineY => PlotBottom;
@@ -136,7 +160,11 @@ public sealed class TemperatureChart
         }
 
         double hottest = series.Points
-                               .SelectMany(point => new[] { point.Nozzle, point.Bed, point.TargetNozzle, point.TargetBed })
+                               .SelectMany(point => new[]
+                               {
+                                   point.Nozzle, point.Bed, point.TargetNozzle, point.TargetBed,
+                                   point.Chamber, point.TargetChamber, point.Enclosure,
+                               })
                                .Where(value => value.HasValue)
                                .Select(value => value!.Value)
                                .DefaultIfEmpty(double.NaN)
@@ -163,8 +191,26 @@ public sealed class TemperatureChart
             TimeTicksFor(series),
             PathFor(series, span, ceiling, point => point.Nozzle),
             PathFor(series, span, ceiling, point => point.Bed),
-            PathFor(series, span, ceiling, point => point.TargetNozzle),
-            PathFor(series, span, ceiling, point => point.TargetBed));
+            PathFor(series, span, ceiling, point => Aimed(point.TargetNozzle)),
+            PathFor(series, span, ceiling, point => Aimed(point.TargetBed)),
+            PathFor(series, span, ceiling, point => point.Chamber),
+            PathFor(series, span, ceiling, point => Aimed(point.TargetChamber)),
+            PathFor(series, span, ceiling, point => point.Enclosure));
+    }
+
+    /// <summary>
+    /// A setpoint, or null where there is none to draw.
+    /// </summary>
+    /// <remarks>
+    /// <b>Zero is off, not a request for zero degrees</b> - the same reading
+    /// <see cref="HeaterReading.For"/> already takes of the same number, and the graph disagreed with
+    /// it: every idle stretch drew three dashed lines along the axis, which is clutter claiming to be
+    /// a setpoint. Lifting the pen instead means a dashed line on this graph always marks something
+    /// actually being aimed at, and the line simply ending is as legible as it falling to the floor.
+    /// </remarks>
+    private static double? Aimed(double? target)
+    {
+        return target is > 0 ? target : null;
     }
 
     /// <summary>

@@ -61,9 +61,24 @@
                 <path class="printer-graph-target printer-graph-bed" d="@chart.TargetBedPath" />
             }
 
+            @if (chart.TargetChamberPath.Length > 0)
+            {
+                <path class="printer-graph-target printer-graph-chamber" d="@chart.TargetChamberPath" />
+            }
+
             @if (chart.TargetNozzlePath.Length > 0)
             {
                 <path class="printer-graph-target printer-graph-nozzle" d="@chart.TargetNozzlePath" />
+            }
+
+            @if (chart.EnclosurePath.Length > 0)
+            {
+                <path class="printer-graph-trace printer-graph-enclosure" d="@chart.EnclosurePath" />
+            }
+
+            @if (chart.ChamberPath.Length > 0)
+            {
+                <path class="printer-graph-trace printer-graph-chamber" d="@chart.ChamberPath" />
             }
 
             @if (chart.BedPath.Length > 0)
@@ -85,6 +100,16 @@
             <span class="d-flex flex-wrap gap-3">
                 <span><span class="printer-graph-key printer-graph-nozzle"></span>@Localiser["Printers_Nozzle"]</span>
                 <span><span class="printer-graph-key printer-graph-bed"></span>@Localiser["Printers_Bed"]</span>
+
+                @if (chart.ChamberPath.Length > 0)
+                {
+                    <span><span class="printer-graph-key printer-graph-chamber"></span>@Localiser["Printers_Chamber"]</span>
+                }
+
+                @if (chart.EnclosurePath.Length > 0)
+                {
+                    <span><span class="printer-graph-key printer-graph-enclosure"></span>@Localiser["Printers_Enclosure"]</span>
+                }
                 <span><span class="printer-graph-key printer-graph-key-target"></span>@Localiser["Printers_GraphTarget"]</span>
             </span>
 

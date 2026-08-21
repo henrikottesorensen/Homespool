@@ -2002,4 +2002,10 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Printers_ReprintNotYours" xml:space="preserve">
     <value>Kun den, der lagde et print i køen, kan printe det igen — filen findes blandt dine egne.</value>
   </data>
+  <data name="Printers_Chamber" xml:space="preserve">
+    <value>Kammer</value>
+  </data>
+  <data name="Printers_Enclosure" xml:space="preserve">
+    <value>Kabinet</value>
+  </data>
 </root>

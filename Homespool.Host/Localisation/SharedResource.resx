@@ -2073,4 +2073,10 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Printers_ReprintNotYours" xml:space="preserve">
     <value>Only whoever queued a print can print it again — the file is looked up among your own.</value>
   </data>
+  <data name="Printers_Chamber" xml:space="preserve">
+    <value>Chamber</value>
+  </data>
+  <data name="Printers_Enclosure" xml:space="preserve">
+    <value>Enclosure</value>
+  </data>
 </root>

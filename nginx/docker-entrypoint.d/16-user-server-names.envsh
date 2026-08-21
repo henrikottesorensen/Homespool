@@ -1,0 +1,17 @@
+#!/bin/sh
+# Derives USER_SERVER_NAMES - the space-separated form of USER_HOSTS that server_name takes - for
+# homespool.conf.template. Sourced by the base image's entrypoint before 20-envsubst-on-templates.sh
+# renders the template, in the same shell, which is what makes the export visible to it.
+#
+# WHY A CONVERSION AT ALL: the two lists want different separators and neither is negotiable.
+# AllowedHosts is semicolon-separated because that is what the framework splits on, and USER_HOSTS
+# matches it so compose.yaml can splice the value straight in. nginx's server_name takes a
+# space-separated list and treats a semicolon as the end of the directive - so a raw USER_HOSTS
+# substituted into the template makes the second name an unknown directive, and nginx refuses to
+# start. Loud, but only after the file is written; converting here is what keeps it from arising.
+#
+# A DERIVED NAME, not a rewrite of USER_HOSTS in place: 25-self-signed-certificate.sh runs after
+# this and splits the list itself, and the certificate wants the names one at a time rather than
+# joined. Leaving the original alone means each consumer reads the form it needs and neither has to
+# know about the other.
+export USER_SERVER_NAMES="$(echo "${USER_HOSTS:-localhost}" | tr ';' ' ')"

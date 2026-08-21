@@ -112,6 +112,30 @@
     </p>
 }
 
+@* Whether the ready prompt can be answered honestly for this printer is a standing judgement about
+   the machine, so it sits behind CanManage rather than CanUse: decided once by somebody who has seen
+   it, inherited by everyone who has not. *@
+@if (Model.CanManage)
+{
+    @* The switch is the control, not a picture of one. An unchecked checkbox posts nothing, so the
+       handler's bool binds false on its own and no hidden field is needed to carry the flipped
+       value. The Save button is the no-script path and toggle-submit.js hides it. *@
+    <form method="post" asp-page-handler="RemoteReady" asp-route-uuid="@uuid" class="mb-4">
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" role="switch" id="remote-ready"
+                   name="allowed" value="true" data-submit-on-change
+                   @(Model.Statistics.Printer.RemoteReadyAllowed ? "checked" : null) />
+            <label class="form-check-label" for="remote-ready">@Localiser["Printers_RemoteReadyLabel"]</label>
+        </div>
+
+        <p class="text-body-secondary small mt-1">@Localiser["Printers_RemoteReadyHelp"]</p>
+
+        <button type="submit" class="btn btn-outline-secondary btn-sm" data-submit-fallback>
+            @Localiser["Common_Save"]
+        </button>
+    </form>
+}
+
 <h2 class="h5">@Localiser["Printers_Temperature"]</h2>
 
 @* A slower poll than the status card above it: the window can be a whole print, and redrawing that
@@ -196,83 +220,23 @@
 
 <h2 class="h5">@Localiser["Common_Queue"]</h2>
 
-@* Reordering and cancelling are edits to a list - nothing here reaches the printer. The producer
-   loop is what turns the head of this queue into a transfer and a print, and it advances only when
-   the printer is Ready, which only a person sets. *@
-@if (Model.Queue.Count == 0)
-{
-    <p>
-        @Html.Raw(string.Format(
-            System.Globalization.CultureInfo.CurrentCulture,
-            Localiser["Printers_NothingQueued"].Value,
-            $"<a href=\"{Url.Page("/Files/Index")}\">{Localiser["Files_Title"].Value}</a>"))
-    </p>
-}
-else
-{
-    <table class="table table-sm w-auto align-middle">
-        <thead>
-            <tr>
-                <th scope="col">#</th>
-                <th scope="col">@Localiser["Common_File"]</th>
-                <th scope="col" class="text-end">@Localiser["Files_Size"]</th>
-                <th scope="col">@Localiser["Common_Queued"]</th>
-                @if (Model.CanUse)
-                {
-                    <th scope="col"><span class="visually-hidden">@Localiser["Common_Actions"]</span></th>
-                }
-            </tr>
-        </thead>
-        <tbody>
-            @for (int index = 0; index < Model.Queue.Count; index++)
-            {
-                var job = Model.Queue[index];
+@* Refreshed like the status card, and for the same reason: the loop empties this list while
+   somebody is looking at it. A queue frozen at load time beside a live status card is the exact
+   confusion the rebuild set out to remove, and it was left here by omission.
 
-                <tr>
-                    @* The row's place in the list, not its stored Position - cancelling leaves gaps in
-                       those, deliberately, and a gap shown to a person reads as a bug. *@
-                    <td>@(index + 1)</td>
-                    <td class="typed-name">@(job.PrintFile?.Name ?? "(missing)")</td>
-                    <td class="text-end">@($"{(job.PrintFile?.Size ?? 0) / 1024.0:N0} KiB")</td>
+   Slower than the card. The rows carry reorder and remove buttons, and markup replaced under a
+   cursor is a mis-click - live-region.js also skips the swap when nothing changed, which is most
+   polls. *@
+<div data-live-region
+     data-live-url="@Url.Page("Detail", "Queue", new { uuid })"
+     data-live-interval="5000">
+    <partial name="_PrintQueue" model="Model" />
+</div>
 
-                    @* Fixed format rather than a culture-dependent one, matching the Files table -
-                       and ToLocalTime, without which this column rendered UTC while the print history
-                       below it rendered local, two hours apart on the same page. *@
-                    <td>@job.QueuedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
-
-                    @if (Model.CanUse)
-                    {
-                        <td class="text-nowrap">
-                            <form method="post" asp-page-handler="Move" asp-route-uuid="@uuid"
-                                  class="d-inline">
-                                <input type="hidden" name="id" value="@job.TrackingId" />
-                                <input type="hidden" name="position" value="@(index - 1)" />
-                                <button type="submit" class="btn btn-sm btn-outline-secondary"
-                                        title="@Localiser["Printers_MoveUp"]" aria-label="@Localiser["Printers_MoveJobUp", job.PrintFile?.Name ?? string.Empty]"
-                                        @(index == 0 ? "disabled" : string.Empty)>&uarr;</button>
-                            </form>
-                            <form method="post" asp-page-handler="Move" asp-route-uuid="@uuid"
-                                  class="d-inline">
-                                <input type="hidden" name="id" value="@job.TrackingId" />
-                                <input type="hidden" name="position" value="@(index + 1)" />
-                                <button type="submit" class="btn btn-sm btn-outline-secondary"
-                                        title="@Localiser["Printers_MoveDown"]" aria-label="@Localiser["Printers_MoveJobDown", job.PrintFile?.Name ?? string.Empty]"
-                                        @(index == Model.Queue.Count - 1 ? "disabled" : string.Empty)>&darr;</button>
-                            </form>
-                            <form method="post" asp-page-handler="Cancel" asp-route-uuid="@uuid"
-                                  class="d-inline">
-                                <input type="hidden" name="id" value="@job.TrackingId" />
-                                <button type="submit" class="btn btn-sm btn-outline-danger"
-                                        aria-label="@Localiser["Printers_RemoveJob", job.PrintFile?.Name ?? string.Empty]">@Localiser["Cameras_Remove"]</button>
-                            </form>
-                        </td>
-                    }
-                </tr>
-            }
-        </tbody>
-    </table>
-}
-
+@* Outside the queue's refreshed region, and it has to be. These are rendered from SlicerUrl and
+   CanManage, which only the full page load resolves - inside the polled partial a queue refresh
+   re-rendered them from a handler that sets neither, so the address blanked and the toggle vanished
+   until the next reload. *@
 @* Shown rather than tucked away (Henrik, 2026-08-20). These were behind a disclosure on the
    reasoning that setup is not state - true, but the slicer address is what somebody opens this page
    to copy the first several times they use it, and a control nobody can find is a control that is
@@ -309,30 +273,6 @@ else
     @* Announced politely rather than shouted, and empty until something happens, so a screen reader
        hears the outcome without the control describing itself twice. *@
     <p class="visually-hidden" role="status" aria-live="polite" data-copy-status></p>
-}
-
-@* Whether the ready prompt can be answered honestly for this printer is a standing judgement about
-   the machine, so it sits behind CanManage rather than CanUse: decided once by somebody who has seen
-   it, inherited by everyone who has not. *@
-@if (Model.CanManage)
-{
-    @* The switch is the control, not a picture of one. An unchecked checkbox posts nothing, so the
-       handler's bool binds false on its own and no hidden field is needed to carry the flipped
-       value. The Save button is the no-script path and toggle-submit.js hides it. *@
-    <form method="post" asp-page-handler="RemoteReady" asp-route-uuid="@uuid" class="mb-4">
-        <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" role="switch" id="remote-ready"
-                   name="allowed" value="true" data-submit-on-change
-                   @(Model.Statistics.Printer.RemoteReadyAllowed ? "checked" : null) />
-            <label class="form-check-label" for="remote-ready">@Localiser["Printers_RemoteReadyLabel"]</label>
-        </div>
-
-        <p class="text-body-secondary small mt-1">@Localiser["Printers_RemoteReadyHelp"]</p>
-
-        <button type="submit" class="btn btn-outline-secondary btn-sm" data-submit-fallback>
-            @Localiser["Common_Save"]
-        </button>
-    </form>
 }
 
 @* Everything below is a record rather than a state. Closed by default: it used to be seventy rows

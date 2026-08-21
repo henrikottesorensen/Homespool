@@ -58,6 +58,7 @@ public class DetailModel : PageModel
     private readonly PrintQueueService _queueService;
     private readonly PrinterPreheatService _preheat;
     private readonly PrintHistoryService _historyService;
+    private readonly UserNameLookup _names;
     private readonly QueueSnapshotReader _snapshots;
     private readonly PrinterAccessService _access;
     private readonly CameraAccessService _cameraAccess;
@@ -77,6 +78,7 @@ public class DetailModel : PageModel
                        PrintQueueService queueService,
                        PrinterPreheatService preheat,
                        PrintHistoryService historyService,
+                       UserNameLookup names,
                        QueueSnapshotReader snapshots,
                        PrinterAccessService access,
                        CameraAccessService cameraAccess,
@@ -96,6 +98,7 @@ public class DetailModel : PageModel
         _queueService = queueService;
         _preheat = preheat;
         _historyService = historyService;
+        _names = names;
         _snapshots = snapshots;
         _access = access;
         _cameraAccess = cameraAccess;
@@ -127,6 +130,68 @@ public class DetailModel : PageModel
 
     /// <summary>Usernames for whoever stopped any of <see cref="History"/>, keyed by user id.</summary>
     public IReadOnlyDictionary<long, string> StopperNames { get; private set; } = new Dictionary<long, string>();
+
+    /// <summary>Usernames for whoever queued anything in <see cref="Queue"/>, keyed by user id.</summary>
+    public IReadOnlyDictionary<long, string> QueuerNames { get; private set; } = new Dictionary<long, string>();
+
+    /// <summary>
+    /// Who queued a print, for the queue's own column.
+    /// </summary>
+    /// <remarks>
+    /// <b>An unreadable id is said out loud rather than left blank.</b> An account is never hard
+    /// deleted, so this is rare - but a blank cell reads as "nobody queued it", and somebody did.
+    /// </remarks>
+    public string QueuedByDescription(QueuedPrint job)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+
+        return QueuerNames.TryGetValue(job.QueuedByUserId, out string? name) ?
+            name :
+            _localiser["Common_SomebodyElse"];
+    }
+
+    /// <summary>What a queue entry's derived status is called, in the reader's language.</summary>
+    public string QueueStatusText(QueueEntryStatus status)
+    {
+        return _localiser["QueueStatus_" + status];
+    }
+
+    /// <summary>
+    /// What the queue is doing about one entry, derived rather than stored.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The entry itself carries no state, deliberately</b> - <c>notes/print-queue.md</c>: the
+    /// printer runs a producer loop and the queue is just a list it pulls from, so "prepared, waiting
+    /// for the printer" is the loop sitting in not-ready rather than a column on the row. This names
+    /// that for a reader and still stores nothing.
+    /// </para>
+    /// <para>
+    /// <b>Only the head is ever anything but waiting</b>, because the loop never looks past it - the
+    /// spooler behaviour the design chose over skipping.
+    /// </para>
+    /// <para>
+    /// <b>There is no "printing", and that is not an omission.</b> <c>QueueAdvancer</c> removes the
+    /// entry in the same transaction that opens the <see cref="PrintJob"/> - seen on the appliance,
+    /// where the row vanished as the job began - so a running print has no queue row left to label.
+    /// </para>
+    /// </remarks>
+    public QueueEntryStatus QueueStatusOf(int index)
+    {
+        if (index != 0)
+        {
+            return QueueEntryStatus.Waiting;
+        }
+
+        if (HoldKind is not null || WaitingReason == QueueWaitReason.IncompatibleWithPrinter)
+        {
+            return QueueEntryStatus.Held;
+        }
+
+        return WaitingReason == QueueWaitReason.Transferring ?
+            QueueEntryStatus.Sending :
+            QueueEntryStatus.Waiting;
+    }
 
     /// <summary>Who is reading the page, for the one row-level decision it has to make.</summary>
     private long _readerId;
@@ -361,6 +426,7 @@ public class DetailModel : PageModel
         Queue = await _queueService.ListAsync(Statistics.Printer.Id, caller, cancellationToken);
         History = await _historyService.ListAsync(Statistics.Printer.Id, caller, cancellationToken);
         StopperNames = await _historyService.GetStopperNamesAsync(History, cancellationToken);
+        QueuerNames = await _names.ForAsync(Queue.Select(job => job.QueuedByUserId), cancellationToken);
 
         Cameras = await _cameraAccess.ListForPrinterAsync(Statistics.Printer.Id, caller, cancellationToken);
 
@@ -404,6 +470,37 @@ public class DetailModel : PageModel
         }
 
         return Partial("_PrinterStatus", this);
+    }
+
+    /// <summary>
+    /// The queue on its own, for the poll that keeps it current.
+    /// </summary>
+    /// <remarks>
+    /// <b>The list empties itself while somebody watches it.</b> The loop deletes an entry as it opens
+    /// the print, so a queue rendered once at page load goes on showing work that has already started -
+    /// which reads as a stuck queue, beside a status card that is live. Slower than the card because
+    /// these rows carry buttons; see the view for that.
+    /// </remarks>
+    public async Task<IActionResult> OnGetQueueAsync(Guid uuid, CancellationToken cancellationToken)
+    {
+        HSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return Forbid();
+        }
+
+        Caller caller = CallerResolver.For(user, User);
+
+        if (!await LoadStatusAsync(uuid, caller, cancellationToken))
+        {
+            return NotFound();
+        }
+
+        Queue = await _queueService.ListAsync(Statistics.Printer.Id, caller, cancellationToken);
+        QueuerNames = await _names.ForAsync(Queue.Select(job => job.QueuedByUserId), cancellationToken);
+
+        return Partial("_PrintQueue", this);
     }
 
     /// <summary>

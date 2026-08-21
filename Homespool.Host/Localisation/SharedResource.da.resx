@@ -1918,6 +1918,7 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   </data>
   <data name="Tokens_TickAll" xml:space="preserve">
     <value>Sæt alle flueben</value>
+  </data>
   <data name="Common_JustNow" xml:space="preserve">
     <value>lige nu</value>
   </data>
@@ -2007,5 +2008,20 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   </data>
   <data name="Printers_Enclosure" xml:space="preserve">
     <value>Kabinet</value>
+  </data>
+  <data name="Queue_QueuedBy" xml:space="preserve">
+    <value>Lagt i kø af</value>
+  </data>
+  <data name="QueueStatus_Waiting" xml:space="preserve">
+    <value>Afventer</value>
+  </data>
+  <data name="QueueStatus_Sending" xml:space="preserve">
+    <value>Sender</value>
+  </data>
+  <data name="QueueStatus_Held" xml:space="preserve">
+    <value>Tilbageholdt</value>
+  </data>
+  <data name="Common_SomebodyElse" xml:space="preserve">
+    <value>En anden</value>
   </data>
 </root>

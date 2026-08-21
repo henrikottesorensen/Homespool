@@ -114,7 +114,8 @@ public sealed class DetailModelTests : IDisposable
                                 // Constructed rather than substituted: these tests are about the page, and a real one
                                 // that never gets a connected printer simply refuses, which is the honest default here.
                                 new PrinterPreheatService(commands: null!, snapshots),
-                                new PrintHistoryService(context, access, snapshots),
+                                new PrintHistoryService(context, access, snapshots, new UserNameLookup(context)),
+                                new UserNameLookup(context),
                                 snapshots,
                                 access,
                                 new CameraAccessService(context, new TeamCapabilityLookup(context)),

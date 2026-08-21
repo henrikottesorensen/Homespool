@@ -1989,6 +1989,7 @@ A stick that already works with your printer is the right stick. If you are form
   </data>
   <data name="Tokens_TickAll" xml:space="preserve">
     <value>Tick all</value>
+  </data>
   <data name="Common_JustNow" xml:space="preserve">
     <value>just now</value>
   </data>
@@ -2078,5 +2079,20 @@ A stick that already works with your printer is the right stick. If you are form
   </data>
   <data name="Printers_Enclosure" xml:space="preserve">
     <value>Enclosure</value>
+  </data>
+  <data name="Queue_QueuedBy" xml:space="preserve">
+    <value>Queued by</value>
+  </data>
+  <data name="QueueStatus_Waiting" xml:space="preserve">
+    <value>Waiting</value>
+  </data>
+  <data name="QueueStatus_Sending" xml:space="preserve">
+    <value>Sending</value>
+  </data>
+  <data name="QueueStatus_Held" xml:space="preserve">
+    <value>Held</value>
+  </data>
+  <data name="Common_SomebodyElse" xml:space="preserve">
+    <value>Somebody else</value>
   </data>
 </root>

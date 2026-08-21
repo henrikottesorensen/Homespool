@@ -63,13 +63,18 @@ public class PrintHistoryService
     /// </remarks>
     private readonly QueueSnapshotReader _snapshots;
 
+    /// <summary>Shared with the queue, which asks the same question about whoever queued a print.</summary>
+    private readonly UserNameLookup _names;
+
     public PrintHistoryService(HomespoolDbContext dbContext,
                                PrinterAccessService access,
-                               QueueSnapshotReader snapshots)
+                               QueueSnapshotReader snapshots,
+                               UserNameLookup names)
     {
         _dbContext = dbContext;
         _access = access;
         _snapshots = snapshots;
+        _names = names;
     }
 
     /// <summary>
@@ -152,20 +157,9 @@ public class PrintHistoryService
     public async Task<IReadOnlyDictionary<long, string>> GetStopperNamesAsync(IEnumerable<PrintJob> jobs,
                                                                               CancellationToken cancellationToken)
     {
-        long[] ids = jobs.Where(job => job.StoppedByUserId is not null)
-                         .Select(job => job.StoppedByUserId!.Value)
-                         .Distinct()
-                         .ToArray();
-
-        if (ids.Length == 0)
-        {
-            return new Dictionary<long, string>();
-        }
-
-        return await _dbContext.Users
-                               .AsNoTracking()
-                               .Where(user => ids.Contains(user.Id) && user.UserName != null)
-                               .ToDictionaryAsync(user => user.Id, user => user.UserName!, cancellationToken);
+        return await _names.ForAsync(jobs.Where(job => job.StoppedByUserId is not null)
+                                         .Select(job => job.StoppedByUserId!.Value),
+                                     cancellationToken);
     }
 
     /// <summary>

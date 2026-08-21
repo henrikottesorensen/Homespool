@@ -436,6 +436,7 @@ public static class Program
             builder.Services.AddScoped<Services.UnitOfWork>();
             builder.Services.AddScoped<Services.InvitationService>();
             builder.Services.AddScoped<Services.PrinterQueryService>();
+            builder.Services.AddScoped<Services.UserNameLookup>();
             builder.Services.AddScoped<PrintQueueService>();
             builder.Services.AddScoped<Services.PrintHistoryService>();
             builder.Services.AddScoped<Services.PrintStopService>();

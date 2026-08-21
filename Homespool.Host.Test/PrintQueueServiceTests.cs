@@ -588,7 +588,8 @@ public sealed class PrintQueueServiceTests : IDisposable
                                        new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
                                        new QueueSnapshotReader(context,
                                                                new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance),
-                                                               TimeProvider.System));
+                                                               TimeProvider.System),
+                                       new UserNameLookup(context));
     }
 
     private PrintQueueService NewQueue(HomespoolDbContext context)

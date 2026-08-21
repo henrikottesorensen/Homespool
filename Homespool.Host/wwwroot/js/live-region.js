@@ -37,6 +37,9 @@
         var timer = null;
         var lastGoodAt = Date.now();
 
+        // What is on screen, so an unchanged answer can be recognised without touching the DOM.
+        var lastHtml = null;
+
         function schedule() {
             if (timer) {
                 window.clearTimeout(timer);
@@ -77,9 +80,19 @@
 
                 return response.text();
             }).then(function (html) {
-                region.innerHTML = html;
                 region.removeAttribute('data-live-stale');
                 lastGoodAt = Date.now();
+
+                // Most polls answer with exactly what is already on screen, and replacing markup with
+                // an identical copy is not free: it destroys and rebuilds every node under the cursor.
+                // For the queue that means the reorder and remove buttons are pulled out from under a
+                // finger mid-press several times a minute. Compare first, swap only on a real change.
+                if (html === lastHtml) {
+                    return;
+                }
+
+                lastHtml = html;
+                region.innerHTML = html;
             }).catch(function () {
                 // Marked rather than emptied. What is on screen was true when it was fetched, and the
                 // age the card carries already says how long ago that was - the attribute lets the

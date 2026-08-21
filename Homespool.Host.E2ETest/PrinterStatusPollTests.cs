@@ -114,6 +114,33 @@ public sealed class PrinterStatusPollTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
+    /// The queue handler answers the queue and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// <b>The boundary is the point, and it was drawn in the wrong place once.</b> A polled partial
+    /// may only render state its own handler loads. The queue partial briefly carried the slicer
+    /// address and the remote-ready switch, which come from <c>SlicerUrl</c> and <c>CanManage</c> -
+    /// set on the full page load and by no poll - so every queue refresh blanked the address and took
+    /// the switch away until somebody reloaded. Widening this partial again brings that back.
+    /// </remarks>
+    [Fact]
+    public async Task TheQueueHandlerAnswersOnlyTheQueue()
+    {
+        (Guid uuid, HttpClient client) = await SeedAsync("queue-fragment@example.com");
+
+        using (client)
+        {
+            string fragment = await GetAsync(client, $"/Printers/Detail/{uuid}?handler=Queue");
+
+            fragment.Should().NotContain("<!DOCTYPE", "a fragment is not a document");
+            fragment.Should().NotContain("handler=RemoteReady",
+                                         "the ready switch is rendered from CanManage, which no poll sets");
+            fragment.Should().NotContain("compat/octoprint",
+                                         "the slicer address is rendered from SlicerUrl, which no poll sets");
+        }
+    }
+
+    /// <summary>
     /// A printer with live state says what it is doing, in words, rather than as an enum member.
     /// </summary>
     [Fact]

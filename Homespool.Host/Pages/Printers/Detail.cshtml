@@ -28,9 +28,20 @@
                                ?? Localiser["Common_TeamNumbered", Model.Statistics.Printer.TeamId].Value)</span>
 </p>
 
+@* This page is left open for the length of a print, which is what makes an ordinary status alert
+   behave badly here: it is rendered once at load and nothing re-renders it, so "Marked ready" sat on
+   screen for the whole job it had already started.
+
+   A success is a confirmation of something you just did and just watched happen, so it takes itself
+   away. A failure is not - it may be the only place the printer's own refusal is written down, and
+   somebody who looked away needs it to still be there. Both can be closed by hand. *@
 @if (Model.StatusMessage is not null)
 {
-    <div class="alert @(Model.StatusSuccess ? "alert-success" : "alert-danger")" role="alert">@Model.StatusMessage</div>
+    <div class="alert alert-dismissible fade show @(Model.StatusSuccess ? "alert-success" : "alert-danger")"
+         role="alert" @(Model.StatusSuccess ? "data-dismiss-after" : null)>
+        @Model.StatusMessage
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="@Localiser["Common_Close"]"></button>
+    </div>
 }
 
 @* Refreshed in place by live-region.js. Without script it is simply what the server rendered when
@@ -461,6 +472,7 @@
 
 @section Scripts {
     <script src="~/js/live-region.js" asp-append-version="true"></script>
+    <script src="~/js/dismiss-alert.js" asp-append-version="true"></script>
     <script src="~/js/camera.js" asp-append-version="true"></script>
     <script src="~/js/camera-live.js" asp-append-version="true"></script>
     <script src="~/js/camera-maximise.js" asp-append-version="true"></script>

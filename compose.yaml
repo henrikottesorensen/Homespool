@@ -1,6 +1,8 @@
 services:
   homespool:
-    image: homespool
+    # REGISTRY prefixes both image names, for a deployment that pulls rather than builds - set it in
+    # .env and nothing here changes. Unset, which is the ordinary case, this is plain `homespool`.
+    image: ${REGISTRY:+${REGISTRY}/}homespool
     build:
       context: .
       dockerfile: Homespool.Host/Dockerfile
@@ -312,7 +314,7 @@ services:
   # ciphersuite, no response buffering, and OpenSSL rather than Go's crypto/tls. Read
   # nginx/homespool-printer.conf before substituting anything for that half.
   proxy:
-    image: homespool-proxy
+    image: ${REGISTRY:+${REGISTRY}/}homespool-proxy
     build:
       context: ./nginx
 

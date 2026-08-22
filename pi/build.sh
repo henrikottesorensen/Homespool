@@ -194,7 +194,16 @@ cp -R "$repo_root/nginx/." "$payload_dir/nginx/"
 # Shipping it as well would put ~200 MB on the card that exists only to be expanded and deleted.
 echo "==> Saving the container images (the slow part, ~550 MB uncompressed)"
 mkdir -p "$images_dir"
-docker save homespool:latest homespool-proxy:latest \
+
+# The same REGISTRY prefix compose.yaml applies, read from .env the way compose reads it - otherwise
+# setting it would tag the built images one way and have this look for them the other, and the only
+# symptom would be `docker save` failing on an image nobody can see is missing. The card needs no
+# registry at run time either way: whatever these are called, they are already in its store, and its
+# compose.yaml asks for the same names because it expands the same variable.
+registry="${REGISTRY:-$(sed -n 's/^REGISTRY=//p' "$repo_root/.env" 2>/dev/null | tail -1)}"
+image_prefix="${registry:+${registry}/}"
+
+docker save "${image_prefix}homespool:latest" "${image_prefix}homespool-proxy:latest" \
     | gzip -1 > "$images_dir/homespool-images.tar.gz"
 echo "    $(du -h "$images_dir/homespool-images.tar.gz" | cut -f1) saved"
 

@@ -44,8 +44,11 @@ matchesAny(finding["secret"], [
 [[rules]]
 id = 'homespool-wifi-ssid'
 description = 'A wifi SSID in a key/value position. Names a home, and is searchable in the same public databases as a BSSID.'
-# [ \t] and not \s: \s matches a newline, so `ssid=` with an empty value ran on into the next line
-# and reported `psk=` from pi/files/homespool-wifi.txt as the SSID.
+# [ \t] and not \s, because \s matches a newline: an empty assignment in pi/files/homespool-wifi.txt
+# ran on into the line below it and reported that line's key as the network name.
+#
+# Written without an example of the offending form on purpose - spelling it out here makes this file
+# match its own rule, which it did until this comment was rewritten.
 regex = '''(?i)\b(?:wifi_)?ssid["']?[ \t]*[:=][ \t]*["']?([^"',}\n]{2,32})'''
 secretGroup = 1
 keywords = ['ssid']

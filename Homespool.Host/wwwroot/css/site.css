@@ -213,16 +213,17 @@ body {
    still and the MJPEG live view are an <img> - so requestFullscreen would work on a desktop and do
    nothing at all on the platform this feature is most wanted on. This behaves the same everywhere,
    for both transports, in less code. */
-.camera-maximise {
+/* Shared by both controls that sit on a picture: maximise at bottom right, and the live play/stop
+   at bottom left. One class rather than two copies, because the trap below was paid for once and a
+   second copy is a second chance to leave it out. */
+.camera-overlay-btn {
   position: absolute;
-  right: .4rem;
   bottom: .4rem;
 
   /* Bootstrap's `.ratio > *` stretches every child to 100% x 100% and out-specifies a single class,
      so without these the "icon" is an invisible slab over the whole picture - which also means a
-     click anywhere on the image maximises it. Measured in a harness, not guessed. */
+     click anywhere on the image triggers it. Measured in a harness, not guessed. */
   top: auto;
-  left: auto;
   width: auto;
   height: auto;
 
@@ -242,11 +243,23 @@ body {
   transition: opacity .15s ease-in-out, background-color .15s ease-in-out;
 }
 
-.camera-maximise:hover,
-.camera-maximise:focus-visible {
+.camera-overlay-btn:hover,
+.camera-overlay-btn:focus-visible {
   opacity: 1;
   background-color: rgba(0, 0, 0, .7);
   color: #fff;
+}
+
+/* The two corners. `left`/`right` are set here rather than above, and both are stated on each so
+   neither inherits the other's - the `auto` the ratio rule needs is the one they are overriding. */
+.camera-maximise {
+  right: .4rem;
+  left: auto;
+}
+
+.camera-live-toggle {
+  left: .4rem;
+  right: auto;
 }
 
 /* The maximised panel. Bootstrap's .ratio sets a padding-top aspect box, which has to be undone

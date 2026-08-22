@@ -210,10 +210,34 @@
                         <div class="camera-status d-flex align-items-center justify-content-center text-body-secondary small">
                             @Localiser["Cameras_Capturing"]
                         </div>
+                        @* In the picture, bottom left, mirroring maximise on the right - which is
+                           where a video player puts a play control. Icon-only, so every label it used
+                           to show as text is now its accessible name, and the words that used to sit
+                           on the button (connecting, failed, stalled) go to the note below the frame.
+
+                           Hidden until the server says this camera may be offered. Nothing can report
+                           a camera's codec before something watches it, so the button is offered
+                           optimistically and taken away by the first refusal - a JPEG camera loses it
+                           after one press, saying why. *@
+                        <button type="button" class="camera-overlay-btn camera-live-toggle btn btn-sm d-none"
+                                data-label-watch="@Localiser["Cameras_WatchLive"]"
+                                data-label-stop="@Localiser["Cameras_StopLive"]"
+                                data-label-connecting="@Localiser["Cameras_LiveConnecting"]"
+                                data-label-failed="@Localiser["Cameras_LiveFailed"]"
+                                data-label-live="@Localiser["Cameras_LiveNow"]"
+                                data-label-stalled="@Localiser["Cameras_LiveStalled"]"
+                                aria-label="@Localiser["Cameras_WatchLive"]" title="@Localiser["Cameras_WatchLive"]">
+                            <svg class="camera-live-icon" width="18" height="18" viewBox="0 0 16 16"
+                                 fill="currentColor" aria-hidden="true">
+                                <path class="camera-live-play" d="M4.5 2.5v11l9-5.5z" />
+                                <path class="camera-live-stop d-none" d="M3.5 3.5h9v9h-9z" />
+                            </svg>
+                        </button>
+
                         @* On the picture rather than in the controls row, which is where a video
                            player puts it. Hidden until the script binds it: without JavaScript it
                            would do nothing, and a control that cannot act explains nothing. *@
-                        <button type="button" class="camera-maximise btn btn-sm d-none" hidden
+                        <button type="button" class="camera-overlay-btn camera-maximise btn btn-sm d-none" hidden
                                 data-label-maximise="@Localiser["Cameras_Maximise"]"
                                 data-label-restore="@Localiser["Cameras_Restore"]"
                                 aria-label="@Localiser["Cameras_Maximise"]" title="@Localiser["Cameras_Maximise"]">
@@ -234,14 +258,10 @@
                        the board: the stream server names none for a stream nobody is consuming), so
                        the button is offered optimistically and taken away by the first refusal. A
                        camera that sends JPEG loses it after one press, saying why. *@
-                    <div class="camera-live-controls d-none d-flex align-items-center gap-2 mt-1">
-                        <button type="button" class="btn btn-sm btn-outline-secondary camera-live-toggle"
-                                data-label-watch="@Localiser["Cameras_WatchLive"]"
-                                data-label-stop="@Localiser["Cameras_StopLive"]"
-                                data-label-connecting="@Localiser["Cameras_LiveConnecting"]"
-                                data-label-failed="@Localiser["Cameras_LiveFailed"]"
-                                data-label-live="@Localiser["Cameras_LiveNow"]"
-                                data-label-stalled="@Localiser["Cameras_LiveStalled"]">@Localiser["Cameras_WatchLive"]</button>
+                    @* Only the note now. The button moved into the picture, beside maximise - see
+                       the .camera-view block above. This stays outside because it is prose: a
+                       failure reason, or why a JPEG camera just lost its button. *@
+                    <div class="camera-live-controls d-none mt-1">
                         <span class="camera-live-note small text-body-secondary" role="status"></span>
                     </div>
                 </figure>

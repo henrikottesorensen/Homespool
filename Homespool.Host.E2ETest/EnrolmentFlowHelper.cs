@@ -168,7 +168,12 @@ public static class EnrolmentFlowHelper
                                                          .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
                                                          .Get(IdentityConstants.ApplicationScheme);
 
-        AuthenticationTicket ticket = new(principal, IdentityConstants.ApplicationScheme);
+        // IssuedUtc, because real sign-in sets it and SecurityStampValidator reads it: with no issue
+        // time it treats the ticket as due for revalidation on every single request, so any operation
+        // that moves the security stamp - enabling an authenticator, re-keying one, changing a
+        // password - signs the test client out mid-flow in a way production would not.
+        AuthenticationProperties properties = new() { IssuedUtc = DateTimeOffset.UtcNow };
+        AuthenticationTicket ticket = new(principal, properties, IdentityConstants.ApplicationScheme);
         string protectedTicket = cookieOptions.TicketDataFormat.Protect(ticket);
 
         HttpClient client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });

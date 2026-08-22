@@ -782,6 +782,10 @@ public sealed class TelemetryWriterTests : IDisposable
         TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
         await SeedPrinterAsync();
 
+        // Synthetic throughout. Built from a real event in a private capture, and when it was first
+        // written only the api_key was substituted - the SSID and the printer's MAC came through
+        // verbatim and reached a public repo. The MAC is from the RFC 7042 2.1.2 documentation range,
+        // which cannot collide with a real device. Keep it that way when this fixture is next updated.
         using JsonDocument payload = JsonDocument.Parse(
             """
             {"firmware":"6.5.7+12836","api_key":"vC7x4aZfohmcbzH","nozzle_diameter":0.4,

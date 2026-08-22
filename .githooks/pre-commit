@@ -7,8 +7,10 @@
 #
 #     git config core.hooksPath .githooks
 #
-# which is per-clone and is shared by every worktree attached to that clone, so once covers all of
-# them. `git commit --no-verify` skips it.
+# which is per-clone, and a relative path there resolves against the MAIN checkout - so this script
+# runs from every worktree even when the worktree's own branch has no copy of it. That covers the
+# hook and not its config, which is a separate problem solved further down. `git commit --no-verify`
+# skips the whole thing.
 
 set -euo pipefail
 
@@ -63,12 +65,45 @@ if ! command -v betterleaks >/dev/null 2>&1; then
     exit 1
 fi
 
-if ! betterleaks git --staged --no-banner --redact --config .betterleaks.toml; then
-    echo >&2
-    echo "pre-commit: the staged changes contain something that reads as a secret." >&2
-    echo >&2
-    echo "If it is a real credential, take it out - amending later does not unpublish it." >&2
-    echo "If it is a deliberate test value or a placeholder, append a \`betterleaks:allow\` comment" >&2
-    echo "on the line, which documents the decision where the next reader will find it." >&2
+# A relative core.hooksPath resolves against the main checkout, not the worktree, so this hook runs
+# from every worktree attached to the clone - but a worktree on a branch predating .betterleaks.toml
+# has no such file, and betterleaks treats a missing --config as fatal rather than falling back to
+# its own defaults. Without this fallback, committing from one of those worktrees fails claiming the
+# staged content holds a secret, which is a lie about a scan that never ran.
+#
+# The worktree's own copy wins where it exists, so a branch can change the rules and have them apply
+# to itself before they are merged.
+config="$repo_root/.betterleaks.toml"
+[ -f "$config" ] || config="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)/.betterleaks.toml"
+
+if [ ! -f "$config" ]; then
+    echo "pre-commit: no .betterleaks.toml in this worktree or the main checkout." >&2
+    echo "Nothing defines the rules, so nothing was scanned." >&2
     exit 1
 fi
+
+# --exit-code 2 separates "found something" from "could not run". Betterleaks exits 1 for a missing
+# config, an unknown flag and an unreadable repository alike, so without this every tool failure is
+# reported to whoever is committing as a leak in their own changes.
+scan=0
+betterleaks git --staged --no-banner --redact --exit-code 2 --config "$config" || scan=$?
+
+case "$scan" in
+    0) ;;
+    2)
+        echo >&2
+        echo "pre-commit: the staged changes contain something that reads as a secret." >&2
+        echo >&2
+        echo "If it is a real credential, take it out - amending later does not unpublish it." >&2
+        echo "If it is a deliberate test value or a placeholder, append a \`betterleaks:allow\` comment" >&2
+        echo "on the line, which documents the decision where the next reader will find it." >&2
+        exit 1
+        ;;
+    *)
+        echo >&2
+        echo "pre-commit: betterleaks could not complete the scan (exit $scan), so nothing was checked." >&2
+        echo "Config: $config" >&2
+        echo "Fix the tool or the config rather than reading this as a clean result." >&2
+        exit 1
+        ;;
+esac

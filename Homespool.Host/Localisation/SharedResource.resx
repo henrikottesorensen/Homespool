@@ -679,6 +679,9 @@
   <data name="Manage_SendVerification" xml:space="preserve">
     <value>Send verification email</value>
   </data>
+  <data name="Manage_NoLocalPassword" xml:space="preserve">
+    <value>You sign in with an external provider, so this account has no password here to change. Manage your password wherever you sign in.</value>
+  </data>
   <data name="Manage_UpdatePassword" xml:space="preserve">
     <value>Update password</value>
   </data>

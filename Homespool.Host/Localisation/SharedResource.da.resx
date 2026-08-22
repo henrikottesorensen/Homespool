@@ -656,6 +656,9 @@
   <data name="Manage_SendVerification" xml:space="preserve">
     <value>Send bekræftelsesmail</value>
   </data>
+  <data name="Manage_NoLocalPassword" xml:space="preserve">
+    <value>Du logger ind med en ekstern udbyder, så denne konto har ingen adgangskode her at ændre. Administrér din adgangskode dér, hvor du logger ind.</value>
+  </data>
   <data name="Manage_UpdatePassword" xml:space="preserve">
     <value>Opdatér adgangskode</value>
   </data>

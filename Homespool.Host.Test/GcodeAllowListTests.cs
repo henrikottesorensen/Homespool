@@ -33,9 +33,44 @@ public class GcodeAllowListTests
     [InlineData("M140 S60")]
     [InlineData("M140 S0")]
     [InlineData("M140 S120")]
+    [InlineData("M702 W0")]
     public void TheLinesThisApplicationComposesArePermitted(string line)
     {
         GcodeAllowList.IsAllowed(line).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// Unloading is permitted in exactly one form, and every neighbouring form is refused.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The arguments are not a range, they are the difference between headless and stuck.</b>
+    /// <c>W</c> chooses which optional items firmware's preheat dialog offers, so <c>M702 W1</c>,
+    /// <c>W2</c> and <c>W3</c> put menu entries on a panel nobody is standing at; <c>I</c> adds a
+    /// confirmation prompt; and bare <c>M702</c> means <c>W255</c>, which is <i>do not preheat</i>
+    /// and would try to pull filament through a cold nozzle.
+    /// </para>
+    /// <para>
+    /// So this is the case where a range-checked pattern would have been wrong. Written out rather
+    /// than reasoned about, because "M702 with a W argument" is the shape somebody would naturally
+    /// relax this to.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData("M702")]
+    [InlineData("M702 W255")]
+    [InlineData("M702 W1")]
+    [InlineData("M702 W2")]
+    [InlineData("M702 W3")]
+    [InlineData("M702 W0 I")]
+    [InlineData("M702 I")]
+    [InlineData("M702 W0 T1")]
+    [InlineData("M7020 W0")]
+    [InlineData("M702W0")]
+    [InlineData("m702 w0")]
+    public void EveryUnloadFormOtherThanTheHeadlessOneIsRefused(string line)
+    {
+        GcodeAllowList.IsAllowed(line).Should().BeFalse();
     }
 
     /// <summary>Surrounding whitespace is the one thing normalised, since it can hide nothing.</summary>
@@ -157,6 +192,22 @@ public class GcodeAllowListTests
     public void NothingIsNotALine(string? line)
     {
         GcodeAllowList.IsAllowed(line).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Every typed command's own line is one this list permits.
+    /// </summary>
+    /// <remarks>
+    /// <b>The coupling that would otherwise break silently.</b> A command composing a line the list
+    /// refuses does not fail at compile time and does not fail here in isolation - it fails at the
+    /// encoder, at the moment somebody presses the button, on a printer. Asserting the two agree
+    /// keeps that discovery in the suite.
+    /// </remarks>
+    [Fact]
+    public void TheTypedCommandsComposeLinesThisListPermits()
+    {
+        GcodeAllowList.IsAllowed(new UnloadFilament().Line).Should().BeTrue();
+        GcodeAllowList.IsAllowed(new SetTemperatures(230, 85).Line).Should().BeTrue();
     }
 
     /// <summary>

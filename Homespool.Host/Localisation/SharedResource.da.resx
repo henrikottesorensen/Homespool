@@ -424,6 +424,15 @@
   <data name="Printers_CoolDown" xml:space="preserve">
     <value>Køl ned</value>
   </data>
+  <data name="Printers_Unload" xml:space="preserve">
+    <value>Tag {0} ud</value>
+  </data>
+  <data name="Printers_UnloadStarted" xml:space="preserve">
+    <value>Tager {0} ud. Printeren varmer dysen op, skubber filamentet ud og slukker så for det hele.</value>
+  </data>
+  <data name="Printers_UnloadNote" xml:space="preserve">
+    <value>Udtagning varmer dysen op til det isatte filaments printtemperatur, skubber det ud og slukker så for varmelegemerne - så printeren er kold og tom, når du når frem til den. Det tager et par minutter, og printeren afviser andre kommandoer imens.</value>
+  </data>
   <data name="Printers_SlicerHeading" xml:space="preserve">
     <value>Send fra en slicer</value>
   </data>
@@ -1603,10 +1612,16 @@
     <value>Printeren afviste den ({0}).</value>
   </data>
   <data name="Error_PrinterBusy" xml:space="preserve">
-    <value>Printeren er {0} - varmelegemernes temperaturmål kan kun ændres, når printeren ikke er optaget.</value>
+    <value>Printeren er {0} - dette kan kun gøres, når printeren ikke er optaget.</value>
   </data>
   <data name="Error_PrinterStateUnknown" xml:space="preserve">
     <value>Printerens tilstand kendes ikke endnu - den melder ind kort efter, den forbinder.</value>
+  </data>
+  <data name="Error_FilamentTypeUnknown" xml:space="preserve">
+    <value>Printeren har ikke oplyst, hvilket filament der er isat, så det kan ikke tages ud herfra.</value>
+  </data>
+  <data name="Error_PrinterHasQueuedWork" xml:space="preserve">
+    <value>Printeren er klar og har print i køen - et print kan gå i gang, mens filamentet er ude. Ryd køen, eller tag filamentet ud, når printet er færdigt.</value>
   </data>
   <data name="Cameras_SourceMissing" xml:space="preserve">
     <value>Et kamera skal have en kildeadresse.</value>

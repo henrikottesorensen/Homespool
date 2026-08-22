@@ -96,6 +96,19 @@
             <button type="submit" class="btn btn-outline-secondary">@Localiser["Printers_CoolDown"]</button>
         </form>
 
+        @* Absent unless the printer has named its filament, which is the same condition under which
+           firmware will run the unload without stopping at a dialog on the panel - and which usually
+           just means there is nothing in the machine to take out. No confirm dialog, matching
+           preheat: this changes the physical world, but harmlessly and on purpose. *@
+        @if (Model.UnloadShown)
+        {
+            <form method="post" asp-page-handler="Unload" asp-route-uuid="@uuid">
+                <button type="submit" class="btn btn-outline-secondary">
+                    @Localiser["Printers_Unload", Model.LoadedMaterial!]
+                </button>
+            </form>
+        }
+
         @* Setting ready is a person asserting the sheet is clear, which is why the walk to the
            machine was never pure friction - it forced somebody to look. Off unless this printer has
            been judged one whose sheet can be read from here, so the control is absent rather than
@@ -121,6 +134,14 @@
             Localiser["Printers_PreheatWarning"].Value,
             $"<strong>{Localiser["Printers_CoolingIncluded"].Value}</strong>"))
     </p>
+
+    @* Said beside the button rather than only after pressing it: the unload runs for minutes and
+       the printer declines other gcode while it does, so somebody who presses Cool down next and
+       meets a refusal should already know why. *@
+    @if (Model.UnloadShown)
+    {
+        <p class="text-body-secondary small">@Localiser["Printers_UnloadNote"]</p>
+    }
 }
 
 @* Whether the ready prompt can be answered honestly for this printer is a standing judgement about

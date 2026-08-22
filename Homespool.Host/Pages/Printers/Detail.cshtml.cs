@@ -57,6 +57,7 @@ public class DetailModel : PageModel
     private readonly PrinterQueryService _printerQueryService;
     private readonly PrintQueueService _queueService;
     private readonly PrinterPreheatService _preheat;
+    private readonly PrinterFilamentService _filament;
     private readonly PrintHistoryService _historyService;
     private readonly UserNameLookup _names;
     private readonly QueueSnapshotReader _snapshots;
@@ -77,6 +78,7 @@ public class DetailModel : PageModel
     public DetailModel(PrinterQueryService printerQueryService,
                        PrintQueueService queueService,
                        PrinterPreheatService preheat,
+                       PrinterFilamentService filament,
                        PrintHistoryService historyService,
                        UserNameLookup names,
                        QueueSnapshotReader snapshots,
@@ -97,6 +99,7 @@ public class DetailModel : PageModel
         _printerQueryService = printerQueryService;
         _queueService = queueService;
         _preheat = preheat;
+        _filament = filament;
         _historyService = historyService;
         _names = names;
         _snapshots = snapshots;
@@ -370,6 +373,33 @@ public class DetailModel : PageModel
     /// </remarks>
     public IReadOnlyList<FilamentPreset> Presets { get; private set; } = [];
 
+    /// <summary>
+    /// The filament the printer says is loaded, or null where it says it has none.
+    /// </summary>
+    /// <remarks>
+    /// Through <see cref="LoadedFilament"/> rather than read straight off the column, because the
+    /// wire's "nothing loaded" is the literal string <c>"---"</c> rather than an absence, and a null
+    /// check alone renders a button offering to unload a material called <c>---</c>.
+    /// </remarks>
+    public string? LoadedMaterial { get; private set; }
+
+    /// <summary>
+    /// Whether the Unload control is offered.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Absent rather than disabled, and absent rather than refusing.</b> A printer that has not
+    /// named its filament almost always has nothing in it, so there is nothing to unload and no
+    /// refusal worth reading. The one case this hides that is not that - a printer whose filament
+    /// type was never set - is one where the command would block on a dialog at the panel anyway.
+    /// </para>
+    /// <para>
+    /// <b>Not a permission check.</b> <see cref="PrinterFilamentService"/> re-establishes all of
+    /// this, on this page's standing rule that a button which is not rendered is not a check.
+    /// </para>
+    /// </remarks>
+    public bool UnloadShown => Connected && LoadedMaterial is not null;
+
     [TempData]
     public string? StatusMessage { get; set; }
 
@@ -551,6 +581,8 @@ public class DetailModel : PageModel
 
         Nozzle = HeaterReading.For(statistics.LiveState?.NozzleTemperature, statistics.LiveState?.TargetNozzleTemperature);
         Bed = HeaterReading.For(statistics.LiveState?.BedTemperature, statistics.LiveState?.TargetBedTemperature);
+
+        LoadedMaterial = LoadedFilament.Of(statistics.LiveState?.Material);
 
         ActivePrint = await _historyService.GetActiveAsync(statistics.Printer.Id, caller, cancellationToken);
 
@@ -798,6 +830,35 @@ public class DetailModel : PageModel
             await _preheat.CooldownAsync(printer.Id, caller, cancellationToken);
 
             return (_localiser["Printers_HeatersOff"].Value, true);
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Unloads the filament the printer says is loaded.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The post carries nothing.</b> There is no filament to name and no temperature to choose -
+    /// the printer heats to its own stored filament type, which is the whole reason this is one
+    /// command rather than a heat-and-wait composed here. So there is no parameter to tamper with.
+    /// </para>
+    /// <para>
+    /// <b>The service re-reads the material rather than being told it</b>, and the confirmation
+    /// names what the service found. The button is hidden when the printer has not said what is
+    /// loaded, and hiding it is not the check - see <see cref="UnloadShown"/>.
+    /// </para>
+    /// <para>
+    /// <b>It reports the unload as begun, not done.</b> Firmware answers a gcode command when it
+    /// queues it, so the several minutes of heating, ejecting and cooling happen after this returns.
+    /// </para>
+    /// </remarks>
+    public Task<IActionResult> OnPostUnloadAsync(Guid uuid, CancellationToken cancellationToken)
+    {
+        return ActAsync(uuid, async (caller, printer) =>
+        {
+            UnloadOutcome outcome = await _filament.UnloadAsync(printer.Id, caller, cancellationToken);
+
+            return (_localiser["Printers_UnloadStarted", outcome.Material].Value, true);
         }, cancellationToken);
     }
 

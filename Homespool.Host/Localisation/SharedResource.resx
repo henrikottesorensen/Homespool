@@ -438,6 +438,17 @@
   <data name="Printers_CoolDown" xml:space="preserve">
     <value>Cool down</value>
   </data>
+  <data name="Printers_Unload" xml:space="preserve">
+    <value>Unload {0}</value>
+    <comment>{0} is the material the printer reports as loaded, e.g. PLA. Naming it tells somebody what is about to come out.</comment>
+  </data>
+  <data name="Printers_UnloadStarted" xml:space="preserve">
+    <value>Unloading {0}. The printer heats the nozzle, ejects the filament, then switches everything off.</value>
+    <comment>Says started, not done: the printer answers a gcode command when it queues it, and the unload itself takes minutes.</comment>
+  </data>
+  <data name="Printers_UnloadNote" xml:space="preserve">
+    <value>Unloading heats the nozzle to the loaded filament’s printing temperature, ejects it, then turns the heaters off - so the printer is cold and empty when you reach it. It takes a few minutes, and the printer will decline other commands while it runs.</value>
+  </data>
   <data name="Printers_SlicerHeading" xml:space="preserve">
     <value>Send from a slicer</value>
   </data>
@@ -1644,8 +1655,15 @@
     <comment>{0} is the answering event name from firmware - Rejected or Failed - and stays as firmware spells it.</comment>
   </data>
   <data name="Error_PrinterBusy" xml:space="preserve">
-    <value>The printer is {0} - heater targets can only be changed when the printer is not busy.</value>
+    <value>The printer is {0} - this can only be done when the printer is not busy.</value>
     <comment>{0} is the printer status, put through PrinterStatusText so it reads in the same language as the sentence around it.</comment>
+  </data>
+  <data name="Error_FilamentTypeUnknown" xml:space="preserve">
+    <value>The printer hasn’t said what filament is loaded, so it can’t be unloaded from here.</value>
+    <comment>Firmware picks the unload temperature from its own stored filament type; with none set it opens a dialog on the panel and waits.</comment>
+  </data>
+  <data name="Error_PrinterHasQueuedWork" xml:space="preserve">
+    <value>The printer is ready with work queued - a print could start while the filament is out. Clear the queue, or unload once it has finished.</value>
   </data>
   <data name="Error_PrinterStateUnknown" xml:space="preserve">
     <value>The printer’s current state isn’t known yet - it reports one shortly after connecting.</value>

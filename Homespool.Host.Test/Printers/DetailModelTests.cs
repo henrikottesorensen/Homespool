@@ -114,6 +114,11 @@ public sealed class DetailModelTests : IDisposable
                                 // Constructed rather than substituted: these tests are about the page, and a real one
                                 // that never gets a connected printer simply refuses, which is the honest default here.
                                 new PrinterPreheatService(commands: null!, snapshots),
+
+                                // Same reasoning as the preheat service above: real, with a null
+                                // command service, so a guard that stops firing fails at the send
+                                // rather than quietly pulling filament out of something.
+                                new PrinterFilamentService(commands: null!, snapshots, context),
                                 new PrintHistoryService(context, access, snapshots, new UserNameLookup(context)),
                                 new UserNameLookup(context),
                                 snapshots,
@@ -222,6 +227,89 @@ public sealed class DetailModelTests : IDisposable
         // Assert
         model.StatusSuccess.Should().BeFalse();
         model.StatusMessage.Should().Contain("Printing", "the answer names the state that refused it");
+    }
+
+    /// <summary>
+    /// Unloading is refused mid-print, and the page says which state refused it.
+    /// </summary>
+    /// <remarks>
+    /// The material is set, so a pass here cannot come from the printer having nothing loaded - it
+    /// has to be the state guard. The filament service is built with a null command service on the
+    /// same reasoning as the preheat one above: a guard that stopped firing would fail at the send
+    /// rather than quietly pulling filament out of a running print.
+    /// </remarks>
+    [Fact]
+    public async Task UnloadIsRefusedWhileThePrinterIsPrinting()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, _, Team team, _) = await NewModelAsync(context);
+
+        Printer printer = NewPrinter(team.Id);
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        context.PrinterLiveStates.Add(new PrinterLiveState
+        {
+            PrinterId = printer.Id,
+            Status = PrinterStatus.Printing,
+            Material = "PLA",
+            LastSeenAt = DateTimeOffset.UtcNow,
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        await model.OnPostUnloadAsync(printer.Uuid, CancellationToken.None);
+
+        // Assert
+        model.StatusSuccess.Should().BeFalse("retracting filament mid-print ruins the print");
+        model.StatusMessage.Should().Contain("Printing", "the answer names the state that refused it");
+    }
+
+    /// <summary>
+    /// The Unload control is offered only when the printer has named its filament.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The <c>"---"</c> row is the one worth having.</b> It is what a printer with nothing loaded
+    /// actually reports - the field is sent, carrying a sentinel - so a null check alone renders a
+    /// button offering to unload a material called <c>---</c>, on a machine with nothing in it.
+    /// </para>
+    /// <para>
+    /// Asserted on the page model rather than the markup, because what the view does with it is one
+    /// <c>@if</c> and what decides it is this.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData("PLA", true)]
+    [InlineData("PETG", true)]
+    [InlineData("---", false)]
+    [InlineData(null, false)]
+    public async Task TheUnloadControlFollowsWhetherThePrinterNamesItsFilament(string? material, bool offered)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, _, Team team, PrinterConnectionRegistry _) = await NewModelAsync(context);
+
+        Printer printer = NewPrinter(team.Id);
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        context.PrinterLiveStates.Add(new PrinterLiveState
+        {
+            PrinterId = printer.Id,
+            Status = PrinterStatus.Idle,
+            Material = material,
+            LastSeenAt = DateTimeOffset.UtcNow,
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        await model.OnGetAsync(printer.Uuid, CancellationToken.None);
+
+        // Assert. The printer is not connected in this fixture, so UnloadShown is false throughout -
+        // LoadedMaterial is the half this decides, and the half the label reads from.
+        model.LoadedMaterial.Should().Be(offered ? material : null);
     }
 
     private static Printer NewPrinter(int teamId, string? name = null)

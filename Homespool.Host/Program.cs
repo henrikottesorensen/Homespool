@@ -284,7 +284,8 @@ public static class Program
                             .AddScoped<PrusaConnect.ClaimAttemptLimiter>()
                             .AddScoped<PrusaConnect.MessageDispatcher>()
                             .AddScoped<Printing.PrinterCommandService>()
-                            .AddScoped<PrusaConnect.PrinterPreheatService>();
+                            .AddScoped<PrusaConnect.PrinterPreheatService>()
+                            .AddScoped<PrusaConnect.PrinterFilamentService>();
 
             // Plain singletons, not TelemetryWriter's singleton-with-IServiceScopeFactory pattern below:
             // neither touches HomespoolDbContext, only in-memory state (the directory of live connection

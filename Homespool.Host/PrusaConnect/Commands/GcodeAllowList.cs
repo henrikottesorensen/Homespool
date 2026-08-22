@@ -19,15 +19,17 @@ namespace Homespool.Host.PrusaConnect.Commands;
 /// </para>
 /// <para>
 /// <b>It is a chokepoint, not a gate on user input.</b> Nothing accepts gcode from a caller today -
-/// the only callers are typed commands that compose their own line from a number. Routing those
-/// through here anyway is the point: a defect in a future typed command still cannot emit something
-/// off this list. The alternative, trusting composed strings because they came from us, is exactly
-/// how the barrier erodes.
+/// the only callers are typed commands that compose their own line from typed values, or from
+/// nothing at all. Routing those through here anyway is the point: a defect in a future typed
+/// command still cannot emit something off this list. The alternative, trusting composed strings
+/// because they came from us, is exactly how the barrier erodes.
 /// </para>
 /// <para>
-/// <b>Deny by shape, not by prefix.</b> Each entry is a whole-line pattern with its argument range
-/// checked, so <c>M104 S215</c> passes and <c>M104 S215 M997</c>, <c>M1040</c> and
-/// <c>N1 M104 S215*42</c> do not. Prefix matching is how allowlists like this usually fail.
+/// <b>Deny by shape, not by prefix.</b> Each entry is a whole-line pattern, with its argument range
+/// checked where it has one, so <c>M104 S215</c> passes and <c>M104 S215 M997</c>, <c>M1040</c> and
+/// <c>N1 M104 S215*42</c> do not. Prefix matching is how allowlists like this usually fail. An entry
+/// whose arguments are not a range at all is matched as a literal - see <c>M702 W0</c>, where a
+/// different <c>W</c> is the difference between running headless and stopping at a dialog.
 /// </para>
 /// <para>
 /// <b>A frame may carry several lines, and every one of them is checked.</b> Firmware walks a gcode
@@ -78,6 +80,20 @@ public static class GcodeAllowList
         new(@"^M140 S(?<temperature>0|[1-9][0-9]{0,2})$", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
 
     /// <summary>
+    /// Unloading filament, and the one entry with no argument to range-check.
+    /// </summary>
+    /// <remarks>
+    /// <b>Matched as a literal rather than as <c>M702</c> with an optional <c>W</c>.</b> The
+    /// arguments are not a value this application chooses from a range - they are the difference
+    /// between a command that runs headless and one that blocks on a dialog at the panel, which is
+    /// the same failure mode <c>M1700</c> is kept off this list for. <c>M702</c> on its own would
+    /// unload through a cold nozzle; <c>M702 W1</c> would put menu items on the screen; <c>M702 I</c>
+    /// would wait for somebody to confirm. Only the exact line this application composes passes.
+    /// </remarks>
+    private static readonly Regex UnloadFilament =
+        new(@"^M702 W0$", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+
+    /// <summary>
     /// Whether <paramref name="body"/> is a gcode body this application is permitted to send.
     /// </summary>
     /// <remarks>
@@ -118,7 +134,8 @@ public static class GcodeAllowList
             string candidate = line.Trim();
 
             if (!Matches(NozzleTarget, candidate, MaxNozzleTemperature)
-                && !Matches(BedTarget, candidate, MaxBedTemperature))
+                && !Matches(BedTarget, candidate, MaxBedTemperature)
+                && !UnloadFilament.IsMatch(candidate))
             {
                 return false;
             }
@@ -134,6 +151,7 @@ public static class GcodeAllowList
         [
             $"M104 S<0-{MaxNozzleTemperature}> — nozzle target temperature",
             $"M140 S<0-{MaxBedTemperature}> — bed target temperature",
+            "M702 W0 — unload filament, preheating to the printer's own loaded filament type",
         ];
     }
 

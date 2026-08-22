@@ -12,6 +12,7 @@ using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -20,6 +21,7 @@ using Microsoft.Extensions.Localization;
 
 namespace Homespool.Host.Pages.Account;
 
+[AllowAnonymous] // Nobody asking for a password reset can be signed in.
 public class ForgotPasswordModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;

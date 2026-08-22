@@ -15,6 +15,7 @@ using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -31,6 +32,7 @@ namespace Homespool.Host.Pages.Account;
 /// only with a valid, unexpired, unused invite token, and creates the account bound to the invite's
 /// email. It replaces the public self-service registration the Identity scaffold shipped with.
 /// </summary>
+[AllowAnonymous] // The invite token is the credential here, not a session (phase-1.5 §15 step 6).
 public class RegisterModel : PageModel
 {
     private readonly SignInManager<HSUser> _signInManager;

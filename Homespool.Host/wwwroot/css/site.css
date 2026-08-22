@@ -91,10 +91,6 @@ a {
   --bs-btn-disabled-border-color: var(--homespool-blue-text);
 }
 
-.nav-pills {
-  --bs-nav-pills-link-active-bg: var(--homespool-blue-text);
-}
-
 /* Bootstrap sets <code> in pink (#d63384). On pages that are mostly addresses, hostnames and
    shell commands that reads as a warning rather than as data, and it is an unrelated hue next
    to the brand blue. Body ink on a faint tint instead: legible, quiet, and it says "this is a

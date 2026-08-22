@@ -41,19 +41,58 @@
             </ul>
         </li>
     }
-    <li class="nav-item">
 @*  The username is already in the cookie - Identity writes it as ClaimTypes.Name - so naming the
     signed-in account costs no query and needs no claim of our own.
 
-    aria-label because the visible text is now a bare name: sighted readers get "who am I, and the
-    way to my account" from its position in the bar, and a screen reader announcing "henrik.sorensen,
-    link" gets neither. *@
-        <a id="manage" class="nav-link" asp-page="/Account/Manage/Index" aria-label="@Localiser["Nav_ManageAccount"]">@UserManager.GetUserName(User)</a>
-    </li>
-    <li class="nav-item">
-        <form id="logoutForm" class="form-inline" asp-page="/Account/Logout" asp-route-returnUrl="@Url.Action("Index", "Home", new { area = "" })">
-            <button id="logout" type="submit" class="nav-link btn btn-link border-0">@Localiser["Nav_Logout"]</button>
-        </form>
+    aria-label because the visible text is a bare name: sighted readers get "who am I, and the way
+    to my account" from its position in the bar, and a screen reader announcing "henrik.sorensen,
+    menu" gets neither.
+
+    Logout is inside the menu rather than beside it, so the bar ends at one account item instead of
+    two. It is the only entry that acts rather than navigates, which is what the divider says.
+
+    External logins appears only where a provider is configured. Nothing registers one today, so the
+    entry is unreachable - and the page it points at does not exist, which the guard is currently all
+    that hides.
+
+    No "Personal data" item. Identity.UI's version offers to export and delete what the service holds
+    about you, which is a question that only makes sense when somebody else is holding it - and this
+    application exists so that nobody is. The data is on the operator's own disk, in a directory named
+    after them. See notes/user-identity.md. *@
+    <li class="nav-item dropdown">
+        <a id="manage" class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="@Localiser["Nav_ManageAccount"]">@UserManager.GetUserName(User)</a>
+        <ul class="dropdown-menu dropdown-menu-end">
+            <li>
+                <a id="profile" class="dropdown-item" asp-page="/Account/Manage/Index">@Localiser["Manage_Profile"]</a>
+            </li>
+            <li>
+                <a id="email" class="dropdown-item" asp-page="/Account/Manage/Email">@Localiser["Account_Email"]</a>
+            </li>
+            <li>
+                <a id="change-password" class="dropdown-item" asp-page="/Account/Manage/ChangePassword">@Localiser["Account_Password"]</a>
+            </li>
+            @if ((await SignInManager.GetExternalAuthenticationSchemesAsync()).Any())
+            {
+                <li>
+                    <a id="external-logins" class="dropdown-item" asp-page="/Account/Manage/ExternalLogins">@Localiser["Manage_ExternalLogins"]</a>
+                </li>
+            }
+            <li>
+                <a id="two-factor" class="dropdown-item" asp-page="/Account/Manage/TwoFactorAuthentication">@Localiser["Manage_TwoFactor"]</a>
+            </li>
+            <li>
+                <a id="api-tokens" class="dropdown-item" asp-page="/Account/Manage/ApiTokens">@Localiser["Manage_ApiTokens"]</a>
+            </li>
+            <li>
+                <a id="language" class="dropdown-item" asp-page="/Account/Manage/Language">@Localiser["Language_Heading"]</a>
+            </li>
+            <li><hr class="dropdown-divider" /></li>
+            <li>
+                <form id="logoutForm" asp-page="/Account/Logout" asp-route-returnUrl="@Url.Action("Index", "Home", new { area = "" })">
+                    <button id="logout" type="submit" class="dropdown-item">@Localiser["Nav_Logout"]</button>
+                </form>
+            </li>
+        </ul>
     </li>
 }
 else

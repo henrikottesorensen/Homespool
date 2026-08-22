@@ -3,11 +3,10 @@
 @model TwoFactorAuthenticationModel
 @{
     ViewData["Title"] = Localiser["Manage_TwoFactor"].Value;
-    ViewData["ActivePage"] = ManageNavPages.TwoFactorAuthentication;
 }
 
 <partial name="_StatusMessage" for="StatusMessage" />
-<h3>@ViewData["Title"]</h3>
+<h1>@ViewData["Title"]</h1>
 @{
     var consentFeature = HttpContext.Features.Get<ITrackingConsentFeature>();
     @if (consentFeature?.CanTrack ?? true)
@@ -46,7 +45,7 @@
             <a asp-page="./GenerateRecoveryCodes" class="btn btn-primary">@Localiser["TwoFactor_ResetRecoveryCodes"]</a>
         }
 
-        <h4>@Localiser["TwoFactor_AuthenticatorApp"]</h4>
+        <h2>@Localiser["TwoFactor_AuthenticatorApp"]</h2>
         @if (!Model.HasAuthenticator)
         {
             <a id="enable-authenticator" asp-page="./EnableAuthenticator" class="btn btn-primary">@Localiser["TwoFactor_AddApp"]</a>

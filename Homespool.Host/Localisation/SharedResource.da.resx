@@ -761,11 +761,8 @@
   <data name="Account_ClickToLogIn" xml:space="preserve">
     <value>klik her for at logge ind</value>
   </data>
-  <data name="Manage_AccountTitle" xml:space="preserve">
-    <value>Administrér din konto</value>
-  </data>
-  <data name="Manage_AccountSubtitle" xml:space="preserve">
-    <value>Skift dine kontoindstillinger</value>
+  <data name="Manage_AccountMenu" xml:space="preserve">
+    <value>dit brugernavn</value>
   </data>
   <data name="Cert_Title" xml:space="preserve">
     <value>Printercertifikat</value>

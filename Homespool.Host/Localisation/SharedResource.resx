@@ -2111,4 +2111,23 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Common_SomebodyElse" xml:space="preserve">
     <value>Somebody else</value>
   </data>
+  <data name="TwoFactor_RecoveryCodesTitle" xml:space="preserve">
+    <value>Recovery codes</value>
+  </data>
+  <data name="TwoFactor_ResetKeyTitle" xml:space="preserve">
+    <value>Reset your authenticator key</value>
+  </data>
+  <data name="TwoFactor_ResetKeyWarning" xml:space="preserve">
+    <value>If you reset your authenticator key, your authenticator app will stop working until you set it up again.</value>
+  </data>
+  <data name="TwoFactor_ResetKeyDisables" xml:space="preserve">
+    <value>This turns two-factor authentication off until you have verified the new key. If you do not finish setting up your authenticator app, you may lose access to your account.</value>
+  </data>
+  <data name="TwoFactor_ResetKeyButton" xml:space="preserve">
+    <value>Reset authenticator key</value>
+    <comment>The button on the confirmation page. Shorter than the page title above it, the way Disable2fa and GenerateRecoveryCodes both pair a full-sentence heading with a terse button.</comment>
+  </data>
+  <data name="TwoFactor_KeyReset" xml:space="preserve">
+    <value>Your authenticator key has been reset. Set your authenticator app up again with the new key.</value>
+  </data>
 </root>

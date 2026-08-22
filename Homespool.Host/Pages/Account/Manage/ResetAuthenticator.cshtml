@@ -1,0 +1,21 @@
+@page
+@model ResetAuthenticatorModel
+@{
+    ViewData["Title"] = Localiser["TwoFactor_ResetKeyTitle"].Value;
+}
+
+<partial name="_StatusMessage" for="StatusMessage" />
+<h1>@ViewData["Title"]</h1>
+<div class="alert alert-warning" role="alert">
+    <p>
+        <strong>@Localiser["TwoFactor_ResetKeyWarning"]</strong>
+    </p>
+    <p>
+        @Localiser["TwoFactor_ResetKeyDisables"]
+    </p>
+</div>
+<div>
+    <form id="reset-authenticator-form" method="post">
+        <button id="reset-authenticator-button" class="btn btn-danger" type="submit">@Localiser["TwoFactor_ResetKeyButton"]</button>
+    </form>
+</div>

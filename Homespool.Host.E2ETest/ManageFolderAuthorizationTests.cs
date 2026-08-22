@@ -64,6 +64,8 @@ public sealed class ManageFolderAuthorizationTests : IAsyncLifetime, IDisposable
     [InlineData("/Account/Manage/EnableAuthenticator")]
     [InlineData("/Account/Manage/GenerateRecoveryCodes")]
     [InlineData("/Account/Manage/Language")]
+    [InlineData("/Account/Manage/ResetAuthenticator")]
+    [InlineData("/Account/Manage/ShowRecoveryCodes")]
     [InlineData("/Account/Manage/TwoFactorAuthentication")]
     public async Task AnAnonymousCallerIsSentToSignIn(string path)
     {

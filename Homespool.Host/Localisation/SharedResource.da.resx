@@ -2036,4 +2036,22 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Common_SomebodyElse" xml:space="preserve">
     <value>En anden</value>
   </data>
+  <data name="TwoFactor_RecoveryCodesTitle" xml:space="preserve">
+    <value>Gendannelseskoder</value>
+  </data>
+  <data name="TwoFactor_ResetKeyTitle" xml:space="preserve">
+    <value>Nulstil din godkendelsesnøgle</value>
+  </data>
+  <data name="TwoFactor_ResetKeyWarning" xml:space="preserve">
+    <value>Nulstiller du din godkendelsesnøgle, holder din tofaktorapp op med at virke, indtil du sætter den op igen.</value>
+  </data>
+  <data name="TwoFactor_ResetKeyDisables" xml:space="preserve">
+    <value>Det slår tofaktorgodkendelse fra, indtil du har bekræftet den nye nøgle. Gør du ikke opsætningen af din tofaktorapp færdig, kan du miste adgangen til din konto.</value>
+  </data>
+  <data name="TwoFactor_ResetKeyButton" xml:space="preserve">
+    <value>Nulstil godkendelsesnøgle</value>
+  </data>
+  <data name="TwoFactor_KeyReset" xml:space="preserve">
+    <value>Din godkendelsesnøgle er nulstillet. Sæt din tofaktorapp op igen med den nye nøgle.</value>
+  </data>
 </root>

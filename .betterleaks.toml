@@ -1,0 +1,60 @@
+title = 'Homespool'
+
+# Secret scanning for this repo, on top of the shipped ruleset rather than instead of it.
+#
+# Betterleaks and not gitleaks: gitleaks is feature-frozen by its own author, who now maintains
+# betterleaks - "I'm not merging new features into Gitleaks. Future releases will be security
+# patches only." Its config format is close but not identical, so this file does not double as a
+# .gitleaks.toml.
+#
+# `filter` is an Expr expression that SUPPRESSES a finding when it evaluates true. Available:
+# finding["secret"], finding["match"], finding["line"], finding["captures"], attributes["path"].
+[extend]
+useDefault = true
+
+# ------------------------------------------------------------------------------------------------
+# The rule this file exists for.
+#
+# On 2026-08-22 a real SSID and two real MACs were found in tracked files - one of them a BSSID, the
+# access point's own address, which public wardriving databases key on and which therefore resolves
+# to a street. Neither GitGuardian nor any shipped ruleset caught it, because none of them look for
+# network identifiers: they look for credentials, and this was not one.
+#
+# The route in was a test fixture rebuilt from a real capture with only the obvious secret
+# substituted. That will happen again - private-captures/ is right there, and pasting from it is the
+# normal way to write a realistic fixture. This rule is what notices next time.
+# ------------------------------------------------------------------------------------------------
+[[rules]]
+id = 'homespool-mac-address'
+description = 'A MAC address. As a BSSID it locates a building; as a device address it is a stable identifier. Substitute one from the RFC 7042 2.1.2 documentation range.'
+regex = '''\b(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b'''
+confidence = 'medium'
+filter = '''
+matchesAny(finding["secret"], [
+  `(?i)^00:00:5e:00:53:[0-9a-f]{2}$`,
+  `(?i)^(?:00:){5}00$`,
+  `(?i)^(?:ff:){5}ff$`,
+  `(?i)^(?:aa:bb:cc|de:ad:be|11:22:33|01:23:45|12:34:56):`
+])
+'''
+
+# The same failure with the other half of a connect-info line. Narrow on purpose: a key/value form
+# only, so prose about SSIDs does not trip it, and anything already reading as a placeholder is let
+# through. An SSID is user-authored text naming a home - often a surname or a street.
+[[rules]]
+id = 'homespool-wifi-ssid'
+description = 'A wifi SSID in a key/value position. Names a home, and is searchable in the same public databases as a BSSID.'
+# [ \t] and not \s: \s matches a newline, so `ssid=` with an empty value ran on into the next line
+# and reported `psk=` from pi/files/homespool-wifi.txt as the SSID.
+regex = '''(?i)\b(?:wifi_)?ssid["']?[ \t]*[:=][ \t]*["']?([^"',}\n]{2,32})'''
+secretGroup = 1
+keywords = ['ssid']
+confidence = 'medium'
+filter = '''
+matchesAny(finding["secret"], [
+  `(?i)^(?:example|test|sample|placeholder|dummy|fake|my|your|some)[-_ ]?(?:network|ssid|wifi|ap)?$`,
+  `(?i)^(?:redacted|masked)`,
+  `^\$[({]`,
+  `(?i)^(?:<[^>]+>|\{\{.*}}|_+|x+|\.\.\.)$`
+])
+'''

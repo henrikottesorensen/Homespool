@@ -897,6 +897,9 @@
   <data name="Account_ExternalLoginConfirmError" xml:space="preserve">
     <value>Kunne ikke indlæse oplysninger om eksternt login under bekræftelsen.</value>
   </data>
+  <data name="Account_ExternalNoInvite" xml:space="preserve">
+    <value>Dit login lykkedes, men ingen konto her er knyttet til det, og der findes ingen invitation til det. Bed en administrator om at invitere dig.</value>
+  </data>
   <data name="Account_EmailChangeError" xml:space="preserve">
     <value>E-mailen kunne ikke ændres.</value>
   </data>

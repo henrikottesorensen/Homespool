@@ -19,6 +19,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.JsonWebTokens;
 
 using Scalar.AspNetCore;
 
@@ -138,15 +139,23 @@ public static class Program
 
             builder.Services.AddHomespoolDataProtection(builder.Configuration, builder.Environment);
 
+            // This is process-wide and belongs here rather than on a scheme, because what it protects
+            // is the DEFAULT for whatever is registered next. AddOidcAuthentication also sets
+            // MapInboundClaims = false on its own handler, and that is not redundant with this: this
+            // one makes a handler somebody adds later safe without their having to know the rule; that
+            // one states it where a reader of the registration can see it. Neither alone is the rule.
+            JsonWebTokenHandler.DefaultInboundClaimTypeMap.Clear();
+
             builder.Services.AddAuthentication()
-                   .AddPrusaConnectPrinterAuthentication()
-                   .AddApiTokenAuthentication()
-                   .AddXApiKeyAuthentication();
+                            .AddPrusaConnectPrinterAuthentication()
+                            .AddApiTokenAuthentication()
+                            .AddXApiKeyAuthentication()
+                            .AddOidcAuthentication(builder.Configuration);
 
             builder.Services.AddIdentity<Model.Entities.HSUser, IdentityRole<long>>(Services.IdentityConfiguration.Configure)
-                   .AddEntityFrameworkStores<HomespoolDbContext>()
-                   .AddErrorDescriber<Services.HSIdentityErrorDescriber>()
-                   .AddDefaultTokenProviders();
+                            .AddEntityFrameworkStores<HomespoolDbContext>()
+                            .AddErrorDescriber<Services.HSIdentityErrorDescriber>()
+                            .AddDefaultTokenProviders();
 
             builder.Services.ConfigureApplicationCookie(options =>
             {

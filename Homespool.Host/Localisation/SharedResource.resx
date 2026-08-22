@@ -922,6 +922,9 @@
   <data name="Account_ExternalLoginConfirmError" xml:space="preserve">
     <value>Error loading external login information during confirmation.</value>
   </data>
+  <data name="Account_ExternalNoInvite" xml:space="preserve">
+    <value>That sign-in succeeded, but no account here is linked to it and there is no invitation for it. Ask an administrator to invite you.</value>
+  </data>
   <data name="Account_EmailChangeError" xml:space="preserve">
     <value>Error changing email.</value>
   </data>

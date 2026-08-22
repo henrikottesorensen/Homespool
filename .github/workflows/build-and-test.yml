@@ -43,6 +43,13 @@ jobs:
       - name: Start Mailpit with STARTTLS
         run: ./Homespool.Host.IntegrationTest/start-mailpit-tls.sh
 
+      # Brings up dex as a throwaway OpenID Connect provider. Same argument as Mailpit above: without
+      # it ExternalOidcDexTests skip themselves, and they are the only thing anywhere that puts a real
+      # provider - real discovery, real PKCE, a real code exchange - in front of the external-login
+      # handler. Everything else about that handler is a stub agreeing with its own assumptions.
+      - name: Start dex
+        run: ./Homespool.Host.IntegrationTest/start-dex.sh
+
       - name: Test
         run: dotnet test Homespool.slnx --nologo
 
@@ -70,6 +77,10 @@ jobs:
       - name: Stop Mailpit
         if: always()
         run: ./Homespool.Host.IntegrationTest/stop-mailpit-tls.sh
+
+      - name: Stop dex
+        if: always()
+        run: ./Homespool.Host.IntegrationTest/stop-dex.sh
 
   # setup-env.sh is the one thing here an operator runs BEFORE anything is built, on their own
   # machine, with whatever their operating system ships - so it is the one thing that has to be

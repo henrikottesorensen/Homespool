@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -102,6 +103,29 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
     }
 
     /// <summary>
+    /// Configuration values layered over the application's own, for settings that must be in place
+    /// <em>before</em> <c>Program</c> runs rather than overridden afterwards.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Not the same mechanism as the service overrides below, and it cannot be.</b> Those replace a
+    /// registration after the fact, which works for anything resolved from the container. Whether an
+    /// authentication scheme is registered at all is decided while <c>Program</c> is still building the
+    /// pipeline — <c>OidcOptions.IsConfigured</c> is read there — so a post-hoc
+    /// <c>PostConfigure</c> arrives far too late to put a provider into
+    /// <c>GetExternalAuthenticationSchemesAsync</c>.
+    /// </para>
+    /// <para>
+    /// Added as the last source, so it wins over <c>appsettings.json</c>. That is the ordering
+    /// <c>ConfigureAppConfiguration</c> does not guarantee for a callback registered on the builder —
+    /// the trap recorded above, which cost a cycle when the connection string was done that way — but
+    /// it does hold for <c>ConfigureHostConfiguration</c>-style layering applied here, and the tests
+    /// assert the value that arrives rather than trusting it.
+    /// </para>
+    /// </remarks>
+    public Dictionary<string, string?> ConfigurationOverrides { get; } = [];
+
+    /// <summary>
     /// Every service descriptor the real application registered.
     /// </summary>
     /// <remarks>
@@ -147,6 +171,13 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        if (ConfigurationOverrides.Count > 0)
+        {
+            builder.UseConfiguration(new ConfigurationBuilder()
+                                     .AddInMemoryCollection(ConfigurationOverrides)
+                                     .Build());
+        }
+
         builder.ConfigureServices(services =>
         {
             RegisteredServices = [.. services];

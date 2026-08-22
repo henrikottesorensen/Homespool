@@ -112,6 +112,60 @@ public class InvitationService
     }
 
     /// <summary>
+    /// Finds an outstanding invite bound to <paramref name="email"/>, newest first, or <c>null</c>.
+    /// <b>This authenticates nobody.</b> Unlike <see cref="ValidateAsync"/> there is no token to
+    /// verify, so the caller must already have established that the presented address belongs to the
+    /// caller — see <c>OidcOptions.AllowInviteMatchByEmail</c>, which is the only thing that reaches
+    /// here and does so only against a provider-verified address.
+    /// </summary>
+    /// <param name="email">The address to match, compared case-insensitively.</param>
+    /// <param name="cancellationToken">Cancels the query.</param>
+    /// <remarks>
+    /// <para>
+    /// <b>Why this exists at all, rather than the caller reusing <see cref="ValidateAsync"/>:</b> the
+    /// stored hash is salted, so an invite cannot be located from a token — the id has to come from
+    /// the accept link. A caller arriving from an identity provider has neither, which is precisely
+    /// what makes the address the only thing left to match on, and why the trade is documented on the
+    /// option rather than here.
+    /// </para>
+    /// <para>
+    /// <b>Newest first, deliberately.</b> Re-inviting an address that already has an invite outstanding
+    /// is how an administrator corrects one — most usefully its <see cref="Invitation.TeamId"/> — so
+    /// the later row is the one that expresses the current intention. The earlier one stays
+    /// outstanding until it lapses; both are single-use, and spending either spends only itself.
+    /// </para>
+    /// <para>
+    /// <b>No index on <see cref="Invitation.Email"/>, and that is a decision.</b> Adding one means
+    /// regenerating the migration in place, which against a deployed appliance is the whole procedure
+    /// in <c>housekeeping.md</c>. At one-to-tens of printers this table holds tens of rows and the scan
+    /// is free; the moment it does not, the index is a separate and obvious change.
+    /// </para>
+    /// <para>
+    /// <see cref="string.ToUpper()"/> translates to SQLite's <c>upper()</c>, which folds ASCII only —
+    /// the same fold ASP.NET Identity's default normaliser applies to the addresses it stores, so the
+    /// two agree. An address differing only in the case of a non-ASCII character would not match; no
+    /// invite can be issued that way either, since the administrator types the address that is stored.
+    /// </para>
+    /// </remarks>
+    public async Task<Invitation?> FindOutstandingForEmailAsync(string? email, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return null;
+        }
+
+        string normalised = email.Trim().ToUpperInvariant();
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+
+        return await _dbContext.Invitations
+                               .Where(i => i.UsedAt == null
+                                           && i.ExpiresAt > now
+                                           && i.Email.ToUpper() == normalised)
+                               .OrderByDescending(i => i.CreatedAt)
+                               .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    /// <summary>
     /// Stamps <see cref="Invitation.UsedAt"/> to spend the invite, making it single-use. Call this on a
     /// tracked invite (e.g. the one returned by <see cref="ValidateAsync"/>) inside the same transaction
     /// as the account creation it authorises, so a rolled-back accept leaves the invite outstanding.

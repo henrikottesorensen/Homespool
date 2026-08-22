@@ -18,4 +18,11 @@ public static class Schemes
     /// second header on <see cref="ApiToken"/>.
     /// </summary>
     public const string XApiKey = "X-Api-Key";
+
+    /// <summary>
+    /// The external OpenID Connect identity provider, registered only when <see cref="OidcOptions"/>
+    /// carries one. Unlike the schemes above this is a person's sign-in rather than a machine's, so it
+    /// signs into <c>IdentityConstants.ExternalScheme</c> and hands off to <c>Account/ExternalLogin</c>.
+    /// </summary>
+    public const string ExternalOidc = "oidc";
 }

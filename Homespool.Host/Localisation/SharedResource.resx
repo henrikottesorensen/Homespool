@@ -664,6 +664,39 @@
   <data name="Manage_Profile" xml:space="preserve">
     <value>Profile</value>
   </data>
+  <data name="Manage_RemoveLogin" xml:space="preserve">
+    <value>Remove provider</value>
+  </data>
+  <data name="Manage_LinkedLogins" xml:space="preserve">
+    <value>Linked sign-in providers</value>
+  </data>
+  <data name="Manage_AddAnotherLogin" xml:space="preserve">
+    <value>Link a sign-in provider</value>
+  </data>
+  <data name="Manage_ExternalLoginLinked" xml:space="preserve">
+    <value>That provider is now linked to your account.</value>
+  </data>
+  <data name="Manage_ExternalLoginLinkError" xml:space="preserve">
+    <value>That provider could not be linked to your account.</value>
+  </data>
+  <data name="Manage_ExternalLoginRemoved" xml:space="preserve">
+    <value>That provider is no longer linked to your account.</value>
+  </data>
+  <data name="Manage_ExternalLoginRemoveError" xml:space="preserve">
+    <value>That provider could not be removed from your account.</value>
+  </data>
+  <data name="Manage_ExternalLoginSwappedForPassword" xml:space="preserve">
+    <value>That provider is no longer linked, and you now sign in with the password you just set.</value>
+  </data>
+  <data name="Manage_RemoveLastLoginHeading" xml:space="preserve">
+    <value>Remove this provider</value>
+  </data>
+  <data name="Manage_RemoveLastLoginExplanation" xml:space="preserve">
+    <value>This is the only way you sign in, so removing it means choosing a password first. Both happen together: you will sign in with the password from then on.</value>
+  </data>
+  <data name="Manage_RemoveLoginAndSetPassword" xml:space="preserve">
+    <value>Set the password and remove the provider</value>
+  </data>
   <data name="Manage_ExternalLogins" xml:space="preserve">
     <value>External logins</value>
   </data>

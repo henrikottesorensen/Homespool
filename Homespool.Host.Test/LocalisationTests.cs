@@ -421,7 +421,6 @@ public sealed class LocalisationTests
             "Save",                     // a form button and the language picker's own
             "Profile",                  // the nav entry and the page's heading
             "Camera streaming",         // ditto - Nav_LiveView and LiveView_Title
-            "Manage your account",      // the nav tooltip and the page title
             "Printer certificate",      // the nav tooltip and the page title
             "Resend email confirmation", // the link and the page it leads to
             "Workshop",                 // an example team name and an example camera name

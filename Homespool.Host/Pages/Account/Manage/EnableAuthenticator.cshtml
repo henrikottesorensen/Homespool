@@ -2,11 +2,10 @@
 @model EnableAuthenticatorModel
 @{
     ViewData["Title"] = Localiser["TwoFactor_ConfigureAppTitle"].Value;
-    ViewData["ActivePage"] = ManageNavPages.TwoFactorAuthentication;
 }
 
 <partial name="_StatusMessage" for="StatusMessage" />
-<h3>@ViewData["Title"]</h3>
+<h1>@ViewData["Title"]</h1>
 <div>
     <p>@Localiser["TwoFactor_Steps"]</p>
     <ol class="list">

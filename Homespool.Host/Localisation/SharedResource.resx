@@ -746,11 +746,9 @@
   <data name="Account_ClickToLogIn" xml:space="preserve">
     <value>click here to log in</value>
   </data>
-  <data name="Manage_AccountTitle" xml:space="preserve">
-    <value>Manage your account</value>
-  </data>
-  <data name="Manage_AccountSubtitle" xml:space="preserve">
-    <value>Change your account settings</value>
+  <data name="Manage_AccountMenu" xml:space="preserve">
+    <value>your username</value>
+    <comment>Names the header menu in a sentence read by somebody signed out, who cannot be shown the name the menu actually carries.</comment>
   </data>
   <data name="Cert_Title" xml:space="preserve">
     <value>Printer certificate</value>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" fill="none" stroke="currentColor" color="#278ED3" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Bed slinger 3D printer">
+  <!-- base -->
+  <rect x="18" y="75" width="60" height="9" rx="3" fill="currentColor" fill-opacity="0.12"/>
+  <circle cx="69" cy="79.5" r="2.5" fill="currentColor" stroke="none"/>
+  <!-- gantry, broken where the bed passes -->
+  <path d="M24 56 V27 H72 V56"/>
+  <!-- carriage and nozzle -->
+  <rect x="38" y="30" width="20" height="12" rx="2" fill="currentColor" fill-opacity="0.12" stroke-width="4"/>
+  <path d="M41 42 H55 V45 L50 51 H46 L41 45 Z" fill="currentColor" stroke="none"/>
+  <!-- part on the bed -->
+  <rect x="42" y="56.5" width="12" height="5" rx="1" fill="currentColor" stroke="none"/>
+  <!-- bed, resting on the base, wider than the frame -->
+  <rect x="8" y="64" width="80" height="6" rx="2" fill="currentColor" fill-opacity="0.12" stroke-width="5"/>
+</svg>

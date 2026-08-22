@@ -4,6 +4,12 @@
 @using Microsoft.AspNetCore.Mvc.ViewEngines
 @inject IWebHostEnvironment Environment
 @inject ICompositeViewEngine Engine
+
+@* For the build stamp in the footer, which is shown to signed-in users only. IsSignedIn rather than
+   User.Identity.IsAuthenticated: this application authenticates printers and API clients under their
+   own schemes as well, and this is asking specifically whether a person is signed in. Same call
+   _LoginPartial makes. *@
+@inject SignInManager<HSUser> SignInManager
 <!DOCTYPE html>
 @* CurrentUICulture, not CurrentCulture: this attribute describes the language of the text, which is
    the resource half. The two carry the same value here - Localisation/Registration.cs sets both from
@@ -90,7 +96,8 @@
         </main>
     </div>
     <footer class="footer border-top pl-3 text-muted">
-        <div class="container">
+        <div class="container d-flex justify-content-between align-items-center">
+            <div>
 @*  A range, not a single year, and not DateTime.Now.Year: it says when the work was done rather
     than what today's date is. Started over the 2025 holidays; nearly all of it is 2026. Bump the
     second year when a year sees work.
@@ -111,6 +118,23 @@
             @if (foundPrivacy != null)
             {
                 <a asp-area="" asp-page="/Privacy">@Localiser["Nav_Privacy"]</a>
+            }
+            </div>
+@*  Which build is serving this page, for somebody looking at a deployment rather than at a terminal.
+    `--version` on the binary remains the fuller answer and the scriptable one; this is the glanceable
+    half, so the commit is abbreviated the way git abbreviates it.
+
+    SIGNED-IN ONLY, and that is the whole reason this is wrapped rather than just placed. This layout
+    renders on the anonymous sign-in and registration pages, so anything unguarded here is public on
+    an internet-facing deployment - the standing assumption in notes/internet-exposure.md. A version
+    number alone would have been defensible in public; an exact commit is not, because it names which
+    known defects apply. Nothing is rendered at all when signed out, rather than something vaguer:
+    a placeholder would only invite making it precise again later.
+
+    Not localised: a version and a commit are machine text, and there is no word here to translate. *@
+            @if (SignInManager.IsSignedIn(User))
+            {
+                <span class="ms-3 small text-nowrap">@BuildInformation.Summary</span>
             }
         </div>
     </footer>

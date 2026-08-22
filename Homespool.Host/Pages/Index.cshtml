@@ -5,7 +5,34 @@
     ViewData["Title"] = Localiser["Home_Title"].Value;
 }
 
-<div class="text-center">
-    <h1 class="display-4">Homespool</h1>
-    <p>@Localiser["Home_Tagline"]</p>
-</div>
+@if (!Model.SignedIn)
+{
+    @* The holding page, unchanged. A visitor who is not signed in has no printers to be shown and
+       no way for us to know whose they would be. *@
+    <div class="text-center">
+        <h1 class="display-4">Homespool</h1>
+        <p>@Localiser["Home_Tagline"]</p>
+    </div>
+}
+else
+{
+    <h1 class="visually-hidden">@ViewData["Title"]</h1>
+
+    <div class="d-flex align-items-baseline justify-content-between mb-3">
+        <h2 class="h4 mb-0">@Localiser["Home_YourPrinters"]</h2>
+        <a asp-page="/Printers/Index">@Localiser["Home_AllPrinters"]</a>
+    </div>
+
+    @* Polled, for the reason printer-page.md §1 exists: a front page left open on a wall display is
+       exactly the thing that goes quietly stale. Ten seconds rather than the status card's two - this
+       is a plaque saying "Printing", not a temperature climbing, and six printers' worth of it. *@
+    <div data-live-region
+         data-live-url="@Url.Page("Index", "Tiles")"
+         data-live-interval="10000">
+        <partial name="_PrinterShortcuts" model="Model" />
+    </div>
+}
+
+@section Scripts {
+    <script src="~/js/live-region.js" asp-append-version="true"></script>
+}

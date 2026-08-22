@@ -572,6 +572,15 @@
   <data name="Home_Tagline" xml:space="preserve">
     <value>Din egen printserver til 3D-print. Modellerne forlader aldrig dine maskiner.</value>
   </data>
+  <data name="Home_YourPrinters" xml:space="preserve">
+    <value>Dine printere</value>
+  </data>
+  <data name="Home_AllPrinters" xml:space="preserve">
+    <value>Alle printere</value>
+  </data>
+  <data name="Home_NoPrintersShown" xml:space="preserve">
+    <value>Ingen printere at vise.</value>
+  </data>
   <data name="Account_AcceptInvitation" xml:space="preserve">
     <value>Acceptér invitation</value>
   </data>

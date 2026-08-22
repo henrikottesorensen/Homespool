@@ -1,0 +1,59 @@
+@* Fully qualified: Printers.IndexModel is also in scope via the using below, and "IndexModel" alone
+   is ambiguous between the two. *@
+@model Homespool.Host.Pages.IndexModel
+@using Homespool.Host.Pages.Printers
+@*
+    The front page's tiles. Rendered inline on first load and again on every poll, so everything it
+    reads must come from OnGetTilesAsync - printer-page.md §6e, the rule a half-extracted partial
+    already cost us once.
+*@
+@if (Model.Shortcuts.Count == 0)
+{
+    <p class="text-body-secondary">
+        @if (Model.HasAnyPrinter)
+        {
+            @* Reachable only if the tile cap is ever set to zero; kept so the fragment always says
+               something rather than swapping in a blank. *@
+            @Localiser["Home_NoPrintersShown"]
+        }
+        else
+        {
+            @Localiser["Printers_None"]
+        }
+    </p>
+
+    @if (!Model.HasAnyPrinter)
+    {
+        <a class="btn btn-primary" asp-page="/Printers/Add">@Localiser["Printers_Add"]</a>
+    }
+}
+else
+{
+    <div class="printer-shortcuts">
+        @foreach (PrinterShortcut shortcut in Model.Shortcuts)
+        {
+            <a class="printer-shortcut" asp-page="/Printers/Detail" asp-route-uuid="@shortcut.Printer.Uuid">
+                <span class="printer-shortcut-drawing">
+                    <partial name="_PrinterIcon" model="shortcut.FormFactor" />
+                </span>
+
+                @* The plaque: who it is, and what it is doing. Small on purpose - the drawing is the
+                   thing you aim at, and this is what you read once you have. *@
+                <span class="printer-plaque">
+                    <span class="printer-plaque-name typed-name">@shortcut.Name</span>
+
+                    @if (shortcut.Connected)
+                    {
+                        <span class="badge @PrinterStatusBadge.For(shortcut.LiveStatus)">@Model.StatusText(shortcut.LiveStatus)</span>
+                    }
+                    else
+                    {
+                        @* Hollow, because absence is a shape rather than a severity - a printer
+                           switched off overnight is offline and perfectly well. visual-identity.md §4b. *@
+                        <span class="badge @PrinterStatusBadge.Absent">@Localiser["PrinterStatus_Offline"]</span>
+                    }
+                </span>
+            </a>
+        }
+    </div>
+}

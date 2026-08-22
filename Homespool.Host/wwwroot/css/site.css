@@ -499,3 +499,78 @@ body.camera-maximised-open {
   font-size: 1.125rem;
   padding: .25rem 0;
 }
+
+/* ---------------------------------------------------------------------------------------------
+   The front page's printer tiles.
+
+   A big drawing you aim at, and a small plaque you read once you have. Same rule as the block
+   above: Bootstrap variables rather than literals, so both themes are answered at once. */
+
+/* auto-fit rather than a fixed column count, so the same grid serves one printer and six without a
+   media query per step. The 11rem floor is what keeps the drawing big enough to be the thing you
+   click at - below it the tile degrades into a list row with a picture, which is what this replaced. */
+.printer-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 1rem;
+}
+
+/* The whole tile is the link, not the name inside it - a big target is the entire point of a big
+   drawing, and a person aiming at the printer should not land on dead card. */
+.printer-shortcut {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .75rem;
+  padding: 1.25rem 1rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius-lg);
+  text-decoration: none;
+  color: inherit;
+  background-color: var(--bs-body-bg);
+  transition: border-color .15s ease-in-out, background-color .15s ease-in-out;
+}
+
+.printer-shortcut:hover,
+.printer-shortcut:focus-visible {
+  border-color: var(--bs-primary);
+  background-color: var(--bs-tertiary-bg);
+}
+
+/* currentColor in the drawing resolves against this, so the printer takes the body's ink and follows
+   both themes for free - the same inheritance _BrandMark.cshtml is inlined to get. Secondary rather
+   than full-strength body: the plaque under it is the part carrying meaning, and a black printer
+   outshouts its own status badge. */
+.printer-shortcut-drawing {
+  color: var(--bs-secondary-color);
+  line-height: 0;
+}
+
+.printer-shortcut:hover .printer-shortcut-drawing,
+.printer-shortcut:focus-visible .printer-shortcut-drawing {
+  color: var(--bs-primary);
+}
+
+/* Sized here rather than on the svg, so the tile decides how big its printer is and the drawing
+   stays a drawing. */
+.printer-icon {
+  width: 5.5rem;
+  height: 5.5rem;
+}
+
+.printer-plaque {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .35rem;
+  text-align: center;
+  min-width: 0;
+}
+
+/* The name wraps rather than truncating. A printer called "Core One (workshop)" losing its second
+   half to an ellipsis is the case that matters, and it is exactly the one where the tail is the part
+   telling two machines apart. */
+.printer-plaque-name {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}

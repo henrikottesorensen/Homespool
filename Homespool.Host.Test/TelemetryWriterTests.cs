@@ -1447,6 +1447,48 @@ public sealed class TelemetryWriterTests : IDisposable
     }
 
     /// <summary>
+    /// Unloading clears <see cref="Printer.LoadedMaterial"/> rather than leaving it naming filament
+    /// that is no longer in the machine.
+    /// </summary>
+    /// <remarks>
+    /// <b>The writeback cache had to learn the difference between "clear it" and "nothing
+    /// pending".</b> <c>PendingLoadedMaterial</c> was a <c>string?</c>, where null meant nothing to
+    /// write - so an unload, which arrives as present-with-null, was indistinguishable from silence
+    /// and the column kept its old value for ever. It is a <c>Field</c> now for that reason.
+    /// </remarks>
+    [Fact]
+    public async Task UnloadingClearsLoadedMaterialOnThePrinterRow()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE", Material = "PLA" });
+
+        bool populated = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+            Printer printer = await context.Printers.SingleAsync();
+            return printer.LoadedMaterial == "PLA";
+        }, TimeSpan.FromSeconds(5));
+
+        populated.Should().BeTrue("the printer had filament in it to begin with");
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE", Material = "---" });
+
+        // Assert
+        bool cleared = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+            Printer printer = await context.Printers.SingleAsync();
+            return printer.LoadedMaterial is null;
+        }, TimeSpan.FromSeconds(5));
+
+        cleared.Should().BeTrue("the sentinel says the filament is gone, and the column must say so too");
+    }
+
+    /// <summary>
     /// A printer reporting a material keeps persisting across flushes, not just on the first one.
     /// </summary>
     /// <remarks>

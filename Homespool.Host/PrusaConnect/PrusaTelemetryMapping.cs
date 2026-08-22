@@ -105,7 +105,7 @@ public static class PrusaTelemetryMapping
             TargetBedTemperature = telemetry.TargetBedTemperature,
             Speed = telemetry.Speed,
             Flow = telemetry.Flow,
-            Material = telemetry.Material,
+            Material = MaterialField(telemetry.Material),
             XAxis = telemetry.XAxis,
             YAxis = telemetry.YAxis,
             ZAxis = telemetry.ZAxis,
@@ -209,6 +209,44 @@ public static class PrusaTelemetryMapping
     /// of an <c>INFO</c> is worth having even if one entry is nonsense, and this is a wire nobody
     /// here controls.
     /// </remarks>
+    /// <summary>
+    /// The <c>material</c> cell, with firmware's no-filament sentinel turned into an authoritative
+    /// empty rather than a material name.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Three cases, and conflating any two of them is a bug</b>:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>
+    /// <b>Field omitted</b> (null here, since firmware never sends <c>material: null</c>) - the
+    /// message said nothing, so keep last-known: <see cref="Field{T}.Absent"/>.
+    /// </description></item>
+    /// <item><description>
+    /// <b><c>"---"</c></b> - the message said <em>there is no filament</em>, which is a statement
+    /// rather than a silence: <see cref="Field{T}.Null"/>, present with a null value.
+    /// </description></item>
+    /// <item><description><b>A name</b> - present, that value.</description></item>
+    /// </list>
+    /// <para>
+    /// <b>The trap is the middle one, and the implicit conversion walks straight into it.</b>
+    /// <c>Field&lt;T&gt;</c>'s <c>string?</c> operator maps null to <em>Absent</em> - the coalesce
+    /// idiom, and right for every field where absence carries no meaning. Stripping the sentinel to
+    /// null and letting that conversion run would make "the filament is gone" indistinguishable
+    /// from "the message didn't mention it", so <see cref="Telemetry.PrinterLiveStateMerger"/> would
+    /// keep the old material for ever: unload PLA, and the page goes on saying PLA.
+    /// </para>
+    /// </remarks>
+    private static Field<string?> MaterialField(string? reported)
+    {
+        if (reported is null)
+        {
+            return Field<string?>.Absent;
+        }
+
+        return LoadedFilament.Of(reported) is { } material ? Field<string?>.Of(material) : Field<string?>.Null;
+    }
+
     private static List<PrinterToolUpdate>? ToToolUpdates(Dictionary<string, InfoToolDTO>? tools)
     {
         if (tools is null)
@@ -225,10 +263,7 @@ public static class PrusaTelemetryMapping
                 continue;
             }
 
-            // "---" is firmware's sentinel for no filament set, not a material name - see InfoToolDTO.
-            string? material = string.IsNullOrWhiteSpace(tool.Material) || tool.Material == "---" ?
-                null :
-                tool.Material;
+            string? material = LoadedFilament.Of(tool.Material);
 
             updates.Add(new PrinterToolUpdate(toolNumber,
                                               tool.NozzleDiameter > 0 ? tool.NozzleDiameter : null,

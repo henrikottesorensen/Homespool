@@ -140,6 +140,59 @@ public class PrinterLiveStateMergerTests
     }
 
     /// <summary>
+    /// Unloading clears the material, because firmware's no-filament sentinel is a statement rather
+    /// than a silence.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The bug this exists to prevent is silent and long-lived.</b> <c>"---"</c> is what a printer
+    /// reports once its filament is out. Mapping it to a bare null would meet
+    /// <c>Field&lt;T&gt;</c>'s implicit conversion, which reads null as <em>Absent</em> - the
+    /// coalesce idiom - so the merge would skip it and the row would keep naming PLA for as long as
+    /// the printer stayed connected. The page would go on offering to unload an empty machine.
+    /// </para>
+    /// <para>
+    /// So the assertion is specifically that it becomes <b>null</b>: not <c>"---"</c>, which would
+    /// mean the sentinel had leaked past the edge, and not <c>"PLA"</c>, which would mean it had been
+    /// mistaken for silence.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheNoFilamentSentinelClearsTheMaterialRatherThanBeingKeptOrIgnored()
+    {
+        // Arrange
+        PrinterLiveState state = new() { PrinterId = 1 };
+
+        Merge(state, new TelemetryDTO { Status = "IDLE", Material = "PLA" }, DateTimeOffset.UtcNow);
+        state.Material.Should().Be("PLA", "the printer had filament in it to begin with");
+
+        // Act
+        Merge(state, new TelemetryDTO { Status = "IDLE", Material = "---" }, DateTimeOffset.UtcNow);
+
+        // Assert
+        state.Material.Should().BeNull("the printer said the filament is gone, which is not silence");
+    }
+
+    /// <summary>
+    /// A message that says nothing about the material keeps the last-known one - the other half of
+    /// the three-way distinction above, and what stops every partial message clearing the column.
+    /// </summary>
+    [Fact]
+    public void AMessageThatOmitsTheMaterialKeepsTheLastKnownOne()
+    {
+        // Arrange
+        PrinterLiveState state = new() { PrinterId = 1 };
+
+        Merge(state, new TelemetryDTO { Status = "IDLE", Material = "PETG" }, DateTimeOffset.UtcNow);
+
+        // Act
+        Merge(state, new TelemetryDTO { Status = "PRINTING", Progress = 10 }, DateTimeOffset.UtcNow);
+
+        // Assert
+        state.Material.Should().Be("PETG", "the message was silent about the material, not empty of it");
+    }
+
+    /// <summary>
     /// Firmware renders <c>chamber</c> as one atomic block - present or absent as a whole - so a
     /// present block overwrites every field in it, unlike the flat fields above which coalesce
     /// individually.

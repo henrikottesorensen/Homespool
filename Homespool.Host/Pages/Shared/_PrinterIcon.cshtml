@@ -1,66 +1,68 @@
 @model Homespool.Host.Pages.PrinterFormFactor
 @*
-    A printer, drawn here rather than fetched from anywhere.
+    A printer, in one of two form factors: an open bed slinger, or a closed box.
+
+    Geometry is printer-bedslinger.svg and printer-enclosed.svg verbatim, inlined here rather than
+    referenced with <img> - the same trade _BrandMark.cshtml makes, and for the same reason. Both
+    render brand blue either way; what inlining buys is that currentColor resolves against the page,
+    so the tile can lift the hue on a dark ground the way the link and navbar rules do. An <img>
+    would sit at the one fixed blue baked into the file, which is right in light mode only.
+
+    Three things are dropped from the source files on the way in. color="#278ED3", because it would
+    pin the blue and defeat exactly that - site.css puts the colour back on .printer-shortcut-drawing
+    instead. Then role="img" and its aria-label, because the plaque underneath already names the
+    printer and says what it is doing; keeping them would make a screen reader announce "Bed slinger
+    3D printer" before every name.
 
     OURS, and it has to be. Homespool talks to other people's machines and is an independent
     alternative to the software that ships with them - visual-identity.md §2 records the house blue
-    being chosen as "not Prusa's orange" on exactly that reasoning. A recognisable per-model
-    silhouette would be somebody else's product design with our stroke width on it, and a photograph
-    would be worse. So: two generic shapes, an open frame and a closed box, both of which a dozen
-    manufacturers build.
+    being chosen as "not Prusa's orange" on exactly that reasoning. Both shapes are generic: many
+    manufacturers build each.
 
-    The 96 viewBox and stroke-width 4 are the mark's own geometry (_BrandMark.cshtml), so these sit
-    beside it as the same family of drawing rather than as clip art that wandered in.
-
-    NO ids, defs or masks anywhere in here, unlike the mark. This renders once per tile and ids are
-    document-global once inlined - the mark's comment records that trap, and six tiles on a page is
-    precisely where it would bite. Occlusion is done by not overlapping anything instead.
-
-    aria-hidden, because the plaque underneath already names the printer and says what it is doing.
-    The drawing tells a sighted reader which tile to look at; it carries no fact of its own, and
-    labelling it would make a screen reader announce "printer" before every name.
+    No ids, defs or masks, unlike the mark. This renders once per tile and ids are document-global
+    once inlined; the mark's own comment records that trap, and six tiles on a page is where it would
+    bite.
 *@
 @if (Model == Homespool.Host.Pages.PrinterFormFactor.Enclosed)
 {
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"
-         fill="none" stroke="currentColor" stroke-width="4"
+         fill="none" stroke="currentColor" stroke-width="6"
          stroke-linecap="round" stroke-linejoin="round"
          aria-hidden="true" focusable="false" class="printer-icon printer-icon-enclosed">
-        @* The box is the whole distinction, so it is the outermost and heaviest shape. *@
-        <rect x="12" y="14" width="72" height="72" rx="6" />
-        @* A lid seam, which is what stops the box reading as a plain crate. *@
-        <path d="M12 30 H84" />
-        @* Gantry carriage and nozzle, hanging where a person expects them. *@
-        <rect x="39" y="40" width="18" height="11" rx="3" />
-        <path d="M48 51 V57" />
-        @* The bed, short of the walls so it reads as inside the box rather than as a shelf - the
-           opposite of the open cut below, where the bed deliberately runs out past the frame. *@
-        <path d="M26 70 H64" />
-        @* The door seam, full height from the lid down. A floating handle stub was tried here first
-           and read as a stray tick beside the carriage at tile size; a seam that meets both edges is
-           unambiguous, and it is what says this box is a thing you open rather than a crate. *@
-        <path d="M70 30 V86" />
+        @* cabinet *@
+        <rect x="14" y="9" width="68" height="76" rx="9" />
+        @* lid seam and screen *@
+        <path d="M14 23 H82" />
+        <rect x="56" y="13" width="16" height="6" rx="2" stroke-width="3.5" />
+        @* door window *@
+        <rect x="25" y="31" width="46" height="42" rx="4" fill="currentColor" fill-opacity="0.08" stroke-width="5" />
+        @* gantry, carriage and nozzle *@
+        <path d="M29 36 H67" stroke-width="4" />
+        <rect x="42" y="37" width="12" height="7" rx="1.5" fill="currentColor" fill-opacity="0.12" stroke-width="4" />
+        <path d="M43 44 H53 V46 L49.5 51 H46.5 L43 46 Z" fill="currentColor" stroke="none" />
+        @* part on the bed *@
+        <rect x="43" y="58" width="10" height="5" rx="1" fill="currentColor" stroke="none" />
+        @* bed *@
+        <rect x="30" y="63" width="36" height="5" rx="1.5" fill="currentColor" fill-opacity="0.12" stroke-width="4" />
     </svg>
 }
 else
 {
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"
-         fill="none" stroke="currentColor" stroke-width="4"
+         fill="none" stroke="currentColor" stroke-width="6"
          stroke-linecap="round" stroke-linejoin="round"
          aria-hidden="true" focusable="false" class="printer-icon printer-icon-open">
-        @* A portal frame: two uprights and a beam, and deliberately NO floor. An earlier cut had a
-           base bar, which closed the silhouette into a rectangle and made this all but identical to
-           the box above at tile size - the distinction the two drawings exist for, lost. *@
-        <path d="M24 80 V26" />
-        <path d="M72 80 V26" />
-        <path d="M20 26 H76" />
-        @* Carriage on the beam, nozzle under it. *@
-        <rect x="39" y="32" width="18" height="11" rx="3" />
-        <path d="M48 43 V49" />
-        @* The bed, running WIDER than the frame and crossing both uprights. It is the cue that reads
-           as "open" at a glance - a bed that slides out through the sides cannot be in a box - and it
-           borrows the trick the house mark already uses, where the spool is too big for the house and
-           crosses its floor (visual-identity.md §3). *@
-        <path d="M14 66 H82" />
+        @* base *@
+        <rect x="18" y="75" width="60" height="9" rx="3" fill="currentColor" fill-opacity="0.12" />
+        <circle cx="69" cy="79.5" r="2.5" fill="currentColor" stroke="none" />
+        @* gantry, broken where the bed passes *@
+        <path d="M24 56 V27 H72 V56" />
+        @* carriage and nozzle *@
+        <rect x="38" y="30" width="20" height="12" rx="2" fill="currentColor" fill-opacity="0.12" stroke-width="4" />
+        <path d="M41 42 H55 V45 L50 51 H46 L41 45 Z" fill="currentColor" stroke="none" />
+        @* part on the bed *@
+        <rect x="42" y="56.5" width="12" height="5" rx="1" fill="currentColor" stroke="none" />
+        @* bed, resting on the base, wider than the frame *@
+        <rect x="8" y="64" width="80" height="6" rx="2" fill="currentColor" fill-opacity="0.12" stroke-width="5" />
     </svg>
 }

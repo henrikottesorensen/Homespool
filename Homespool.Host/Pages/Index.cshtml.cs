@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Localisation;
 using Homespool.Host.Printing;
+using Homespool.Host.Queue;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -60,6 +61,7 @@ public class IndexModel : PageModel
 
     private readonly PrinterQueryService _printers;
     private readonly PrintHistoryService _history;
+    private readonly PrintQueueService _queue;
     private readonly PrinterConnectionRegistry _connections;
     private readonly PrinterStatusText _statusText;
     private readonly UserManager<HSUser> _userManager;
@@ -67,6 +69,7 @@ public class IndexModel : PageModel
 
     public IndexModel(PrinterQueryService printers,
                       PrintHistoryService history,
+                      PrintQueueService queue,
                       PrinterConnectionRegistry connections,
                       PrinterStatusText statusText,
                       UserManager<HSUser> userManager,
@@ -74,6 +77,7 @@ public class IndexModel : PageModel
     {
         _printers = printers;
         _history = history;
+        _queue = queue;
         _connections = connections;
         _statusText = statusText;
         _userManager = userManager;
@@ -155,6 +159,10 @@ public class IndexModel : PageModel
             _clock.GetUtcNow() - UsageWindow,
             cancellationToken);
 
+        // One grouped count for every tile, rather than a queue read per printer. Six printers would
+        // otherwise be six round trips on a page that refreshes itself every ten seconds.
+        IReadOnlyDictionary<int, int> queued = await _queue.CountByPrinterAsync(ids, cancellationToken);
+
         // Printers you have never used stay in the list rather than being filtered out: a rack of
         // three where you have only ever used two should still show the third, or the front page
         // would hide a printer from the person most likely to be looking for it. They sort last, on
@@ -171,13 +179,38 @@ public class IndexModel : PageModel
                     .ThenByDescending(entry => entry.Usage.LastStartedAt)
                     .ThenBy(entry => entry.Row.Printer.Id)
                     .Take(TileCount)
-                    .Select(entry => new PrinterShortcut(
-                                entry.Row.Printer,
-                                PrinterDisplayName.For(entry.Row.Printer),
-                                _connections.IsConnected(entry.Row.Printer.Id),
-                                entry.Row.LiveState?.Status,
-                                PrinterFormFactors.For(entry.Row.LiveState),
-                                entry.Usage.Jobs))
+                    .Select(entry => ShortcutFor(entry.Row, entry.Usage.Jobs, queued))
                     .ToList();
+    }
+
+    /// <summary>
+    /// One tile, from the printer's row and the two counts gathered for the whole page.
+    /// </summary>
+    /// <remarks>
+    /// <b>What a disconnected printer may still say is the decision here.</b>
+    /// <see cref="PrinterLiveState"/> persists, so every field on it survives the machine being
+    /// switched off - and most of them stop being true the moment it is. Progress and the time left
+    /// are frozen readings of a print nobody can see, so they are dropped; a tile reading "42%,
+    /// 1:12 left" over an <i>Offline</i> badge is a page contradicting itself. The loaded filament is
+    /// kept, because it is the one fact here that does not change while the power is out, and it is
+    /// the thing worth knowing about a printer you are about to walk over to.
+    /// </remarks>
+    private PrinterShortcut ShortcutFor(PrinterWithState row,
+                                        int recentJobs,
+                                        IReadOnlyDictionary<int, int> queued)
+    {
+        bool connected = _connections.IsConnected(row.Printer.Id);
+
+        return new PrinterShortcut(
+            row.Printer,
+            PrinterDisplayName.For(row.Printer),
+            connected,
+            row.LiveState?.Status,
+            PrinterFormFactors.For(row.LiveState),
+            recentJobs,
+            connected ? row.LiveState?.Progress : null,
+            connected ? row.LiveState?.TimeRemaining : null,
+            row.LiveState?.Material,
+            queued.TryGetValue(row.Printer.Id, out int waiting) ? waiting : 0);
     }
 }

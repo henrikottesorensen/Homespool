@@ -581,6 +581,12 @@
   <data name="Home_NoPrintersShown" xml:space="preserve">
     <value>Ingen printere at vise.</value>
   </data>
+  <data name="Home_Queued_One" xml:space="preserve">
+    <value>{0} fil i køen</value>
+  </data>
+  <data name="Home_Queued_Other" xml:space="preserve">
+    <value>{0} filer i køen</value>
+  </data>
   <data name="Account_AcceptInvitation" xml:space="preserve">
     <value>Acceptér invitation</value>
   </data>

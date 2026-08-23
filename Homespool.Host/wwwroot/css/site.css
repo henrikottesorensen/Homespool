@@ -506,18 +506,36 @@ body.camera-maximised-open {
    A big drawing you aim at, and a small plaque you read once you have. Same rule as the block
    above: Bootstrap variables rather than literals, so both themes are answered at once. */
 
-/* auto-fit rather than a fixed column count, so the same grid serves one printer and six without a
-   media query per step. The 11rem floor is what keeps the drawing big enough to be the thing you
-   click at - below it the tile degrades into a list row with a picture, which is what this replaced. */
+/* Wrapping flex rather than a grid, and that is the whole decision here.
+
+   What the tiles have to do is: fill the row on a phone, grow to a comfortable reading width, and
+   then STOP, leaving the slack on the right rather than stretching two printers across a monitor.
+   CSS grid cannot say that. `repeat(auto-fit, minmax(11rem, 1fr))` stretches without limit, which is
+   how two tiles came to take half a window each. `repeat(auto-fill, minmax(11rem, 16rem))` looks like
+   the fix and is not: auto-fill decides the column COUNT from the 11rem floor and the width available,
+   then divides that width between however many tracks it made - so at 1100px it lays five tracks and
+   sizes them to 199px, and the cap never comes into it. The tiles came out smaller than the four-tile
+   layout they were supposed to match.
+
+   Flex sizes the item instead of the track, so the two numbers mean what they say: grow from 11rem,
+   stop at 16rem (see .printer-shortcut). Wrapping and the leftover space fall out of it. */
 .printer-shortcuts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 1rem;
 }
 
 /* The whole tile is the link, not the name inside it - a big target is the entire point of a big
    drawing, and a person aiming at the printer should not land on dead card. */
 .printer-shortcut {
+  /* Grow from 11rem, stop at 16rem. The floor keeps the drawing big enough to aim at - below it the
+     tile degrades into a list row with a picture, which is what this replaced. The ceiling is a
+     measurement rather than a preference: it is what a tile came out at with four across a 1100px
+     window under the old rule, which was the width that looked right. Shrinking is allowed, so a
+     narrow phone still fits two rather than dropping to one. */
+  flex: 1 1 11rem;
+  max-width: 16rem;
+
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -537,27 +555,41 @@ body.camera-maximised-open {
   background-color: var(--bs-tertiary-bg);
 }
 
-/* currentColor in the drawing resolves against this, so the printer takes the body's ink and follows
-   both themes for free - the same inheritance _BrandMark.cshtml is inlined to get. Secondary rather
-   than full-strength body: the plaque under it is the part carrying meaning, and a black printer
-   outshouts its own status badge. */
+/* currentColor in the drawing resolves against this - the inheritance _BrandMark.cshtml is inlined
+   to get. Brand blue, which is how these were drawn: the source files carry color="#278ED3" as a
+   presentation attribute, and inlining strips it, so the colour has to be put back here or the
+   drawings arrive as whatever ink the tile happens to have.
+
+   Body ink was tried first, on the theory that six coloured illustrations would outshout the status
+   badges under them. They do not - the badges are small, saturated and semantic, and the drawings
+   are large, tinted and all the same hue, so the eye separates them by kind rather than by weight. */
 .printer-shortcut-drawing {
-  color: var(--bs-secondary-color);
+  color: var(--homespool-blue);
   line-height: 0;
 }
 
-.printer-shortcut:hover .printer-shortcut-drawing,
-.printer-shortcut:focus-visible .printer-shortcut-drawing {
-  color: var(--bs-primary);
+/* Lifted on a dark ground, matching what the link and navbar rules above do with the same hue. Not
+   tokenised, because those two are not either - one literal in three places is the existing shape,
+   and inventing a token for the third would leave the other two behind. */
+:where([data-bs-theme="dark"]) .printer-shortcut-drawing {
+  color: #75b9e6;
 }
 
 /* Sized here rather than on the svg, so the tile decides how big its printer is and the drawing
-   stays a drawing. */
+   stays a drawing.
+
+   96px rather than the 88 this started at, which is a decision about someone else's drawing rather
+   than a taste one: these are illustration-scale cuts drawn for 96-256px, at stroke-width 6 with a
+   second tonal layer in fill-opacity. Below their floor the tints stop separating from the strokes
+   and the whole thing silts up. If a smaller tile is ever wanted, it needs a simplified cut - the
+   way the mark has one - not this one scaled down. */
 .printer-icon {
-  width: 5.5rem;
-  height: 5.5rem;
+  width: 6rem;
+  height: 6rem;
 }
 
+/* Fills whatever height the tile was stretched to, so the row pinned to its bottom has something to
+   be pinned against - see .printer-plaque-stats-foot. */
 .printer-plaque {
   display: flex;
   flex-direction: column;
@@ -565,6 +597,8 @@ body.camera-maximised-open {
   gap: .35rem;
   text-align: center;
   min-width: 0;
+  width: 100%;
+  flex: 1 1 auto;
 }
 
 /* The name wraps rather than truncating. A printer called "Core One (workshop)" losing its second
@@ -573,4 +607,51 @@ body.camera-maximised-open {
 .printer-plaque-name {
   font-weight: 500;
   overflow-wrap: anywhere;
+}
+
+/* The progress bar. Full width rather than inset, so it shares its edges with the stat rows beneath
+   and the three of them read as one block. Shorter than Bootstrap's default: at the default height it
+   competes with the status badge above it, and the badge is the thing that should win. */
+.printer-plaque-progress {
+  width: 100%;
+  height: .375rem;
+}
+
+/* Everything under the badge: the time left and the percentage, then the queue and the filament. Two
+   rows, each with one value against the left edge and one against the right.
+
+   Quiet and small, deliberately. These answer "and how is it getting on", asked after the badge has
+   already said what the printer is doing - so they sit below it in weight as well as in position. A
+   tile where four facts all shout has no glance left in it. */
+.printer-plaque-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem .5rem;
+  width: 100%;
+  font-size: .8125rem;
+  color: var(--bs-secondary-color);
+}
+
+/* The queue-and-filament row, pinned to the bottom of the tile rather than left to follow whatever
+   is above it.
+
+   Without this it rides up: a printer that is not printing has no progress bar and no percentage, so
+   its filament lands directly under the badge while a printing neighbour's sits two rows lower. The
+   same fact in two places on one screen is exactly what a person scanning a rack has to re-find each
+   time. Anchored to the bottom, every tile carries it in the same spot - and because the grid
+   stretches tiles to a common height, that spot is a line across the row. */
+.printer-plaque-stats-foot {
+  margin-top: auto;
+}
+
+/* The right-hand value, pushed rather than placed - margin-left rather than justify-content:
+   space-between, and the difference is the case where its partner is absent.
+
+   Both of these rows routinely render one value: firmware often has no time estimate mid-print, and
+   an offline printer shows its filament with nothing queued behind it. Under space-between a lone
+   value falls back to the left edge, so the filament would sit left on one tile and right on the next
+   depending on whether anything was queued. margin-left: auto keeps each value in its own column
+   whatever else is missing. */
+.printer-plaque-stat-end {
+  margin-left: auto;
 }

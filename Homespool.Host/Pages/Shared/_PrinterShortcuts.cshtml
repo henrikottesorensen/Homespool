@@ -1,7 +1,12 @@
 @* Fully qualified: Printers.IndexModel is also in scope via the using below, and "IndexModel" alone
    is ambiguous between the two. *@
 @model Homespool.Host.Pages.IndexModel
+@using System.Globalization
 @using Homespool.Host.Pages.Printers
+
+@{
+    var culture = CultureInfo.CurrentCulture;
+}
 @*
     The front page's tiles. Rendered inline on first load and again on every poll, so everything it
     reads must come from OnGetTilesAsync - printer-page.md §6e, the rule a half-extracted partial
@@ -52,6 +57,48 @@ else
                            switched off overnight is offline and perfectly well. visual-identity.md §4b. *@
                         <span class="badge @PrinterStatusBadge.Absent">@Localiser["PrinterStatus_Offline"]</span>
                     }
+
+                    @* Progress carries the bar; the percentage and the time left sit under it as
+                       words. The bar alone is the glance, the words are for when the glance was not
+                       enough - which is why they are quiet and it is not. *@
+                    @if (shortcut.Progress is { } progress)
+                    {
+                        <span class="progress printer-plaque-progress" role="progressbar"
+                              aria-label="@Localiser["Printers_Progress"]"
+                              aria-valuenow="@progress" aria-valuemin="0" aria-valuemax="100">
+                            <span class="progress-bar" style="width: @progress.ToString(CultureInfo.InvariantCulture)%"></span>
+                        </span>
+
+                        <span class="printer-plaque-stats">
+                            @if (shortcut.TimeRemaining is { } remaining)
+                            {
+                                @* Firmware does not always have an estimate, even mid-print. The
+                                   percentage keeps its right-hand column when it does not, rather
+                                   than sliding left into the gap - see .printer-plaque-stat-end. *@
+                                <span>@Localiser["Printers_TimeLeft", TimeSpan.FromSeconds(remaining).ToString("g", culture)]</span>
+                            }
+
+                            <span class="printer-plaque-stat-end">@progress.ToString(culture)%</span>
+                        </span>
+                    }
+
+                    @* Always rendered, even with nothing to say. It is pinned to the bottom of the
+                       tile so the filament sits in one place across a rack, and a tile that omitted
+                       the row entirely would let the row above it drop into that place instead. *@
+                    <span class="printer-plaque-stats printer-plaque-stats-foot">
+                        @if (shortcut.QueuedCount > 0)
+                        {
+                            <span>@Plural.Format(Localiser, "Home_Queued", shortcut.QueuedCount)</span>
+                        }
+
+                        @* Kept for a disconnected printer too - see IndexModel.ShortcutFor. What is
+                           loaded does not change while the power is off, which is also why this is
+                           the value that most often appears on its own. *@
+                        @if (!string.IsNullOrWhiteSpace(shortcut.Material))
+                        {
+                            <span class="printer-plaque-stat-end typed-name">@shortcut.Material</span>
+                        }
+                    </span>
                 </span>
             </a>
         }

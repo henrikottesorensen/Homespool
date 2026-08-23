@@ -167,6 +167,37 @@ public sealed class FrontPageTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
+    /// <b>A disconnected printer shows its filament but not its progress.</b> The live state persists,
+    /// so every reading on it outlives the connection; progress and the time left describe a print
+    /// nobody can watch and are dropped, while what filament is loaded stays true with the power off.
+    /// </summary>
+    /// <remarks>
+    /// This is the one rule on the tile that a reader would most reasonably assume the other way, and
+    /// the failure it prevents is a page contradicting itself - "42%" above an <i>Offline</i> badge.
+    /// </remarks>
+    [Fact]
+    public async Task DropsProgressForADisconnectedPrinterButKeepsItsFilament()
+    {
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "front-stale@example.com");
+
+        (int printer, _) = SeedPrinters(user.Id, "Switched Off", "Spare");
+        SeedLiveState(printer, chamber: null, progress: 42, timeRemaining: 4320, material: "PETG");
+
+        // Act
+        string page = await (await client.GetAsync("/", TestContext.Current.CancellationToken))
+            .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        page.Should().Contain("PETG", "what is loaded stays true while the power is off");
+        page.Should().NotContain("42%", "progress on a printer nobody can reach is a frozen reading");
+        page.Should().NotContain("printer-plaque-progress", "and the bar goes with it");
+
+        client.Dispose();
+    }
+
+    /// <summary>
     /// Tiles are scoped to the caller. Somebody else's printer is not yours to see, and a front page
     /// is a careless place to leak the shape of a rack.
     /// </summary>
@@ -234,7 +265,11 @@ public sealed class FrontPageTests : IAsyncLifetime, IDisposable
         context.SaveChanges();
     }
 
-    private void SeedLiveState(int printerId, float? chamber)
+    private void SeedLiveState(int printerId,
+                               float? chamber,
+                               int? progress = null,
+                               int? timeRemaining = null,
+                               string? material = null)
     {
         using IServiceScope scope = _factory.Services.CreateScope();
         HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
@@ -244,6 +279,9 @@ public sealed class FrontPageTests : IAsyncLifetime, IDisposable
             PrinterId = printerId,
             NozzleTemperature = 25,
             ChamberTemperature = chamber,
+            Progress = progress,
+            TimeRemaining = timeRemaining,
+            Material = material,
         });
 
         context.SaveChanges();

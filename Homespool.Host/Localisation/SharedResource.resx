@@ -489,7 +489,7 @@
     <value>Copy</value>
   </data>
   <data name="Printers_SlicerHelp" xml:space="preserve">
-    <value>PrusaSlicer can send straight to this printer. Under {0}, set {1} to {2}, paste this as the hostname, and use a {3} as the API key. {4} adds the file to the queue above rather than starting it.</value>
+    <value>PrusaSlicer can send straight to this printer. Under {0}, set {1} to {2}, paste this as the hostname, and use a {3} as the API key. Pressing {4} will enqueue the print in Homespool.</value>
     <comment>The braces are PrusaSlicer's own menu labels and a link, kept English: they have to match what a person sees in the slicer, which this application does not author.</comment>
   </data>
   <data name="Printers_PreheatWarning" xml:space="preserve">

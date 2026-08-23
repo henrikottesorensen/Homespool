@@ -303,7 +303,15 @@
 
     @* PrusaSlicer's own menu labels stay English: they have to match what a person sees in the
        slicer, which this application neither authors nor translates. Only the sentence around them
-       is ours. *@
+       is ours.
+
+       Three treatments, because they are three different kinds of thing: <em> for a menu path you
+       navigate, <strong> for a setting and the value you give it, and <kbd><samp> for the button you
+       press. All bold, a reader has to work out which one is the control.
+
+       The nesting is the spec's, not decoration: a bare <kbd> is text you TYPE, while a <samp>
+       inside one is input based on text the system showed you - the names of menus, menu items, and
+       buttons on screen. MDN's own example for it is a button. *@
     <p>
         @Html.Raw(string.Format(
             System.Globalization.CultureInfo.CurrentCulture,
@@ -312,7 +320,7 @@
             "<strong>Host Type</strong>",
             "<strong>OctoPrint</strong>",
             $"<a href=\"{Url.Page("/Account/Manage/ApiTokens")}\">{Localiser["Printers_ApiTokenLink"].Value}</a>",
-            "<strong>Upload and Print</strong>"))
+            "<kbd><samp>Upload and Print</samp></kbd>"))
     </p>
 
     <div class="input-group mb-3" data-copy>

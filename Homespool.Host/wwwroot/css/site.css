@@ -102,6 +102,40 @@ code {
   border-radius: 0.25rem;
 }
 
+/* A control in another application's interface - PrusaSlicer's Upload and Print button. Distinct
+   from the <strong> beside it, which names a setting or the value you give it: a reader has to be
+   able to tell the thing they press from the thing they type into.
+
+   Written for <kbd><samp>, which is the spec's markup for this and not a flourish: a bare <kbd> is
+   text somebody TYPES, and a <samp> nested in one is input based on text the system presented -
+   menus, menu items, and buttons on screen. Both are styled, because a page may legitimately carry
+   either.
+
+   Bootstrap paints kbd inverted - body background on body ink - which is a keyboard key, and a black
+   slab mid-sentence at that. This is the <code> treatment above plus a border, because an edge is
+   what a button has and a literal value does not. Every property Bootstrap sets is set here so none
+   of its defaults leak through, and the family is inherited: this is a label somebody reads in
+   another program's UI, not a monospaced token. */
+kbd {
+  padding: 0.1em 0.4em;
+  font-family: inherit;
+  font-size: 0.95em;
+  color: var(--bs-emphasis-color);
+  background-color: var(--bs-secondary-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.25rem;
+}
+
+/* The nested <samp> is the label itself, so it carries none of the chrome and none of the monospace
+   the browser gives <samp> on its own - the box around it is already saying what it is. */
+kbd samp {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  background: none;
+  padding: 0;
+}
+
 /* Not inside a <pre> block, though — there the tint would band across the whole listing. */
 pre code {
   background-color: transparent;

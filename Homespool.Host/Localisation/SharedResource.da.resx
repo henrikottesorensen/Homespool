@@ -473,7 +473,7 @@
     <value>Kopiér</value>
   </data>
   <data name="Printers_SlicerHelp" xml:space="preserve">
-    <value>PrusaSlicer kan sende direkte til denne printer. Under {0} skal du sætte {1} til {2}, indsætte dette som værtsnavn og bruge et {3} som API-nøgle. {4} lægger filen i køen ovenfor i stedet for at starte den.</value>
+    <value>PrusaSlicer kan sende direkte til denne printer. Under {0} skal du sætte {1} til {2}, indsætte dette som værtsnavn og bruge et {3} som API-nøgle. Når du trykker på {4}, sættes printet i kø i Homespool.</value>
     <comment>The braces are PrusaSlicer's own menu labels and a link, kept English: they have to match what a person sees in the slicer, which this application does not author.</comment>
   </data>
   <data name="Printers_PreheatWarning" xml:space="preserve">

@@ -235,6 +235,12 @@ public class PrintHistoryService
             PrintHoldReason.FileExistsUnknownSize => MessageKey.For(
                 "Queue_HoldFileExistsUnknownSize", hold.FileName),
 
+            // The one hold that names an uncertainty rather than a condition, so the sentence has to
+            // say what was not established and leave the decision with the reader. It carries no
+            // numbers: there are none to give.
+            PrintHoldReason.PrintStartUnresolved => MessageKey.For(
+                "Queue_HoldPrintStartUnresolved", hold.FileName),
+
             // Undefined is not a hold, and neither is null. Both answer "nothing is in the way"
             // rather than inventing a sentence for a value nothing writes.
             _ => null,

@@ -25,6 +25,19 @@ public sealed class FakeDevice
     public int? JobId { get; private set; }
 
     /// <summary>
+    /// What the running job is printing, so <c>SEND_JOB_INFO</c> can name it. Null when no job
+    /// exists, and null again once one ends.
+    /// </summary>
+    /// <remarks>
+    /// <b>The only thing a printer will tell you about whose print is running</b>, which is why the
+    /// fake has to carry it: telemetry has a <c>job_id</c> and no file name, so a server working out
+    /// whether a print is its own has nothing else to go on. Cleared when the job ends because
+    /// firmware's own answer for a remembered job renders a state and no path - see
+    /// <see cref="EventMessageBuilder.BuildJobInfo"/>.
+    /// </remarks>
+    public string? JobPath { get; private set; }
+
+    /// <summary>
     /// The one transfer this device may have in progress, or null.
     /// </summary>
     /// <remarks>
@@ -121,9 +134,10 @@ public sealed class FakeDevice
     };
 
     /// <summary>Puts the device into a printing state with the given job - test/scenario setup.</summary>
-    public void StartPrint(int jobId)
+    public void StartPrint(int jobId, string? path = null)
     {
         JobId = jobId;
+        JobPath = path;
         State = DeviceState.Printing;
     }
 
@@ -154,7 +168,8 @@ public sealed class FakeDevice
     /// models only the state gate - the reason string a caller sees is identical either way.
     /// </para>
     /// </remarks>
-    public int? TryStartPrint()
+    /// <param name="path">What it is printing, so the job can be named when asked about.</param>
+    public int? TryStartPrint(string? path = null)
     {
         if (State is not (DeviceState.Idle or DeviceState.Ready or DeviceState.Stopped or DeviceState.Finished))
         {
@@ -162,6 +177,7 @@ public sealed class FakeDevice
         }
 
         JobId = _nextJobId++;
+        JobPath = path;
         State = DeviceState.Printing;
 
         return JobId;
@@ -185,6 +201,10 @@ public sealed class FakeDevice
         }
 
         State = DeviceState.Finished;
+
+        // The id survives - the finished screen still names the job - but the path does not, because
+        // firmware's answer for a job it merely remembers renders a FIN_OK state and nothing else.
+        JobPath = null;
 
         return true;
     }
@@ -234,6 +254,7 @@ public sealed class FakeDevice
 
         State = DeviceState.Stopped;
         JobId = null;
+        JobPath = null;
 
         return true;
     }
@@ -277,6 +298,7 @@ public sealed class FakeDevice
 
         State = DeviceState.Idle;
         JobId = null;
+        JobPath = null;
 
         return true;
     }

@@ -349,6 +349,104 @@ public class FirmwareFaithfulPolicyTests
              .GetProperty("free_space").GetInt64().Should().Be(4096);
     }
 
+    // ---------- SEND_JOB_INFO (planner.cpp, and the four render fixtures) ----------
+
+    /// <summary>
+    /// The running job names the file it is printing - which is the only way anything learns whose
+    /// print a printer is running.
+    /// </summary>
+    /// <remarks>
+    /// Telemetry carries a <c>job_id</c> and a status and no file name at all, so a server working out
+    /// whether a print it commanded and never heard back about is its own has nothing else to ask.
+    /// See <c>notes/print-queue.md</c>, "A timeout is not a negative answer".
+    /// </remarks>
+    [Fact]
+    public void SendJobInfoNamesTheFileTheRunningJobIsPrinting()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        _device.Storage.AddFile("/usb/BENCHY~1.BGC", 1024, 0);
+        policy.Answer(StartPrintCommand(50, "/usb/BENCHY~1.BGC"), _device);
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(SendJobInfoCommand(51, 1), _device);
+
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("event").GetString().Should().Be("JOB_INFO");
+        reply.RootElement.GetProperty("job_id").GetInt32().Should().Be(1, "the id is at the root, not in data");
+
+        JsonElement data = reply.RootElement.GetProperty("data");
+        data.GetProperty("state").GetString().Should().Be("PRINTING", "the job's own state, not the machine's");
+        data.GetProperty("path").GetString().Should().Be("/usb/BENCHY~1.BGC");
+        data.GetProperty("display_name").GetString().Should().Be("BENCHY~1.BGC");
+    }
+
+    /// <summary>A printer with no job at all refuses, and that refusal is a definite answer.</summary>
+    /// <remarks>
+    /// <b>The only <i>definite</i> negative on this wire.</b> A status can be a telemetry interval out
+    /// of date and a timeout says nothing at all; this is the machine stating in an answer of its own
+    /// that there is nothing running, which is what lets a server conclude a print command was never
+    /// acted on.
+    /// </remarks>
+    [Fact]
+    public void SendJobInfoOnAnIdlePrinterAnswersNoJobInProgress()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(SendJobInfoCommand(52, 7), _device);
+
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("event").GetString().Should().Be("REJECTED");
+        reply.RootElement.GetProperty("reason").GetString().Should().Be("No job in progress");
+    }
+
+    /// <summary>An id that is not the current job is refused as such, not answered about.</summary>
+    [Fact]
+    public void SendJobInfoAboutAnotherJobAnswersJobIdDoesNotMatch()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        _device.StartPrint(9, "/usb/A.BGC");
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(SendJobInfoCommand(53, 8), _device);
+
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("event").GetString().Should().Be("REJECTED");
+        reply.RootElement.GetProperty("reason").GetString().Should().Be("Job ID doesn't match");
+    }
+
+    /// <summary>
+    /// A job the printer only <i>remembers</i> answers with a state and <b>no name</b> - and that
+    /// distinction is the whole reason this command is implemented faithfully rather than
+    /// conveniently.
+    /// </summary>
+    /// <remarks>
+    /// <b>A fake that always answered definitely would let a loop that guesses pass.</b> Two of
+    /// firmware's four answers here settle nothing, and a server deciding whether to adopt a running
+    /// print has to treat "there was such a job" as different from "that job is yours". Firmware's own
+    /// fixture renders <c>{"state": "FIN_OK"}</c> and nothing else.
+    /// </remarks>
+    [Fact]
+    public void SendJobInfoAboutAFinishedJobAnswersWithoutNamingAFile()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        _device.StartPrint(9, "/usb/A.BGC");
+        _device.FinishPrint().Should().BeTrue();
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(SendJobInfoCommand(54, 9), _device);
+
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("event").GetString().Should().Be("JOB_INFO");
+
+        JsonElement data = reply.RootElement.GetProperty("data");
+        data.GetProperty("state").GetString().Should().Be("FIN_OK");
+        data.TryGetProperty("path", out _).Should().BeFalse("a remembered job has no file to name");
+        data.TryGetProperty("display_name", out _).Should().BeFalse();
+    }
+
+    private static ServerCommandFrame SendJobInfoCommand(uint id, int jobId)
+    {
+        return RawJsonFrame(id,
+                            $$$"""{"command": "SEND_JOB_INFO", "args": [], "kwargs": {"job_id": {{{jobId}}} }}""");
+    }
+
     private static ServerCommandFrame StartPrintCommand(uint id, string path)
     {
         // The wire shape CommandWireEncoder actually produces: an empty "args" array beside the

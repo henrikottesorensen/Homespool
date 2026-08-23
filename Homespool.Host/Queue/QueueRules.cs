@@ -87,6 +87,11 @@ public static class QueueRules
             {
                 PrintHoldReason.AbrasiveFilamentNeedsHardenedNozzle => QueueWaitReason.IncompatibleWithPrinter,
                 PrintHoldReason.IncompatiblePrinterModel => QueueWaitReason.IncompatibleWithPrinter,
+
+                // Kept out of the transfer branch for the same reason as the two above, and more
+                // sharply: the file is already on the drive and may already have printed. Re-offering
+                // it is the one thing this hold exists to prevent.
+                PrintHoldReason.PrintStartUnresolved => QueueWaitReason.PrintStartUnresolved,
                 _ => QueueWaitReason.InsufficientSpace,
             });
         }

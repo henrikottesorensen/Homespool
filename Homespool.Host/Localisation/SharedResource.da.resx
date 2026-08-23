@@ -1674,6 +1674,9 @@
   <data name="Queue_HoldFileExistsUnknownSize" xml:space="preserve">
     <value>Printeren har allerede en fil, der hedder {0}, og ville ikke oplyse dens størrelse, så det kan ikke bekræftes, at det er den samme. Slet den på printeren, eller omdøb denne.</value>
   </data>
+  <data name="Queue_HoldPrintStartUnresolved" xml:space="preserve">
+    <value>Printeren blev bedt om at printe {0} og sagde aldrig, om den gjorde det. Den printer noget, den ikke vil oplyse navnet på, så køen holder her frem for at risikere at printe det samme to gange. Se efter på printeren: annuller dette print, hvis det allerede er kørt, eller sæt det i kø igen, hvis det ikke er.</value>
+  </data>
   <data name="Queue_WarnAbrasiveNeedsHardened" xml:space="preserve">
     <value>{0} er slicet til abrasivt filament, og printeren melder ingen hærdet dyse. Den er sat i kø, men den vil ikke starte, før printeren melder, at en hærdet dyse er monteret.</value>
   </data>

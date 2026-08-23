@@ -80,4 +80,31 @@ public enum PrintHoldReason
     /// the older machine's file on the newer one is fine and never reaches here.
     /// </remarks>
     IncompatiblePrinterModel = 5,
+
+    /// <summary>
+    /// A <c>START_PRINT</c> went unanswered, and the printer would not say afterwards whether it had
+    /// taken it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The one hold entered because we do not know something, rather than because we do.</b>
+    /// Ordinarily an unanswered <c>START_PRINT</c> resolves in a tick or two by asking
+    /// <c>SEND_JOB_INFO</c> about the job telemetry reports - see
+    /// <see cref="PrintState.Unconfirmed"/>. This is what is left when that fails for
+    /// <c>QueueAdvancer.StartUnresolvableAfter</c> against a printer that is connected and reporting
+    /// a job it will not describe.
+    /// </para>
+    /// <para>
+    /// <b>Holding is the only safe answer, and it is not obvious.</b> Advancing might print the file
+    /// a second time, which is the defect this whole path exists for; failing the entry would throw
+    /// away a print that may never have run. So the queue stops with a sentence, and a person -
+    /// who can walk to the machine, which is more than the loop can do - decides.
+    /// </para>
+    /// <para>
+    /// <b>Its exit is a person, like the name collisions and unlike the space hold.</b> Cancelling
+    /// the entry moves the queue past it; queueing the file again clears it, because asking for it a
+    /// second time is somebody saying they have looked.
+    /// </para>
+    /// </remarks>
+    PrintStartUnresolved = 6,
 }

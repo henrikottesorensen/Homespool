@@ -1729,6 +1729,10 @@
     <value>The printer already has a file called {0} and would not say how big it is, so it cannot be confirmed as this one. Delete it at the printer, or rename this one.</value>
     <comment>Deliberately not merged with Queue_HoldFileExists: one says the file is demonstrably not ours, this one says it cannot be confirmed either way, and a reader acts differently on each.</comment>
   </data>
+  <data name="Queue_HoldPrintStartUnresolved" xml:space="preserve">
+    <value>The printer was asked to print {0} and never said whether it did. It is printing something it will not name, so this is holding rather than risk printing the same thing twice. Check the printer: cancel this print if it already ran, or queue it again if it did not.</value>
+    <comment>{0} is the file name. The only hold about something we do not know rather than something we do, so it says what was not established and hands the decision over. Both actions are named because either can be right and nothing here can tell which.</comment>
+  </data>
   <data name="Queue_WarnAbrasiveNeedsHardened" xml:space="preserve">
     <value>{0} is sliced for abrasive filament and this printer reports no hardened nozzle. It has been queued, but it will not start until the printer reports that a hardened nozzle is fitted.</value>
     <comment>Queued rather than refused: fitting a hardened nozzle and letting the printer say so releases it with nothing pressed here.</comment>

@@ -40,6 +40,19 @@ public class QueueRulesTests
         return data;
     }
 
+    /// <summary>Every reason the loop can hold for, so the theories below cannot miss one.</summary>
+    public static TheoryData<QueueWaitReason> AllWaitReasons()
+    {
+        TheoryData<QueueWaitReason> data = [];
+
+        foreach (QueueWaitReason reason in Enum.GetValues<QueueWaitReason>())
+        {
+            data.Add(reason);
+        }
+
+        return data;
+    }
+
     /// <summary>
     /// <b>A print starts from <c>Ready</c> and from nothing else.</b> Exhaustive over the enum, so a
     /// state added later fails here rather than quietly becoming printable.
@@ -242,6 +255,31 @@ public class QueueRulesTests
     }
 
     /// <summary>
+    /// A file whose print start was never resolved is held under its own reason - and emphatically not
+    /// under the one that routes back into the transfer path.
+    /// </summary>
+    /// <remarks>
+    /// <b>The mapping is where this could go wrong quietly.</b> An unrecognised hold falls through to
+    /// <see cref="QueueWaitReason.InsufficientSpace"/>, which the advancer treats as an instruction to
+    /// re-ask the drive about space and try the transfer again - harmless for a name collision, and
+    /// exactly wrong here: the file is already on the drive and may already have printed, so
+    /// re-offering it is the one thing this hold exists to prevent.
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(AllStates))]
+    public void AnUnresolvedPrintStartHoldsUnderItsOwnReason(PrinterStatus status)
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(status, arrived: true, path: "/usb/A~1.BGC") with
+            {
+                HoldReason = PrintHoldReason.PrintStartUnresolved,
+            });
+
+        action.Kind.Should().Be(QueueActionKind.Wait);
+        action.Reason.Should().Be(QueueWaitReason.PrintStartUnresolved);
+    }
+
+    /// <summary>
     /// The page stays quiet where something else already speaks: an active print announces itself, and
     /// the space banner carries its own numbers.
     /// </summary>
@@ -251,6 +289,7 @@ public class QueueRulesTests
     [InlineData(QueueWaitReason.PrinterNotAvailable, true)]
     [InlineData(QueueWaitReason.InsufficientSpace, false)]
     [InlineData(QueueWaitReason.PrintStarting, false)]
+    [InlineData(QueueWaitReason.PrintStartUnresolved, false)]
     public void OnlyTheReasonsNothingElseCoversGetASentence(QueueWaitReason reason, bool expected)
     {
         MessageKey? sentence = QueueWaitDescription.For(QueueAction.Wait(reason), "benchy.bgcode");
@@ -266,18 +305,18 @@ public class QueueRulesTests
     /// <b>Every member, so a new reason cannot be added without deciding this about it.</b> The
     /// defect this guards was not a wrong sentence, it was a right one rendered as grey footnote text
     /// while somebody sat wondering why their queued print had not started.
+    /// <para>
+    /// Driven from the enum rather than a written-out list, which is what makes that sentence true:
+    /// the list said "every member" and would have gone on passing while a new one was added beside
+    /// it.
+    /// </para>
     /// </remarks>
     [Theory]
-    [InlineData(QueueWaitReason.Undefined, false)]
-    [InlineData(QueueWaitReason.Transferring, false)]
-    [InlineData(QueueWaitReason.AwaitingPrinterPath, false)]
-    [InlineData(QueueWaitReason.PrintStarting, false)]
-    [InlineData(QueueWaitReason.IncompatibleWithPrinter, false)]
-    [InlineData(QueueWaitReason.InsufficientSpace, false)]
-    [InlineData(QueueWaitReason.PrinterNotAvailable, true)]
-    public void OnlyAPrinterThatIsNotReadyIsWaitingOnAPerson(QueueWaitReason reason, bool expected)
+    [MemberData(nameof(AllWaitReasons))]
+    public void OnlyAPrinterThatIsNotReadyIsWaitingOnAPerson(QueueWaitReason reason)
     {
-        QueueWaitDescription.NeedsAPerson(reason).Should().Be(expected);
+        QueueWaitDescription.NeedsAPerson(reason)
+                            .Should().Be(reason == QueueWaitReason.PrinterNotAvailable);
     }
 
     /// <summary>No wait at all is not a wait on anybody.</summary>

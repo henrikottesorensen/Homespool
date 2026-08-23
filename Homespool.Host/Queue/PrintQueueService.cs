@@ -125,6 +125,25 @@ public class PrintQueueService
         };
 
         _dbContext.QueuedPrints.Add(queued);
+
+        // Queueing a file again is the deliberate act that answers an unresolved print start
+        // (PrintHoldReason.PrintStartUnresolved): the loop could not establish whether a previous
+        // START_PRINT of this file took, and asking for it now is somebody saying they have looked.
+        // Scoped to that one reason - the other holds are conditions on the printer, and none of
+        // them is cleared by wanting the file more.
+        PrintFileOnPrinter? unresolved = await _dbContext.PrintFilesOnPrinters
+                                                         .SingleOrDefaultAsync(
+                                                             row => row.PrinterId == printerId
+                                                                    && row.PrintFileId == file.Id
+                                                                    && row.HoldReason == PrintHoldReason.PrintStartUnresolved,
+                                                             cancellationToken);
+
+        if (unresolved is not null)
+        {
+            unresolved.HoldReason = null;
+            unresolved.BlockedAt = null;
+        }
+
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         // After the save, so the loop cannot wake and read a queue this row is not in yet. Somebody

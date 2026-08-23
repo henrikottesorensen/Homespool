@@ -301,6 +301,64 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
+    /// A five-tool printer reporting nothing picked is refused, and <b>nothing reaches the socket</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Driven end to end through a real slot block</b> rather than by seeding a column: the fake
+    /// emits <c>"active": 0</c> the way firmware renders <c>NoTool</c>, so what is being tested is the
+    /// mapping and the gate together. Before this the fake clamped <c>active</c> to a minimum of one
+    /// and could not express the state at all.
+    /// </para>
+    /// <para>
+    /// <b>The empty command list is the assertion.</b> Firmware would answer <c>M702</c>
+    /// <c>Accepted</c> and then return having done nothing, reporting only on serial — so a refusal
+    /// raised after the frame went out would still leave the page claiming an unload that never
+    /// happened.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AToolchangerWithNothingPickedIsRefusedBeforeAnythingIsSent()
+    {
+        SyntheticTelemetrySource source = new()
+        {
+            PrintingInterval = TimeSpan.FromMilliseconds(50),
+            IdleInterval = TimeSpan.FromMilliseconds(50),
+            Readings = new TelemetryReadings(Material: "PLA", Tools: 5, ActiveTool: 0),
+        };
+
+        (FakePrinterClient fake, Task run, int printerId, long userId) =
+            await StartConnectedFakeAsync(new FakePrinterOptions { TelemetrySource = source });
+
+        await using (fake)
+        {
+            bool reported = await WaitUntilAsync(async () =>
+            {
+                using IServiceScope inner = _factory.Services.CreateScope();
+                HomespoolDbContext context = inner.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+                PrinterLiveState? live = await context.PrinterLiveStates
+                                                      .AsNoTracking()
+                                                      .SingleOrDefaultAsync(s => s.PrinterId == printerId,
+                                                                            TestContext.Current.CancellationToken);
+                return live?.ActiveSlot == 0;
+            }, TimeSpan.FromSeconds(5));
+
+            reported.Should().BeTrue("the fake must actually report nothing picked for this to mean anything");
+
+            using IServiceScope scope = _factory.Services.CreateScope();
+            PrinterFilamentService filament = scope.ServiceProvider.GetRequiredService<PrinterFilamentService>();
+
+            Func<Task> unload = () => filament.UnloadAsync(printerId, Caller.Unscoped(userId), CancellationToken.None);
+
+            await unload.Should().ThrowAsync<NoToolPickedException>();
+
+            fake.ReceivedCommands.Should().BeEmpty("the refusal has to come before the frame, not after it");
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
     /// Cooling down is the same path with an explicit zero, which is what turns a heater off.
     /// </summary>
     [Fact]

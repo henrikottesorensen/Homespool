@@ -58,6 +58,7 @@ public class DetailModel : PageModel
     private readonly PrintQueueService _queueService;
     private readonly PrinterPreheatService _preheat;
     private readonly PrinterFilamentService _filament;
+    private readonly ToolTargetReader _tools;
     private readonly PrintHistoryService _historyService;
     private readonly UserNameLookup _names;
     private readonly QueueSnapshotReader _snapshots;
@@ -79,6 +80,7 @@ public class DetailModel : PageModel
                        PrintQueueService queueService,
                        PrinterPreheatService preheat,
                        PrinterFilamentService filament,
+                       ToolTargetReader tools,
                        PrintHistoryService historyService,
                        UserNameLookup names,
                        QueueSnapshotReader snapshots,
@@ -100,6 +102,7 @@ public class DetailModel : PageModel
         _queueService = queueService;
         _preheat = preheat;
         _filament = filament;
+        _tools = tools;
         _historyService = historyService;
         _names = names;
         _snapshots = snapshots;
@@ -398,7 +401,18 @@ public class DetailModel : PageModel
     /// this, on this page's standing rule that a button which is not rendered is not a check.
     /// </para>
     /// </remarks>
-    public bool UnloadShown => Connected && LoadedMaterial is not null;
+    public bool UnloadShown => Connected && LoadedMaterial is not null && Tools.ReachesAHotend;
+
+    /// <summary>
+    /// Which tool this printer's toolless gcode would act on.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not a permission check and not the guard</b> — the services re-establish it. This decides
+    /// whether the heater and filament controls are offered at all, and what they are called: on a
+    /// toolchanger with nothing picked they would reach no hotend, and <c>M140</c> would still heat
+    /// the bed. See <c>notes/toolchangers.md</c> §3d.
+    /// </remarks>
+    public ToolTarget Tools { get; private set; } = ToolTarget.SingleTool;
 
     [TempData]
     public string? StatusMessage { get; set; }
@@ -583,6 +597,7 @@ public class DetailModel : PageModel
         Bed = HeaterReading.For(statistics.LiveState?.BedTemperature, statistics.LiveState?.TargetBedTemperature);
 
         LoadedMaterial = LoadedFilament.Of(statistics.LiveState?.Material);
+        Tools = await _tools.ReadAsync(statistics.Printer.Id, cancellationToken);
 
         ActivePrint = await _historyService.GetActiveAsync(statistics.Printer.Id, caller, cancellationToken);
 
@@ -858,7 +873,11 @@ public class DetailModel : PageModel
         {
             UnloadOutcome outcome = await _filament.UnloadAsync(printer.Id, caller, cancellationToken);
 
-            return (_localiser["Printers_UnloadStarted", outcome.Material].Value, true);
+            // Names the tool when there is one to name. The service reports which head it acted on
+            // rather than the page inferring it, so the confirmation cannot disagree with the guard.
+            return outcome.Tool is { } tool ?
+                (_localiser["Printers_UnloadStartedOnTool", outcome.Material, tool].Value, true) :
+                (_localiser["Printers_UnloadStarted", outcome.Material].Value, true);
         }, cancellationToken);
     }
 
@@ -945,8 +964,14 @@ public class DetailModel : PageModel
             (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
-                                      or CommandResponseTimedOutException or CommandSendTimedOutException)
+                                      or CommandResponseTimedOutException or CommandSendTimedOutException
+                                      or NoToolPickedException or FilamentTypeUnknownException
+                                      or PrinterHasQueuedWorkException)
         {
+            // The last three are refusals about what the printer is holding rather than what it is
+            // doing, and every one of them is reachable from a rendered control: the queued-work case
+            // needs only a Ready printer with something in its queue. Uncaught they would be a 500
+            // where a sentence was written for them.
             (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
 

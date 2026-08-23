@@ -41,6 +41,11 @@ public sealed record TelemetryReadings(
     int Tools = 1,
 
     // The active tool, 1-based, clamped into range against Tools when a message is built.
+    //
+    // ZERO IS A REAL VALUE, not a missing one: firmware renders "no tool picked" as 0 (render.cpp,
+    // active_slot's NoTool arm), and on a toolchanger that is the resting state rather than an edge
+    // case - M702 itself docks to NoTool when it finishes. Set 0 to reproduce the printer a
+    // gcode command with no T argument will silently decline to act on.
     int ActiveTool = 1,
 
     // MMU progress code and command character - params.progress_code and a single char, emitted only

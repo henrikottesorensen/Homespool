@@ -113,12 +113,13 @@ public sealed class DetailModelTests : IDisposable
 
                                 // Constructed rather than substituted: these tests are about the page, and a real one
                                 // that never gets a connected printer simply refuses, which is the honest default here.
-                                new PrinterPreheatService(commands: null!, snapshots),
+                                new PrinterPreheatService(commands: null!, snapshots, new ToolTargetReader(context)),
 
                                 // Same reasoning as the preheat service above: real, with a null
                                 // command service, so a guard that stops firing fails at the send
                                 // rather than quietly pulling filament out of something.
-                                new PrinterFilamentService(commands: null!, snapshots, context),
+                                new PrinterFilamentService(commands: null!, snapshots, new ToolTargetReader(context), context),
+                                new ToolTargetReader(context),
                                 new PrintHistoryService(context, access, snapshots, new UserNameLookup(context)),
                                 new UserNameLookup(context),
                                 snapshots,
@@ -310,6 +311,64 @@ public sealed class DetailModelTests : IDisposable
         // Assert. The printer is not connected in this fixture, so UnloadShown is false throughout -
         // LoadedMaterial is the half this decides, and the half the label reads from.
         model.LoadedMaterial.Should().Be(offered ? material : null);
+    }
+
+    /// <summary>
+    /// Preheat and cool down are refused on a toolchanger with nothing picked, and this is the pair
+    /// whose failure would be <em>partial</em>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b><c>M140</c> is the bed and has no tool, so it lands regardless; <c>M104</c> declines.</b>
+    /// Sending the pair would heat the bed and not the nozzle - or, cooling, leave the nozzle hot
+    /// while the page reported both heaters off - with the printer answering the frame
+    /// <c>Accepted</c> either way. <c>notes/toolchangers.md</c> §3d.
+    /// </para>
+    /// <para>
+    /// <c>PreheatPartiallyAppliedException</c> was written for that shape and cannot reach it: it
+    /// guards a second <em>command</em> failing after the first was acted on, and here the two lines
+    /// are one frame.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task HeaterControlsAreRefusedWhenNoToolIsPicked()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, _, Team team, _) = await NewModelAsync(context);
+
+        Printer printer = NewPrinter(team.Id);
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        context.PrinterLiveStates.Add(new PrinterLiveState
+        {
+            PrinterId = printer.Id,
+            Status = PrinterStatus.Idle,
+            Material = "PLA",
+            ActiveSlot = 0,
+            LastSeenAt = DateTimeOffset.UtcNow,
+        });
+
+        for (int tool = 1; tool <= 5; tool++)
+        {
+            context.PrinterTools.Add(new PrinterTool { PrinterId = printer.Id, ToolNumber = tool });
+        }
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        await model.OnPostPreheatAsync(printer.Uuid, "PETG", CancellationToken.None);
+
+        // Assert
+        model.StatusSuccess.Should().BeFalse("the bed would heat and the nozzle would not");
+        model.StatusMessage.Should().Contain("No tool is picked");
+
+        // Act - cooling has the same shape and the worse consequence
+        await model.OnPostCooldownAsync(printer.Uuid, CancellationToken.None);
+
+        // Assert
+        model.StatusSuccess.Should().BeFalse("cooling would leave the nozzle hot and say otherwise");
     }
 
     private static Printer NewPrinter(int teamId, string? name = null)

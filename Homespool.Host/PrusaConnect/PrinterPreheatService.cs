@@ -53,11 +53,15 @@ public class PrinterPreheatService
 {
     private readonly PrinterCommandService _commands;
     private readonly QueueSnapshotReader _snapshots;
+    private readonly ToolTargetReader _tools;
 
-    public PrinterPreheatService(PrinterCommandService commands, QueueSnapshotReader snapshots)
+    public PrinterPreheatService(PrinterCommandService commands,
+                                 QueueSnapshotReader snapshots,
+                                 ToolTargetReader tools)
     {
         _commands = commands;
         _snapshots = snapshots;
+        _tools = tools;
     }
 
     /// <summary>
@@ -101,6 +105,17 @@ public class PrinterPreheatService
         if (!PhysicalChangeRules.IsAllowed(snapshot.Status))
         {
             throw new PrinterBusyException(snapshot.Status);
+        }
+
+        // Both lines are toolless, and only one of them survives that on a toolchanger: M140 is the
+        // bed and always applies, while M104 silently declines when no tool is picked. Sending the
+        // pair anyway would heat the bed and not the nozzle - or, cooling, leave the nozzle hot while
+        // reporting both heaters off. The pair is atomic on the wire and half-applied in the machine.
+        ToolTarget target = await _tools.ReadAsync(printerId, cancellationToken);
+
+        if (!target.ReachesAHotend)
+        {
+            throw new NoToolPickedException(printerId);
         }
 
         // One command carrying both lines. Two commands cannot work: gcode is answered Accepted when

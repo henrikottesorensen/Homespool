@@ -284,6 +284,7 @@ public static class Program
                             .AddScoped<PrusaConnect.ClaimAttemptLimiter>()
                             .AddScoped<PrusaConnect.MessageDispatcher>()
                             .AddScoped<Printing.PrinterCommandService>()
+                            .AddScoped<Printing.ToolTargetReader>()
                             .AddScoped<PrusaConnect.PrinterPreheatService>()
                             .AddScoped<PrusaConnect.PrinterFilamentService>();
 

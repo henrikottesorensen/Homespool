@@ -271,6 +271,68 @@ public sealed class PrinterFilamentServiceTests : IDisposable
         await unload.Should().ThrowAsync<PrinterBusyException>();
     }
 
+    /// <summary>
+    /// A toolchanger with nothing picked is refused, and nothing is sent.
+    /// </summary>
+    /// <remarks>
+    /// <b>The refusal has to come before the frame, not instead of believing it.</b> Firmware would
+    /// answer <c>M702</c> <c>Accepted</c> and then return having done nothing, reporting only to the
+    /// serial console - so a page that sent it would report an unload that never happened. On a
+    /// toolchanger this is the resting state: <c>M702</c> itself docks to <c>NoTool</c> when it
+    /// finishes.
+    /// </remarks>
+    [Fact]
+    public async Task AToolchangerWithNothingPickedIsRefused()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await SeedAsync(context, PrinterStatus.Idle, material: "PLA", activeSlot: 0, toolCount: 5);
+
+        PrinterFilamentService service = NewService(context);
+
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), CancellationToken.None);
+
+        await unload.Should().ThrowAsync<NoToolPickedException>();
+    }
+
+    /// <summary>
+    /// A toolchanger with a tool picked is allowed, because the command reaches that tool correctly.
+    /// </summary>
+    /// <remarks>
+    /// Reaching the material check is the assertion, as elsewhere here: it sits after the tool gate
+    /// and before anything is sent.
+    /// </remarks>
+    [Fact]
+    public async Task AToolchangerWithAToolPickedGetsPastTheToolGate()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await SeedAsync(context, PrinterStatus.Idle, material: null, activeSlot: 3, toolCount: 5);
+
+        PrinterFilamentService service = NewService(context);
+
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), CancellationToken.None);
+
+        await unload.Should().ThrowAsync<FilamentTypeUnknownException>(
+            "a picked tool is a target, so the tool gate has nothing to refuse");
+    }
+
+    /// <summary>
+    /// A multi-tool printer that has not reported a slot block yet is refused rather than assumed
+    /// safe.
+    /// </summary>
+    [Fact]
+    public async Task AMultiToolPrinterThatHasNotSaidWhichToolIsPickedIsRefused()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await SeedAsync(context, PrinterStatus.Idle, material: "PLA", activeSlot: null, toolCount: 5);
+
+        PrinterFilamentService service = NewService(context);
+
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), CancellationToken.None);
+
+        await unload.Should().ThrowAsync<NoToolPickedException>(
+            "several tools and no word on which is live is not a printer to act on");
+    }
+
     /// <summary>The states a theory on this class declares, read from its own attributes.</summary>
     /// <remarks>
     /// Read rather than restated, so the coverage assertion cannot pass against a stale second copy
@@ -291,6 +353,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         return new PrinterFilamentService(commands: null!,
                                           new QueueSnapshotReader(context, registry, TimeProvider.System),
+                                          new ToolTargetReader(context),
                                           context);
     }
 
@@ -311,7 +374,11 @@ public sealed class PrinterFilamentServiceTests : IDisposable
         return context;
     }
 
-    private static async Task SeedAsync(HomespoolDbContext context, PrinterStatus? status, string? material)
+    private static async Task SeedAsync(HomespoolDbContext context,
+                                        PrinterStatus? status,
+                                        string? material,
+                                        int? activeSlot = null,
+                                        int toolCount = 1)
     {
         Team team = new() { Name = "team" };
         context.Teams.Add(team);
@@ -333,10 +400,16 @@ public sealed class PrinterFilamentServiceTests : IDisposable
             context.PrinterLiveStates.Add(new PrinterLiveState
             {
                 PrinterId = PrinterId,
+                ActiveSlot = activeSlot,
                 Status = reported,
                 Material = material,
                 LastSeenAt = DateTimeOffset.UtcNow,
             });
+        }
+
+        for (int tool = 1; tool <= toolCount; tool++)
+        {
+            context.PrinterTools.Add(new PrinterTool { PrinterId = PrinterId, ToolNumber = tool });
         }
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);

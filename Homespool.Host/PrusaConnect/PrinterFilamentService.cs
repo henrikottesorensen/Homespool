@@ -43,14 +43,17 @@ public class PrinterFilamentService
 {
     private readonly PrinterCommandService _commands;
     private readonly QueueSnapshotReader _snapshots;
+    private readonly ToolTargetReader _tools;
     private readonly HomespoolDbContext _dbContext;
 
     public PrinterFilamentService(PrinterCommandService commands,
                                   QueueSnapshotReader snapshots,
+                                  ToolTargetReader tools,
                                   HomespoolDbContext dbContext)
     {
         _commands = commands;
         _snapshots = snapshots;
+        _tools = tools;
         _dbContext = dbContext;
     }
 
@@ -89,6 +92,17 @@ public class PrinterFilamentService
             throw new PrinterHasQueuedWorkException(printerId);
         }
 
+        // M702 carries no T, so on a toolchanger it acts on whatever is picked - and returns having
+        // done nothing when that is nothing, reporting only to serial while the frame is answered
+        // Accepted. Refused here rather than sent, since the page would otherwise claim an unload
+        // that never happened.
+        ToolTarget target = await _tools.ReadAsync(printerId, cancellationToken);
+
+        if (!target.ReachesAHotend)
+        {
+            throw new NoToolPickedException(printerId);
+        }
+
         // Read from the live state rather than taken from the caller: the material is not decoration
         // here, it is the condition under which firmware will run this without a dialog on the panel.
         string? reported = await _dbContext.PrinterLiveStates
@@ -113,7 +127,7 @@ public class PrinterFilamentService
             throw new PrinterRefusedException(answer.EventType, answer.Reason);
         }
 
-        return new UnloadOutcome(material, answer);
+        return new UnloadOutcome(material, target.PickedTool, answer);
     }
 }
 
@@ -122,8 +136,13 @@ public class PrinterFilamentService
 /// The filament the printer named, e.g. <c>PLA</c>. Never the <c>"---"</c> sentinel - a printer
 /// reporting that is refused before anything is sent.
 /// </param>
+/// <param name="Tool">
+/// The tool it acted on, <b>1-based as the wire numbers it</b>, or null on a single-tool printer
+/// where there is nothing to name. Carried so a caller can say <em>which</em> head the filament came
+/// out of rather than implying the machine has one.
+/// </param>
 /// <param name="Answer">
 /// The printer's own answer, or null for a command expecting no reply. An <c>Accepted</c> here means
 /// the unload has <em>started</em>, not that it has finished.
 /// </param>
-public sealed record UnloadOutcome(string Material, CommandOutcome? Answer);
+public sealed record UnloadOutcome(string Material, int? Tool, CommandOutcome? Answer);

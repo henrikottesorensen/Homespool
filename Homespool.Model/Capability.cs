@@ -47,16 +47,16 @@ public enum Capability
     Undefined = 0,
 
     /// <summary>See that the printer exists at all, and its name, state and telemetry.</summary>
-    ViewPrinter,
+    ViewPrinter = 1,
 
     /// <summary>See what a printer is going to print, and why the queue is waiting.</summary>
-    ViewQueue,
+    ViewQueue = 2,
 
     /// <summary>See what a printer has printed.</summary>
-    ViewHistory,
+    ViewHistory = 3,
 
     /// <summary>See a camera and its picture.</summary>
-    ViewCamera,
+    ViewCamera = 4,
 
     /// <summary>
     /// Queue a print — <b>and everything the queue loop does on your behalf to make it happen</b>,
@@ -76,7 +76,7 @@ public enum Capability
     /// print is not the one person unable to stop it.
     /// </para>
     /// </remarks>
-    Print,
+    Print = 5,
 
     /// <summary>
     /// Steer the machine, whoever is using it: stop, pause, resume, ready, unready, idle and preheat,
@@ -88,19 +88,19 @@ public enum Capability
     /// <i>Set ready</i> is this, while allowing the button to be pressed remotely at all is a policy
     /// decision and belongs to the manager.
     /// </remarks>
-    ControlPrinter,
+    ControlPrinter = 6,
 
     /// <summary>
     /// Change the printer itself: its name, its location, its enrolment, and the remote-ready policy.
     /// </summary>
-    ManagePrinter,
+    ManagePrinter = 7,
 
     /// <summary>Add, change or remove a camera.</summary>
     /// <remarks>
     /// There is deliberately no <c>UseCamera</c> between viewing and managing: a camera's address is
     /// fetched by the thing that shows it, so adding one is where the judgement is.
     /// </remarks>
-    ManageCamera,
+    ManageCamera = 8,
 
     /// <summary>List and download <b>your own</b> files.</summary>
     /// <remarks>
@@ -116,7 +116,7 @@ public enum Capability
     /// is nothing for a membership to say about them.
     /// </para>
     /// </remarks>
-    ViewOwnFiles,
+    ViewOwnFiles = 9,
 
     /// <summary>Upload a file under a name you are not already using.</summary>
     /// <remarks>
@@ -125,7 +125,7 @@ public enum Capability
     /// the destructive one - so a key sitting in a slicer's config could erase every model its owner
     /// has.
     /// </remarks>
-    UploadOwnFiles,
+    UploadOwnFiles = 10,
 
     /// <summary>Rename, delete, and overwrite your own files.</summary>
     /// <remarks>
@@ -134,5 +134,5 @@ public enum Capability
     /// <i>upload own files</i> should not sound like it destroys one. Without this an overwriting
     /// upload is refused, which is the 409 an existing name already gives.
     /// </remarks>
-    ManipulateOwnFiles,
+    ManipulateOwnFiles = 11,
 }

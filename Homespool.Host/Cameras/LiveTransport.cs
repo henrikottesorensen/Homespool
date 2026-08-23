@@ -12,15 +12,23 @@ namespace Homespool.Host.Cameras;
 [JsonConverter(typeof(JsonStringEnumConverter<LiveTransport>))]
 public enum LiveTransport
 {
+    /// <summary>Never set. Reserved so a default-constructed value is not an answer.</summary>
+    /// <remarks>
+    /// <b>Distinct from <see cref="None"/>, which is one</b> - "there is no way to watch this
+    /// camera" is something somebody established, and it must not share a slot with a field nobody
+    /// wrote.
+    /// </remarks>
+    Undefined = 0,
+
     /// <summary>No live view: the codec is carried by no transport, or the camera did not answer.</summary>
     [JsonStringEnumMemberName("none")]
-    None,
+    None = 1,
 
     /// <summary>Negotiate a WebRTC session; the media travels from the sidecar to the browser directly.</summary>
     [JsonStringEnumMemberName("webrtc")]
-    Webrtc,
+    Webrtc = 2,
 
     /// <summary>Point the picture at the relayed multipart stream; the media travels through Homespool.</summary>
     [JsonStringEnumMemberName("mjpeg")]
-    Mjpeg,
+    Mjpeg = 3,
 }

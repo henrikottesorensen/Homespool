@@ -35,19 +35,19 @@ public sealed record WebRtcDescription(
 public enum WebRtcOfferOutcome
 {
     /// <summary>Reserved so a default-constructed value is not a meaningful outcome.</summary>
-    Unknown = 0,
+    Undefined = 0,
 
     /// <summary>The sidecar answered, and the answer is usable.</summary>
-    Answered,
+    Answered = 1,
 
     /// <summary>
     /// This camera's video cannot travel over WebRTC — it is JPEG, and WebRTC carries H.264, VP8,
     /// VP9 and AV1.
     /// </summary>
-    CodecUnsupported,
+    CodecUnsupported = 2,
 
     /// <summary>Something else went wrong: unreachable, refused, or not understood.</summary>
-    Failed,
+    Failed = 3,
 }
 
 /// <summary>

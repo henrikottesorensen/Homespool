@@ -26,30 +26,30 @@
 @if (Model == Homespool.Host.Pages.PrinterFormFactor.Enclosed)
 {
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"
-         fill="none" stroke="currentColor" stroke-width="6"
+         fill="none" stroke="currentColor" stroke-width="4.5"
          stroke-linecap="round" stroke-linejoin="round"
          aria-hidden="true" focusable="false" class="printer-icon printer-icon-enclosed">
         @* cabinet *@
         <rect x="14" y="9" width="68" height="76" rx="9" />
         @* lid seam and screen *@
         <path d="M14 23 H82" />
-        <rect x="56" y="13" width="16" height="6" rx="2" stroke-width="3.5" />
+        <rect x="56" y="13" width="16" height="6" rx="2" stroke-width="2.5" />
         @* door window *@
-        <rect x="25" y="31" width="46" height="42" rx="4" fill="currentColor" fill-opacity="0.08" stroke-width="5" />
+        <rect x="25" y="31" width="46" height="42" rx="4" fill="currentColor" fill-opacity="0.08" stroke-width="4" />
         @* gantry, carriage and nozzle *@
-        <path d="M29 36 H67" stroke-width="4" />
-        <rect x="42" y="37" width="12" height="7" rx="1.5" fill="currentColor" fill-opacity="0.12" stroke-width="4" />
+        <path d="M29 36 H67" stroke-width="3" />
+        <rect x="42" y="37" width="12" height="7" rx="1.5" fill="currentColor" fill-opacity="0.12" stroke-width="3" />
         <path d="M43 44 H53 V46 L49.5 51 H46.5 L43 46 Z" fill="currentColor" stroke="none" />
         @* part on the bed *@
         <rect x="43" y="58" width="10" height="5" rx="1" fill="currentColor" stroke="none" />
         @* bed *@
-        <rect x="30" y="63" width="36" height="5" rx="1.5" fill="currentColor" fill-opacity="0.12" stroke-width="4" />
+        <rect x="30" y="63" width="36" height="5" rx="1.5" fill="currentColor" fill-opacity="0.12" stroke-width="3" />
     </svg>
 }
 else
 {
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"
-         fill="none" stroke="currentColor" stroke-width="6"
+         fill="none" stroke="currentColor" stroke-width="4.5"
          stroke-linecap="round" stroke-linejoin="round"
          aria-hidden="true" focusable="false" class="printer-icon printer-icon-open">
         @* base *@
@@ -58,11 +58,11 @@ else
         @* gantry, broken where the bed passes *@
         <path d="M24 56 V27 H72 V56" />
         @* carriage and nozzle *@
-        <rect x="38" y="30" width="20" height="12" rx="2" fill="currentColor" fill-opacity="0.12" stroke-width="4" />
+        <rect x="38" y="30" width="20" height="12" rx="2" fill="currentColor" fill-opacity="0.12" stroke-width="3" />
         <path d="M41 42 H55 V45 L50 51 H46 L41 45 Z" fill="currentColor" stroke="none" />
         @* part on the bed *@
         <rect x="42" y="56.5" width="12" height="5" rx="1" fill="currentColor" stroke="none" />
         @* bed, resting on the base, wider than the frame *@
-        <rect x="8" y="64" width="80" height="6" rx="2" fill="currentColor" fill-opacity="0.12" stroke-width="5" />
+        <rect x="8" y="64" width="80" height="6" rx="2" fill="currentColor" fill-opacity="0.12" stroke-width="4" />
     </svg>
 }

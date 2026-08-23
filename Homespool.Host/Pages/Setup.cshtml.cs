@@ -9,6 +9,7 @@ using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -24,6 +25,7 @@ namespace Homespool.Host.Pages;
 /// logged at startup. Reachable only while no administrator exists; it 404s the moment one does, so
 /// it cannot be used to mint a second admin (AGENT-NOTES phase-1.5 decision 2).
 /// </summary>
+[AllowAnonymous] // First-run bootstrap. Guarded by 404ing once an administrator exists, not by a sign-in.
 public class SetupModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;

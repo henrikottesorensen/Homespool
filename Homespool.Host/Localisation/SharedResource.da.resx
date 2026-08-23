@@ -533,6 +533,12 @@
   <data name="Account_CreateAccount" xml:space="preserve">
     <value>Opret konto</value>
   </data>
+  <data name="Account_ReactivateHelp" xml:space="preserve">
+    <value>Vælg en adgangskode til din konto</value>
+  </data>
+  <data name="Account_InviteAddressAlreadyActive" xml:space="preserve">
+    <value>Adressen har allerede en konto, der kan logge ind, så denne invitation kan ikke bruges til den.</value>
+  </data>
   <data name="Account_CreateAccountHelp" xml:space="preserve">
     <value>Opret din konto.</value>
   </data>
@@ -641,6 +647,39 @@
   <data name="Manage_Profile" xml:space="preserve">
     <value>Profil</value>
   </data>
+  <data name="Manage_RemoveLogin" xml:space="preserve">
+    <value>Fjern udbyder</value>
+  </data>
+  <data name="Manage_LinkedLogins" xml:space="preserve">
+    <value>Tilknyttede login-udbydere</value>
+  </data>
+  <data name="Manage_AddAnotherLogin" xml:space="preserve">
+    <value>Tilknyt en login-udbyder</value>
+  </data>
+  <data name="Manage_ExternalLoginLinked" xml:space="preserve">
+    <value>Udbyderen er nu tilknyttet din konto.</value>
+  </data>
+  <data name="Manage_ExternalLoginLinkError" xml:space="preserve">
+    <value>Udbyderen kunne ikke tilknyttes din konto.</value>
+  </data>
+  <data name="Manage_ExternalLoginRemoved" xml:space="preserve">
+    <value>Udbyderen er ikke længere tilknyttet din konto.</value>
+  </data>
+  <data name="Manage_ExternalLoginRemoveError" xml:space="preserve">
+    <value>Udbyderen kunne ikke fjernes fra din konto.</value>
+  </data>
+  <data name="Manage_ExternalLoginSwappedForPassword" xml:space="preserve">
+    <value>Udbyderen er ikke længere tilknyttet, og du logger nu ind med den adgangskode, du lige har valgt.</value>
+  </data>
+  <data name="Manage_RemoveLastLoginHeading" xml:space="preserve">
+    <value>Fjern denne udbyder</value>
+  </data>
+  <data name="Manage_RemoveLastLoginExplanation" xml:space="preserve">
+    <value>Det er den eneste måde, du logger ind på, så at fjerne den kræver, at du vælger en adgangskode først. Begge dele sker samtidig: derefter logger du ind med adgangskoden.</value>
+  </data>
+  <data name="Manage_RemoveLoginAndSetPassword" xml:space="preserve">
+    <value>Vælg adgangskoden og fjern udbyderen</value>
+  </data>
   <data name="Manage_ExternalLogins" xml:space="preserve">
     <value>Eksterne logins</value>
   </data>
@@ -655,6 +694,9 @@
   </data>
   <data name="Manage_SendVerification" xml:space="preserve">
     <value>Send bekræftelsesmail</value>
+  </data>
+  <data name="Manage_NoLocalPassword" xml:space="preserve">
+    <value>Du logger ind med en ekstern udbyder, så denne konto har ingen adgangskode her at ændre. Administrér din adgangskode dér, hvor du logger ind.</value>
   </data>
   <data name="Manage_UpdatePassword" xml:space="preserve">
     <value>Opdatér adgangskode</value>

@@ -1,0 +1,79 @@
+@page
+@model ExternalLoginsModel
+@{
+    ViewData["Title"] = Localiser["Manage_ExternalLogins"].Value;
+}
+
+<h1>@ViewData["Title"]</h1>
+<partial name="_StatusMessage" for="StatusMessage" />
+
+@if (Model.CurrentLogins.Count > 0)
+{
+    <h2 class="h5">@Localiser["Manage_LinkedLogins"]</h2>
+    <table class="table">
+        <tbody>
+        @foreach (var login in Model.CurrentLogins)
+        {
+            <tr>
+                <td>@login.ProviderDisplayName</td>
+                <td>
+                    @if (!Model.RemovalNeedsAPassword)
+                    {
+                        <form id="@($"remove-login-{login.LoginProvider}")" method="post" asp-page-handler="RemoveLogin">
+                            <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
+                            <input asp-for="@login.LoginProvider" name="loginProvider" type="hidden" />
+                            <input asp-for="@login.ProviderKey" name="providerKey" type="hidden" />
+                            <button type="submit" class="btn btn-outline-danger btn-sm">@Localiser["Manage_RemoveLogin"]</button>
+                        </form>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@if (Model.RemovalNeedsAPassword)
+{
+    @* The only route out of a provider-only account, and it costs a password in the same step -
+       removing this login without one would leave the account with no way to sign in at all and no
+       way to obtain one. See ExternalLoginsModel's remarks. *@
+    <h2 class="h5">@Localiser["Manage_RemoveLastLoginHeading"]</h2>
+    <p id="removal-needs-password" class="text-info">@Localiser["Manage_RemoveLastLoginExplanation"]</p>
+
+    <div class="row">
+        <div class="col-md-6">
+            <form id="swap-login-for-password-form" method="post" asp-page-handler="RemoveLogin">
+                <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
+                <input name="loginProvider" type="hidden" value="@Model.CurrentLogins[0].LoginProvider" />
+                <input name="providerKey" type="hidden" value="@Model.CurrentLogins[0].ProviderKey" />
+                <div class="form-floating mb-3">
+                    <input asp-for="Input.NewPassword" class="form-control" autocomplete="new-password" aria-required="true" placeholder="@Localiser["Manage_EnterNewPasswordPlaceholder"]" />
+                    <label asp-for="Input.NewPassword" class="form-label"></label>
+                    <span asp-validation-for="Input.NewPassword" class="text-danger"></span>
+                </div>
+                <div class="form-floating mb-3">
+                    <input asp-for="Input.ConfirmPassword" class="form-control" autocomplete="new-password" aria-required="true" placeholder="@Localiser["Manage_ConfirmNewPasswordPlaceholder"]" />
+                    <label asp-for="Input.ConfirmPassword" class="form-label"></label>
+                    <span asp-validation-for="Input.ConfirmPassword" class="text-danger"></span>
+                </div>
+                <button type="submit" class="btn btn-outline-danger">@Localiser["Manage_RemoveLoginAndSetPassword"]</button>
+            </form>
+        </div>
+    </div>
+}
+
+@if (Model.OtherLogins.Count > 0)
+{
+    <h2 class="h5">@Localiser["Manage_AddAnotherLogin"]</h2>
+    <form id="link-login-form" method="post" asp-page-handler="LinkLogin">
+        @foreach (var provider in Model.OtherLogins)
+        {
+            <button id="@($"link-login-{provider.Name}")" type="submit" class="btn btn-primary" name="provider" value="@provider.Name" title="@provider.DisplayName">@provider.DisplayName</button>
+        }
+    </form>
+}
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

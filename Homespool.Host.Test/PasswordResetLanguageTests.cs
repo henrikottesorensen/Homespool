@@ -107,7 +107,11 @@ public sealed class PasswordResetLanguageTests : IDisposable
             Language = language,
         };
 
-        (await users.CreateAsync(user)).Succeeded.Should().BeTrue();
+        // With a password, and that is load-bearing rather than incidental: ForgotPassword refuses an
+        // account that has none, because such an account signs in with an external provider and must
+        // not be able to acquire a password by mail. Created without one, this fixture asks for a
+        // reset that is correctly never sent, and the language assertion below has nothing to read.
+        (await users.CreateAsync(user, "Correct-Horse-Battery-Staple-1!")).Succeeded.Should().BeTrue(); // betterleaks:allow
 
         CapturingEmailSender sender = new();
         ForgotPasswordModel model = new(users, sender, TestLocaliser.Shared())

@@ -3,10 +3,12 @@
 
 #nullable disable
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Homespool.Host.Pages.Account;
 
+[AllowAnonymous] // Reached by an account that has just been refused a sign-in.
 public class LockoutModel : PageModel
 {
     public void OnGet()

@@ -96,7 +96,18 @@ public sealed class UserFileStore
     /// <c>.gc</c>. That gap is harmless and unconsidered rather than deliberate.
     /// </para>
     /// </remarks>
-    private static readonly string[] AllowedExtensions = [".gcode", ".bgcode", ".gco", ".bgc"];
+    private static readonly string[] Allowed = [".gcode", ".bgcode", ".gco", ".bgc"];
+
+    /// <summary>
+    /// The extensions, for a page that has to tell somebody what it takes.
+    /// </summary>
+    /// <remarks>
+    /// <b>Exposed so the list is written once.</b> It was previously spelled out again in prose in
+    /// <c>Files_DropHere</c> and a third time in a browser script, which had drifted from this one in
+    /// both directions at once - carrying a <c>.g</c> that is refused here and missing the
+    /// <c>.bgc</c> that is not.
+    /// </remarks>
+    public static IReadOnlyList<string> AllowedExtensions => Allowed;
 
     /// <summary>
     /// How long a staged upload nobody finished is kept before its bytes are thrown away.
@@ -139,7 +150,7 @@ public sealed class UserFileStore
     /// <summary>Whether the name ends in something a printer would accept.</summary>
     public static bool IsAllowedExtension(string fileName)
     {
-        return AllowedExtensions.Contains(Path.GetExtension(fileName), StringComparer.OrdinalIgnoreCase);
+        return Allowed.Contains(Path.GetExtension(fileName), StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>Everything <paramref name="userId"/> has uploaded, oldest name first.</summary>

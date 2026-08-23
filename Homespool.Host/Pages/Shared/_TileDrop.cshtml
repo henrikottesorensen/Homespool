@@ -1,16 +1,20 @@
 @model Homespool.Host.Pages.TileDropPrompt
 @*
-    The two steps a drop raises, both rendered here and shown one at a time by tile-drop.js.
+    The steps a drop raises, all rendered here and shown one at a time by tile-drop.js.
 
     Rendered by the server rather than assembled in the browser, because every word of it is
     localised - the trade live-region.js states at the top of its own file. The browser sends the
-    dropped names, gets this back, and shows it.
+    dropped name, gets this back, and shows it.
 
-    Both steps are in the markup even when the first has nothing to ask. That keeps the script's job
-    to showing and hiding: it never has to know which step exists, only which one to show first.
+    Each step carries its own buttons rather than sharing one modal footer. That is what lets the
+    script's whole job be "show this step, hide the others", and it is why the bed-clear question can
+    sit with the button that acts on it instead of being read out to somebody who only wants to
+    upload.
 *@
 @{
-    bool anyClash = Model.Files.Any(file => file.Conflicts);
+    var refused = Model.Files.Where(file => !file.Allowed).ToList();
+    bool anythingPrintable = Model.Files.Any(file => file.Allowed);
+    bool anyClash = Model.Files.Any(file => file.Allowed && file.Conflicts);
 }
 
 <div class="modal-header">
@@ -19,95 +23,152 @@
 </div>
 
 <div class="modal-body">
-    @* Step one: name clashes, asked before a byte moves. Answering "keep" here costs nothing,
-       which is the whole reason this comes first rather than after the upload the way Files does. *@
-    <div data-drop-step="clash" class="@(anyClash ? string.Empty : "d-none")">
-        <p class="fw-semibold mb-1">@Localiser["Home_DropClashHeading"]</p>
-        <p class="text-body-secondary small">@Localiser["Home_DropClashHelp"]</p>
+    @* Anything a printer would not take, named. This dialog exists at all for a file like this: an
+       STL used to be discarded in the browser without a word, which reads as a broken page rather
+       than a refused file. Error_FileNameRejected is the store's own sentence for it. *@
+    @foreach (var file in refused)
+    {
+        <p>@Localiser["Error_FileNameRejected", file.Name]</p>
+    }
 
-        @if (!Model.CanReplace)
-        {
-            <p class="text-body-secondary small">@Localiser["Home_DropReplaceUnavailable"]</p>
-        }
+    @if (!anythingPrintable)
+    {
+        @* Not Files_DropHere: that one says "drop a file here, or choose one", which describes the
+           Files page's dropzone and its picker. Neither exists in this dialog. The extensions come
+           from UserFileStore's own array rather than being spelled out in prose again. *@
+        <p class="text-body-secondary">@Localiser["Home_DropAccepts", Model.AcceptedExtensions, Model.MaxUploadSize]</p>
 
-        <ul class="list-unstyled mb-0">
-            @foreach (var file in Model.Files.Where(candidate => candidate.Conflicts))
+        <div class="d-grid">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">@Localiser["Common_Close"]</button>
+        </div>
+    }
+    else
+    {
+        @* Step one: the name clash, asked before a byte moves. Answering "keep" here costs nothing,
+           which is the whole reason this comes first rather than after the upload the way Files
+           does. *@
+        <div data-drop-step="clash" class="@(anyClash ? string.Empty : "d-none")">
+            <p class="fw-semibold mb-1">@Localiser["Home_DropClashHeading"]</p>
+            <p class="text-body-secondary small">@Localiser["Home_DropClashHelp"]</p>
+
+            @if (!Model.CanReplace)
             {
-                <li class="mb-2">
-                    <span class="typed-name d-block">@file.Name</span>
+                <p class="text-body-secondary small">@Localiser["Home_DropReplaceUnavailable"]</p>
+            }
 
-                    @* Keep is checked, and is the only choice without ManipulateOwnFiles. Replacing a
-                       file an existing queue entry already points at changes what that entry prints,
-                       which is why the safe answer is the default rather than the fast one. *@
-                    <div class="form-check form-check-inline">
-                        <input class="form-check-input" type="radio" checked
-                               name="clash:@file.Name" id="keep:@file.Name" value="keep">
-                        <label class="form-check-label" for="keep:@file.Name">@Localiser["Files_KeepExisting"]</label>
-                    </div>
+            <ul class="list-unstyled">
+                @foreach (var file in Model.Files.Where(candidate => candidate.Allowed && candidate.Conflicts))
+                {
+                    <li class="mb-2">
+                        <span class="typed-name d-block">@file.Name</span>
 
-                    @if (Model.CanReplace)
-                    {
-                        <div class="form-check form-check-inline">
-                            <input class="form-check-input" type="radio"
-                                   name="clash:@file.Name" id="replace:@file.Name" value="replace">
-                            <label class="form-check-label" for="replace:@file.Name">@Localiser["Files_Replace"]</label>
+                        @* Centred under the name, and wrapping as a pair rather than one option
+                           trailing off the end of a long file name. *@
+                        <div class="d-flex flex-wrap justify-content-center gap-3 mt-2">
+                            @* Keep is checked, and is the only choice without ManipulateOwnFiles.
+                               Replacing a file an existing queue entry already points at changes what
+                               that entry prints, which is why the safe answer is the default. *@
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" checked
+                                       name="clash:@file.Name" id="keep:@file.Name" value="keep">
+                                <label class="form-check-label" for="keep:@file.Name">@Localiser["Files_KeepExisting"]</label>
+                            </div>
+
+                            @if (Model.CanReplace)
+                            {
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio"
+                                           name="clash:@file.Name" id="replace:@file.Name" value="replace">
+                                    <label class="form-check-label" for="replace:@file.Name">@Localiser["Files_Replace"]</label>
+                                </div>
+                            }
                         </div>
-                    }
-                </li>
-            }
-        </ul>
-    </div>
+                    </li>
+                }
+            </ul>
 
-    @* Step two: what to do with them. *@
-    <div data-drop-step="action" class="@(anyClash ? "d-none" : string.Empty)">
-        <p class="fw-semibold mb-1">@Localiser["Home_DropActionHeading", Model.PrinterName]</p>
+            <div class="d-grid gap-2">
+                <button type="button" class="btn btn-primary" data-drop-goto="action">@Localiser["Home_DropContinue"]</button>
+                <button type="button" class="btn btn-link" data-bs-dismiss="modal">@Localiser["Common_Cancel"]</button>
+            </div>
+        </div>
 
-        <ul class="list-unstyled small text-body-secondary">
-            @foreach (var file in Model.Files)
-            {
-                <li class="typed-name">@file.Name</li>
-            }
-        </ul>
+        @* Step two: what to do with it. Stacked and full width, in order of consequence - three
+           buttons of very different weight in a row wrapped badly and left Cancel sitting where it
+           read as one of the choices. *@
+        <div data-drop-step="action" class="@(anyClash ? "d-none" : string.Empty)">
+            <p class="fw-semibold mb-1">@Localiser["Home_DropActionHeading"]</p>
+
+            <ul class="list-unstyled small text-body-secondary">
+                @foreach (var file in Model.Files.Where(file => file.Allowed))
+                {
+                    <li class="typed-name">@file.Name</li>
+                }
+            </ul>
+
+            <div class="d-grid gap-2">
+                <button type="button" class="btn btn-outline-secondary" data-drop-action="@IndexModel.DropUpload">
+                    @Localiser["Home_DropActionUpload"]
+                </button>
+
+                @if (Model.CanPrint)
+                {
+                    <button type="button" class="btn btn-primary" data-drop-action="@IndexModel.DropQueue">
+                        @Localiser["Home_DropActionQueue"]
+                    </button>
+                }
+
+                @if (Model.CanReady)
+                {
+                    @* Advances rather than acting. The bed-clear question belongs to this button and
+                       to nothing else here, so it is asked after it is pressed - putting it in front
+                       of somebody who only wants to upload is a question about a thing they are not
+                       doing, and questions nobody needs teach people to dismiss the ones they do. *@
+                    <button type="button" class="btn btn-danger" data-drop-goto="ready">
+                        @Localiser["Home_DropActionReady"]
+                    </button>
+                }
+
+                <button type="button" class="btn btn-link" data-bs-dismiss="modal">@Localiser["Common_Cancel"]</button>
+            </div>
+        </div>
 
         @if (Model.CanReady)
         {
-            @* The same assertion the printer page's Set ready dialog makes, in the same words,
-               because it is the same claim: that the bed is clear and the machine may be started
-               without anybody looking at it. *@
-            <p class="fw-semibold mb-1 mt-3">@Localiser["Printers_ReadyChecklist"]</p>
-            <p class="text-body-secondary mb-0">@Localiser["Printers_ReadyConsequence"]</p>
+            @* Step three: the same assertion the printer page's Set ready dialog makes, in the same
+               words, because it is the same claim. Its confirm carries the assertion rather than
+               agreement - a button saying "OK" can be cleared while telling yourself you are
+               dismissing a dialog; one saying what you are claiming has to be read to be pressed. *@
+            <div data-drop-step="ready" class="d-none">
+                @* The same polled frame the printer page puts in its own Set ready modal, and for the
+                   reason written there: seeing the sheet is what makes answering the question honest
+                   rather than a guess. Without it this dialog asks somebody at a desk to assert
+                   something about a machine in another room.
+
+                   camera.js binds this when the step is shown - the dialog is fetched on drop, so it
+                   does not exist at load and the usual binding has already run. *@
+                @if (Model.CameraFrameUrl is { } frame)
+                {
+                    <div class="camera-view ratio ratio-16x9 border rounded bg-body-tertiary overflow-hidden mb-3"
+                         data-camera-frame="@frame">
+                        <img class="camera-image w-100 h-100 object-fit-contain d-none" alt="" />
+                        <div class="camera-status d-flex align-items-center justify-content-center text-body-secondary small">
+                            @Localiser["Cameras_Capturing"]
+                        </div>
+                    </div>
+                }
+
+                <p class="fw-semibold mb-1">@Localiser["Printers_ReadyChecklist"]</p>
+                <p class="text-body-secondary">@Localiser["Printers_ReadyConsequence"]</p>
+
+                <div class="d-grid gap-2">
+                    <button type="button" class="btn btn-danger" data-drop-action="@IndexModel.DropReadyAndPrint">
+                        @Localiser["Printers_ReadyConfirm"]
+                    </button>
+
+                    <button type="button" class="btn btn-link" data-drop-goto="action">@Localiser["Common_Back"]</button>
+                </div>
+            </div>
         }
-    </div>
-</div>
-
-<div class="modal-footer">
-    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">@Localiser["Common_Cancel"]</button>
-
-    @* Advances step one to step two rather than submitting; hidden once step two is showing. *@
-    <button type="button" class="btn btn-primary @(anyClash ? string.Empty : "d-none")" data-drop-continue>
-        @Localiser["Home_DropContinue"]
-    </button>
-
-    <span data-drop-actions class="d-flex flex-wrap gap-2 @(anyClash ? "d-none" : string.Empty)">
-        <button type="button" class="btn btn-outline-secondary" data-drop-action="@IndexModel.DropUpload">
-            @Localiser["Home_DropActionUpload"]
-        </button>
-
-        @if (Model.CanPrint)
-        {
-            <button type="button" class="btn btn-primary" data-drop-action="@IndexModel.DropQueue">
-                @Localiser["Home_DropActionQueue"]
-            </button>
-        }
-
-        @if (Model.CanReady)
-        {
-            @* Offered only when the printer permits remote readying, which is a setting on the
-               machine rather than a permission on the person - see PrinterShortcut.CanReady. The
-               handler checks it again: the browser decides what to show, not what may happen. *@
-            <button type="button" class="btn btn-danger" data-drop-action="@IndexModel.DropReadyAndPrint">
-                @Localiser["Home_DropActionReady"]
-            </button>
-        }
-    </span>
+    }
 </div>

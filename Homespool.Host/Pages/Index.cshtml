@@ -74,6 +74,10 @@ else
 
     @if (Model.CanUpload)
     {
+        @* camera.js before tile-drop.js: the drop dialog's bed-clear step carries a camera view and
+           asks camera.js to bind it once that step is shown. There is no camera anywhere else on
+           this page, so this script exists purely for that one dialog. *@
+        <script src="~/js/camera.js" asp-append-version="true"></script>
         <script src="~/js/tile-drop.js" asp-append-version="true"></script>
     }
 }

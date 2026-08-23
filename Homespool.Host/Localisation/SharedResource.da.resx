@@ -501,16 +501,16 @@
     <value>Markeret klargjort. Næste print i køen kan starte.</value>
   </data>
   <data name="Printers_RemoteReadyLabel" xml:space="preserve">
-    <value>Tillad at markere klargjort fra denne side</value>
+    <value>Tillad at markere klargjort fra Homespool</value>
   </data>
   <data name="Printers_RemoteReadyHelp" xml:space="preserve">
     <value>Slå kun dette til, hvis man kan se, om byggepladen er tom. Et kamera, der ikke viser byggepladen, er en grund til at lade være. Er det slået fra, kræver det, at man går hen til printeren og markerer den klargjort på panelet.</value>
   </data>
   <data name="Printers_RemoteReadySaved" xml:space="preserve">
-    <value>Det er nu tilladt at markere klargjort fra denne side.</value>
+    <value>Det er nu tilladt at markere klargjort fra Homespool.</value>
   </data>
   <data name="Printers_RemoteReadyCleared" xml:space="preserve">
-    <value>Det er ikke længere tilladt at markere klargjort fra denne side.</value>
+    <value>Det er ikke længere tilladt at markere klargjort fra Homespool.</value>
   </data>
   <data name="Printers_ReadyNotAllowed" xml:space="preserve">
     <value>Denne printer er ikke sat op til at blive markeret klargjort herfra.</value>
@@ -603,7 +603,7 @@
     <value>Fortsæt</value>
   </data>
   <data name="Home_DropActionHeading" xml:space="preserve">
-    <value>Hvad skal der ske med {0}?</value>
+    <value>Hvad skal der ske med denne fil?</value>
   </data>
   <data name="Home_DropActionUpload" xml:space="preserve">
     <value>Kun upload</value>
@@ -628,6 +628,9 @@
   </data>
   <data name="Home_DropNothing" xml:space="preserve">
     <value>Der blev ikke uploadet noget.</value>
+  </data>
+  <data name="Home_DropAccepts" xml:space="preserve">
+    <value>Homespool tager imod {0}, op til {1}.</value>
   </data>
   <data name="Account_AcceptInvitation" xml:space="preserve">
     <value>Acceptér invitation</value>

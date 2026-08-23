@@ -522,16 +522,16 @@
     <value>Marked ready. The next queued print can start.</value>
   </data>
   <data name="Printers_RemoteReadyLabel" xml:space="preserve">
-    <value>Allow setting ready from this page</value>
+    <value>Allow setting ready from Homespool</value>
   </data>
   <data name="Printers_RemoteReadyHelp" xml:space="preserve">
-    <value>Turn this on only if anyone reading this page can tell whether the print sheet is empty. A camera that does not show the sheet is a reason to leave it off. With it off, marking ready means going to the printer and doing it at its own panel.</value>
+    <value>Turn this on only if anyone using Homespool can tell whether the print sheet is empty. A camera that does not show the sheet is a reason to leave it off. With it off, marking ready means going to the printer and doing it at its own panel.</value>
   </data>
   <data name="Printers_RemoteReadySaved" xml:space="preserve">
-    <value>Setting ready from this page is now allowed.</value>
+    <value>Setting ready from Homespool is now allowed.</value>
   </data>
   <data name="Printers_RemoteReadyCleared" xml:space="preserve">
-    <value>Setting ready from this page is no longer allowed.</value>
+    <value>Setting ready from Homespool is no longer allowed.</value>
   </data>
   <data name="Printers_ReadyNotAllowed" xml:space="preserve">
     <value>This printer is not set up to be marked ready from here.</value>
@@ -626,7 +626,7 @@
     <value>Continue</value>
   </data>
   <data name="Home_DropActionHeading" xml:space="preserve">
-    <value>What should happen to {0}?</value>
+    <value>What should happen to this file?</value>
   </data>
   <data name="Home_DropActionUpload" xml:space="preserve">
     <value>Upload only</value>
@@ -651,6 +651,9 @@
   </data>
   <data name="Home_DropNothing" xml:space="preserve">
     <value>Nothing was uploaded.</value>
+  </data>
+  <data name="Home_DropAccepts" xml:space="preserve">
+    <value>Homespool takes {0}, up to {1}.</value>
   </data>
   <data name="Account_AcceptInvitation" xml:space="preserve">
     <value>Accept invitation</value>

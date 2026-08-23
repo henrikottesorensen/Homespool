@@ -11,6 +11,7 @@ using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Data;
+using Homespool.Host.Pages;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
@@ -200,6 +201,35 @@ public sealed class FrontPageTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
+    /// <b>The page actually wires the drop up.</b> Every other test here posts to the handlers
+    /// directly, which passes perfectly well while the markup that would reach them is missing - and
+    /// that is exactly what happened: a drop did nothing at all and nothing was red.
+    /// </summary>
+    [Fact]
+    public async Task ThePageCarriesEverythingADropNeeds()
+    {
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "front-wiring@example.com");
+
+        SeedPrinters(user.Id, "Wired", "Spare");
+
+        // Act
+        string page = await (await client.GetAsync("/", TestContext.Current.CancellationToken))
+            .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        // "tile-drop" without the extension: asp-append-version fingerprints the FILE NAME in
+        // .NET 10, so this renders as tile-drop.<hash>.js - the trap printer-page.md §4 records.
+        page.Should().Contain("tile-drop", "without the script a tile is only a link");
+        page.Should().Contain("data-drop-target", "the tiles have to be targets");
+        page.Should().Contain("data-drop-form", "the upload needs its form");
+        page.Should().Contain("data-drop-dialog", "and the dialog needs somewhere to render");
+
+        client.Dispose();
+    }
+
+    /// <summary>
     /// The clash question is answered from the reader's own tree, before anything is uploaded.
     /// </summary>
     [Fact]
@@ -228,6 +258,122 @@ public sealed class FrontPageTests : IAsyncLifetime, IDisposable
         dialog.Should().NotContain("clash:brand-new.gcode", "a name nobody has does not need a question");
 
         client.Dispose();
+    }
+
+    /// <summary>
+    /// <b>A file no printer would take is refused in words.</b> Dropping an STL used to do nothing
+    /// whatsoever - the script kept its own list of extensions and discarded the rest without a
+    /// sound, which reads as a broken page rather than a refused file.
+    /// </summary>
+    /// <remarks>
+    /// The list lives on the server now, so this also pins that there is one list rather than two
+    /// that can drift - the browser copy had gained a <c>.g</c> the store never accepted and lost the
+    /// <c>.bgc</c> it did.
+    /// </remarks>
+    [Fact]
+    public async Task SaysSoWhenTheFileIsNotOneAPrinterWouldTake()
+    {
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "front-stl@example.com");
+
+        SeedPrinters(user.Id, "Picky", "Spare");
+        Guid uuid = FirstUuid(user.Id, "Picky");
+
+        // Act
+        string dialog = await PostFormAsync(client, "/?handler=Conflicts", new()
+        {
+            ["uuid"] = [uuid.ToString()],
+            ["names"] = ["bracket.stl"],
+        });
+
+        // Assert
+        dialog.Should().Contain("bracket.stl", "the refusal names the file");
+        dialog.Should().NotContain("data-drop-action", "there is nothing to do with it, so nothing is offered");
+    }
+
+    /// <summary>
+    /// <b>Readying is not offered for a printer nothing can talk to.</b> A printer can be enrolled,
+    /// permit remote readying, and still be switched off at the wall - and the command needs a live
+    /// link. Offering it anyway produced an unhandled exception and a blank page, after the file had
+    /// already uploaded and queued.
+    /// </summary>
+    [Fact]
+    public async Task DoesNotOfferReadyingWhenThePrinterIsNotConnected()
+    {
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "front-offline@example.com");
+
+        SeedPrinters(user.Id, "Switched Off", "Spare");
+        AllowRemoteReady(user.Id, "Switched Off");
+        Guid uuid = FirstUuid(user.Id, "Switched Off");
+
+        // Act - nothing has ever connected in this fixture, so the printer is offline.
+        string dialog = await PostFormAsync(client, "/?handler=Conflicts", new()
+        {
+            ["uuid"] = [uuid.ToString()],
+            ["names"] = ["part.gcode"],
+        });
+
+        // Assert
+        dialog.Should().Contain("data-drop-action", "uploading and queueing are still on offer");
+
+        // The attribute, not the bare word: DropReadyAndPrint is "ready", which also names the step
+        // that would carry it - so a substring match passes while proving nothing.
+        dialog.Should().NotContain($"data-drop-action=\"{IndexModel.DropReadyAndPrint}\"",
+                                   "a printer nobody can reach cannot be made ready");
+        dialog.Should().NotContain("data-drop-goto=\"ready\"",
+                                   "and the button that leads to it is not there either");
+
+        client.Dispose();
+    }
+
+    /// <summary>
+    /// <b>A drop that cannot finish still answers.</b> Even with the offer withheld above, a printer
+    /// can go away between the dialog opening and the button being pressed - so the command is
+    /// guarded and its refusal is reported, rather than escaping as a 500 and a blank page.
+    /// </summary>
+    [Fact]
+    public async Task ReportsARefusedReadyRatherThanFailingTheRequest()
+    {
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "front-refused@example.com");
+
+        SeedPrinters(user.Id, "Goes Away", "Spare");
+        AllowRemoteReady(user.Id, "Goes Away");
+        Guid uuid = FirstUuid(user.Id, "Goes Away");
+
+        // Act - posting the action the dialog would not have shown, which is what a stale page does.
+        HttpResponseMessage response = await PostDropAsync(client, uuid, IndexModel.DropReadyAndPrint, "part.gcode");
+
+        // Assert
+        ((int)response.StatusCode).Should().BeLessThan(500, "a printer that will not take the command is not a server fault");
+
+        client.Dispose();
+    }
+
+    /// <summary>A .bgc file is accepted, because the store accepts it - the browser used not to.</summary>
+    [Fact]
+    public async Task AcceptsEveryExtensionTheStoreAccepts()
+    {
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "front-bgc@example.com");
+
+        SeedPrinters(user.Id, "Takes Bgc", "Spare");
+        Guid uuid = FirstUuid(user.Id, "Takes Bgc");
+
+        // Act
+        string dialog = await PostFormAsync(client, "/?handler=Conflicts", new()
+        {
+            ["uuid"] = [uuid.ToString()],
+            ["names"] = ["part.bgc"],
+        });
+
+        // Assert
+        dialog.Should().Contain("data-drop-action", "a file the store takes gets the questions");
     }
 
     /// <summary>
@@ -281,6 +427,17 @@ public sealed class FrontPageTests : IAsyncLifetime, IDisposable
 
         aliceClient.Dispose();
         bobClient.Dispose();
+    }
+
+    /// <summary>Lets a seeded printer be readied from the app, which is off by default.</summary>
+    private void AllowRemoteReady(long userId, string name)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        Printer printer = context.Printers.First(candidate => candidate.Name == name);
+        printer.RemoteReadyAllowed = true;
+        context.SaveChanges();
     }
 
     /// <summary>The uuid of a seeded printer, by the name it was seeded with.</summary>

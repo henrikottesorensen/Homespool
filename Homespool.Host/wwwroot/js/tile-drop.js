@@ -10,9 +10,12 @@
 // be undone. The server answers which names clash, and renders both steps; this file only shows and
 // hides them.
 //
-// One file per drag. Dragging several onto a tile takes the first print file among them, which is
-// what the Files zone does too - and here it matters more, because the dialog's third button starts
-// a print, and "which of these five did I just start" is not a question a person should have.
+// One file per drag. Dragging several onto a tile takes the first, which is what the Files zone
+// does too - and here it matters more, because the dialog's third button starts a print, and
+// "which of these five did I just start" is not a question a person should have.
+//
+// What a printer will accept is the server's business, not this file's. It answers the drop with a
+// dialog that either asks the two questions or says the file is not one a printer would take.
 //
 // The file itself never goes through the dialog. It is held in the FileList the drop carried and
 // handed to a real <form> at the end, so the upload is an ordinary multipart POST with the
@@ -24,24 +27,12 @@
 (function () {
     'use strict';
 
-    // Refused in the browser, before anything is sent. The server checks again - these are for the
-    // person's benefit, not for safety.
-    var EXTENSIONS = [".gcode", ".bgcode", ".gco", ".g"];
-
     function ready(fn) {
         if (document.readyState !== 'loading') {
             fn();
         } else {
             document.addEventListener('DOMContentLoaded', fn);
         }
-    }
-
-    function accepted(file) {
-        var name = file.name.toLowerCase();
-
-        return EXTENSIONS.some(function (extension) {
-            return name.endsWith(extension);
-        });
     }
 
     ready(function () {
@@ -99,14 +90,26 @@
             form.submit();
         }
 
-        content.addEventListener("click", function (event) {
-            var advance = event.target.closest("[data-drop-continue]");
+        // One step visible at a time. Each step carries its own buttons, so there is nothing to show
+        // or hide beyond the step itself.
+        function showStep(name) {
+            content.querySelectorAll("[data-drop-step]").forEach(function (step) {
+                step.classList.toggle("d-none", step.dataset.dropStep !== name);
+            });
 
-            if (advance) {
-                content.querySelector('[data-drop-step="clash"]').classList.add("d-none");
-                content.querySelector('[data-drop-step="action"]').classList.remove("d-none");
-                advance.classList.add("d-none");
-                content.querySelector("[data-drop-actions]").classList.remove("d-none");
+            // The bed-clear step carries a camera view, and it arrived with this dialog rather than
+            // with the page - so camera.js has already done its binding pass and knows nothing about
+            // it. Attaching on show also means nothing polls a camera nobody has opened.
+            if (window.homespoolCameras) {
+                window.homespoolCameras.attachWithin(content);
+            }
+        }
+
+        content.addEventListener("click", function (event) {
+            var goto = event.target.closest("[data-drop-goto]");
+
+            if (goto) {
+                showStep(goto.dataset.dropGoto);
 
                 return;
             }
@@ -158,41 +161,76 @@
             });
         }
 
-        document.querySelectorAll("[data-drop-target]").forEach(function (tile) {
-            ["dragenter", "dragover"].forEach(function (name) {
-                tile.addEventListener(name, function (event) {
-                    // Both, or the browser navigates to the dropped file and the page is gone.
-                    event.preventDefault();
-                    event.stopPropagation();
-                    tile.classList.add("printer-shortcut-drop");
-                });
+        // DELEGATED FROM THE DOCUMENT, and this is the whole reason the first version did nothing.
+        //
+        // The tiles live inside a polled region: live-region.js replaces its innerHTML every ten
+        // seconds. Listeners bound to the tiles themselves are bound to elements that stop existing
+        // on the first refresh, so a drop worked for ten seconds after a page load and silently did
+        // nothing ever after - no error, no request, nothing in the server log to find.
+        //
+        // _PrinterStatus.cshtml already records this lesson about the Set ready button surviving a
+        // two-second refresh, because Bootstrap delegates from the document. So does this now.
+        function tileFor(event) {
+            return event.target instanceof Element ? event.target.closest("[data-drop-target]") : null;
+        }
+
+        function highlight(tile) {
+            document.querySelectorAll(".printer-shortcut-drop").forEach(function (lit) {
+                if (lit !== tile) {
+                    lit.classList.remove("printer-shortcut-drop");
+                }
             });
 
-            ["dragleave", "dragend", "drop"].forEach(function (name) {
-                tile.addEventListener(name, function () {
-                    tile.classList.remove("printer-shortcut-drop");
-                });
-            });
+            if (tile) {
+                tile.classList.add("printer-shortcut-drop");
+            }
+        }
 
-            tile.addEventListener("drop", function (event) {
+        ["dragenter", "dragover"].forEach(function (name) {
+            document.addEventListener(name, function (event) {
+                var tile = tileFor(event);
+
+                if (!tile) {
+                    return;
+                }
+
+                // Only over a tile. preventDefault on every dragover would break the browser's own
+                // handling everywhere else on the page; without it here, the browser navigates to
+                // the dropped file and the page is gone.
                 event.preventDefault();
-                event.stopPropagation();
-
-                if (!event.dataTransfer || !event.dataTransfer.files.length) {
-                    return;
-                }
-
-                // One file per drag, the same rule the Files zone follows. A drag carrying several
-                // takes the first that is a print file rather than refusing the lot: the drop was
-                // still aimed at this printer, and the reader can see in the dialog which one it got.
-                var file = Array.prototype.find.call(event.dataTransfer.files, accepted);
-
-                if (!file) {
-                    return;
-                }
-
-                ask(tile.dataset.dropUuid, [file]);
+                highlight(tile);
             });
+        });
+
+        ["dragleave", "dragend"].forEach(function (name) {
+            document.addEventListener(name, function (event) {
+                if (!tileFor(event)) {
+                    highlight(null);
+                }
+            });
+        });
+
+        document.addEventListener("drop", function (event) {
+            var tile = tileFor(event);
+
+            highlight(null);
+
+            if (!tile) {
+                return;
+            }
+
+            event.preventDefault();
+
+            if (!event.dataTransfer || !event.dataTransfer.files.length) {
+                return;
+            }
+
+            // One file per drag, the same rule the Files zone follows. What a printer will take is
+            // not decided here: the name goes to the server, which owns the list and answers with a
+            // dialog that either asks the questions or says why not. An earlier cut kept its own
+            // list of extensions, silently dropped anything else - so an STL did nothing at all -
+            // and had drifted from the server's list in both directions.
+            ask(tile.dataset.dropUuid, [event.dataTransfer.files[0]]);
         });
     });
 })();

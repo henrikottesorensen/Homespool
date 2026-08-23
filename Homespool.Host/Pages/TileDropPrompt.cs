@@ -6,11 +6,23 @@ namespace Homespool.Host.Pages;
 /// One file named in a drop, and whether the reader already has one by that name.
 /// </summary>
 /// <param name="Name">The file name as the browser reported it.</param>
+/// <remarks>
+/// <b>What a printer will take is decided here, not in the browser.</b> tile-drop.js used to carry
+/// its own list of extensions and silently drop anything else - so an STL landed on a tile and
+/// nothing whatsoever happened, which reads as a broken feature rather than a refused file. The list
+/// it carried had also drifted from <see cref="PrintFiles.UserFileStore.AllowedExtensions"/>, being
+/// wrong in both directions at once. There is now one list, on the server, and the refusal is a
+/// sentence.
+/// </remarks>
 /// <param name="Conflicts">
 /// Whether a file of this name is already in the reader's own tree. Answered before a byte moves, so
 /// the name clash is settled while the drop can still be abandoned for free.
 /// </param>
-public sealed record TileDropFile(string Name, bool Conflicts);
+/// <param name="Allowed">
+/// Whether a printer would take a file of this name at all. False for an STL, a project file, a
+/// photograph - anything that has not been sliced.
+/// </param>
+public sealed record TileDropFile(string Name, bool Conflicts, bool Allowed);
 
 /// <summary>
 /// What the dialog raised by a drop onto a tile needs to know.
@@ -43,6 +55,19 @@ public sealed record TileDropFile(string Name, bool Conflicts);
 /// </param>
 /// <param name="CanPrint">Whether to offer queueing at all.</param>
 /// <param name="CanReady">Whether to offer readying and printing now.</param>
+/// <param name="CameraFrameUrl">
+/// Where to poll a still of this printer, or null if it has no camera. <b>Shown on the bed-clear
+/// step only</b>, which is the one question on this dialog that cannot be answered from the desk -
+/// the printer page puts the same view in its own Set ready modal for the same reason.
+/// </param>
+/// <param name="AcceptedExtensions">
+/// What a printer will take, joined for reading, from
+/// <see cref="PrintFiles.UserFileStore.AllowedExtensions"/> rather than written out again.
+/// </param>
+/// <param name="MaxUploadSize">
+/// The upload cap, already formatted for a person. Only shown when nothing printable was dropped,
+/// where the reader needs to know what this page does take.
+/// </param>
 /// <param name="CanReplace">
 /// Whether replacing is even available to this reader - overwriting is
 /// <c>ManipulateOwnFiles</c>, a capability apart from uploading. Without it the clash question has
@@ -54,4 +79,7 @@ public sealed record TileDropPrompt(
     IReadOnlyList<TileDropFile> Files,
     bool CanPrint,
     bool CanReady,
-    bool CanReplace);
+    bool CanReplace,
+    string? CameraFrameUrl,
+    string AcceptedExtensions,
+    string MaxUploadSize);

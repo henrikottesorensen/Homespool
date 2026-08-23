@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
+using Microsoft.Extensions.Options;
 
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
@@ -87,6 +88,8 @@ public class IndexModel : PageModel
     private readonly PrintQueueService _queue;
     private readonly PrinterAccessService _access;
     private readonly PrintFileCatalog _files;
+    private readonly CameraAccessService _cameras;
+    private readonly PrintFileStorageOptions _storage;
     private readonly PrinterCommandService _commands;
     private readonly PrinterConnectionRegistry _connections;
     private readonly PrinterStatusText _statusText;
@@ -100,6 +103,8 @@ public class IndexModel : PageModel
                       PrintQueueService queue,
                       PrinterAccessService access,
                       PrintFileCatalog files,
+                      CameraAccessService cameras,
+                      IOptions<PrintFileStorageOptions> storage,
                       PrinterCommandService commands,
                       PrinterConnectionRegistry connections,
                       PrinterStatusText statusText,
@@ -113,6 +118,8 @@ public class IndexModel : PageModel
         _queue = queue;
         _access = access;
         _files = files;
+        _cameras = cameras;
+        _storage = storage.Value;
         _commands = commands;
         _connections = connections;
         _statusText = statusText;
@@ -226,10 +233,15 @@ public class IndexModel : PageModel
         TileDropPrompt prompt = new(
             uuid,
             PrinterDisplayName.For(row.Printer),
-            [.. names.Select(name => new TileDropFile(name, existing.Contains(name)))],
+            [.. names.Select(name => new TileDropFile(name,
+                                     existing.Contains(name),
+                                     UserFileStore.IsAllowedExtension(name)))],
             canPrint,
-            canPrint && row.Printer.RemoteReadyAllowed,
-            caller.Allows(Capability.ManipulateOwnFiles));
+            canPrint && row.Printer.RemoteReadyAllowed && _connections.IsConnected(row.Printer.Id),
+            caller.Allows(Capability.ManipulateOwnFiles),
+            await CameraFrameUrlAsync(row.Printer.Id, caller, cancellationToken),
+            string.Join(", ", UserFileStore.AllowedExtensions),
+            Files.IndexModel.FormatSize(_storage.MaxUploadBytes));
 
         return Partial("_TileDrop", prompt);
     }
@@ -292,6 +304,7 @@ public class IndexModel : PageModel
         HashSet<string> replacing = replace.ToHashSet(StringComparer.OrdinalIgnoreCase);
         List<string> report = [];
         int queued = 0;
+        bool refused = false;
 
         foreach (IFormFile file in files)
         {
@@ -332,17 +345,29 @@ public class IndexModel : PageModel
 
         if (readying && queued > 0)
         {
-            await _commands.SendCommandAsync(row.Printer.Id, new SetPrinterReady(), caller, cancellationToken);
+            try
+            {
+                await _commands.SendCommandAsync(row.Printer.Id, new SetPrinterReady(), caller, cancellationToken);
 
-            // The printer page's own words for this, unchanged: the queue line above already named
-            // the printer, so repeating it here would be the second voice §6e warns about.
-            report.Add(_localiser["Printers_ReadySent"].Value);
+                // The printer page's own words for this, unchanged: the queue line above already
+                // named the printer, so repeating it here would be a second voice.
+                report.Add(_localiser["Printers_ReadySent"].Value);
+            }
+            catch (Exception e) when (e is ILocalisableError)
+            {
+                // The upload and the queue already happened and are worth keeping - this is the last
+                // step of three, and losing the first two because the third failed would be worse
+                // than saying so. Uncaught, it escaped as a 500 and the person got a blank page
+                // having no idea their file had in fact been queued.
+                report.Add(_errors.For(e));
+                refused = true;
+            }
         }
 
         // A drop where every file was refused before it started - all of them the wrong kind, or an
         // empty selection - would otherwise redirect to a page saying nothing at all.
         StatusMessage = report.Count > 0 ? string.Join(" ", report) : _localiser["Home_DropNothing"].Value;
-        StatusSuccess = report.Count > 0 && (queued > 0 || !queueing);
+        StatusSuccess = report.Count > 0 && !refused && (queued > 0 || !queueing);
 
         return RedirectToPage();
     }
@@ -399,6 +424,21 @@ public class IndexModel : PageModel
     private string? UserNameOf()
     {
         return User.Identity?.Name;
+    }
+
+    /// <summary>
+    /// A still of the printer for the bed-clear question, or null when it has no camera.
+    /// </summary>
+    /// <remarks>
+    /// The first camera, matching what the printer page's Set ready modal shows. A printer with two
+    /// cameras has one that answers "is the sheet clear" better than the other, and nothing here
+    /// knows which - so this takes the same one that page takes rather than inventing a preference.
+    /// </remarks>
+    private async Task<string?> CameraFrameUrlAsync(int printerId, Caller caller, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<Camera> cameras = await _cameras.ListForPrinterAsync(printerId, caller, cancellationToken);
+
+        return cameras.Count == 0 ? null : Url.Action("Frame", "Camera", new { uuid = cameras[0].Uuid });
     }
 
     private async Task LoadAsync(CancellationToken cancellationToken)
@@ -512,6 +552,6 @@ public class IndexModel : PageModel
             row.LiveState?.Material,
             queued.TryGetValue(row.Printer.Id, out int waiting) ? waiting : 0,
             canPrint,
-            canPrint && row.Printer.RemoteReadyAllowed);
+            canPrint && row.Printer.RemoteReadyAllowed && connected);
     }
 }

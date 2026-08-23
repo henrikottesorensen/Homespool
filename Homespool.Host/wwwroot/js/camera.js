@@ -190,11 +190,24 @@
         poll();
     }
 
-    ready(function () {
-        var views = document.querySelectorAll('[data-camera-frame]');
+    function attachWithin(root) {
+        var views = (root || document).querySelectorAll('[data-camera-frame]');
 
         for (var i = 0; i < views.length; i++) {
             attach(views[i]);
         }
+    }
+
+    // Exposed for views that arrive after load. The front page's drop dialog is fetched when
+    // somebody drops a file on a tile, so its camera does not exist at DOMContentLoaded and would
+    // otherwise sit at "capturing" for ever - which is worse than no picture, because the question
+    // above it asks whether the sheet is clear.
+    //
+    // A named hook rather than a MutationObserver watching the whole document: one caller, one line,
+    // and nothing running when nobody is dropping anything.
+    window.homespoolCameras = { attachWithin: attachWithin };
+
+    ready(function () {
+        attachWithin(document);
     });
 })();

@@ -22,7 +22,8 @@ namespace Homespool.Host.Exceptions;
 /// <b>This is a hardware condition, not a state one</b>, which is why it is separate from
 /// <see cref="PrinterBusyException"/> and why <see cref="Printing.PhysicalChangeRules"/> — an
 /// allow-set over <c>PrinterStatus</c> — is not where it belongs. A printer can be perfectly idle
-/// and still have nothing picked; on a toolchanger that is the resting state.
+/// and still have nothing picked - an INDX docks its tool after every load and unload, and any
+/// toolchanger is there at power-on or after parking one.
 /// </para>
 /// </remarks>
 public class NoToolPickedException : Exception, ILocalisableError

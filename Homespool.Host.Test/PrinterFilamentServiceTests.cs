@@ -278,8 +278,9 @@ public sealed class PrinterFilamentServiceTests : IDisposable
     /// <b>The refusal has to come before the frame, not instead of believing it.</b> Firmware would
     /// answer <c>M702</c> <c>Accepted</c> and then return having done nothing, reporting only to the
     /// serial console - so a page that sent it would report an unload that never happened. On a
-    /// toolchanger this is the resting state: <c>M702</c> itself docks to <c>NoTool</c> when it
-    /// finishes.
+    /// INDX this is the resting state - it docks the tool after every load and unload, under
+    /// <c>#if HAS_INDX()</c> - and on an XL, which leaves the tool picked, it is what you meet at
+    /// power-on or after parking one.
     /// </remarks>
     [Fact]
     public async Task AToolchangerWithNothingPickedIsRefused()

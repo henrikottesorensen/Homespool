@@ -43,9 +43,13 @@ public sealed record TelemetryReadings(
     // The active tool, 1-based, clamped into range against Tools when a message is built.
     //
     // ZERO IS A REAL VALUE, not a missing one: firmware renders "no tool picked" as 0 (render.cpp,
-    // active_slot's NoTool arm), and on a toolchanger that is the resting state rather than an edge
-    // case - M702 itself docks to NoTool when it finishes. Set 0 to reproduce the printer a
-    // gcode command with no T argument will silently decline to act on.
+    // active_slot's NoTool arm). Set 0 to reproduce the printer a gcode command with no T argument
+    // will silently decline to act on.
+    //
+    // How easily a machine reaches it depends on the machine. An INDX docks the tool after a load or
+    // an unload - the tool_change(NoTool) at M701_2.cpp:127-131 and :185-188 is under #if HAS_INDX()
+    // - so it rests there. An XL leaves the tool picked, and gets there at power-on or after parking
+    // one. Both are worth setting; neither is more correct than the other.
     int ActiveTool = 1,
 
     // MMU progress code and command character - params.progress_code and a single char, emitted only

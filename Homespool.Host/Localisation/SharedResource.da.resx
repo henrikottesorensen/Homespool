@@ -533,6 +533,12 @@
   <data name="Account_CreateAccount" xml:space="preserve">
     <value>Opret konto</value>
   </data>
+  <data name="Account_ReactivateHelp" xml:space="preserve">
+    <value>Vælg en adgangskode til din konto</value>
+  </data>
+  <data name="Account_InviteAddressAlreadyActive" xml:space="preserve">
+    <value>Adressen har allerede en konto, der kan logge ind, så denne invitation kan ikke bruges til den.</value>
+  </data>
   <data name="Account_CreateAccountHelp" xml:space="preserve">
     <value>Opret din konto.</value>
   </data>

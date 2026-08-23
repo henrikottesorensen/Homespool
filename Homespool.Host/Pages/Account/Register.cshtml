@@ -21,7 +21,7 @@ else
     <div class="row">
         <div class="col-md-4">
             <form id="registerForm" asp-route-returnUrl="@Model.ReturnUrl" method="post">
-                <h2>@Localiser["Account_CreateAccountHelp"]</h2>
+                <h2>@(Model.Reactivating ? Localiser["Account_ReactivateHelp"] : Localiser["Account_CreateAccountHelp"])</h2>
                 <hr />
                 <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
                 <input type="hidden" asp-for="InviteId" />
@@ -30,15 +30,26 @@ else
                     <input class="form-control" value="@Model.Email" readonly autocomplete="email" aria-label="@Localiser["Account_Email"]" />
                     <label class="form-label">@Localiser["Account_Email"]</label>
                 </div>
-                <div class="form-floating mb-3">
-                    <input asp-for="Input.Username" class="form-control" autocomplete="username" aria-required="true" placeholder="@Localiser["Common_UsernamePlaceholder"]" />
-                    <label asp-for="Input.Username">@Localiser["Account_Username"]</label>
-                    <span asp-validation-for="Input.Username" class="text-danger"></span>
-                    <div class="form-text">@Html.Raw(string.Format(
-                        System.Globalization.CultureInfo.CurrentCulture,
-                        Localiser["Account_UsernameChars"].Value,
-                        "<code>-</code>", "<code>.</code>", "<code>_</code>"))</div>
-                </div>
+                @if (Model.Reactivating)
+                {
+                    @* Already theirs. Reactivation restores a credential; it does not rename an account. *@
+                    <div class="form-floating mb-3">
+                        <input class="form-control" value="@Model.ExistingUsername" readonly autocomplete="username" aria-label="@Localiser["Account_Username"]" />
+                        <label class="form-label">@Localiser["Account_Username"]</label>
+                    </div>
+                }
+                else
+                {
+                    <div class="form-floating mb-3">
+                        <input asp-for="Input.Username" class="form-control" autocomplete="username" aria-required="true" placeholder="@Localiser["Common_UsernamePlaceholder"]" />
+                        <label asp-for="Input.Username">@Localiser["Account_Username"]</label>
+                        <span asp-validation-for="Input.Username" class="text-danger"></span>
+                        <div class="form-text">@Html.Raw(string.Format(
+                            System.Globalization.CultureInfo.CurrentCulture,
+                            Localiser["Account_UsernameChars"].Value,
+                            "<code>-</code>", "<code>.</code>", "<code>_</code>"))</div>
+                    </div>
+                }
                 <div class="form-floating mb-3">
                     <input asp-for="Input.Password" class="form-control" autocomplete="new-password" aria-required="true" placeholder="@Localiser["Common_PasswordPlaceholder"]" />
                     <label asp-for="Input.Password">@Localiser["Account_Password"]</label>

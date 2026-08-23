@@ -60,7 +60,7 @@
 
                         @if (liveState.TimeRemaining is { } remaining)
                         {
-                            <span>@Localiser["Printers_TimeLeft", TimeSpan.FromSeconds(remaining).ToString("g", culture)]</span>
+                            <span>@Localiser["Printers_TimeLeft", PrintDuration.WithoutSeconds(Localiser, remaining)]</span>
                         }
                     </div>
 

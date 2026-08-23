@@ -661,6 +661,21 @@
   <data name="Home_DropAccepts" xml:space="preserve">
     <value>Homespool takes {0}, up to {1}.</value>
   </data>
+  <data name="Common_Hours_One" xml:space="preserve">
+    <value>{0} hour</value>
+  </data>
+  <data name="Common_Hours_Other" xml:space="preserve">
+    <value>{0} hours</value>
+  </data>
+  <data name="Common_Minutes_One" xml:space="preserve">
+    <value>{0} minute</value>
+  </data>
+  <data name="Common_Minutes_Other" xml:space="preserve">
+    <value>{0} minutes</value>
+  </data>
+  <data name="Common_DurationParts" xml:space="preserve">
+    <value>{0} {1}</value>
+  </data>
   <data name="Account_AcceptInvitation" xml:space="preserve">
     <value>Accept invitation</value>
   </data>
@@ -1571,12 +1586,6 @@
   </data>
   <data name="Printers_ClaimWaitOneSecond" xml:space="preserve">
     <value>1 second</value>
-  </data>
-  <data name="Printers_ClaimWaitMinutes" xml:space="preserve">
-    <value>{0} minutes</value>
-  </data>
-  <data name="Printers_ClaimWaitOneMinute" xml:space="preserve">
-    <value>1 minute</value>
   </data>
   <data name="Printers_ClaimNoSuchCode" xml:space="preserve">
     <value>No printer is waiting with that code. Check it against the printer’s screen - codes expire, so it may have already been replaced. Letters O, I and L are read as 0, 1 and 1, so those are safe to get wrong.</value>

@@ -638,6 +638,21 @@
   <data name="Home_DropAccepts" xml:space="preserve">
     <value>Homespool tager imod {0}, op til {1}.</value>
   </data>
+  <data name="Common_Hours_One" xml:space="preserve">
+    <value>{0} time</value>
+  </data>
+  <data name="Common_Hours_Other" xml:space="preserve">
+    <value>{0} timer</value>
+  </data>
+  <data name="Common_Minutes_One" xml:space="preserve">
+    <value>{0} minut</value>
+  </data>
+  <data name="Common_Minutes_Other" xml:space="preserve">
+    <value>{0} minutter</value>
+  </data>
+  <data name="Common_DurationParts" xml:space="preserve">
+    <value>{0} {1}</value>
+  </data>
   <data name="Account_AcceptInvitation" xml:space="preserve">
     <value>Acceptér invitation</value>
   </data>
@@ -1535,12 +1550,6 @@
   </data>
   <data name="Printers_ClaimWaitOneSecond" xml:space="preserve">
     <value>1 sekund</value>
-  </data>
-  <data name="Printers_ClaimWaitMinutes" xml:space="preserve">
-    <value>{0} minutter</value>
-  </data>
-  <data name="Printers_ClaimWaitOneMinute" xml:space="preserve">
-    <value>1 minut</value>
   </data>
   <data name="Printers_ClaimNoSuchCode" xml:space="preserve">
     <value>Ingen printer venter med denne kode. Tjek den mod printerens skærm - koder udløber, så den kan allerede være skiftet ud. Bogstaverne O, I og L læses som 0, 1 og 1, så dem er det ufarligt at tage fejl af.</value>

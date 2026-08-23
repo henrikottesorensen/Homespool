@@ -226,7 +226,9 @@ public class ClaimModel : PageModel
 
         int minutes = (int)Math.Ceiling(remaining.TotalMinutes);
 
-        return minutes == 1 ? _localiser["Printers_ClaimWaitOneMinute"] : _localiser["Printers_ClaimWaitMinutes", minutes];
+        // The shared pair rather than two keys of this page's own: they carried the same two
+        // sentences, and one copy cannot drift from the other in translation.
+        return Plural.Format(_localiser, "Common_Minutes", minutes);
     }
 
     private async Task LoadTeamOptionsAsync(CancellationToken cancellationToken)

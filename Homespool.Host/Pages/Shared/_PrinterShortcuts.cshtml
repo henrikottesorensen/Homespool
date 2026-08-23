@@ -83,7 +83,7 @@ else
                                 @* Firmware does not always have an estimate, even mid-print. The
                                    percentage keeps its right-hand column when it does not, rather
                                    than sliding left into the gap - see .printer-plaque-stat-end. *@
-                                <span>@Localiser["Printers_TimeLeft", TimeSpan.FromSeconds(remaining).ToString("g", culture)]</span>
+                                <span>@Localiser["Printers_TimeLeft", PrintDuration.WithoutSeconds(Localiser, remaining)]</span>
                             }
 
                             <span class="printer-plaque-stat-end">@progress.ToString(culture)%</span>

@@ -285,6 +285,7 @@ public static class Program
 
             // Likewise factory-activated, and it holds nothing at all.
             builder.Services.AddSingleton<Services.SecurityHeadersMiddleware>();
+            builder.Services.AddSingleton<Services.ClientGoneMiddleware>();
 
             builder.Services.AddScoped<PrusaConnect.PrusaConnectService>()
                             .AddScoped<PrusaConnect.WebSocketHandler>()
@@ -543,6 +544,11 @@ public static class Program
             // Log HTTP requests with Serilog, order of this matters.
             // Requests handled before in the pipeline are NOT logged.
             app.UseSerilogRequestLogging();
+
+            // INSIDE the request logging, deliberately. It absorbs the cancellation and sets 499, and
+            // Serilog reads the status on the way back out - registered outside it instead, Serilog
+            // would already have logged the 500 and the unhandled exception it exists to prevent.
+            app.UseMiddleware<Services.ClientGoneMiddleware>();
 
             // Only when this process serves users over TLS itself. Otherwise there is no port to
             // redirect to that is not the printer's, and sending a browser there is worse than not

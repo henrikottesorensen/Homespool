@@ -60,7 +60,12 @@ firmware/
 rig/usb/
 
 # The rig's enrolled identity: fingerprint plus the issued token. A credential.
-rig/identity.json
+#
+# A glob, not the one filename, because one identity is one printer: a rig pretending to be a second
+# machine needs a second file, and enrol.sh's OUT exists to write one. The exact-name form left
+# rig/identity-xl.json and friends untracked-but-not-ignored, which is the state a `git add -A`
+# commits - the same way api-token~ was committed on 2026-07-28.
+rig/identity*.json
 
 # The rig account's personal access token, written by enrol.sh. A credential, and one that acts as a
 # whole user rather than a printer. See notes/api-tokens.md. The glob also covers editor backups

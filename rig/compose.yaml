@@ -70,6 +70,22 @@ services:
     # writes its progress to STDOUT, unlike compose's own container chatter, which goes to stderr.
     image: connect_rig-env
     volumes: [*src, *build_dir, *usb]
+    # Which printer the rig pretends to be, and it is decided HERE, at configure time - the binary
+    # cannot be told at runtime. How many tools exist is sized by EXTRUDERS, so five tools needs an
+    # XL build and no flag on the command line will conjure them onto a MINI one.
+    #
+    # RIG_BOARD and RIG_PRINTER go together and the tree does not check them against each other; a
+    # mismatched pair configures and then fails to build. rig.sh sets both from one --printer and is
+    # the sane way in. Known-good pairs: BUDDY/MINI, XLBUDDY/XL.
+    #
+    # RIG_TRANSLATIONS must be NO for any printer in PRINTERS_WITH_RESOURCES, XL among them: both
+    # src/resources/CMakeLists.txt:137 and tests/unit/lang/translator/CMakeLists.txt:51 define a
+    # target called generate_mo_<lang>, and configure dies on the duplicate. RESOURCES=NO looks like
+    # the more targeted fix and is not one - it breaks the esp-parts dependency instead.
+    environment:
+      RIG_BOARD: ${RIG_BOARD:-BUDDY}
+      RIG_PRINTER: ${RIG_PRINTER:-MINI}
+      RIG_TRANSLATIONS: ${RIG_TRANSLATIONS:-<default>}
     entrypoint:
       - bash
       - -c
@@ -81,7 +97,9 @@ services:
         set -eu
         if [ ! -f /build/build.ninja ]; then
             cmake /src -G Ninja \
-                -DBOARD=BUDDY \
+                -DBOARD="$${RIG_BOARD:-BUDDY}" \
+                -DPRINTER="$${RIG_PRINTER:-MINI}" \
+                -DTRANSLATIONS_ENABLED="$${RIG_TRANSLATIONS:-<default>}" \
                 -DDSDL_TRANSPILE=OFF \
                 -DPython3_EXECUTABLE=/usr/bin/python3
         fi
@@ -135,10 +153,12 @@ volumes:
   # Named explicitly rather than left to compose's project-prefixed default, so it can be named on a
   # docker command line without guessing.
   #
-  # ONE VOLUME PER SOURCE TREE. What is in here was built from whatever FIRMWARE_DIR pointed at, and
-  # nothing records which - so pointing FIRMWARE_DIR at a different worktree without also setting
-  # BUILD_VOLUME gives you a stale binary that looks current. The TLS work uses
-  # BUILD_VOLUME=connect_rig-tls-builddir for exactly this reason.
+  # ONE VOLUME PER SOURCE TREE, AND PER PRINTER. What is in here was built from whatever FIRMWARE_DIR
+  # pointed at, as whatever RIG_PRINTER said, and nothing records either - so changing one without
+  # also setting BUILD_VOLUME gives you a stale binary that looks current. Worse for the printer than
+  # for the tree: the configure only runs when build.ninja is absent, so a second printer in the same
+  # volume is not merely stale, it is silently ignored. The TLS work uses
+  # BUILD_VOLUME=connect_rig-tls-builddir for the tree half of this; rig.sh appends the printer.
   #
   # Not `external`, so a machine that has never built the rig creates it rather than erroring. If it
   # warns that the volume was not created by compose, something else made it first - remove it and

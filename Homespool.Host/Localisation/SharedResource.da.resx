@@ -430,6 +430,12 @@
   <data name="Printers_UnloadStarted" xml:space="preserve">
     <value>Tager {0} ud. Printeren varmer dysen op, skubber filamentet ud og slukker så for det hele.</value>
   </data>
+  <data name="Printers_UnloadOnTool" xml:space="preserve">
+    <value>Tag {0} ud (værktøj {1})</value>
+  </data>
+  <data name="Printers_UnloadStartedOnTool" xml:space="preserve">
+    <value>Tager {0} ud af værktøj {1}. Printeren varmer dysen op, skubber filamentet ud og slukker så for det hele.</value>
+  </data>
   <data name="Printers_UnloadNote" xml:space="preserve">
     <value>Udtagning varmer dysen op til det isatte filaments printtemperatur, skubber det ud og slukker så for varmelegemerne - så printeren er kold og tom, når du når frem til den. Det tager et par minutter, og printeren afviser andre kommandoer imens.</value>
   </data>
@@ -1730,6 +1736,9 @@
   </data>
   <data name="Error_PrinterStateUnknown" xml:space="preserve">
     <value>Printerens tilstand kendes ikke endnu - den melder ind kort efter, den forbinder.</value>
+  </data>
+  <data name="Error_NoToolPicked" xml:space="preserve">
+    <value>Der er ikke valgt et værktøj, så dette ville ikke nå frem til en dyse. Vælg et værktøj på printeren først.</value>
   </data>
   <data name="Error_FilamentTypeUnknown" xml:space="preserve">
     <value>Printeren har ikke oplyst, hvilket filament der er isat, så det kan ikke tages ud herfra.</value>

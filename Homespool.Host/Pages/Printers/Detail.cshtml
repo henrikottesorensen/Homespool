@@ -75,7 +75,13 @@
 
         @* Heaters, and only ever both together. The service can set either alone and nothing here
            can: a page that could leave one heater on and the other off would be a way to make a
-           mistake quietly. *@
+           mistake quietly.
+
+           Absent on a toolchanger with nothing picked: M140 is the bed and would apply, M104 is the
+           nozzle and would not, so the pair half-lands while the frame is answered Accepted. See
+           notes/toolchangers.md §3d. *@
+        @if (Model.Tools.ReachesAHotend)
+        {
         <form method="post" asp-page-handler="Preheat" asp-route-uuid="@uuid"
               class="d-flex align-items-center gap-2">
             <label class="visually-hidden" for="filament">@Localiser["Printers_PreheatFor"]</label>
@@ -95,6 +101,7 @@
         <form method="post" asp-page-handler="Cooldown" asp-route-uuid="@uuid">
             <button type="submit" class="btn btn-outline-secondary">@Localiser["Printers_CoolDown"]</button>
         </form>
+        }
 
         @* Absent unless the printer has named its filament, which is the same condition under which
            firmware will run the unload without stopping at a dialog on the panel - and which usually
@@ -104,7 +111,14 @@
         {
             <form method="post" asp-page-handler="Unload" asp-route-uuid="@uuid">
                 <button type="submit" class="btn btn-outline-secondary">
-                    @Localiser["Printers_Unload", Model.LoadedMaterial!]
+                    @if (Model.Tools.PickedTool is { } pickedTool)
+                    {
+                        @Localiser["Printers_UnloadOnTool", Model.LoadedMaterial!, pickedTool]
+                    }
+                    else
+                    {
+                        @Localiser["Printers_Unload", Model.LoadedMaterial!]
+                    }
                 </button>
             </form>
         }

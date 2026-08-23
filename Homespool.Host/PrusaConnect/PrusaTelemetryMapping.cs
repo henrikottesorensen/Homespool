@@ -294,7 +294,11 @@ public static class PrusaTelemetryMapping
                 continue;
             }
 
-            updates.Add(new SlotUpdate(slotNumber, tool.Material, tool.Temperature, tool.HotendFan, tool.PrintFan));
+            // Through LoadedFilament for the same reason the flat field and the INFO tools are: the
+            // wire's "nothing loaded" is the string "---", not an absence, and a per-tool gate built
+            // on the raw value reads an empty tool as a filament called ---.
+            updates.Add(new SlotUpdate(slotNumber, LoadedFilament.Of(tool.Material),
+                                       tool.Temperature, tool.HotendFan, tool.PrintFan));
         }
 
         return updates;

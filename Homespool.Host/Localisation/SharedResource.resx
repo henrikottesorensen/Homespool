@@ -446,6 +446,13 @@
     <value>Unloading {0}. The printer heats the nozzle, ejects the filament, then switches everything off.</value>
     <comment>Says started, not done: the printer answers a gcode command when it queues it, and the unload itself takes minutes.</comment>
   </data>
+  <data name="Printers_UnloadOnTool" xml:space="preserve">
+    <value>Unload {0} (tool {1})</value>
+    <comment>{0} is the material, {1} the tool number as the printer reports it. Multi-tool printers only - naming the tool stops the control implying it acts on the whole machine.</comment>
+  </data>
+  <data name="Printers_UnloadStartedOnTool" xml:space="preserve">
+    <value>Unloading {0} from tool {1}. The printer heats the nozzle, ejects the filament, then switches everything off.</value>
+  </data>
   <data name="Printers_UnloadNote" xml:space="preserve">
     <value>Unloading heats the nozzle to the loaded filament’s printing temperature, ejects it, then turns the heaters off - so the printer is cold and empty when you reach it. It takes a few minutes, and the printer will decline other commands while it runs.</value>
   </data>
@@ -1771,6 +1778,10 @@
   <data name="Error_PrinterBusy" xml:space="preserve">
     <value>The printer is {0} - this can only be done when the printer is not busy.</value>
     <comment>{0} is the printer status, put through PrinterStatusText so it reads in the same language as the sentence around it.</comment>
+  </data>
+  <data name="Error_NoToolPicked" xml:space="preserve">
+    <value>No tool is picked, so this would not reach a hotend. Pick a tool at the printer first.</value>
+    <comment>Multi-tool printers only. A gcode command without a tool argument acts on whichever tool is picked, and firmware declines silently when none is.</comment>
   </data>
   <data name="Error_FilamentTypeUnknown" xml:space="preserve">
     <value>The printer hasn’t said what filament is loaded, so it can’t be unloaded from here.</value>

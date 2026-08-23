@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 
 using AwesomeAssertions;
@@ -171,6 +172,43 @@ public class PrinterLiveStateMergerTests
 
         // Assert
         state.Material.Should().BeNull("the printer said the filament is gone, which is not silence");
+    }
+
+    /// <summary>
+    /// A per-tool slot reporting the no-filament sentinel clears that slot's material too.
+    /// </summary>
+    /// <remarks>
+    /// <b>The third place this sentinel appears, and the last to be handled.</b> The flat field and
+    /// the <c>INFO</c> tools were stripped; the per-slot telemetry path was not, so
+    /// <c>PrinterLiveSlotState.Material</c> carried <c>"---"</c> verbatim. It went unnoticed only
+    /// because no multi-tool printer had ever been enrolled — and it is the data a per-tool control
+    /// would read, which would have offered to unload an empty tool.
+    /// </remarks>
+    [Fact]
+    public void AnEmptySlotReportsNoMaterialRatherThanTheSentinel()
+    {
+        // Arrange
+        PrinterLiveState state = new() { PrinterId = 1 };
+
+        // Act
+        Merge(state, new TelemetryDTO
+        {
+            Status = "IDLE",
+            Slot = new SlotsTelemetryDTO
+            {
+                Active = 2,
+                Slots = new Dictionary<string, JsonElement>
+                {
+                    ["1"] = JsonSerializer.SerializeToElement(new { material = "PLA", temp = 215.0f }),
+                    ["2"] = JsonSerializer.SerializeToElement(new { material = "---", temp = 27.0f }),
+                },
+            },
+        }, DateTimeOffset.UtcNow);
+
+        // Assert
+        state.Slots.Single(slot => slot.SlotNumber == 1).Material.Should().Be("PLA");
+        state.Slots.Single(slot => slot.SlotNumber == 2).Material
+             .Should().BeNull("an empty tool is empty, not loaded with a filament called ---");
     }
 
     /// <summary>

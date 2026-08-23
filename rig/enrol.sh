@@ -4,8 +4,16 @@
 #
 #   ./rig/enrol.sh <setup-token>
 #
+#   PRINTER_TYPE=3.1.0 OUT=rig/identity-xl.json ./rig/enrol.sh <setup-token>   # a second, XL printer
+#
 # The setup token is printed once at startup by AdminBootstrap, held in memory only, and regenerated
 # on every restart - so grab it from the server's log for this run.
+#
+# One identity is one printer, so a rig pretending to be a different machine needs its own - hence
+# OUT. PRINTER_TYPE is what /p/register records; it should match the printer the rig was BUILT as,
+# because connect_rig sends its build's own version in INFO (get_printer_version()) and a server
+# would otherwise see the two disagree. 1.3.5 is MK3.5, 2.1.0 MINI, 3.1.0 XL - the table is
+# include/common/printer_model_data.hpp.
 #
 # Does the whole first-run dance so a rig session needs no browser: create the administrator, sign
 # in, mint an API token, register a printer, claim it, then poll for the issued token. Every step is
@@ -30,6 +38,11 @@ BASE="${BASE:-http://localhost:5052}"
 # There is no TLS path to point this at any more. To exercise one, put the shipped proxy in front:
 # `docker compose up` and connect to its published printer port instead.
 PRINTER_BASE="${PRINTER_BASE:-http://localhost:15443}"
+PRINTER_TYPE="${PRINTER_TYPE:-1.3.5}"
+# An account is identified by one name, and sign-in takes it in a single Input.Login field that
+# accepts either the username or the email - notes/user-identity.md. Both are needed here: /setup
+# asks for a username, and posting Input.Email to the login form silently signs nobody in.
+USERNAME="${USERNAME:-rig}"
 EMAIL="${EMAIL:-rig@example.com}"
 PASSWORD="${PASSWORD:-Correct-Horse-Battery-Staple-1!}"
 RIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -57,6 +70,7 @@ echo "==> creating the administrator"
 curl -sS -c "$JAR" -b "$JAR" -o /dev/null \
     --data-urlencode "__RequestVerificationToken=$(form_token /setup)" \
     --data-urlencode "Input.Token=$TOKEN" \
+    --data-urlencode "Input.Username=$USERNAME" \
     --data-urlencode "Input.Email=$EMAIL" \
     --data-urlencode "Input.Password=$PASSWORD" \
     --data-urlencode "Input.ConfirmPassword=$PASSWORD" \
@@ -65,10 +79,19 @@ curl -sS -c "$JAR" -b "$JAR" -o /dev/null \
 echo "==> signing in"
 curl -sS -c "$JAR" -b "$JAR" -o /dev/null \
     --data-urlencode "__RequestVerificationToken=$(form_token /Account/Login)" \
-    --data-urlencode "Input.Email=$EMAIL" \
+    --data-urlencode "Input.Login=$USERNAME" \
     --data-urlencode "Input.Password=$PASSWORD" \
     --data-urlencode "Input.RememberMe=false" \
     "$BASE/Account/Login"
+
+# A token is scoped now, and a scopeless post is refused rather than defaulted - see
+# notes/permission-vocabulary.md. Every capability, because this token exists for whatever script
+# comes next rather than for a known job; narrow it at the call site if that ever matters.
+SCOPE_ARGS=""
+for scope in ViewPrinter ControlPrinter ManagePrinter Print ViewQueue ViewHistory \
+             ViewOwnFiles UploadOwnFiles ManipulateOwnFiles ViewCamera ManageCamera; do
+    SCOPE_ARGS="$SCOPE_ARGS --data-urlencode Input.Scope=$scope"
+done
 
 echo "==> minting an API token"
 # The one-time secret is rendered into the page that creates it and never stored, so it is scraped
@@ -76,6 +99,7 @@ echo "==> minting an API token"
 API_TOKEN="$(curl -sS -c "$JAR" -b "$JAR" \
     --data-urlencode "__RequestVerificationToken=$(form_token /Account/Manage/ApiTokens)" \
     --data-urlencode "Input.Name=rig" \
+    $SCOPE_ARGS \
     "$BASE/Account/Manage/ApiTokens" \
     | grep -o '<code id="created-token">[^<]*</code>' \
     | sed 's/.*>\(.*\)<.*/\1/')"
@@ -88,7 +112,7 @@ fi
 echo "==> registering the printer"
 CODE="$(curl -sS -D - -o /dev/null -X POST "$PRINTER_BASE/p/register" \
     -H 'Content-Type: application/json' \
-    -d "{\"sn\":\"$SERIAL\",\"fingerprint\":\"$FINGERPRINT\",\"printer_type\":\"1.3.5\",\"firmware\":\"6.6.0\"}" \
+    -d "{\"sn\":\"$SERIAL\",\"fingerprint\":\"$FINGERPRINT\",\"printer_type\":\"$PRINTER_TYPE\",\"firmware\":\"6.6.0\"}" \
     | { grep -i '^Code:' || true; } | tr -d '\r' | awk '{print $2}')"
 
 if [ -z "$CODE" ]; then
@@ -120,7 +144,7 @@ cat > "$OUT" <<EOF
 {
   "Fingerprint": "$FINGERPRINT",
   "SerialNumber": "$SERIAL",
-  "PrinterType": "1.3.5",
+  "PrinterType": "$PRINTER_TYPE",
   "Firmware": "6.6.0",
   "Token": "$PRINTER_TOKEN"
 }

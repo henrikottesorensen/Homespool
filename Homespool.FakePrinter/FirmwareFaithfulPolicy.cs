@@ -264,6 +264,9 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
             case "START_PRINT":
                 return StartPrint(frame, device);
 
+            case "SEND_JOB_INFO":
+                return SendJobInfo(frame, device);
+
             case "SEND_FILE_INFO":
                 // planner.cpp:751-759 - the path is checked before anything is rendered, and a path
                 // outside /usb is refused rather than answered.
@@ -355,12 +358,57 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
             return [Reject(frame.CommandId, device, "File not found")];
         }
 
-        if (device.TryStartPrint() is not { } jobId)
+        if (device.TryStartPrint(path) is not { } jobId)
         {
             return [Reject(frame.CommandId, device, "Can't print now")];
         }
 
         return [Reply(EventMessageBuilder.Build("JOB_INFO", device.WireState, frame.CommandId, jobId: jobId))];
+    }
+
+    /// <summary>
+    /// Answers a <c>SEND_JOB_INFO</c>: the running job describes itself, and everything else is one
+    /// of three ways of saying no.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Four answers, and getting the distinctions right is the point of implementing this at
+    /// all.</b> They are firmware's own, from its render fixtures: the current job renders a
+    /// <c>JOB_INFO</c> naming the file; a job the printer merely remembers renders a <c>JOB_INFO</c>
+    /// with a <c>FIN_OK</c> state and <b>no name</b>; an id it does not recognise is
+    /// <c>Rejected "Job ID doesn't match"</c>; and no job at all is
+    /// <c>Rejected "No job in progress"</c>.
+    /// </para>
+    /// <para>
+    /// <b>A fake that collapsed those into "here is the job" or "no" would be worse than not having
+    /// one.</b> The server asks this question to decide whether a print it commanded and never heard
+    /// back about is its own, and the whole difficulty is that two of these four answers settle
+    /// nothing. A double that always answered definitely would make an unresolvable case untestable
+    /// and let a loop that guesses pass.
+    /// </para>
+    /// </remarks>
+    private IReadOnlyList<PlannedReply> SendJobInfo(ServerCommandFrame frame, FakeDevice device)
+    {
+        if (JobIdArgument.TryParse(frame.Payload) is not { } jobId)
+        {
+            return [Reject(frame.CommandId, device, "Missing or broken parameters")];
+        }
+
+        if (device.JobId is not { } current)
+        {
+            return [Reject(frame.CommandId, device, "No job in progress")];
+        }
+
+        if (current != jobId)
+        {
+            return [Reject(frame.CommandId, device, "Job ID doesn't match")];
+        }
+
+        // A job with no path is one the machine is only remembering - the finished screen. It
+        // answers, and says nothing that identifies the file.
+        return device.JobPath is { } path ?
+            [Reply(EventMessageBuilder.BuildJobInfo(device.WireState, current, path, "PRINTING", frame.CommandId))] :
+            [Reply(EventMessageBuilder.BuildJobInfo(device.WireState, current, null, "FIN_OK", frame.CommandId))];
     }
 
     private IReadOnlyList<PlannedReply> SendFileInfo(ServerCommandFrame frame, FakeDevice device)

@@ -576,6 +576,282 @@ public sealed class QueueAdvancerTests : IDisposable
             "somebody still wants this printed - a block is not a cancellation");
     }
 
+    /// <summary>
+    /// A printer that never answers a <c>START_PRINT</c>: the entry stays queued <b>and</b> the row
+    /// records that we asked.
+    /// </summary>
+    /// <remarks>
+    /// <b>The defect this whole path exists for, at the moment it happens</b> (hardware,
+    /// 2026-08-21). The loop used to catch the timeout beside the transient failures - "the next tick
+    /// asks again" - and write nothing at all, so the printer got on with the print while the queue
+    /// went on holding an entry for it. Both halves of the assertion matter: without the entry the
+    /// print would be silently dropped if the command never landed, and without the row nothing knows
+    /// there is a question to answer.
+    /// </remarks>
+    [Fact]
+    public async Task APrintCommandThatIsNeverAnsweredLeavesBothTheEntryAndAQuestion()
+    {
+        // Arrange - the file is on the drive and the printer is ready, so the loop will print
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        ConnectTimingOutOnPrint();
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
+            "the command may not have landed, and dropping the entry would lose the print");
+
+        PrintJob commanded = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        commanded.State.Should().Be(PrintState.Unconfirmed);
+        commanded.EndedAt.Should().BeNull("nothing has ended - nothing is known");
+        commanded.PrinterPath.Should().Be("/usb/QUEUED~1.BGC", "what was asked for is what the answer is matched against");
+    }
+
+    /// <summary>
+    /// The printer names our file, so the print was ours all along: it is adopted and the entry is
+    /// consumed.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is the case the timeout was hiding.</b> The printer did not answer <i>because</i> it
+    /// accepted the command and went off to home and heat, so the print was running the whole time.
+    /// Adoption is what stops the entry printing a second time later - and it is done on the
+    /// printer's own answer, never on the status, because a status can say a printer is printing but
+    /// never whose print it is.
+    /// </remarks>
+    [Fact]
+    public async Task APrintTheTimedOutCommandStartedIsAdopted()
+    {
+        // Arrange - the command has gone unanswered, and the printer is now reporting our print
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        ConnectTimingOutOnPrint();
+
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 724);
+        ConnectAnsweringJobInfo("/usb/QUEUED~1.BGC");
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob adopted = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+
+        adopted.State.Should().Be(PrintState.Printing,
+                                  "the telemetry that identified the print is the telemetry that says it is printing");
+        adopted.FirmwareJobId.Should().Be(724, "the two id spaces are mapped here or not at all");
+        adopted.TrackingId.Should().Be(QueuedTrackingId, "the intention and the print it produced stay connected");
+
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
+            "now - and only now - has the entry done its job");
+    }
+
+    /// <summary>
+    /// The printer says it has no job, so the command really was ignored: the question is dropped and
+    /// the print is queued as before.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Removed rather than closed as failed, because nothing failed.</b> A command went unanswered
+    /// and the printer turned out never to have acted on it, which is not a print and has no place in
+    /// a history of prints. The entry stays, so the queue simply asks again - which is what the old
+    /// catch block was right about, for the case it was wrong to assume.
+    /// </para>
+    /// <para>
+    /// <b>And the retry happens in the same pass</b>, which is why this asserts on the row's identity
+    /// rather than on how many there are: resolving to "it never started" leaves a ready printer with
+    /// a queue, so the rules command it again immediately and a fresh question takes the old one's
+    /// place. Counting rows would pass whether or not the first was ever removed.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task APrintTheCommandNeverStartedIsRetriedRatherThanRecorded()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        ConnectTimingOutOnPrint();
+
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        context.ChangeTracker.Clear();
+        long unanswered = (await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken)).Id;
+
+        // The printer goes on saying it is ready and empty-handed, past the point where it could still
+        // be getting started.
+        _clock.Advance(QueueAdvancer.StartUnconfirmedGrace + TimeSpan.FromSeconds(1));
+        await ReportAsync(context, PrinterStatus.Ready, jobId: null);
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        (await context.PrintJobs.AnyAsync(job => job.Id == unanswered, TestContext.Current.CancellationToken))
+            .Should().BeFalse("a print that never happened is not history");
+
+        (await context.PrintJobs.AnyAsync(job => job.EndedAt != null, TestContext.Current.CancellationToken))
+            .Should().BeFalse("nothing failed - a question went unanswered for a minute");
+
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
+            "somebody still wants this printed");
+
+        // And when the printer does answer, it prints - once. The fresh question the retry raised has
+        // to age out the same way, which is deliberate: each attempt is judged on the printer's own
+        // reports since that attempt, so a machine that swallows commands is asked again on a clock
+        // rather than on every tick.
+        ConnectAccepting();
+        _clock.Advance(QueueAdvancer.StartUnconfirmedGrace + TimeSpan.FromSeconds(1));
+        await ReportAsync(context, PrinterStatus.Ready, jobId: null);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        context.ChangeTracker.Clear();
+        (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+    }
+
+    /// <summary>
+    /// A print that turns out to be somebody else's is not adopted, and does not consume our entry.
+    /// </summary>
+    /// <remarks>
+    /// <b>The mirror failure, and the reason the loop asks rather than reading the status.</b>
+    /// A printer that is printing is not evidence of anything: somebody may have started a job at the
+    /// panel in the same window. Adopting on the status alone would delete a queue entry and attach
+    /// its history to a stranger's print.
+    /// </remarks>
+    [Fact]
+    public async Task APrintThatIsSomebodyElsesIsNotAdopted()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        ConnectTimingOutOnPrint();
+
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 725);
+        ConnectAnsweringJobInfo("/usb/SOMEON~1.BGC");
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
+            "our command did not start what is running, so there is no print of ours to record");
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
+            "the entry waits for the printer like any other");
+    }
+
+    /// <summary>
+    /// A printer that reports a job and will not describe it is eventually given up on - and the
+    /// queue holds rather than guessing.
+    /// </summary>
+    /// <remarks>
+    /// <b>Both halves are the answer, and either alone is wrong.</b> Closing the row without holding
+    /// would let the queue advance onto a print that may already have run, which is the original
+    /// defect with a quarter of an hour in front of it; holding without closing would leave the
+    /// printer's one open-print slot occupied for ever. The bound exists because waiting for days on
+    /// a connected printer is not an answer (Henrik, 2026-08-22).
+    /// </remarks>
+    [Fact]
+    public async Task APrinterThatWillNotSayIsGivenUpOnAndTheQueueHolds()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        ConnectTimingOutOnPrint();
+
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Printing something, and refusing every question about it.
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 726);
+        ConnectTimingOutOnPrint();
+        _clock.Advance(QueueAdvancer.StartUnresolvableAfter + TimeSpan.FromMinutes(1));
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob given = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+
+        given.State.Should().Be(PrintState.Unknown, "it stopped being observable without saying how");
+        given.EndedAt.Should().NotBeNull("the open-print slot cannot be held for ever");
+
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        row.HoldReason.Should().Be(PrintHoldReason.PrintStartUnresolved,
+                                   "advancing might print the file twice, so a person decides");
+
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
+            "a hold is not a cancellation");
+    }
+
+    /// <summary>Overwrites what the printer is last known to have said.</summary>
+    /// <remarks>
+    /// <c>LastSeenAt</c> moves with it, deliberately: a live state that has not been refreshed since
+    /// the command is not an answer about it, and several rules turn on exactly that.
+    /// </remarks>
+    private async Task ReportAsync(HomespoolDbContext context, PrinterStatus status, int? jobId)
+    {
+        context.ChangeTracker.Clear();
+
+        PrinterLiveState live = await context.PrinterLiveStates
+                                             .SingleAsync(state => state.PrinterId == PrinterId,
+                                                          TestContext.Current.CancellationToken);
+
+        live.Status = status;
+        live.JobId = jobId;
+        live.LastSeenAt = _clock.GetUtcNow();
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// A printer that takes a print and never acknowledges it - the printer of 2026-08-21, which was
+    /// slow precisely because it had accepted the command.
+    /// </summary>
+    /// <remarks>
+    /// It answers nothing at all, so it stands in for the questions afterwards going unanswered too.
+    /// </remarks>
+    private void ConnectTimingOutOnPrint()
+    {
+        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+        actor.IsOpen.Returns(true);
+        actor.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
+             .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null)));
+        actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
+             .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null)));
+
+        _registry.Register(PrinterId, actor);
+    }
+
+    /// <summary>
+    /// A printer that describes the job it is running as <paramref name="path"/>, and still will not
+    /// answer a print command.
+    /// </summary>
+    private void ConnectAnsweringJobInfo(string path)
+    {
+        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+        actor.IsOpen.Returns(true);
+        actor.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
+             .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null)));
+        actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
+             .Returns(call => call.Arg<ISendableCommand>() is SendJobInfo ?
+                          Task.FromResult(new CommandSendResult(
+                                              CommandSendOutcome.Completed,
+                                              new CommandOutcome(PrinterEventType.JobInfo, null),
+                                              JsonSerializer.Deserialize<JsonElement>(
+                                                  $"{{\"state\":\"PRINTING\",\"path\":\"{path}\"}}"))) :
+                          Task.FromResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null)));
+
+        _registry.Register(PrinterId, actor);
+    }
+
     private QueueAdvancer NewAdvancer()
     {
         ServiceCollection services = new();

@@ -87,6 +87,7 @@ public sealed class QueueHoldLanguageTests : IDisposable
                 PrintHoldReason.FileExistsUnknownSize => "Queue_HoldFileExistsUnknownSize",
                 PrintHoldReason.AbrasiveFilamentNeedsHardenedNozzle => "Queue_HoldAbrasiveFilament",
                 PrintHoldReason.IncompatiblePrinterModel => "Queue_HoldIncompatibleModel",
+                PrintHoldReason.PrintStartUnresolved => "Queue_HoldPrintStartUnresolved",
                 _ => throw new InvalidOperationException($"{reason} has no key; add one to PrintHistoryService too."),
             };
 

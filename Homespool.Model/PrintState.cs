@@ -30,6 +30,37 @@ public enum PrintState
     Undefined = 0,
 
     /// <summary>
+    /// Commanded, and nobody has said whether the printer took it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A timeout is not a negative answer, and for <c>START_PRINT</c> the timeout is <i>caused
+    /// by</i> success</b> (hardware, 2026-08-21): the printer is slow to acknowledge precisely
+    /// because it accepted the command and went off to home and heat. A loop recording that as "the
+    /// print did not happen" leaves the queue entry in place, and the same file prints a second time
+    /// the moment somebody makes the printer ready.
+    /// </para>
+    /// <para>
+    /// <b>So the row is opened before the command is sent, and this is what it says until the
+    /// printer settles it.</b> Distinct from <see cref="Starting"/>, which means <i>accepted</i> -
+    /// conflating the two would trade one wrong assertion for its mirror image, dropping a queue
+    /// entry for a print that never began. It is resolved by asking <c>SEND_JOB_INFO</c> about the
+    /// job telemetry reports, never by assuming; <c>notes/print-queue.md</c>, "A timeout is not a
+    /// negative answer".
+    /// </para>
+    /// <para>
+    /// <b>A row in this state is not history yet.</b> It is the loop's record of an outstanding
+    /// question, and it is <i>removed</i> if the answer turns out to be "no print" - the one state
+    /// here whose rows do not always end up closed. Nothing outside the loop writes it.
+    /// </para>
+    /// <para>
+    /// It sits here because this is where it belongs in a print's life, and carries 7 because that
+    /// is what was free. The column stores names, so the number is not what a row says.
+    /// </para>
+    /// </remarks>
+    Unconfirmed = 7,
+
+    /// <summary>
     /// Commanded and accepted, but the printer has not reported itself printing yet.
     /// </summary>
     /// <remarks>

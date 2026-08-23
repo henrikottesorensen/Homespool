@@ -314,9 +314,12 @@ public sealed class MjpegDhtRelay
 
     private enum PartKind
     {
-        Complete,
-        PassThrough,
-        EndOfStream,
+        /// <summary>Never set: Part is a record struct, so default(Part) must not be a real part.</summary>
+        Undefined = 0,
+
+        Complete = 1,
+        PassThrough = 2,
+        EndOfStream = 3,
     }
 
     private readonly record struct Part(PartKind Kind, int HeaderLength, int BodyLength)

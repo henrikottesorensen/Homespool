@@ -26,7 +26,7 @@ public enum PrintCompatibilitySeverity
     /// Say so, and let the print go. Filament and hours are at stake, and the printer's report may
     /// be the thing that is stale.
     /// </summary>
-    Warn,
+    Warn = 1,
 
     /// <summary>
     /// Hold the queue behind it until somebody or something changes. The cost is hardware, and
@@ -37,5 +37,5 @@ public enum PrintCompatibilitySeverity
     /// the printer's next <c>INFO</c> reports hardware that agrees. That is the same shape as the
     /// free-space hold, and it is what keeps this from being a check that has to be argued with.
     /// </remarks>
-    Hold,
+    Hold = 2,
 }

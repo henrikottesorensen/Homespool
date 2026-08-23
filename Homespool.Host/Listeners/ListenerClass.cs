@@ -14,10 +14,10 @@ public enum ListenerClass
     Undefined = 0,
 
     /// <summary>Cookies and personal access tokens: pages, <c>/api</c>, <c>/health</c>.</summary>
-    User,
+    User = 1,
 
     /// <summary>A printer's fingerprint and token: everything under <c>/p</c>.</summary>
-    Printer,
+    Printer = 2,
 
     /// <summary>
     /// A transfer IV, which is the capability: <c>/f/&lt;iv&gt;/raw</c>, the encrypted download a
@@ -26,5 +26,5 @@ public enum ListenerClass
     /// construction and the port must be plain HTTP - the printer's TLS door cannot serve it, and
     /// nothing else should share the one door that is deliberately unencrypted.
     /// </summary>
-    Transfer,
+    Transfer = 3,
 }

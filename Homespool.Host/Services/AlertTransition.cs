@@ -8,13 +8,13 @@ public enum AlertAction
     Undefined = 0,
 
     /// <summary>Nothing has changed that an administrator needs told.</summary>
-    None,
+    None = 1,
 
     /// <summary>Newly broken. Send once.</summary>
-    Alert,
+    Alert = 2,
 
     /// <summary>Recovered from a state we alerted about. Send the all-clear once.</summary>
-    Recovered,
+    Recovered = 3,
 }
 
 /// <summary>

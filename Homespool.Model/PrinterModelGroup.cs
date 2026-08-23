@@ -12,34 +12,42 @@ namespace Homespool.Model;
 /// </remarks>
 public enum PrinterModelGroup
 {
+    /// <summary>Never set. The zero value every enum here reserves for "nobody wrote this".</summary>
+    /// <remarks>
+    /// <b><see cref="Unknown"/> is not this</b>: it is the answer you get having looked at a model
+    /// name and not recognised it, which is a fact about the printer. This is the absence of anybody
+    /// having looked.
+    /// </remarks>
+    Undefined = 0,
+
     /// <summary>
     /// Not a group: a model neither firmware's table nor this one knows. Yields no claim rather
     /// than a refusal - see <see cref="PrinterModelCompatibility"/>.
     /// </summary>
-    Unknown = 0,
+    Unknown = 1,
 
-    Mk3,
+    Mk3 = 2,
 
-    Mk3_5,
+    Mk3_5 = 3,
 
-    Mk4,
+    Mk4 = 4,
 
-    Mk4S,
+    Mk4S = 5,
 
-    Mini,
+    Mini = 6,
 
-    Xl,
+    Xl = 7,
 
     /// <summary>The XL+, which prints XL files but not the other way round. New in firmware 6.8.</summary>
-    Xlp,
+    Xlp = 8,
 
-    Ix,
+    Ix = 9,
 
-    CoreOne,
+    CoreOne = 10,
 
-    CoreOneL,
+    CoreOneL = 11,
 
-    CoreOneIndx,
+    CoreOneIndx = 12,
 
-    CoreOneLIndx,
+    CoreOneLIndx = 13,
 }

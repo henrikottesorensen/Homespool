@@ -22,7 +22,7 @@ public enum CommandSendOutcome
     /// The only value for which a response is present, and the only one that says anything about
     /// what the printer actually did.
     /// </remarks>
-    Completed,
+    Completed = 1,
 
     /// <summary>
     /// The frame was written, and no answer is expected - the command is one the printer
@@ -44,7 +44,7 @@ public enum CommandSendOutcome
     /// <see cref="ResponseTimedOut"/> fired, reporting failure for a command that worked perfectly.
     /// </para>
     /// </remarks>
-    Dispatched,
+    Dispatched = 2,
 
     /// <summary>
     /// No live socket to write to, so the command definitively never left.
@@ -54,7 +54,7 @@ public enum CommandSendOutcome
     /// attempted, or its connection was torn down while the command sat in the actor's mailbox. The
     /// strongest negative claim in this enum: nothing was written, so nothing happened.
     /// </remarks>
-    NotConnected,
+    NotConnected = 3,
 
     /// <summary>
     /// Another command is already awaiting its reply on this printer, and this one was refused
@@ -66,7 +66,7 @@ public enum CommandSendOutcome
     /// (connect.cpp:469-476 at the pinned ref). Nothing was written, so the command did not happen -
     /// retrying once the previous one settles is safe.
     /// </remarks>
-    AlreadyInFlight,
+    AlreadyInFlight = 4,
 
     /// <summary>
     /// The frame reached the socket, but the printer sent no answering event within
@@ -78,7 +78,7 @@ public enum CommandSendOutcome
     /// homing. The connection is unaffected: the next command can go immediately, and a late answer
     /// still arrives and is persisted as an ordinary event.
     /// </remarks>
-    ResponseTimedOut,
+    ResponseTimedOut = 5,
 
     /// <summary>
     /// The write to the socket did not finish within <c>PrinterConnectionActor.SendTimeout</c>, so
@@ -96,5 +96,5 @@ public enum CommandSendOutcome
     /// and the printer reconnects.
     /// </para>
     /// </remarks>
-    SendTimedOut,
+    SendTimedOut = 6,
 }

@@ -13,7 +13,7 @@ public enum EmailSendResult
     Undefined = 0,
 
     /// <summary>The message was handed to the mail server.</summary>
-    Sent,
+    Sent = 1,
 
     /// <summary>
     /// No SMTP is configured, so nothing was sent and nothing was expected to be. Not an error.
@@ -22,8 +22,8 @@ public enum EmailSendResult
     /// In this mode accounts are created already confirmed (see <see cref="SmtpOptions.IsConfigured"/>), so no user
     /// is waiting on a message. Callers should stay silent rather than reporting a failure.
     /// </remarks>
-    NotConfigured,
+    NotConfigured = 2,
 
     /// <summary>SMTP is configured but the message could not be sent. The reason is in the log.</summary>
-    Failed,
+    Failed = 3,
 }

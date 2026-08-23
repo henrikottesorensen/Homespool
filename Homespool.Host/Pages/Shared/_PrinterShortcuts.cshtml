@@ -37,7 +37,15 @@ else
     <div class="printer-shortcuts">
         @foreach (PrinterShortcut shortcut in Model.Shortcuts)
         {
-            <a class="printer-shortcut" asp-page="/Printers/Detail" asp-route-uuid="@shortcut.Printer.Uuid">
+            @* data-drop-target rather than a class, so the script binds to intent rather than to
+               styling somebody might rename.
+
+               Unconditional, because the gate is one level up: tile-drop.js is only served when the
+               reader has UploadOwnFiles, so without it nothing ever binds to these and a tile stays
+               the plain link it is without script. Making the attribute itself conditional needs C#
+               in a tag helper's attribute area, which Razor refuses outright. *@
+            <a class="printer-shortcut" asp-page="/Printers/Detail" asp-route-uuid="@shortcut.Printer.Uuid"
+               data-drop-target data-drop-uuid="@shortcut.Printer.Uuid">
                 <span class="printer-shortcut-drawing">
                     <partial name="_PrinterIcon" model="shortcut.FormFactor" />
                 </span>

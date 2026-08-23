@@ -1,15 +1,20 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Localization;
 
 using Homespool.Host.Authorisation;
+using Homespool.Host.Exceptions;
 using Homespool.Host.Localisation;
+using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
 using Homespool.Host.Queue;
 using Homespool.Host.Services;
@@ -48,6 +53,24 @@ public class IndexModel : PageModel
     /// </remarks>
     private const int TileCount = 6;
 
+    /// <summary>Upload only: the bytes land in the reader's tree and nothing else happens.</summary>
+    public const string DropUpload = "upload";
+
+    /// <summary>Upload, then join the printer's queue.</summary>
+    public const string DropQueue = "queue";
+
+    /// <summary>
+    /// Upload, queue, and offer the printer up for work.
+    /// </summary>
+    /// <remarks>
+    /// <b>There is no "start printing" command behind this, and there should not be.</b>
+    /// <see cref="Queue.QueueRules.IsAvailable"/> admits exactly one status, <c>Ready</c>, and the
+    /// advancer picks the head up within about a second of it. So readying a printer whose queue this
+    /// drop just filled <i>is</i> printing now. A direct start would be a second path to the same
+    /// place that skipped the rule standing between a queue and a print onto somebody's finished part.
+    /// </remarks>
+    public const string DropReadyAndPrint = "ready";
+
     /// <summary>
     /// How far back "often used" looks.
     /// </summary>
@@ -62,24 +85,39 @@ public class IndexModel : PageModel
     private readonly PrinterQueryService _printers;
     private readonly PrintHistoryService _history;
     private readonly PrintQueueService _queue;
+    private readonly PrinterAccessService _access;
+    private readonly PrintFileCatalog _files;
+    private readonly PrinterCommandService _commands;
     private readonly PrinterConnectionRegistry _connections;
     private readonly PrinterStatusText _statusText;
+    private readonly IStringLocalizer<SharedResource> _localiser;
+    private readonly ErrorText _errors;
     private readonly UserManager<HSUser> _userManager;
     private readonly TimeProvider _clock;
 
     public IndexModel(PrinterQueryService printers,
                       PrintHistoryService history,
                       PrintQueueService queue,
+                      PrinterAccessService access,
+                      PrintFileCatalog files,
+                      PrinterCommandService commands,
                       PrinterConnectionRegistry connections,
                       PrinterStatusText statusText,
+                      IStringLocalizer<SharedResource> localiser,
+                      ErrorText errors,
                       UserManager<HSUser> userManager,
                       TimeProvider clock)
     {
         _printers = printers;
         _history = history;
         _queue = queue;
+        _access = access;
+        _files = files;
+        _commands = commands;
         _connections = connections;
         _statusText = statusText;
+        _localiser = localiser;
+        _errors = errors;
         _userManager = userManager;
         _clock = clock;
     }
@@ -95,6 +133,26 @@ public class IndexModel : PageModel
     /// you have used", which want different words and a different link.
     /// </summary>
     public bool HasAnyPrinter { get; private set; }
+
+    /// <summary>Whether a drop has anywhere to put its bytes. False makes the tiles inert targets.</summary>
+    public bool CanUpload { get; private set; }
+
+    /// <summary>
+    /// Whether the reader may overwrite one of their own files, which is a capability of its own -
+    /// <see cref="Capability.ManipulateOwnFiles"/> rather than
+    /// <see cref="Capability.UploadOwnFiles"/>. Somebody able to add files but not change them gets
+    /// the name-clash question with only one answer available, and the dialog says so rather than
+    /// offering a replace that would be refused.
+    /// </summary>
+    public bool CanReplace { get; private set; }
+
+    /// <summary>What a drop did, said per file. Rendered once and then gone.</summary>
+    [TempData]
+    public string? StatusMessage { get; set; }
+
+    /// <summary>Whether that message is good news, which decides the alert's colour.</summary>
+    [TempData]
+    public bool StatusSuccess { get; set; }
 
     /// <summary>What a printer's status says, in the reader's language.</summary>
     public string StatusText(PrinterStatus? status)
@@ -121,6 +179,226 @@ public class IndexModel : PageModel
         await LoadAsync(cancellationToken);
 
         return Partial("_PrinterShortcuts", this);
+    }
+
+    /// <summary>
+    /// Answers what a drop would collide with, before it uploads anything.
+    /// </summary>
+    /// <remarks>
+    /// <b>Names in, a rendered dialog out.</b> It could answer JSON and let the browser build the
+    /// dialog, and then every word in it would need a second copy of the vocabulary out here - the
+    /// same trade <c>live-region.js</c> refuses at the top of its file. The browser sends names and
+    /// gets back markup it can show.
+    /// </remarks>
+    public async Task<IActionResult> OnPostConflictsAsync(Guid uuid,
+                                                          string[] names,
+                                                          CancellationToken cancellationToken)
+    {
+        HSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return Forbid();
+        }
+
+        Caller caller = CallerResolver.For(user, User);
+
+        PrinterWithState? row = await _printers.GetPrinterWithStateForUserAsync(uuid, caller, cancellationToken);
+
+        if (row is null)
+        {
+            return NotFound();
+        }
+
+        if (!caller.Allows(Capability.UploadOwnFiles))
+        {
+            return Forbid();
+        }
+
+        // The reader's own tree, so the comparison never sees anybody else's names. Ordinal-ignore-case
+        // because that is what the store treats as the same file.
+        HashSet<string> existing = _files.List(caller)
+                                         .Select(stored => stored.FileName)
+                                         .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        bool canPrint = await _access.AllowsAsync(row.Printer.Id, caller, Capability.Print, cancellationToken);
+
+        TileDropPrompt prompt = new(
+            uuid,
+            PrinterDisplayName.For(row.Printer),
+            [.. names.Select(name => new TileDropFile(name, existing.Contains(name)))],
+            canPrint,
+            canPrint && row.Printer.RemoteReadyAllowed,
+            caller.Allows(Capability.ManipulateOwnFiles));
+
+        return Partial("_TileDrop", prompt);
+    }
+
+    /// <summary>
+    /// Carries out a drop: upload each file, then queue, then optionally make the printer ready.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Per-file reporting, because upload-then-queue can half-succeed.</b> A file can land and
+    /// then be refused a place in the queue - a hold, a nozzle mismatch, a model incompatibility - so
+    /// one summary line would be a lie for whichever half failed. Each file gets its own sentence.
+    /// </para>
+    /// <para>
+    /// <b>A list, though a drag only ever sends one.</b> The single-file rule lives in tile-drop.js,
+    /// where the drop happens; this is a handler anybody can post to, and looping is what keeps it
+    /// honest rather than dependent on the caller having obeyed a convention it cannot see.
+    /// </para>
+    /// <para>
+    /// <b>Readying happens last, and only if something was queued.</b> Making a printer ready with
+    /// nothing at the head of its queue offers the machine up for work that is not there; doing it
+    /// first would let the loop pick up an unrelated older entry the moment it went ready, which is a
+    /// print nobody asked for starting because of a drop that then failed.
+    /// </para>
+    /// <para>
+    /// <b>Ready is still guarded here</b> even though the dialog only offers it when allowed. The
+    /// browser decides what to show; it does not decide what may happen.
+    /// </para>
+    /// </remarks>
+    public async Task<IActionResult> OnPostDropAsync(Guid uuid,
+                                                     string action,
+                                                     List<IFormFile> files,
+                                                     string[] replace,
+                                                     CancellationToken cancellationToken)
+    {
+        HSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return Forbid();
+        }
+
+        Caller caller = CallerResolver.For(user, User);
+
+        PrinterWithState? row = await _printers.GetPrinterWithStateForUserAsync(uuid, caller, cancellationToken);
+
+        if (row is null)
+        {
+            return NotFound();
+        }
+
+        bool queueing = action is DropQueue or DropReadyAndPrint;
+        bool readying = action == DropReadyAndPrint;
+
+        if (readying && !row.Printer.RemoteReadyAllowed)
+        {
+            return Forbid();
+        }
+
+        HashSet<string> replacing = replace.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        List<string> report = [];
+        int queued = 0;
+
+        foreach (IFormFile file in files)
+        {
+            if (file.Length == 0)
+            {
+                continue;
+            }
+
+            string? stored = await StoreAsync(caller, file, replacing.Contains(file.FileName), report, cancellationToken);
+
+            if (stored is null)
+            {
+                continue;
+            }
+
+            if (!queueing)
+            {
+                // Said out loud, because an upload-only drop otherwise finishes in silence and looks
+                // exactly like a drop that missed the tile. StoreAsync only reports what went wrong.
+                report.Add(_localiser["Files_UploadedFile", stored].Value);
+
+                continue;
+            }
+
+            try
+            {
+                await _queue.EnqueueAsync(row.Printer.Id, caller, stored, cancellationToken);
+                queued++;
+                report.Add(_localiser["Home_DropQueued", stored, PrinterDisplayName.For(row.Printer)].Value);
+            }
+            catch (Exception e) when (e is ILocalisableError)
+            {
+                // The bytes are safely in the reader's tree either way, so this reports the queue's
+                // refusal and leaves the file alone rather than undoing an upload that was fine.
+                report.Add(_localiser["Home_DropQueueRefused", stored, _errors.For(e)].Value);
+            }
+        }
+
+        if (readying && queued > 0)
+        {
+            await _commands.SendCommandAsync(row.Printer.Id, new SetPrinterReady(), caller, cancellationToken);
+
+            // The printer page's own words for this, unchanged: the queue line above already named
+            // the printer, so repeating it here would be the second voice §6e warns about.
+            report.Add(_localiser["Printers_ReadySent"].Value);
+        }
+
+        // A drop where every file was refused before it started - all of them the wrong kind, or an
+        // empty selection - would otherwise redirect to a page saying nothing at all.
+        StatusMessage = report.Count > 0 ? string.Join(" ", report) : _localiser["Home_DropNothing"].Value;
+        StatusSuccess = report.Count > 0 && (queued > 0 || !queueing);
+
+        return RedirectToPage();
+    }
+
+    /// <summary>
+    /// Puts one dropped file in the reader's tree, reporting what happened to it.
+    /// </summary>
+    /// <remarks>
+    /// Staged then published, the same two steps the Files page uses. The name clash was settled
+    /// before any of this ran, so <paramref name="overwrite"/> is an answer already given rather than
+    /// a question asked here - but the store is still the authority, and a file that appeared between
+    /// the question and now comes back as a conflict and is reported rather than silently replaced.
+    /// </remarks>
+    private async Task<string?> StoreAsync(Caller caller,
+                                           IFormFile file,
+                                           bool overwrite,
+                                           List<string> report,
+                                           CancellationToken cancellationToken)
+    {
+        PendingUpload staged;
+
+        try
+        {
+            await using Stream content = file.OpenReadStream();
+
+            staged = await _files.StageAsync(caller, file.FileName, content, cancellationToken);
+        }
+        catch (Exception e) when (e is ArgumentException or ILocalisableError)
+        {
+            report.Add(_localiser["Home_DropRejected", file.FileName, _errors.For(e)].Value);
+
+            return null;
+        }
+
+        try
+        {
+            StoredFile? published = await _files.PublishAsync(caller, staged.Token, overwrite, cancellationToken, userName: UserNameOf());
+
+            return published?.FileName;
+        }
+        catch (PrintFileNameConflictException)
+        {
+            // Keep the file already on disk, and throw away the bytes just staged rather than leaving
+            // them to age out - the reader answered this question before the upload started, so there
+            // is nothing left to ask and nothing to keep them for.
+            _files.Discard(caller, staged.Token);
+
+            report.Add(_localiser["Home_DropKept", file.FileName].Value);
+
+            return staged.FileName;
+        }
+    }
+
+    private string? UserNameOf()
+    {
+        return User.Identity?.Name;
     }
 
     private async Task LoadAsync(CancellationToken cancellationToken)
@@ -167,20 +445,40 @@ public class IndexModel : PageModel
         // three where you have only ever used two should still show the third, or the front page
         // would hide a printer from the person most likely to be looking for it. They sort last, on
         // a zero count and a floor timestamp, which is exactly where "never used" belongs.
-        Shortcuts = visible
-                    .Select(row => new
-                    {
-                        Row = row,
-                        Usage = usage.TryGetValue(row.Printer.Id, out PrinterUsage? used) ?
-                            used :
-                            new PrinterUsage(0, DateTimeOffset.MinValue),
-                    })
-                    .OrderByDescending(entry => entry.Usage.Jobs)
-                    .ThenByDescending(entry => entry.Usage.LastStartedAt)
-                    .ThenBy(entry => entry.Row.Printer.Id)
-                    .Take(TileCount)
-                    .Select(entry => ShortcutFor(entry.Row, entry.Usage.Jobs, queued))
-                    .ToList();
+        var ranked = visible
+                     .Select(row => new
+                     {
+                         Row = row,
+                         Usage = usage.TryGetValue(row.Printer.Id, out PrinterUsage? used) ?
+                             used :
+                             new PrinterUsage(0, DateTimeOffset.MinValue),
+                     })
+                     .OrderByDescending(entry => entry.Usage.Jobs)
+                     .ThenByDescending(entry => entry.Usage.LastStartedAt)
+                     .ThenBy(entry => entry.Row.Printer.Id)
+                     .Take(TileCount)
+                     .ToList();
+
+        // Asked per printer rather than once for the page, because it is a per-printer answer: a rack
+        // can mix printers you may print on with printers you may only watch. Bounded by TileCount, so
+        // it is at most six questions however many printers a person can see.
+        List<PrinterShortcut> shortcuts = [];
+
+        foreach (var entry in ranked)
+        {
+            bool canPrint = await _access.AllowsAsync(
+                entry.Row.Printer.Id, caller, Capability.Print, cancellationToken);
+
+            shortcuts.Add(ShortcutFor(entry.Row, entry.Usage.Jobs, queued, canPrint));
+        }
+
+        Shortcuts = shortcuts;
+
+        // Asked of the caller, not of a printer. Uploading writes into the reader's own tree and no
+        // printer is party to it, which is why PrintFileCatalog checks Caller.Allows directly rather
+        // than going through PrinterAccessService. Without it a drop has nowhere to put the bytes.
+        CanUpload = caller.Allows(Capability.UploadOwnFiles);
+        CanReplace = caller.Allows(Capability.ManipulateOwnFiles);
     }
 
     /// <summary>
@@ -197,7 +495,8 @@ public class IndexModel : PageModel
     /// </remarks>
     private PrinterShortcut ShortcutFor(PrinterWithState row,
                                         int recentJobs,
-                                        IReadOnlyDictionary<int, int> queued)
+                                        IReadOnlyDictionary<int, int> queued,
+                                        bool canPrint)
     {
         bool connected = _connections.IsConnected(row.Printer.Id);
 
@@ -211,6 +510,8 @@ public class IndexModel : PageModel
             connected ? row.LiveState?.Progress : null,
             connected ? row.LiveState?.TimeRemaining : null,
             row.LiveState?.Material,
-            queued.TryGetValue(row.Printer.Id, out int waiting) ? waiting : 0);
+            queued.TryGetValue(row.Printer.Id, out int waiting) ? waiting : 0,
+            canPrint,
+            canPrint && row.Printer.RemoteReadyAllowed);
     }
 }

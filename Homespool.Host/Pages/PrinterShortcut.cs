@@ -40,6 +40,17 @@ namespace Homespool.Host.Pages;
 /// place for "PLA" to be spelled.
 /// </param>
 /// <param name="QueuedCount">How many files are waiting. Zero renders nothing.</param>
+/// <param name="CanPrint">
+/// Whether the reader may put work on this printer - <see cref="Capability.Print"/>. Decides whether
+/// a drop offers to queue at all, and it is a per-printer answer: a rack can mix printers you may use
+/// with printers you may only watch.
+/// </param>
+/// <param name="CanReady">
+/// Whether the reader may also make it ready, which is <paramref name="CanPrint"/> and the printer
+/// itself permitting remote readying. <b>The one gate that is not only about permission</b> - a
+/// printer with <c>RemoteReadyAllowed</c> off has been told, at the machine, that nobody may offer it
+/// work from here.
+/// </param>
 public sealed record PrinterShortcut(
     Printer Printer,
     string Name,
@@ -50,4 +61,6 @@ public sealed record PrinterShortcut(
     int? Progress,
     int? TimeRemaining,
     string? Material,
-    int QueuedCount);
+    int QueuedCount,
+    bool CanPrint,
+    bool CanReady);

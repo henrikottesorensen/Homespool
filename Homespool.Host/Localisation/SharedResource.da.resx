@@ -587,6 +587,48 @@
   <data name="Home_Queued_Other" xml:space="preserve">
     <value>{0} filer i køen</value>
   </data>
+  <data name="Home_DropTitle" xml:space="preserve">
+    <value>Send til {0}</value>
+  </data>
+  <data name="Home_DropClashHeading" xml:space="preserve">
+    <value>Du har allerede en fil med dette navn</value>
+  </data>
+  <data name="Home_DropClashHelp" xml:space="preserve">
+    <value>Der er ikke uploadet noget endnu.</value>
+  </data>
+  <data name="Home_DropReplaceUnavailable" xml:space="preserve">
+    <value>Din konto må ikke erstatte filer, så den du allerede har, bliver beholdt.</value>
+  </data>
+  <data name="Home_DropContinue" xml:space="preserve">
+    <value>Fortsæt</value>
+  </data>
+  <data name="Home_DropActionHeading" xml:space="preserve">
+    <value>Hvad skal der ske med {0}?</value>
+  </data>
+  <data name="Home_DropActionUpload" xml:space="preserve">
+    <value>Kun upload</value>
+  </data>
+  <data name="Home_DropActionQueue" xml:space="preserve">
+    <value>Upload og sæt i kø</value>
+  </data>
+  <data name="Home_DropActionReady" xml:space="preserve">
+    <value>Upload, gør klar og print nu</value>
+  </data>
+  <data name="Home_DropQueued" xml:space="preserve">
+    <value>{0} er sat i kø på {1}.</value>
+  </data>
+  <data name="Home_DropQueueRefused" xml:space="preserve">
+    <value>{0} blev uploadet, men ikke sat i kø: {1}</value>
+  </data>
+  <data name="Home_DropRejected" xml:space="preserve">
+    <value>{0} blev ikke uploadet: {1}</value>
+  </data>
+  <data name="Home_DropKept" xml:space="preserve">
+    <value>Beholdte din eksisterende fil {0}.</value>
+  </data>
+  <data name="Home_DropNothing" xml:space="preserve">
+    <value>Der blev ikke uploadet noget.</value>
+  </data>
   <data name="Account_AcceptInvitation" xml:space="preserve">
     <value>Acceptér invitation</value>
   </data>

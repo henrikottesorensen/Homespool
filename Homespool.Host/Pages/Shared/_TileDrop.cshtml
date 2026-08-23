@@ -1,0 +1,113 @@
+@model Homespool.Host.Pages.TileDropPrompt
+@*
+    The two steps a drop raises, both rendered here and shown one at a time by tile-drop.js.
+
+    Rendered by the server rather than assembled in the browser, because every word of it is
+    localised - the trade live-region.js states at the top of its own file. The browser sends the
+    dropped names, gets this back, and shows it.
+
+    Both steps are in the markup even when the first has nothing to ask. That keeps the script's job
+    to showing and hiding: it never has to know which step exists, only which one to show first.
+*@
+@{
+    bool anyClash = Model.Files.Any(file => file.Conflicts);
+}
+
+<div class="modal-header">
+    <h5 class="modal-title">@Localiser["Home_DropTitle", Model.PrinterName]</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="@Localiser["Common_Close"]"></button>
+</div>
+
+<div class="modal-body">
+    @* Step one: name clashes, asked before a byte moves. Answering "keep" here costs nothing,
+       which is the whole reason this comes first rather than after the upload the way Files does. *@
+    <div data-drop-step="clash" class="@(anyClash ? string.Empty : "d-none")">
+        <p class="fw-semibold mb-1">@Localiser["Home_DropClashHeading"]</p>
+        <p class="text-body-secondary small">@Localiser["Home_DropClashHelp"]</p>
+
+        @if (!Model.CanReplace)
+        {
+            <p class="text-body-secondary small">@Localiser["Home_DropReplaceUnavailable"]</p>
+        }
+
+        <ul class="list-unstyled mb-0">
+            @foreach (var file in Model.Files.Where(candidate => candidate.Conflicts))
+            {
+                <li class="mb-2">
+                    <span class="typed-name d-block">@file.Name</span>
+
+                    @* Keep is checked, and is the only choice without ManipulateOwnFiles. Replacing a
+                       file an existing queue entry already points at changes what that entry prints,
+                       which is why the safe answer is the default rather than the fast one. *@
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" checked
+                               name="clash:@file.Name" id="keep:@file.Name" value="keep">
+                        <label class="form-check-label" for="keep:@file.Name">@Localiser["Files_KeepExisting"]</label>
+                    </div>
+
+                    @if (Model.CanReplace)
+                    {
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio"
+                                   name="clash:@file.Name" id="replace:@file.Name" value="replace">
+                            <label class="form-check-label" for="replace:@file.Name">@Localiser["Files_Replace"]</label>
+                        </div>
+                    }
+                </li>
+            }
+        </ul>
+    </div>
+
+    @* Step two: what to do with them. *@
+    <div data-drop-step="action" class="@(anyClash ? "d-none" : string.Empty)">
+        <p class="fw-semibold mb-1">@Localiser["Home_DropActionHeading", Model.PrinterName]</p>
+
+        <ul class="list-unstyled small text-body-secondary">
+            @foreach (var file in Model.Files)
+            {
+                <li class="typed-name">@file.Name</li>
+            }
+        </ul>
+
+        @if (Model.CanReady)
+        {
+            @* The same assertion the printer page's Set ready dialog makes, in the same words,
+               because it is the same claim: that the bed is clear and the machine may be started
+               without anybody looking at it. *@
+            <p class="fw-semibold mb-1 mt-3">@Localiser["Printers_ReadyChecklist"]</p>
+            <p class="text-body-secondary mb-0">@Localiser["Printers_ReadyConsequence"]</p>
+        }
+    </div>
+</div>
+
+<div class="modal-footer">
+    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">@Localiser["Common_Cancel"]</button>
+
+    @* Advances step one to step two rather than submitting; hidden once step two is showing. *@
+    <button type="button" class="btn btn-primary @(anyClash ? string.Empty : "d-none")" data-drop-continue>
+        @Localiser["Home_DropContinue"]
+    </button>
+
+    <span data-drop-actions class="d-flex flex-wrap gap-2 @(anyClash ? "d-none" : string.Empty)">
+        <button type="button" class="btn btn-outline-secondary" data-drop-action="@IndexModel.DropUpload">
+            @Localiser["Home_DropActionUpload"]
+        </button>
+
+        @if (Model.CanPrint)
+        {
+            <button type="button" class="btn btn-primary" data-drop-action="@IndexModel.DropQueue">
+                @Localiser["Home_DropActionQueue"]
+            </button>
+        }
+
+        @if (Model.CanReady)
+        {
+            @* Offered only when the printer permits remote readying, which is a setting on the
+               machine rather than a permission on the person - see PrinterShortcut.CanReady. The
+               handler checks it again: the browser decides what to show, not what may happen. *@
+            <button type="button" class="btn btn-danger" data-drop-action="@IndexModel.DropReadyAndPrint">
+                @Localiser["Home_DropActionReady"]
+            </button>
+        }
+    </span>
+</div>

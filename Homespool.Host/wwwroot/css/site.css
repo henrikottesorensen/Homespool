@@ -655,3 +655,13 @@ body.camera-maximised-open {
 .printer-plaque-stat-end {
   margin-left: auto;
 }
+
+/* A tile with a file over it. Border and tint rather than a dashed outline: the tile already has an
+   edge, and swapping it for a dashed one moves the boundary by a pixel and makes the whole grid
+   twitch as the pointer crosses between two tiles. */
+.printer-shortcut-drop {
+  border-color: var(--bs-primary);
+  background-color: var(--bs-tertiary-bg);
+  outline: 2px solid var(--bs-primary);
+  outline-offset: -2px;
+}

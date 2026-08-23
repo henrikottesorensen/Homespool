@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -198,6 +200,62 @@ public sealed class FrontPageTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
+    /// The clash question is answered from the reader's own tree, before anything is uploaded.
+    /// </summary>
+    [Fact]
+    public async Task TheDropDialogNamesTheClashesAndThePrinter()
+    {
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "front-clash@example.com");
+
+        SeedPrinters(user.Id, "Drop Target", "Spare");
+        Guid uuid = FirstUuid(user.Id, "Drop Target");
+
+        await UploadAsync(client, "already-here.gcode");
+
+        // Act
+        string dialog = await PostFormAsync(client, "/?handler=Conflicts", new()
+        {
+            ["uuid"] = [uuid.ToString()],
+            ["names"] = ["already-here.gcode", "brand-new.gcode"],
+        });
+
+        // Assert
+        dialog.Should().Contain("Drop Target", "a drop onto the wrong tile has to be obvious");
+        dialog.Should().Contain("already-here.gcode");
+        dialog.Should().Contain("clash:already-here.gcode", "the clash is asked about");
+        dialog.Should().NotContain("clash:brand-new.gcode", "a name nobody has does not need a question");
+
+        client.Dispose();
+    }
+
+    /// <summary>
+    /// <b>Ready-and-print is refused for a printer that does not permit remote readying</b>, whatever
+    /// the browser sent. The dialog hides the button; this is the half that matters, because a button
+    /// nobody rendered is still a request somebody can make.
+    /// </summary>
+    [Fact]
+    public async Task RefusesReadyAndPrintWhenThePrinterDoesNotAllowRemoteReadying()
+    {
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "front-ready@example.com");
+
+        SeedPrinters(user.Id, "No Remote Ready", "Spare");
+        Guid uuid = FirstUuid(user.Id, "No Remote Ready");
+
+        // Act
+        await PostDropAsync(client, uuid, "ready", "part.gcode");
+
+        // Assert - behaviour rather than a status code, because Forbid() under cookie auth is a
+        // redirect to the deny page and the number tells you less than the queue does.
+        QueuedCount(uuid).Should().Be(0, "a refused drop must not have queued anything either");
+
+        client.Dispose();
+    }
+
+    /// <summary>
     /// Tiles are scoped to the caller. Somebody else's printer is not yours to see, and a front page
     /// is a careless place to leak the shape of a rack.
     /// </summary>
@@ -223,6 +281,101 @@ public sealed class FrontPageTests : IAsyncLifetime, IDisposable
 
         aliceClient.Dispose();
         bobClient.Dispose();
+    }
+
+    /// <summary>The uuid of a seeded printer, by the name it was seeded with.</summary>
+    private Guid FirstUuid(long userId, string name)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        return context.Printers.First(printer => printer.Name == name).Uuid;
+    }
+
+    /// <summary>How many files are queued on a printer, read straight from the table.</summary>
+    private int QueuedCount(Guid uuid)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        int printerId = context.Printers.First(printer => printer.Uuid == uuid).Id;
+
+        return context.QueuedPrints.Count(job => job.PrinterId == printerId);
+    }
+
+    /// <summary>Puts a file in the caller's own tree, through the page a person would use.</summary>
+    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+                     Justification =
+                         "MultipartFormDataContent takes ownership of the parts added to it and disposes them with itself, which the using declaration below does.")]
+    private static async Task UploadAsync(HttpClient client, string name)
+    {
+        string page = await (await client.GetAsync("/Files", TestContext.Current.CancellationToken))
+            .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Disposing the MultipartFormDataContent disposes the parts it owns, so neither the token nor
+        // the bytes are disposed separately - the same note FilesPageTests carries.
+        using MultipartFormDataContent form = [];
+
+        form.Add(new StringContent(AntiforgeryTestHelper.ExtractToken(page)), "__RequestVerificationToken");
+        form.Add(new ByteArrayContent([1, 2, 3]), "file", name);
+
+        // A successful upload redirects, and this client does not follow redirects - so "not an
+        // error" is the check, not "2xx".
+        HttpResponseMessage response =
+            await client.PostAsync("/Files?handler=Upload", form, TestContext.Current.CancellationToken);
+
+        ((int)response.StatusCode).Should()
+            .BeLessThan(400, "the upload is setup for this test, not what it verifies");
+    }
+
+    /// <summary>Posts a form to a handler, carrying the antiforgery token the front page rendered.</summary>
+    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+                     Justification =
+                         "MultipartFormDataContent takes ownership of the parts added to it and disposes them with itself, which the using declaration below does.")]
+    private static async Task<string> PostFormAsync(HttpClient client,
+                                                    string url,
+                                                    Dictionary<string, string[]> fields)
+    {
+        string page = await (await client.GetAsync("/", TestContext.Current.CancellationToken))
+            .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        using MultipartFormDataContent form = [];
+
+        form.Add(new StringContent(AntiforgeryTestHelper.ExtractToken(page)), "__RequestVerificationToken");
+
+        foreach ((string key, string[] values) in fields)
+        {
+            foreach (string value in values)
+            {
+                form.Add(new StringContent(value), key);
+            }
+        }
+
+        HttpResponseMessage response = await client.PostAsync(url, form, TestContext.Current.CancellationToken);
+
+        return await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>Drives the drop handler the way the script does: files, a printer and an action.</summary>
+    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+                     Justification =
+                         "MultipartFormDataContent takes ownership of the parts added to it and disposes them with itself, which the using declaration below does.")]
+    private static async Task<HttpResponseMessage> PostDropAsync(HttpClient client,
+                                                                 Guid uuid,
+                                                                 string action,
+                                                                 string fileName)
+    {
+        string page = await (await client.GetAsync("/", TestContext.Current.CancellationToken))
+            .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        using MultipartFormDataContent form = [];
+
+        form.Add(new StringContent(AntiforgeryTestHelper.ExtractToken(page)), "__RequestVerificationToken");
+        form.Add(new StringContent(uuid.ToString()), "uuid");
+        form.Add(new StringContent(action), "action");
+        form.Add(new ByteArrayContent([1, 2, 3]), "files", fileName);
+
+        return await client.PostAsync("/?handler=Drop", form, TestContext.Current.CancellationToken);
     }
 
     /// <summary>

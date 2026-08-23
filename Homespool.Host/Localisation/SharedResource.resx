@@ -610,6 +610,48 @@
   <data name="Home_Queued_Other" xml:space="preserve">
     <value>{0} files queued</value>
   </data>
+  <data name="Home_DropTitle" xml:space="preserve">
+    <value>Send to {0}</value>
+  </data>
+  <data name="Home_DropClashHeading" xml:space="preserve">
+    <value>You already have a file with this name</value>
+  </data>
+  <data name="Home_DropClashHelp" xml:space="preserve">
+    <value>Nothing has been uploaded yet.</value>
+  </data>
+  <data name="Home_DropReplaceUnavailable" xml:space="preserve">
+    <value>Your account cannot replace files, so the one you already have will be kept.</value>
+  </data>
+  <data name="Home_DropContinue" xml:space="preserve">
+    <value>Continue</value>
+  </data>
+  <data name="Home_DropActionHeading" xml:space="preserve">
+    <value>What should happen to {0}?</value>
+  </data>
+  <data name="Home_DropActionUpload" xml:space="preserve">
+    <value>Upload only</value>
+  </data>
+  <data name="Home_DropActionQueue" xml:space="preserve">
+    <value>Upload and queue</value>
+  </data>
+  <data name="Home_DropActionReady" xml:space="preserve">
+    <value>Upload, make ready and print now</value>
+  </data>
+  <data name="Home_DropQueued" xml:space="preserve">
+    <value>Queued {0} on {1}.</value>
+  </data>
+  <data name="Home_DropQueueRefused" xml:space="preserve">
+    <value>{0} was uploaded but not queued: {1}</value>
+  </data>
+  <data name="Home_DropRejected" xml:space="preserve">
+    <value>{0} was not uploaded: {1}</value>
+  </data>
+  <data name="Home_DropKept" xml:space="preserve">
+    <value>Kept your existing {0}.</value>
+  </data>
+  <data name="Home_DropNothing" xml:space="preserve">
+    <value>Nothing was uploaded.</value>
+  </data>
   <data name="Account_AcceptInvitation" xml:space="preserve">
     <value>Accept invitation</value>
   </data>

@@ -118,7 +118,7 @@ public sealed class DetailModelTests : IDisposable
                                 // Same reasoning as the preheat service above: real, with a null
                                 // command service, so a guard that stops firing fails at the send
                                 // rather than quietly pulling filament out of something.
-                                new PrinterFilamentService(commands: null!, snapshots, new ToolTargetReader(context), context),
+                                new PrinterFilamentService(commands: null!, snapshots, new ToolTargetReader(context)),
                                 new ToolTargetReader(context),
                                 new PrintHistoryService(context, access, snapshots, new UserNameLookup(context)),
                                 new UserNameLookup(context),
@@ -260,7 +260,7 @@ public sealed class DetailModelTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
-        await model.OnPostUnloadAsync(printer.Uuid, CancellationToken.None);
+        await model.OnPostUnloadAsync(printer.Uuid, tool: null, CancellationToken.None);
 
         // Assert
         model.StatusSuccess.Should().BeFalse("retracting filament mid-print ruins the print");

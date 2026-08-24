@@ -27,9 +27,10 @@ namespace Homespool.Host.PrusaConnect.Commands;
 /// <para>
 /// <b>Deny by shape, not by prefix.</b> Each entry is a whole-line pattern, with its argument range
 /// checked where it has one, so <c>M104 S215</c> passes and <c>M104 S215 M997</c>, <c>M1040</c> and
-/// <c>N1 M104 S215*42</c> do not. Prefix matching is how allowlists like this usually fail. An entry
-/// whose arguments are not a range at all is matched as a literal - see <c>M702 W0</c>, where a
-/// different <c>W</c> is the difference between running headless and stopping at a dialog.
+/// <c>N1 M104 S215*42</c> do not. Prefix matching is how allowlists like this usually fail. An
+/// argument that selects <em>behaviour</em> rather than a magnitude is written out instead of bounded
+/// - see <c>M702 T&lt;n&gt; W0</c>, whose <c>T</c> is a range and whose <c>W</c> is the difference
+/// between running headless and stopping at a dialog.
 /// </para>
 /// <para>
 /// <b>A frame may carry several lines, and every one of them is checked.</b> Firmware walks a gcode
@@ -83,15 +84,23 @@ public static class GcodeAllowList
     /// Unloading filament, and the one entry with no argument to range-check.
     /// </summary>
     /// <remarks>
-    /// <b>Matched as a literal rather than as <c>M702</c> with an optional <c>W</c>.</b> The
-    /// arguments are not a value this application chooses from a range - they are the difference
-    /// between a command that runs headless and one that blocks on a dialog at the panel, which is
-    /// the same failure mode <c>M1700</c> is kept off this list for. <c>M702</c> on its own would
-    /// unload through a cold nozzle; <c>M702 W1</c> would put menu items on the screen; <c>M702 I</c>
-    /// would wait for somebody to confirm. Only the exact line this application composes passes.
+    /// <para>
+    /// <b><c>W</c> is not a value chosen from a range.</b> It is the difference between a command
+    /// that runs headless and one that blocks on a dialog at the panel - the same failure mode
+    /// <c>M1700</c> is kept off this list for. <c>M702</c> alone would unload through a cold nozzle;
+    /// <c>W1</c>/<c>W2</c>/<c>W3</c> put menu items on the screen; <c>I</c> waits for somebody to
+    /// confirm. So it is written out rather than bounded.
+    /// </para>
+    /// <para>
+    /// <b><c>T</c> is a range, and a single character class is the whole of it.</b> Firmware's
+    /// <c>slot_mask</c> is a <c>uint8_t</c> with a <c>static_assert</c> leaving no headroom
+    /// (<c>printer.hpp:130</c>), so eight tools is the ceiling of the representation and <c>T</c> can
+    /// never need two digits. No repetition, therefore no smuggling room - and if Prusa ever widens
+    /// that mask this <b>fails closed</b>: a <c>T8</c> line is simply refused rather than admitted.
+    /// </para>
     /// </remarks>
-    private static readonly Regex UnloadFilament =
-        new(@"^M702 W0$", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+    private static readonly Regex UnloadTool =
+        new(@"^M702 T[0-7] W0$", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
 
     /// <summary>
     /// Whether <paramref name="body"/> is a gcode body this application is permitted to send.
@@ -135,7 +144,7 @@ public static class GcodeAllowList
 
             if (!Matches(NozzleTarget, candidate, MaxNozzleTemperature)
                 && !Matches(BedTarget, candidate, MaxBedTemperature)
-                && !UnloadFilament.IsMatch(candidate))
+                && !UnloadTool.IsMatch(candidate))
             {
                 return false;
             }
@@ -151,7 +160,7 @@ public static class GcodeAllowList
         [
             $"M104 S<0-{MaxNozzleTemperature}> — nozzle target temperature",
             $"M140 S<0-{MaxBedTemperature}> — bed target temperature",
-            "M702 W0 — unload filament, preheating to the printer's own loaded filament type",
+            $"M702 T<0-{UnloadFilament.MaxTools - 1}> W0 — unload one tool, preheating to its own filament type",
         ];
     }
 

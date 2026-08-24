@@ -401,7 +401,30 @@ public class DetailModel : PageModel
     /// this, on this page's standing rule that a button which is not rendered is not a check.
     /// </para>
     /// </remarks>
-    public bool UnloadShown => Connected && LoadedMaterial is not null && Tools.ReachesAHotend;
+    /// <summary>
+    /// Every tool this printer reports, for the picker and for the single-tool button alike.
+    /// </summary>
+    /// <remarks>
+    /// One tool on a single-tool printer, synthesised - see <see cref="ToolTargetReader.ReadToolsAsync"/>.
+    /// </remarks>
+    public IReadOnlyList<PrinterToolState> ToolStates { get; private set; } = [];
+
+    /// <summary>The tools with something in them, which are the ones worth offering.</summary>
+    public IReadOnlyList<PrinterToolState> UnloadableTools =>
+        ToolStates.Where(tool => tool.CanUnload).ToList();
+
+    /// <summary>
+    /// Whether unloading is offered at all.
+    /// </summary>
+    /// <remarks>
+    /// <b>Keyed on there being something to unload, not on which tool is picked.</b> That gate went
+    /// when <c>M702</c> gained an explicit <c>T</c>: firmware changes to the target tool itself, so a
+    /// toolchanger resting with nothing on the carriage can still unload any of its heads.
+    /// </remarks>
+    public bool UnloadShown => Connected && UnloadableTools.Count > 0;
+
+    /// <summary>Whether the choice is real, and therefore whether the picker is worth opening.</summary>
+    public bool UnloadNeedsPicker => ToolStates.Count > 1;
 
     /// <summary>
     /// Which tool this printer's toolless gcode would act on.
@@ -598,6 +621,7 @@ public class DetailModel : PageModel
 
         LoadedMaterial = LoadedFilament.Of(statistics.LiveState?.Material);
         Tools = await _tools.ReadAsync(statistics.Printer.Id, cancellationToken);
+        ToolStates = await _tools.ReadToolsAsync(statistics.Printer.Id, cancellationToken);
 
         ActivePrint = await _historyService.GetActiveAsync(statistics.Printer.Id, caller, cancellationToken);
 
@@ -867,16 +891,16 @@ public class DetailModel : PageModel
     /// queues it, so the several minutes of heating, ejecting and cooling happen after this returns.
     /// </para>
     /// </remarks>
-    public Task<IActionResult> OnPostUnloadAsync(Guid uuid, CancellationToken cancellationToken)
+    public Task<IActionResult> OnPostUnloadAsync(Guid uuid, int? tool, CancellationToken cancellationToken)
     {
         return ActAsync(uuid, async (caller, printer) =>
         {
-            UnloadOutcome outcome = await _filament.UnloadAsync(printer.Id, caller, cancellationToken);
+            UnloadOutcome outcome = await _filament.UnloadAsync(printer.Id, caller, tool, cancellationToken);
 
             // Names the tool when there is one to name. The service reports which head it acted on
             // rather than the page inferring it, so the confirmation cannot disagree with the guard.
-            return outcome.Tool is { } tool ?
-                (_localiser["Printers_UnloadStartedOnTool", outcome.Material, tool].Value, true) :
+            return outcome.NamedByTool ?
+                (_localiser["Printers_UnloadStartedOnTool", outcome.Material, outcome.Tool].Value, true) :
                 (_localiser["Printers_UnloadStarted", outcome.Material].Value, true);
         }, cancellationToken);
     }

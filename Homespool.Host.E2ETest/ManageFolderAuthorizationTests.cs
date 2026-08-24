@@ -123,6 +123,13 @@ public sealed class ManageFolderAuthorizationTests : IAsyncLifetime, IDisposable
                                             + "authenticated /api call, so it should be a decision rather than a default");
 
         options.Cookie.HttpOnly.Should().BeTrue("script has no business reading a session cookie");
+
+        // Not Always: it would withhold the cookie from every http:// request, so the rig and any
+        // deployment run without the proxy could not sign in at all. On the shipped stack the app is
+        // told the scheme by X-Forwarded-Proto from a trusted proxy, so this still issues Secure.
+        options.Cookie.SecurePolicy.Should().Be(Microsoft.AspNetCore.Http.CookieSecurePolicy.SameAsRequest,
+                                                "a plaintext deployment is supported rather than tolerated, "
+                                                + "and Always would lock it out of sign-in entirely");
     }
 
     public ValueTask DisposeAsync()

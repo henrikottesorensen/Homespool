@@ -189,6 +189,28 @@ public static class Program
                 // POST and the API's GETs are reads. Real friction against a marginal gain.
                 options.Cookie.SameSite = SameSiteMode.Lax;
 
+                // SameAsRequest, written down for the same reason as the line above: it is already
+                // the framework's default, and it is the sort of value somebody arrives at asking
+                // why it is not the stricter one.
+                //
+                // NOT Always, and the reason is that plaintext deployments are supported rather than
+                // tolerated. Always withholds the cookie from every http:// request, so the rig and
+                // any deployment run without the proxy could not sign in at all - not degraded,
+                // locked out.
+                //
+                // What SameAsRequest depends on is the application knowing it is behind TLS, which
+                // on the shipped stack it does: nginx sends X-Forwarded-Proto and
+                // XForwarded__KnownNetworks is defaulted to the proxy's subnet, so Request.IsHttps
+                // is true and the cookie is issued Secure. Empty PROXY_NETWORK and the middleware is
+                // not registered, the scheme reads http, and this cookie loses Secure - which is a
+                // deliberate opt-out that also raises the red insecure-connection banner on every
+                // page, rather than a state anybody lands in quietly.
+                //
+                // Deliberately not read from X-Forwarded-Proto directly: untrusted, that header is
+                // attacker-written, so honouring it where no proxy is trusted would be worse than
+                // the state it claims to fix.
+                options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+
                 options.LoginPath = "/Account/Login";
                 options.AccessDeniedPath = "/Account/AccessDenied";
                 options.SlidingExpiration = true;

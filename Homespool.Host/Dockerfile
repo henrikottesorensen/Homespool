@@ -24,6 +24,7 @@ RUN mkdir -p /app/data /app/data/proxy-certificates \
 # reports none - a Logitech C910 is one of those, listing itself as 046d_0821 - and this table is
 # what turns that back into "Logitech HD Webcam C910". Data only, no binaries, and UsbDeviceNames
 # degrades to udev's own name when it is absent, so dropping this costs nicer names and nothing else.
+#
 # sqlite3 is here for the one thing this image cannot otherwise do to itself: repair the database it
 # refuses to start against. tools/carry-enrolment.sh needs sqlite3 and the database, and on an
 # appliance the database is inside a root-owned volume - so without this the repair runs in a
@@ -62,7 +63,10 @@ COPY ["Directory.Build.props", "./"]
 COPY ["Homespool.Host/Homespool.Host.csproj", "Homespool.Host/"]
 COPY ["Homespool.Data/Homespool.Data.csproj", "Homespool.Data/"]
 COPY ["Homespool.Model/Homespool.Model.csproj", "Homespool.Model/"]
-RUN dotnet restore "Homespool.Host/Homespool.Host.csproj"
+# --use-current-runtime here as well as on the publish below, and it is not decoration: without it
+# this layer restores RID-agnostically, publish restores again for the runtime it targets, and the
+# cached layer buys nothing.
+RUN dotnet restore "Homespool.Host/Homespool.Host.csproj" --use-current-runtime
 # Restore the LibMan CLI pinned in .config/dotnet-tools.json (copied first so this layer caches on
 # the manifest, not the whole tree).
 COPY [".config/dotnet-tools.json", ".config/"]
@@ -92,7 +96,25 @@ RUN dotnet build "./Homespool.Host.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./Homespool.Host.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+# --use-current-runtime is worth 31 MB, measured, and the reason is SQLitePCLRaw. A RID-agnostic
+# publish copies NuGet's whole runtimes/ tree into the output - 24 platforms of e_sqlite3, 34 MB,
+# including win-x64, osx-arm64, browser-wasm, linux-mips64 and linux-ppc64le - of which this image
+# loads exactly one, at 1.5 MB. Naming a runtime keeps that one and flattens it into the output root;
+# the tree disappears.
+#
+# --use-current-runtime rather than -r linux-$TARGETARCH because nothing here cross-compiles: this
+# stage runs on the target's own architecture, so the SDK already knows the answer, and asking it
+# avoids both a TARGETARCH-to-RID mapping table (docker says amd64, .NET says x64) and a dependency
+# on BuildKit populating that argument at all.
+#
+# --self-contained false is explicit rather than relied upon. It is the default for a RID'd build
+# since .NET 6, and if that ever changed the failure would be a silently 70 MB larger image carrying
+# its own copy of the runtime, which is the opposite of the point.
+#
+# UseAppHost=false is unchanged and still correct: no native launcher is produced, and the entrypoint
+# stays `dotnet Homespool.Host.dll`.
+RUN dotnet publish "./Homespool.Host.csproj" -c $BUILD_CONFIGURATION -o /app/publish \
+        /p:UseAppHost=false --use-current-runtime --self-contained false
 
 FROM base AS final
 WORKDIR /app

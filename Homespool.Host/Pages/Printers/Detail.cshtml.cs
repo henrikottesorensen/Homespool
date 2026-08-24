@@ -522,6 +522,36 @@ public class DetailModel : PageModel
     /// says.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// The unload dialog's tool rows, fetched when it opens.
+    /// </summary>
+    /// <remarks>
+    /// <b>Because the page's copy is stale by the time anybody reads it.</b> A gcode command is
+    /// answered when it is <em>queued</em>, so the post returns and the page re-renders within about
+    /// a hundred milliseconds while the printer still has minutes of unloading to do - capturing the
+    /// tool as still loaded, which was true at that instant and wrong by the time the dialog is
+    /// reopened. The control strip is deliberately outside the polled region
+    /// (<c>notes/printer-page.md</c> §2), so nothing corrects it. Fetching on open is the narrowest
+    /// fix: fresh at the one moment somebody is choosing, and no markup replaced under an open
+    /// dialog.
+    /// </remarks>
+    public async Task<IActionResult> OnGetToolsAsync(Guid uuid, CancellationToken cancellationToken)
+    {
+        HSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return Forbid();
+        }
+
+        if (!await LoadStatusAsync(uuid, CallerResolver.For(user, User), cancellationToken))
+        {
+            return NotFound();
+        }
+
+        return Partial("_UnloadTools", this);
+    }
+
     public async Task<IActionResult> OnGetStatusAsync(Guid uuid, CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
@@ -990,10 +1020,11 @@ public class DetailModel : PageModel
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
                                       or CommandResponseTimedOutException or CommandSendTimedOutException
                                       or NoToolPickedException or FilamentTypeUnknownException
-                                      or PrinterHasQueuedWorkException)
+                                      or PrinterHasQueuedWorkException or NoSuchToolException
+                                      or ToolNotSpecifiedException)
         {
-            // The last three are refusals about what the printer is holding rather than what it is
-            // doing, and every one of them is reachable from a rendered control: the queued-work case
+            // These are refusals about what the printer is holding rather than what it is doing, and
+            // every one is reachable from a rendered control: the queued-work case
             // needs only a Ready printer with something in its queue. Uncaught they would be a 500
             // where a sentence was written for them.
             (StatusMessage, StatusSuccess) = (_errors.For(e), false);

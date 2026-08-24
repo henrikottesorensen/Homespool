@@ -449,7 +449,11 @@
 </details>
 
 
-@if (Model.CanUse && Model.Statistics.Printer.RemoteReadyAllowed)
+@* The dialog is gated on CanUse and on there being a choice - and on nothing else. It first
+   went in beside the Set ready modal and inherited that block's RemoteReadyAllowed, so the
+   trigger pointed at markup which was simply absent on any printer without the ready toggle:
+   a button that did nothing, with no error anywhere. *@
+@if (Model.CanUse && Model.UnloadNeedsPicker)
 {
     @* A picker, not a confirmation - which is why it exists here and the single-tool button has no
        dialog at all. It is the thing that reaches tools that are not on the carriage: M702 carries an
@@ -459,8 +463,6 @@
        Rendered from the page load, not from the poll: the control strip sits outside the refreshed
        region on purpose, so these temperatures are as old as the page. That is the honest trade for
        not having the markup replaced under somebody mid-choice - see notes/printer-page.md §6e. *@
-    @if (Model.UnloadNeedsPicker)
-    {
         <div class="modal fade" id="unload-tool" tabindex="-1" aria-labelledby="unload-tool-heading" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
@@ -473,36 +475,10 @@
                         <div class="modal-body">
                             <p class="text-body-secondary small">@Localiser["Printers_UnloadPickerNote"]</p>
 
-                            @foreach (var tool in Model.ToolStates)
-                            {
-                                <div class="form-check mb-2 @(tool.CanUnload ? null : "text-body-secondary")">
-                                    <input class="form-check-input" type="radio" name="tool"
-                                           value="@tool.ToolNumber" id="unload-tool-@tool.ToolNumber"
-                                           disabled="@(!tool.CanUnload)"
-                                           checked="@(tool.ToolNumber == Model.UnloadableTools[0].ToolNumber)" />
-                                    <label class="form-check-label d-flex justify-content-between gap-3"
-                                           for="unload-tool-@tool.ToolNumber">
-                                        <span>
-                                            @* An empty tool is listed and inert rather than hidden: hiding it
-                                               would make this disagree with the machine, where the head is
-                                               plainly there. *@
-                                            @(tool.CanUnload
-                                                ? Localiser["Printers_ToolWithMaterial", tool.ToolNumber, tool.Material!].Value
-                                                : Localiser["Printers_ToolEmpty", tool.ToolNumber].Value)
-                                        </span>
-                                        <span class="text-body-secondary small">
-                                            @if (tool.Temperature is { } temperature)
-                                            {
-                                                @Localiser["Printers_Degrees", temperature.ToString("0", System.Globalization.CultureInfo.CurrentCulture)]
-                                            }
-                                            @if (tool.IsPicked)
-                                            {
-                                                <span>&middot; @Localiser["Printers_ToolPicked"]</span>
-                                            }
-                                        </span>
-                                    </label>
-                                </div>
-                            }
+                            <div data-unload-tools
+                                 data-unload-tools-url="@Url.Page("Detail", "Tools", new { uuid })">
+                                <partial name="_UnloadTools" model="Model" />
+                            </div>
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
@@ -514,8 +490,10 @@
                 </div>
             </div>
         </div>
-    }
+}
 
+@if (Model.CanUse && Model.Statistics.Printer.RemoteReadyAllowed)
+{
     <div class="modal fade" id="set-ready" tabindex="-1" aria-labelledby="set-ready-heading" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
@@ -579,6 +557,7 @@
 
 @section Scripts {
     <script src="~/js/live-region.js" asp-append-version="true"></script>
+    <script src="~/js/unload-tools.js" asp-append-version="true"></script>
     <script src="~/js/dismiss-alert.js" asp-append-version="true"></script>
     <script src="~/js/camera.js" asp-append-version="true"></script>
     <script src="~/js/camera-live.js" asp-append-version="true"></script>

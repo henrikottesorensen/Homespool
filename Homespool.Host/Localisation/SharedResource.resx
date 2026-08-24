@@ -1677,6 +1677,10 @@
     <value>The printer refused it: {0}</value>
     <comment>{0} is the printer&apos;s own reason, in its own words, and is not translated.</comment>
   </data>
+  <data name="Error_PrinterRefusedBusy" xml:space="preserve">
+    <value>The printer is still running a previous command, so it refused this one. Give it a moment and try again.</value>
+    <comment>A Rejected carrying no reason. Firmware constructs exactly one rejection without a reason - the one for "a background command is already running" - so this is a likely cause rather than a certainty.</comment>
+  </data>
   <data name="Error_PrinterRefusedEvent" xml:space="preserve">
     <value>The printer refused it ({0}).</value>
     <comment>{0} is the answering event name from firmware - Rejected or Failed - and stays as firmware spells it.</comment>

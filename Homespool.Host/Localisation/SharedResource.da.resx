@@ -1632,6 +1632,9 @@
   <data name="Error_PrinterRefused" xml:space="preserve">
     <value>Printeren afviste den: {0}</value>
   </data>
+  <data name="Error_PrinterRefusedBusy" xml:space="preserve">
+    <value>Printeren kører stadig en tidligere kommando og afviste derfor denne. Vent et øjeblik, og prøv igen.</value>
+  </data>
   <data name="Error_PrinterRefusedEvent" xml:space="preserve">
     <value>Printeren afviste den ({0}).</value>
   </data>

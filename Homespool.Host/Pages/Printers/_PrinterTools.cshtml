@@ -1,0 +1,64 @@
+@using System.Globalization
+@model DetailModel
+
+@* Per-tool state, for the machines whose status is not one nozzle and one spool. Inside the polled
+   region deliberately, unlike the unload picker: this carries no input to lose, and a temperature
+   that never moves is the thing the whole status card exists to fix.
+
+   TWO FIXED COLUMNS, not auto-fit. Measured rather than derived (notes/toolchangers.md §3b): auto-fit
+   gives three columns at 1000px and four at 1280, which is "as many as fit" rather than a design -
+   and at three or four a tool's position stops being predictable. That matters here more than
+   anywhere, because tool numbers are NOT contiguous: a reader hunting tool 5 among 1, 2, 4, 8 in a
+   reflowed grid has no rule to follow.
+
+   ROW-MAJOR - 1,2 then 3,4. Column order would need this view to interleave a non-contiguous list of
+   unknown length, which is arithmetic that silently puts a tool in the wrong place when it is wrong. *@
+
+@{
+    var toolCulture = CultureInfo.CurrentCulture;
+}
+
+<div class="printer-metric mt-3">
+    <div class="d-flex justify-content-between align-items-baseline gap-2 mb-2">
+        <span class="printer-metric-label">@Localiser["Printers_Tools"]</span>
+        <span class="small text-body-secondary">
+            @Localiser["Printers_ToolsFitted", Model.ToolStates.Count]
+        </span>
+    </div>
+
+    <div class="printer-tools small">
+        @foreach (var tool in Model.ToolStates)
+        {
+            <div class="d-flex justify-content-between gap-3 py-1 border-top @(tool.IsPicked ? "fw-medium" : null)">
+                <span class="@(tool.CanUnload ? null : "text-body-secondary")">
+                    <span class="text-body-secondary">@tool.ToolNumber</span>
+                    @(tool.CanUnload
+                        ? tool.Material!
+                        : Localiser["Printers_ToolNothingLoaded"].Value)
+                    @* Said on the row rather than only in the header, because "which head is
+                       hardened" is the question an abrasive hold raises, and the answer has to be
+                       beside the head it is about. *@
+                    @if (tool.Hardened)
+                    {
+                        <span class="text-body-secondary">@Localiser["Printers_ToolHardened"]</span>
+                    }
+                </span>
+                <span class="text-body-secondary text-nowrap">
+                    @if (tool.NozzleDiameter is { } diameter)
+                    {
+                        @diameter.ToString("0.0#", toolCulture)<text> · </text>
+                    }
+                    @if (tool.Temperature is { } temperature)
+                    {
+                        @Localiser["Printers_Degrees", temperature.ToString("0", toolCulture)]
+                    }
+                </span>
+            </div>
+        }
+    </div>
+
+    @if (Model.ToolStates.FirstOrDefault(tool => tool.IsPicked) is { } picked)
+    {
+        <p class="small text-body-secondary mt-2 mb-0">@Localiser["Printers_ToolOnCarriage", picked.ToolNumber]</p>
+    }
+</div>

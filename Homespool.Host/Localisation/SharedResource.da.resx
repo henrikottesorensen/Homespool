@@ -430,11 +430,44 @@
   <data name="Printers_UnloadStarted" xml:space="preserve">
     <value>Tager {0} ud. Printeren varmer dysen op, skubber filamentet ud og slukker så for det hele.</value>
   </data>
-  <data name="Printers_UnloadOnTool" xml:space="preserve">
-    <value>Tag {0} ud (værktøj {1})</value>
-  </data>
   <data name="Printers_UnloadStartedOnTool" xml:space="preserve">
     <value>Tager {0} ud af værktøj {1}. Printeren varmer dysen op, skubber filamentet ud og slukker så for det hele.</value>
+  </data>
+  <data name="Printers_UnloadEllipsis" xml:space="preserve">
+    <value>Tag ud…</value>
+  </data>
+  <data name="Printers_UnloadWhichTool" xml:space="preserve">
+    <value>Hvilket værktøj skal tømmes?</value>
+  </data>
+  <data name="Printers_UnloadPickerNote" xml:space="preserve">
+    <value>Hvert værktøj tømmes ved sit eget filaments printtemperatur. Printeren henter værktøjet, skubber filamentet ud og sætter det på plads igen - et par minutter, og den afviser andre kommandoer imens.</value>
+  </data>
+  <data name="Printers_Tools" xml:space="preserve">
+    <value>Værktøjer</value>
+  </data>
+  <data name="Printers_ToolsFitted" xml:space="preserve">
+    <value>{0} monteret</value>
+  </data>
+  <data name="Printers_ToolNothingLoaded" xml:space="preserve">
+    <value>Intet ilagt</value>
+  </data>
+  <data name="Printers_ToolHardened" xml:space="preserve">
+    <value>hærdet</value>
+  </data>
+  <data name="Printers_ToolOnCarriage" xml:space="preserve">
+    <value>Værktøj {0} sidder i holderen.</value>
+  </data>
+  <data name="Printers_ToolWithMaterial" xml:space="preserve">
+    <value>Værktøj {0} · {1}</value>
+  </data>
+  <data name="Printers_ToolEmpty" xml:space="preserve">
+    <value>Værktøj {0} · intet ilagt</value>
+  </data>
+  <data name="Printers_ToolPicked" xml:space="preserve">
+    <value>valgt</value>
+  </data>
+  <data name="Printers_UnloadConfirm" xml:space="preserve">
+    <value>Tag dette værktøj ud</value>
   </data>
   <data name="Printers_UnloadNote" xml:space="preserve">
     <value>Udtagning varmer dysen op til det isatte filaments printtemperatur, skubber det ud og slukker så for varmelegemerne - så printeren er kold og tom, når du når frem til den. Det tager et par minutter, og printeren afviser andre kommandoer imens.</value>
@@ -1728,6 +1761,9 @@
   <data name="Error_PrinterRefused" xml:space="preserve">
     <value>Printeren afviste den: {0}</value>
   </data>
+  <data name="Error_PrinterRefusedBusy" xml:space="preserve">
+    <value>Printeren kører stadig en tidligere kommando og afviste derfor denne. Vent et øjeblik, og prøv igen.</value>
+  </data>
   <data name="Error_PrinterRefusedEvent" xml:space="preserve">
     <value>Printeren afviste den ({0}).</value>
   </data>
@@ -1737,7 +1773,7 @@
   <data name="Error_PrinterStateUnknown" xml:space="preserve">
     <value>Printerens tilstand kendes ikke endnu - den melder ind kort efter, den forbinder.</value>
   </data>
-  <data name="Error_NoToolPicked" xml:space="preserve">
+   <data name="Error_NoToolPicked" xml:space="preserve">
     <value>Der er ikke valgt et værktøj, så dette ville ikke nå frem til en dyse. Vælg et værktøj på printeren først.</value>
   </data>
   <data name="Error_FilamentTypeUnknown" xml:space="preserve">

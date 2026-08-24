@@ -109,18 +109,25 @@
            preheat: this changes the physical world, but harmlessly and on purpose. *@
         @if (Model.UnloadShown)
         {
-            <form method="post" asp-page-handler="Unload" asp-route-uuid="@uuid">
-                <button type="submit" class="btn btn-outline-secondary">
-                    @if (Model.Tools.PickedTool is { } pickedTool)
-                    {
-                        @Localiser["Printers_UnloadOnTool", Model.LoadedMaterial!, pickedTool]
-                    }
-                    else
-                    {
-                        @Localiser["Printers_Unload", Model.LoadedMaterial!]
-                    }
+            @* One tool means no choice to make, so it stays a plain button; several means a real
+               one, so it opens a picker. Same rule either way - ask only when something is being
+               decided - rather than two philosophies by printer type. *@
+            @if (Model.UnloadNeedsPicker)
+            {
+                <button type="button" class="btn btn-outline-secondary"
+                        data-bs-toggle="modal" data-bs-target="#unload-tool">
+                    @Localiser["Printers_UnloadEllipsis"]
                 </button>
-            </form>
+            }
+            else
+            {
+                <form method="post" asp-page-handler="Unload" asp-route-uuid="@uuid">
+                    <input type="hidden" name="tool" value="@Model.UnloadableTools[0].ToolNumber" />
+                    <button type="submit" class="btn btn-outline-secondary">
+                        @Localiser["Printers_Unload", Model.UnloadableTools[0].Material!]
+                    </button>
+                </form>
+            }
         }
 
         @* Setting ready is a person asserting the sheet is clear, which is why the walk to the
@@ -470,6 +477,49 @@
 </details>
 
 
+@* The dialog is gated on CanUse and on there being a choice - and on nothing else. It first
+   went in beside the Set ready modal and inherited that block's RemoteReadyAllowed, so the
+   trigger pointed at markup which was simply absent on any printer without the ready toggle:
+   a button that did nothing, with no error anywhere. *@
+@if (Model.CanUse && Model.UnloadNeedsPicker)
+{
+    @* A picker, not a confirmation - which is why it exists here and the single-tool button has no
+       dialog at all. It is the thing that reaches tools that are not on the carriage: M702 carries an
+       explicit T and firmware changes to that tool itself (M701_2.cpp:168-171), so "picked" is a cost
+       here rather than a constraint.
+
+       Rendered from the page load, not from the poll: the control strip sits outside the refreshed
+       region on purpose, so these temperatures are as old as the page. That is the honest trade for
+       not having the markup replaced under somebody mid-choice - see notes/printer-page.md §6e. *@
+        <div class="modal fade" id="unload-tool" tabindex="-1" aria-labelledby="unload-tool-heading" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <form method="post" asp-page-handler="Unload" asp-route-uuid="@uuid">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="unload-tool-heading">@Localiser["Printers_UnloadWhichTool"]</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                    aria-label="@Localiser["Common_Cancel"]"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p class="text-body-secondary small">@Localiser["Printers_UnloadPickerNote"]</p>
+
+                            <div data-unload-tools
+                                 data-unload-tools-url="@Url.Page("Detail", "Tools", new { uuid })">
+                                <partial name="_UnloadTools" model="Model" />
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                                @Localiser["Common_Cancel"]
+                            </button>
+                            <button type="submit" class="btn btn-outline-primary">@Localiser["Printers_UnloadConfirm"]</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+}
+
 @if (Model.CanUse && Model.Statistics.Printer.RemoteReadyAllowed)
 {
     <div class="modal fade" id="set-ready" tabindex="-1" aria-labelledby="set-ready-heading" aria-hidden="true">
@@ -535,6 +585,7 @@
 
 @section Scripts {
     <script src="~/js/live-region.js" asp-append-version="true"></script>
+    <script src="~/js/unload-tools.js" asp-append-version="true"></script>
     <script src="~/js/dismiss-alert.js" asp-append-version="true"></script>
     <script src="~/js/camera.js" asp-append-version="true"></script>
     <script src="~/js/camera-live.js" asp-append-version="true"></script>

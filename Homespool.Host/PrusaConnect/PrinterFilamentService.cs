@@ -1,10 +1,8 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Microsoft.EntityFrameworkCore;
-
-using Homespool.Data;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect.Commands;
@@ -44,17 +42,14 @@ public class PrinterFilamentService
     private readonly PrinterCommandService _commands;
     private readonly QueueSnapshotReader _snapshots;
     private readonly ToolTargetReader _tools;
-    private readonly HomespoolDbContext _dbContext;
 
     public PrinterFilamentService(PrinterCommandService commands,
                                   QueueSnapshotReader snapshots,
-                                  ToolTargetReader tools,
-                                  HomespoolDbContext dbContext)
+                                  ToolTargetReader tools)
     {
         _commands = commands;
         _snapshots = snapshots;
         _tools = tools;
-        _dbContext = dbContext;
     }
 
     /// <summary>
@@ -62,6 +57,11 @@ public class PrinterFilamentService
     /// </summary>
     /// <param name="printerId">The printer to unload.</param>
     /// <param name="caller">Who is asking, checked for <c>CanUse</c> on the printer's team.</param>
+    /// <param name="toolNumber">
+    /// Which tool to unload, <b>1-based as the printer numbers it</b>. Optional only on a single-tool
+    /// printer; a toolchanger without one is <see cref="ToolNotSpecifiedException"/>, because there is
+    /// no default that is not a guess at somebody's spool.
+    /// </param>
     /// <param name="cancellationToken">The caller's own cancellation.</param>
     /// <returns>
     /// The material that was unloaded and the printer's own answer to the command. The material is
@@ -75,6 +75,7 @@ public class PrinterFilamentService
     /// <exception cref="TeamAccessDeniedException">Caller lacks <c>CanUse</c>.</exception>
     public async Task<UnloadOutcome> UnloadAsync(int printerId,
                                                  Caller caller,
+                                                 int? toolNumber,
                                                  CancellationToken cancellationToken)
     {
         QueueSnapshot snapshot = await _snapshots.ReadAsync(printerId, cancellationToken);
@@ -92,32 +93,16 @@ public class PrinterFilamentService
             throw new PrinterHasQueuedWorkException(printerId);
         }
 
-        // M702 carries no T, so on a toolchanger it acts on whatever is picked - and returns having
-        // done nothing when that is nothing, reporting only to serial while the frame is answered
-        // Accepted. Refused here rather than sent, since the page would otherwise claim an unload
-        // that never happened.
-        ToolTarget target = await _tools.ReadAsync(printerId, cancellationToken);
+        IReadOnlyList<PrinterToolState> tools = await _tools.ReadToolsAsync(printerId, cancellationToken);
+        PrinterToolState tool = Resolve(printerId, tools, toolNumber);
 
-        if (!target.ReachesAHotend)
-        {
-            throw new NoToolPickedException(printerId);
-        }
-
-        // Read from the live state rather than taken from the caller: the material is not decoration
-        // here, it is the condition under which firmware will run this without a dialog on the panel.
-        string? reported = await _dbContext.PrinterLiveStates
-                                           .AsNoTracking()
-                                           .Where(state => state.PrinterId == printerId)
-                                           .Select(state => state.Material)
-                                           .SingleOrDefaultAsync(cancellationToken);
-
-        if (LoadedFilament.Of(reported) is not { } material)
+        if (tool.Material is not { } material)
         {
             throw new FilamentTypeUnknownException(printerId);
         }
 
         CommandOutcome? answer = await _commands.SendCommandAsync(
-            printerId, new UnloadFilament(), caller, cancellationToken);
+            printerId, UnloadFilament.ForTool(tool.ToolNumber), caller, cancellationToken);
 
         // The printer's own answer decides, not the fact that a frame was written - the same rule
         // preheating follows, and for the same reason: a refusal shown as success sends somebody to
@@ -127,7 +112,42 @@ public class PrinterFilamentService
             throw new PrinterRefusedException(answer.EventType, answer.Reason);
         }
 
-        return new UnloadOutcome(material, target.PickedTool, answer);
+        return new UnloadOutcome(material, tool.ToolNumber, tools.Count > 1, answer);
+    }
+
+    /// <summary>
+    /// Which tool to act on, from what the caller asked for and what the printer reports.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A named tool is checked against the printer's own list, never trusted.</b> The number
+    /// arrives in a form post, and an unrecognised one must not become a <c>T</c> argument: firmware
+    /// would refuse a disabled tool, but a number that happens to name a <em>different</em> fitted
+    /// head would unload the wrong spool, which nothing downstream could catch.
+    /// </para>
+    /// <para>
+    /// <b>Omitting it is only meaningful on a single-tool printer.</b> On a toolchanger there is a
+    /// real choice and no defensible default - picking the first fitted head, or whichever is on the
+    /// carriage, would be guessing at somebody's spool. The dialog exists to make that choice, so a
+    /// post without one is a defect rather than a shorthand.
+    /// </para>
+    /// </remarks>
+    private static PrinterToolState Resolve(int printerId,
+                                            IReadOnlyList<PrinterToolState> tools,
+                                            int? toolNumber)
+    {
+        if (tools.Count == 0)
+        {
+            throw new FilamentTypeUnknownException(printerId);
+        }
+
+        if (toolNumber is not { } requested)
+        {
+            return tools.Count == 1 ? tools[0] : throw new ToolNotSpecifiedException(printerId);
+        }
+
+        return tools.SingleOrDefault(candidate => candidate.ToolNumber == requested)
+               ?? throw new NoSuchToolException(printerId, requested);
     }
 }
 
@@ -137,12 +157,15 @@ public class PrinterFilamentService
 /// reporting that is refused before anything is sent.
 /// </param>
 /// <param name="Tool">
-/// The tool it acted on, <b>1-based as the wire numbers it</b>, or null on a single-tool printer
-/// where there is nothing to name. Carried so a caller can say <em>which</em> head the filament came
-/// out of rather than implying the machine has one.
+/// The tool it acted on, <b>1-based as the wire numbers it</b>. Always set - every unload now names
+/// its tool, because <c>M702</c> carries an explicit <c>T</c>.
+/// </param>
+/// <param name="NamedByTool">
+/// Whether saying <em>which</em> tool would mean anything to a reader. False on a single-tool
+/// printer, where "tool 1" is noise rather than information.
 /// </param>
 /// <param name="Answer">
 /// The printer's own answer, or null for a command expecting no reply. An <c>Accepted</c> here means
 /// the unload has <em>started</em>, not that it has finished.
 /// </param>
-public sealed record UnloadOutcome(string Material, int? Tool, CommandOutcome? Answer);
+public sealed record UnloadOutcome(string Material, int Tool, bool NamedByTool, CommandOutcome? Answer);

@@ -1,3 +1,6 @@
+using System;
+using System.Globalization;
+
 namespace Homespool.Host.PrusaConnect.Commands;
 
 /// <summary>
@@ -46,7 +49,54 @@ namespace Homespool.Host.PrusaConnect.Commands;
 /// </remarks>
 public class UnloadFilament : ISendableGcodeCommand
 {
+    /// <summary>The most tools the wire can describe - see <see cref="ForTool"/>.</summary>
+    public const int MaxTools = 8;
+
+    private UnloadFilament(int toolIndex)
+    {
+        ToolIndex = toolIndex;
+    }
+
+    /// <summary>
+    /// The tool this unloads, <b>0-based as gcode numbers it</b> - not as the wire does.
+    /// </summary>
+    public int ToolIndex { get; }
+
     public string WireName => "GCODE";
 
-    public string Line => "M702 W0";
+    public string Line => "M702 T" + ToolIndex.ToString(CultureInfo.InvariantCulture) + " W0";
+
+    /// <summary>
+    /// The command for the tool a printer calls <paramref name="wireToolNumber"/>.
+    /// </summary>
+    /// <param name="wireToolNumber">
+    /// The tool number as telemetry and <c>INFO</c> report it, <b>1-based</b>.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// <b>This conversion is the whole reason the constructor is private.</b> Firmware keys its slot
+    /// objects <c>state.iter + 1</c> while <c>state.iter</c> <em>is</em> the <c>VirtualToolIndex</c>
+    /// (<c>render.cpp:235</c> and <c>:392</c>), so the wire counts from one and gcode counts from
+    /// zero. Nothing downstream can catch an off-by-one here, and the symptom is the wrong spool on
+    /// the floor - so it happens once, in a named method, with a test.
+    /// </para>
+    /// <para>
+    /// <b>Bounded at <see cref="MaxTools"/>, and that bound is firmware's rather than a guess.</b>
+    /// <c>Printer::Params::slot_mask</c> is a <c>uint8_t</c> carrying a
+    /// <c>static_assert(8 * sizeof slot_mask >= VirtualToolIndex::count)</c> (<c>printer.hpp:130</c>),
+    /// so eight is the ceiling of the representation with no headroom. Exercised at eight on the
+    /// connect rig, 2026-08-24.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Outside 1..<see cref="MaxTools"/>. Thrown rather than clamped: a tool number this application
+    /// did not read off the wire is a defect, and unloading a neighbouring tool instead would hide it.
+    /// </exception>
+    public static UnloadFilament ForTool(int wireToolNumber)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(wireToolNumber, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(wireToolNumber, MaxTools);
+
+        return new UnloadFilament(wireToolNumber - 1);
+    }
 }

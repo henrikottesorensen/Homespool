@@ -81,7 +81,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
 
         (await unload.Should().ThrowAsync<PrinterBusyException>()).Which.Status.Should().Be(status);
     }
@@ -111,7 +111,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
 
         await unload.Should().ThrowAsync<PrinterBusyException>(
             "a runout is one of several things Attention means, and the others are mid-print");
@@ -137,7 +137,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
 
         await unload.Should().ThrowAsync<FilamentTypeUnknownException>(
             "reaching the material check means the state was accepted");
@@ -187,7 +187,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
 
         await unload.Should().ThrowAsync<PrinterHasQueuedWorkException>();
     }
@@ -204,7 +204,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
 
         await unload.Should().ThrowAsync<FilamentTypeUnknownException>(
             "an empty queue means Ready carries no instruction to start anything");
@@ -223,7 +223,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
 
         await unload.Should().ThrowAsync<FilamentTypeUnknownException>(
             "an Idle printer is not going to start the queue on its own");
@@ -251,7 +251,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
 
         await unload.Should().ThrowAsync<FilamentTypeUnknownException>(
             "firmware would stop at a preheat dialog nobody is standing at");
@@ -266,7 +266,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
 
         await unload.Should().ThrowAsync<PrinterBusyException>();
     }
@@ -278,20 +278,59 @@ public sealed class PrinterFilamentServiceTests : IDisposable
     /// <b>The refusal has to come before the frame, not instead of believing it.</b> Firmware would
     /// answer <c>M702</c> <c>Accepted</c> and then return having done nothing, reporting only to the
     /// serial console - so a page that sent it would report an unload that never happened. On a
-    /// toolchanger this is the resting state: <c>M702</c> itself docks to <c>NoTool</c> when it
-    /// finishes.
+    /// INDX this is the resting state - it docks the tool after every load and unload, under
+    /// <c>#if HAS_INDX()</c> - and on an XL, which leaves the tool picked, it is what you meet at
+    /// power-on or after parking one.
     /// </remarks>
     [Fact]
-    public async Task AToolchangerWithNothingPickedIsRefused()
+    public async Task AToolchangerWithNothingPickedCanStillUnloadANamedTool()
     {
         await using HomespoolDbContext context = await MigratedContextAsync();
-        await SeedAsync(context, PrinterStatus.Idle, material: "PLA", activeSlot: 0, toolCount: 5);
+        await SeedAsync(context, PrinterStatus.Idle, material: "PLA", activeSlot: 0, toolCount: 5,
+                        slots: [(1, "PLA"), (2, "PETG")]);
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: 2, CancellationToken.None);
 
-        await unload.Should().ThrowAsync<NoToolPickedException>();
+        await unload.Should().ThrowAsync<NullReferenceException>(
+            "every guard passed and the send was reached - nothing-picked is no longer a refusal");
+    }
+
+    /// <summary>A tool the printer has not reported is refused rather than sent as a <c>T</c>.</summary>
+    /// <remarks>
+    /// <b>Firmware would decline a tool that is not enabled - but a number naming a different fitted
+    /// head would be obeyed</b>, and unloading the wrong spool is not something anything downstream
+    /// can catch. The number arrives in a form post, so the printer's own list is the only authority.
+    /// </remarks>
+    [Fact]
+    public async Task AToolThePrinterHasNotReportedIsRefused()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await SeedAsync(context, PrinterStatus.Idle, material: "PLA", activeSlot: 1, toolCount: 5,
+                        slots: [(1, "PLA"), (2, "PETG")]);
+
+        PrinterFilamentService service = NewService(context);
+
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: 4, CancellationToken.None);
+
+        (await unload.Should().ThrowAsync<NoSuchToolException>()).Which.ToolNumber.Should().Be(4);
+    }
+
+    /// <summary>An empty tool is refused, even though the printer has it fitted.</summary>
+    [Fact]
+    public async Task AnEmptyToolIsRefused()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await SeedAsync(context, PrinterStatus.Idle, material: "PLA", activeSlot: 1, toolCount: 5,
+                        slots: [(1, "PLA"), (2, null)]);
+
+        PrinterFilamentService service = NewService(context);
+
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: 2, CancellationToken.None);
+
+        await unload.Should().ThrowAsync<FilamentTypeUnknownException>(
+            "with no stored filament type firmware would stop at a dialog on the panel");
     }
 
     /// <summary>
@@ -309,28 +348,33 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
 
         await unload.Should().ThrowAsync<FilamentTypeUnknownException>(
             "a picked tool is a target, so the tool gate has nothing to refuse");
     }
 
     /// <summary>
-    /// A multi-tool printer that has not reported a slot block yet is refused rather than assumed
-    /// safe.
+    /// A toolchanger asked to unload without naming a tool is refused rather than defaulted.
     /// </summary>
+    /// <remarks>
+    /// <b>There is no default that is not a guess at somebody's spool.</b> The first fitted head and
+    /// the one on the carriage are both arbitrary, and the failure would be silent - the wrong
+    /// filament on the floor, with the page reporting success. The picker exists to make the choice,
+    /// so a post without one bypassed it.
+    /// </remarks>
     [Fact]
-    public async Task AMultiToolPrinterThatHasNotSaidWhichToolIsPickedIsRefused()
+    public async Task AToolchangerAskedToUnloadNothingInParticularIsRefused()
     {
         await using HomespoolDbContext context = await MigratedContextAsync();
-        await SeedAsync(context, PrinterStatus.Idle, material: "PLA", activeSlot: null, toolCount: 5);
+        await SeedAsync(context, PrinterStatus.Idle, material: "PLA", activeSlot: 1, toolCount: 5,
+                        slots: [(1, "PLA"), (2, "PETG")]);
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
 
-        await unload.Should().ThrowAsync<NoToolPickedException>(
-            "several tools and no word on which is live is not a printer to act on");
+        await unload.Should().ThrowAsync<ToolNotSpecifiedException>();
     }
 
     /// <summary>The states a theory on this class declares, read from its own attributes.</summary>
@@ -353,8 +397,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         return new PrinterFilamentService(commands: null!,
                                           new QueueSnapshotReader(context, registry, TimeProvider.System),
-                                          new ToolTargetReader(context),
-                                          context);
+                                          new ToolTargetReader(context));
     }
 
     private HomespoolDbContext NewContext()
@@ -378,7 +421,8 @@ public sealed class PrinterFilamentServiceTests : IDisposable
                                         PrinterStatus? status,
                                         string? material,
                                         int? activeSlot = null,
-                                        int toolCount = 1)
+                                        int toolCount = 1,
+                                        (int number, string? material)[]? slots = null)
     {
         Team team = new() { Name = "team" };
         context.Teams.Add(team);
@@ -410,6 +454,16 @@ public sealed class PrinterFilamentServiceTests : IDisposable
         for (int tool = 1; tool <= toolCount; tool++)
         {
             context.PrinterTools.Add(new PrinterTool { PrinterId = PrinterId, ToolNumber = tool });
+        }
+
+        foreach ((int number, string? slotMaterial) in slots ?? [])
+        {
+            context.PrinterLiveSlotStates.Add(new PrinterLiveSlotState
+            {
+                PrinterId = PrinterId,
+                SlotNumber = number,
+                Material = slotMaterial,
+            });
         }
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);

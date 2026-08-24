@@ -33,42 +33,52 @@ public class GcodeAllowListTests
     [InlineData("M140 S60")]
     [InlineData("M140 S0")]
     [InlineData("M140 S120")]
-    [InlineData("M702 W0")]
+    [InlineData("M702 T0 W0")]
+    [InlineData("M702 T7 W0")]
     public void TheLinesThisApplicationComposesArePermitted(string line)
     {
         GcodeAllowList.IsAllowed(line).Should().BeTrue();
     }
 
     /// <summary>
-    /// Unloading is permitted in exactly one form, and every neighbouring form is refused.
+    /// Unloading is permitted in one shape, and every neighbouring one is refused.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>The arguments are not a range, they are the difference between headless and stuck.</b>
-    /// <c>W</c> chooses which optional items firmware's preheat dialog offers, so <c>M702 W1</c>,
-    /// <c>W2</c> and <c>W3</c> put menu entries on a panel nobody is standing at; <c>I</c> adds a
-    /// confirmation prompt; and bare <c>M702</c> means <c>W255</c>, which is <i>do not preheat</i>
-    /// and would try to pull filament through a cold nozzle.
+    /// <b><c>W</c> is not a range — it is the difference between headless and stuck.</b> It chooses
+    /// which optional items firmware's preheat dialog offers, so <c>W1</c>, <c>W2</c> and <c>W3</c>
+    /// put menu entries on a panel nobody is standing at; <c>I</c> adds a confirmation prompt; and
+    /// omitting <c>W</c> means <c>W255</c>, <i>do not preheat</i>, which would pull filament through
+    /// a cold nozzle. Written out rather than bounded.
     /// </para>
     /// <para>
-    /// So this is the case where a range-checked pattern would have been wrong. Written out rather
-    /// than reasoned about, because "M702 with a W argument" is the shape somebody would naturally
-    /// relax this to.
+    /// <b><c>T</c> <em>is</em> a range, and one bounded at eight.</b> Firmware's <c>slot_mask</c> is
+    /// a <c>uint8_t</c> with no headroom, so <c>T8</c> names a tool the wire cannot describe and is
+    /// refused here rather than sent - <b>failing closed</b> is the property worth keeping if that
+    /// mask is ever widened.
+    /// </para>
+    /// <para>
+    /// <b>The bare form is refused now</b>, and that is a deliberate narrowing: without <c>T</c>
+    /// firmware acts on whichever tool is picked and silently does nothing when none is
+    /// (<c>notes/toolchangers.md</c> §3c). Nothing composes it any more.
     /// </para>
     /// </remarks>
     [Theory]
     [InlineData("M702")]
+    [InlineData("M702 W0")]
     [InlineData("M702 W255")]
-    [InlineData("M702 W1")]
-    [InlineData("M702 W2")]
-    [InlineData("M702 W3")]
-    [InlineData("M702 W0 I")]
-    [InlineData("M702 I")]
-    [InlineData("M702 W0 T1")]
-    [InlineData("M7020 W0")]
-    [InlineData("M702W0")]
-    [InlineData("m702 w0")]
-    public void EveryUnloadFormOtherThanTheHeadlessOneIsRefused(string line)
+    [InlineData("M702 T0 W1")]
+    [InlineData("M702 T0 W255")]
+    [InlineData("M702 T0 W0 I")]
+    [InlineData("M702 T0 I")]
+    [InlineData("M702 W0 T0")]
+    [InlineData("M702 T8 W0")]
+    [InlineData("M702 T-1 W0")]
+    [InlineData("M702 T00 W0")]
+    [InlineData("M7020 T0 W0")]
+    [InlineData("M702T0W0")]
+    [InlineData("m702 t0 w0")]
+    public void EveryUnloadFormOtherThanTheOneComposedHereIsRefused(string line)
     {
         GcodeAllowList.IsAllowed(line).Should().BeFalse();
     }
@@ -206,7 +216,8 @@ public class GcodeAllowListTests
     [Fact]
     public void TheTypedCommandsComposeLinesThisListPermits()
     {
-        GcodeAllowList.IsAllowed(new UnloadFilament().Line).Should().BeTrue();
+        GcodeAllowList.IsAllowed(UnloadFilament.ForTool(1).Line).Should().BeTrue();
+        GcodeAllowList.IsAllowed(UnloadFilament.ForTool(UnloadFilament.MaxTools).Line).Should().BeTrue();
         GcodeAllowList.IsAllowed(new SetTemperatures(230, 85).Line).Should().BeTrue();
     }
 

@@ -225,7 +225,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
-    /// Unloading reaches the printer as one <c>G</c> frame carrying exactly <c>M702 W0</c>.
+    /// Unloading reaches the printer as one <c>G</c> frame carrying exactly <c>M702 T0 W0</c>.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -252,16 +252,66 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             using IServiceScope scope = _factory.Services.CreateScope();
             PrinterFilamentService filament = scope.ServiceProvider.GetRequiredService<PrinterFilamentService>();
 
-            UnloadOutcome outcome = await filament.UnloadAsync(printerId, Caller.Unscoped(userId), CancellationToken.None);
+            UnloadOutcome outcome = await filament.UnloadAsync(printerId, Caller.Unscoped(userId), toolNumber: null, CancellationToken.None);
 
             fake.ReceivedCommands.Should().ContainSingle()
                 .Which.Kind.Should().Be(ServerCommandKind.Gcode, "gcode is not a JSON command");
 
             Encoding.ASCII.GetString(fake.ReceivedCommands[0].Payload.Span)
-                    .Should().Be("M702 W0", "any other W would stop at a dialog on the panel");
+                    .Should().Be("M702 T0 W0",
+                                 "a single-tool printer is still named explicitly - T0 - so no path depends "
+                                 + "on what firmware happens to have picked");
 
             outcome.Material.Should().Be("PLA");
             outcome.Answer!.EventType.Should().NotBe(PrinterEventType.Rejected);
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
+    /// Eight tools, and the last of them unloads — the ceiling of what the wire can describe.
+    /// </summary>
+    /// <remarks>
+    /// <b>Eight is not a round number, it is the whole representation.</b>
+    /// <c>Printer::Params::slot_mask</c> is a <c>uint8_t</c> with a <c>static_assert</c> leaving no
+    /// headroom (<c>printer.hpp:130</c>), so tool 8 is the top bit and <c>T7</c> the largest index
+    /// the allowlist admits. Reached on the connect rig 2026-08-24; this keeps it in the suite.
+    /// </remarks>
+    [Fact]
+    public async Task TheTopToolOfEightUnloads()
+    {
+        SyntheticTelemetrySource source = new()
+        {
+            PrintingInterval = TimeSpan.FromMilliseconds(50),
+            IdleInterval = TimeSpan.FromMilliseconds(50),
+            Readings = new TelemetryReadings(Material: "PLA", Tools: 8, ActiveTool: 2),
+        };
+
+        (FakePrinterClient fake, Task run, int printerId, long userId) =
+            await StartConnectedFakeAsync(new FakePrinterOptions { TelemetrySource = source });
+
+        await using (fake)
+        {
+            bool reported = await WaitUntilAsync(async () =>
+            {
+                using IServiceScope inner = _factory.Services.CreateScope();
+                HomespoolDbContext context = inner.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+                return await context.PrinterLiveSlotStates
+                                    .CountAsync(slot => slot.PrinterId == printerId,
+                                                TestContext.Current.CancellationToken) == 8;
+            }, TimeSpan.FromSeconds(5));
+
+            reported.Should().BeTrue("all eight tools must arrive for this to mean anything");
+
+            using IServiceScope scope = _factory.Services.CreateScope();
+            PrinterFilamentService filament = scope.ServiceProvider.GetRequiredService<PrinterFilamentService>();
+
+            await filament.UnloadAsync(printerId, Caller.Unscoped(userId), toolNumber: 8, CancellationToken.None);
+
+            Encoding.ASCII.GetString(fake.ReceivedCommands.Single().Payload.Span)
+                    .Should().Be("M702 T7 W0", "tool 8 is the top bit of the mask, and T7 in gcode");
 
             await EndRunAsync(fake, run);
         }
@@ -290,7 +340,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             using IServiceScope scope = _factory.Services.CreateScope();
             PrinterFilamentService filament = scope.ServiceProvider.GetRequiredService<PrinterFilamentService>();
 
-            Func<Task> unload = () => filament.UnloadAsync(printerId, Caller.Unscoped(userId), CancellationToken.None);
+            Func<Task> unload = () => filament.UnloadAsync(printerId, Caller.Unscoped(userId), toolNumber: null, CancellationToken.None);
 
             await unload.Should().ThrowAsync<FilamentTypeUnknownException>();
 
@@ -301,24 +351,23 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
-    /// A five-tool printer reporting nothing picked is refused, and <b>nothing reaches the socket</b>.
+    /// A five-tool printer with nothing picked unloads a named tool, and the frame carries the
+    /// converted index.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Driven end to end through a real slot block</b> rather than by seeding a column: the fake
-    /// emits <c>"active": 0</c> the way firmware renders <c>NoTool</c>, so what is being tested is the
-    /// mapping and the gate together. Before this the fake clamped <c>active</c> to a minimum of one
-    /// and could not express the state at all.
+    /// <b>Driven through a real slot block</b> rather than by seeding a column: the fake emits
+    /// <c>"active": 0</c> the way firmware renders <c>NoTool</c>. Before this it clamped
+    /// <c>active</c> to a minimum of one and could not express the state at all.
     /// </para>
     /// <para>
-    /// <b>The empty command list is the assertion.</b> Firmware would answer <c>M702</c>
-    /// <c>Accepted</c> and then return having done nothing, reporting only on serial — so a refusal
-    /// raised after the frame went out would still leave the page claiming an unload that never
-    /// happened.
+    /// <b>The asserted payload is the off-by-one.</b> Tool 5 on the wire is <c>T4</c> in gcode
+    /// (<c>render.cpp</c> keys slots <c>iter + 1</c>), and getting it backwards unloads a
+    /// neighbouring spool with nothing downstream able to notice.
     /// </para>
     /// </remarks>
     [Fact]
-    public async Task AToolchangerWithNothingPickedIsRefusedBeforeAnythingIsSent()
+    public async Task AToolchangerWithNothingPickedUnloadsTheToolItIsGiven()
     {
         SyntheticTelemetrySource source = new()
         {
@@ -348,11 +397,18 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
             using IServiceScope scope = _factory.Services.CreateScope();
             PrinterFilamentService filament = scope.ServiceProvider.GetRequiredService<PrinterFilamentService>();
 
-            Func<Task> unload = () => filament.UnloadAsync(printerId, Caller.Unscoped(userId), CancellationToken.None);
+            // Nothing picked, and it no longer matters: M702 carries an explicit T and firmware
+            // changes to that tool itself. Tool 5 is the last of the five and the one furthest from
+            // whatever the machine was last holding.
+            UnloadOutcome outcome = await filament.UnloadAsync(printerId, Caller.Unscoped(userId),
+                                                              toolNumber: 5, CancellationToken.None);
 
-            await unload.Should().ThrowAsync<NoToolPickedException>();
+            Encoding.ASCII.GetString(fake.ReceivedCommands.Single().Payload.Span)
+                    .Should().Be("M702 T4 W0",
+                                 "the wire numbers tools from one and gcode numbers them from zero");
 
-            fake.ReceivedCommands.Should().BeEmpty("the refusal has to come before the frame, not after it");
+            outcome.Tool.Should().Be(5, "the outcome names the tool as the printer does");
+            outcome.NamedByTool.Should().BeTrue();
 
             await EndRunAsync(fake, run);
         }

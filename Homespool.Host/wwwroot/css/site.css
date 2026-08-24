@@ -699,3 +699,24 @@ body.camera-maximised-open {
   outline: 2px solid var(--bs-primary);
   outline-offset: -2px;
 }
+
+/* Per-tool rows on the status card. TWO FIXED COLUMNS above the breakpoint, one below - not
+   auto-fit, which was the first attempt and measured out at three columns at 1000px and four at
+   1280 (notes/toolchangers.md §3b). "As many as fit" is not a design here: tool numbers are not
+   contiguous, so a reader hunting tool 5 among 1, 2, 4, 8 in a reflowed grid has no rule to follow.
+
+   Its own grid rather than Bootstrap's .row, because .row's gutters are negative margins on a
+   flex container and g-0 - the only spelling that avoided them here - removes the COLUMN gap too,
+   which ran a temperature into the next tool's number: "0.4 · 215°2 PETG". A column-gap is what
+   this actually wants, and CSS grid states it directly. */
+.printer-tools {
+  display: grid;
+  grid-template-columns: 1fr;
+  column-gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .printer-tools {
+    grid-template-columns: 1fr 1fr;
+  }
+}

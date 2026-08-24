@@ -401,7 +401,78 @@ public class DetailModel : PageModel
     /// this, on this page's standing rule that a button which is not rendered is not a check.
     /// </para>
     /// </remarks>
-    public bool UnloadShown => Connected && LoadedMaterial is not null && Tools.ReachesAHotend;
+    /// <summary>
+    /// Every tool this printer reports, for the picker and for the single-tool button alike.
+    /// </summary>
+    /// <remarks>
+    /// One tool on a single-tool printer, synthesised - see <see cref="ToolTargetReader.ReadToolsAsync"/>.
+    /// </remarks>
+    public IReadOnlyList<PrinterToolState> ToolStates { get; private set; } = [];
+
+    /// <summary>
+    /// Whether the per-tool table is worth showing at all.
+    /// </summary>
+    /// <remarks>
+    /// One tool is not a table - the status card's own tiles already say everything there is to say
+    /// about it, and a one-row table beside them would be a second answer to a question nobody asked
+    /// twice.
+    /// </remarks>
+    public bool ToolTableShown => ToolStates.Count > 1;
+
+    /// <summary>
+    /// The one material every loaded tool is holding, or null when they disagree - or when nothing is
+    /// loaded at all.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Keyed on the fact rather than on the hardware</b> (Henrik, 2026-08-24), and the difference
+    /// is not academic. A toolchanger with PLA in three heads and nothing in the rest genuinely
+    /// <em>is</em> a PLA printer, so the tile says something true; hiding it because the machine has
+    /// several heads would suppress a fact for a reason that has nothing to do with it.
+    /// </para>
+    /// <para>
+    /// <b>A single-tool printer reaches the same answer by the same rule</b>, which is why there is
+    /// no branch on tool count here. Mixed loads and an empty machine both get no tile, and the table
+    /// underneath is the honest answer for both.
+    /// </para>
+    /// <para>
+    /// <b>Empty tools are not "a material they disagree about".</b> They are excluded before the
+    /// count, or every toolchanger with one spare head would lose the tile.
+    /// </para>
+    /// </remarks>
+    public string? SharedMaterial
+    {
+        get
+        {
+            // Take(2) rather than SingleOrDefault, which throws on more than one element rather than
+            // answering null - it reads like "the single one, or nothing" and is not that. Two is all
+            // this needs: a second distinct material is already disagreement.
+            List<string?> distinct = ToolStates.Select(tool => tool.Material)
+                                               .Where(material => material is not null)
+                                               .Distinct(StringComparer.Ordinal)
+                                               .Take(2)
+                                               .ToList();
+
+            return distinct.Count == 1 ? distinct[0] : null;
+        }
+    }
+
+    /// <summary>The tools with something in them, which are the ones worth offering.</summary>
+    public IReadOnlyList<PrinterToolState> UnloadableTools =>
+        ToolStates.Where(tool => tool.CanUnload).ToList();
+
+    /// <summary>
+    /// Whether unloading is offered at all.
+    /// </summary>
+    /// <remarks>
+    /// <b>Keyed on there being something to unload, not on which tool is picked.</b> That gate went
+    /// when <c>M702</c> gained an explicit <c>T</c>: firmware changes to the target tool itself, so a
+    /// toolchanger resting with nothing on the carriage can still unload any of its heads.
+    /// </remarks>
+    public bool UnloadShown => Connected && UnloadableTools.Count > 0;
+
+    /// <summary>Whether the choice is real, and therefore whether the picker is worth opening.</summary>
+    public bool UnloadNeedsPicker => ToolStates.Count > 1;
 
     /// <summary>
     /// Which tool this printer's toolless gcode would act on.
@@ -499,6 +570,36 @@ public class DetailModel : PageModel
     /// says.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// The unload dialog's tool rows, fetched when it opens.
+    /// </summary>
+    /// <remarks>
+    /// <b>Because the page's copy is stale by the time anybody reads it.</b> A gcode command is
+    /// answered when it is <em>queued</em>, so the post returns and the page re-renders within about
+    /// a hundred milliseconds while the printer still has minutes of unloading to do - capturing the
+    /// tool as still loaded, which was true at that instant and wrong by the time the dialog is
+    /// reopened. The control strip is deliberately outside the polled region
+    /// (<c>notes/printer-page.md</c> §2), so nothing corrects it. Fetching on open is the narrowest
+    /// fix: fresh at the one moment somebody is choosing, and no markup replaced under an open
+    /// dialog.
+    /// </remarks>
+    public async Task<IActionResult> OnGetToolsAsync(Guid uuid, CancellationToken cancellationToken)
+    {
+        HSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return Forbid();
+        }
+
+        if (!await LoadStatusAsync(uuid, CallerResolver.For(user, User), cancellationToken))
+        {
+            return NotFound();
+        }
+
+        return Partial("_UnloadTools", this);
+    }
+
     public async Task<IActionResult> OnGetStatusAsync(Guid uuid, CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
@@ -598,6 +699,7 @@ public class DetailModel : PageModel
 
         LoadedMaterial = LoadedFilament.Of(statistics.LiveState?.Material);
         Tools = await _tools.ReadAsync(statistics.Printer.Id, cancellationToken);
+        ToolStates = await _tools.ReadToolsAsync(statistics.Printer.Id, cancellationToken);
 
         ActivePrint = await _historyService.GetActiveAsync(statistics.Printer.Id, caller, cancellationToken);
 
@@ -867,16 +969,16 @@ public class DetailModel : PageModel
     /// queues it, so the several minutes of heating, ejecting and cooling happen after this returns.
     /// </para>
     /// </remarks>
-    public Task<IActionResult> OnPostUnloadAsync(Guid uuid, CancellationToken cancellationToken)
+    public Task<IActionResult> OnPostUnloadAsync(Guid uuid, int? tool, CancellationToken cancellationToken)
     {
         return ActAsync(uuid, async (caller, printer) =>
         {
-            UnloadOutcome outcome = await _filament.UnloadAsync(printer.Id, caller, cancellationToken);
+            UnloadOutcome outcome = await _filament.UnloadAsync(printer.Id, caller, tool, cancellationToken);
 
             // Names the tool when there is one to name. The service reports which head it acted on
             // rather than the page inferring it, so the confirmation cannot disagree with the guard.
-            return outcome.Tool is { } tool ?
-                (_localiser["Printers_UnloadStartedOnTool", outcome.Material, tool].Value, true) :
+            return outcome.NamedByTool ?
+                (_localiser["Printers_UnloadStartedOnTool", outcome.Material, outcome.Tool].Value, true) :
                 (_localiser["Printers_UnloadStarted", outcome.Material].Value, true);
         }, cancellationToken);
     }
@@ -966,10 +1068,11 @@ public class DetailModel : PageModel
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
                                       or CommandResponseTimedOutException or CommandSendTimedOutException
                                       or NoToolPickedException or FilamentTypeUnknownException
-                                      or PrinterHasQueuedWorkException)
+                                      or PrinterHasQueuedWorkException or NoSuchToolException
+                                      or ToolNotSpecifiedException)
         {
-            // The last three are refusals about what the printer is holding rather than what it is
-            // doing, and every one of them is reachable from a rendered control: the queued-work case
+            // These are refusals about what the printer is holding rather than what it is doing, and
+            // every one is reachable from a rendered control: the queued-work case
             // needs only a Ready printer with something in its queue. Uncaught they would be a 500
             // where a sentence was written for them.
             (StatusMessage, StatusSuccess) = (_errors.For(e), false);

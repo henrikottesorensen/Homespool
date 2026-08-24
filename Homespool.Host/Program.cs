@@ -116,6 +116,17 @@ public static class Program
             return;
         }
 
+        // The schema this build expects, written to a file so a deployed database can be compared
+        // against it. Also not a server run, and answered here for the third variant of the same
+        // reason: it is asked when the application will not start, so it must not need the
+        // application to start. See Homespool.Data.SchemaWriter, and note the older-image trap the
+        // two applets above share - an image that predates this argument starts the server instead.
+        if (args.Length > 0 && args[0] == SchemaWriter.Argument)
+        {
+            Environment.ExitCode = SchemaWriter.Write(args.Length > 1 ? args[1] : null);
+            return;
+        }
+
         Log.Logger = new LoggerConfiguration()
                      .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
                      .Enrich.FromLogContext()

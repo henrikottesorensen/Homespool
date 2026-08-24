@@ -52,10 +52,13 @@ public static class DataServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Applies pending migrations if <see cref="StorageOptions.AutoMigrate"/> is set.
+    /// Applies pending migrations if <see cref="StorageOptions.AutoMigrate"/> is set, having first
+    /// refused a database this build did not stamp.
     /// </summary>
     /// <remarks>
-    /// Safe only because a single process owns the database. See <see cref="StorageOptions"/>.
+    /// Safe only because a single process owns the database. See <see cref="StorageOptions"/>. The
+    /// refusal is <see cref="MigrationHistoryGuard"/>, which exists because this project regenerates
+    /// its migration in place and the resulting failure is otherwise unreadable.
     /// </remarks>
     public static void MigrateHomespoolData(this IServiceProvider services)
     {
@@ -71,9 +74,16 @@ public static class DataServiceCollectionExtensions
                               .GetRequiredService<ILoggerFactory>()
                               .CreateLogger(typeof(DataServiceCollectionExtensions).FullName!);
 
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
         // Before the AutoMigrate check on purpose: WAL is required whether or not this process is the
         // one applying schema changes, and it must be set before Migrate() opens its read-only probe.
-        EnsureWriteAheadLogging(scope.ServiceProvider.GetRequiredService<HomespoolDbContext>(), logger);
+        EnsureWriteAheadLogging(context, logger);
+
+        // Also before it, and for a related reason: AutoMigrate says who applies schema changes, not
+        // whether the schema is the right one. A database stamped by another build is fatal either
+        // way, and with the flag off nothing else would ever notice.
+        MigrationHistoryGuard.Verify(context);
 
         if (!storage.AutoMigrate)
         {
@@ -81,8 +91,6 @@ public static class DataServiceCollectionExtensions
 
             return;
         }
-
-        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
         logger.LogInformation("Applying pending database migrations.");
 

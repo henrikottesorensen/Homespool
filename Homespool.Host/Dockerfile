@@ -24,8 +24,25 @@ RUN mkdir -p /app/data /app/data/proxy-certificates \
 # reports none - a Logitech C910 is one of those, listing itself as 046d_0821 - and this table is
 # what turns that back into "Logitech HD Webcam C910". Data only, no binaries, and UsbDeviceNames
 # degrades to udev's own name when it is absent, so dropping this costs nicer names and nothing else.
+# sqlite3 is here for the one thing this image cannot otherwise do to itself: repair the database it
+# refuses to start against. tools/carry-enrolment.sh needs sqlite3 and the database, and on an
+# appliance the database is inside a root-owned volume - so without this the repair runs in a
+# throwaway alpine container as ROOT, and everything it creates beside the database is then owned by
+# root. Measured, both ways, rather than assumed: the database itself keeps its ownership because it
+# is modified in place, but the backup the tool takes first is root-owned every time, and a -wal left
+# behind by an interrupted run would be too - which the app cannot recover, and which reports itself
+# as "could not enable write-ahead logging", the same sentence as an unrelated permissions problem.
+# With sqlite3 here, the script runs in this image as $APP_UID with the volume already mounted where
+# it belongs, and leaves nothing the app cannot read:
+#
+#   docker compose run --rm --no-deps -v ./carry-enrolment.sh:/ce.sh:ro --entrypoint bash homespool \
+#       /ce.sh check /app/data/Homespool.Sqlite /app/data/reference.sqlite
+#
+# The SCRIPT is deliberately NOT copied in. It is a maintenance tool rather than part of the
+# application, it is bind-mounted in the one command that needs it, and keeping it out means a fixed
+# script can be run against an image that predates the fix.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends curl hwdata \
+ && apt-get install -y --no-install-recommends curl hwdata sqlite3 \
  && rm -rf /var/lib/apt/lists/*
 USER $APP_UID
 EXPOSE 8080

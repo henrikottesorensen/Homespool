@@ -144,10 +144,17 @@
                         <partial name="_HeaterTile" model="ambient" />
                     </div>
                 }
+                @* The tile keys on the fact, not the hardware: it shows when every loaded tool holds
+                   the same material, so a toolchanger with PLA in three heads still says PLA - which
+                   is true - while a mixed load says nothing and lets the table below answer. A
+                   single-tool printer reaches the same answer by the same rule, so nothing branches
+                   on tool count. See notes/toolchangers.md §3b. *@
+                @if (Model.SharedMaterial is { } sharedMaterial)
+                {
                 <div class="col">
                     <div class="printer-metric h-100">
                         <div class="printer-metric-label">@Localiser["Printers_Material"]</div>
-                        <div class="printer-metric-value">@(liveState.Material ?? "—")</div>
+                        <div class="printer-metric-value">@sharedMaterial</div>
                         <div class="printer-metric-note">
                             @if (liveState.Speed is { } speed && liveState.Flow is { } flow)
                             {
@@ -156,7 +163,15 @@
                         </div>
                     </div>
                 </div>
+                }
             </div>
+
+            @* Per-tool state, for the machines the tiles above cannot describe. Below them rather
+               than among them: eight tools would swamp a tile grid built for three or four. *@
+            @if (Model.ToolTableShown)
+            {
+                <partial name="_PrinterTools" model="Model" />
+            }
         }
 
         @* The queue holds behind a file it cannot send, like a spooler - so the reason has to be

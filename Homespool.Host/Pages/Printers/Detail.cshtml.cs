@@ -409,6 +409,54 @@ public class DetailModel : PageModel
     /// </remarks>
     public IReadOnlyList<PrinterToolState> ToolStates { get; private set; } = [];
 
+    /// <summary>
+    /// Whether the per-tool table is worth showing at all.
+    /// </summary>
+    /// <remarks>
+    /// One tool is not a table - the status card's own tiles already say everything there is to say
+    /// about it, and a one-row table beside them would be a second answer to a question nobody asked
+    /// twice.
+    /// </remarks>
+    public bool ToolTableShown => ToolStates.Count > 1;
+
+    /// <summary>
+    /// The one material every loaded tool is holding, or null when they disagree - or when nothing is
+    /// loaded at all.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Keyed on the fact rather than on the hardware</b> (Henrik, 2026-08-24), and the difference
+    /// is not academic. A toolchanger with PLA in three heads and nothing in the rest genuinely
+    /// <em>is</em> a PLA printer, so the tile says something true; hiding it because the machine has
+    /// several heads would suppress a fact for a reason that has nothing to do with it.
+    /// </para>
+    /// <para>
+    /// <b>A single-tool printer reaches the same answer by the same rule</b>, which is why there is
+    /// no branch on tool count here. Mixed loads and an empty machine both get no tile, and the table
+    /// underneath is the honest answer for both.
+    /// </para>
+    /// <para>
+    /// <b>Empty tools are not "a material they disagree about".</b> They are excluded before the
+    /// count, or every toolchanger with one spare head would lose the tile.
+    /// </para>
+    /// </remarks>
+    public string? SharedMaterial
+    {
+        get
+        {
+            // Take(2) rather than SingleOrDefault, which throws on more than one element rather than
+            // answering null - it reads like "the single one, or nothing" and is not that. Two is all
+            // this needs: a second distinct material is already disagreement.
+            List<string?> distinct = ToolStates.Select(tool => tool.Material)
+                                               .Where(material => material is not null)
+                                               .Distinct(StringComparer.Ordinal)
+                                               .Take(2)
+                                               .ToList();
+
+            return distinct.Count == 1 ? distinct[0] : null;
+        }
+    }
+
     /// <summary>The tools with something in them, which are the ones worth offering.</summary>
     public IReadOnlyList<PrinterToolState> UnloadableTools =>
         ToolStates.Where(tool => tool.CanUnload).ToList();

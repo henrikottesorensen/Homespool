@@ -58,6 +58,15 @@ public class ToolTargetReader
             return [];
         }
 
+        // The nozzle facts come from INFO rather than telemetry, so they are a second read joined by
+        // tool number. Worth the query: which head is hardened is the question an abrasive hold
+        // raises, and the slot block does not carry it.
+        Dictionary<int, PrinterTool> described = await _dbContext.PrinterTools
+                                                                 .AsNoTracking()
+                                                                 .Where(tool => tool.PrinterId == printerId)
+                                                                 .ToDictionaryAsync(tool => tool.ToolNumber,
+                                                                                    cancellationToken);
+
         if (live.Slots.Count > 0)
         {
             return live.Slots
@@ -65,14 +74,34 @@ public class ToolTargetReader
                        .Select(slot => new PrinterToolState(slot.SlotNumber,
                                                             slot.Material,
                                                             slot.Temperature,
-                                                            live.ActiveSlot == slot.SlotNumber))
+                                                            live.ActiveSlot == slot.SlotNumber,
+                                                            Nozzle(described, slot.SlotNumber),
+                                                            IsHardened(described, slot.SlotNumber)))
                        .ToList();
         }
 
         // No slot block, so one tool - firmware sends the block only above one. The material still
         // goes through LoadedFilament: the flat field carries the "---" sentinel unstripped on rows
         // written before that fix, and an offline printer keeps whatever it last said.
-        return [new PrinterToolState(1, LoadedFilament.Of(live.Material), live.NozzleTemperature, IsPicked: false)];
+        return
+        [
+            new PrinterToolState(1,
+                                 LoadedFilament.Of(live.Material),
+                                 live.NozzleTemperature,
+                                 IsPicked: false,
+                                 Nozzle(described, 1),
+                                 IsHardened(described, 1)),
+        ];
+    }
+
+    private static float? Nozzle(Dictionary<int, PrinterTool> described, int toolNumber)
+    {
+        return described.TryGetValue(toolNumber, out PrinterTool? tool) ? tool.NozzleDiameter : null;
+    }
+
+    private static bool IsHardened(Dictionary<int, PrinterTool> described, int toolNumber)
+    {
+        return described.TryGetValue(toolNumber, out PrinterTool? tool) && tool.Hardened;
     }
 
     /// <summary>Reads the situation for one printer.</summary>

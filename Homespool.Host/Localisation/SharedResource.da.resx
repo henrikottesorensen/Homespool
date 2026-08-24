@@ -442,6 +442,21 @@
   <data name="Printers_UnloadPickerNote" xml:space="preserve">
     <value>Hvert værktøj tømmes ved sit eget filaments printtemperatur. Printeren henter værktøjet, skubber filamentet ud og sætter det på plads igen - et par minutter, og den afviser andre kommandoer imens.</value>
   </data>
+  <data name="Printers_Tools" xml:space="preserve">
+    <value>Værktøjer</value>
+  </data>
+  <data name="Printers_ToolsFitted" xml:space="preserve">
+    <value>{0} monteret</value>
+  </data>
+  <data name="Printers_ToolNothingLoaded" xml:space="preserve">
+    <value>Intet ilagt</value>
+  </data>
+  <data name="Printers_ToolHardened" xml:space="preserve">
+    <value>hærdet</value>
+  </data>
+  <data name="Printers_ToolOnCarriage" xml:space="preserve">
+    <value>Værktøj {0} sidder i holderen.</value>
+  </data>
   <data name="Printers_ToolWithMaterial" xml:space="preserve">
     <value>Værktøj {0} · {1}</value>
   </data>

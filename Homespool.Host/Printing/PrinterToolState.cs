@@ -25,7 +25,20 @@ namespace Homespool.Host.Printing;
 /// Whether this is the tool on the carriage. <b>Meaningful only on a toolchanger</b>, and false
 /// throughout on a single-tool printer, which sends no slot block to say so.
 /// </param>
-public sealed record PrinterToolState(int ToolNumber, string? Material, float? Temperature, bool IsPicked)
+/// <param name="NozzleDiameter">
+/// From <c>INFO</c>, where the printer describes each tool. Null when it has not said.
+/// </param>
+/// <param name="Hardened">
+/// Whether this tool's nozzle is hardened - <b>not decoration</b>. <c>QueueRules</c> holds an
+/// abrasive print when the printer reports no hardened nozzle, and on a toolchanger the useful
+/// question is <em>which head</em>, which nothing on the page could answer before this.
+/// </param>
+public sealed record PrinterToolState(int ToolNumber,
+                                      string? Material,
+                                      float? Temperature,
+                                      bool IsPicked,
+                                      float? NozzleDiameter = null,
+                                      bool Hardened = false)
 {
     /// <summary>
     /// Whether this tool can be unloaded from here.

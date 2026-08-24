@@ -459,6 +459,23 @@
   <data name="Printers_UnloadPickerNote" xml:space="preserve">
     <value>Each tool unloads at its own filament’s printing temperature. The printer picks the tool, ejects, then docks it again - a few minutes, and it declines other commands meanwhile.</value>
   </data>
+  <data name="Printers_Tools" xml:space="preserve">
+    <value>Tools</value>
+  </data>
+  <data name="Printers_ToolsFitted" xml:space="preserve">
+    <value>{0} fitted</value>
+    <comment>{0} is how many heads the printer reports. Not how many positions exist - tool numbers are not contiguous.</comment>
+  </data>
+  <data name="Printers_ToolNothingLoaded" xml:space="preserve">
+    <value>None loaded</value>
+  </data>
+  <data name="Printers_ToolHardened" xml:space="preserve">
+    <value>hardened</value>
+    <comment>Marks a hardened nozzle. Load-bearing: an abrasive print is held when no hardened nozzle is reported, and this says which head has one.</comment>
+  </data>
+  <data name="Printers_ToolOnCarriage" xml:space="preserve">
+    <value>Tool {0} is on the carriage.</value>
+  </data>
   <data name="Printers_ToolWithMaterial" xml:space="preserve">
     <value>Tool {0} · {1}</value>
     <comment>{0} is the tool number as the printer reports it, {1} the loaded material.</comment>

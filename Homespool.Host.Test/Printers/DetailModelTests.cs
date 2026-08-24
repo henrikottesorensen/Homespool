@@ -371,6 +371,72 @@ public sealed class DetailModelTests : IDisposable
         model.StatusSuccess.Should().BeFalse("cooling would leave the nozzle hot and say otherwise");
     }
 
+    /// <summary>
+    /// The material tile keys on the fact, not on the hardware.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The row that decides the rule is the third one</b>: a toolchanger with PLA in two heads and
+    /// nothing in the other two genuinely <em>is</em> a PLA printer, so the tile says something true.
+    /// A rule keyed on tool count would have suppressed a fact for a reason unrelated to it.
+    /// </para>
+    /// <para>
+    /// <b>Empty tools are excluded before the count rather than treated as disagreement</b> - without
+    /// that, every toolchanger with one spare head would lose the tile.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData(new[] { "PLA" }, "PLA")]
+    [InlineData(new[] { "PLA", "PLA" }, "PLA")]
+    [InlineData(new[] { "PLA", null, "PLA", null }, "PLA")]
+    [InlineData(new[] { "PLA", "PETG" }, null)]
+    [InlineData(new[] { "PLA", "PETG", "ABS", "PA" }, null)]
+    [InlineData(new[] { (string?)null, null }, null)]
+    public async Task TheMaterialTileShowsOnlyWhatEveryLoadedToolAgreesOn(string?[] materials, string? expected)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, _, Team team, _) = await NewModelAsync(context);
+
+        Printer printer = NewPrinter(team.Id);
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        PrinterLiveState live = new()
+        {
+            PrinterId = printer.Id,
+            Status = PrinterStatus.Idle,
+            Material = materials[0],
+            LastSeenAt = DateTimeOffset.UtcNow,
+        };
+        context.PrinterLiveStates.Add(live);
+
+        // A slot block only exists above one tool, which is what firmware sends - so a single-material
+        // case with one entry has to reach the same answer through the synthesised path instead.
+        if (materials.Length > 1)
+        {
+            for (int slot = 1; slot <= materials.Length; slot++)
+            {
+                context.PrinterLiveSlotStates.Add(new PrinterLiveSlotState
+                {
+                    PrinterId = printer.Id,
+                    SlotNumber = slot,
+                    Material = materials[slot - 1],
+                });
+            }
+        }
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        await model.OnGetAsync(printer.Uuid, CancellationToken.None);
+
+        // Assert
+        model.SharedMaterial.Should().Be(expected);
+        model.ToolTableShown.Should().Be(materials.Length > 1,
+                                         "one tool is not a table - the tiles already say everything about it");
+    }
+
     private static Printer NewPrinter(int teamId, string? name = null)
     {
         return new()

@@ -53,6 +53,54 @@ public sealed class ExternalLoginProviderTests : IAsyncLifetime, IDisposable
     /// authentication scheme but is the printer protocol's, not an external identity provider's.
     /// Challenging it from a sign-in page got its 401; harmless, and not a thing to leave reachable.
     /// </summary>
+    /// <summary>
+    /// The login page offers a button for a registered provider, and none when there is none.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The page model populated <c>ExternalLogins</c> and the view ignored it, for weeks.</b> So
+    /// the handler worked, the dex suite proved it worked, and a person had no way to reach it — the
+    /// only entry point was a hand-made POST, which is what every test here does and is exactly why no
+    /// test noticed. A feature nobody can click is indistinguishable from one that is not built.
+    /// </para>
+    /// <para>
+    /// Both directions are asserted because only the pair says the button is <i>driven</i> by what is
+    /// registered. Rendering it unconditionally would pass the first half and offer a sign-in that
+    /// cannot work; rendering it never would pass the second and be the bug this replaces.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task TheLoginPageOffersARegisteredProviderAndNothingWhenThereIsNone()
+    {
+        using HttpClient client = _factory.CreateClient();
+
+        string withoutProvider = await client.GetStringAsync("/Account/Login", TestContext.Current.CancellationToken);
+
+        withoutProvider.Should().NotContain("external-login-section",
+                                            "this factory registers no provider, so there is nothing to offer");
+
+        using HomespoolFactory configured = new($"Data Source={_databasePath}-oidc");
+
+        configured.ConfigurationOverrides["Oidc:Authority"] = "https://example.invalid/idp";
+        configured.ConfigurationOverrides["Oidc:ClientId"] = "homespool";
+        configured.ConfigurationOverrides["Oidc:ClientSecret"] = "not-a-real-secret"; // betterleaks:allow
+        configured.ConfigurationOverrides["Oidc:DisplayName"] = "Example provider";
+
+        using IServiceScope scope = configured.Services.CreateScope();
+        scope.ServiceProvider.GetRequiredService<SetupState>().MarkComplete();
+
+        using HttpClient withProviderClient = configured.CreateClient();
+
+        // Never contacted: registering the scheme is a configuration-time decision, and rendering the
+        // button asks the scheme registry rather than the provider. An unreachable authority is the
+        // point - it proves the page does not need one to be up.
+        string withProvider =
+            await withProviderClient.GetStringAsync("/Account/Login", TestContext.Current.CancellationToken);
+
+        withProvider.Should().Contain("external-login-oidc", "a registered provider is offered a button");
+        withProvider.Should().Contain("Example provider", "and it is named by its configured display name");
+    }
+
     [Theory]
     [InlineData("NoSuchProvider")]
     [InlineData("")]

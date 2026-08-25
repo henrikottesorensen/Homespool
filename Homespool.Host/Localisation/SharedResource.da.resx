@@ -518,6 +518,15 @@
   <data name="Printers_NothingQueued" xml:space="preserve">
     <value>Intet i kø. Send en fil til denne printers kø fra {0}.</value>
   </data>
+  <data name="Account_OrAcceptWith" xml:space="preserve">
+    <value>Eller acceptér med</value>
+  </data>
+  <data name="Account_OrSignInWith" xml:space="preserve">
+    <value>Eller log ind med</value>
+  </data>
+  <data name="Account_SignInWithProviderTitle" xml:space="preserve">
+    <value>Log ind med {0}</value>
+  </data>
   <data name="Account_LogIn" xml:space="preserve">
     <value>Log ind</value>
   </data>

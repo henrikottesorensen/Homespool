@@ -388,19 +388,7 @@ public class RegisterModel : PageModel
     /// <summary>Reverses the Base64Url encoding the accept link uses. Null/invalid input yields null.</summary>
     private static string DecodeToken(string code)
     {
-        if (string.IsNullOrEmpty(code))
-        {
-            return null;
-        }
-
-        try
-        {
-            return Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(code));
-        }
-        catch (FormatException)
-        {
-            return null;
-        }
+        return EmailedToken.Decode(code);
     }
 
     private void AddErrors(IdentityResult result)

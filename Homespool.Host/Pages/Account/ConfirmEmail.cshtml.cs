@@ -3,17 +3,16 @@
 
 #nullable disable
 
-using System.Text;
 using System.Threading.Tasks;
 
 using Homespool.Host.Localisation;
+using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Localization;
 
 namespace Homespool.Host.Pages.Account;
@@ -46,8 +45,18 @@ public class ConfirmEmailModel : PageModel
             return NotFound($"Unable to load user with ID '{userId}'.");
         }
 
-        code = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(code));
-        IdentityResult result = await _userManager.ConfirmEmailAsync(user, code);
+        string token = EmailedToken.Decode(code);
+
+        if (token is null)
+        {
+            // A link broken in transit is a code that cannot work, which this page already has a
+            // sentence for. It used to be a 500.
+            StatusMessage = _localiser["Account_EmailConfirmFailed"];
+
+            return Page();
+        }
+
+        IdentityResult result = await _userManager.ConfirmEmailAsync(user, token);
         StatusMessage = result.Succeeded ?
             _localiser["Account_EmailConfirmed"] :
             _localiser["Account_EmailConfirmFailed"];

@@ -1,16 +1,15 @@
 #nullable disable
 
-using System.Text;
 using System.Threading.Tasks;
 
 using Homespool.Host.Localisation;
+using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Options;
 
@@ -82,7 +81,15 @@ public class ConfirmEmailChangeModel : PageModel
             return NotFound($"Unable to load user with ID '{userId}'.");
         }
 
-        code = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(code));
+        string token = EmailedToken.Decode(code);
+
+        if (token is null)
+        {
+            // As ConfirmEmail: a code that is not a code is a failed change, not a server error.
+            StatusMessage = _localiser["Account_EmailChangeError"];
+
+            return Page();
+        }
 
         // One round trip, so no transaction: SaveChangesAsync is already transactional
         // (notes/transactions.md). It used to need one because the username was the email and had to
@@ -90,7 +97,7 @@ public class ConfirmEmailChangeModel : PageModel
         // under the old address while displaying the new one. The username is now the person's own and
         // an address change does not touch it, so the pairing that needed the transaction is gone
         // rather than the guarantee it bought.
-        IdentityResult result = await _userManager.ChangeEmailAsync(user, email, code);
+        IdentityResult result = await _userManager.ChangeEmailAsync(user, email, token);
 
         if (!result.Succeeded)
         {

@@ -324,19 +324,7 @@ public class ExternalLoginModel : PageModel
     /// <summary>Reverses the Base64Url encoding the accept link uses. Null or invalid input yields null.</summary>
     private static string DecodeToken(string code)
     {
-        if (string.IsNullOrEmpty(code))
-        {
-            return null;
-        }
-
-        try
-        {
-            return Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(code));
-        }
-        catch (FormatException)
-        {
-            return null;
-        }
+        return EmailedToken.Decode(code);
     }
 
     public async Task<IActionResult> OnPostConfirmationAsync(CancellationToken cancellationToken, string returnUrl = null)

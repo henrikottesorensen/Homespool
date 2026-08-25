@@ -41,10 +41,11 @@ public class XApiKeyAuthenticationHandler : ApiTokenAuthenticationHandlerBase
     public XApiKeyAuthenticationHandler(ApiTokenService tokens,
                                         UserManager<HSUser> userManager,
                                         IUserClaimsPrincipalFactory<HSUser> claimsFactory,
+                                        IOptions<Services.SecurityOptions> security,
                                         IOptionsMonitor<ApiTokenAuthenticationSchemeOptions> options,
                                         ILoggerFactory loggerFactory,
                                         UrlEncoder encoder)
-        : base(tokens, userManager, claimsFactory, options, loggerFactory, encoder)
+        : base(tokens, userManager, claimsFactory, security, options, loggerFactory, encoder)
     {
     }
 

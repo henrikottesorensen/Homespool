@@ -286,7 +286,21 @@ public static class PrusaTelemetryMapping
 
         foreach ((string key, JsonElement value) in slot.Slots)
         {
-            int slotNumber = int.Parse(key, CultureInfo.InvariantCulture);
+            // Extension data catches every key this DTO does not name, not only the numbered ones,
+            // so anything firmware adds beside "active"/"state"/"command" arrives here as well. A
+            // parse that threw on those would stop the whole message - and with it the printer's
+            // telemetry - on the release that added a field, which is a worse failure than not
+            // understanding the field. ToToolUpdates skips the same way, for the same reason.
+            //
+            // Structurally-not-a-slot is skipped; a numbered entry that is an object and still will
+            // not deserialize is left to throw, because that is protocol drift worth noticing rather
+            // than a key we were never meant to read.
+            if (!int.TryParse(key, CultureInfo.InvariantCulture, out int slotNumber)
+                || value.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
             ToolTelemetryDTO? tool = value.Deserialize<ToolTelemetryDTO>();
 
             if (tool is null)

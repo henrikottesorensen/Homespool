@@ -31,7 +31,13 @@ staticClients:
     # back to the in-memory host itself - but it does refuse a redirect_uri it has not been
     # told about, so this has to match what the handler asks for.
     redirectURIs:
+      # The suite's WebApplicationFactory host, which never listens - see above.
       - https://localhost/signin-oidc
+      # The dev server on the https launch profile, for driving this by hand in a browser.
+      - https://localhost:7023/signin-oidc
+      # And the plain-http dev profile: a browser treats localhost as trustworthy and
+      # still sends the Secure correlation cookie there, which .NET's client does not.
+      - http://localhost:5052/signin-oidc
 
 connectors:
   # The mock connector returns a fixed identity with no login form at all. That is the

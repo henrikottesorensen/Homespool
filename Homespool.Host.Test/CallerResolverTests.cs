@@ -32,7 +32,7 @@ public class CallerResolverTests
 
         // Assert
         caller.UserId.Should().Be(9);
-        caller.IsScoped.Should().BeFalse();
+        caller.Scope.Should().BeSameAs(CapabilitySet.Everything, "no claim means the credential named no subset");
         caller.Allows(Capability.ManagePrinter).Should().BeTrue("nothing narrowed it");
     }
 
@@ -50,7 +50,6 @@ public class CallerResolverTests
         Caller caller = CallerResolver.For(9, principal);
 
         // Assert
-        caller.IsScoped.Should().BeTrue();
         caller.Allows(Capability.Print).Should().BeTrue();
         caller.Allows(Capability.ViewPrinter).Should().BeTrue("the closure travelled with it");
         caller.Allows(Capability.ControlPrinter).Should().BeFalse("the claim never named it");
@@ -71,7 +70,7 @@ public class CallerResolverTests
         Caller caller = CallerResolver.For(9, principal);
 
         // Assert
-        caller.IsScoped.Should().BeTrue();
+        caller.Scope.Granted.Should().BeEmpty("an empty claim is a scope granting nothing");
         caller.Allows(Capability.ViewPrinter).Should().BeFalse();
         caller.Allows(Capability.Print).Should().BeFalse();
     }
@@ -83,6 +82,6 @@ public class CallerResolverTests
     [Fact]
     public void ForUserIdIsUnscopedByConstruction()
     {
-        CallerResolver.ForUserId(9).IsScoped.Should().BeFalse();
+        CallerResolver.ForUserId(9).Scope.Should().BeSameAs(CapabilitySet.Everything);
     }
 }

@@ -34,7 +34,7 @@ public class CallerTests
 
         // Assert
         caller.UserId.Should().Be(7);
-        caller.IsScoped.Should().BeFalse();
+        caller.Scope.Should().BeSameAs(CapabilitySet.Everything, "narrowing nothing is a full scope, not a null");
         caller.Allows(capability).Should().BeTrue("an unscoped credential adds no restriction of its own");
     }
 
@@ -46,7 +46,6 @@ public class CallerTests
         Caller caller = Caller.Scoped(7, CapabilitySet.Parse(CapabilitySet.Format([Capability.Print])));
 
         // Assert
-        caller.IsScoped.Should().BeTrue();
         caller.Allows(Capability.Print).Should().BeTrue();
         caller.Allows(Capability.ViewPrinter)
               .Should()
@@ -84,7 +83,7 @@ public class CallerTests
         Caller caller = Caller.Scoped(7, CapabilitySet.None);
 
         // Assert
-        caller.IsScoped.Should().BeTrue("empty is a scope, not the absence of one");
+        caller.Scope.Should().BeSameAs(CapabilitySet.None, "empty is a scope, not the absence of one");
         caller.Allows(Capability.ViewPrinter).Should().BeFalse();
         caller.Allows(Capability.Print).Should().BeFalse();
     }

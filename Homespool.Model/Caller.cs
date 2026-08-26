@@ -33,7 +33,7 @@ namespace Homespool.Model;
 /// </remarks>
 public sealed class Caller
 {
-    private Caller(long userId, CapabilitySet? scope)
+    private Caller(long userId, CapabilitySet scope)
     {
         UserId = userId;
         Scope = scope;
@@ -43,32 +43,25 @@ public sealed class Caller
     public long UserId { get; }
 
     /// <summary>
-    /// What the credential permits, or <c>null</c> for a credential that named no subset - a signed-in
-    /// browser session, or the queue loop acting on the authority a print was queued under.
+    /// What the credential permits. A credential that named no subset - a signed-in browser session,
+    /// or the queue loop acting on the authority a print was queued under - carries
+    /// <see cref="CapabilitySet.Everything"/>: intersecting with every capability is identity, so a
+    /// full scope is a scope like any other rather than a second kind of credential needing an
+    /// <c>is null</c> branch in every reader.
     /// </summary>
-    /// <remarks>
-    /// Read through <see cref="Allows"/> rather than directly: the null is an implementation detail of
-    /// "no narrowing", and a caller that tests it by hand will get the fail-open direction wrong the
-    /// day somebody edits the meaning.
-    /// </remarks>
-    public CapabilitySet? Scope { get; }
-
-    /// <summary>Whether this credential narrowed anything at all.</summary>
-    public bool IsScoped => Scope is not null;
+    public CapabilitySet Scope { get; }
 
     /// <summary>
     /// The scope to store when this caller's authority has to outlive the request that carried it -
     /// work accepted now and acted on later by something with no credential of its own.
     /// </summary>
     /// <remarks>
-    /// <b>An unscoped caller records <see cref="CapabilitySet.Everything"/> rather than an empty
-    /// string or a null.</b> Intersecting with every capability is identity, so the stored row means
-    /// exactly what the request meant - bounded by the owner's memberships and nothing else - while
-    /// keeping the column one shape with one reading. Recording "nothing" would silently strand the
-    /// work; recording a null would put an <c>is null</c> in the loop that reads it.
+    /// An unscoped caller therefore records <see cref="CapabilitySet.Everything"/> rather than an
+    /// empty string: the stored row means exactly what the request meant - bounded by the owner's
+    /// memberships and nothing else - while the column keeps one shape with one reading. Recording
+    /// "nothing" would silently strand the work.
     /// </remarks>
-    public string ScopeToRecord =>
-        CapabilitySet.Format(Scope is null ? CapabilitySet.Everything : Scope.Granted);
+    public string ScopeToRecord => CapabilitySet.Format(Scope);
 
     /// <summary>
     /// A caller whose credential permits everything its owner's memberships permit - the ordinary
@@ -76,7 +69,7 @@ public sealed class Caller
     /// </summary>
     public static Caller Unscoped(long userId)
     {
-        return new Caller(userId, null);
+        return new Caller(userId, CapabilitySet.Everything);
     }
 
     /// <summary>
@@ -98,6 +91,6 @@ public sealed class Caller
     /// </summary>
     public bool Allows(Capability capability)
     {
-        return Scope is null || Scope.Allows(capability);
+        return Scope.Allows(capability);
     }
 }

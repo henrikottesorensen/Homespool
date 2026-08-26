@@ -9,10 +9,20 @@ using Microsoft.Extensions.Options;
 namespace Homespool.Host.PrintFiles;
 
 /// <summary>
-/// Bounds what a form upload may buffer, at <see cref="PrintFileStorageOptions.MaxUploadBytes"/>
-/// plus room for the rest of the form.
+/// Bounds what a form upload may buffer: at <see cref="PrintFileStorageOptions.MaxUploadBytes"/>
+/// plus room for the rest of the form, or at a limit the declaration names.
 /// </summary>
 /// <remarks>
+/// <para>
+/// <b>Two forms, and they deliberately bound different quantities.</b> <c>[BoundedUpload]</c> reads
+/// <see cref="PrintFileStorageOptions.MaxUploadBytes"/> at request time and adds
+/// <c>FormOverheadBytes</c> on top, because that setting describes a <i>file</i> and the request
+/// carries multipart framing and form fields beside it. <c>[BoundedUpload(n)]</c> is the request
+/// ceiling itself, used as written with nothing added: an endpoint naming its own number is
+/// describing the whole request rather than a file inside it, and quietly granting it 64 KB more
+/// than it asked for is the kind of surprise this attribute exists to remove. Prefer the first
+/// wherever the payload is a print file, so one setting still moves every such endpoint together.
+/// </para>
 /// <para>
 /// <b>Why a filter rather than <c>[RequestSizeLimit]</c>.</b> Those attributes take a compile-time
 /// constant and the cap is configuration, so the page carried <c>long.MaxValue</c> on both - which
@@ -59,6 +69,31 @@ public sealed class BoundedUploadAttribute : Attribute, IFilterFactory, IOrdered
     /// </summary>
     public const int BeforeAntiforgery = 900;
 
+    /// <summary>Bounds the request at the configured upload cap plus form overhead.</summary>
+    public BoundedUploadAttribute()
+    {
+    }
+
+    /// <summary>Bounds the request at <paramref name="maxBytes"/> exactly.</summary>
+    /// <param name="maxBytes">
+    /// The request ceiling in bytes. Nothing is added to it - see the remarks on the two forms.
+    /// </param>
+    public BoundedUploadAttribute(long maxBytes)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxBytes);
+
+        MaxBytes = maxBytes;
+    }
+
+    /// <summary>
+    /// The declared ceiling, or <c>null</c> to take the configured cap at request time.
+    /// </summary>
+    /// <remarks>
+    /// Not settable as a named argument, deliberately: a nullable is not a legal attribute argument
+    /// type, and the two constructors say which form is meant without a sentinel value to read.
+    /// </remarks>
+    internal long? MaxBytes { get; }
+
     public int Order { get; set; } = BeforeAntiforgery;
 
     public bool IsReusable
@@ -70,7 +105,8 @@ public sealed class BoundedUploadAttribute : Attribute, IFilterFactory, IOrdered
     {
         ArgumentNullException.ThrowIfNull(serviceProvider);
 
-        return new BoundedUploadFilter(serviceProvider.GetRequiredService<IOptions<PrintFileStorageOptions>>());
+        return new BoundedUploadFilter(serviceProvider.GetRequiredService<IOptions<PrintFileStorageOptions>>(),
+                                       MaxBytes);
     }
 }
 
@@ -86,20 +122,25 @@ internal sealed class BoundedUploadFilter : IAuthorizationFilter
 
     private readonly PrintFileStorageOptions _options;
 
-    public BoundedUploadFilter(IOptions<PrintFileStorageOptions> options)
+    private readonly long? _maxBytes;
+
+    public BoundedUploadFilter(IOptions<PrintFileStorageOptions> options, long? maxBytes)
     {
         ArgumentNullException.ThrowIfNull(options);
 
         _options = options.Value;
+        _maxBytes = maxBytes;
     }
 
     public void OnAuthorization(AuthorizationFilterContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        long limit = _options.MaxUploadBytes > long.MaxValue - FormOverheadBytes
+        // A declared ceiling is the request's own and is used as written; the configured cap
+        // describes a file, so it needs room for the framing and fields that travel with it.
+        long limit = _maxBytes ?? (_options.MaxUploadBytes > long.MaxValue - FormOverheadBytes
             ? long.MaxValue
-            : _options.MaxUploadBytes + FormOverheadBytes;
+            : _options.MaxUploadBytes + FormOverheadBytes);
 
         IHttpMaxRequestBodySizeFeature? size = context.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
 

@@ -532,6 +532,72 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime, IDisposable
         readerClient.Dispose();
     }
 
+    /// <summary>
+    /// A <c>print</c> part far larger than a flag is refused, rather than read into memory.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The section needs a bound of its own, which is what this pins.</b> The file part has always
+    /// streamed through <c>LengthLimitingStream</c>, while the flag was read with
+    /// <c>ReadToEndAsync</c>, which accumulates a whole section into one string however large it is.
+    /// The request ceiling alone does not cover that: one form part could spend the entire budget as
+    /// managed memory, and unlike a file it never reaches a disk to be bounded there.
+    /// </para>
+    /// <para>
+    /// The answer is 400 rather than 413 because a part this size is not a large flag, it is not a
+    /// flag - and 413 here would name the file and the upload limit, neither of which is what went
+    /// wrong.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AnOversizedPrintPartIsRefusedRatherThanBuffered()
+    {
+        // Arrange
+        (Guid uuid, string _, HttpClient client) = await SetUpAsync("flagstuffer@example.com");
+
+        using MultipartFormDataContent body = new()
+        {
+            // Three orders of magnitude past a flag, and still well inside the request ceiling, so
+            // it is the section's own bound under test rather than the body's.
+            { new StringContent(new string('t', 64 * 1024)), "print" },
+            { new StringContent(string.Empty), "path" },
+        };
+
+        using ByteArrayContent file = new(Encoding.UTF8.GetBytes("G28 ; home\n"));
+        body.Add(file, "file", "flagged.gcode");
+
+        // Act
+        using HttpResponseMessage response = await client.PostAsync(
+            $"/compat/octoprint/{uuid}/api/files/local", body, TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        client.Dispose();
+    }
+
+    /// <summary>
+    /// The refusal above is the bound doing its job rather than the endpoint having stopped taking
+    /// uploads. A cap that refused everything would satisfy that test on its own.
+    /// </summary>
+    [Fact]
+    public async Task AnOrdinaryPrintFlagIsStillAccepted()
+    {
+        // Arrange
+        (Guid uuid, string _, HttpClient client) = await SetUpAsync("ordinaryflag@example.com");
+
+        using MultipartFormDataContent body = SlicerUpload("ordinary.gcode", print: false);
+
+        // Act
+        using HttpResponseMessage response = await client.PostAsync(
+            $"/compat/octoprint/{uuid}/api/files/local", body, TestContext.Current.CancellationToken);
+
+        // Assert
+        response.IsSuccessStatusCode.Should().BeTrue("an ordinary flag is nowhere near the cap");
+
+        client.Dispose();
+    }
+
     // ---------- helpers ----------
 
     /// <summary>

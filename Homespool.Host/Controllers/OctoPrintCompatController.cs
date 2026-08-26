@@ -64,6 +64,13 @@ namespace Homespool.Host.Controllers;
 [ApiExplorerSettings(IgnoreApi = true)]
 public class OctoPrintCompatController : ControllerBase
 {
+    /// <summary>
+    /// What the <c>print</c> part may be. The value is <c>"true"</c> or <c>"false"</c>; a kilobyte is
+    /// already three orders of magnitude of headroom, and the cap exists so that one form section
+    /// cannot spend the whole request budget on a single string.
+    /// </summary>
+    private const int PrintFlagMaxBytes = 1024;
+
     private readonly PrintFileCatalog _files;
     private readonly PrintQueueService _queue;
     private readonly PrinterQueryService _printers;
@@ -143,7 +150,11 @@ public class OctoPrintCompatController : ControllerBase
     /// </remarks>
     [HttpPost]
     [Route("api/files/local")]
-    [RequestSizeLimit(long.MaxValue)] // Enforced against the configured cap below, not by MVC.
+
+    // Was [RequestSizeLimit(long.MaxValue)], which removed Kestrel's ceiling and put nothing in its
+    // place: the file section was bounded by LengthLimitingStream and every other section was not.
+    // The configured form, so this endpoint and the Files page move together with one setting.
+    [BoundedUpload]
 
     // Without this MVC buffers the whole body into Request.Form before this method runs, and the
     // MultipartReader below then reads an exhausted stream. See the attribute's own documentation.
@@ -197,13 +208,7 @@ public class OctoPrintCompatController : ControllerBase
                 else if (disposition.IsFormDisposition()
                          && string.Equals(disposition.Name.Value, "print", StringComparison.OrdinalIgnoreCase))
                 {
-                    // Read into a bounded reader rather than the section stream directly: this is a
-                    // four-character flag, and nothing should be able to make it a memory cost. The
-                    // section's stream is the multipart reader's to close, hence leaveOpen.
-                    using StreamReader flag = new(section.Body, Encoding.UTF8, detectEncodingFromByteOrderMarks: true,
-                                                  bufferSize: 1024, leaveOpen: true);
-                    string value = await flag.ReadToEndAsync(cancellationToken);
-                    print = string.Equals(value.Trim(), "true", StringComparison.OrdinalIgnoreCase);
+                    print = await ReadPrintFlagAsync(section, cancellationToken);
                 }
             }
         }
@@ -300,6 +305,46 @@ public class OctoPrintCompatController : ControllerBase
         boundary = value;
 
         return true;
+    }
+
+    /// <summary>
+    /// The <c>print</c> flag, bounded before it is read.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The bound is the point.</b> The flag is <c>"true"</c> or <c>"false"</c>, but
+    /// <see cref="StreamReader.ReadToEndAsync(CancellationToken)"/> accumulates whatever arrives into
+    /// one string, and a <c>StreamReader</c>'s <c>bufferSize</c> is how much it reads at a time rather
+    /// than how much it will hold. So the section needs a limit of its own: the request ceiling bounds
+    /// the body, and without this one part could spend all of it on a single managed string.
+    /// </para>
+    /// <para>
+    /// <b>Refused as malformed rather than as too large.</b> A <c>print</c> part over the cap is not a
+    /// large flag, it is not a flag - so this answers 400 through <see cref="ArgumentException"/>
+    /// rather than the 413 that names a file and the upload limit, neither of which is what went
+    /// wrong. Other form parts are never read at all; <c>ReadNextSectionAsync</c> drains them, so they
+    /// cost bandwidth and not memory.
+    /// </para>
+    /// </remarks>
+    private static async Task<bool> ReadPrintFlagAsync(MultipartSection section, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using LengthLimitingStream bounded = new(section.Body, PrintFlagMaxBytes);
+
+            // leaveOpen: the section's stream belongs to the multipart reader, which closes it.
+            using StreamReader flag = new(bounded, Encoding.UTF8, detectEncodingFromByteOrderMarks: true,
+                                          bufferSize: PrintFlagMaxBytes, leaveOpen: true);
+
+            string value = await flag.ReadToEndAsync(cancellationToken);
+
+            return string.Equals(value.Trim(), "true", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (UploadTooLargeException)
+        {
+            throw new ArgumentException(
+                $"The 'print' part is larger than {PrintFlagMaxBytes} bytes, so it is not a flag.");
+        }
     }
 
     /// <summary>

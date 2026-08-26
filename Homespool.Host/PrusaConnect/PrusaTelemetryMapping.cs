@@ -39,9 +39,17 @@ public static class PrusaTelemetryMapping
     /// <see cref="FormatPayload"/>. Note <c>preview</c> is firmware-rendered and still absent: it is
     /// the one field firmware produces that is pure gcode content.
     /// </para>
+    /// <para>
+    /// <b><c>children</c> is the second such exclusion, since 2026-08-26</b>, on different grounds:
+    /// it is a <i>snapshot</i>, wholly superseded by the next listing, and an append-only table
+    /// cannot express that. It is lifted out to <c>PrinterDriveListing</c> by
+    /// <see cref="ToDriveListing"/> instead. Being firmware-rendered was never sufficient reason to
+    /// store something here; <c>preview</c> settled that first. <c>file_count</c> stays, so the event
+    /// still records that a listing arrived and how big it was.
+    /// </para>
     /// </remarks>
     private static readonly string[] FirmwareRenderedFileInfoFields =
-        ["size", "m_timestamp", "read_only", "display_name", "type", "path", "children", "file_count"];
+        ["size", "m_timestamp", "read_only", "display_name", "type", "path", "file_count"];
 
     /// <summary>
     /// Every <c>INFO</c> field masked before the payload reaches a row, as a dotted path from the

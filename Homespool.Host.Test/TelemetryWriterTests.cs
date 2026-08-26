@@ -2024,6 +2024,9 @@ public sealed class TelemetryWriterTests : IDisposable
         listing.PrinterId.Should().Be(1);
         listing.FileCount.Should().Be(2);
         listing.Entries.Should().Contain("A.BGC").And.Contain("B.BGC");
+
+        PrinterEvent stored2 = await verify.PrinterEvents.SingleAsync(TestContext.Current.CancellationToken);
+        stored2.Payload.Should().NotContain("children", "the snapshot went to the row, not the log");
     }
 
     /// <summary>

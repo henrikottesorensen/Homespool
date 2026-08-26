@@ -41,6 +41,34 @@ public sealed class PrusaTelemetryMappingPayloadTests
     }
 
     /// <summary>
+    /// <b>The listing does not reach the event row.</b> It is a snapshot, and this table appends -
+    /// and because firmware puts print files in the drive root, one listing is the whole drive and
+    /// only ever grows.
+    /// </summary>
+    [Fact]
+    public void ADirectoryListingsChildrenAreNotStoredOnTheEvent()
+    {
+        PrinterEventRecord record = Map(DirectoryListing);
+
+        record.Payload.Should().NotBeNull();
+        record.Payload.Should().NotContain("children", "a snapshot does not belong in an append-only table");
+        record.Payload.Should().NotContain("A.BGC");
+    }
+
+    /// <summary>
+    /// <b>But the event still records that a listing arrived, and how big it was.</b> Dropping the
+    /// count along with the entries would leave the occurrence unreadable.
+    /// </summary>
+    [Fact]
+    public void ADirectoryListingKeepsItsFileCountOnTheEvent()
+    {
+        PrinterEventRecord record = Map(DirectoryListing);
+
+        record.Payload.Should().Contain("file_count");
+        record.Payload.Should().Contain("/usb", "the path is firmware-rendered and still wanted");
+    }
+
+    /// <summary>
     /// The entries are lifted out whole, with the printer's own count beside them.
     /// </summary>
     [Fact]
@@ -64,5 +92,18 @@ public sealed class PrusaTelemetryMappingPayloadTests
         PrinterEventRecord record = Map(SingleFile);
 
         record.DriveListing.Should().BeNull();
+    }
+
+    /// <summary>
+    /// The allowlist still does the job it was built for: a single file's gcode header goes.
+    /// </summary>
+    [Fact]
+    public void ASingleFileEventStillLosesItsGcodeHeader()
+    {
+        PrinterEventRecord record = Map(SingleFile);
+
+        record.Payload.Should().NotContain("preview", "pure gcode content, and the reason the allowlist exists");
+        record.Payload.Should().NotContain("estimated_print_time");
+        record.Payload.Should().Contain("display_name", "which the queue reads to match an arrival");
     }
 }

@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20260826210305_InitialCreate")]
+    [Migration("20260826224236_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -442,6 +442,25 @@ namespace Homespool.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Printers");
+                });
+
+            modelBuilder.Entity("Homespool.Model.Entities.PrinterDriveListing", b =>
+                {
+                    b.Property<int>("PrinterId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Entries")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("FileCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("TakenAt")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("PrinterId");
+
+                    b.ToTable("PrinterDriveListings");
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.PrinterEvent", b =>
@@ -1249,6 +1268,15 @@ namespace Homespool.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Team");
+                });
+
+            modelBuilder.Entity("Homespool.Model.Entities.PrinterDriveListing", b =>
+                {
+                    b.HasOne("Homespool.Model.Entities.Printer", null)
+                        .WithOne()
+                        .HasForeignKey("Homespool.Model.Entities.PrinterDriveListing", "PrinterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.PrinterEvent", b =>

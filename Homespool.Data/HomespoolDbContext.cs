@@ -43,8 +43,11 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
     /// <summary>Append-only dense telemetry history. Subject to retention.</summary>
     public DbSet<TelemetrySample> TelemetrySamples { get; set; }
 
-    /// <summary>Discrete printer events. Retained indefinitely.</summary>
+    /// <summary>Discrete printer events. Swept by age and by a per-printer row cap.</summary>
     public DbSet<PrinterEvent> PrinterEvents { get; set; }
+
+    /// <summary>Last-known drive listing, one row per printer, upserted.</summary>
+    public DbSet<PrinterDriveListing> PrinterDriveListings { get; set; }
 
     /// <summary>Last-known per-slot state. Empty for single-tool printers.</summary>
     public DbSet<PrinterLiveSlotState> PrinterLiveSlotStates { get; set; }
@@ -311,6 +314,16 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // grows, so the wider column is paid once per printer instead of once per message.
             entity.Property(e => e.Status)
                   .HasConversion<string>();
+        });
+
+        builder.Entity<PrinterDriveListing>(entity =>
+        {
+            // 1:1 with Printer sharing the primary key, on PrinterLiveState's precedent above and
+            // for the same reason: this is a snapshot upserted per printer, not a history.
+            entity.HasOne<Printer>()
+                  .WithOne()
+                  .HasForeignKey<PrinterDriveListing>(e => e.PrinterId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<TelemetrySample>(entity =>

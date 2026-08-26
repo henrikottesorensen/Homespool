@@ -34,9 +34,11 @@ public static class PrusaTelemetryMapping
     /// hence <c>children</c> and <c>file_count</c>.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// An allowlist, not a blacklist, and the asymmetry is the whole argument - see
     /// <see cref="FormatPayload"/>. Note <c>preview</c> is firmware-rendered and still absent: it is
     /// the one field firmware produces that is pure gcode content.
+    /// </para>
     /// </remarks>
     private static readonly string[] FirmwareRenderedFileInfoFields =
         ["size", "m_timestamp", "read_only", "display_name", "type", "path", "children", "file_count"];
@@ -178,6 +180,7 @@ public static class PrusaTelemetryMapping
             Reason = eventDto.Reason,
             Payload = FormatPayload(eventDto),
             Identity = identity,
+            DriveListing = ToDriveListing(eventDto),
         };
     }
 
@@ -354,6 +357,47 @@ public static class PrusaTelemetryMapping
     /// flipping.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// The drive listing a <c>FILE_INFO</c> carried, or null when it was not one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Only a listing produces one.</b> <c>FILE_INFO</c> carries two shapes under one wire word -
+    /// a single file's metadata, which is an occurrence the queue consumes forward from a watermark,
+    /// and a directory listing, which is a snapshot. Keyed on <c>children</c> being present and an
+    /// array, because that is firmware's own discriminator: <c>render.cpp</c>'s variant chunk is
+    /// either the gcode fields or the directory ones.
+    /// </para>
+    /// <para>
+    /// <b><c>file_count</c> is read independently of <c>children</c></b>, so a listing reporting a
+    /// count and no entries still records the count, and the two disagreeing stays visible rather
+    /// than being reconciled here.
+    /// </para>
+    /// </remarks>
+    private static PrinterDriveListingUpdate? ToDriveListing(EventDTO dto)
+    {
+        if (dto.EventType != Model.PrinterEventType.FileInfo
+            || dto.Data is not { ValueKind: JsonValueKind.Object } element)
+        {
+            return null;
+        }
+
+        bool hasChildren = element.TryGetProperty("children", out JsonElement children)
+                           && children.ValueKind == JsonValueKind.Array;
+
+        bool hasCount = element.TryGetProperty("file_count", out JsonElement count)
+                        && count.ValueKind == JsonValueKind.Number
+                        && count.TryGetInt32(out _);
+
+        if (!hasChildren && !hasCount)
+        {
+            return null;
+        }
+
+        return new PrinterDriveListingUpdate(hasCount ? count.GetInt32() : 0,
+                                             hasChildren ? children.GetRawText() : null);
+    }
+
     private static string? FormatPayload(EventDTO dto)
     {
         if (dto.Data is not { } element)

@@ -446,6 +446,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         // Identity learned from INFO events, applied to the Printer row at flush time. Keyed by
         // printer, so a reconnecting printer that sends INFO twice before a flush costs one update.
         Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo = [];
+        Dictionary<int, PendingDriveListing> pendingDriveListings = [];
 
         // Printers deleted while this process was running. Purging the buffers is only half of it:
         // the connection is closed before the delete, but its read loop can still be carrying a
@@ -497,7 +498,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                 _removalSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             }
 
-            DrainRemovals(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, forgottenPrinterIds);
+            DrainRemovals(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, pendingDriveListings, forgottenPrinterIds);
 
             if (completed == channelReadable)
             {
@@ -518,7 +519,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                         continue;
                     }
 
-                    await ProcessItemAsync(item, cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo,
+                    await ProcessItemAsync(item, cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, pendingDriveListings,
                                            CancellationToken.None);
 
                     // The failure guard is what stops a batch trigger becoming a per-message one.
@@ -548,14 +549,14 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                         && _consecutiveFlushFailures == 0
                         && !_shuttingDown)
                     {
-                        await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo,
+                        await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, pendingDriveListings,
                                              CancellationToken.None);
                     }
                 }
             }
             else if (completed == timerTick)
             {
-                await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo,
+                await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, pendingDriveListings,
                                      CancellationToken.None);
 
                 timerTick = flushTimer.WaitForNextTickAsync().AsTask();
@@ -568,7 +569,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         // One last drain, for a deletion that raced the loop exit. Two things need it: rows for a
         // deleted printer must not reach the final flush, and a caller still awaiting an
         // acknowledgement must not be left waiting for a loop that has stopped.
-        DrainRemovals(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, forgottenPrinterIds);
+        DrainRemovals(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, pendingDriveListings, forgottenPrinterIds);
 
         // Whatever the last partial batch left buffered. Reached only via the break above, so the
         // channel is already empty - this is about the in-memory buffers, nothing else.
@@ -578,7 +579,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         // the success signal.
         for (int attempt = 1; attempt <= FinalFlushAttempts; attempt++)
         {
-            await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo,
+            await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, pendingDriveListings,
                                  CancellationToken.None, FinalFlushCommandBudget);
 
             if (pendingSamples.Count == 0 && pendingEvents.Count == 0)
@@ -632,6 +633,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                                List<PrinterEvent> pendingEvents,
                                HashSet<int> dirtyPrinterIds,
                                Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo,
+                               Dictionary<int, PendingDriveListing> pendingDriveListings,
                                HashSet<int> forgottenPrinterIds)
     {
         while (_removals.TryDequeue(out PrinterRemoval? removal))
@@ -649,6 +651,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             cache.Remove(printerId);
             dirtyPrinterIds.Remove(printerId);
             pendingPrinterInfo.Remove(printerId);
+            pendingDriveListings.Remove(printerId);
 
             // Information rather than a warning: this is a person deleting a printer, and the counts
             // are the only record of what that cost. Not throttled - it is one line per deletion.
@@ -666,6 +669,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                                         List<PrinterEvent> pendingEvents,
                                         HashSet<int> dirtyPrinterIds,
                                         Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo,
+                                        Dictionary<int, PendingDriveListing> pendingDriveListings,
                                         CancellationToken cancellationToken)
     {
         try
@@ -677,7 +681,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                     break;
 
                 case TelemetryWriteItem.EventItem eventItem:
-                    ProcessEvent(eventItem, pendingEvents, pendingPrinterInfo);
+                    ProcessEvent(eventItem, pendingEvents, pendingPrinterInfo, pendingDriveListings);
                     break;
             }
         }
@@ -1022,9 +1026,62 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         }
     }
 
+    /// <summary>
+    /// Writes each printer's latest drive listing to its own row, replacing whatever was there.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Upserted, never appended</b> - the row is the drive as last reported, so an older listing
+    /// has no claim on it. One row per printer, keyed on the printer, so a fleet costs a row each
+    /// rather than a row per report.
+    /// </para>
+    /// <para>
+    /// <b>Attached by key rather than loaded</b>, on <c>ApplyPrinterInfoAsync</c>'s reasoning: the
+    /// whole row is being overwritten, so reading it first would buy nothing and pull entities into
+    /// the change tracker that the live-state attach then collides with.
+    /// </para>
+    /// </remarks>
+    private static async Task ApplyDriveListingsAsync(HomespoolDbContext context,
+                                                      Dictionary<int, PendingDriveListing> pendingDriveListings,
+                                                      CancellationToken cancellationToken)
+    {
+        if (pendingDriveListings.Count == 0)
+        {
+            return;
+        }
+
+        List<int> printerIds = [.. pendingDriveListings.Keys];
+
+        List<PrinterDriveListing> stored = await context.PrinterDriveListings
+                                                        .Where(listing => printerIds.Contains(listing.PrinterId))
+                                                        .ToListAsync(cancellationToken);
+
+        foreach ((int printerId, PendingDriveListing reported) in pendingDriveListings)
+        {
+            PrinterDriveListing? row = stored.FirstOrDefault(listing => listing.PrinterId == printerId);
+
+            if (row is null)
+            {
+                row = new PrinterDriveListing { PrinterId = printerId };
+                context.PrinterDriveListings.Add(row);
+            }
+
+            row.TakenAt = reported.TakenAt;
+            row.FileCount = reported.Listing.FileCount;
+            row.Entries = reported.Listing.Entries;
+        }
+    }
+
+    /// <summary>
+    /// A drive listing waiting for the next flush, with the moment it was heard - which the wire does
+    /// not carry and only the writer knows, since the edge that parsed it has no clock in scope.
+    /// </summary>
+    private sealed record PendingDriveListing(PrinterDriveListingUpdate Listing, DateTimeOffset TakenAt);
+
     private void ProcessEvent(TelemetryWriteItem.EventItem item,
                               List<PrinterEvent> pendingEvents,
-                              Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo)
+                              Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo,
+                              Dictionary<int, PendingDriveListing> pendingDriveListings)
     {
         PrinterEventRecord record = item.Data;
 
@@ -1033,6 +1090,14 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             // An identity report arrives on connection and is applied at flush time, so it commits
             // with everything else in the batch - see FlushAsync.
             pendingPrinterInfo[item.PrinterId] = identity;
+        }
+
+        if (record.DriveListing is { } listing)
+        {
+            // Last one wins, and that is the semantics rather than an optimisation: a listing is
+            // superseded by the next, so a batch carrying three of them means only the third
+            // describes the drive. Overwriting here is what keeps a flush from writing history.
+            pendingDriveListings[item.PrinterId] = new PendingDriveListing(listing, item.ReceivedAt);
         }
 
         pendingEvents.Add(new PrinterEvent
@@ -1183,12 +1248,13 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                                       List<PrinterEvent> pendingEvents,
                                       HashSet<int> dirtyPrinterIds,
                                       Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo,
+                                      Dictionary<int, PendingDriveListing> pendingDriveListings,
                                       CancellationToken cancellationToken,
                                       TimeSpan? commandBudget = null)
     {
         try
         {
-            await FlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, cancellationToken,
+            await FlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, pendingDriveListings, cancellationToken,
                              commandBudget);
 
             _consecutiveFlushFailures = 0;
@@ -1253,6 +1319,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                                   List<PrinterEvent> pendingEvents,
                                   HashSet<int> dirtyPrinterIds,
                                   Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo,
+                                  Dictionary<int, PendingDriveListing> pendingDriveListings,
                                   CancellationToken cancellationToken,
                                   TimeSpan? commandBudget = null)
     {
@@ -1340,6 +1407,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         // After the loop above, so the material writeback's stub already exists and can be reused
         // rather than collided with.
         await ApplyPrinterInfoAsync(context, pendingPrinterInfo, cancellationToken);
+        await ApplyDriveListingsAsync(context, pendingDriveListings, cancellationToken);
 
         await context.SaveChangesAsync(cancellationToken);
 
@@ -1368,6 +1436,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         // arrives once per connection, so dropping it on a failure would mean the printer's firmware
         // stayed wrong until it next reconnected.
         pendingPrinterInfo.Clear();
+        pendingDriveListings.Clear();
     }
 
     /// <summary>

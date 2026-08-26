@@ -1982,6 +1982,138 @@ public sealed class TelemetryWriterTests : IDisposable
         (await Task.WhenAny(forgetting, Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken)))
             .Should().BeSameAs(forgetting);
     }
+
+    /// <summary>
+    /// A directory listing lands in its own upserted row rather than in the event's payload.
+    /// </summary>
+    /// <remarks>
+    /// The event still records that a listing arrived; the entries live where supersession can be
+    /// expressed. <c>notes/printer-event-bounds.md</c>.
+    /// </remarks>
+    [Fact]
+    public async Task ADirectoryListingIsStoredAsADriveListingRow()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        using JsonDocument payload = JsonDocument.Parse(
+            """{"type":"FOLDER","path":"/usb","file_count":2,"children":[{"name":"A.BGC"},{"name":"B.BGC"}]}""");
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = PrinterEventType.FileInfo,
+            Status = "IDLE",
+            Data = payload.RootElement.Clone(),
+        });
+
+        // Assert
+        bool stored = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+            return await context.PrinterDriveListings.AnyAsync();
+        }, TimeSpan.FromSeconds(5));
+
+        stored.Should().BeTrue();
+
+        await using HomespoolDbContext verify = NewVerificationContext();
+        PrinterDriveListing listing =
+            await verify.PrinterDriveListings.SingleAsync(TestContext.Current.CancellationToken);
+
+        listing.PrinterId.Should().Be(1);
+        listing.FileCount.Should().Be(2);
+        listing.Entries.Should().Contain("A.BGC").And.Contain("B.BGC");
+    }
+
+    /// <summary>
+    /// <b>A second listing replaces the first rather than adding to it</b>, which is the whole reason
+    /// it is a row and not an event: only the last one describes the drive.
+    /// </summary>
+    [Fact]
+    public async Task ALaterDirectoryListingReplacesTheEarlierOne()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        using JsonDocument first = JsonDocument.Parse(
+            """{"type":"FOLDER","path":"/usb","file_count":2,"children":[{"name":"OLD.BGC"}]}""");
+        using JsonDocument second = JsonDocument.Parse(
+            """{"type":"FOLDER","path":"/usb","file_count":1,"children":[{"name":"NEW.BGC"}]}""");
+
+        // Act
+        writer.Enqueue(1, DateTimeOffset.UtcNow.AddMinutes(-1), new EventDTO
+        {
+            EventType = PrinterEventType.FileInfo, Status = "IDLE", Data = first.RootElement.Clone(),
+        });
+
+        bool wroteFirst = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+            return await context.PrinterDriveListings.AnyAsync();
+        }, TimeSpan.FromSeconds(5));
+
+        wroteFirst.Should().BeTrue();
+
+        writer.Enqueue(1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = PrinterEventType.FileInfo, Status = "IDLE", Data = second.RootElement.Clone(),
+        });
+
+        // Assert
+        bool replaced = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+            PrinterDriveListing? row = await context.PrinterDriveListings.FirstOrDefaultAsync();
+
+            return row?.FileCount == 1;
+        }, TimeSpan.FromSeconds(5));
+
+        replaced.Should().BeTrue("the newer listing supersedes the older");
+
+        await using HomespoolDbContext verify = NewVerificationContext();
+        (await verify.PrinterDriveListings.CountAsync(TestContext.Current.CancellationToken))
+            .Should().Be(1, "one row per printer, whatever the number of listings");
+
+        PrinterDriveListing listing =
+            await verify.PrinterDriveListings.SingleAsync(TestContext.Current.CancellationToken);
+        listing.Entries.Should().Contain("NEW.BGC").And.NotContain("OLD.BGC");
+    }
+
+    /// <summary>
+    /// A single file's <c>FILE_INFO</c> is an occurrence, not a snapshot, so it writes no listing
+    /// row - otherwise one file would overwrite the drive's whole contents.
+    /// </summary>
+    [Fact]
+    public async Task ASingleFileEventWritesNoDriveListingRow()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        using JsonDocument payload = JsonDocument.Parse(
+            """{"type":"PRINT_FILE","path":"/usb/a.bgcode","display_name":"a.bgcode","size":22}""");
+
+        // Act
+        writer.Enqueue(1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = PrinterEventType.FileInfo, Status = "IDLE", Data = payload.RootElement.Clone(),
+        });
+
+        bool flushed = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+            return await context.PrinterEvents.AnyAsync();
+        }, TimeSpan.FromSeconds(5));
+
+        flushed.Should().BeTrue();
+
+        // Assert
+        await using HomespoolDbContext verify = NewVerificationContext();
+        (await verify.PrinterDriveListings.AnyAsync(TestContext.Current.CancellationToken))
+            .Should().BeFalse("a file is not a listing");
+    }
 }
 
 /// <summary>

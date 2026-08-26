@@ -387,6 +387,26 @@ namespace Homespool.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "PrinterDriveListings",
+                columns: table => new
+                {
+                    PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
+                    TakenAt = table.Column<long>(type: "INTEGER", nullable: false),
+                    FileCount = table.Column<int>(type: "INTEGER", nullable: false),
+                    Entries = table.Column<string>(type: "TEXT", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PrinterDriveListings", x => x.PrinterId);
+                    table.ForeignKey(
+                        name: "FK_PrinterDriveListings_Printers_PrinterId",
+                        column: x => x.PrinterId,
+                        principalTable: "Printers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "PrinterEvents",
                 columns: table => new
                 {
@@ -987,6 +1007,9 @@ namespace Homespool.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "Invitations");
+
+            migrationBuilder.DropTable(
+                name: "PrinterDriveListings");
 
             migrationBuilder.DropTable(
                 name: "PrinterEvents");

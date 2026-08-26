@@ -441,6 +441,25 @@ namespace Homespool.Data.Migrations
                     b.ToTable("Printers");
                 });
 
+            modelBuilder.Entity("Homespool.Model.Entities.PrinterDriveListing", b =>
+                {
+                    b.Property<int>("PrinterId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Entries")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("FileCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("TakenAt")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("PrinterId");
+
+                    b.ToTable("PrinterDriveListings");
+                });
+
             modelBuilder.Entity("Homespool.Model.Entities.PrinterEvent", b =>
                 {
                     b.Property<long>("Id")
@@ -1246,6 +1265,15 @@ namespace Homespool.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Team");
+                });
+
+            modelBuilder.Entity("Homespool.Model.Entities.PrinterDriveListing", b =>
+                {
+                    b.HasOne("Homespool.Model.Entities.Printer", null)
+                        .WithOne()
+                        .HasForeignKey("Homespool.Model.Entities.PrinterDriveListing", "PrinterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.PrinterEvent", b =>

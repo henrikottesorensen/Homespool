@@ -40,4 +40,16 @@ public sealed record PrinterEventRecord
     /// <c>Printer</c> row in the same flush as the event, so the batch semantics stay whole.
     /// </summary>
     public PrinterIdentityUpdate? Identity { get; init; }
+
+    /// <summary>
+    /// What this event said about the printer's drive, when it was a directory listing - applied to
+    /// the <c>PrinterDriveListing</c> row in the same flush as the event.
+    /// </summary>
+    /// <remarks>
+    /// <b>It travels beside the payload rather than in it, and that is the point.</b> A listing is
+    /// superseded by the next one, so it belongs in a row that is replaced rather than in a log that
+    /// is appended to - <c>notes/printer-event-bounds.md</c>. The event itself keeps the fact that a
+    /// listing arrived, and its <c>file_count</c>.
+    /// </remarks>
+    public PrinterDriveListingUpdate? DriveListing { get; init; }
 }

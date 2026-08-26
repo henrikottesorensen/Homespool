@@ -24,6 +24,7 @@ using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Queue;
 using Homespool.Host.Services;
+using Homespool.Host.Telemetry;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -103,6 +104,9 @@ public sealed class DetailModelTests : IDisposable
         QueueSnapshotReader snapshots = new(context, connectionRegistry, TimeProvider.System);
 
         DetailModel model = new(new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System),
+                                new PrinterDeletionService(context, access, snapshots, connectionRegistry,
+                                                           Substitute.For<ITelemetryEviction>(),
+                                                           NullLogger<PrinterDeletionService>.Instance),
                                 queueService,
 
                                 // Constructed rather than substituted: these tests are about the page, and a real one
@@ -308,5 +312,130 @@ public sealed class DetailModelTests : IDisposable
 
         // Assert
         model.Connected.Should().BeTrue();
+    }
+
+    // ---------- OnPostDeleteAsync ----------
+
+    /// <summary>
+    /// <b>The typed name is checked on the server.</b> A wrong one deletes nothing and says so.
+    /// </summary>
+    /// <remarks>
+    /// The confirmation is the only thing standing between a stray click and a printer's entire
+    /// history, so it cannot live in the browser: a confirmation the server never sees is a
+    /// decoration. Asserting the printer survives, not just that the message is unhappy - a refusal
+    /// that reported failure while deleting anyway would pass a message-only assertion.
+    /// </remarks>
+    [Fact]
+    public async Task DeleteRefusesWhenTheTypedNameDoesNotMatch()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, _, Team team, _) = await NewModelAsync(context);
+
+        Printer printer = NewPrinter(team.Id, name: "Workshop");
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        IActionResult result = await model.OnPostDeleteAsync(printer.Uuid, "workshp", CancellationToken.None);
+
+        // Assert
+        model.StatusSuccess.Should().BeFalse();
+        result.Should().BeOfType<RedirectToPageResult>().Which.PageName.Should().BeNull("a refusal stays on this page");
+
+        context.ChangeTracker.Clear();
+        (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+    }
+
+    /// <summary>An empty box is a mismatch too, rather than a match against a printer with no name.</summary>
+    [Fact]
+    public async Task DeleteRefusesAnEmptyConfirmation()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, _, Team team, _) = await NewModelAsync(context);
+
+        Printer printer = NewPrinter(team.Id, name: "Workshop");
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        await model.OnPostDeleteAsync(printer.Uuid, confirmation: null, CancellationToken.None);
+
+        // Assert
+        model.StatusSuccess.Should().BeFalse();
+
+        context.ChangeTracker.Clear();
+        (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+    }
+
+    /// <summary>
+    /// The right name deletes the printer and goes to the listing, since the page it was on is now
+    /// about nothing.
+    /// </summary>
+    /// <remarks>
+    /// The comparison ignores case deliberately - the point is to make somebody read the name, not to
+    /// test their shift key - which is why this types it in lower case.
+    /// </remarks>
+    [Fact]
+    public async Task DeleteWithTheRightNameRemovesThePrinterAndReturnsToTheListing()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, _, Team team, _) = await NewModelAsync(context);
+
+        Printer printer = NewPrinter(team.Id, name: "Workshop");
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        IActionResult result = await model.OnPostDeleteAsync(printer.Uuid, " workshop ", CancellationToken.None);
+
+        // Assert
+        model.StatusSuccess.Should().BeTrue();
+        result.Should().BeOfType<RedirectToPageResult>().Which.PageName.Should().Be("Index");
+
+        context.ChangeTracker.Clear();
+        (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+    }
+
+    /// <summary>
+    /// A printer nobody ever named is confirmed by what the page calls it, which is its UUID - the
+    /// same string the heading shows.
+    /// </summary>
+    [Fact]
+    public async Task AnUnnamedPrinterIsConfirmedByTheNameThePageShows()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, _, Team team, _) = await NewModelAsync(context);
+
+        Printer printer = NewPrinter(team.Id);
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        await model.OnPostDeleteAsync(printer.Uuid, printer.Uuid.ToString(), CancellationToken.None);
+
+        // Assert
+        model.StatusSuccess.Should().BeTrue();
+
+        context.ChangeTracker.Clear();
+        (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+    }
+
+    /// <summary>A uuid the caller cannot read is a 404 here as much as on the GET.</summary>
+    [Fact]
+    public async Task DeleteReturnsNotFoundForAnUnknownUuid()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, _, _, _) = await NewModelAsync(context);
+
+        // Act
+        IActionResult result = await model.OnPostDeleteAsync(Guid.NewGuid(), "anything", CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<NotFoundResult>();
     }
 }

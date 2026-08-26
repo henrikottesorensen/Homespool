@@ -2026,4 +2026,25 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Tokens_ScopeRequired" xml:space="preserve">
     <value>Choose at least one thing this token may do.</value>
   </data>
+  <data name="Printers_DeleteHeading" xml:space="preserve">
+    <value>Delete this printer</value>
+  </data>
+  <data name="Printers_DeleteWarning" xml:space="preserve">
+    <value>This removes the printer and everything recorded about it: its telemetry, its events, its print history, anything waiting in its queue, its enrolment, and any camera watching it. Files you have uploaded are kept. None of the rest can be recovered.</value>
+  </data>
+  <data name="Printers_DeleteKnocking" xml:space="preserve">
+    <value>The printer itself is not told. It keeps its credential until somebody registers it again at its own panel, so until then it goes on connecting here and being turned away.</value>
+  </data>
+  <data name="Printers_DeleteConfirmLabel" xml:space="preserve">
+    <value>Type {0} to confirm</value>
+  </data>
+  <data name="Printers_DeleteButton" xml:space="preserve">
+    <value>Delete printer</value>
+  </data>
+  <data name="Printers_DeleteNameMismatch" xml:space="preserve">
+    <value>Nothing was deleted: that is not this printer. Type {0} to confirm.</value>
+  </data>
+  <data name="Printers_Deleted" xml:space="preserve">
+    <value>Deleted {0} and everything recorded about it.</value>
+  </data>
 </root>

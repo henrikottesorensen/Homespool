@@ -3,7 +3,7 @@
 @using Homespool.Model
 @model DetailModel
 @{
-    ViewData["Title"] = Model.Statistics.Printer.Name ?? Model.Statistics.Printer.Model ?? Model.Statistics.Printer.Uuid.ToString();
+    ViewData["Title"] = Model.DisplayName;
 }
 
 <h1 class="typed-name">@ViewData["Title"]</h1>
@@ -559,6 +559,39 @@ else
         }
         </tbody>
     </table>
+}
+
+@* Last on the page, and behind CanManage. Deleting a printer is not an edit to it - it takes the
+   telemetry, the events, the print history, the queue, the enrolment and any camera watching it,
+   none of which comes back. The typed name is the whole safety mechanism, so the list of what goes
+   is stated above the box rather than left to a dialog somebody dismisses. *@
+@if (Model.CanManage)
+{
+    <h2>@Localiser["Printers_DeleteHeading"]</h2>
+
+    <div class="card border-danger mb-3">
+        <div class="card-body">
+            <p>@Localiser["Printers_DeleteWarning"]</p>
+            <p class="text-body-secondary small">@Localiser["Printers_DeleteKnocking"]</p>
+
+            <form method="post" asp-page-handler="Delete" asp-route-uuid="@Model.Statistics.Printer.Uuid"
+                  class="row row-cols-lg-auto g-2 align-items-center">
+                <div class="col-12">
+                    <label class="form-label" for="delete-confirmation">
+                        @Localiser["Printers_DeleteConfirmLabel", Model.DisplayName]
+                    </label>
+                    @* No autocomplete: the browser offering the name back would undo the point of
+                       asking for it. *@
+                    <input class="form-control" id="delete-confirmation" name="confirmation"
+                           autocomplete="off" required />
+                </div>
+
+                <div class="col-12 align-self-end">
+                    <button type="submit" class="btn btn-danger">@Localiser["Printers_DeleteButton"]</button>
+                </div>
+            </form>
+        </div>
+    </div>
 }
 
 @section Scripts {

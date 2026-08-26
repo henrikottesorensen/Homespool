@@ -166,6 +166,66 @@ public class PrinterConnectionRegistryTests
         _logger.Collector.GetSnapshot().Should().BeEmpty();
     }
 
+    /// <summary>
+    /// Closing shuts the live connection down, so a printer being deleted stops producing rows that
+    /// would reference it.
+    /// </summary>
+    [Fact]
+    public void CloseCompletesTheRegisteredActor()
+    {
+        // Arrange
+        PrinterConnectionRegistry registry = NewRegistry();
+        IPrinterConnectionActor actor = OpenActor();
+        registry.Register(printerId: 1, actor);
+
+        // Act
+        bool closed = registry.Close(printerId: 1);
+
+        // Assert
+        closed.Should().BeTrue();
+        actor.Received(1).Complete();
+    }
+
+    /// <summary>
+    /// A printer that was never connected is deleted just as often as one that was, so closing has
+    /// to be a no-op rather than a failure.
+    /// </summary>
+    [Fact]
+    public void ClosingAPrinterThatIsNotConnectedReportsSo()
+    {
+        // Arrange
+        PrinterConnectionRegistry registry = NewRegistry();
+
+        // Act + Assert
+        registry.Close(printerId: 1).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// <b>Closing does not remove the entry</b>, which is what keeps it clear of the reconnect race
+    /// above: the teardown that follows <c>Complete</c> unregisters by instance, and removing it here
+    /// as well would take out whatever registered in between.
+    /// </summary>
+    [Fact]
+    public void CloseLeavesTheEntryForTheTeardownToUnregisterByInstance()
+    {
+        // Arrange
+        PrinterConnectionRegistry registry = NewRegistry();
+        IPrinterConnectionActor closed = OpenActor();
+        registry.Register(printerId: 1, closed);
+
+        registry.Close(printerId: 1);
+
+        // Act - a reconnect lands before the closed connection's request has torn down, then the
+        // stale request finally runs its unregister.
+        IPrinterConnectionActor reconnected = OpenActor();
+        registry.Register(printerId: 1, reconnected);
+        registry.Unregister(printerId: 1, closed);
+
+        // Assert
+        registry.TryGet(1, out IPrinterLink? found).Should().BeTrue();
+        found.Should().BeSameAs(reconnected);
+    }
+
     private PrinterConnectionRegistry NewRegistry()
     {
         return new(_logger);

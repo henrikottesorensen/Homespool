@@ -44,6 +44,7 @@ namespace Homespool.Host.Pages.Printers;
 public class DetailModel : PageModel
 {
     private readonly PrinterQueryService _printerQueryService;
+    private readonly PrinterDeletionService _deletionService;
     private readonly PrintQueueService _queueService;
     private readonly PrinterPreheatService _preheat;
     private readonly PrintHistoryService _historyService;
@@ -58,6 +59,7 @@ public class DetailModel : PageModel
     private readonly UserManager<HSUser> _userManager;
 
     public DetailModel(PrinterQueryService printerQueryService,
+                       PrinterDeletionService deletionService,
                        PrintQueueService queueService,
                        PrinterPreheatService preheat,
                        PrintHistoryService historyService,
@@ -72,6 +74,7 @@ public class DetailModel : PageModel
                        UserManager<HSUser> userManager)
     {
         _printerQueryService = printerQueryService;
+        _deletionService = deletionService;
         _queueService = queueService;
         _preheat = preheat;
         _historyService = historyService;
@@ -205,6 +208,18 @@ public class DetailModel : PageModel
 
     [TempData]
     public bool StatusSuccess { get; set; }
+
+    /// <summary>
+    /// What to call this printer on screen, and what the delete confirmation asks to be typed.
+    /// </summary>
+    /// <remarks>
+    /// <b>One definition, because two things now depend on the answer matching.</b> The heading and
+    /// the confirmation have to name a printer identically or the box cannot be filled in, and the
+    /// fallback chain is <see cref="Printer.Name"/>'s documented one. It is stated here rather than
+    /// on the entity because that would be a change to the domain model for every caller, which is a
+    /// separate conversation - see <c>Pages/Printers/Index</c>, which still spells it out inline.
+    /// </remarks>
+    public string DisplayName => DisplayNameFor(Statistics.Printer);
 
     /// <summary>
     /// An unknown uuid and one the caller can't read both return <see cref="NotFoundResult"/> -
@@ -404,6 +419,77 @@ public class DetailModel : PageModel
 
             return (_localiser["Printers_HeatersOff"].Value, true);
         }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Deletes the printer and everything this deployment knows about it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Not through <see cref="ActAsync"/>, and the reason is the redirect.</b> Every other handler
+    /// comes back to this page; this one has just removed the thing the page is about, so a success
+    /// goes to the listing and only a refusal returns here. The exception arms are otherwise the
+    /// same, deliberately - the shapes a printer operation can fail in did not change.
+    /// </para>
+    /// <para>
+    /// <b>The typed name is checked here rather than in the browser.</b> A confirmation the server
+    /// never sees is a decoration; this one costs a forged post the trouble of knowing which printer
+    /// it is deleting. Compared ordinally and case-insensitively: the point is to make somebody read
+    /// the name, not to test their shift key, and an ordinal comparison keeps a Turkish locale from
+    /// deciding what two names mean.
+    /// </para>
+    /// </remarks>
+    public async Task<IActionResult> OnPostDeleteAsync(Guid uuid, string? confirmation, CancellationToken cancellationToken)
+    {
+        HSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return Forbid();
+        }
+
+        Caller caller = CallerResolver.For(user, User);
+        Printer? printer = await _printerQueryService.GetPrinterForUserAsync(uuid, caller, cancellationToken);
+
+        if (printer is null)
+        {
+            return NotFound();
+        }
+
+        string name = DisplayNameFor(printer);
+
+        if (!string.Equals(confirmation?.Trim(), name, StringComparison.OrdinalIgnoreCase))
+        {
+            (StatusMessage, StatusSuccess) = (_localiser["Printers_DeleteNameMismatch", name].Value, false);
+
+            return RedirectToPage(new { uuid });
+        }
+
+        try
+        {
+            await _deletionService.DeletePrinterAsync(uuid, caller, cancellationToken);
+        }
+        catch (TeamAccessDeniedException)
+        {
+            return Forbid();
+        }
+        catch (PrinterBusyException e)
+        {
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
+
+            return RedirectToPage(new { uuid });
+        }
+
+        (StatusMessage, StatusSuccess) = (_localiser["Printers_Deleted", name].Value, true);
+
+        return RedirectToPage("Index");
+    }
+
+    /// <summary>The chain behind <see cref="DisplayName"/>, for a printer this page has not loaded
+    /// into <see cref="Statistics"/> - which is every printer a POST handler resolves for itself.</summary>
+    private static string DisplayNameFor(Printer printer)
+    {
+        return printer.Name ?? printer.Model ?? printer.Uuid.ToString();
     }
 
     /// <summary>

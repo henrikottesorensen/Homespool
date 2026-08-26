@@ -367,6 +367,7 @@ public static class Program
             builder.Services.AddSingleton<Telemetry.TelemetryWriter>();
             builder.Services.AddSingleton<Telemetry.ITelemetrySink>(sp => sp.GetRequiredService<Telemetry.TelemetryWriter>());
             builder.Services.AddSingleton<Telemetry.ITelemetryHealthSource>(sp => sp.GetRequiredService<Telemetry.TelemetryWriter>());
+            builder.Services.AddSingleton<Telemetry.ITelemetryEviction>(sp => sp.GetRequiredService<Telemetry.TelemetryWriter>());
             builder.Services.AddHostedService(sp => sp.GetRequiredService<Telemetry.TelemetryWriter>());
 
             // The middle link in a three-part budget that no single file used to own: the writer's
@@ -436,6 +437,7 @@ public static class Program
             builder.Services.AddScoped<Services.UnitOfWork>();
             builder.Services.AddScoped<Services.InvitationService>();
             builder.Services.AddScoped<Services.PrinterQueryService>();
+            builder.Services.AddScoped<Services.PrinterDeletionService>();
             builder.Services.AddScoped<PrintQueueService>();
             builder.Services.AddScoped<Services.PrintHistoryService>();
             builder.Services.AddScoped<Services.PrintStopService>();

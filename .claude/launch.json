@@ -4,8 +4,34 @@
     {
       "name": "homespool-host",
       "runtimeExecutable": "dotnet",
-      "runtimeArgs": ["run", "--project", "Homespool.Host", "--launch-profile", "http"],
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "Homespool.Host",
+        "--launch-profile",
+        "http"
+      ],
       "port": 5052
+    },
+    {
+      "name": "homespool-oidc",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "Homespool.Host",
+        "--launch-profile",
+        "http",
+        "--",
+        "--Oidc:Authority=http://localhost:5556/dex",
+        "--Oidc:ClientId=homespool-test",
+        "--Oidc:ClientSecret=homespool-test-secret",
+        "--Oidc:RequireHttpsMetadata=false",
+        "--Oidc:DisplayName=Dex (test)",
+        "--Oidc:AllowInviteMatchByEmail=true"
+      ],
+      "port": 5052,
+      "url": "http://localhost:5052"
     }
   ]
 }

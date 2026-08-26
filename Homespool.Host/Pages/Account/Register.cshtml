@@ -62,6 +62,25 @@ else
                 </div>
                 <button id="registerSubmit" type="submit" class="w-100 btn btn-lg btn-primary">@Localiser["Account_CreateAccount"]</button>
             </form>
+
+            @if (!Model.Reactivating && Model.ExternalLogins.Count > 0)
+            {
+                @* Accept the invitation with a provider instead of a password. The invite's id and
+                   token go with the challenge, so the callback spends it on proof the invitee holds
+                   the emailed secret - see RegisterModel.ExternalLogins. *@
+                <hr />
+                <h2 class="h5">@Localiser["Account_OrAcceptWith"]</h2>
+                <form id="invite-external-form" asp-page="./ExternalLogin" asp-route-returnUrl="@Model.ReturnUrl" method="post">
+                    <input type="hidden" name="inviteId" value="@Model.InviteId" />
+                    <input type="hidden" name="code" value="@Model.Code" />
+                    @foreach (var provider in Model.ExternalLogins)
+                    {
+                        <button id="@($"invite-external-{provider.Name}")" type="submit" class="w-100 btn btn-lg btn-outline-primary"
+                                name="provider" value="@provider.Name"
+                                title="@Localiser["Account_SignInWithProviderTitle", provider.DisplayName ?? provider.Name]">@provider.DisplayName</button>
+                    }
+                </form>
+            }
         </div>
     </div>
 }

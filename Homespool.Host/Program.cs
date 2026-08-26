@@ -280,6 +280,9 @@ public static class Program
             builder.Services.Configure<Services.InvitationOptions>(
                 builder.Configuration.GetSection(Services.InvitationOptions.SectionName));
 
+            builder.Services.Configure<Services.SecurityOptions>(
+                builder.Configuration.GetSection(Services.SecurityOptions.SectionName));
+
             Services.SmtpOptions smtpOptions = new();
             builder.Configuration.GetSection(Services.SmtpOptions.SectionName).Bind(smtpOptions);
 
@@ -618,6 +621,11 @@ public static class Program
 
             app.UseAuthentication();
             app.UseAuthorization();
+
+            // After authorization, so it sees a resolved principal and cannot be reached by anybody
+            // an endpoint would have refused anyway. It is inert unless Security:RequireTwoFactor is
+            // on, and it only ever acts on the application cookie - see the middleware's remarks.
+            app.UseMiddleware<Services.TwoFactorEnrolmentMiddleware>();
 
             // After authentication, and that ordering is load-bearing rather than tidy: the first
             // culture provider reads the signed-in account's stored language, so it needs

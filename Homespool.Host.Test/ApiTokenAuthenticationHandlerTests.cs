@@ -109,6 +109,7 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
             new ApiTokenService(context),
             users,
             provider.GetRequiredService<IUserClaimsPrincipalFactory<HSUser>>(),
+            Microsoft.Extensions.Options.Options.Create(new Homespool.Host.Services.SecurityOptions()),
             new StaticOptionsMonitor(),
             NullLoggerFactory.Instance,
             UrlEncoder.Default);

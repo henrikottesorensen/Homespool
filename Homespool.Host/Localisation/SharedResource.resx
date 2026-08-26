@@ -583,6 +583,15 @@
   <data name="Printers_NothingQueued" xml:space="preserve">
     <value>Nothing queued. Send a file to this printer&apos;s queue from {0}.</value>
   </data>
+  <data name="Account_OrAcceptWith" xml:space="preserve">
+    <value>Or accept with</value>
+  </data>
+  <data name="Account_OrSignInWith" xml:space="preserve">
+    <value>Or sign in with</value>
+  </data>
+  <data name="Account_SignInWithProviderTitle" xml:space="preserve">
+    <value>Sign in with {0}</value>
+  </data>
   <data name="Account_LogIn" xml:space="preserve">
     <value>Log in</value>
   </data>

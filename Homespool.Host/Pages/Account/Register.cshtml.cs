@@ -4,6 +4,7 @@
 #nullable disable
 
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -16,6 +17,7 @@ using Homespool.Model;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -91,6 +93,31 @@ public class RegisterModel : PageModel
     public string Email { get; private set; }
 
     /// <summary>
+    /// Registered external providers, so an invitee can accept with one <em>instead of</em> setting a
+    /// password — arriving with the provider as their only credential.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the token door's entry point, and it is the stronger of the two.</b> The invite's id
+    /// and token ride through the provider round trip, so the callback spends the invite on proof the
+    /// invitee holds the emailed secret and never consults the provider's claims. The other door —
+    /// matching an outstanding invite against a provider-asserted address — trusts
+    /// <c>email_verified</c> instead, which is why it is off by default.
+    /// </para>
+    /// <para>
+    /// <b>Without this button the safer door had no UI</b>, so an operator who wanted provider-only
+    /// accounts had to switch the weaker one on to get them. That is the wrong way round, and it is
+    /// the reason this exists (Henrik, 2026-08-22).
+    /// </para>
+    /// <para>
+    /// <b>Not offered when reactivating.</b> That flow exists because a provider went away, and it
+    /// removes the dead links; offering to accept with a provider there would be offering the thing
+    /// that just failed.
+    /// </para>
+    /// </remarks>
+    public IList<AuthenticationScheme> ExternalLogins { get; private set; } = [];
+
+    /// <summary>
     /// True when an account already exists for this address and has no password, so redeeming the
     /// invite <b>reactivates</b> it rather than creating a second one.
     /// </summary>
@@ -163,6 +190,8 @@ public class RegisterModel : PageModel
         {
             await ResolveReactivationAsync(invitation);
         }
+
+        ExternalLogins = [.. await _signInManager.GetExternalAuthenticationSchemesAsync()];
     }
 
     /// <summary>

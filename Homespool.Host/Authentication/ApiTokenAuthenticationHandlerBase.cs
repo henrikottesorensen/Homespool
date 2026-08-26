@@ -53,10 +53,12 @@ public abstract class ApiTokenAuthenticationHandlerBase : AuthenticationHandler<
     private readonly ApiTokenService _tokens;
     private readonly UserManager<HSUser> _userManager;
     private readonly IUserClaimsPrincipalFactory<HSUser> _claimsFactory;
+    private readonly IOptions<Services.SecurityOptions> _security;
 
     protected ApiTokenAuthenticationHandlerBase(ApiTokenService tokens,
                                                 UserManager<HSUser> userManager,
                                                 IUserClaimsPrincipalFactory<HSUser> claimsFactory,
+                                                IOptions<Services.SecurityOptions> security,
                                                 IOptionsMonitor<ApiTokenAuthenticationSchemeOptions> options,
                                                 ILoggerFactory loggerFactory,
                                                 UrlEncoder encoder)
@@ -65,6 +67,7 @@ public abstract class ApiTokenAuthenticationHandlerBase : AuthenticationHandler<
         _tokens = tokens;
         _userManager = userManager;
         _claimsFactory = claimsFactory;
+        _security = security;
     }
 
     /// <summary>
@@ -138,6 +141,25 @@ public abstract class ApiTokenAuthenticationHandlerBase : AuthenticationHandler<
             // Structurally unreachable: deleting a user cascades to their tokens. Fail closed rather
             // than authenticate as nobody if a row is ever left inconsistent.
             Logger.LogWarning("API token {TokenId} resolves to no user.", token.Id);
+
+            return AuthenticateResult.Fail("Invalid API token.");
+        }
+
+        // Security:RequireTwoFactor is a requirement on the ACCOUNT, so it reaches every credential the
+        // account holds rather than only its browser session. A token minted before the setting was
+        // turned on would otherwise outlive the requirement it predates, which is the whole gap that
+        // choice was made to close.
+        //
+        // It fails as an ordinary invalid-token 401 because there is nothing better available: this is
+        // a header on a machine-to-machine request, with no page to redirect to and nobody reading
+        // prose. The log line is where the real reason lives, and an operator who turns the setting on
+        // should expect to need it.
+        if (_security.Value.RequireTwoFactor && !await _userManager.GetTwoFactorEnabledAsync(user))
+        {
+            Logger.LogWarning(
+                "API token {TokenId} refused: Security:RequireTwoFactor is on and user {UserId} has no authenticator.",
+                token.Id,
+                token.UserId);
 
             return AuthenticateResult.Fail("Invalid API token.");
         }

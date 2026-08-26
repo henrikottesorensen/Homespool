@@ -157,9 +157,10 @@ public class ExternalLoginModel : PageModel
     /// <para>
     /// <b>The name is checked because it arrives from the form.</b> Unchecked, it went straight to
     /// <see cref="ChallengeResult"/>, and a scheme nobody registered throws
-    /// <see cref="InvalidOperationException"/> - so an anonymous POST of any string answered 500. No
-    /// provider is registered today, so the login page renders no buttons and the only caller is a
-    /// hand-made request; what it cost was an endpoint that faults on demand and fills the log.
+    /// <see cref="InvalidOperationException"/> - so an anonymous POST of any string answered 500. What
+    /// it cost was an endpoint that faults on demand and fills the log. The login page now renders a
+    /// button per registered provider, so the ordinary caller is a form; the check is still what keeps
+    /// a hand-made one from choosing its own scheme name.
     /// </para>
     /// <para>
     /// <b>A name that <i>is</i> a scheme but not an external one was the stranger case.</b> Posting
@@ -227,7 +228,7 @@ public class ExternalLoginModel : PageModel
         // Sign in the user with this external login provider if the user already has a login.
         SignInResult result =
             await _signInManager.ExternalLoginSignInAsync(info.LoginProvider, info.ProviderKey, isPersistent: false,
-                                                          bypassTwoFactor: true);
+                                                          bypassTwoFactor: false);
         if (result.Succeeded)
         {
             // Null-conditional because ClaimsPrincipal.Identity is IIdentity? - but the reachable
@@ -239,6 +240,21 @@ public class ExternalLoginModel : PageModel
                                    info.Principal.Identity?.Name,
                                    info.LoginProvider);
             return LocalRedirect(returnUrl);
+        }
+
+        // A second factor this deployment asked for is still asked for (Henrik, 2026-08-22). The
+        // scaffold passed bypassTwoFactor: true, on the reasoning that the provider has just
+        // authenticated somebody - but the provider's assurance is not the one the account holder
+        // opted into, and an account that turns on an authenticator here is saying "not without this",
+        // not "not without this unless another party vouches for me". Whether the provider did its own
+        // multi-factor is unknowable from here: nothing in the callback can tell an amr from a wish.
+        //
+        // Without this arm the fall-through is worse than wrong, it is confusing: a RequiresTwoFactor
+        // result is neither Succeeded nor IsLockedOut, so an account with an authenticator would drop
+        // into the invite gate below and be told there is no invitation for it.
+        if (result.RequiresTwoFactor)
+        {
+            return RedirectToPage("./LoginWith2fa", new { ReturnUrl = returnUrl, RememberMe = false });
         }
 
         if (result.IsLockedOut)

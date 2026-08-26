@@ -1,0 +1,114 @@
+@* Fully qualified: Printers.IndexModel is also in scope via the using below, and "IndexModel" alone
+   is ambiguous between the two. *@
+@model Homespool.Host.Pages.IndexModel
+@using System.Globalization
+@using Homespool.Host.Pages.Printers
+
+@{
+    var culture = CultureInfo.CurrentCulture;
+}
+@*
+    The front page's tiles. Rendered inline on first load and again on every poll, so everything it
+    reads must come from OnGetTilesAsync - printer-page.md §6e, the rule a half-extracted partial
+    already cost us once.
+*@
+@if (Model.Shortcuts.Count == 0)
+{
+    <p class="text-body-secondary">
+        @if (Model.HasAnyPrinter)
+        {
+            @* Reachable only if the tile cap is ever set to zero; kept so the fragment always says
+               something rather than swapping in a blank. *@
+            @Localiser["Home_NoPrintersShown"]
+        }
+        else
+        {
+            @Localiser["Printers_None"]
+        }
+    </p>
+
+    @if (!Model.HasAnyPrinter)
+    {
+        <a class="btn btn-primary" asp-page="/Printers/Add">@Localiser["Printers_Add"]</a>
+    }
+}
+else
+{
+    <div class="printer-shortcuts">
+        @foreach (PrinterShortcut shortcut in Model.Shortcuts)
+        {
+            @* data-drop-target rather than a class, so the script binds to intent rather than to
+               styling somebody might rename.
+
+               Unconditional, because the gate is one level up: tile-drop.js is only served when the
+               reader has UploadOwnFiles, so without it nothing ever binds to these and a tile stays
+               the plain link it is without script. Making the attribute itself conditional needs C#
+               in a tag helper's attribute area, which Razor refuses outright. *@
+            <a class="printer-shortcut" asp-page="/Printers/Detail" asp-route-uuid="@shortcut.Printer.Uuid"
+               data-drop-target data-drop-uuid="@shortcut.Printer.Uuid">
+                <span class="printer-shortcut-drawing">
+                    <partial name="_PrinterIcon" model="shortcut.FormFactor" />
+                </span>
+
+                @* The plaque: who it is, and what it is doing. Small on purpose - the drawing is the
+                   thing you aim at, and this is what you read once you have. *@
+                <span class="printer-plaque">
+                    <span class="printer-plaque-name typed-name">@shortcut.Name</span>
+
+                    @if (shortcut.Connected)
+                    {
+                        <span class="badge @PrinterStatusBadge.For(shortcut.LiveStatus)">@Model.StatusText(shortcut.LiveStatus)</span>
+                    }
+                    else
+                    {
+                        @* Hollow, because absence is a shape rather than a severity - a printer
+                           switched off overnight is offline and perfectly well. visual-identity.md §4b. *@
+                        <span class="badge @PrinterStatusBadge.Absent">@Localiser["PrinterStatus_Offline"]</span>
+                    }
+
+                    @* Progress carries the bar; the percentage and the time left sit under it as
+                       words. The bar alone is the glance, the words are for when the glance was not
+                       enough - which is why they are quiet and it is not. *@
+                    @if (shortcut.Progress is { } progress)
+                    {
+                        <span class="progress printer-plaque-progress" role="progressbar"
+                              aria-label="@Localiser["Printers_Progress"]"
+                              aria-valuenow="@progress" aria-valuemin="0" aria-valuemax="100">
+                            <span class="progress-bar" style="width: @progress.ToString(CultureInfo.InvariantCulture)%"></span>
+                        </span>
+
+                        <span class="printer-plaque-stats">
+                            @if (shortcut.TimeRemaining is { } remaining)
+                            {
+                                @* Firmware does not always have an estimate, even mid-print. The
+                                   percentage keeps its right-hand column when it does not, rather
+                                   than sliding left into the gap - see .printer-plaque-stat-end. *@
+                                <span>@Localiser["Printers_TimeLeft", PrintDuration.WithoutSeconds(Localiser, remaining)]</span>
+                            }
+
+                            <span class="printer-plaque-stat-end">@progress.ToString(culture)%</span>
+                        </span>
+                    }
+
+                    @* Always rendered, even with nothing to say. It is pinned to the bottom of the
+                       tile so the filament sits in one place across a rack, and a tile that omitted
+                       the row entirely would let the row above it drop into that place instead. *@
+                    <span class="printer-plaque-stats printer-plaque-stats-foot">
+                        @if (shortcut.QueuedCount > 0)
+                        {
+                            <span>@Plural.Format(Localiser, "Home_Queued", shortcut.QueuedCount)</span>
+                        }
+
+                        @* Kept for a disconnected printer too - see IndexModel.ShortcutFor. What is
+                           loaded does not change while the power is off, which is also why this is
+                           the value that most often appears on its own. *@
+                        @if (!string.IsNullOrWhiteSpace(shortcut.Material))
+                        {
+                            <span class="printer-plaque-stat-end typed-name">@shortcut.Material</span>
+                        }
+                    </span>
+                </span>
+            </a>
+        }
+    </div>
+}

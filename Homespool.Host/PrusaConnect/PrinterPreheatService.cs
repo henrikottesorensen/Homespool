@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -45,48 +44,25 @@ namespace Homespool.Host.PrusaConnect;
 /// matter, being the same authority as standing at the machine.
 /// </para>
 /// <para>
-/// <b>The state check is this application's alone.</b> Firmware understands a "forced" gcode frame
-/// meant to be the one accepted mid-print, with plain gcode refused - and does not implement the
-/// distinction (<c>connect.cpp</c>: <i>"We don't have that distinction implemented"</i>). It will
-/// retarget a heater in the middle of a print and ruin it. Nothing downstream will second-guess what
-/// this method decides.
+/// <b>The state check is this application's alone</b>, and it lives in
+/// <see cref="Printing.PhysicalChangeRules"/> - shared with unloading filament, which needs the same
+/// rule for the same reason. Nothing downstream will second-guess what it decides.
 /// </para>
 /// </remarks>
 public class PrinterPreheatService
 {
     private readonly PrinterCommandService _commands;
     private readonly QueueSnapshotReader _snapshots;
+    private readonly ToolTargetReader _tools;
 
-    public PrinterPreheatService(PrinterCommandService commands, QueueSnapshotReader snapshots)
+    public PrinterPreheatService(PrinterCommandService commands,
+                                 QueueSnapshotReader snapshots,
+                                 ToolTargetReader tools)
     {
         _commands = commands;
         _snapshots = snapshots;
+        _tools = tools;
     }
-
-    /// <summary>
-    /// The states in which changing a heater's target is somebody's intention rather than an
-    /// accident.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>An allow-set, not a denylist</b> - the same reasoning as <see cref="Commands.GcodeAllowList"/>. A
-    /// list of forbidden states fails open on the one nobody thought of, and the enum has thirteen
-    /// members of which several mean "mid-something".
-    /// </para>
-    /// <para>
-    /// <c>Finished</c> and <c>Stopped</c> are in because that is exactly when someone preheats for
-    /// the next print. <c>Paused</c> is out: a paused print resumes, and it resumes into whatever
-    /// temperatures it finds. <c>Attention</c> is out because it is frequently a filament runout
-    /// <em>during</em> a print.
-    /// </para>
-    /// </remarks>
-    private static readonly IReadOnlySet<PrinterStatus> HeatingAllowed = new HashSet<PrinterStatus>
-    {
-        PrinterStatus.Idle,
-        PrinterStatus.Ready,
-        PrinterStatus.Finished,
-        PrinterStatus.Stopped,
-    };
 
     /// <summary>
     /// Heats nozzle and bed to a filament's preset.
@@ -126,9 +102,20 @@ public class PrinterPreheatService
     {
         QueueSnapshot snapshot = await _snapshots.ReadAsync(printerId, cancellationToken);
 
-        if (!HeatingAllowed.Contains(snapshot.Status))
+        if (!PhysicalChangeRules.IsAllowed(snapshot.Status))
         {
             throw new PrinterBusyException(snapshot.Status);
+        }
+
+        // Both lines are toolless, and only one of them survives that on a toolchanger: M140 is the
+        // bed and always applies, while M104 silently declines when no tool is picked. Sending the
+        // pair anyway would heat the bed and not the nozzle - or, cooling, leave the nozzle hot while
+        // reporting both heaters off. The pair is atomic on the wire and half-applied in the machine.
+        ToolTarget target = await _tools.ReadAsync(printerId, cancellationToken);
+
+        if (!target.ReachesAHotend)
+        {
+            throw new NoToolPickedException(printerId);
         }
 
         // One command carrying both lines. Two commands cannot work: gcode is answered Accepted when

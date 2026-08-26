@@ -5,6 +5,7 @@
 
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Linq;
 using System.Threading.Tasks;
 
 using Homespool.Host.Localisation;
@@ -80,7 +81,7 @@ public class LoginModel : PageModel
         // Clear the existing external cookie to ensure a clean login process.
         await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
 
-        ExternalLogins = await _signInManager.GetExternalAuthenticationSchemesAsync() as IList<AuthenticationScheme>;
+        ExternalLogins = (await _signInManager.GetExternalAuthenticationSchemesAsync()).ToList();
 
         ReturnUrl = returnUrl;
     }
@@ -89,7 +90,7 @@ public class LoginModel : PageModel
     {
         returnUrl ??= Url.Content("~/");
 
-        ExternalLogins = await _signInManager.GetExternalAuthenticationSchemesAsync() as IList<AuthenticationScheme>;
+        ExternalLogins = (await _signInManager.GetExternalAuthenticationSchemesAsync()).ToList();
 
         if (ModelState.IsValid)
         {

@@ -89,7 +89,13 @@
             return;
         }
 
-        var button = controls.querySelector('.camera-live-toggle');
+        // In the picture now, not in the controls row - the row keeps only the note.
+        var button = view.querySelector('.camera-live-toggle');
+
+        if (!button) {
+            return;
+        }
+
         var note = controls.querySelector('.camera-live-note');
         var image = view.querySelector('.camera-image');
         var video = view.querySelector('.camera-live-video');
@@ -115,6 +121,23 @@
 
         function say(text) {
             note.textContent = text || '';
+        }
+
+        var play = button.querySelector('.camera-live-play');
+        var stopIcon = button.querySelector('.camera-live-stop');
+
+        // The button used to be its own status display: its text said watch, stop, connecting,
+        // failed. As an icon in the picture it has no room for that, so the label becomes the
+        // accessible name and anything that is news goes to the note under the frame.
+        //
+        // aria-label and title together on purpose - the first is what a screen reader announces,
+        // the second is what a pointer reveals, and an icon-only control needs both.
+        function label(text, showStop) {
+            button.setAttribute('aria-label', text);
+            button.setAttribute('title', text);
+
+            play.classList.toggle('d-none', !!showStop);
+            stopIcon.classList.toggle('d-none', !showStop);
         }
 
         // Everything that undoes a live view, in one place: called by the stop button, by the
@@ -167,7 +190,7 @@
             status.classList.remove('d-none');
 
             button.disabled = false;
-            button.textContent = button.dataset.labelWatch;
+            label(button.dataset.labelWatch, false);
             say(message);
 
             // Hands the picture back to the poller, which restarts from wherever it was.
@@ -191,7 +214,7 @@
             status.classList.add('d-none');
 
             button.disabled = false;
-            button.textContent = button.dataset.labelStop;
+            label(button.dataset.labelStop, true);
             say('');
 
             watchForPictures();
@@ -244,7 +267,8 @@
 
         async function start() {
             button.disabled = true;
-            button.textContent = button.dataset.labelConnecting;
+            label(button.dataset.labelStop, true);
+            say(button.dataset.labelConnecting);
             say('');
 
             // Stops the poll before the connection is made rather than after: both ask the stream
@@ -336,7 +360,8 @@
         // detector tears down a working stream - the exact failure this file already had once.
         function startMjpeg() {
             button.disabled = true;
-            button.textContent = button.dataset.labelConnecting;
+            label(button.dataset.labelStop, true);
+            say(button.dataset.labelConnecting);
             say('');
 
             view.dispatchEvent(new CustomEvent('camera-live-started'));
@@ -366,7 +391,7 @@
                 status.classList.add('d-none');
                 image.classList.remove('d-none');
                 button.disabled = false;
-                button.textContent = button.dataset.labelStop;
+                label(button.dataset.labelStop, true);
                 age.textContent = button.dataset.labelLive;
                 age.classList.add('text-success', 'fw-semibold');
                 say('');
@@ -431,6 +456,10 @@
             .then(function (option) {
                 if (option && option.available) {
                     transport = option.transport;
+
+                    // Two elements now, in two places: the button lives on the picture and the note
+                    // under it. Revealing only the row would leave a camera with no way to start.
+                    button.classList.remove('d-none');
                     controls.classList.remove('d-none');
                 }
             })

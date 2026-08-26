@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 
 using AwesomeAssertions;
@@ -137,6 +138,96 @@ public class PrinterLiveStateMergerTests
         state.Speed.Should().Be(100);
         state.Flow.Should().Be(95);
         state.Material.Should().Be("PLA");
+    }
+
+    /// <summary>
+    /// Unloading clears the material, because firmware's no-filament sentinel is a statement rather
+    /// than a silence.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The bug this exists to prevent is silent and long-lived.</b> <c>"---"</c> is what a printer
+    /// reports once its filament is out. Mapping it to a bare null would meet
+    /// <c>Field&lt;T&gt;</c>'s implicit conversion, which reads null as <em>Absent</em> - the
+    /// coalesce idiom - so the merge would skip it and the row would keep naming PLA for as long as
+    /// the printer stayed connected. The page would go on offering to unload an empty machine.
+    /// </para>
+    /// <para>
+    /// So the assertion is specifically that it becomes <b>null</b>: not <c>"---"</c>, which would
+    /// mean the sentinel had leaked past the edge, and not <c>"PLA"</c>, which would mean it had been
+    /// mistaken for silence.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheNoFilamentSentinelClearsTheMaterialRatherThanBeingKeptOrIgnored()
+    {
+        // Arrange
+        PrinterLiveState state = new() { PrinterId = 1 };
+
+        Merge(state, new TelemetryDTO { Status = "IDLE", Material = "PLA" }, DateTimeOffset.UtcNow);
+        state.Material.Should().Be("PLA", "the printer had filament in it to begin with");
+
+        // Act
+        Merge(state, new TelemetryDTO { Status = "IDLE", Material = "---" }, DateTimeOffset.UtcNow);
+
+        // Assert
+        state.Material.Should().BeNull("the printer said the filament is gone, which is not silence");
+    }
+
+    /// <summary>
+    /// A per-tool slot reporting the no-filament sentinel clears that slot's material too.
+    /// </summary>
+    /// <remarks>
+    /// <b>The third place this sentinel appears, and the last to be handled.</b> The flat field and
+    /// the <c>INFO</c> tools were stripped; the per-slot telemetry path was not, so
+    /// <c>PrinterLiveSlotState.Material</c> carried <c>"---"</c> verbatim. It went unnoticed only
+    /// because no multi-tool printer had ever been enrolled — and it is the data a per-tool control
+    /// would read, which would have offered to unload an empty tool.
+    /// </remarks>
+    [Fact]
+    public void AnEmptySlotReportsNoMaterialRatherThanTheSentinel()
+    {
+        // Arrange
+        PrinterLiveState state = new() { PrinterId = 1 };
+
+        // Act
+        Merge(state, new TelemetryDTO
+        {
+            Status = "IDLE",
+            Slot = new SlotsTelemetryDTO
+            {
+                Active = 2,
+                Slots = new Dictionary<string, JsonElement>
+                {
+                    ["1"] = JsonSerializer.SerializeToElement(new { material = "PLA", temp = 215.0f }),
+                    ["2"] = JsonSerializer.SerializeToElement(new { material = "---", temp = 27.0f }),
+                },
+            },
+        }, DateTimeOffset.UtcNow);
+
+        // Assert
+        state.Slots.Single(slot => slot.SlotNumber == 1).Material.Should().Be("PLA");
+        state.Slots.Single(slot => slot.SlotNumber == 2).Material
+             .Should().BeNull("an empty tool is empty, not loaded with a filament called ---");
+    }
+
+    /// <summary>
+    /// A message that says nothing about the material keeps the last-known one - the other half of
+    /// the three-way distinction above, and what stops every partial message clearing the column.
+    /// </summary>
+    [Fact]
+    public void AMessageThatOmitsTheMaterialKeepsTheLastKnownOne()
+    {
+        // Arrange
+        PrinterLiveState state = new() { PrinterId = 1 };
+
+        Merge(state, new TelemetryDTO { Status = "IDLE", Material = "PETG" }, DateTimeOffset.UtcNow);
+
+        // Act
+        Merge(state, new TelemetryDTO { Status = "PRINTING", Progress = 10 }, DateTimeOffset.UtcNow);
+
+        // Assert
+        state.Material.Should().Be("PETG", "the message was silent about the material, not empty of it");
     }
 
     /// <summary>

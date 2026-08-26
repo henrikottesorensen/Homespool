@@ -66,11 +66,17 @@ public class PrinterBusyException : Exception, ILocalisableError
     /// The busy sentence states the rule rather than listing <see cref="PrinterStatus"/> members,
     /// and says <b>busy</b> rather than <b>working</b>, since "not working" also means broken.
     /// </para>
+    /// <para>
+    /// <b>It names no particular operation</b>, because more than one raises this: heating was the
+    /// first and unloading filament is the second, and both are refused by the same rule in
+    /// <see cref="Printing.PhysicalChangeRules"/>. A sentence about heater targets shown to somebody
+    /// who pressed Unload describes the wrong thing.
+    /// </para>
     /// </remarks>
     private static string BuildMessage(PrinterStatus status)
     {
         return status is PrinterStatus.Unknown or PrinterStatus.Undefined ?
             "The printer's current state isn't known yet - it reports one shortly after connecting." :
-            $"The printer is {status} - heaters can only be changed when the printer is not busy.";
+            $"The printer is {status} - this can only be done when the printer is not busy.";
     }
 }

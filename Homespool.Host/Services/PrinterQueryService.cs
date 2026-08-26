@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Telemetry;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -27,6 +29,16 @@ public class PrinterQueryService
     private const int RecentSampleCount = 50;
 
     private const int RecentEventCount = 20;
+
+    /// <summary>
+    /// How many points the temperature graph is drawn from, whatever the window's length.
+    /// </summary>
+    /// <remarks>
+    /// Chosen against the drawing rather than the data: the graph is ~720 units wide, so this puts a
+    /// point every four units - finer than a line stroke, and past the point where more of them
+    /// change the picture.
+    /// </remarks>
+    private const int TargetPointCount = 180;
 
     private readonly HomespoolDbContext _dbContext;
     private readonly PrinterAccessService _access;
@@ -266,6 +278,121 @@ public class PrinterQueryService
                                                     .ToListAsync(cancellationToken);
 
         return new PrinterStatistics(printer, liveState, samples, events);
+    }
+
+    /// <summary>
+    /// Nozzle and bed temperatures over a window, bucketed for the detail page's graph. Same
+    /// "doesn't exist or the caller can't read it" rule as everything else here - both answer null.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The bucketing happens in SQLite, and that is the reason this is raw SQL.</b> The window can
+    /// be a whole day, which at the default of storing every message is ~86 000 rows for one printer;
+    /// this page refreshes its graph while somebody watches it. Grouping in the database returns
+    /// <see cref="TargetPointCount"/> rows however long the print is, so what crosses into memory is
+    /// bounded by the graph rather than by the print.
+    /// </para>
+    /// <para>
+    /// <b>It works because <c>Timestamp</c> is stored as epoch milliseconds in an INTEGER column</b> -
+    /// see <c>DateTimeOffsetToUnixMillisecondsConverter</c>. Integer division by the bucket width is
+    /// the whole grouping key, and the index on <c>(PrinterId, Timestamp)</c> makes the range a
+    /// contiguous scan. Against a TEXT date column none of that would hold.
+    /// </para>
+    /// <para>
+    /// The two aggregates differ deliberately - see <see cref="TemperaturePoint"/> for why a measured
+    /// temperature is averaged and a setpoint is not.
+    /// </para>
+    /// </remarks>
+    public async Task<TemperatureSeries?> GetTemperatureSeriesAsync(Guid uuid,
+                                                                    Caller caller,
+                                                                    DateTimeOffset from,
+                                                                    DateTimeOffset to,
+                                                                    CancellationToken cancellationToken)
+    {
+        IReadOnlyCollection<int> teams = await _teams.TeamsAllowingAsync(caller, Capability.ViewPrinter, cancellationToken);
+
+        int printerId = await _dbContext.Printers
+                                        .AsNoTracking()
+                                        .Where(p => p.Uuid == uuid && teams.Contains(p.TeamId))
+                                        .Select(p => p.Id)
+                                        .SingleOrDefaultAsync(cancellationToken);
+
+        if (printerId == 0)
+        {
+            return null;
+        }
+
+        long fromMs = from.ToUnixTimeMilliseconds();
+        long toMs = to.ToUnixTimeMilliseconds();
+
+        // At least a second, so a short window does not ask for buckets finer than the stream that
+        // fills them - the printer reports about once a second, and a 200 ms bucket would just draw
+        // four empty points for every real one.
+        long bucketMs = Math.Max(1000, (toMs - fromMs) / TargetPointCount);
+
+        List<TemperatureBucketRow> rows = await _dbContext.Database
+            .SqlQuery<TemperatureBucketRow>(
+                $"""
+                 SELECT MIN("Timestamp") AS "BucketStartMs",
+                        AVG("NozzleTemperature") AS "Nozzle",
+                        AVG("BedTemperature") AS "Bed",
+                        MAX("TargetNozzleTemperature") AS "TargetNozzle",
+                        MAX("TargetBedTemperature") AS "TargetBed",
+                        AVG("ChamberTemperature") AS "Chamber",
+                        MAX("ChamberTargetTemperature") AS "TargetChamber",
+                        AVG("EnclosureTemperature") AS "Enclosure"
+                 FROM "TelemetrySamples"
+                 WHERE "PrinterId" = {printerId}
+                   AND "Timestamp" >= {fromMs}
+                   AND "Timestamp" <= {toMs}
+                 GROUP BY "Timestamp" / {bucketMs}
+                 ORDER BY "BucketStartMs"
+                 """)
+            .ToListAsync(cancellationToken);
+
+        return new TemperatureSeries(
+            from,
+            to,
+            rows.Select(row => new TemperaturePoint(DateTimeOffset.FromUnixTimeMilliseconds(row.BucketStartMs),
+                                                    row.Nozzle,
+                                                    row.Bed,
+                                                    row.TargetNozzle,
+                                                    row.TargetBed,
+                                                    row.Chamber,
+                                                    row.TargetChamber,
+                                                    row.Enclosure))
+                .ToList());
+    }
+
+    /// <summary>
+    /// One row of <see cref="GetTemperatureSeriesAsync"/>'s aggregate, named for its columns.
+    /// </summary>
+    /// <remarks>
+    /// Unmapped: EF matches these by name against the projection and nothing registers the type on
+    /// the context, so it adds no entity, no snapshot entry and no migration. <c>double?</c>
+    /// throughout because SQLite's <c>AVG</c> returns REAL whatever the column was, and null when the
+    /// bucket held no reading at all.
+    /// </remarks>
+    [SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes",
+                     Justification = "EF materialises this by name from the raw query above; nothing in this "
+                                     + "assembly constructs one, which is exactly what the rule looks for.")]
+    private sealed class TemperatureBucketRow
+    {
+        public long BucketStartMs { get; set; }
+
+        public double? Nozzle { get; set; }
+
+        public double? Bed { get; set; }
+
+        public double? TargetNozzle { get; set; }
+
+        public double? TargetBed { get; set; }
+
+        public double? Chamber { get; set; }
+
+        public double? TargetChamber { get; set; }
+
+        public double? Enclosure { get; set; }
     }
 }
 

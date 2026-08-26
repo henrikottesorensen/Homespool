@@ -80,10 +80,22 @@ public class PrinterConnectionActorTests
     }
 
     /// <summary>An open connection that accepts and discards whatever is written to it.</summary>
+    /// <remarks>
+    /// <b>The hand-over is stated rather than defaulted, and that is not decoration.</b> Until
+    /// <see cref="CommandHandover"/> reserved its zero, an unconfigured substitute answered
+    /// <see cref="CommandHandover.Written"/> by accident - so every test here that turns on the
+    /// response clock was resting on which member happened to sit first, and would have gone on
+    /// passing if the meaning of that slot had changed underneath it. A connection that accepts a
+    /// write has written it, and now says so.
+    /// </remarks>
+    [SuppressMessage("Reliability", "CA2012:Use ValueTasks correctly",
+                     Justification = "NSubstitute call specification, not an invocation; no ValueTask is produced to consume.")]
     private static IPrinterConnection OpenConnection()
     {
         IPrinterConnection connection = Substitute.For<IPrinterConnection>();
         connection.IsOpen.Returns(true);
+        connection.SendCommandAsync(default, default!, default)
+                  .ReturnsForAnyArgs(ValueTask.FromResult(CommandHandover.Written));
 
         return connection;
     }

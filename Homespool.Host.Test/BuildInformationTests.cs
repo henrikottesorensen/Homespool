@@ -120,4 +120,51 @@ public class BuildInformationTests
         described.Should().StartWith("Homespool ");
         described.Should().Contain("commit ");
     }
+
+    /// <summary>
+    /// The footer's one-line form, which is what a signed-in person actually reads.
+    /// </summary>
+    /// <remarks>
+    /// The commit is abbreviated here and whole in <c>--version</c>, so these cases pin the length
+    /// as well as the shape - a footer that printed forty characters would push the copyright line
+    /// off a narrow screen, which is the reason for the abbreviation rather than taste.
+    /// </remarks>
+    [Fact]
+    public void TheFooterFormAbbreviatesTheCommit()
+    {
+        BuildInformation.Summarise($"0.0.1+{Commit}").Should().Be("0.0.1 (dd029e0)");
+    }
+
+    [Fact]
+    public void TheFooterFormSaysWhenTheTreeWasModified()
+    {
+        BuildInformation.Summarise($"0.0.1+{Commit}.dirty").Should().Be("0.0.1 (dd029e0, modified)");
+    }
+
+    /// <summary>
+    /// A commit shorter than the abbreviation must not be sliced past its end.
+    /// </summary>
+    [Fact]
+    public void AShortCommitIsNotTruncatedPastItsEnd()
+    {
+        BuildInformation.Summarise("0.0.1+abc").Should().Be("0.0.1 (abc)");
+    }
+
+    /// <summary>
+    /// Where the footer deliberately differs from <c>--version</c>: no commit means no brackets,
+    /// rather than the word "unknown" on every page of the deployment.
+    /// </summary>
+    [Fact]
+    public void TheFooterFormOmitsAnUnknownCommitRatherThanLabellingIt()
+    {
+        BuildInformation.Summarise("0.0.1").Should().Be("0.0.1");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void TheFooterFormIsEmptyWhenThereIsNoStampAtAll(string? informationalVersion)
+    {
+        BuildInformation.Summarise(informationalVersion).Should().BeEmpty();
+    }
 }

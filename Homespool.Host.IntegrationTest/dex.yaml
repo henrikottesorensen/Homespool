@@ -1,0 +1,50 @@
+# Dex configured as a throwaway OpenID Connect provider for ExternalOidcDexTests.
+#
+# Plain HTTP, on loopback, on purpose. Giving dex a certificate would mean the tests
+# spend their time on the fixture's TLS rather than on this codebase's protocol handling,
+# and the STARTTLS fixture next door already covers "a real handshake against a real
+# server". OidcOptions.RequireHttpsMetadata is what the test turns off to allow it, and
+# that setting's documentation is where the production rule lives.
+#
+# storage: memory - nothing survives the container, which is what a fixture wants.
+
+issuer: http://localhost:5556/dex
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+
+oauth2:
+  # No "choose a provider" interstitial and no consent screen. Both are pages a person
+  # clicks, and the tests drive this with an HttpClient - a screen here would have to be
+  # scraped, and scraping dex's HTML is exactly the coupling mockCallback avoids.
+  skipApprovalScreen: true
+
+staticClients:
+  - id: homespool-test
+    name: Homespool
+    secret: homespool-test-secret
+    # The application is a WebApplicationFactory test host, so nothing ever listens here.
+    # Dex does not connect to it - it only issues a redirect the test intercepts and hands
+    # back to the in-memory host itself - but it does refuse a redirect_uri it has not been
+    # told about, so this has to match what the handler asks for.
+    redirectURIs:
+      # The suite's WebApplicationFactory host, which never listens - see above.
+      - https://localhost/signin-oidc
+      # The dev server on the https launch profile, for driving this by hand in a browser.
+      - https://localhost:7023/signin-oidc
+      # And the plain-http dev profile: a browser treats localhost as trustworthy and
+      # still sends the Secure correlation cookie there, which .NET's client does not.
+      - http://localhost:5052/signin-oidc
+
+connectors:
+  # The mock connector returns a fixed identity with no login form at all. That is the
+  # whole reason it is here rather than staticPasswords: a password connector means the
+  # test posts to dex's login form, and that form's field names and flow are dex's
+  # internals, not its protocol - they change between releases and the tests break for a
+  # reason that has nothing to do with Homespool.
+  - type: mockCallback
+    id: mock
+    name: Mock

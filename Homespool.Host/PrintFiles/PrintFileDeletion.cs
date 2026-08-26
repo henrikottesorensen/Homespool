@@ -6,11 +6,11 @@ public enum PrintFileDeletion
     Undefined = 0,
 
     /// <summary>There was no such file.</summary>
-    NotFound,
+    NotFound = 1,
 
     /// <summary>The file and its row are gone.</summary>
-    Deleted,
+    Deleted = 2,
 
     /// <summary>Refused: a queued print still wants this file.</summary>
-    Queued,
+    Queued = 3,
 }

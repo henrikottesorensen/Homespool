@@ -86,6 +86,39 @@ public sealed class QueueAdvancer : BackgroundService
     public static readonly TimeSpan StartingStaleAfter = TimeSpan.FromMinutes(15);
 
     /// <summary>
+    /// How long a printer may report itself not printing before that means it ignored a
+    /// <c>START_PRINT</c> rather than that it has not got round to it.
+    /// </summary>
+    /// <remarks>
+    /// <b>The window exists because acceptance is not instant.</b> A Core One keeps reporting
+    /// <c>READY</c> for 3.1 s after taking a print, while it works through preview-init and heating;
+    /// an MK3.5 reports <c>PRINTING</c> in the first sample. Reading a not-printing status inside
+    /// that gap as "the command was ignored" would drop a print that was starting perfectly well.
+    /// A minute is far more than any measurement here and costs nothing but a minute in the case
+    /// where the command genuinely did not land - which is the rare half of a rare event.
+    /// </remarks>
+    public static readonly TimeSpan StartUnconfirmedGrace = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// How long the loop keeps asking a connected printer what it is printing before it gives up and
+    /// holds the queue instead.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Reached only by a printer that is connected, reports a job, and will not describe it</b> -
+    /// answering telemetry while refusing commands, for a quarter of an hour. That is a machine in
+    /// trouble rather than a machine that is busy.
+    /// </para>
+    /// <para>
+    /// <b>There is a bound at all because waiting for days on a connected printer is not an answer</b>
+    /// (Henrik, 2026-08-22). What it must not do is guess: advancing could print the file a second
+    /// time, which is the whole defect, so the give-up is a hold with a sentence rather than a
+    /// decision. See <see cref="PrintHoldReason.PrintStartUnresolved"/>.
+    /// </para>
+    /// </remarks>
+    public static readonly TimeSpan StartUnresolvableAfter = TimeSpan.FromMinutes(15);
+
+    /// <summary>
     /// How often a held queue re-asks whether there is room now.
     /// </summary>
     /// <remarks>
@@ -305,7 +338,7 @@ public sealed class QueueAdvancer : BackgroundService
                                                 .SingleOrDefaultAsync(state => state.PrinterId == printerId,
                                                                       cancellationToken);
 
-        await ReconcilePrintAsync(dbContext, printerId, live, cancellationToken);
+        await ReconcilePrintAsync(scope, dbContext, printerId, live, cancellationToken);
 
         // Asked of the shared reader rather than assembled here, so that anything explaining the loop
         // to a person is answering the same question the loop asked. Two builders would agree on the
@@ -478,8 +511,15 @@ public sealed class QueueAdvancer : BackgroundService
     /// <b>Paused and Attention are not endings.</b> They are stalls inside a print, and the loop waits
     /// them out rather than deciding anything - "don't cancel prints on people".
     /// </para>
+    /// <para>
+    /// <b>A third phase comes before both</b>, and it is not part of an ordinary print's life:
+    /// <see cref="PrintState.Unconfirmed"/>, where the command went out and nothing came back. That
+    /// one cannot be moved on by watching, because watching cannot tell <i>whose</i> print a printer
+    /// is running - so it is settled by asking. See <see cref="ResolveUnconfirmedPrintAsync"/>.
+    /// </para>
     /// </remarks>
-    private async Task<PrintJob?> ReconcilePrintAsync(HomespoolDbContext dbContext,
+    private async Task<PrintJob?> ReconcilePrintAsync(AsyncServiceScope scope,
+                                                      HomespoolDbContext dbContext,
                                                       int printerId,
                                                       PrinterLiveState? live,
                                                       CancellationToken cancellationToken)
@@ -495,6 +535,24 @@ public sealed class QueueAdvancer : BackgroundService
 
         PrinterStatus status = live?.Status ?? PrinterStatus.Unknown;
         DateTimeOffset now = _timeProvider.GetUtcNow();
+
+        if (active.State == PrintState.Unconfirmed)
+        {
+            PrintStartVerdict verdict =
+                await ResolveUnconfirmedPrintAsync(scope, dbContext, printerId, active, live, cancellationToken);
+
+            if (verdict != PrintStartVerdict.Started)
+            {
+                // Still a question, or no longer a print. Either way there is nothing here for the
+                // two ordinary phases to act on - and a row still being asked about must keep its
+                // open slot, so the rules go on seeing a print in flight and hold the queue.
+                return verdict == PrintStartVerdict.KeepWaiting ? active : null;
+            }
+
+            // Adopted. It is an ordinary Starting row now, so the rest of this method treats it as
+            // one - which promotes it to Printing in this same pass, since the telemetry that
+            // identified it is the telemetry that says the printer is printing.
+        }
 
         if (active.State == PrintState.Starting)
         {
@@ -549,6 +607,231 @@ public sealed class QueueAdvancer : BackgroundService
         _logger.LogInformation("[{PrinterId}] {FileName} ended: {Outcome}", printerId, active.FileName, outcome);
 
         return null;
+    }
+
+    /// <summary>
+    /// Settles a print that was commanded and never acknowledged, by asking the printer what it is
+    /// running.
+    /// </summary>
+    /// <returns>What was established - see <see cref="PrintStartVerdict"/>.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>Asking is the whole design, and telemetry is why.</b> A live state carries a
+    /// <c>job_id</c> and a status, so it can say a printer is printing <i>something</i>; nothing in
+    /// it names a file. Adopting on that alone would attach somebody's queue entry to a print
+    /// started at the panel and then delete the entry - the same defect pointing the other way. So
+    /// the job id is what telemetry is for, and <c>SEND_JOB_INFO</c> answers who the print belongs
+    /// to (Henrik, 2026-08-22: *"the printer can definitively answer the state"*).
+    /// </para>
+    /// <para>
+    /// <b>The evidence expires, which is why this runs at the top of a pass and not when the queue
+    /// next tries to advance.</b> A printer can only describe the job it is running now: once the
+    /// print ends and somebody clears the bed, a duplicate is indistinguishable from a legitimate
+    /// print, and the queue would start one.
+    /// </para>
+    /// <para>
+    /// <b>The ask goes out as whoever queued the work</b>, like every other command this loop sends.
+    /// When the entry has gone - cancelled in the window between the row being opened and the printer
+    /// answering - there is no authority to borrow and nothing to remove on success, so nothing is
+    /// asked and the elapsed-time rules settle it instead. Under-asking there costs a hold nobody is
+    /// waiting on; asking with an authority nobody granted would cost more.
+    /// </para>
+    /// </remarks>
+    private async Task<PrintStartVerdict> ResolveUnconfirmedPrintAsync(AsyncServiceScope scope,
+                                                                       HomespoolDbContext dbContext,
+                                                                       int printerId,
+                                                                       PrintJob commanded,
+                                                                       PrinterLiveState? live,
+                                                                       CancellationToken cancellationToken)
+    {
+        QueuedPrint? entry = await dbContext.QueuedPrints
+                                            .SingleOrDefaultAsync(queued => queued.PrinterId == printerId
+                                                                            && queued.TrackingId == commanded.TrackingId,
+                                                                  cancellationToken);
+
+        bool connected = _registry.IsConnected(printerId);
+        JobAnswer answer = JobAnswer.NotAsked;
+
+        if (connected && entry is not null && live?.JobId is { } jobId)
+        {
+            answer = await AskWhoseJobAsync(scope, printerId, commanded, entry, jobId, cancellationToken);
+        }
+
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+
+        PrintStartObservation observation = new(connected,
+                                                live?.Status ?? PrinterStatus.Unknown,
+                                                live?.LastSeenAt > commanded.StartedAt,
+                                                now - commanded.StartedAt,
+                                                answer);
+
+        PrintStartVerdict verdict =
+            PrintStartRules.Decide(observation, StartUnconfirmedGrace, StartUnresolvableAfter);
+
+        switch (verdict)
+        {
+            case PrintStartVerdict.Started:
+                _logger.LogInformation(
+                    "[{PrinterId}] {FileName} was printing after all - the printer took it and answered too late; "
+                    + "adopting firmware job {JobId}.",
+                    printerId, commanded.FileName, live?.JobId);
+
+                commanded.State = PrintState.Starting;
+                commanded.FirmwareJobId = live?.JobId;
+
+                if (entry is not null)
+                {
+                    // Now, and only now, has the entry done its job. Removing it at command time is
+                    // exactly what left a duplicate waiting to run.
+                    dbContext.QueuedPrints.Remove(entry);
+                }
+
+                await dbContext.SaveChangesAsync(cancellationToken);
+                break;
+
+            case PrintStartVerdict.NeverStarted:
+                _logger.LogInformation(
+                    "[{PrinterId}] {FileName} never started - the printer did not take it. It is still queued.",
+                    printerId, commanded.FileName);
+
+                // Removed rather than closed as failed: nothing failed. A command went unanswered
+                // for a minute and the printer turned out never to have acted on it, which is not a
+                // print and does not belong in a history of prints.
+                dbContext.PrintJobs.Remove(commanded);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                break;
+
+            case PrintStartVerdict.Unresolvable:
+                await HoldUnresolvedStartAsync(dbContext, printerId, commanded, entry, now, cancellationToken);
+                break;
+
+            default:
+                _logger.LogDebug("[{PrinterId}] still waiting to learn whether {FileName} started",
+                                 printerId, commanded.FileName);
+                break;
+        }
+
+        return verdict;
+    }
+
+    /// <summary>
+    /// Asks the printer which file the job it is reporting belongs to, and compares it with the one
+    /// we sent.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Matched on either name, because the printer volunteers both and each can be absent.</b>
+    /// <c>path</c> is the 8.3 alias, which is exactly what <c>START_PRINT</c> was given - it came
+    /// from a <c>FILE_INFO</c> in the first place - and <c>display_name</c> is the long name we
+    /// uploaded under. Requiring both would refuse a match on a firmware that renders one.
+    /// </para>
+    /// <para>
+    /// <b>A refusal is classified on the prose</b>, as <see cref="HandleRefusal"/> is and for the
+    /// same reason: these carry no machine-readable code. The wording is firmware's own, from its
+    /// render fixtures, and an unrecognised one falls to
+    /// <see cref="JobAnswer.Inconclusive"/> - never to a verdict, because a reason nobody has read
+    /// yet must not be allowed to decide anything.
+    /// </para>
+    /// </remarks>
+    private async Task<JobAnswer> AskWhoseJobAsync(AsyncServiceScope scope,
+                                                   int printerId,
+                                                   PrintJob commanded,
+                                                   QueuedPrint entry,
+                                                   int jobId,
+                                                   CancellationToken cancellationToken)
+    {
+        PrinterCommandService commands = scope.ServiceProvider.GetRequiredService<PrinterCommandService>();
+        CommandOutcome<JobInfoEventDataDTO>? answer;
+
+        try
+        {
+            answer = await commands.AskAsync(printerId,
+                                             new PrusaConnect.Commands.SendJobInfo { JobId = jobId },
+                                             CallerFor(entry),
+                                             cancellationToken);
+        }
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
+                                      or CommandResponseTimedOutException or CommandSendTimedOutException or
+                                      TeamAccessDeniedException or CredentialScopeDeniedException
+                                      or CommandAnswerUnreadableException)
+        {
+            _logger.LogDebug(e, "[{PrinterId}] could not ask about firmware job {JobId}", printerId, jobId);
+
+            return JobAnswer.Inconclusive;
+        }
+
+        if (answer?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
+        {
+            // "No job in progress" is the one definite negative anywhere on this path: the machine
+            // stating in an answer of its own that there is nothing running, rather than a status
+            // that could be a telemetry interval out of date.
+            return answer.Reason == "No job in progress" ? JobAnswer.NoJob : JobAnswer.Inconclusive;
+        }
+
+        if (answer?.Answer is not { } job || (job.Path is null && job.DisplayName is null))
+        {
+            // A job the printer only remembers renders its state and nothing else - FIN_OK, or
+            // FIN_STOPPED. There is no name in it to compare, so it settles nothing.
+            return JobAnswer.Inconclusive;
+        }
+
+        bool ours = (job.Path is { } path && path == commanded.PrinterPath)
+                    || (job.DisplayName is { } displayName && displayName == commanded.FileName);
+
+        if (!ours)
+        {
+            _logger.LogInformation(
+                "[{PrinterId}] firmware job {JobId} is {TheirPath}, not the {OurPath} we asked for; "
+                + "the print running here is not ours.",
+                printerId, jobId, job.Path ?? job.DisplayName, commanded.PrinterPath);
+        }
+
+        return ours ? JobAnswer.Ours : JobAnswer.SomebodyElses;
+    }
+
+    /// <summary>
+    /// Gives up asking, and stops the queue rather than guessing.
+    /// </summary>
+    /// <remarks>
+    /// The row is closed <see cref="PrintState.Unknown"/>, which is what that state is for - it
+    /// stopped being observable without saying how - and the hold is what keeps the entry from being
+    /// printed a second time on the strength of not knowing. Both, because either alone is wrong:
+    /// closing without holding advances the queue onto a print that may already have run, and
+    /// holding without closing leaves the printer's one open-print slot occupied for ever.
+    /// </remarks>
+    private async Task HoldUnresolvedStartAsync(HomespoolDbContext dbContext,
+                                                int printerId,
+                                                PrintJob commanded,
+                                                QueuedPrint? entry,
+                                                DateTimeOffset now,
+                                                CancellationToken cancellationToken)
+    {
+        _logger.LogWarning(
+            "[{PrinterId}] gave up asking whether {FileName} started: the printer reports a job it will not "
+            + "describe. Holding the queue - printing it again might print it twice.",
+            printerId, commanded.FileName);
+
+        commanded.Reason = "The printer never said whether it started this print.";
+        Close(commanded, PrintState.Unknown, now);
+
+        if (entry is not null)
+        {
+            PrintFileOnPrinter? onPrinter = await dbContext.PrintFilesOnPrinters
+                                                           .SingleOrDefaultAsync(
+                                                               row => row.PrinterId == printerId
+                                                                      && row.PrintFileId == entry.PrintFileId,
+                                                               cancellationToken);
+
+            if (onPrinter is not null)
+            {
+                onPrinter.HoldReason = PrintHoldReason.PrintStartUnresolved;
+                onPrinter.HoldPrinterFreeBytes = null;
+                onPrinter.HoldPrinterFileBytes = null;
+                onPrinter.BlockedAt = now;
+            }
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
     }
 
     /// <summary>Offers the head's file to the printer, and records that it did.</summary>
@@ -871,9 +1154,27 @@ public sealed class QueueAdvancer : BackgroundService
 
     /// <summary>Starts the print, and removes the entry once the printer has taken it.</summary>
     /// <remarks>
+    /// <para>
     /// <b>Success is not <c>FINISHED</c>.</b> A <c>START_PRINT</c> that took answers <c>JOB_INFO</c>
     /// (planner.cpp:728), so this tests for the absence of a refusal rather than for a particular
     /// event - the check that would otherwise read a started print as an unrecognised answer.
+    /// </para>
+    /// <para>
+    /// <b>And the absence of any answer is not a refusal either.</b> The row is opened
+    /// <see cref="PrintState.Unconfirmed"/> <i>before</i> the command goes out, so that a print the
+    /// printer accepts but does not acknowledge in time leaves a record of the question rather than
+    /// nothing at all. That is not defensive: it is the case that happened
+    /// (<c>notes/print-queue.md</c>, "A timeout is not a negative answer"), and it happened because
+    /// the printer accepted the command and went off to home and heat - so the timeout is caused by
+    /// the success it was being read as ruling out. Writing the row afterwards leaves a window in
+    /// which the effect exists and the record does not, which is the same shape
+    /// <see cref="PrintFileOnPrinter.TransferStartedAt"/> is written early to close.
+    /// </para>
+    /// <para>
+    /// <b>The queue entry stays until the printer confirms.</b> Removing it on a command that may not
+    /// have landed would trade this defect for its mirror image - a queued print silently dropped
+    /// because a printer was slow to answer.
+    /// </para>
     /// </remarks>
     private async Task PrintAsync(AsyncServiceScope scope,
                                   HomespoolDbContext dbContext,
@@ -884,6 +1185,21 @@ public sealed class QueueAdvancer : BackgroundService
     {
         PrinterCommandService commands = scope.ServiceProvider.GetRequiredService<PrinterCommandService>();
 
+        PrintJob commanded = new()
+        {
+            PrinterId = printerId,
+            TrackingId = head.TrackingId,
+            FileName = head.PrintFile!.Name,
+            Digest = head.PrintFile.Digest,
+            QueuedByUserId = head.QueuedByUserId,
+            PrinterPath = printerPath,
+            StartedAt = _timeProvider.GetUtcNow(),
+            State = PrintState.Unconfirmed,
+        };
+
+        dbContext.PrintJobs.Add(commanded);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
         try
         {
             CommandOutcome? outcome = await commands.SendCommandAsync(printerId,
@@ -893,7 +1209,7 @@ public sealed class QueueAdvancer : BackgroundService
 
             if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {
-                HandleRefusal(printerId, dbContext, head, outcome.Reason);
+                HandleRefusal(printerId, dbContext, head, commanded, outcome.Reason);
                 await dbContext.SaveChangesAsync(cancellationToken);
 
                 return;
@@ -901,31 +1217,40 @@ public sealed class QueueAdvancer : BackgroundService
 
             _logger.LogInformation("[{PrinterId}] started printing {Path}", printerId, printerPath);
 
-            // Opened Starting rather than Printing: the printer has accepted the command and will keep
+            // Starting rather than Printing: the printer has accepted the command and will keep
             // reporting READY for a few seconds yet. ReconcilePrintAsync promotes it when telemetry
             // says otherwise, and that is also where the firmware job id is picked up.
-            dbContext.PrintJobs.Add(new PrintJob
-            {
-                PrinterId = printerId,
-                TrackingId = head.TrackingId,
-                FileName = head.PrintFile!.Name,
-                Digest = head.PrintFile.Digest,
-                QueuedByUserId = head.QueuedByUserId,
-                PrinterPath = printerPath,
-                StartedAt = _timeProvider.GetUtcNow(),
-                State = PrintState.Starting,
-            });
+            commanded.State = PrintState.Starting;
 
             // The entry has done its job; the history row carries it from here.
             dbContext.QueuedPrints.Remove(head);
             await dbContext.SaveChangesAsync(cancellationToken);
         }
-        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
-                                      or CommandResponseTimedOutException or CommandSendTimedOutException or
-                                      TeamAccessDeniedException or CredentialScopeDeniedException)
+        catch (Exception e) when (e is CommandAlreadyInFlightException or TeamAccessDeniedException
+                                      or CredentialScopeDeniedException)
         {
-            // Transient by nature: the next tick asks again.
-            _logger.LogInformation(e, "[{PrinterId}] could not start {Path}", printerId, printerPath);
+            // The three refusals that happen before anything is written to a socket: the in-flight
+            // slot is taken, the team says no, the credential says no. Each is a statement that this
+            // command did not reach the printer, so the row is removed rather than left as a question
+            // nobody needs to answer.
+            _logger.LogInformation(e, "[{PrinterId}] did not send a print of {Path}", printerId, printerPath);
+            dbContext.PrintJobs.Remove(commanded);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception e) when (e is CommandResponseTimedOutException or CommandSendTimedOutException
+                                      or PrinterNotConnectedException)
+        {
+            // Unknown, and the row stays Unconfirmed to say so. None of these three can claim the
+            // command was not acted on: a response timeout is the printer being slow, a send timeout
+            // is a write that may still be on the wire, and NotConnected covers a command that was
+            // written and left pending when the connection died as well as one never sent at all
+            // (PrinterConnectionActor's read-loop finally, against its pre-send checks).
+            //
+            // ReconcilePrintAsync resolves it by asking the printer, which is the only thing that
+            // can. Logged at Warning rather than Information: this is a print in an unknown state,
+            // not routine slowness.
+            _logger.LogWarning(e, "[{PrinterId}] no answer to starting {Path}; asking the printer what it is doing",
+                               printerId, printerPath);
         }
     }
 
@@ -945,8 +1270,19 @@ public sealed class QueueAdvancer : BackgroundService
     /// believed present and are not - deleted at the panel, or a card swapped - so the belief is
     /// cleared and the file is offered again rather than the entry being failed.
     /// </para>
+    /// <para>
+    /// <b>Every arm here settles <paramref name="commanded"/>, because a refusal is an answer.</b>
+    /// The row was opened before the command went out to survive the case where no answer comes at
+    /// all; once the printer has said <i>no</i>, nothing is outstanding. A terminal refusal closes it
+    /// as the failed print it is, and a transient one removes it - a row per retry would turn history
+    /// into a log of a printer repeating itself.
+    /// </para>
     /// </remarks>
-    private void HandleRefusal(int printerId, HomespoolDbContext dbContext, QueuedPrint head, string? reason)
+    private void HandleRefusal(int printerId,
+                               HomespoolDbContext dbContext,
+                               QueuedPrint head,
+                               PrintJob commanded,
+                               string? reason)
     {
         switch (reason)
         {
@@ -957,6 +1293,8 @@ public sealed class QueueAdvancer : BackgroundService
                 dbContext.PrintFilesOnPrinters
                          .Where(row => row.PrinterId == printerId && row.PrintFileId == head.PrintFileId)
                          .ExecuteDelete();
+
+                dbContext.PrintJobs.Remove(commanded);
                 break;
 
             case "Forbidden path":
@@ -968,21 +1306,9 @@ public sealed class QueueAdvancer : BackgroundService
 
                 // Recorded as a failed print rather than only logged. Dropping the entry with nothing
                 // to show for it is how a queued print used to vanish with no way for its owner to
-                // find out why. Opened and closed in the same moment, which is honest: nothing printed.
-                DateTimeOffset refusedAt = _timeProvider.GetUtcNow();
-
-                dbContext.PrintJobs.Add(new PrintJob
-                {
-                    PrinterId = printerId,
-                    TrackingId = head.TrackingId,
-                    FileName = head.PrintFile?.Name ?? string.Empty,
-                    Digest = head.PrintFile?.Digest,
-                    QueuedByUserId = head.QueuedByUserId,
-                    StartedAt = refusedAt,
-                    EndedAt = refusedAt,
-                    State = PrintState.Failed,
-                    Reason = reason,
-                });
+                // find out why. It spans the ask and nothing else, which is honest: nothing printed.
+                commanded.Reason = reason;
+                Close(commanded, PrintState.Failed, _timeProvider.GetUtcNow());
 
                 dbContext.QueuedPrints.Remove(head);
                 break;
@@ -992,6 +1318,7 @@ public sealed class QueueAdvancer : BackgroundService
                 // tick asks again; treating an unrecognised reason as terminal would throw away a
                 // print for a string nobody has read yet.
                 _logger.LogDebug("[{PrinterId}] not printing yet: {Reason}", printerId, reason);
+                dbContext.PrintJobs.Remove(commanded);
                 break;
         }
     }

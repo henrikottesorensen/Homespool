@@ -62,83 +62,86 @@ msgstr ""
 msgid "  Use it anyway"
 msgstr ""
 #: setup-env.sh:946
-msgid "The name people type in a browser. Cosmetic - it names the self-signed certificate, and a browser warns about that certificate whatever name it carries."
+msgid "The name people type in a browser. Anything reaching this deployment under a name that is not here is refused, so give every name that should work - separated by semicolons, as in name1.tld;name2.tld. They all go into the self-signed certificate too, though a browser warns about that certificate whatever it carries."
 msgstr ""
 #: setup-env.sh:952
 msgid "The zone timestamps are shown in. The conversion happens on the server, so this decides what print history reads and what an invitation email says its expiry is."
 msgstr ""
-#: setup-env.sh:1187
-msgid "  Plain-HTTP visitors are redirected to HTTPS, and the redirect has to name the port a BROWSER should ask for - which is not necessarily the one published here, if anything forwards to this machine."
+#: setup-env.sh:1191
+msgid "  The redirect has to name the port a BROWSER should ask for - \\\":8443\\\" form, or empty for 443."
 msgstr ""
-#: setup-env.sh:1193
+#: setup-env.sh:1205
 msgid "Outgoing mail is optional. Without it, new accounts are created already confirmed and password reset is unavailable - invitations still work, you just pass the link on yourself."
 msgstr ""
-#: setup-env.sh:1214
+#: setup-env.sh:1226
 msgid "Homespool runs in a container, so $host is the container itself - not this machine."
 msgstr ""
-#: setup-env.sh:1236
+#: setup-env.sh:1248
 msgid "  Port $port is not one of the three well-known ones, so it does not say how the connection is encrypted. It has to match what the server offers."
 msgstr ""
-#: setup-env.sh:1237
+#: setup-env.sh:1249
 msgid "    1) STARTTLS - upgraded after connecting 2) implicit TLS - encrypted from the first byte 3) none - only for a server on this machine; sends the password in the clear"
 msgstr ""
-#: setup-env.sh:1277
+#: setup-env.sh:1298
+msgid "GO2RTC_PASSWORD contains a double quote or a backslash. Neither can reach the camera sidecar intact, so every camera will answer 401 while the setting looks correct. Replace it with the output of: openssl rand -base64 24"
+msgstr ""
+#: setup-env.sh:1307
 msgid "No source of randomness found - leaving the camera sidecar unauthenticated, which is what this deployment already had. Its port is not published."
 msgstr ""
-#: setup-env.sh:1285
+#: setup-env.sh:1315
 msgid "Generated a credential for the camera sidecar."
 msgstr ""
-#: setup-env.sh:1325
+#: setup-env.sh:1355
 msgid "Detected $address as the address printers reach this server on."
 msgstr ""
-#: setup-env.sh:1351
+#: setup-env.sh:1381
 msgid "/16 from 172.16 to 172.31 is taken. Set PROXY_SUBNET and PROXY_NETWORK by hand."
 msgstr ""
-#: setup-env.sh:1356
+#: setup-env.sh:1386
 msgid "$candidate instead."
 msgstr ""
-#: setup-env.sh:1377
+#: setup-env.sh:1407
 msgid "The compose network $subnet collides with:$colliding"
 msgstr ""
-#: setup-env.sh:1379
+#: setup-env.sh:1409
 msgid "A collision with another Docker network fails loudly at startup. A collision with a route this machine already has does not: the stack comes up, and that network stops being reachable from here."
 msgstr ""
-#: setup-env.sh:1383
+#: setup-env.sh:1413
 msgid "Every /16 from 172.16 to 172.31 is in use here - pick a range by hand."
 msgstr ""
-#: setup-env.sh:1427
+#: setup-env.sh:1457
 msgid "This stack has run before, so the printer certificate has already been issued - and it is issued once. Changing PRINTER_HOST in .env does not change what that certificate covers. Reissue it afterwards from Admin -> Printer certificate, or printers will fail to verify."
 msgstr ""
-#: setup-env.sh:1465
+#: setup-env.sh:1495
 msgid "This will change:"
 msgstr ""
-#: setup-env.sh:1498
+#: setup-env.sh:1528
 msgid "Every other line - comments, blank lines, and any key not listed - is left as it is."
 msgstr ""
-#: setup-env.sh:1506
+#: setup-env.sh:1536
 msgid "Created $env_file from .env.example."
 msgstr ""
-#: setup-env.sh:1668
+#: setup-env.sh:1698
 msgid "Homespool - .env setup"
 msgstr ""
-#: setup-env.sh:1671
+#: setup-env.sh:1701
 msgid "Editing the existing file, and only the settings below are touched:"
 msgstr ""
-#: setup-env.sh:1674
+#: setup-env.sh:1704
 msgid "No .env yet. One will be created from .env.example, with these settings filled in."
 msgstr ""
-#: setup-env.sh:1688
+#: setup-env.sh:1718
 msgid "Nothing to change."
 msgstr ""
-#: setup-env.sh:1697
+#: setup-env.sh:1727
 msgid "--dry-run: nothing written."
 msgstr ""
-#: setup-env.sh:1703
+#: setup-env.sh:1733
 msgid "Write these"
 msgstr ""
-#: setup-env.sh:1712
+#: setup-env.sh:1742
 msgid "Written. Bring the stack up with:"
 msgstr ""
-#: setup-env.sh:1714
+#: setup-env.sh:1744
 msgid "    docker compose up -d"
 msgstr ""

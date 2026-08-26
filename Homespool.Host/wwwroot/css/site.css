@@ -91,10 +91,6 @@ a {
   --bs-btn-disabled-border-color: var(--homespool-blue-text);
 }
 
-.nav-pills {
-  --bs-nav-pills-link-active-bg: var(--homespool-blue-text);
-}
-
 /* Bootstrap sets <code> in pink (#d63384). On pages that are mostly addresses, hostnames and
    shell commands that reads as a warning rather than as data, and it is an unrelated hue next
    to the brand blue. Body ink on a faint tint instead: legible, quiet, and it says "this is a
@@ -104,6 +100,40 @@ code {
   background-color: var(--bs-secondary-bg);
   padding: 0.1em 0.35em;
   border-radius: 0.25rem;
+}
+
+/* A control in another application's interface - PrusaSlicer's Upload and Print button. Distinct
+   from the <strong> beside it, which names a setting or the value you give it: a reader has to be
+   able to tell the thing they press from the thing they type into.
+
+   Written for <kbd><samp>, which is the spec's markup for this and not a flourish: a bare <kbd> is
+   text somebody TYPES, and a <samp> nested in one is input based on text the system presented -
+   menus, menu items, and buttons on screen. Both are styled, because a page may legitimately carry
+   either.
+
+   Bootstrap paints kbd inverted - body background on body ink - which is a keyboard key, and a black
+   slab mid-sentence at that. This is the <code> treatment above plus a border, because an edge is
+   what a button has and a literal value does not. Every property Bootstrap sets is set here so none
+   of its defaults leak through, and the family is inherited: this is a label somebody reads in
+   another program's UI, not a monospaced token. */
+kbd {
+  padding: 0.1em 0.4em;
+  font-family: inherit;
+  font-size: 0.95em;
+  color: var(--bs-emphasis-color);
+  background-color: var(--bs-secondary-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.25rem;
+}
+
+/* The nested <samp> is the label itself, so it carries none of the chrome and none of the monospace
+   the browser gives <samp> on its own - the box around it is already saying what it is. */
+kbd samp {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  background: none;
+  padding: 0;
 }
 
 /* Not inside a <pre> block, though — there the tint would band across the whole listing. */
@@ -217,16 +247,17 @@ body {
    still and the MJPEG live view are an <img> - so requestFullscreen would work on a desktop and do
    nothing at all on the platform this feature is most wanted on. This behaves the same everywhere,
    for both transports, in less code. */
-.camera-maximise {
+/* Shared by both controls that sit on a picture: maximise at bottom right, and the live play/stop
+   at bottom left. One class rather than two copies, because the trap below was paid for once and a
+   second copy is a second chance to leave it out. */
+.camera-overlay-btn {
   position: absolute;
-  right: .4rem;
   bottom: .4rem;
 
   /* Bootstrap's `.ratio > *` stretches every child to 100% x 100% and out-specifies a single class,
      so without these the "icon" is an invisible slab over the whole picture - which also means a
-     click anywhere on the image maximises it. Measured in a harness, not guessed. */
+     click anywhere on the image triggers it. Measured in a harness, not guessed. */
   top: auto;
-  left: auto;
   width: auto;
   height: auto;
 
@@ -246,11 +277,23 @@ body {
   transition: opacity .15s ease-in-out, background-color .15s ease-in-out;
 }
 
-.camera-maximise:hover,
-.camera-maximise:focus-visible {
+.camera-overlay-btn:hover,
+.camera-overlay-btn:focus-visible {
   opacity: 1;
   background-color: rgba(0, 0, 0, .7);
   color: #fff;
+}
+
+/* The two corners. `left`/`right` are set here rather than above, and both are stated on each so
+   neither inherits the other's - the `auto` the ratio rule needs is the one they are overriding. */
+.camera-maximise {
+  right: .4rem;
+  left: auto;
+}
+
+.camera-live-toggle {
+  left: .4rem;
+  right: auto;
 }
 
 /* The maximised panel. Bootstrap's .ratio sets a padding-top aspect box, which has to be undone
@@ -280,4 +323,400 @@ body {
    is otherwise the first thing that happens to a full-screen overlay. */
 body.camera-maximised-open {
   overflow: hidden;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   The printer page's status card, its metric tiles and its temperature graph.
+
+   Every colour below is a Bootstrap CSS variable rather than a literal, which is what makes the
+   whole block answer both themes at once - the same discipline §1 of notes/visual-identity.md
+   argues for, and for the same reason: a hex written here is a hex that is wrong in one mode. */
+
+/* The card is deliberately plain. It carries the loudest thing on the page - a status badge in a
+   semantic colour - and a border or a tint around that would be a second voice saying the same
+   thing more quietly. */
+.printer-status .card-body {
+  padding: 1rem 1.25rem;
+}
+
+/* The status badge, and the one thing on the card allowed to be loud. It is the answer to the
+   question the page exists for, so it is sized to be read from across a workshop rather than from
+   reading distance - Henrik asked for it bigger while dogfooding, and it was carrying the same
+   1rem as the body text around it.
+
+   Only the font-size is set. Bootstrap's .badge pads in em, so the pill grows with the text and
+   keeps its proportions rather than needing a second number kept in step. */
+.printer-status-badge {
+  font-size: 1.35rem;
+}
+
+/* A stale region keeps what it last fetched rather than emptying, so this has to say "old" without
+   saying "broken": the printer may be perfectly well and the browser merely offline. Faded, not
+   greyed out, and only after several failed intervals - see live-region.js. */
+[data-live-stale] {
+  opacity: .55;
+  transition: opacity .3s ease-in-out;
+}
+
+/* One reading and what it means. Quiet ground rather than a bordered box: three of these sit in a
+   row inside a card that already has edges, and nesting borders reads as a table. */
+.printer-metric {
+  padding: .625rem .75rem;
+  background-color: var(--bs-tertiary-bg);
+  border-radius: var(--bs-border-radius);
+}
+
+.printer-metric-label {
+  font-size: .8125rem;
+  color: var(--bs-secondary-color);
+}
+
+/* Big, because this is the number somebody came to read. Tabular figures so a temperature climbing
+   through 99 to 100 does not shift the degree sign sideways once a second. */
+.printer-metric-value {
+  font-size: 1.5rem;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Reserved whether or not there is a note, so a tile with nothing to say is the same height as the
+   two beside it rather than making the row ragged. */
+.printer-metric-note {
+  min-height: 1.25rem;
+  font-size: .8125rem;
+  color: var(--bs-secondary-color);
+}
+
+/* Heating is the one state worth a colour: it is the only one that says "wait". At-target, cooling
+   and off are all resting states and stay grey, on the same reasoning as the badge palette - a rack
+   of idle printers should not glow. */
+.printer-metric-heating .printer-metric-note {
+  color: var(--bs-warning-text-emphasis);
+}
+
+/* The graph. Fills its column and keeps its aspect from the viewBox, so there is no second place
+   where the drawing's proportions are decided. */
+.printer-graph-svg {
+  width: 100%;
+  height: auto;
+}
+
+/* currentColor throughout, so the axis furniture inherits body ink and is legible in both themes
+   with nothing declared twice. */
+.printer-graph-grid,
+.printer-graph-axis-line {
+  stroke: currentColor;
+  stroke-width: 1;
+}
+
+.printer-graph-grid {
+  opacity: .12;
+}
+
+.printer-graph-axis-line {
+  opacity: .35;
+}
+
+.printer-graph-axis {
+  fill: currentColor;
+  opacity: .6;
+  font-size: 11px;
+}
+
+.printer-graph-trace {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The setpoint, behind its measurement. Dashed and thinner, because it is what was asked for rather
+   than what happened. */
+.printer-graph-target {
+  fill: none;
+  stroke-width: 1.25;
+  stroke-dasharray: 4 4;
+  opacity: .55;
+}
+
+/* Two hues, and they are the two the rest of the application already spends: the brand blue for the
+   bed and Bootstrap's danger red for the nozzle, which is the hotter of the two and the one that
+   burns. Not chosen for prettiness - they have to survive being told apart at a glance, on a phone,
+   in both themes. */
+.printer-graph-nozzle {
+  stroke: var(--bs-danger);
+}
+
+.printer-graph-bed {
+  stroke: var(--homespool-blue);
+}
+
+/* The air around the print, on the printers that measure it. Two sensors rather than one under two
+   names - a managed chamber aims at a setpoint, a fitted enclosure only reports - so they get a hue
+   each even though no hardware reports both. Teal and purple because red and blue are spoken for,
+   and both stay distinguishable from those two at a glance on a phone.
+
+   Fixed hues in both themes, like the nozzle and bed above them. Purple is the weaker of the two on
+   a dark ground; it is a 2px line with a named key beside it, and it is the trace least likely ever
+   to be drawn. */
+.printer-graph-chamber {
+  stroke: var(--bs-teal);
+}
+
+.printer-graph-enclosure {
+  stroke: var(--bs-purple);
+}
+
+/* The legend's swatch. A line rather than a block, so it reads as the same thing as the trace it
+   names. */
+.printer-graph-key {
+  display: inline-block;
+  width: 1rem;
+  height: 0;
+  margin-right: .35rem;
+  vertical-align: middle;
+  border-top: 2px solid currentColor;
+}
+
+.printer-graph-key.printer-graph-nozzle {
+  border-top-color: var(--bs-danger);
+}
+
+.printer-graph-key.printer-graph-bed {
+  border-top-color: var(--homespool-blue);
+}
+
+.printer-graph-key.printer-graph-chamber {
+  border-top-color: var(--bs-teal);
+}
+
+.printer-graph-key.printer-graph-enclosure {
+  border-top-color: var(--bs-purple);
+}
+
+.printer-graph-key-target {
+  border-top-style: dashed;
+  opacity: .7;
+}
+
+/* The graph is one drawing scaled to its column, so everything in it shrinks together - and on a
+   phone the whole 720-unit box lands in about 350 real pixels. At that scale an 11-unit label renders
+   at roughly five pixels and the axis becomes decoration.
+
+   These are user units, not pixels: they are measured against the viewBox and then scaled with it, so
+   raising them here is what keeps the label the same *real* size on a narrow screen. Measured in the
+   browser rather than reasoned about, because the two kinds of pixel are easy to confuse. */
+@media (max-width: 575.98px) {
+  .printer-graph-axis {
+    font-size: 22px;
+  }
+
+  .printer-graph-trace {
+    stroke-width: 4;
+  }
+
+  .printer-graph-target {
+    stroke-width: 2.5;
+    stroke-dasharray: 8 8;
+  }
+}
+
+/* History and setup, closed by default. The summary is styled as a heading because that is what it
+   replaced - three <h2>s and seventy rows of table underneath them. */
+.printer-archive {
+  padding: .5rem 0;
+  border-top: 1px solid var(--bs-border-color);
+}
+
+.printer-archive > summary {
+  cursor: pointer;
+  font-size: 1.125rem;
+  padding: .25rem 0;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   The front page's printer tiles.
+
+   A big drawing you aim at, and a small plaque you read once you have. Same rule as the block
+   above: Bootstrap variables rather than literals, so both themes are answered at once. */
+
+/* Wrapping flex rather than a grid, and that is the whole decision here.
+
+   What the tiles have to do is: fill the row on a phone, grow to a comfortable reading width, and
+   then STOP, leaving the slack on the right rather than stretching two printers across a monitor.
+   CSS grid cannot say that. `repeat(auto-fit, minmax(11rem, 1fr))` stretches without limit, which is
+   how two tiles came to take half a window each. `repeat(auto-fill, minmax(11rem, 16rem))` looks like
+   the fix and is not: auto-fill decides the column COUNT from the 11rem floor and the width available,
+   then divides that width between however many tracks it made - so at 1100px it lays five tracks and
+   sizes them to 199px, and the cap never comes into it. The tiles came out smaller than the four-tile
+   layout they were supposed to match.
+
+   Flex sizes the item instead of the track, so the two numbers mean what they say: grow from 11rem,
+   stop at 16rem (see .printer-shortcut). Wrapping and the leftover space fall out of it. */
+.printer-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+/* The whole tile is the link, not the name inside it - a big target is the entire point of a big
+   drawing, and a person aiming at the printer should not land on dead card. */
+.printer-shortcut {
+  /* Grow from 11rem, stop at 16rem. The floor keeps the drawing big enough to aim at - below it the
+     tile degrades into a list row with a picture, which is what this replaced. The ceiling is a
+     measurement rather than a preference: it is what a tile came out at with four across a 1100px
+     window under the old rule, which was the width that looked right. Shrinking is allowed, so a
+     narrow phone still fits two rather than dropping to one. */
+  flex: 1 1 11rem;
+  max-width: 16rem;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .75rem;
+  padding: 1.25rem 1rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius-lg);
+  text-decoration: none;
+  color: inherit;
+  background-color: var(--bs-body-bg);
+  transition: border-color .15s ease-in-out, background-color .15s ease-in-out;
+}
+
+.printer-shortcut:hover,
+.printer-shortcut:focus-visible {
+  border-color: var(--bs-primary);
+  background-color: var(--bs-tertiary-bg);
+}
+
+/* currentColor in the drawing resolves against this - the inheritance _BrandMark.cshtml is inlined
+   to get. Brand blue, which is how these were drawn: the source files carry color="#278ED3" as a
+   presentation attribute, and inlining strips it, so the colour has to be put back here or the
+   drawings arrive as whatever ink the tile happens to have.
+
+   Body ink was tried first, on the theory that six coloured illustrations would outshout the status
+   badges under them. They do not - the badges are small, saturated and semantic, and the drawings
+   are large, tinted and all the same hue, so the eye separates them by kind rather than by weight. */
+.printer-shortcut-drawing {
+  color: var(--homespool-blue);
+  line-height: 0;
+}
+
+/* Lifted on a dark ground, matching what the link and navbar rules above do with the same hue. Not
+   tokenised, because those two are not either - one literal in three places is the existing shape,
+   and inventing a token for the third would leave the other two behind. */
+:where([data-bs-theme="dark"]) .printer-shortcut-drawing {
+  color: #75b9e6;
+}
+
+/* Sized here rather than on the svg, so the tile decides how big its printer is and the drawing
+   stays a drawing.
+
+   96px rather than the 88 this started at, which is a decision about someone else's drawing rather
+   than a taste one: these are illustration-scale cuts drawn for 96-256px, at stroke-width 6 with a
+   second tonal layer in fill-opacity. Below their floor the tints stop separating from the strokes
+   and the whole thing silts up. If a smaller tile is ever wanted, it needs a simplified cut - the
+   way the mark has one - not this one scaled down. */
+.printer-icon {
+  width: 6rem;
+  height: 6rem;
+}
+
+/* Fills whatever height the tile was stretched to, so the row pinned to its bottom has something to
+   be pinned against - see .printer-plaque-stats-foot. */
+.printer-plaque {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .35rem;
+  text-align: center;
+  min-width: 0;
+  width: 100%;
+  flex: 1 1 auto;
+}
+
+/* The name wraps rather than truncating. A printer called "Core One (workshop)" losing its second
+   half to an ellipsis is the case that matters, and it is exactly the one where the tail is the part
+   telling two machines apart. */
+.printer-plaque-name {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+/* The progress bar. Full width rather than inset, so it shares its edges with the stat rows beneath
+   and the three of them read as one block. Shorter than Bootstrap's default: at the default height it
+   competes with the status badge above it, and the badge is the thing that should win. */
+.printer-plaque-progress {
+  width: 100%;
+  height: .375rem;
+}
+
+/* Everything under the badge: the time left and the percentage, then the queue and the filament. Two
+   rows, each with one value against the left edge and one against the right.
+
+   Quiet and small, deliberately. These answer "and how is it getting on", asked after the badge has
+   already said what the printer is doing - so they sit below it in weight as well as in position. A
+   tile where four facts all shout has no glance left in it. */
+.printer-plaque-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem .5rem;
+  width: 100%;
+  font-size: .8125rem;
+  color: var(--bs-secondary-color);
+}
+
+/* The queue-and-filament row, pinned to the bottom of the tile rather than left to follow whatever
+   is above it.
+
+   Without this it rides up: a printer that is not printing has no progress bar and no percentage, so
+   its filament lands directly under the badge while a printing neighbour's sits two rows lower. The
+   same fact in two places on one screen is exactly what a person scanning a rack has to re-find each
+   time. Anchored to the bottom, every tile carries it in the same spot - and because the grid
+   stretches tiles to a common height, that spot is a line across the row. */
+.printer-plaque-stats-foot {
+  margin-top: auto;
+}
+
+/* The right-hand value, pushed rather than placed - margin-left rather than justify-content:
+   space-between, and the difference is the case where its partner is absent.
+
+   Both of these rows routinely render one value: firmware often has no time estimate mid-print, and
+   an offline printer shows its filament with nothing queued behind it. Under space-between a lone
+   value falls back to the left edge, so the filament would sit left on one tile and right on the next
+   depending on whether anything was queued. margin-left: auto keeps each value in its own column
+   whatever else is missing. */
+.printer-plaque-stat-end {
+  margin-left: auto;
+}
+
+/* A tile with a file over it. Border and tint rather than a dashed outline: the tile already has an
+   edge, and swapping it for a dashed one moves the boundary by a pixel and makes the whole grid
+   twitch as the pointer crosses between two tiles. */
+.printer-shortcut-drop {
+  border-color: var(--bs-primary);
+  background-color: var(--bs-tertiary-bg);
+  outline: 2px solid var(--bs-primary);
+  outline-offset: -2px;
+}
+
+/* Per-tool rows on the status card. TWO FIXED COLUMNS above the breakpoint, one below - not
+   auto-fit, which was the first attempt and measured out at three columns at 1000px and four at
+   1280 (notes/toolchangers.md §3b). "As many as fit" is not a design here: tool numbers are not
+   contiguous, so a reader hunting tool 5 among 1, 2, 4, 8 in a reflowed grid has no rule to follow.
+
+   Its own grid rather than Bootstrap's .row, because .row's gutters are negative margins on a
+   flex container and g-0 - the only spelling that avoided them here - removes the COLUMN gap too,
+   which ran a temperature into the next tool's number: "0.4 · 215°2 PETG". A column-gap is what
+   this actually wants, and CSS grid states it directly. */
+.printer-tools {
+  display: grid;
+  grid-template-columns: 1fr;
+  column-gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .printer-tools {
+    grid-template-columns: 1fr 1fr;
+  }
 }

@@ -3,31 +3,208 @@
 @using Homespool.Model
 @model DetailModel
 @{
-    ViewData["Title"] = Model.DisplayName;
+    ViewData["Title"] = Model.Statistics.Printer.Name ?? Model.Statistics.Printer.Model ?? Model.Statistics.Printer.Uuid.ToString();
+
+    var uuid = Model.Statistics.Printer.Uuid;
+
+    string printerName = Model.Statistics.Printer.Name
+                         ?? Model.Statistics.Printer.Model
+                         ?? Model.Statistics.Printer.Uuid.ToString();
 }
 
-<h1 class="typed-name">@ViewData["Title"]</h1>
+@* The page answers one question first - what is this printer doing - and everything that is a
+   record rather than a state sits behind a disclosure underneath. The order is deliberate: status,
+   the controls that change it, the temperatures it has been holding, what it can see, what it will
+   do next. *@
 
-<p>
-    @Localiser["Printers_TeamLabel"] <span class="typed-name">@(Model.Statistics.Printer.Team?.Name
-                                       ?? Localiser["Common_TeamNumbered", Model.Statistics.Printer.TeamId].Value)</span>
-    &nbsp;
-    @if (Model.Connected)
-    {
-        <span class="badge text-bg-success">@Localiser["PrinterStatus_Connected"]</span>
-    }
-    else
-    {
-        <span class="badge border border-secondary text-body-secondary">@Localiser["Printers_NotConnected"]</span>
-    }
+<div class="d-flex flex-wrap align-items-baseline justify-content-between gap-2">
+    <h1 class="typed-name mb-0">@ViewData["Title"]</h1>
+    <a asp-page="Index">@Localiser["Printers_BackToList"]</a>
+</div>
+
+<p class="text-body-secondary">
+    @Localiser["Printers_TeamLabel"]
+    <span class="typed-name">@(Model.Statistics.Printer.Team?.Name
+                               ?? Localiser["Common_TeamNumbered", Model.Statistics.Printer.TeamId].Value)</span>
 </p>
 
-<p>@if (Model.Cameras.Count > 0)
+@* This page is left open for the length of a print, which is what makes an ordinary status alert
+   behave badly here: it is rendered once at load and nothing re-renders it, so "Marked ready" sat on
+   screen for the whole job it had already started.
+
+   A success is a confirmation of something you just did and just watched happen, so it takes itself
+   away. A failure is not - it may be the only place the printer's own refusal is written down, and
+   somebody who looked away needs it to still be there. Both can be closed by hand. *@
+@if (Model.StatusMessage is not null)
 {
-    @* One figure per camera. The picture is deliberately the largest thing on the page: this is what
+    <div class="alert alert-dismissible fade show @(Model.StatusSuccess ? "alert-success" : "alert-danger")"
+         role="alert" @(Model.StatusSuccess ? "data-dismiss-after" : null)>
+        @Model.StatusMessage
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="@Localiser["Common_Close"]"></button>
+    </div>
+}
+
+@* Refreshed in place by live-region.js. Without script it is simply what the server rendered when
+   the page loaded, which is what it was before any of this. *@
+<div class="mb-3" data-live-region
+     data-live-url="@Url.Page("Detail", "Status", new { uuid })"
+     data-live-interval="2000">
+    <partial name="_PrinterStatus" model="Model" />
+</div>
+
+@* Outside the refreshed region on purpose - see OnGetStatusAsync. Every control here reaches the
+   machine, so all of them are hidden without CanUse rather than rendered and refused. *@
+@if (Model.CanUse)
+{
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        @* Gated only on being connected, not on whether a print is actually running - the firmware's
+           own refusal ("No print to pause") is the real guard, and it is a better sentence than one
+           composed here from a status a second old. *@
+        @if (Model.Connected)
+        {
+            <form method="post" asp-page-handler="Pause" asp-route-uuid="@uuid" class="d-inline">
+                <button type="submit" class="btn btn-outline-secondary">@Localiser["Intent_PausePrint"]</button>
+            </form>
+            <form method="post" asp-page-handler="Resume" asp-route-uuid="@uuid" class="d-inline">
+                <button type="submit" class="btn btn-outline-secondary">@Localiser["Intent_ResumePrint"]</button>
+            </form>
+            <form method="post" asp-page-handler="Stop" asp-route-uuid="@uuid" class="d-inline">
+                <button type="submit" class="btn btn-outline-danger">@Localiser["Intent_StopPrint"]</button>
+            </form>
+        }
+
+        @* Heaters, and only ever both together. The service can set either alone and nothing here
+           can: a page that could leave one heater on and the other off would be a way to make a
+           mistake quietly.
+
+           Absent on a toolchanger with nothing picked: M140 is the bed and would apply, M104 is the
+           nozzle and would not, so the pair half-lands while the frame is answered Accepted. See
+           notes/toolchangers.md §3d. *@
+        @if (Model.Tools.ReachesAHotend)
+        {
+        <form method="post" asp-page-handler="Preheat" asp-route-uuid="@uuid"
+              class="d-flex align-items-center gap-2">
+            <label class="visually-hidden" for="filament">@Localiser["Printers_PreheatFor"]</label>
+
+            <select class="form-select w-auto" id="filament" name="filament">
+                @foreach (FilamentPreset preset in Model.Presets)
+                {
+                    <option value="@preset.Name">
+                        @preset.Name &mdash; @preset.NozzleTemperature&deg;C / @preset.BedTemperature&deg;C
+                    </option>
+                }
+            </select>
+
+            <button type="submit" class="btn btn-outline-primary">@Localiser["Printers_Preheat"]</button>
+        </form>
+
+        <form method="post" asp-page-handler="Cooldown" asp-route-uuid="@uuid">
+            <button type="submit" class="btn btn-outline-secondary">@Localiser["Printers_CoolDown"]</button>
+        </form>
+        }
+
+        @* Absent unless the printer has named its filament, which is the same condition under which
+           firmware will run the unload without stopping at a dialog on the panel - and which usually
+           just means there is nothing in the machine to take out. No confirm dialog, matching
+           preheat: this changes the physical world, but harmlessly and on purpose. *@
+        @if (Model.UnloadShown)
+        {
+            @* One tool means no choice to make, so it stays a plain button; several means a real
+               one, so it opens a picker. Same rule either way - ask only when something is being
+               decided - rather than two philosophies by printer type. *@
+            @if (Model.UnloadNeedsPicker)
+            {
+                <button type="button" class="btn btn-outline-secondary"
+                        data-bs-toggle="modal" data-bs-target="#unload-tool">
+                    @Localiser["Printers_UnloadEllipsis"]
+                </button>
+            }
+            else
+            {
+                <form method="post" asp-page-handler="Unload" asp-route-uuid="@uuid">
+                    <input type="hidden" name="tool" value="@Model.UnloadableTools[0].ToolNumber" />
+                    <button type="submit" class="btn btn-outline-secondary">
+                        @Localiser["Printers_Unload", Model.UnloadableTools[0].Material!]
+                    </button>
+                </form>
+            }
+        }
+
+        @* Setting ready is a person asserting the sheet is clear, which is why the walk to the
+           machine was never pure friction - it forced somebody to look. Off unless this printer has
+           been judged one whose sheet can be read from here, so the control is absent rather than
+           refusing. *@
+        @if (Model.Statistics.Printer.RemoteReadyAllowed)
+        {
+            <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#set-ready">
+                @Localiser["Intent_SetPrinterReady"]
+            </button>
+        }
+    </div>
+
+    @* Cooling is refused mid-print too, which reads as arbitrary unless it is said: the button looks
+       like a safety control and is not one. Said on the page rather than only in the refusal, so
+       nobody has to press it to find out.
+
+       It used to end by sending the reader to the printers list to stop a print. Stop is on this page
+       now, two controls to the left, so the sentence went with it. *@
+    <p class="text-body-secondary small">
+        @Localiser["Printers_PreheatBoth"]
+        @Html.Raw(string.Format(
+            System.Globalization.CultureInfo.CurrentCulture,
+            Localiser["Printers_PreheatWarning"].Value,
+            $"<strong>{Localiser["Printers_CoolingIncluded"].Value}</strong>"))
+    </p>
+
+    @* Said beside the button rather than only after pressing it: the unload runs for minutes and
+       the printer declines other gcode while it does, so somebody who presses Cool down next and
+       meets a refusal should already know why. *@
+    @if (Model.UnloadShown)
+    {
+        <p class="text-body-secondary small">@Localiser["Printers_UnloadNote"]</p>
+    }
+}
+
+@* Whether the ready prompt can be answered honestly for this printer is a standing judgement about
+   the machine, so it sits behind CanManage rather than CanUse: decided once by somebody who has seen
+   it, inherited by everyone who has not. *@
+@if (Model.CanManage)
+{
+    @* The switch is the control, not a picture of one. An unchecked checkbox posts nothing, so the
+       handler's bool binds false on its own and no hidden field is needed to carry the flipped
+       value. The Save button is the no-script path and toggle-submit.js hides it. *@
+    <form method="post" asp-page-handler="RemoteReady" asp-route-uuid="@uuid" class="mb-4">
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" role="switch" id="remote-ready"
+                   name="allowed" value="true" data-submit-on-change
+                   @(Model.Statistics.Printer.RemoteReadyAllowed ? "checked" : null) />
+            <label class="form-check-label" for="remote-ready">@Localiser["Printers_RemoteReadyLabel"]</label>
+        </div>
+
+        <p class="text-body-secondary small mt-1">@Localiser["Printers_RemoteReadyHelp"]</p>
+
+        <button type="submit" class="btn btn-outline-secondary btn-sm" data-submit-fallback>
+            @Localiser["Common_Save"]
+        </button>
+    </form>
+}
+
+<h2 class="h5">@Localiser["Printers_Temperature"]</h2>
+
+@* A slower poll than the status card above it: the window can be a whole print, and redrawing that
+   every two seconds would produce the same picture at a much higher price. *@
+<div class="mb-4" data-live-region
+     data-live-url="@Url.Page("Detail", "Graph", new { uuid })"
+     data-live-interval="30000">
+    <partial name="_TemperatureGraph" model="Model" />
+</div>
+
+@if (Model.Cameras.Count > 0)
+{
+    @* One figure per camera. The picture is deliberately the largest thing here: this is what
        somebody looks at to decide whether a bed is clear, and a status line saying "camera fine" is
        not the same claim. *@
-    <div class="row g-3 mb-3">
+    <div class="row g-3 mb-4">
         @for (int index = 0; index < Model.Cameras.Count; index++)
         {
             var camera = Model.Cameras[index];
@@ -54,10 +231,34 @@
                         <div class="camera-status d-flex align-items-center justify-content-center text-body-secondary small">
                             @Localiser["Cameras_Capturing"]
                         </div>
+                        @* In the picture, bottom left, mirroring maximise on the right - which is
+                           where a video player puts a play control. Icon-only, so every label it used
+                           to show as text is now its accessible name, and the words that used to sit
+                           on the button (connecting, failed, stalled) go to the note below the frame.
+
+                           Hidden until the server says this camera may be offered. Nothing can report
+                           a camera's codec before something watches it, so the button is offered
+                           optimistically and taken away by the first refusal - a JPEG camera loses it
+                           after one press, saying why. *@
+                        <button type="button" class="camera-overlay-btn camera-live-toggle btn btn-sm d-none"
+                                data-label-watch="@Localiser["Cameras_WatchLive"]"
+                                data-label-stop="@Localiser["Cameras_StopLive"]"
+                                data-label-connecting="@Localiser["Cameras_LiveConnecting"]"
+                                data-label-failed="@Localiser["Cameras_LiveFailed"]"
+                                data-label-live="@Localiser["Cameras_LiveNow"]"
+                                data-label-stalled="@Localiser["Cameras_LiveStalled"]"
+                                aria-label="@Localiser["Cameras_WatchLive"]" title="@Localiser["Cameras_WatchLive"]">
+                            <svg class="camera-live-icon" width="18" height="18" viewBox="0 0 16 16"
+                                 fill="currentColor" aria-hidden="true">
+                                <path class="camera-live-play" d="M4.5 2.5v11l9-5.5z" />
+                                <path class="camera-live-stop d-none" d="M3.5 3.5h9v9h-9z" />
+                            </svg>
+                        </button>
+
                         @* On the picture rather than in the controls row, which is where a video
                            player puts it. Hidden until the script binds it: without JavaScript it
                            would do nothing, and a control that cannot act explains nothing. *@
-                        <button type="button" class="camera-maximise btn btn-sm d-none" hidden
+                        <button type="button" class="camera-overlay-btn camera-maximise btn btn-sm d-none" hidden
                                 data-label-maximise="@Localiser["Cameras_Maximise"]"
                                 data-label-restore="@Localiser["Cameras_Restore"]"
                                 aria-label="@Localiser["Cameras_Maximise"]" title="@Localiser["Cameras_Maximise"]">
@@ -78,14 +279,10 @@
                        the board: the stream server names none for a stream nobody is consuming), so
                        the button is offered optimistically and taken away by the first refusal. A
                        camera that sends JPEG loses it after one press, saying why. *@
-                    <div class="camera-live-controls d-none d-flex align-items-center gap-2 mt-1">
-                        <button type="button" class="btn btn-sm btn-outline-secondary camera-live-toggle"
-                                data-label-watch="@Localiser["Cameras_WatchLive"]"
-                                data-label-stop="@Localiser["Cameras_StopLive"]"
-                                data-label-connecting="@Localiser["Cameras_LiveConnecting"]"
-                                data-label-failed="@Localiser["Cameras_LiveFailed"]"
-                                data-label-live="@Localiser["Cameras_LiveNow"]"
-                                data-label-stalled="@Localiser["Cameras_LiveStalled"]">@Localiser["Cameras_WatchLive"]</button>
+                    @* Only the note now. The button moved into the picture, beside maximise - see
+                       the .camera-view block above. This stays outside because it is prose: a
+                       failure reason, or why a JPEG camera just lost its button. *@
+                    <div class="camera-live-controls d-none mt-1">
                         <span class="camera-live-note small text-body-secondary" role="status"></span>
                     </div>
                 </figure>
@@ -94,179 +291,48 @@
     </div>
 }
 
-<a asp-page="Index">@Localiser["Printers_BackToList"]</a></p>
+<h2 class="h5">@Localiser["Common_Queue"]</h2>
 
-@if (Model.StatusMessage is not null)
-{
-    <div class="alert @(Model.StatusSuccess ? "alert-success" : "alert-danger")" role="alert">@Model.StatusMessage</div>
-}
+@* Refreshed like the status card, and for the same reason: the loop empties this list while
+   somebody is looking at it. A queue frozen at load time beside a live status card is the exact
+   confusion the rebuild set out to remove, and it was left here by omission.
 
-<h2>@Localiser["Printers_CurrentStatus"]</h2>
+   Slower than the card. The rows carry reorder and remove buttons, and markup replaced under a
+   cursor is a mis-click - live-region.js also skips the swap when nothing changed, which is most
+   polls. *@
+<div data-live-region
+     data-live-url="@Url.Page("Detail", "Queue", new { uuid })"
+     data-live-interval="5000">
+    <partial name="_PrintQueue" model="Model" />
+</div>
 
-@{
-    var liveState = Model.Statistics.LiveState;
-}
-@if (liveState is null)
-{
-    <p>@Localiser["Printers_NoTelemetry"]</p>
-}
-else
-{
-    <table class="table table-sm w-auto">
-        <tbody>
-            <tr><th>@Localiser["Common_Status"]</th><td>@liveState.Status</td></tr>
-            <tr><th>@Localiser["Printers_Progress"]</th><td>@(liveState.Progress is { } progress ? $"{progress}%" : "-")</td></tr>
-            <tr><th>@Localiser["Printers_TimePrinting"]</th><td>@(liveState.TimePrinting is { } tp ? TimeSpan.FromSeconds(tp).ToString("g", System.Globalization.CultureInfo.CurrentCulture) : "-")</td></tr>
-            <tr><th>@Localiser["Printers_TimeRemaining"]</th><td>@(liveState.TimeRemaining is { } tr ? TimeSpan.FromSeconds(tr).ToString("g", System.Globalization.CultureInfo.CurrentCulture) : "-")</td></tr>
-            @* Only rendered when the printer actually reports it: the firmware emits filament_change_in
-               only while a pause is scheduled (render.cpp:164, gated on time_to_pause), so on a print
-               with no M600 the field is absent rather than zero. A "-" row would imply "no swap due" on
-               every ordinary print, which is noise. *@
-            @if (liveState.TimeToFilamentChange is { } untilChange)
-            {
-                <tr><th>@Localiser["Printers_FilamentChangeIn"]</th><td>@TimeSpan.FromSeconds(untilChange).ToString("g", System.Globalization.CultureInfo.CurrentCulture)</td></tr>
-            }
-            <tr><th>@Localiser["Printers_NozzleTemp"]</th><td>@Localiser["Printers_TemperatureTarget", liveState.NozzleTemperature?.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture) ?? "-", liveState.TargetNozzleTemperature?.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture) ?? "-"]</td></tr>
-            <tr><th>@Localiser["Printers_BedTemp"]</th><td>@Localiser["Printers_TemperatureTarget", liveState.BedTemperature?.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture) ?? "-", liveState.TargetBedTemperature?.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture) ?? "-"]</td></tr>
-            <tr><th>@Localiser["Printers_Material"]</th><td>@(liveState.Material ?? "-")</td></tr>
-            <tr><th>@Localiser["Printers_Speed"]</th><td>@(liveState.Speed is { } speed ? $"{speed}%" : "-")</td></tr>
-            <tr><th>@Localiser["Printers_Flow"]</th><td>@(liveState.Flow is { } flow ? $"{flow}%" : "-")</td></tr>
-            <tr><th>@Localiser["Printers_LastSeen"]</th><td>@liveState.LastSeenAt</td></tr>
-        </tbody>
-    </table>
-}
-
-@if (Model.ActivePrint is { } active)
-{
-    <h2>@Localiser["Printers_PrintingNow"]</h2>
-    <p>
-        <strong class="typed-name">@active.FileName</strong>
-        @* Starting is not yet printing - the printer has accepted the command and is heating. Saying
-           "printing" through that window would be a small lie the page tells every single time. *@
-        @if (active.State == Homespool.Model.PrintState.Starting)
-        {
-            <span class="badge text-bg-secondary">@Localiser["Printers_Starting"]</span>
-        }
-        <br />
-        <span class="text-muted">
-            @Localiser["Printers_StartedAt", active.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm",
-                System.Globalization.CultureInfo.InvariantCulture)]
-        </span>
-    </p>
-}
-
-@* The queue holds behind a file it cannot send, like a spooler - so the reason has to be here, or a
-   held queue is indistinguishable from one that stopped for no reason. *@
-@if (Model.HoldReason is { } hold)
-{
-    <div class="alert alert-warning" role="alert">
-        <strong>@Localiser["Printers_QueueHeld"]</strong> @hold
-        @* Only the space hold needs advice added: deleting files does nothing for a nozzle that does
-           not match, and every other hold's own sentence already says what would clear it. *@
-        @if (Model.HoldKind == PrintHoldReason.InsufficientSpace)
-        {
-            <br />
-            @Localiser["Printers_FreeSomeSpace"]
-        }
-    </div>
-}
-
-<h2>@Localiser["Common_Queue"]</h2>
-
-@* Not a stall to worry about - it is the loop explaining itself. Absent when another part of this
-   page already says it, which is why there is no message while a print is starting. *@
-@if (Model.WaitingOn is { } waiting)
-{
-    <p class="text-muted">@waiting</p>
-}
-
-@* Reordering and cancelling are edits to a list - nothing here reaches the printer. The producer
-   loop is what turns the head of this queue into a transfer and a print, and it advances only when
-   the printer is Ready, which only a person sets. *@
-@if (Model.Queue.Count == 0)
-{
-    <p>
-        @Html.Raw(string.Format(
-            System.Globalization.CultureInfo.CurrentCulture,
-            Localiser["Printers_NothingQueued"].Value,
-            $"<a href=\"{Url.Page("/Files/Index")}\">{Localiser["Files_Title"].Value}</a>"))
-    </p>
-}
-else
-{
-    <table class="table table-sm w-auto align-middle">
-        <thead>
-            <tr>
-                <th scope="col">#</th>
-                <th scope="col">@Localiser["Common_File"]</th>
-                <th scope="col" class="text-end">@Localiser["Files_Size"]</th>
-                <th scope="col">@Localiser["Common_Queued"]</th>
-                @if (Model.CanUse)
-                {
-                    <th scope="col"><span class="visually-hidden">@Localiser["Common_Actions"]</span></th>
-                }
-            </tr>
-        </thead>
-        <tbody>
-            @for (int index = 0; index < Model.Queue.Count; index++)
-            {
-                var job = Model.Queue[index];
-
-                <tr>
-                    @* The row's place in the list, not its stored Position - cancelling leaves gaps in
-                       those, deliberately, and a gap shown to a person reads as a bug. *@
-                    <td>@(index + 1)</td>
-                    <td class="typed-name">@(job.PrintFile?.Name ?? "(missing)")</td>
-                    <td class="text-end">@($"{(job.PrintFile?.Size ?? 0) / 1024.0:N0} KiB")</td>
-
-                    @* Fixed format rather than a culture-dependent one, matching the Files table -
-                       and ToLocalTime, without which this column rendered UTC while the print history
-                       below it rendered local, two hours apart on the same page. *@
-                    <td>@job.QueuedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
-
-                    @if (Model.CanUse)
-                    {
-                        <td class="text-nowrap">
-                            <form method="post" asp-page-handler="Move" asp-route-uuid="@Model.Statistics.Printer.Uuid"
-                                  class="d-inline">
-                                <input type="hidden" name="id" value="@job.TrackingId" />
-                                <input type="hidden" name="position" value="@(index - 1)" />
-                                <button type="submit" class="btn btn-sm btn-outline-secondary"
-                                        title="@Localiser["Printers_MoveUp"]" aria-label="@Localiser["Printers_MoveJobUp", job.PrintFile?.Name ?? string.Empty]"
-                                        @(index == 0 ? "disabled" : string.Empty)>&uarr;</button>
-                            </form>
-                            <form method="post" asp-page-handler="Move" asp-route-uuid="@Model.Statistics.Printer.Uuid"
-                                  class="d-inline">
-                                <input type="hidden" name="id" value="@job.TrackingId" />
-                                <input type="hidden" name="position" value="@(index + 1)" />
-                                <button type="submit" class="btn btn-sm btn-outline-secondary"
-                                        title="@Localiser["Printers_MoveDown"]" aria-label="@Localiser["Printers_MoveJobDown", job.PrintFile?.Name ?? string.Empty]"
-                                        @(index == Model.Queue.Count - 1 ? "disabled" : string.Empty)>&darr;</button>
-                            </form>
-                            <form method="post" asp-page-handler="Cancel" asp-route-uuid="@Model.Statistics.Printer.Uuid"
-                                  class="d-inline">
-                                <input type="hidden" name="id" value="@job.TrackingId" />
-                                <button type="submit" class="btn btn-sm btn-outline-danger"
-                                        aria-label="@Localiser["Printers_RemoveJob", job.PrintFile?.Name ?? string.Empty]">@Localiser["Cameras_Remove"]</button>
-                            </form>
-                        </td>
-                    }
-                </tr>
-            }
-        </tbody>
-    </table>
-}
+@* Outside the queue's refreshed region, and it has to be. These are rendered from SlicerUrl and
+   CanManage, which only the full page load resolves - inside the polled partial a queue refresh
+   re-rendered them from a handler that sets neither, so the address blanked and the toggle vanished
+   until the next reload. *@
+@* Shown rather than tucked away (Henrik, 2026-08-20). These were behind a disclosure on the
+   reasoning that setup is not state - true, but the slicer address is what somebody opens this page
+   to copy the first several times they use it, and a control nobody can find is a control that is
+   not there. *@
 
 @* Only for someone who may change this printer's queue: a CanRead visitor given this URL would get
    an upload that succeeds and then a 403 from the queue, which is a worse answer than not offering
    it. *@
 @if (Model.CanUse)
 {
-    <h2>@Localiser["Printers_SlicerHeading"]</h2>
+    <h2 class="h5">@Localiser["Printers_SlicerHeading"]</h2>
 
     @* PrusaSlicer's own menu labels stay English: they have to match what a person sees in the
        slicer, which this application neither authors nor translates. Only the sentence around them
-       is ours. *@
+       is ours.
+
+       Three treatments, because they are three different kinds of thing: <em> for a menu path you
+       navigate, <strong> for a setting and the value you give it, and <kbd><samp> for the button you
+       press. All bold, a reader has to work out which one is the control.
+
+       The nesting is the spec's, not decoration: a bare <kbd> is text you TYPE, while a <samp>
+       inside one is input based on text the system showed you - the names of menus, menu items, and
+       buttons on screen. MDN's own example for it is a button. *@
     <p>
         @Html.Raw(string.Format(
             System.Globalization.CultureInfo.CurrentCulture,
@@ -275,7 +341,7 @@ else
             "<strong>Host Type</strong>",
             "<strong>OctoPrint</strong>",
             $"<a href=\"{Url.Page("/Account/Manage/ApiTokens")}\">{Localiser["Printers_ApiTokenLink"].Value}</a>",
-            "<strong>Upload and Print</strong>"))
+            "<kbd><samp>Upload and Print</samp></kbd>"))
     </p>
 
     <div class="input-group mb-3" data-copy>
@@ -290,66 +356,209 @@ else
     <p class="visually-hidden" role="status" aria-live="polite" data-copy-status></p>
 }
 
-@* Heaters, and only ever both together. The service can set either alone and nothing here can:
-   a page that could leave one heater on and the other off would be a way to make a mistake
-   quietly. Hidden entirely without CanUse, like every other control on this page. *@
-@if (Model.CanUse)
-{
-    <h2>@Localiser["Printers_Temperature"]</h2>
+@* Everything below is a record rather than a state. Closed by default: it used to be seventy rows
+   of table, and a page whose height is spent on history buries the thing somebody opened it for. *@
+<details class="printer-archive">
+    <summary>@Localiser["Printers_PrintHistory"]</summary>
 
-    <p class="text-body-secondary">
-        @Localiser["Printers_PreheatBoth"]
-    </p>
+    @if (Model.History.Count == 0)
+    {
+        <p>@Localiser["Printers_NothingFinished"]</p>
+    }
+    else
+    {
+        <table class="table table-sm w-auto">
+            <thead>
+                <tr>
+                    <th scope="col">@Localiser["Common_File"]</th>
+                    <th scope="col">@Localiser["Common_Started"]</th>
 
-    @* Cooling is refused mid-print too, which reads as arbitrary unless it is said: the button
-       looks like a safety control and is not one. Said on the page rather than only in the refusal,
-       so nobody has to press it to find out. *@
-    <p class="text-body-secondary">
-        @Html.Raw(string.Format(
-            System.Globalization.CultureInfo.CurrentCulture,
-            Localiser["Printers_PreheatWarning"].Value,
-            $"<strong>{Localiser["Printers_CoolingIncluded"].Value}</strong>",
-            $"<a href=\"{Url.Page("Index")}\">{Localiser["Printers_PrintersListLink"].Value}</a>"))
-    </p>
+                    @* "Outcome", though the property is PrintState.State - and deliberately, not left
+                       over from the rename. This table is filtered to EndedAt != null, and Close() sets
+                       EndedAt and State together, so the only values reachable here are Finished,
+                       Stopped, Failed and Unknown: all of them outcomes. "State" would be the worse
+                       word, inviting "is it printing?" about a table where everything has ended.
 
-    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-        <form method="post" asp-page-handler="Preheat" asp-route-uuid="@Model.Statistics.Printer.Uuid"
-              class="d-flex align-items-center gap-2">
-            <label class="form-label mb-0" for="filament">@Localiser["Printers_PreheatFor"]</label>
+                       Same reason Close(PrintJob, PrintState outcome, ...) keeps "outcome" for its
+                       parameter. The type is named for the whole lifecycle because it spans it; this
+                       column only ever sees the end of it. *@
+                    <th scope="col">@Localiser["Common_Outcome"]</th>
 
-            <select class="form-select w-auto" id="filament" name="filament">
-                @foreach (FilamentPreset preset in Model.Presets)
+                    @* Only when some row can actually offer something, so a table of other people's
+                       prints does not carry an empty column of its own. *@
+                    @if (Model.History.Any(Model.CanReprint))
+                    {
+                        <th scope="col"><span class="visually-hidden">@Localiser["Common_Actions"]</span></th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var job in Model.History)
                 {
-                    <option value="@preset.Name">
-                        @preset.Name &mdash; @preset.NozzleTemperature&deg;C / @preset.BedTemperature&deg;C
-                    </option>
+                    <tr>
+                        <td class="typed-name">@job.FileName</td>
+                        <td>@job.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm",
+                            System.Globalization.CultureInfo.InvariantCulture)</td>
+                        <td>
+                            @job.State
+                            @* A stop says who, because the printer cannot: it reports the same state
+                               change whether somebody pressed stop here or on the panel. *@
+                            @if (job.State == PrintState.Stopped)
+                            {
+                                <br />
+
+                                <span class="text-muted">@Model.StoppedByDescription(job)</span>
+                            }
+                            @* Firmware's own words, and the only place a refused print explains itself.
+                               Without this a queued print that never ran left nothing a person could read. *@
+                            @if (job.Reason is { } reason)
+                            {
+                                <br />
+
+                                <span class="text-muted">@reason</span>
+                            }
+                        </td>
+
+                        @* Your own prints only, and the reason is that the file is found by name in
+                           your own tree: on somebody else's row this would offer to print your
+                           bracket.bgcode believing it was theirs. Offered on every outcome though -
+                           a print that failed or was stopped is exactly the one to run again. *@
+                        @if (Model.History.Any(Model.CanReprint))
+                        {
+                            <td class="text-nowrap">
+                                @if (Model.CanReprint(job))
+                                {
+                                    <form method="post" asp-page-handler="Reprint" asp-route-uuid="@uuid">
+                                        <input type="hidden" name="id" value="@job.TrackingId" />
+                                        <button type="submit" class="btn btn-sm btn-outline-secondary"
+                                                aria-label="@Localiser["Printers_ReprintFile", job.FileName]">@Localiser["Printers_Reprint"]</button>
+                                    </form>
+                                }
+                            </td>
+                        }
+                    </tr>
                 }
-            </select>
+            </tbody>
+        </table>
+    }
+</details>
 
-            <button type="submit" class="btn btn-outline-primary">@Localiser["Printers_Preheat"]</button>
-        </form>
+<details class="printer-archive">
+    <summary>@Localiser["Printers_RecentEvents"]</summary>
 
-        <form method="post" asp-page-handler="Cooldown" asp-route-uuid="@Model.Statistics.Printer.Uuid">
-            <button type="submit" class="btn btn-outline-secondary">@Localiser["Printers_CoolDown"]</button>
-        </form>
+    @if (Model.Statistics.RecentEvents.Count == 0)
+    {
+        <p>@Localiser["Printers_NoEvents"]</p>
+    }
+    else
+    {
+        <table class="table table-sm">
+            <thead>
+                <tr>
+                    <th>@Localiser["Common_Time"]</th>
+                    <th>@Localiser["Common_Event"]</th>
+                    <th>@Localiser["Common_Reason"]</th>
+                    <th>@Localiser["Common_Job"]</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var printerEvent in Model.Statistics.RecentEvents)
+            {
+                <tr>
+                    <td>@printerEvent.Timestamp</td>
+                    <td>@printerEvent.EventType</td>
+                    <td>@(printerEvent.Reason ?? "-")</td>
+                    <td>@(printerEvent.JobId?.ToString() ?? "-")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</details>
+
+
+@* Last on the page, and behind CanManage. Deleting a printer is not an edit to it - it takes the
+   telemetry, the events, the print history, the queue, the enrolment and any camera watching it,
+   none of which comes back. The typed name is the whole safety mechanism, so what goes is stated
+   above the box rather than left to a dialog somebody dismisses.
+
+   Deliberately not inside a printer-archive disclosure like the two above it: those hold records,
+   and this is an action. It sits below them because it is the one control on the page nobody should
+   reach by accident. *@
+@if (Model.CanManage)
+{
+    <h2 class="h5">@Localiser["Printers_DeleteHeading"]</h2>
+
+    <div class="card border-danger mb-4">
+        <div class="card-body">
+            <p>@Localiser["Printers_DeleteWarning"]</p>
+            <p class="text-body-secondary small">@Localiser["Printers_DeleteKnocking"]</p>
+
+            <form method="post" asp-page-handler="Delete" asp-route-uuid="@uuid"
+                  class="row row-cols-lg-auto g-2 align-items-end">
+                <div class="col-12">
+                    <label class="form-label" for="delete-confirmation">
+                        @Localiser["Printers_DeleteConfirmLabel", printerName]
+                    </label>
+                    @* No autocomplete: the browser offering the name back would undo the point of
+                       asking for it. *@
+                    <input class="form-control" id="delete-confirmation" name="confirmation"
+                           autocomplete="off" required />
+                </div>
+
+                <div class="col-12">
+                    <button type="submit" class="btn btn-danger">@Localiser["Printers_DeleteButton"]</button>
+                </div>
+            </form>
+        </div>
     </div>
 }
 
-@* Setting ready is a person asserting the sheet is clear, which is why the walk to the machine was
-   never pure friction - it forced somebody to look. Off unless this printer has been judged one whose
-   sheet can be read from here, so the control is absent rather than refusing. *@
+@* The dialog is gated on CanUse and on there being a choice - and on nothing else. It first
+   went in beside the Set ready modal and inherited that block's RemoteReadyAllowed, so the
+   trigger pointed at markup which was simply absent on any printer without the ready toggle:
+   a button that did nothing, with no error anywhere. *@
+@if (Model.CanUse && Model.UnloadNeedsPicker)
+{
+    @* A picker, not a confirmation - which is why it exists here and the single-tool button has no
+       dialog at all. It is the thing that reaches tools that are not on the carriage: M702 carries an
+       explicit T and firmware changes to that tool itself (M701_2.cpp:168-171), so "picked" is a cost
+       here rather than a constraint.
+
+       Rendered from the page load, not from the poll: the control strip sits outside the refreshed
+       region on purpose, so these temperatures are as old as the page. That is the honest trade for
+       not having the markup replaced under somebody mid-choice - see notes/printer-page.md §6e. *@
+        <div class="modal fade" id="unload-tool" tabindex="-1" aria-labelledby="unload-tool-heading" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <form method="post" asp-page-handler="Unload" asp-route-uuid="@uuid">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="unload-tool-heading">@Localiser["Printers_UnloadWhichTool"]</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                    aria-label="@Localiser["Common_Cancel"]"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p class="text-body-secondary small">@Localiser["Printers_UnloadPickerNote"]</p>
+
+                            <div data-unload-tools
+                                 data-unload-tools-url="@Url.Page("Detail", "Tools", new { uuid })">
+                                <partial name="_UnloadTools" model="Model" />
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                                @Localiser["Common_Cancel"]
+                            </button>
+                            <button type="submit" class="btn btn-outline-primary">@Localiser["Printers_UnloadConfirm"]</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+}
+
 @if (Model.CanUse && Model.Statistics.Printer.RemoteReadyAllowed)
 {
-    string readyPrinterName = Model.Statistics.Printer.Name
-                              ?? Model.Statistics.Printer.Model
-                              ?? Model.Statistics.Printer.Uuid.ToString();
-
-    <div class="mb-3">
-        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#set-ready">
-            @Localiser["Intent_SetPrinterReady"]
-        </button>
-    </div>
-
     <div class="modal fade" id="set-ready" tabindex="-1" aria-labelledby="set-ready-heading" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
@@ -357,16 +566,16 @@ else
                     <h5 class="modal-title" id="set-ready-heading">
                         @string.Format(System.Globalization.CultureInfo.CurrentCulture,
                                        Localiser["Printers_ReadyHeading"].Value,
-                                       readyPrinterName)
+                                       printerName)
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"
                             aria-label="@Localiser["Common_Cancel"]"></button>
                 </div>
 
                 <div class="modal-body">
-                    @* The same polled frame the top of the page uses, not a second snapshot path -
-                       camera.js binds every [data-camera-frame] it finds. Seeing the sheet is what
-                       makes answering the question honest rather than a guess. *@
+                    @* The same polled frame the page uses, not a second snapshot path - camera.js
+                       binds every [data-camera-frame] it finds. Seeing the sheet is what makes
+                       answering the question honest rather than a guess. *@
                     @if (Model.Cameras.Count > 0)
                     {
                         <div class="camera-view ratio ratio-16x9 border rounded bg-body-tertiary overflow-hidden mb-3"
@@ -385,7 +594,7 @@ else
                         <p class="text-body-secondary">
                             @string.Format(System.Globalization.CultureInfo.CurrentCulture,
                                            Localiser["Printers_ReadyNoCamera"].Value,
-                                           readyPrinterName)
+                                           printerName)
                         </p>
                     }
 
@@ -402,7 +611,7 @@ else
                         @Localiser["Common_Cancel"]
                     </button>
 
-                    <form method="post" asp-page-handler="Ready" asp-route-uuid="@Model.Statistics.Printer.Uuid">
+                    <form method="post" asp-page-handler="Ready" asp-route-uuid="@uuid">
                         <button type="submit" class="btn btn-primary">@Localiser["Printers_ReadyConfirm"]</button>
                     </form>
                 </div>
@@ -411,190 +620,10 @@ else
     </div>
 }
 
-@* Whether the prompt above can be answered honestly for this printer is a standing judgement about
-   the machine, so it sits behind CanManage rather than CanUse: decided once by somebody who has seen
-   it, inherited by everyone who has not. *@
-@if (Model.CanManage)
-{
-    <div class="mb-3">
-        @* The switch is the control, not a picture of one. An unchecked checkbox posts nothing, so
-           the handler's bool binds false on its own and no hidden field is needed to carry the
-           flipped value. The Save button is the no-script path and toggle-submit.js hides it. *@
-        <form method="post" asp-page-handler="RemoteReady" asp-route-uuid="@Model.Statistics.Printer.Uuid">
-            <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" role="switch" id="remote-ready"
-                       name="allowed" value="true" data-submit-on-change
-                       @(Model.Statistics.Printer.RemoteReadyAllowed ? "checked" : null) />
-                <label class="form-check-label" for="remote-ready">@Localiser["Printers_RemoteReadyLabel"]</label>
-            </div>
-
-            <p class="text-body-secondary small mt-1">@Localiser["Printers_RemoteReadyHelp"]</p>
-
-            <button type="submit" class="btn btn-outline-secondary btn-sm" data-submit-fallback>
-                @Localiser["Common_Save"]
-            </button>
-        </form>
-    </div>
-}
-
-<h2>@Localiser["Printers_PrintHistory"]</h2>
-
-@if (Model.History.Count == 0)
-{
-    <p>@Localiser["Printers_NothingFinished"]</p>
-}
-else
-{
-    <table class="table table-sm w-auto">
-        <thead>
-            <tr>
-                <th scope="col">@Localiser["Common_File"]</th>
-                <th scope="col">@Localiser["Common_Started"]</th>
-
-                @* "Outcome", though the property is PrintState.State - and deliberately, not left
-                   over from the rename. This table is filtered to EndedAt != null, and Close() sets
-                   EndedAt and State together, so the only values reachable here are Finished,
-                   Stopped, Failed and Unknown: all of them outcomes. "State" would be the worse
-                   word, inviting "is it printing?" about a table where everything has ended.
-
-                   Same reason Close(PrintJob, PrintState outcome, ...) keeps "outcome" for its
-                   parameter. The type is named for the whole lifecycle because it spans it; this
-                   column only ever sees the end of it. *@
-                <th scope="col">@Localiser["Common_Outcome"]</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var job in Model.History)
-            {
-                <tr>
-                    <td class="typed-name">@job.FileName</td>
-                    <td>@job.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm",
-                        System.Globalization.CultureInfo.InvariantCulture)</td>
-                    <td>
-                        @job.State
-                        @* A stop says who, because the printer cannot: it reports the same state
-                           change whether somebody pressed stop here or on the panel. *@
-                        @if (job.State == Homespool.Model.PrintState.Stopped)
-                        {
-                            <br />
-
-                            <span class="text-muted">@Model.StoppedByDescription(job)</span>
-                        }
-                        @* Firmware's own words, and the only place a refused print explains itself.
-                           Without this a queued print that never ran left nothing a person could read. *@
-                        @if (job.Reason is { } reason)
-                        {
-                            <br />
-
-                            <span class="text-muted">@reason</span>
-                        }
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
-}
-
-<h2>@Localiser["Printers_RecentTelemetry"]</h2>
-
-@if (Model.Statistics.RecentSamples.Count == 0)
-{
-    <p>@Localiser["Printers_NoTelemetryHistory"]</p>
-}
-else
-{
-    <table class="table table-sm">
-        <thead>
-            <tr>
-                <th>@Localiser["Common_Time"]</th>
-                <th>@Localiser["Common_Status"]</th>
-                <th>@Localiser["Printers_Progress"]</th>
-                <th>@Localiser["Printers_Nozzle"]</th>
-                <th>@Localiser["Printers_Bed"]</th>
-                <th>@Localiser["Printers_Speed"]</th>
-            </tr>
-        </thead>
-        <tbody>
-        @foreach (var sample in Model.Statistics.RecentSamples)
-        {
-            <tr>
-                <td>@sample.Timestamp</td>
-                <td>@sample.Status</td>
-                <td>@(sample.Progress is { } progress ? $"{progress}%" : "-")</td>
-                <td>@(sample.NozzleTemperature?.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture) ?? "-")</td>
-                <td>@(sample.BedTemperature?.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture) ?? "-")</td>
-                <td>@(sample.Speed is { } speed ? $"{speed}%" : "-")</td>
-            </tr>
-        }
-        </tbody>
-    </table>
-}
-
-<h2>@Localiser["Printers_RecentEvents"]</h2>
-
-@if (Model.Statistics.RecentEvents.Count == 0)
-{
-    <p>@Localiser["Printers_NoEvents"]</p>
-}
-else
-{
-    <table class="table table-sm">
-        <thead>
-            <tr>
-                <th>@Localiser["Common_Time"]</th>
-                <th>@Localiser["Common_Event"]</th>
-                <th>@Localiser["Common_Reason"]</th>
-                <th>@Localiser["Common_Job"]</th>
-            </tr>
-        </thead>
-        <tbody>
-        @foreach (var printerEvent in Model.Statistics.RecentEvents)
-        {
-            <tr>
-                <td>@printerEvent.Timestamp</td>
-                <td>@printerEvent.EventType</td>
-                <td>@(printerEvent.Reason ?? "-")</td>
-                <td>@(printerEvent.JobId?.ToString() ?? "-")</td>
-            </tr>
-        }
-        </tbody>
-    </table>
-}
-
-@* Last on the page, and behind CanManage. Deleting a printer is not an edit to it - it takes the
-   telemetry, the events, the print history, the queue, the enrolment and any camera watching it,
-   none of which comes back. The typed name is the whole safety mechanism, so the list of what goes
-   is stated above the box rather than left to a dialog somebody dismisses. *@
-@if (Model.CanManage)
-{
-    <h2>@Localiser["Printers_DeleteHeading"]</h2>
-
-    <div class="card border-danger mb-3">
-        <div class="card-body">
-            <p>@Localiser["Printers_DeleteWarning"]</p>
-            <p class="text-body-secondary small">@Localiser["Printers_DeleteKnocking"]</p>
-
-            <form method="post" asp-page-handler="Delete" asp-route-uuid="@Model.Statistics.Printer.Uuid"
-                  class="row row-cols-lg-auto g-2 align-items-center">
-                <div class="col-12">
-                    <label class="form-label" for="delete-confirmation">
-                        @Localiser["Printers_DeleteConfirmLabel", Model.DisplayName]
-                    </label>
-                    @* No autocomplete: the browser offering the name back would undo the point of
-                       asking for it. *@
-                    <input class="form-control" id="delete-confirmation" name="confirmation"
-                           autocomplete="off" required />
-                </div>
-
-                <div class="col-12 align-self-end">
-                    <button type="submit" class="btn btn-danger">@Localiser["Printers_DeleteButton"]</button>
-                </div>
-            </form>
-        </div>
-    </div>
-}
-
 @section Scripts {
+    <script src="~/js/live-region.js" asp-append-version="true"></script>
+    <script src="~/js/unload-tools.js" asp-append-version="true"></script>
+    <script src="~/js/dismiss-alert.js" asp-append-version="true"></script>
     <script src="~/js/camera.js" asp-append-version="true"></script>
     <script src="~/js/camera-live.js" asp-append-version="true"></script>
     <script src="~/js/camera-maximise.js" asp-append-version="true"></script>

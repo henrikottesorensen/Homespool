@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -21,6 +22,7 @@ using Homespool.FakePrinter;
 using Homespool.Host.Controllers;
 using Homespool.Host.Localisation;
 using Homespool.Host.PrintFiles;
+using Homespool.Host.PrusaConnect;
 using Homespool.Host.Queue;
 using Homespool.Host.Services;
 using Homespool.Model;
@@ -107,6 +109,30 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
                 PrintingInterval = TimeSpan.FromMilliseconds(200),
             },
         };
+    }
+
+    /// <summary>
+    /// Rebuilds the host with a shorter command response timeout, so a printer that answers late can
+    /// answer a second late rather than eleven.
+    /// </summary>
+    /// <remarks>
+    /// <b>Per test rather than for the class</b>, because the timeout is the thing under test in
+    /// exactly one of them and a shared short one would make every other test here sensitive to how
+    /// busy the machine is. The database is the outer factory's, so the rebuilt host reads the same
+    /// file.
+    /// </remarks>
+    private void UseCommandTimeout(TimeSpan timeout)
+    {
+        _factory.Dispose();
+        _factory = _root.WithWebHostBuilder(
+            builder => builder.ConfigureServices(
+                services => services.Configure<PrusaConnectOptions>(
+                    connect => connect.CommandResponseTimeoutSeconds = timeout.TotalSeconds)));
+
+        _ = _factory.Server;
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+        scope.ServiceProvider.GetRequiredService<SetupState>().MarkComplete();
     }
 
     private static async Task<bool> WaitUntilAsync(Func<Task<bool>> predicate, TimeSpan timeout)
@@ -300,6 +326,118 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         PrintJob finished = await SingleJobAsync(printerId);
         finished.State.Should().Be(PrintState.Finished);
         finished.EndedAt.Should().NotBeNull();
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// A printer that takes the print and answers too late is not treated as having refused it - and
+    /// the file is not printed a second time.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The defect of 2026-08-21, reproduced end to end.</b> A queued file transferred, the printer
+    /// was made ready, <c>START_PRINT</c> went out - and the printer began homing and heating and did
+    /// not answer inside the command timeout. The loop recorded that as "the print did not happen",
+    /// so the entry stayed in the queue with a live print running, ready to print the same file again
+    /// the moment somebody cleared the bed. That is the last act of this test.
+    /// </para>
+    /// <para>
+    /// <b>The delay is scoped to <c>START_PRINT</c> because the printer's slowness was.</b> Hardware
+    /// defers the ack of the command that set it working; the questions asked before and after are
+    /// answered at ordinary speed, and the question asked <i>because</i> that command went unanswered
+    /// is the whole resolution. A fake that answered everything late could not reach the interesting
+    /// case at all.
+    /// </para>
+    /// <para>
+    /// <b>What this cannot show</b>, for the standing reason: the fake transitions instantly, so the
+    /// printer here is <c>PRINTING</c> the moment it accepts. Real firmware spends seconds still
+    /// reporting <c>READY</c>, which is why the resolution rules have a grace period the fake never
+    /// exercises - that half lives in <c>PrintStartRulesTests</c>.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task APrintTheHardwareTookButAnsweredLateForIsNotStartedTwice()
+    {
+        // Arrange - a command timeout a test can outlast, and a printer that acknowledges START_PRINT
+        // well after it
+        UseCommandTimeout(TimeSpan.FromSeconds(1));
+
+        (PrinterIdentity identity, string token, int printerId, long userId) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        FakePrinterOptions options = FastTelemetry();
+        options = new FakePrinterOptions
+        {
+            TelemetrySource = options.TelemetrySource,
+            Policy = new DelayedReplyPolicy(new FirmwareFaithfulPolicy(identity, TimeProvider.System),
+                                            TimeSpan.FromSeconds(4),
+                                            new HashSet<string>(StringComparer.Ordinal) { "START_PRINT" }),
+        };
+
+        await using FakePrinterClient fake = new(identity, TimeProvider.System, options) { Token = token };
+        await fake.ConnectAsync(ConnectAsync, TestContext.Current.CancellationToken);
+        Task run = fake.RunAsync(TestContext.Current.CancellationToken);
+
+        (await WaitUntilAsync(() => Task.FromResult(Registry.IsConnected(printerId)), TimeSpan.FromSeconds(10)))
+            .Should().BeTrue();
+
+        await UploadAsync(userId, "late.bgcode");
+        await EnqueueAsync(printerId, userId, "late.bgcode");
+
+        await AdvanceAsync(printerId);
+        (await WaitUntilAsync(async () => await ArrivedAsync(printerId), TimeSpan.FromSeconds(30))).Should().BeTrue();
+
+        fake.Device.TrySetReady().Should().BeTrue();
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Ready), TimeSpan.FromSeconds(30)))
+            .Should().BeTrue();
+
+        // Act 1 - the print is commanded, and the answer never arrives in time
+        await AdvanceAsync(printerId);
+
+        // Assert - the printer really is printing, and the loop knows only that it asked
+        fake.Device.State.Should().Be(DeviceState.Printing, "the printer accepted the command it was slow to answer");
+
+        PrintJob unconfirmed = await ActiveAsync(printerId);
+        unconfirmed.State.Should().Be(PrintState.Unconfirmed);
+        (await QueueDepthAsync(printerId)).Should().Be(1, "nothing has confirmed that the entry can be consumed");
+
+        // Act 2 - the loop asks the printer what it is printing
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Printing), TimeSpan.FromSeconds(30)))
+            .Should().BeTrue();
+
+        (await WaitUntilAsync(async () =>
+                              {
+                                  await AdvanceAsync(printerId);
+
+                                  return (await ActiveAsync(printerId)).State != PrintState.Unconfirmed;
+                              },
+                              TimeSpan.FromSeconds(30)))
+            .Should().BeTrue("SEND_JOB_INFO names the file, which is what identifies the print as ours");
+
+        PrintJob adopted = await ActiveAsync(printerId);
+        adopted.FileName.Should().Be("late.bgcode");
+        adopted.FirmwareJobId.Should().Be(fake.Device.JobId, "the two id spaces are mapped, not reconciled");
+        (await QueueDepthAsync(printerId)).Should().Be(0, "now the entry has done its job");
+
+        // Act 3 - the print ends and somebody clears the bed, which is where the duplicate used to run
+        fake.Device.FinishPrint().Should().BeTrue();
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Finished), TimeSpan.FromSeconds(30)))
+            .Should().BeTrue();
+
+        await AdvanceAsync(printerId);
+
+        fake.Device.TrySetIdle().Should().BeTrue();
+        fake.Device.TrySetReady().Should().BeTrue();
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Ready), TimeSpan.FromSeconds(30)))
+            .Should().BeTrue();
+
+        await AdvanceAsync(printerId);
+        await AdvanceAsync(printerId);
+
+        // Assert - one print, and the printer is idle-handed
+        fake.Device.State.Should().Be(DeviceState.Ready, "the queue is empty; there is nothing left to print");
+        (await JobCountAsync(printerId)).Should().Be(1, "one intention, one print");
 
         await EndRunAsync(fake, run);
     }

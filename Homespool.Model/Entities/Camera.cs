@@ -50,6 +50,12 @@ public class Camera
     /// </summary>
     public const int ResolutionMaxLength = 16;
 
+    /// <summary>A camera's user name is not the secret, so it is stored in the clear.</summary>
+    public const int CredentialUserMaxLength = 128;
+
+    /// <summary>Generous: this holds Data Protection ciphertext, not the password itself.</summary>
+    public const int CredentialSecretMaxLength = 1024;
+
     /// <summary>
     /// Surrogate primary key.
     /// </summary>
@@ -97,6 +103,28 @@ public class Camera
     /// </para>
     /// </remarks>
     public string Source { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The user name a network camera is reached with, stored in the clear beside the address.
+    /// </summary>
+    /// <remarks>
+    /// Not the secret, and the edit form shows it: whoever is changing a camera needs to know which
+    /// account it uses. Null for a camera that needs no credential, which is most of them.
+    /// </remarks>
+    [MaxLength(CredentialUserMaxLength)]
+    public string? CredentialUser { get; set; }
+
+    /// <summary>
+    /// The camera's password, as Data Protection ciphertext.
+    /// </summary>
+    /// <remarks>
+    /// A camera password is presented on every connection, so it cannot be hashed - see
+    /// <c>CameraCredentialProtector</c>, which owns what this buys and what it does not. Null when
+    /// the camera needs no password, and also on a row saved before the split, which still carries
+    /// the credential inline in <see cref="Source"/> until its next save.
+    /// </remarks>
+    [MaxLength(CredentialSecretMaxLength)]
+    public string? CredentialSecret { get; set; }
 
     /// <summary>
     /// The capture size asked of a camera attached to this machine, as <c>WIDTHxHEIGHT</c>, or

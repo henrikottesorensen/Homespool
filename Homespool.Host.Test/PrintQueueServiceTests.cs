@@ -529,6 +529,90 @@ public sealed class PrintQueueServiceTests : IDisposable
             .Should().BeNull();
     }
 
+    /// <summary>
+    /// The front page's "3 queued", counted per printer in one query.
+    /// </summary>
+    /// <remarks>
+    /// Whose entries they are does not matter, unlike the usage count next door: a queue is shared
+    /// per printer, so what the tile reports is the depth of the queue rather than the reader's share
+    /// of it.
+    /// </remarks>
+    [Fact]
+    public async Task CountsWhatIsQueuedOnEachPrinter()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer busy = await SeedAsync(context, canUse: true);
+
+        Printer quiet = new() { Uuid = Guid.NewGuid(), TeamId = busy.TeamId };
+        context.Printers.Add(quiet);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await UploadAsync(context, "one.gcode", "two.gcode", "three.gcode");
+
+        PrintQueueService queue = NewQueue(context);
+        await queue.EnqueueAsync(busy.Id, Caller.Unscoped(Alice), "one.gcode", TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(busy.Id, Caller.Unscoped(Alice), "two.gcode", TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(quiet.Id, Caller.Unscoped(Alice), "three.gcode", TestContext.Current.CancellationToken);
+
+        // Act
+        IReadOnlyDictionary<int, int> counts =
+            await queue.CountByPrinterAsync([busy.Id, quiet.Id], TestContext.Current.CancellationToken);
+
+        // Assert
+        counts[busy.Id].Should().Be(2);
+        counts[quiet.Id].Should().Be(1);
+    }
+
+    /// <summary>
+    /// A printer outside the granted set contributes nothing, even with entries of its own - the
+    /// front page must not leak the shape of a rack through a count.
+    /// </summary>
+    [Fact]
+    public async Task CountsNothingForAPrinterOutsideTheGrantedSet()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer granted = await SeedAsync(context, canUse: true);
+
+        Printer withheld = new() { Uuid = Guid.NewGuid(), TeamId = granted.TeamId };
+        context.Printers.Add(withheld);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await UploadAsync(context, "one.gcode", "two.gcode");
+
+        PrintQueueService queue = NewQueue(context);
+        await queue.EnqueueAsync(granted.Id, Caller.Unscoped(Alice), "one.gcode", TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(withheld.Id, Caller.Unscoped(Alice), "two.gcode", TestContext.Current.CancellationToken);
+
+        // Act
+        IReadOnlyDictionary<int, int> counts =
+            await queue.CountByPrinterAsync([granted.Id], TestContext.Current.CancellationToken);
+
+        // Assert
+        counts.Should().ContainSingle();
+        counts.ContainsKey(withheld.Id).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// A printer with an empty queue is absent rather than present with a zero, which is what lets
+    /// the page render nothing for it without a second check.
+    /// </summary>
+    [Fact]
+    public async Task LeavesAnEmptyQueueOutOfTheResult()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, canUse: true);
+
+        // Act
+        IReadOnlyDictionary<int, int> counts =
+            await NewQueue(context).CountByPrinterAsync([printer.Id], TestContext.Current.CancellationToken);
+
+        // Assert
+        counts.Should().BeEmpty();
+    }
+
     private async Task<Printer> SeedAsync(HomespoolDbContext context, bool canUse)
     {
         HSUser user = new("alice@example.com")
@@ -588,7 +672,8 @@ public sealed class PrintQueueServiceTests : IDisposable
                                        new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
                                        new QueueSnapshotReader(context,
                                                                new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance),
-                                                               TimeProvider.System));
+                                                               TimeProvider.System),
+                                       new UserNameLookup(context));
     }
 
     private PrintQueueService NewQueue(HomespoolDbContext context)

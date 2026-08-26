@@ -1,0 +1,38 @@
+@model DetailModel
+
+@* The tool rows, alone, so the dialog can fetch them when it opens instead of carrying whatever was
+   true at page load. The control strip sits outside the polled region on purpose - replacing markup
+   under an open dialog would be worse than staleness - so this is fetched once, on show.
+
+   It has to be its own handler's state, not the page's: notes/printer-page.md §6e. A fragment that
+   renders something only the full page load supplies fails silently and invisibly. *@
+@foreach (var tool in Model.ToolStates)
+{
+    <div class="form-check mb-2 @(tool.CanUnload ? null : "text-body-secondary")">
+        <input class="form-check-input" type="radio" name="tool"
+               value="@tool.ToolNumber" id="unload-tool-@tool.ToolNumber"
+               disabled="@(!tool.CanUnload)"
+               checked="@(tool.ToolNumber == Model.UnloadableTools[0].ToolNumber)" />
+        <label class="form-check-label d-flex justify-content-between gap-3"
+               for="unload-tool-@tool.ToolNumber">
+            <span>
+                @* An empty tool is listed and inert rather than hidden: hiding it
+                   would make this disagree with the machine, where the head is
+                   plainly there. *@
+                @(tool.CanUnload
+                    ? Localiser["Printers_ToolWithMaterial", tool.ToolNumber, tool.Material!].Value
+                    : Localiser["Printers_ToolEmpty", tool.ToolNumber].Value)
+            </span>
+            <span class="text-body-secondary small">
+                @if (tool.Temperature is { } temperature)
+                {
+                    @Localiser["Printers_Degrees", temperature.ToString("0", System.Globalization.CultureInfo.CurrentCulture)]
+                }
+                @if (tool.IsPicked)
+                {
+                    <span>&middot; @Localiser["Printers_ToolPicked"]</span>
+                }
+            </span>
+        </label>
+    </div>
+}

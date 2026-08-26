@@ -1,15 +1,19 @@
 // Please see documentation at https://docs.microsoft.com/aspnet/core/client-side/bundling-and-minification
 // for details on configuring this project to bundle and minify static web assets.
 
-// Dropping a file onto the upload area puts it in the file input, and nothing else.
+// Dropping a file onto the upload area uploads it.
 //
 // Deliberately an enhancement rather than an upload path of its own: the drop hands the file to the
-// input the form already posts, so submitting still goes through the same handler, the same
-// antiforgery token and the same multipart body. With scripting off the picker works exactly as it
-// did - which is why this is the whole of the app's JavaScript rather than the start of an uploader.
+// input the form already posts and then submits that form, so it goes through the same handler, the
+// same antiforgery token and the same multipart body. With scripting off the picker works exactly as
+// it did - which is why this is still not the start of an uploader.
 //
-// It also stops at filling the input rather than submitting it. One code path stays one code path,
-// and a file dropped by accident does not begin a 300 MB upload before anyone can object.
+// It used to stop at filling the input, so that a file dropped by accident could not begin a 300 MB
+// upload before anyone could object. That trade is reversed deliberately: the objection window cost
+// a press on every single upload, including the overwhelming majority that were meant, and a drop
+// onto a file list is recoverable - the file lands in your own tree and can be deleted. The same
+// gesture onto a *printer* is not equally cheap, which is why the printer page's box answers the
+// question separately rather than inheriting this.
 (function () {
     "use strict";
 
@@ -60,6 +64,17 @@
         // So anything watching the input - validation now, a preview later - sees the same event it
         // would have seen had the file been chosen through the picker.
         input.dispatchEvent(new Event("change", { bubbles: true }));
+
+        // requestSubmit rather than submit: it runs the form's own validation and fires the submit
+        // event, where submit() silently skips both. The fallback is for a browser without it, where
+        // skipping validation is better than a drop that does nothing at all.
+        if (input.form) {
+            if (input.form.requestSubmit) {
+                input.form.requestSubmit();
+            } else {
+                input.form.submit();
+            }
+        }
     });
 })();
 

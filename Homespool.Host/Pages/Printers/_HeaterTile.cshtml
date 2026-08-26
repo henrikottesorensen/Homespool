@@ -1,0 +1,57 @@
+@using System.Globalization
+@model HeaterTile
+
+@* Where a heater is, and - the point of the tile - where it is going. The two numbers on their own
+   make a reader do the subtraction; the line underneath does it for them. *@
+
+@{
+    var culture = CultureInfo.CurrentCulture;
+
+    @* Whole degrees. A nozzle reporting 214.6 is at 215 for every purpose somebody reads this for,
+       and a tenth that changes every second is movement without information.
+
+       The unit comes from Printers_Degrees rather than being written here, and that is the one thing
+       in this file worth not simplifying: en-US states "°C" where en-GB and da leave it off, because
+       an unqualified 215° reads as Fahrenheit to an American - which has gone wrong in support before
+       now. It is the whole reason an en-US resource file exists. See notes/localisation.md. *@
+    string Degrees(float? value) =>
+        value is { } reading ? Localiser["Printers_Degrees", reading.ToString("0", culture)].Value : "—";
+}
+
+<div class="printer-metric h-100 printer-metric-@Model.Reading.State.ToString().ToLowerInvariant()">
+    <div class="printer-metric-label">@Model.Label</div>
+
+    <div class="printer-metric-value">@Degrees(Model.Reading.Current)</div>
+
+    <div class="printer-metric-note">
+        @switch (Model.Reading.State)
+        {
+            case HeaterState.Heating:
+                @Localiser["Printers_HeaterHeatingTo", Degrees(Model.Reading.Target)]
+                break;
+
+            case HeaterState.AtTarget:
+                @Localiser["Printers_HeaterAtTarget", Degrees(Model.Reading.Target)]
+                break;
+
+            @* Two sentences, because they are two situations. A heater cooling towards a lower
+               setpoint is still being driven; one cooling with no setpoint at all was switched off
+               and is on its way down by itself. *@
+            case HeaterState.Cooling when Model.Reading.Target is > 0:
+                @Localiser["Printers_HeaterCoolingTo", Degrees(Model.Reading.Target)]
+                break;
+
+            case HeaterState.Cooling:
+                @Localiser["Printers_HeaterCooling"]
+                break;
+
+            case HeaterState.Off:
+                @Localiser["Printers_HeaterOff"]
+                break;
+
+            @* Unknown and Measured both say nothing, for opposite reasons: one has no reading to
+               describe, the other has no setpoint to describe it against. Either way an invented
+               word underneath would be worse than the space. *@
+        }
+    </div>
+</div>

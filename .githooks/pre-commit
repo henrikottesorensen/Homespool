@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+#
+# Refuses a commit that stages a credential file, or that adds a secret or a network identifier to
+# a tracked one.
+#
+# Cloning does not install this - git runs no hook it has not been pointed at. Turn it on with
+#
+#     git config core.hooksPath .githooks
+#
+# which is per-clone, and a relative path there resolves against the MAIN checkout - so this script
+# runs from every worktree even when the worktree's own branch has no copy of it. That covers the
+# hook and not its config, which is a separate problem solved further down. `git commit --no-verify`
+# skips the whole thing.
+
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+# Added, copied, modified or renamed. Deletions cannot introduce anything.
+staged="$(git diff --cached --name-only --diff-filter=ACMR)"
+[ -n "$staged" ] || exit 0
+
+# ------------------------------------------------------------------------------------------------
+# 1. Files that are a credential by their name alone.
+#
+# .gitignore lists every one of these already, and that is not enough on its own: `git add -f` walks
+# straight past it, and a file that is already in the index is not governed by it at all. That is
+# how rig/api-token~ reached a commit on 2026-07-28 and had to be amended out - the bare name was
+# listed, the editor backup beside it was not, and `git add -A` took it.
+#
+# So this is the same list enforced one step later, at the point where it would actually be
+# committed, where neither -f nor a stale index entry can get round it.
+# ------------------------------------------------------------------------------------------------
+blocked="$(printf '%s\n' "$staged" \
+    | grep -E '(^|/)\.env($|\.)|(^|/)rig/identity\.json$|(^|/)rig/api-token|(^|/)rig/(tls|lab)/|(^|/)private-captures/|(^|/)mitmattempt/|(^|/)logs/|\.(key|pfx|pem|p12)$' \
+    | grep -vE '(^|/)\.env\.example$' || true)"
+
+if [ -n "$blocked" ]; then
+    echo "pre-commit: refusing to commit a credential file." >&2
+    echo >&2
+    printf '  %s\n' $blocked >&2
+    echo >&2
+    echo "These are gitignored. Staging one means -f, or an index entry that predates the rule." >&2
+    echo "If it is genuinely not a credential, take it off the list in .githooks/pre-commit." >&2
+    exit 1
+fi
+
+# ------------------------------------------------------------------------------------------------
+# 2. Secrets and network identifiers in the staged content itself.
+#
+# --staged reads the diff, so this sees only what this commit adds. Something already committed on a
+# line nobody touched does not come back every time.
+#
+# Rules and the reasoning behind the custom ones are in .betterleaks.toml.
+# ------------------------------------------------------------------------------------------------
+if ! command -v betterleaks >/dev/null 2>&1; then
+    echo "pre-commit: betterleaks is not installed, so nothing scanned the staged content." >&2
+    echo >&2
+    echo "  brew install betterleaks" >&2
+    echo >&2
+    echo "Failing rather than passing quietly: a hook that skips its only check on a machine that" >&2
+    echo "happens to lack the tool is worse than no hook, because it still reads as one. Use" >&2
+    echo "\`git commit --no-verify\` if you have decided to commit without it." >&2
+    exit 1
+fi
+
+# A relative core.hooksPath resolves against the main checkout, not the worktree, so this hook runs
+# from every worktree attached to the clone - but a worktree on a branch predating .betterleaks.toml
+# has no such file, and betterleaks treats a missing --config as fatal rather than falling back to
+# its own defaults. Without this fallback, committing from one of those worktrees fails claiming the
+# staged content holds a secret, which is a lie about a scan that never ran.
+#
+# The worktree's own copy wins where it exists, so a branch can change the rules and have them apply
+# to itself before they are merged.
+config="$repo_root/.betterleaks.toml"
+[ -f "$config" ] || config="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)/.betterleaks.toml"
+
+if [ ! -f "$config" ]; then
+    echo "pre-commit: no .betterleaks.toml in this worktree or the main checkout." >&2
+    echo "Nothing defines the rules, so nothing was scanned." >&2
+    exit 1
+fi
+
+# --exit-code 2 separates "found something" from "could not run". Betterleaks exits 1 for a missing
+# config, an unknown flag and an unreadable repository alike, so without this every tool failure is
+# reported to whoever is committing as a leak in their own changes.
+scan=0
+betterleaks git --staged --no-banner --redact --exit-code 2 --config "$config" || scan=$?
+
+case "$scan" in
+    0) ;;
+    2)
+        echo >&2
+        echo "pre-commit: the staged changes contain something that reads as a secret." >&2
+        echo >&2
+        echo "If it is a real credential, take it out - amending later does not unpublish it." >&2
+        echo "If it is a deliberate test value or a placeholder, append a \`betterleaks:allow\` comment" >&2
+        echo "on the line, which documents the decision where the next reader will find it." >&2
+        exit 1
+        ;;
+    *)
+        echo >&2
+        echo "pre-commit: betterleaks could not complete the scan (exit $scan), so nothing was checked." >&2
+        echo "Config: $config" >&2
+        echo "Fix the tool or the config rather than reading this as a clean result." >&2
+        exit 1
+        ;;
+esac

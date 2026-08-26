@@ -1,0 +1,89 @@
+title = 'Homespool'
+
+# Secret scanning for this repo, on top of the shipped ruleset rather than instead of it.
+#
+# Betterleaks and not gitleaks: gitleaks is feature-frozen by its own author, who now maintains
+# betterleaks - "I'm not merging new features into Gitleaks. Future releases will be security
+# patches only." Its config format is close but not identical, so this file does not double as a
+# .gitleaks.toml.
+#
+# `filter` is an Expr expression that SUPPRESSES a finding when it evaluates true. Available:
+# finding["secret"], finding["match"], finding["line"], finding["captures"], attributes["path"].
+[extend]
+useDefault = true
+
+# ------------------------------------------------------------------------------------------------
+# The suite's own fixture passwords.
+#
+# `[[allowlists]]` is the one global hook that survives `[extend]` - a top-level `filter` or
+# `prefilter` is silently discarded, so this is not interchangeable with those. It is the older
+# gitleaks-shaped form and undocumented in what betterleaks publishes; verified by scanning a sample
+# with it and without.
+#
+# Allowlisted by value rather than by path, deliberately. Excluding `*Test*` would blind the scanner
+# in exactly the place credential-shaped strings legitimately live, and a real credential pasted into
+# a test is a thing worth hearing about. Naming the literals instead means the canonical fixture
+# password is free and anything new is still questioned - which is the right nudge, since the suite
+# already reuses one string in a dozen files.
+#
+# Anything genuinely new and genuinely fake wants `betterleaks:allow` on its line, not an entry here.
+# ------------------------------------------------------------------------------------------------
+[[allowlists]]
+description = "The suite's fixture passwords, and the wrong-password values tested against them"
+regexes = [
+  '''(?:Correct|Different)-Horse-Battery-Staple-\d!''',
+  '''^hunter2$''',
+  '''^Sup3rSecret!23$''',
+  '''^not-the-current-password$''',
+  '''^wrong$''',
+]
+
+# ------------------------------------------------------------------------------------------------
+# The rule this file exists for.
+#
+# On 2026-08-22 a real SSID and two real MACs were found in tracked files - one of them a BSSID, the
+# access point's own address, which public wardriving databases key on and which therefore resolves
+# to a street. Neither GitGuardian nor any shipped ruleset caught it, because none of them look for
+# network identifiers: they look for credentials, and this was not one.
+#
+# The route in was a test fixture rebuilt from a real capture with only the obvious secret
+# substituted. That will happen again - private-captures/ is right there, and pasting from it is the
+# normal way to write a realistic fixture. This rule is what notices next time.
+# ------------------------------------------------------------------------------------------------
+[[rules]]
+id = 'homespool-mac-address'
+description = 'A MAC address. As a BSSID it locates a building; as a device address it is a stable identifier. Substitute one from the RFC 7042 2.1.2 documentation range.'
+regex = '''\b(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b'''
+confidence = 'medium'
+filter = '''
+matchesAny(finding["secret"], [
+  `(?i)^00:00:5e:00:53:[0-9a-f]{2}$`,
+  `(?i)^(?:00:){5}00$`,
+  `(?i)^(?:ff:){5}ff$`,
+  `(?i)^(?:aa:bb:cc|de:ad:be|11:22:33|01:23:45|12:34:56):`
+])
+'''
+
+# The same failure with the other half of a connect-info line. Narrow on purpose: a key/value form
+# only, so prose about SSIDs does not trip it, and anything already reading as a placeholder is let
+# through. An SSID is user-authored text naming a home - often a surname or a street.
+[[rules]]
+id = 'homespool-wifi-ssid'
+description = 'A wifi SSID in a key/value position. Names a home, and is searchable in the same public databases as a BSSID.'
+# [ \t] and not \s, because \s matches a newline: an empty assignment in pi/files/homespool-wifi.txt
+# ran on into the line below it and reported that line's key as the network name.
+#
+# Written without an example of the offending form on purpose - spelling it out here makes this file
+# match its own rule, which it did until this comment was rewritten.
+regex = '''(?i)\b(?:wifi_)?ssid["']?[ \t]*[:=][ \t]*["']?([^"',}\n]{2,32})'''
+secretGroup = 1
+keywords = ['ssid']
+confidence = 'medium'
+filter = '''
+matchesAny(finding["secret"], [
+  `(?i)^(?:example|test|sample|placeholder|dummy|fake|my|your|some)[-_ ]?(?:network|ssid|wifi|ap)?$`,
+  `(?i)^(?:redacted|masked)`,
+  `^\$[({]`,
+  `(?i)^(?:<[^>]+>|\{\{.*}}|_+|x+|\.\.\.)$`
+])
+'''

@@ -137,7 +137,11 @@ public static class TelemetryMessageBuilder
             writer.WriteString("command", mmuCommand);
         }
 
-        writer.WriteNumber("active", Math.Clamp(readings.ActiveTool, 1, readings.Tools));
+        // Clamped from zero, not from one: firmware packs "no tool picked" into this field as 0
+        // (render.cpp, active_slot's NoTool arm), so 0 is a value the wire really carries and not an
+        // out-of-range number to be corrected away. See TelemetryReadings.ActiveTool for which
+        // machines rest there and which merely pass through it.
+        writer.WriteNumber("active", Math.Clamp(readings.ActiveTool, 0, readings.Tools));
         writer.WriteEndObject();
     }
 

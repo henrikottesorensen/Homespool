@@ -1,0 +1,91 @@
+@model DetailModel
+@{
+    var uuid = Model.Statistics.Printer.Uuid;
+}
+
+@* Reordering and cancelling are edits to a list - nothing here reaches the printer. The producer
+   loop is what turns the head of this queue into a transfer and a print, and it advances only when
+   the printer is Ready, which only a person sets. *@
+@if (Model.Queue.Count == 0)
+{
+    <p>
+        @Html.Raw(string.Format(
+            System.Globalization.CultureInfo.CurrentCulture,
+            Localiser["Printers_NothingQueued"].Value,
+            $"<a href=\"{Url.Page("/Files/Index")}\">{Localiser["Files_Title"].Value}</a>"))
+    </p>
+}
+else
+{
+    <table class="table table-sm w-auto align-middle">
+        <thead>
+            <tr>
+                <th scope="col">#</th>
+                <th scope="col">@Localiser["Common_File"]</th>
+                <th scope="col" class="text-end">@Localiser["Files_Size"]</th>
+                <th scope="col">@Localiser["Common_Queued"]</th>
+                <th scope="col">@Localiser["Queue_QueuedBy"]</th>
+                <th scope="col">@Localiser["Common_Status"]</th>
+                @if (Model.CanUse)
+                {
+                    <th scope="col"><span class="visually-hidden">@Localiser["Common_Actions"]</span></th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @for (int index = 0; index < Model.Queue.Count; index++)
+            {
+                var job = Model.Queue[index];
+
+                <tr>
+                    @* The row's place in the list, not its stored Position - cancelling leaves gaps in
+                       those, deliberately, and a gap shown to a person reads as a bug. *@
+                    <td>@(index + 1)</td>
+                    <td class="typed-name">@(job.PrintFile?.Name ?? "(missing)")</td>
+                    <td class="text-end">@($"{(job.PrintFile?.Size ?? 0) / 1024.0:N0} KiB")</td>
+
+                    @* Fixed format rather than a culture-dependent one, matching the Files table -
+                       and ToLocalTime, without which this column rendered UTC while the print history
+                       below it rendered local, two hours apart on the same page. *@
+                    <td>@job.QueuedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
+
+                    @* Whose work this is. The loop sends as whoever queued it, so this is also who
+                       the permission will be checked against when it goes. *@
+                    <td class="typed-name">@Model.QueuedByDescription(job)</td>
+
+                    @* Derived on every read - the entry stores no state. Only the head is ever
+                       anything but waiting, because the loop never looks past it. *@
+                    <td>@Model.QueueStatusText(Model.QueueStatusOf(index))</td>
+
+                    @if (Model.CanUse)
+                    {
+                        <td class="text-nowrap">
+                            <form method="post" asp-page-handler="Move" asp-route-uuid="@uuid"
+                                  class="d-inline">
+                                <input type="hidden" name="id" value="@job.TrackingId" />
+                                <input type="hidden" name="position" value="@(index - 1)" />
+                                <button type="submit" class="btn btn-sm btn-outline-secondary"
+                                        title="@Localiser["Printers_MoveUp"]" aria-label="@Localiser["Printers_MoveJobUp", job.PrintFile?.Name ?? string.Empty]"
+                                        @(index == 0 ? "disabled" : string.Empty)>&uarr;</button>
+                            </form>
+                            <form method="post" asp-page-handler="Move" asp-route-uuid="@uuid"
+                                  class="d-inline">
+                                <input type="hidden" name="id" value="@job.TrackingId" />
+                                <input type="hidden" name="position" value="@(index + 1)" />
+                                <button type="submit" class="btn btn-sm btn-outline-secondary"
+                                        title="@Localiser["Printers_MoveDown"]" aria-label="@Localiser["Printers_MoveJobDown", job.PrintFile?.Name ?? string.Empty]"
+                                        @(index == Model.Queue.Count - 1 ? "disabled" : string.Empty)>&darr;</button>
+                            </form>
+                            <form method="post" asp-page-handler="Cancel" asp-route-uuid="@uuid"
+                                  class="d-inline">
+                                <input type="hidden" name="id" value="@job.TrackingId" />
+                                <button type="submit" class="btn btn-sm btn-outline-danger"
+                                        aria-label="@Localiser["Printers_RemoveJob", job.PrintFile?.Name ?? string.Empty]">@Localiser["Cameras_Remove"]</button>
+                            </form>
+                        </td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+}

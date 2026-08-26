@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -62,13 +63,18 @@ public class PrintHistoryService
     /// </remarks>
     private readonly QueueSnapshotReader _snapshots;
 
+    /// <summary>Shared with the queue, which asks the same question about whoever queued a print.</summary>
+    private readonly UserNameLookup _names;
+
     public PrintHistoryService(HomespoolDbContext dbContext,
                                PrinterAccessService access,
-                               QueueSnapshotReader snapshots)
+                               QueueSnapshotReader snapshots,
+                               UserNameLookup names)
     {
         _dbContext = dbContext;
         _access = access;
         _snapshots = snapshots;
+        _names = names;
     }
 
     /// <summary>
@@ -106,6 +112,27 @@ public class PrintHistoryService
     }
 
     /// <summary>
+    /// One finished print on this printer, by the handle it has carried since it was queued.
+    /// </summary>
+    /// <remarks>
+    /// <b>Keyed on <see cref="PrintJob.TrackingId"/> rather than the row id</b>, matching the queue's
+    /// own controls: it is the handle minted at enqueue and carried through every stage, so it is what
+    /// a page already has to hand and the only one worth putting in a form.
+    /// </remarks>
+    public async Task<PrintJob?> FindAsync(int printerId,
+                                           Guid trackingId,
+                                           Caller caller,
+                                           CancellationToken cancellationToken)
+    {
+        await _access.RequireAsync(printerId, caller, Capability.ViewHistory, cancellationToken);
+
+        return await _dbContext.PrintJobs
+                               .AsNoTracking()
+                               .SingleOrDefaultAsync(job => job.PrinterId == printerId && job.TrackingId == trackingId,
+                                                     cancellationToken);
+    }
+
+    /// <summary>
     /// Usernames for whoever stopped any of <paramref name="jobs"/>, keyed by user id.
     /// </summary>
     /// <remarks>
@@ -130,20 +157,67 @@ public class PrintHistoryService
     public async Task<IReadOnlyDictionary<long, string>> GetStopperNamesAsync(IEnumerable<PrintJob> jobs,
                                                                               CancellationToken cancellationToken)
     {
-        long[] ids = jobs.Where(job => job.StoppedByUserId is not null)
-                         .Select(job => job.StoppedByUserId!.Value)
-                         .Distinct()
-                         .ToArray();
+        return await _names.ForAsync(jobs.Where(job => job.StoppedByUserId is not null)
+                                         .Select(job => job.StoppedByUserId!.Value),
+                                     cancellationToken);
+    }
 
-        if (ids.Length == 0)
+    /// <summary>
+    /// How much one person has used each of a set of printers since a moment - the front page's
+    /// "most used" ordering, counted rather than guessed at.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Access comes from <paramref name="printerIds"/>, and there is no per-printer check here.</b>
+    /// That is not an omission: this is a question across printers, so there is no single id to
+    /// require a capability on, and answering "you have never used the one you cannot see" would
+    /// still be answering about a printer somebody may not know exists. The caller passes the ids it
+    /// was already granted - in practice the output of
+    /// <see cref="PrinterQueryService.ListPrintersWithStateForUserAsync"/>, which is scoped to the
+    /// caller - and this counts strictly inside that set. Widening it to every printer would leak the
+    /// shape of the rack through a sort order.
+    /// </para>
+    /// <para>
+    /// <b>Counted on <see cref="PrintJob.QueuedByUserId"/>, so "used" means you asked for it.</b> Not
+    /// who stopped it, and not who happened to be signed in while it ran: the front page is answering
+    /// "where do you send work", and the person who queued a job is the one who decided that.
+    /// </para>
+    /// <para>
+    /// <b>Every job in the window counts, finished or not</b> - unlike <see cref="ListAsync"/>, which
+    /// shows history and therefore wants <c>EndedAt</c> set. A print running right now is the
+    /// strongest evidence there is that you use this printer, and excluding it would drop a printer
+    /// down the page at the exact moment you were watching it work.
+    /// </para>
+    /// </remarks>
+    public async Task<IReadOnlyDictionary<int, PrinterUsage>> CountForUserAsync(
+        long userId,
+        IReadOnlyCollection<int> printerIds,
+        DateTimeOffset since,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(printerIds);
+
+        if (printerIds.Count == 0)
         {
-            return new Dictionary<long, string>();
+            return new Dictionary<int, PrinterUsage>();
         }
 
-        return await _dbContext.Users
-                               .AsNoTracking()
-                               .Where(user => ids.Contains(user.Id) && user.UserName != null)
-                               .ToDictionaryAsync(user => user.Id, user => user.UserName!, cancellationToken);
+        var counted = await _dbContext.PrintJobs
+                                      .AsNoTracking()
+                                      .Where(job => job.QueuedByUserId == userId &&
+                                                    job.StartedAt >= since &&
+                                                    printerIds.Contains(job.PrinterId))
+                                      .GroupBy(job => job.PrinterId)
+                                      .Select(group => new
+                                      {
+                                          PrinterId = group.Key,
+                                          Jobs = group.Count(),
+                                          LastStartedAt = group.Max(job => job.StartedAt),
+                                      })
+                                      .ToListAsync(cancellationToken);
+
+        return counted.ToDictionary(row => row.PrinterId,
+                                    row => new PrinterUsage(row.Jobs, row.LastStartedAt));
     }
 
     /// <summary>
@@ -218,6 +292,12 @@ public class PrintHistoryService
 
             PrintHoldReason.FileExistsUnknownSize => MessageKey.For(
                 "Queue_HoldFileExistsUnknownSize", hold.FileName),
+
+            // The one hold that names an uncertainty rather than a condition, so the sentence has to
+            // say what was not established and leave the decision with the reader. It carries no
+            // numbers: there are none to give.
+            PrintHoldReason.PrintStartUnresolved => MessageKey.For(
+                "Queue_HoldPrintStartUnresolved", hold.FileName),
 
             // Undefined is not a hold, and neither is null. Both answer "nothing is in the way"
             // rather than inventing a sentence for a value nothing writes.

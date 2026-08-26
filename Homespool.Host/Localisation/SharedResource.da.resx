@@ -370,14 +370,8 @@
   <data name="Printers_BackToList" xml:space="preserve">
     <value>← Tilbage til printere</value>
   </data>
-  <data name="Printers_CurrentStatus" xml:space="preserve">
-    <value>Nuværende status</value>
-  </data>
   <data name="Printers_NotConnected" xml:space="preserve">
     <value>Ikke forbundet</value>
-  </data>
-  <data name="Printers_LastSeen" xml:space="preserve">
-    <value>Sidst set</value>
   </data>
   <data name="Printers_Nozzle" xml:space="preserve">
     <value>Dyse</value>
@@ -385,32 +379,14 @@
   <data name="Printers_Bed" xml:space="preserve">
     <value>Byggeplade</value>
   </data>
-  <data name="Printers_NozzleTemp" xml:space="preserve">
-    <value>Dysetemperatur</value>
-  </data>
-  <data name="Printers_BedTemp" xml:space="preserve">
-    <value>Byggepladetemperatur</value>
-  </data>
   <data name="Printers_Temperature" xml:space="preserve">
     <value>Temperatur</value>
   </data>
   <data name="Printers_Material" xml:space="preserve">
     <value>Materiale</value>
   </data>
-  <data name="Printers_Speed" xml:space="preserve">
-    <value>Hastighed</value>
-  </data>
-  <data name="Printers_Flow" xml:space="preserve">
-    <value>Flow</value>
-  </data>
   <data name="Printers_Progress" xml:space="preserve">
     <value>Fremskridt</value>
-  </data>
-  <data name="Printers_TimePrinting" xml:space="preserve">
-    <value>Printtid</value>
-  </data>
-  <data name="Printers_TimeRemaining" xml:space="preserve">
-    <value>Resterende tid</value>
   </data>
   <data name="Printers_FilamentChangeIn" xml:space="preserve">
     <value>Filamentskift om</value>
@@ -420,9 +396,6 @@
   </data>
   <data name="Printers_Starting" xml:space="preserve">
     <value>starter</value>
-  </data>
-  <data name="Printers_StartedAt" xml:space="preserve">
-    <value>Startet {0}</value>
   </data>
   <data name="Printers_PrintHistory" xml:space="preserve">
     <value>Printhistorik</value>
@@ -436,14 +409,8 @@
   <data name="Printers_NoEvents" xml:space="preserve">
     <value>Ingen hændelser endnu.</value>
   </data>
-  <data name="Printers_RecentTelemetry" xml:space="preserve">
-    <value>Seneste telemetri</value>
-  </data>
   <data name="Printers_NoTelemetry" xml:space="preserve">
     <value>Ingen telemetri endnu.</value>
-  </data>
-  <data name="Printers_NoTelemetryHistory" xml:space="preserve">
-    <value>Ingen telemetrihistorik endnu.</value>
   </data>
   <data name="Printers_QueueHeld" xml:space="preserve">
     <value>Køen er sat i bero.</value>
@@ -457,14 +424,59 @@
   <data name="Printers_CoolDown" xml:space="preserve">
     <value>Køl ned</value>
   </data>
+  <data name="Printers_Unload" xml:space="preserve">
+    <value>Tag {0} ud</value>
+  </data>
+  <data name="Printers_UnloadStarted" xml:space="preserve">
+    <value>Tager {0} ud. Printeren varmer dysen op, skubber filamentet ud og slukker så for det hele.</value>
+  </data>
+  <data name="Printers_UnloadStartedOnTool" xml:space="preserve">
+    <value>Tager {0} ud af værktøj {1}. Printeren varmer dysen op, skubber filamentet ud og slukker så for det hele.</value>
+  </data>
+  <data name="Printers_UnloadEllipsis" xml:space="preserve">
+    <value>Tag ud…</value>
+  </data>
+  <data name="Printers_UnloadWhichTool" xml:space="preserve">
+    <value>Hvilket værktøj skal tømmes?</value>
+  </data>
+  <data name="Printers_UnloadPickerNote" xml:space="preserve">
+    <value>Hvert værktøj tømmes ved sit eget filaments printtemperatur. Printeren henter værktøjet, skubber filamentet ud og sætter det på plads igen - et par minutter, og den afviser andre kommandoer imens.</value>
+  </data>
+  <data name="Printers_Tools" xml:space="preserve">
+    <value>Værktøjer</value>
+  </data>
+  <data name="Printers_ToolsFitted" xml:space="preserve">
+    <value>{0} monteret</value>
+  </data>
+  <data name="Printers_ToolNothingLoaded" xml:space="preserve">
+    <value>Intet ilagt</value>
+  </data>
+  <data name="Printers_ToolHardened" xml:space="preserve">
+    <value>hærdet</value>
+  </data>
+  <data name="Printers_ToolOnCarriage" xml:space="preserve">
+    <value>Værktøj {0} sidder i holderen.</value>
+  </data>
+  <data name="Printers_ToolWithMaterial" xml:space="preserve">
+    <value>Værktøj {0} · {1}</value>
+  </data>
+  <data name="Printers_ToolEmpty" xml:space="preserve">
+    <value>Værktøj {0} · intet ilagt</value>
+  </data>
+  <data name="Printers_ToolPicked" xml:space="preserve">
+    <value>valgt</value>
+  </data>
+  <data name="Printers_UnloadConfirm" xml:space="preserve">
+    <value>Tag dette værktøj ud</value>
+  </data>
+  <data name="Printers_UnloadNote" xml:space="preserve">
+    <value>Udtagning varmer dysen op til det isatte filaments printtemperatur, skubber det ud og slukker så for varmelegemerne - så printeren er kold og tom, når du når frem til den. Det tager et par minutter, og printeren afviser andre kommandoer imens.</value>
+  </data>
   <data name="Printers_SlicerHeading" xml:space="preserve">
     <value>Send fra en slicer</value>
   </data>
   <data name="Printers_ApiTokenLink" xml:space="preserve">
     <value>personligt adgangstoken</value>
-  </data>
-  <data name="Printers_PrintersListLink" xml:space="preserve">
-    <value>printeroversigten</value>
   </data>
   <data name="Common_Event" xml:space="preserve">
     <value>Hændelse</value>
@@ -500,11 +512,11 @@
     <value>Kopiér</value>
   </data>
   <data name="Printers_SlicerHelp" xml:space="preserve">
-    <value>PrusaSlicer kan sende direkte til denne printer. Under {0} skal du sætte {1} til {2}, indsætte dette som værtsnavn og bruge et {3} som API-nøgle. {4} lægger filen i køen ovenfor i stedet for at starte den.</value>
+    <value>PrusaSlicer kan sende direkte til denne printer. Under {0} skal du sætte {1} til {2}, indsætte dette som værtsnavn og bruge et {3} som API-nøgle. Når du trykker på {4}, sættes printet i kø i Homespool.</value>
     <comment>The braces are PrusaSlicer's own menu labels and a link, kept English: they have to match what a person sees in the slicer, which this application does not author.</comment>
   </data>
   <data name="Printers_PreheatWarning" xml:space="preserve">
-    <value>Begge afvises, mens printeren er optaget, {0}: at ændre en varmelegemetemperatur midt i et print ødelægger printet uden at afslutte det, og printeren afviser det ikke for dig. Brug knapperne på {1} for at stoppe et print.</value>
+    <value>Begge afvises, mens printeren er optaget, {0}: at ændre en varmelegemetemperatur midt i et print ødelægger printet uden at afslutte det, og printeren afviser det ikke for dig.</value>
   </data>
   <data name="Printers_CoolingIncluded" xml:space="preserve">
     <value>nedkøling inkluderet</value>
@@ -528,22 +540,31 @@
     <value>Markeret klargjort. Næste print i køen kan starte.</value>
   </data>
   <data name="Printers_RemoteReadyLabel" xml:space="preserve">
-    <value>Tillad at markere klargjort fra denne side</value>
+    <value>Tillad at markere klargjort fra Homespool</value>
   </data>
   <data name="Printers_RemoteReadyHelp" xml:space="preserve">
     <value>Slå kun dette til, hvis man kan se, om byggepladen er tom. Et kamera, der ikke viser byggepladen, er en grund til at lade være. Er det slået fra, kræver det, at man går hen til printeren og markerer den klargjort på panelet.</value>
   </data>
   <data name="Printers_RemoteReadySaved" xml:space="preserve">
-    <value>Det er nu tilladt at markere klargjort fra denne side.</value>
+    <value>Det er nu tilladt at markere klargjort fra Homespool.</value>
   </data>
   <data name="Printers_RemoteReadyCleared" xml:space="preserve">
-    <value>Det er ikke længere tilladt at markere klargjort fra denne side.</value>
+    <value>Det er ikke længere tilladt at markere klargjort fra Homespool.</value>
   </data>
   <data name="Printers_ReadyNotAllowed" xml:space="preserve">
     <value>Denne printer er ikke sat op til at blive markeret klargjort herfra.</value>
   </data>
   <data name="Printers_NothingQueued" xml:space="preserve">
     <value>Intet i kø. Send en fil til denne printers kø fra {0}.</value>
+  </data>
+  <data name="Account_OrAcceptWith" xml:space="preserve">
+    <value>Eller acceptér med</value>
+  </data>
+  <data name="Account_OrSignInWith" xml:space="preserve">
+    <value>Eller log ind med</value>
+  </data>
+  <data name="Account_SignInWithProviderTitle" xml:space="preserve">
+    <value>Log ind med {0}</value>
   </data>
   <data name="Account_LogIn" xml:space="preserve">
     <value>Log ind</value>
@@ -559,6 +580,12 @@
   </data>
   <data name="Account_CreateAccount" xml:space="preserve">
     <value>Opret konto</value>
+  </data>
+  <data name="Account_ReactivateHelp" xml:space="preserve">
+    <value>Vælg en adgangskode til din konto</value>
+  </data>
+  <data name="Account_InviteAddressAlreadyActive" xml:space="preserve">
+    <value>Adressen har allerede en konto, der kan logge ind, så denne invitation kan ikke bruges til den.</value>
   </data>
   <data name="Account_CreateAccountHelp" xml:space="preserve">
     <value>Opret din konto.</value>
@@ -599,6 +626,81 @@
   <data name="Home_Tagline" xml:space="preserve">
     <value>Din egen printserver til 3D-print. Modellerne forlader aldrig dine maskiner.</value>
   </data>
+  <data name="Home_YourPrinters" xml:space="preserve">
+    <value>Dine printere</value>
+  </data>
+  <data name="Home_AllPrinters" xml:space="preserve">
+    <value>Alle printere</value>
+  </data>
+  <data name="Home_NoPrintersShown" xml:space="preserve">
+    <value>Ingen printere at vise.</value>
+  </data>
+  <data name="Home_Queued_One" xml:space="preserve">
+    <value>{0} fil i køen</value>
+  </data>
+  <data name="Home_Queued_Other" xml:space="preserve">
+    <value>{0} filer i køen</value>
+  </data>
+  <data name="Home_DropTitle" xml:space="preserve">
+    <value>Send til {0}</value>
+  </data>
+  <data name="Home_DropClashHeading" xml:space="preserve">
+    <value>Du har allerede en fil med dette navn</value>
+  </data>
+  <data name="Home_DropClashHelp" xml:space="preserve">
+    <value>Der er ikke uploadet noget endnu.</value>
+  </data>
+  <data name="Home_DropReplaceUnavailable" xml:space="preserve">
+    <value>Din konto må ikke erstatte filer, så den du allerede har, bliver beholdt.</value>
+  </data>
+  <data name="Home_DropContinue" xml:space="preserve">
+    <value>Fortsæt</value>
+  </data>
+  <data name="Home_DropActionHeading" xml:space="preserve">
+    <value>Hvad skal der ske med denne fil?</value>
+  </data>
+  <data name="Home_DropActionUpload" xml:space="preserve">
+    <value>Kun upload</value>
+  </data>
+  <data name="Home_DropActionQueue" xml:space="preserve">
+    <value>Upload og sæt i kø</value>
+  </data>
+  <data name="Home_DropActionReady" xml:space="preserve">
+    <value>Upload, gør klar og print nu</value>
+  </data>
+  <data name="Home_DropQueued" xml:space="preserve">
+    <value>{0} er sat i kø på {1}.</value>
+  </data>
+  <data name="Home_DropQueueRefused" xml:space="preserve">
+    <value>{0} blev uploadet, men ikke sat i kø: {1}</value>
+  </data>
+  <data name="Home_DropRejected" xml:space="preserve">
+    <value>{0} blev ikke uploadet: {1}</value>
+  </data>
+  <data name="Home_DropKept" xml:space="preserve">
+    <value>Beholdte din eksisterende fil {0}.</value>
+  </data>
+  <data name="Home_DropNothing" xml:space="preserve">
+    <value>Der blev ikke uploadet noget.</value>
+  </data>
+  <data name="Home_DropAccepts" xml:space="preserve">
+    <value>Homespool tager imod {0}, op til {1}.</value>
+  </data>
+  <data name="Common_Hours_One" xml:space="preserve">
+    <value>{0} time</value>
+  </data>
+  <data name="Common_Hours_Other" xml:space="preserve">
+    <value>{0} timer</value>
+  </data>
+  <data name="Common_Minutes_One" xml:space="preserve">
+    <value>{0} minut</value>
+  </data>
+  <data name="Common_Minutes_Other" xml:space="preserve">
+    <value>{0} minutter</value>
+  </data>
+  <data name="Common_DurationParts" xml:space="preserve">
+    <value>{0} {1}</value>
+  </data>
   <data name="Account_AcceptInvitation" xml:space="preserve">
     <value>Acceptér invitation</value>
   </data>
@@ -607,6 +709,39 @@
   </data>
   <data name="Manage_Profile" xml:space="preserve">
     <value>Profil</value>
+  </data>
+  <data name="Manage_RemoveLogin" xml:space="preserve">
+    <value>Fjern udbyder</value>
+  </data>
+  <data name="Manage_LinkedLogins" xml:space="preserve">
+    <value>Tilknyttede login-udbydere</value>
+  </data>
+  <data name="Manage_AddAnotherLogin" xml:space="preserve">
+    <value>Tilknyt en login-udbyder</value>
+  </data>
+  <data name="Manage_ExternalLoginLinked" xml:space="preserve">
+    <value>Udbyderen er nu tilknyttet din konto.</value>
+  </data>
+  <data name="Manage_ExternalLoginLinkError" xml:space="preserve">
+    <value>Udbyderen kunne ikke tilknyttes din konto.</value>
+  </data>
+  <data name="Manage_ExternalLoginRemoved" xml:space="preserve">
+    <value>Udbyderen er ikke længere tilknyttet din konto.</value>
+  </data>
+  <data name="Manage_ExternalLoginRemoveError" xml:space="preserve">
+    <value>Udbyderen kunne ikke fjernes fra din konto.</value>
+  </data>
+  <data name="Manage_ExternalLoginSwappedForPassword" xml:space="preserve">
+    <value>Udbyderen er ikke længere tilknyttet, og du logger nu ind med den adgangskode, du lige har valgt.</value>
+  </data>
+  <data name="Manage_RemoveLastLoginHeading" xml:space="preserve">
+    <value>Fjern denne udbyder</value>
+  </data>
+  <data name="Manage_RemoveLastLoginExplanation" xml:space="preserve">
+    <value>Det er den eneste måde, du logger ind på, så at fjerne den kræver, at du vælger en adgangskode først. Begge dele sker samtidig: derefter logger du ind med adgangskoden.</value>
+  </data>
+  <data name="Manage_RemoveLoginAndSetPassword" xml:space="preserve">
+    <value>Vælg adgangskoden og fjern udbyderen</value>
   </data>
   <data name="Manage_ExternalLogins" xml:space="preserve">
     <value>Eksterne logins</value>
@@ -622,6 +757,9 @@
   </data>
   <data name="Manage_SendVerification" xml:space="preserve">
     <value>Send bekræftelsesmail</value>
+  </data>
+  <data name="Manage_NoLocalPassword" xml:space="preserve">
+    <value>Du logger ind med en ekstern udbyder, så denne konto har ingen adgangskode her at ændre. Administrér din adgangskode dér, hvor du logger ind.</value>
   </data>
   <data name="Manage_UpdatePassword" xml:space="preserve">
     <value>Opdatér adgangskode</value>
@@ -761,11 +899,8 @@
   <data name="Account_ClickToLogIn" xml:space="preserve">
     <value>klik her for at logge ind</value>
   </data>
-  <data name="Manage_AccountTitle" xml:space="preserve">
-    <value>Administrér din konto</value>
-  </data>
-  <data name="Manage_AccountSubtitle" xml:space="preserve">
-    <value>Skift dine kontoindstillinger</value>
+  <data name="Manage_AccountMenu" xml:space="preserve">
+    <value>dit brugernavn</value>
   </data>
   <data name="Cert_Title" xml:space="preserve">
     <value>Printercertifikat</value>
@@ -927,6 +1062,9 @@
   <data name="Account_ExternalLoginConfirmError" xml:space="preserve">
     <value>Kunne ikke indlæse oplysninger om eksternt login under bekræftelsen.</value>
   </data>
+  <data name="Account_ExternalNoInvite" xml:space="preserve">
+    <value>Dit login lykkedes, men ingen konto her er knyttet til det, og der findes ingen invitation til det. Bed en administrator om at invitere dig.</value>
+  </data>
   <data name="Account_EmailChangeError" xml:space="preserve">
     <value>E-mailen kunne ikke ændres.</value>
   </data>
@@ -1021,7 +1159,7 @@
     <value>Alle API-tokens på kontoen er tilbagekaldt. Scripts, der bruger et, skal have et nyt token, som du kan oprette under {0}.</value>
   </data>
   <data name="Files_DropHere" xml:space="preserve">
-    <value>Slip en fil her, eller vælg en. .gcode, .bgcode, .gco eller .bgc, op til {0}.</value>
+    <value>Slip en fil her for at uploade den, eller vælg en. .gcode, .bgcode, .gco eller .bgc, op til {0}.</value>
   </data>
   <data name="Printers_AddIntro" xml:space="preserve">
     <value>Klargør en printer og et token på forhånd, til en USB-nøgle - printeren behøver ikke kontakte serveren først. Printeren tilmelder sig selv, i det øjeblik den forbinder med sit token.</value>
@@ -1145,9 +1283,6 @@
   </data>
   <data name="LiveView_RestartWarning" xml:space="preserve">
     <value>Ændringen genstarter kamerastrømserveren, hvilket afbryder dem, der ser med, et øjeblik. Kameraer og stillbilleder er upåvirkede.</value>
-  </data>
-  <data name="Printers_TemperatureTarget" xml:space="preserve">
-    <value>{0}° / mål {1}°</value>
   </data>
   <data name="Account_AccessDeniedTitle" xml:space="preserve">
     <value>Adgang nægtet</value>
@@ -1464,12 +1599,6 @@
   <data name="Printers_ClaimWaitOneSecond" xml:space="preserve">
     <value>1 sekund</value>
   </data>
-  <data name="Printers_ClaimWaitMinutes" xml:space="preserve">
-    <value>{0} minutter</value>
-  </data>
-  <data name="Printers_ClaimWaitOneMinute" xml:space="preserve">
-    <value>1 minut</value>
-  </data>
   <data name="Printers_ClaimNoSuchCode" xml:space="preserve">
     <value>Ingen printer venter med denne kode. Tjek den mod printerens skærm - koder udløber, så den kan allerede være skiftet ud. Bogstaverne O, I og L læses som 0, 1 og 1, så dem er det ufarligt at tage fejl af.</value>
   </data>
@@ -1578,9 +1707,6 @@
   <data name="Invites_NewAccountOwnTeam" xml:space="preserve">
     <value>Ny konto (sit eget team)</value>
   </data>
-  <data name="Cameras_JustNow" xml:space="preserve">
-    <value>lige nu</value>
-  </data>
   <data name="Cameras_SecondsAgo" xml:space="preserve">
     <value>for {0} sek. siden</value>
   </data>
@@ -1644,14 +1770,26 @@
   <data name="Error_PrinterRefused" xml:space="preserve">
     <value>Printeren afviste den: {0}</value>
   </data>
+  <data name="Error_PrinterRefusedBusy" xml:space="preserve">
+    <value>Printeren kører stadig en tidligere kommando og afviste derfor denne. Vent et øjeblik, og prøv igen.</value>
+  </data>
   <data name="Error_PrinterRefusedEvent" xml:space="preserve">
     <value>Printeren afviste den ({0}).</value>
   </data>
   <data name="Error_PrinterBusy" xml:space="preserve">
-    <value>Printeren er {0} - varmelegemernes temperaturmål kan kun ændres, når printeren ikke er optaget.</value>
+    <value>Printeren er {0} - dette kan kun gøres, når printeren ikke er optaget.</value>
   </data>
   <data name="Error_PrinterStateUnknown" xml:space="preserve">
     <value>Printerens tilstand kendes ikke endnu - den melder ind kort efter, den forbinder.</value>
+  </data>
+   <data name="Error_NoToolPicked" xml:space="preserve">
+    <value>Der er ikke valgt et værktøj, så dette ville ikke nå frem til en dyse. Vælg et værktøj på printeren først.</value>
+  </data>
+  <data name="Error_FilamentTypeUnknown" xml:space="preserve">
+    <value>Printeren har ikke oplyst, hvilket filament der er isat, så det kan ikke tages ud herfra.</value>
+  </data>
+  <data name="Error_PrinterHasQueuedWork" xml:space="preserve">
+    <value>Printeren er klar og har print i køen - et print kan gå i gang, mens filamentet er ude. Ryd køen, eller tag filamentet ud, når printet er færdigt.</value>
   </data>
   <data name="Cameras_SourceMissing" xml:space="preserve">
     <value>Et kamera skal have en kildeadresse.</value>
@@ -1715,6 +1853,9 @@
   </data>
   <data name="Queue_HoldFileExistsUnknownSize" xml:space="preserve">
     <value>Printeren har allerede en fil, der hedder {0}, og ville ikke oplyse dens størrelse, så det kan ikke bekræftes, at det er den samme. Slet den på printeren, eller omdøb denne.</value>
+  </data>
+  <data name="Queue_HoldPrintStartUnresolved" xml:space="preserve">
+    <value>Printeren blev bedt om at printe {0} og sagde aldrig, om den gjorde det. Den printer noget, den ikke vil oplyse navnet på, så køen holder her frem for at risikere at printe det samme to gange. Se efter på printeren: annuller dette print, hvis det allerede er kørt, eller sæt det i kø igen, hvis det ikke er.</value>
   </data>
   <data name="Queue_WarnAbrasiveNeedsHardened" xml:space="preserve">
     <value>{0} er slicet til abrasivt filament, og printeren melder ingen hærdet dyse. Den er sat i kø, men den vil ikke starte, før printeren melder, at en hærdet dyse er monteret.</value>
@@ -1947,13 +2088,142 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>Hvad denne token må</value>
   </data>
   <data name="Tokens_ScopeHint" xml:space="preserve">
-    <value>En token kan aldrig mere end dig selv. Fjern fluebenet ved alt, som scriptet ikke har brug for.</value>
+    <value>En token kan aldrig mere end dig selv. Sæt kun flueben ved det, scriptet har brug for.</value>
   </data>
   <data name="Tokens_ScopeColumn" xml:space="preserve">
     <value>Rettigheder</value>
   </data>
   <data name="Tokens_ScopeRequired" xml:space="preserve">
     <value>Vælg mindst én ting, denne token må.</value>
+  </data>
+  <data name="Tokens_UntickAll" xml:space="preserve">
+    <value>Fjern alle flueben</value>
+  </data>
+  <data name="Tokens_TickAll" xml:space="preserve">
+    <value>Sæt alle flueben</value>
+  </data>
+  <data name="Common_JustNow" xml:space="preserve">
+    <value>lige nu</value>
+  </data>
+  <data name="Common_SecondsAgo_One" xml:space="preserve">
+    <value>for {0} sekund siden</value>
+  </data>
+  <data name="Common_SecondsAgo_Other" xml:space="preserve">
+    <value>for {0} sekunder siden</value>
+  </data>
+  <data name="Common_MinutesAgo_One" xml:space="preserve">
+    <value>for {0} minut siden</value>
+  </data>
+  <data name="Common_MinutesAgo_Other" xml:space="preserve">
+    <value>for {0} minutter siden</value>
+  </data>
+  <data name="Common_HoursAgo_One" xml:space="preserve">
+    <value>for {0} time siden</value>
+  </data>
+  <data name="Common_HoursAgo_Other" xml:space="preserve">
+    <value>for {0} timer siden</value>
+  </data>
+  <data name="Common_DaysAgo_One" xml:space="preserve">
+    <value>for {0} dag siden</value>
+  </data>
+  <data name="Common_DaysAgo_Other" xml:space="preserve">
+    <value>for {0} dage siden</value>
+  </data>
+  <data name="Printers_Updated" xml:space="preserve">
+    <value>Opdateret {0}</value>
+  </data>
+  <data name="Printers_TimeLeft" xml:space="preserve">
+    <value>{0} tilbage</value>
+  </data>
+  <data name="Printers_TimeElapsed" xml:space="preserve">
+    <value>{0} forløbet</value>
+  </data>
+  <data name="Printers_SpeedAndFlow" xml:space="preserve">
+    <value>Hastighed {0}%, flow {1}%</value>
+  </data>
+  <data name="Printers_HeaterHeatingTo" xml:space="preserve">
+    <value>varmer op til {0}</value>
+  </data>
+  <data name="Printers_HeaterAtTarget" xml:space="preserve">
+    <value>på måltemperatur {0}</value>
+  </data>
+  <data name="Printers_HeaterCoolingTo" xml:space="preserve">
+    <value>køler ned til {0}</value>
+  </data>
+  <data name="Printers_HeaterCooling" xml:space="preserve">
+    <value>køler ned</value>
+  </data>
+  <data name="Printers_HeaterOff" xml:space="preserve">
+    <value>slukket</value>
+  </data>
+  <data name="Printers_GraphNothing" xml:space="preserve">
+    <value>Denne printer har ikke rapporteret nogen temperaturer i denne periode.</value>
+  </data>
+  <data name="Printers_GraphLabel" xml:space="preserve">
+    <value>Dyse- og byggepladetemperatur over tid</value>
+  </data>
+  <data name="Printers_GraphTarget" xml:space="preserve">
+    <value>mål</value>
+  </data>
+  <data name="Printers_GraphSincePrintStarted" xml:space="preserve">
+    <value>siden dette print begyndte</value>
+  </data>
+  <data name="Printers_GraphLastHours_One" xml:space="preserve">
+    <value>den seneste time</value>
+  </data>
+  <data name="Printers_GraphLastHours_Other" xml:space="preserve">
+    <value>de seneste {0} timer</value>
+  </data>
+  <data name="Printers_Degrees" xml:space="preserve">
+    <value>{0}°</value>
+  </data>
+  <data name="Printers_Reprint" xml:space="preserve">
+    <value>Print igen</value>
+  </data>
+  <data name="Printers_ReprintFile" xml:space="preserve">
+    <value>Print {0} igen</value>
+  </data>
+  <data name="Printers_ReprintNotYours" xml:space="preserve">
+    <value>Kun den, der lagde et print i køen, kan printe det igen — filen findes blandt dine egne.</value>
+  </data>
+  <data name="Printers_Chamber" xml:space="preserve">
+    <value>Kammer</value>
+  </data>
+  <data name="Printers_Enclosure" xml:space="preserve">
+    <value>Kabinet</value>
+  </data>
+  <data name="Queue_QueuedBy" xml:space="preserve">
+    <value>Lagt i kø af</value>
+  </data>
+  <data name="QueueStatus_Waiting" xml:space="preserve">
+    <value>Afventer</value>
+  </data>
+  <data name="QueueStatus_Sending" xml:space="preserve">
+    <value>Sender</value>
+  </data>
+  <data name="QueueStatus_Held" xml:space="preserve">
+    <value>Tilbageholdt</value>
+  </data>
+  <data name="Common_SomebodyElse" xml:space="preserve">
+    <value>En anden</value>
+  </data>
+  <data name="TwoFactor_RecoveryCodesTitle" xml:space="preserve">
+    <value>Gendannelseskoder</value>
+  </data>
+  <data name="TwoFactor_ResetKeyTitle" xml:space="preserve">
+    <value>Nulstil din godkendelsesnøgle</value>
+  </data>
+  <data name="TwoFactor_ResetKeyWarning" xml:space="preserve">
+    <value>Nulstiller du din godkendelsesnøgle, holder din tofaktorapp op med at virke, indtil du sætter den op igen.</value>
+  </data>
+  <data name="TwoFactor_ResetKeyDisables" xml:space="preserve">
+    <value>Det slår tofaktorgodkendelse fra, indtil du har bekræftet den nye nøgle. Gør du ikke opsætningen af din tofaktorapp færdig, kan du miste adgangen til din konto.</value>
+  </data>
+  <data name="TwoFactor_ResetKeyButton" xml:space="preserve">
+    <value>Nulstil godkendelsesnøgle</value>
+  </data>
+  <data name="TwoFactor_KeyReset" xml:space="preserve">
+    <value>Din godkendelsesnøgle er nulstillet. Sæt din tofaktorapp op igen med den nye nøgle.</value>
   </data>
   <data name="Printers_DeleteHeading" xml:space="preserve">
     <value>Slet denne printer</value>

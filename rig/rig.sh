@@ -6,6 +6,16 @@
 #   ./rig/rig.sh run connect_rig --help       # run a built binary, passing arguments through
 #   ./rig/rig.sh shell                        # poke around
 #
+#   ./rig/rig.sh --printer XL build connect_rig      # an XL instead of the default MINI
+#   ./rig/rig.sh --printer INDX build connect_rig    # a Core One with INDX heads
+#   ./rig/rig.sh --printer XL run connect_rig --identity /identity.json --host host.docker.internal \
+#       --port 5052 --tools '1:PLA,2:PETG,3:-,5:ASA' --active 1
+#
+# --printer decides what the binary IS: the printer_type it reports, and whether a filament gcode
+# leaves a tool picked (only INDX docks). It does NOT decide the tool count - the test tree's
+# MarlinConfigPre stub pins that at five for every configuration. It must come before the verb, and
+# it selects its own build volume so the builds cannot overwrite each other.
+#
 # A thin wrapper over compose.yaml, which owns the mounts, the build volume and the image. What is
 # left here is argument handling, the checks worth failing early on, and the two-step "build then
 # run" that compose has no single verb for. A new mount goes in compose.yaml and needs no edit here.
@@ -16,6 +26,51 @@
 set -euo pipefail
 
 RIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# The printer the rig is built as. A closed set, because RIG_BOARD and RIG_PRINTER have to agree and
+# the firmware tree does not check them against each other - a mismatched pair configures cleanly and
+# then fails to build. Adding one here is how you add one at all.
+printer="${RIG_PRINTER:-MINI}"
+
+if [ "${1:-}" = "--printer" ]; then
+    printer="${2:?usage: rig.sh --printer <MINI|XL|INDX> ...}"
+    shift 2
+fi
+
+case "$printer" in
+    MINI)
+        export RIG_BOARD=BUDDY RIG_PRINTER=MINI
+        # No printer suffix, so an existing MINI build volume stays the one that gets used.
+        : "${BUILD_VOLUME:=connect_rig-builddir}"
+        ;;
+    XL)
+        export RIG_BOARD=XLBUDDY RIG_PRINTER=XL
+        # XL is in PRINTERS_WITH_RESOURCES, which collides with the test tree's own translation
+        # targets; compose.yaml carries the diagnosis.
+        export RIG_TRANSLATIONS=NO
+        : "${BUILD_VOLUME:=connect_rig-xl-builddir}"
+        ;;
+    INDX)
+        # COREONE_INDX - a Core One with INDX heads, so BOARD is XBUDDY and not a board of its own
+        # (INDX_HEAD is the satellite's firmware, not the mainboard's).
+        #
+        # The one build where a filament gcode DOCKS when it finishes: HAS_INDX() is 1, so the rig
+        # ends up with nothing picked and the next M701/M702 carrying no T does nothing. That is the
+        # behaviour an XL build cannot show, and the reason to have this configuration at all.
+        export RIG_BOARD=XBUDDY RIG_PRINTER=COREONE_INDX
+        export RIG_TRANSLATIONS=NO
+        : "${BUILD_VOLUME:=connect_rig-indx-builddir}"
+        ;;
+    *)
+        echo "rig: unknown printer '$printer' - MINI, XL or INDX" >&2
+        exit 1
+        ;;
+esac
+
+# A build volume holds one tree configured as one printer, and the configure step only runs when
+# build.ninja is absent - so sharing a volume between printers does not rebuild, it silently keeps
+# the first one. Exported because compose reads it as an interpolation.
+export BUILD_VOLUME
 
 # Every Prusa checkout lives under ~/Prusa (moved there 2026-07-31); this used to point straight at
 # the home directory. Override FIRMWARE_DIR if yours is somewhere else - the check below says so.
@@ -100,7 +155,7 @@ case "${1:-}" in
         compose run --rm $tty_flags --entrypoint bash connect_rig
         ;;
     *)
-        echo "usage: rig.sh {build <target>|run <target> [args...]|shell}" >&2
+        echo "usage: rig.sh [--printer <MINI|XL|INDX>] {build <target>|run <target> [args...]|shell}" >&2
         exit 1
         ;;
 esac

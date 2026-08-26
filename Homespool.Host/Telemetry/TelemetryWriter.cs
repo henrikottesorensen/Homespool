@@ -720,9 +720,11 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
         // Printer.LoadedMaterial lives on a different table from PrinterLiveState, so it can't ride
         // along in the merge above; carried on the cache entry instead and applied at flush.
-        if (item.Data.Material is { IsPresent: true, Value: { } material })
+        // Present-with-null rides along too: it is the printer saying the filament is gone, and
+        // dropping it here would leave the column naming something no longer in the machine.
+        if (item.Data.Material.IsPresent)
         {
-            entry.PendingLoadedMaterial = material;
+            entry.PendingLoadedMaterial = item.Data.Material;
         }
 
         double throttle = _options.MinimumSampleIntervalSeconds;
@@ -1316,7 +1318,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
             bool clearsPendingMaterial = false;
 
-            if (entry.PendingLoadedMaterial is { } material)
+            if (entry.PendingLoadedMaterial.IsPresent)
             {
                 // A tracked single-property update, not ExecuteUpdateAsync: that runs as its own
                 // immediate statement against the database, independent of the SaveChangesAsync
@@ -1326,7 +1328,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                 // SaveChangesAsync call as everything else, so it succeeds or rolls back with it.
                 Printer printerStub = new() { Id = printerId };
                 context.Attach(printerStub);
-                printerStub.LoadedMaterial = material;
+                printerStub.LoadedMaterial = entry.PendingLoadedMaterial.Value;
                 context.Entry(printerStub).Property(p => p.LoadedMaterial).IsModified = true;
 
                 clearsPendingMaterial = true;
@@ -1353,7 +1355,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
             if (clearsPendingMaterial)
             {
-                entry.PendingLoadedMaterial = null;
+                entry.PendingLoadedMaterial = Field<string?>.Absent;
             }
         }
 
@@ -1383,6 +1385,17 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
         public DateTimeOffset? LastSampledAt { get; set; }
 
-        public string? PendingLoadedMaterial { get; set; }
+        /// <summary>
+        /// A material writeback waiting for the next flush - <see cref="Field{T}.Absent"/> when
+        /// there is none.
+        /// </summary>
+        /// <remarks>
+        /// <b>A <c>Field</c> rather than a <c>string?</c>, because "clear it" and "nothing pending"
+        /// are different things.</b> A printer that has just been unloaded reports firmware's
+        /// no-filament sentinel, which reaches here as present-with-null; against a nullable string
+        /// that is indistinguishable from having nothing to write, and the column would keep the
+        /// material that is no longer in the machine.
+        /// </remarks>
+        public Field<string?> PendingLoadedMaterial { get; set; }
     }
 }

@@ -496,10 +496,19 @@ public class PrusaConnectService
     }
 
     /// <summary>
-    /// Resolves the team a newly-added printer lands in. An explicit <paramref name="teamId"/> requires
-    /// <c>CanManage</c> on it - adding a printer is treated as a structural change to the team, the
-    /// same tier as inviting a member. Omitted, the printer lands in the caller's default team.
+    /// Resolves the team a newly-added printer lands in, and refuses a caller who may not put one
+    /// there. Adding a printer is a structural change to the team, the same tier as inviting a member,
+    /// so it needs <see cref="Capability.ManagePrinter"/> on both the credential and the membership -
+    /// whether the team is named in <paramref name="teamId"/> or taken as the caller's default.
     /// </summary>
+    /// <remarks>
+    /// <b>Both branches end in <see cref="RequireManageAsync"/>, and that is the point.</b> A caller
+    /// who names no team has named no permitted one either, so the default team is not exempt from the
+    /// check the explicit branch runs. Its membership is Manager at creation
+    /// (<c>TeamProvisioning.AddDefaultTeam</c>) and nothing today can lower it or make a weaker
+    /// membership default - but that is an invariant of the code writing memberships, not of this
+    /// method, and the member editor <c>notes/teams-ui.md</c> designs would inherit it.
+    /// </remarks>
     private async Task<int> ResolveTeamForWriteAsync(int? teamId, Caller caller)
     {
         if (teamId is int explicitTeamId)
@@ -516,6 +525,8 @@ public class PrusaConnectService
         {
             throw new TeamAccessDeniedException();
         }
+
+        await RequireManageAsync(defaultMembership.TeamId, caller);
 
         return defaultMembership.TeamId;
     }

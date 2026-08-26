@@ -109,9 +109,9 @@ public sealed class ErrorTextTests
         PrinterBusyException error = new(PrinterStatus.Printing);
 
         Describe(error, "en-GB").Should().Be(
-            "The printer is Printing - heater targets can only be changed when the printer is not busy.");
+            "The printer is Printing - this can only be done when the printer is not busy.");
         Describe(error, "da").Should().Be(
-            "Printeren er Printer - varmelegemernes temperaturmål kan kun ændres, når printeren ikke er optaget.");
+            "Printeren er Printer - dette kan kun gøres, når printeren ikke er optaget.");
     }
 
     /// <summary>
@@ -122,6 +122,37 @@ public sealed class ErrorTextTests
     {
         Describe(new PrinterBusyException(PrinterStatus.Unknown), "da")
             .Should().StartWith("Printerens tilstand kendes ikke endnu");
+    }
+
+    /// <summary>
+    /// A refusal carrying no reason is read as "busy", because on this protocol it can mean nothing
+    /// else.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The empty string is the information, not the absence of it.</b> Firmware's
+    /// <c>Planner::command</c> returns at the <c>background_command</c> guard before dispatching to
+    /// any overload, and that guard is the only rejection built without a reason - so
+    /// <i>"Processing other command"</i> cannot be what a busy printer says, and a reason-less
+    /// <c>Rejected</c> cannot be anything but one.
+    /// </para>
+    /// <para>
+    /// <b><c>Failed</c> is deliberately excluded</b>, and asserted here so the two do not merge: a
+    /// reason-less failure says nothing about a busy printer, and lending it this sentence would
+    /// invent an explanation.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void ARefusalWithNoReasonSaysThePrinterIsBusy()
+    {
+        Describe(new PrinterRefusedException(PrinterEventType.Rejected, reason: null), "en-GB")
+            .Should().StartWith("The printer is still running a previous command");
+
+        Describe(new PrinterRefusedException(PrinterEventType.Failed, reason: null), "en-GB")
+            .Should().Contain("Failed", "a failure is not a busy printer, and must not borrow its sentence");
+
+        Describe(new PrinterRefusedException(PrinterEventType.Rejected, "No print to pause"), "en-GB")
+            .Should().Contain("No print to pause", "the printer's own words win whenever it gives any");
     }
 
     /// <summary>

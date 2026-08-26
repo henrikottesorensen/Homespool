@@ -9,7 +9,7 @@ public enum FakeDownloadOrder
     Undefined = 0,
 
     /// <summary>Straight through from byte 0. Everything except large plain gcode.</summary>
-    Generic,
+    Generic = 1,
 
     /// <summary>
     /// The last <see cref="FakeTransfer.TailSize"/> bytes first, then the body from 0 - because plain
@@ -17,5 +17,5 @@ public enum FakeDownloadOrder
     /// a preview or a print can start. Reaching the body costs a <b>RangeJump</b>, a full
     /// renegotiation with a fresh <c>file_id</c>.
     /// </summary>
-    PlainGcodeTailFirst,
+    PlainGcodeTailFirst = 2,
 }

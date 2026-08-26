@@ -45,6 +45,7 @@ public class CameraService
     private readonly CameraFrameCache _frames;
     private readonly CameraLiveAvailability _liveView;
     private readonly LocalCameraDevices _devices;
+    private readonly CameraCredentialProtector _credentials;
     private readonly TimeProvider _timeProvider;
     private readonly IOptions<CameraOptions> _options;
 
@@ -56,6 +57,7 @@ public class CameraService
                          CameraFrameCache frames,
                          CameraLiveAvailability liveView,
                          LocalCameraDevices devices,
+                         CameraCredentialProtector credentials,
                          TimeProvider timeProvider,
                          IOptions<CameraOptions> options)
     {
@@ -67,6 +69,7 @@ public class CameraService
         _frames = frames;
         _liveView = liveView;
         _devices = devices;
+        _credentials = credentials;
         _timeProvider = timeProvider;
         _options = options;
     }
@@ -191,11 +194,17 @@ public class CameraService
 
         DateTimeOffset now = _timeProvider.GetUtcNow();
 
+        // Checked as one string above, because that is what the sidecar is handed; stored as two,
+        // so the password does not sit in a column somebody can read.
+        CameraCredential credential = _credentials.Split(source.Trim());
+
         Camera camera = new()
         {
             Uuid = Guid.NewGuid(),
             Name = string.IsNullOrWhiteSpace(name) ? null : name.Trim(),
-            Source = source.Trim(),
+            Source = credential.Address,
+            CredentialUser = credential.User,
+            CredentialSecret = credential.Secret,
             Resolution = string.IsNullOrWhiteSpace(resolution) ? null : resolution.Trim(),
             TeamId = teamId,
             PrinterId = printerId,
@@ -239,6 +248,13 @@ public class CameraService
             return CameraSaveOutcome.Refused("Cameras_NotFoundOrNotYours");
         }
 
+        // The edit form is shown the password as a placeholder, so an edit that did not touch it
+        // posts the placeholder back. Put the stored one in before anything reads this source:
+        // the policy check resolves it and the sidecar is handed it, and both need the real
+        // credential. Restored from the revealed source rather than the column, since the column
+        // holds the address alone once the password has been split out of it.
+        source = CameraSourceDisplay.RestoreHiddenPassword(source, _credentials.Reveal(camera));
+
         CameraSaveOutcome? refusal = await CheckPermittedAsync(caller, camera.TeamId, source, cancellationToken)
             .ConfigureAwait(false);
 
@@ -260,8 +276,12 @@ public class CameraService
             return CameraSaveOutcome.Refused(check.Error!);
         }
 
+        CameraCredential credential = _credentials.Split(source.Trim());
+
         camera.Name = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
-        camera.Source = source.Trim();
+        camera.Source = credential.Address;
+        camera.CredentialUser = credential.User;
+        camera.CredentialSecret = credential.Secret;
 
         // Null for a network camera whatever was submitted: nothing here reaches its settings, so a
         // stored size would be a claim this application cannot make good on.
@@ -364,7 +384,7 @@ public class CameraService
     private async Task<CameraSaveOutcome> RegisterAndProveAsync(Camera camera, CancellationToken cancellationToken)
     {
         bool registered = await _streamServer
-                                .PutStreamAsync(camera.Uuid, camera.Source, cancellationToken)
+                                .PutStreamAsync(camera.Uuid, _credentials.Reveal(camera), cancellationToken)
                                 .ConfigureAwait(false);
 
         if (!registered)

@@ -46,8 +46,7 @@ namespace Homespool.Host.Pages.Files;
 /// </para>
 /// </remarks>
 [Authorize]
-[RequestFormLimits(MultipartBodyLengthLimit = long.MaxValue)] // Bounded by MaxUploadBytes below, not by MVC.
-[RequestSizeLimit(long.MaxValue)]
+[BoundedUpload] // MaxUploadBytes, applied before the body is read - see BoundedUploadAttribute.
 public class IndexModel : PageModel
 {
     private readonly PrintFileCatalog _files;
@@ -214,8 +213,14 @@ public class IndexModel : PageModel
     /// <c>IAntiforgery.ValidateRequestAsync</c> reads the form to find its token - so a streamed
     /// upload cannot validate an antiforgery token that came from a plain HTML form. Microsoft's own
     /// streaming sample sends the token in a header from JavaScript, which this app has none of.
-    /// What buffering actually costs here is one extra write: ASP.NET spills past
+    /// What buffering costs here is one extra write: ASP.NET spills past
     /// <c>MemoryBufferThreshold</c> to a temp file on disk, not into memory.
+    /// </para>
+    /// <para>
+    /// <b>That write is bounded by <see cref="BoundedUploadAttribute"/> on this class, and has to
+    /// be.</b> The <c>file.Length</c> check below reads a file that is already on disk, so it decides
+    /// what to keep rather than what to accept - on its own it bounds nothing. The attribute applies
+    /// the same configured cap before a byte is read.
     /// </para>
     /// </remarks>
     public async Task<IActionResult> OnPostUploadAsync(IFormFile? file,

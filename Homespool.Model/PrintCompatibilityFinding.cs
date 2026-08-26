@@ -31,7 +31,7 @@ public enum PrintCompatibilityFinding
     /// permanent, invisible, and quietly falsifies
     /// <see cref="NozzleDiameterMismatch"/> for every print that follows.
     /// </remarks>
-    AbrasiveFilamentNeedsHardenedNozzle,
+    AbrasiveFilamentNeedsHardenedNozzle = 1,
 
     /// <summary>
     /// The print uses abrasive filament, and some but not all of the printer's tools are hardened -
@@ -45,7 +45,7 @@ public enum PrintCompatibilityFinding
     /// would stay silent about the only finding here that can cost hardware. So it is said, and the
     /// person decides.
     /// </remarks>
-    AbrasiveFilamentMayUseASoftNozzle,
+    AbrasiveFilamentMayUseASoftNozzle = 2,
 
     /// <summary>
     /// The file was sliced for a printer this one cannot print for.
@@ -56,7 +56,7 @@ public enum PrintCompatibilityFinding
     /// sustain. Directional, exactly as firmware has it - the older machine's file on the newer one
     /// is fine and says nothing.
     /// </remarks>
-    IncompatiblePrinterModel,
+    IncompatiblePrinterModel = 3,
 
     /// <summary>The file was sliced for a different nozzle diameter than the one fitted.</summary>
     /// <remarks>
@@ -75,7 +75,7 @@ public enum PrintCompatibilityFinding
     /// as "you picked the wrong file".
     /// </para>
     /// </remarks>
-    NozzleDiameterMismatch,
+    NozzleDiameterMismatch = 4,
 
     /// <summary>The file was sliced for a high-flow hotend and the fitted one is standard.</summary>
     /// <remarks>
@@ -83,5 +83,5 @@ public enum PrintCompatibilityFinding
     /// deliver and under-extrudes; a standard file on a high-flow hotend leaves capacity unused and
     /// is not worth mentioning.
     /// </remarks>
-    HighFlowNozzleRequired,
+    HighFlowNozzleRequired = 5,
 }

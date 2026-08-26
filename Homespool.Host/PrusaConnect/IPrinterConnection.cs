@@ -56,19 +56,3 @@ public interface IPrinterConnection
     /// </remarks>
     PendingCommand? TakeParkedCommand();
 }
-
-/// <summary>What became of a command handed to a connection.</summary>
-public enum CommandHandover
-{
-    /// <summary>Written to the printer; the response clock may start.</summary>
-    Written,
-
-    /// <summary>Held for the printer's next poll; the response clock waits for the hand-over.</summary>
-    Parked,
-}
-
-/// <summary>
-/// A command a printer is collecting over the HTTP transport: what it asked to be sent, and the id
-/// it will echo when it answers.
-/// </summary>
-public sealed record PendingCommand(uint CommandId, ISendableCommand Command);

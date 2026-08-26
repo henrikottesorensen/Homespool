@@ -54,16 +54,19 @@ public sealed class CameraStreamReconciler : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly Go2RtcClient _streamServer;
     private readonly CameraLiveAvailability _liveView;
+    private readonly CameraCredentialProtector _credentials;
     private readonly ILogger<CameraStreamReconciler> _logger;
 
     public CameraStreamReconciler(IServiceScopeFactory scopeFactory,
                                   Go2RtcClient streamServer,
                                   CameraLiveAvailability liveView,
+                                  CameraCredentialProtector credentials,
                                   ILogger<CameraStreamReconciler> logger)
     {
         _scopeFactory = scopeFactory;
         _streamServer = streamServer;
         _liveView = liveView;
+        _credentials = credentials;
         _logger = logger;
     }
 
@@ -106,7 +109,7 @@ public sealed class CameraStreamReconciler : BackgroundService
 
             foreach (Camera camera in missing)
             {
-                if (await _streamServer.PutStreamAsync(camera.Uuid, camera.Source, stoppingToken)
+                if (await _streamServer.PutStreamAsync(camera.Uuid, _credentials.Reveal(camera), stoppingToken)
                                        .ConfigureAwait(false))
                 {
                     restored++;

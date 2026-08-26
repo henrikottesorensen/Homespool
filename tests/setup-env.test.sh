@@ -451,7 +451,7 @@ fi
 if test_case "auto_answer takes the address, not the label"; then
     sandbox_path linux docker-collision
     use_temp_env "PRINTER_HOST=
-USER_HOST=localhost
+USER_HOSTS=localhost
 TZ=UTC
 GO2RTC_USERNAME=
 GO2RTC_PASSWORD="
@@ -666,10 +666,10 @@ fi
 
 if test_case "env_get prefers .env, falls back to .env.example"; then
     use_temp_env "PRINTER_HOST=
-USER_HOST=localhost
+USER_HOSTS=localhost
 TZ=UTC" "PRINTER_HOST=set.lan" > /dev/null
     assert_eq "set.lan" "$(env_get PRINTER_HOST)" "from .env"
-    assert_eq "localhost" "$(env_get USER_HOST)" "fell through to .env.example"
+    assert_eq "localhost" "$(env_get USER_HOSTS)" "fell through to .env.example"
 fi
 
 if test_case "env_get treats an emptied key as chosen, not absent"; then
@@ -726,13 +726,13 @@ if test_case "apply rewrites the last assignment, which is the one read"; then
     # A shell and compose both take the last, and so does file_get. Rewriting the first would show
     # one value in the summary and change a different line.
     use_temp_env "PRINTER_HOST=" "PRINTER_HOST=first.lan
-USER_HOST=x
+USER_HOSTS=x
 PRINTER_HOST=second.lan" > /dev/null
     assert_eq "second.lan" "$(env_get PRINTER_HOST)" "reading takes the last"
     plan_set PRINTER_HOST third.lan
     apply >/dev/null 2>&1
     assert_eq "PRINTER_HOST=first.lan
-USER_HOST=x
+USER_HOSTS=x
 PRINTER_HOST=third.lan" "$(cat "$env_file")" "writing takes the last too"
 fi
 
@@ -779,19 +779,19 @@ if test_case "no-overwrite treats empty as a blank and a value as an answer"; th
     # silently re-enable mail somebody turned off.
     use_temp_env "PRINTER_HOST=
 SMTP_HOST=
-USER_HOST=localhost" "PRINTER_HOST=
+USER_HOSTS=localhost" "PRINTER_HOST=
 SMTP_HOST=
-USER_HOST=already.chosen"
+USER_HOSTS=already.chosen"
     no_overwrite=true
 
     plan_set PRINTER_HOST 192.168.13.238
     plan_set SMTP_HOST mail.example.com
-    plan_set USER_HOST detected.local
+    plan_set USER_HOSTS detected.local
 
     assert_contains "$pending" "PRINTER_HOST=192.168.13.238" "an empty key is a blank to fill"
     assert_contains "$pending" "SMTP_HOST=mail.example.com" "so is a deliberately empty one"
     case "$pending" in
-        *USER_HOST*) fail "overwrote a key that already carried a value" ;;
+        *USER_HOSTS*) fail "overwrote a key that already carried a value" ;;
         *) passed=$((passed + 1)) ;;
     esac
 fi
@@ -799,12 +799,12 @@ fi
 if test_case "no-overwrite is not fooled by .env.example's defaults"; then
     # env_get falls back to the example, where every documented default is non-empty - so a check
     # written against it would treat every unset key as already answered and fill in nothing at all.
-    use_temp_env "USER_HOST=localhost
+    use_temp_env "USER_HOSTS=localhost
 TZ=UTC" "PRINTER_HOST=192.168.13.238"
     no_overwrite=true
-    plan_set USER_HOST detected.local
+    plan_set USER_HOSTS detected.local
     plan_set TZ Europe/Copenhagen
-    assert_contains "$pending" "USER_HOST=detected.local" "absent from .env, so it is a blank"
+    assert_contains "$pending" "USER_HOSTS=detected.local" "absent from .env, so it is a blank"
     assert_contains "$pending" "TZ=Europe/Copenhagen" "likewise"
 fi
 
@@ -819,17 +819,17 @@ fi
 if test_case "no-prompt answers from detection and fills only blanks"; then
     sandbox_path linux docker-collision
     use_temp_env "PRINTER_HOST=
-USER_HOST=localhost
+USER_HOSTS=localhost
 TZ=UTC
 GO2RTC_USERNAME=
 GO2RTC_PASSWORD=" "PRINTER_HOST=
-USER_HOST=already.chosen"
+USER_HOSTS=already.chosen"
     no_overwrite=true
     auto_answer >/dev/null 2>&1
 
     assert_contains "$pending" "PRINTER_HOST=192.168.13.238" "took the detected address"
     case "$pending" in
-        *USER_HOST*) fail "overwrote the name somebody had already chosen" ;;
+        *USER_HOSTS*) fail "overwrote the name somebody had already chosen" ;;
         *) passed=$((passed + 1)) ;;
     esac
     assert_contains "$pending" "GO2RTC_PASSWORD=" "generated the camera credential"
@@ -897,9 +897,9 @@ if test_case "the summary names a default only when there is one"; then
     # This line is what somebody reads before answering yes, so it is worth asserting on. It used to
     # say "(unset, default (empty))" - two brackets to report that a setting with no value has none.
     use_temp_env "PRINTER_HOST=
-USER_HOST=localhost"
+USER_HOSTS=localhost"
     plan_set PRINTER_HOST 192.168.13.238
-    plan_set USER_HOST box.local
+    plan_set USER_HOSTS box.local
     out="$(summarise 2>&1)"
 
     assert_contains "$out" "(unset)  ->  192.168.13.238" "no default worth naming, so none is named"
@@ -919,7 +919,7 @@ fi
 if test_case "inside a container it does not suggest the container id"; then
     # The Windows path runs in a one-off `docker run`, where `hostname` is the container id - so it
     # suggested "5d44b2605478.local" as the name to type into a browser.
-    use_temp_env "USER_HOST=localhost"
+    use_temp_env "USER_HOSTS=localhost"
     in_container() { return 0; }
     assert_eq "localhost" "$(suggested_user_host)" "no answer beats a meaningless one"
     assert_eq "" "$(machine_name)" "and there is no name to be had in there"
@@ -932,6 +932,14 @@ if test_case "inside a container it does not suggest the container id"; then
     assert_eq "DESKTOP-7Q2" "$(suggested_user_host)" "the Windows machine's own name, as given"
     unset HOMESPOOL_HOSTNAME
     unset -f in_container
+fi
+
+if test_case "a list already chosen is offered back whole"; then
+    # The suggestion is one name, but the answer need not be - and re-running the wizard on a .env
+    # that carries several must not propose replacing them with one. It reads the value, it does not
+    # parse it.
+    use_temp_env "USER_HOSTS=localhost" "USER_HOSTS=homespool.lan;homespool.local;192.168.1.50"
+    assert_eq "homespool.lan;homespool.local;192.168.1.50" "$(suggested_user_host)" "offered verbatim"
 fi
 
 if test_case "the machine name is offered only when it resolves to a listed address"; then
@@ -1042,10 +1050,10 @@ ANSWERS
 fi
 
 if test_case "one machine gets one name"; then
-    # PRINTER_HOST offered homespool.lan while USER_HOST suggested homespool.local - two names for
+    # PRINTER_HOST offered homespool.lan while USER_HOSTS suggested homespool.local - two names for
     # one box on one screen, because only the first was allowed to ask the network.
     sandbox_path linux dns-v6first
-    use_temp_env "USER_HOST=localhost"
+    use_temp_env "USER_HOSTS=localhost"
     HOMESPOOL_ADDRESSES="192.168.13.183	wlan0"
     export HOMESPOOL_ADDRESSES
     suggestion="$(suggested_user_host)"
@@ -1054,16 +1062,16 @@ if test_case "one machine gets one name"; then
     assert_eq "homespool.lan" "$suggestion" "the name the network publishes, same as PRINTER_HOST"
 fi
 
-if test_case "USER_HOST may be .local, because browsers do mDNS"; then
+if test_case "USER_HOSTS may be .local, because browsers do mDNS"; then
     # The opposite of the PRINTER_HOST rule, and the reason it is not one rule: what resolves
-    # USER_HOST is a desktop, which does mDNS perfectly well. What resolves PRINTER_HOST is Buddy
+    # USER_HOSTS is a desktop, which does mDNS perfectly well. What resolves PRINTER_HOST is Buddy
     # firmware, which broadcasts mDNS but cannot resolve it.
     #
     # Which qualification wins depends on the machine - a network with a domain of its own beats
     # .local - so this asserts the part that is fixed: a bare name does not stay bare.
     # machine_name is overridden rather than trusted: in a container it correctly returns nothing, so
     # the honest answer there is localhost and the rule under test never runs.
-    use_temp_env "USER_HOST=localhost"
+    use_temp_env "USER_HOSTS=localhost"
     machine_name() { echo printbox; }
     case "$(suggested_user_host)" in
         *.*) passed=$((passed + 1)) ;;

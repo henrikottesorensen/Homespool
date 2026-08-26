@@ -4,6 +4,7 @@
 #nullable disable
 
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -15,6 +16,8 @@ using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -31,6 +34,7 @@ namespace Homespool.Host.Pages.Account;
 /// only with a valid, unexpired, unused invite token, and creates the account bound to the invite's
 /// email. It replaces the public self-service registration the Identity scaffold shipped with.
 /// </summary>
+[AllowAnonymous] // The invite token is the credential here, not a session (phase-1.5 §15 step 6).
 public class RegisterModel : PageModel
 {
     private readonly SignInManager<HSUser> _signInManager;
@@ -88,6 +92,64 @@ public class RegisterModel : PageModel
     /// <summary>The invite's bound email, shown read-only. The account is created as this address.</summary>
     public string Email { get; private set; }
 
+    /// <summary>
+    /// Registered external providers, so an invitee can accept with one <em>instead of</em> setting a
+    /// password — arriving with the provider as their only credential.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the token door's entry point, and it is the stronger of the two.</b> The invite's id
+    /// and token ride through the provider round trip, so the callback spends the invite on proof the
+    /// invitee holds the emailed secret and never consults the provider's claims. The other door —
+    /// matching an outstanding invite against a provider-asserted address — trusts
+    /// <c>email_verified</c> instead, which is why it is off by default.
+    /// </para>
+    /// <para>
+    /// <b>Without this button the safer door had no UI</b>, so an operator who wanted provider-only
+    /// accounts had to switch the weaker one on to get them. That is the wrong way round, and it is
+    /// the reason this exists (Henrik, 2026-08-22).
+    /// </para>
+    /// <para>
+    /// <b>Not offered when reactivating.</b> That flow exists because a provider went away, and it
+    /// removes the dead links; offering to accept with a provider there would be offering the thing
+    /// that just failed.
+    /// </para>
+    /// </remarks>
+    public IList<AuthenticationScheme> ExternalLogins { get; private set; } = [];
+
+    /// <summary>
+    /// True when an account already exists for this address and has no password, so redeeming the
+    /// invite <b>reactivates</b> it rather than creating a second one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the recovery path for an account orphaned by its identity provider.</b> An account
+    /// created through a provider has no password by rule, and if that provider goes away for good it
+    /// cannot sign in, cannot reset, and there is no administrator-side reset. The answer is an
+    /// invite — but until this branch existed, sending one did not work: <c>RequireUniqueEmail</c> is
+    /// on and this page created unconditionally, so accepting failed on a duplicate address and the
+    /// invite was unredeemable.
+    /// </para>
+    /// <para>
+    /// <b>Only an account with no password is adoptable</b>, which is exactly the orphaned set. That
+    /// bound matters: without it an invite would be a way to re-credential an account that already
+    /// works, without knowing its password, which is an account takeover with an administrator's
+    /// signature on it.
+    /// </para>
+    /// <para>
+    /// <b>The proof is unchanged.</b> The invite is still single-use, still expiring, and still has to
+    /// be presented with its token — this branch changes what redeeming does, not what it takes.
+    /// </para>
+    /// </remarks>
+    public bool Reactivating { get; private set; }
+
+    /// <summary>
+    /// The existing account's username when <see cref="Reactivating"/>. Shown read-only and never
+    /// re-chosen: it is already theirs, and letting an invite rename an account is not a thing this
+    /// flow is for.
+    /// </summary>
+    public string ExistingUsername { get; private set; }
+
     public class InputModel
     {
         /// <summary>
@@ -123,6 +185,31 @@ public class RegisterModel : PageModel
 
         InviteValid = invitation is not null;
         Email = invitation?.Email;
+
+        if (invitation is not null)
+        {
+            await ResolveReactivationAsync(invitation);
+        }
+
+        ExternalLogins = [.. await _signInManager.GetExternalAuthenticationSchemesAsync()];
+    }
+
+    /// <summary>
+    /// Decides whether this invite adopts an existing account, and returns that account when it does.
+    /// </summary>
+    private async Task<HSUser> ResolveReactivationAsync(Invitation invitation)
+    {
+        HSUser existing = await _userManager.FindByEmailAsync(invitation.Email);
+
+        if (existing is null)
+        {
+            return null;
+        }
+
+        Reactivating = !await _userManager.HasPasswordAsync(existing);
+        ExistingUsername = Reactivating ? existing.UserName : null;
+
+        return existing;
     }
 
     public async Task<IActionResult> OnPostAsync(string returnUrl, CancellationToken cancellationToken)
@@ -144,9 +231,34 @@ public class RegisterModel : PageModel
         InviteValid = true;
         Email = invitation.Email;
 
+        HSUser existing = await ResolveReactivationAsync(invitation);
+
+        if (existing is not null && !Reactivating)
+        {
+            // The address already has an account that works. Refused rather than attempted, because
+            // what CreateAsync answers here is a duplicate-address validation error, which reads as a
+            // problem with the form rather than as "this invite is for somebody who can already sign
+            // in" - and is what this page did before the branch below existed.
+            ModelState.AddModelError(string.Empty, _localiser["Account_InviteAddressAlreadyActive"]);
+
+            return Page();
+        }
+
+        if (Reactivating)
+        {
+            // The username is not on the reactivation form: it is the account's own, shown read-only.
+            // Left in ModelState it fails [Required] on a field nobody was offered.
+            ModelState.Remove($"{nameof(Input)}.{nameof(InputModel.Username)}");
+        }
+
         if (!ModelState.IsValid)
         {
             return Page();
+        }
+
+        if (Reactivating)
+        {
+            return await ReactivateAsync(existing, invitation, returnUrl, cancellationToken);
         }
 
         HSUser user = new();
@@ -230,22 +342,82 @@ public class RegisterModel : PageModel
         return LocalRedirect(returnUrl);
     }
 
-    /// <summary>Reverses the Base64Url encoding the accept link uses. Null/invalid input yields null.</summary>
-    private static string DecodeToken(string code)
+    /// <summary>
+    /// Gives an orphaned account a password and takes its dead provider links away, in one step.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The links go with it</b> (Henrik, 2026-08-22), which mirrors what
+    /// <c>Account/Manage/ExternalLogins</c> does in the other direction. Leaving them would leave rows
+    /// pointing at a provider that is gone — and, if that provider is ever rebuilt at the same address
+    /// and reissues the same subject id, a stale row is a live credential nobody remembered granting.
+    /// </para>
+    /// <para>
+    /// <b>One transaction, for the reason <c>transactions.md</c> gives.</b> The half-done states are
+    /// both wrong in the way this flow exists to prevent: a password added while the dead links remain
+    /// is the parallel credential the rule refuses, and links removed while the password was rejected
+    /// takes an account that was merely orphaned and makes it unreachable.
+    /// </para>
+    /// <para>
+    /// <b>Nothing here touches teams or the confirmation flag.</b> The account already has its default
+    /// team, so creating a second would be the bug; and an unconfirmed address stays unconfirmed,
+    /// since <c>ResendEmailConfirmation</c> is the page for that and redeeming an invite is not the
+    /// same proof as answering mail sent to the address.
+    /// </para>
+    /// </remarks>
+    private async Task<IActionResult> ReactivateAsync(HSUser existing, Invitation invitation, string returnUrl,
+                                                      CancellationToken cancellationToken)
     {
-        if (string.IsNullOrEmpty(code))
-        {
-            return null;
-        }
+        await using IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
         try
         {
-            return Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(code));
+            IdentityResult added = await _userManager.AddPasswordAsync(existing, Input.Password);
+
+            if (!added.Succeeded)
+            {
+                AddErrors(added);
+
+                return Page();
+            }
+
+            foreach (UserLoginInfo login in await _userManager.GetLoginsAsync(existing))
+            {
+                IdentityResult removed =
+                    await _userManager.RemoveLoginAsync(existing, login.LoginProvider, login.ProviderKey);
+
+                if (!removed.Succeeded)
+                {
+                    AddErrors(removed);
+
+                    return Page();
+                }
+            }
+
+            await _invitationService.MarkUsedAsync(invitation, cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
         }
-        catch (FormatException)
+        catch (DbUpdateException ex)
         {
-            return null;
+            _logger.LogError(ex, "Failed to reactivate the account for invitation {InviteId}; rolling back.", InviteId);
+            ModelState.AddModelError(string.Empty, _localiser["Account_RegistrationFailed"]);
+
+            return Page();
         }
+
+        _logger.LogInformation("Invitation {InviteId} reactivated an existing account for {Email}.", InviteId,
+                               invitation.Email);
+
+        await _signInManager.SignInAsync(existing, isPersistent: false);
+
+        return LocalRedirect(returnUrl);
+    }
+
+    /// <summary>Reverses the Base64Url encoding the accept link uses. Null/invalid input yields null.</summary>
+    private static string DecodeToken(string code)
+    {
+        return EmailedToken.Decode(code);
     }
 
     private void AddErrors(IdentityResult result)

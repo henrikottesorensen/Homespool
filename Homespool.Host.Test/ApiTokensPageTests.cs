@@ -82,11 +82,11 @@ public sealed class ApiTokensPageTests : IDisposable
     }
 
     /// <summary>
-    /// The form opens with everything ticked, so narrowing is a deliberate act rather than a chore -
-    /// and so the default is the credential somebody expects.
+    /// <b>The form opens with nothing ticked.</b> What somebody does not think about is what the
+    /// token cannot do, so every capability it carries is one a person chose.
     /// </summary>
     [Fact]
-    public async Task TheFormOpensWithEverythingTicked()
+    public async Task TheFormOpensWithNothingTicked()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
@@ -96,7 +96,48 @@ public sealed class ApiTokensPageTests : IDisposable
         await model.OnGetAsync(TestContext.Current.CancellationToken);
 
         // Assert
+        model.Input.Scope.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// Minting one leaves the next form empty rather than pre-ticked with what was just granted -
+    /// otherwise the second token quietly defaults to the first one's rights.
+    /// </summary>
+    [Fact]
+    public async Task TheFormAfterMintingDoesNotCarryTheScopeForward()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (ApiTokensModel model, _) = await NewModelAsync(context, "laptop");
+        model.Input.Scope = [Capability.ManagePrinter, Capability.ManipulateOwnFiles];
+
+        // Act
+        await model.OnPostAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        model.CreatedToken.Should().NotBeNull("this one was minted");
+        model.Input.Scope.Should().BeEmpty("the next token starts from nothing, like the first");
+    }
+
+    /// <summary>
+    /// Tick all is the way back for somebody who wants everything, so the empty default costs a click
+    /// rather than nine.
+    /// </summary>
+    [Fact]
+    public async Task TickingAllSelectsEveryCapability()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (ApiTokensModel model, _) = await NewModelAsync(context, "everything");
+        model.Input.Scope = [];
+
+        // Act
+        await model.OnPostTickAllAsync(TestContext.Current.CancellationToken);
+
+        // Assert
         model.Input.Scope.Should().BeEquivalentTo(CapabilitySet.Everything);
+        model.CreatedToken.Should().BeNull("ticking is not minting");
+        context.ApiTokens.Should().BeEmpty();
     }
 
     /// <summary>
@@ -118,6 +159,73 @@ public sealed class ApiTokensPageTests : IDisposable
 
         // Assert
         context.ApiTokens.Should().BeEmpty("an invalid form mints nothing");
+        model.CreatedToken.Should().BeNull();
+    }
+
+    /// <summary>
+    /// <b>Untick all clears every box and mints nothing.</b> The no-script path through the button:
+    /// the form comes back empty-scoped, ready to be ticked up from nothing.
+    /// </summary>
+    [Fact]
+    public async Task UntickingAllClearsEveryBox()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (ApiTokensModel model, _) = await NewModelAsync(context, "slicer");
+
+        // Act
+        await model.OnPostUntickAllAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        model.Input.Scope.Should().BeEmpty();
+        model.CreatedToken.Should().BeNull("unticking is not minting");
+        context.ApiTokens.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// It keeps what was typed, and says nothing about what has not been. Pressing it is a step
+    /// towards filling the form in, so reporting the empty name as an error would be scolding
+    /// somebody for a step they have not reached.
+    /// </summary>
+    [Fact]
+    public async Task UntickingAllKeepsTheNameAndComplainsAboutNothing()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (ApiTokensModel model, _) = await NewModelAsync(context, string.Empty);
+
+        // The state the button is actually pressed in: binding has run against an unfinished form,
+        // so both validation failures are already sitting in ModelState.
+        model.Input.Name = "half-typed";
+        model.ModelState.AddModelError("Input.Name", "The Name field is required.");
+        model.ModelState.AddModelError("Input.Scope", "Tokens_ScopeRequired");
+
+        // Act
+        await model.OnPostUntickAllAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        model.Input.Name.Should().Be("half-typed", "a round trip must not cost what was typed");
+        model.ModelState.ErrorCount.Should().Be(0, "nobody has tried to mint anything yet");
+    }
+
+    /// <summary>
+    /// Unticking everything and then submitting is still refused - the button reaches a state the
+    /// form declines to mint from, and that is deliberate rather than an oversight.
+    /// </summary>
+    [Fact]
+    public async Task UntickingAllStillLeavesAFormThatWillNotMint()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (ApiTokensModel model, _) = await NewModelAsync(context, "useless");
+        await model.OnPostUntickAllAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        model.ModelState.AddModelError("Input.Scope", "Tokens_ScopeRequired");
+        await model.OnPostAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ApiTokens.Should().BeEmpty("an empty scope is representable, not mintable");
         model.CreatedToken.Should().BeNull();
     }
 

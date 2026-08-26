@@ -1,0 +1,17 @@
+#!/bin/sh
+# Derives REDIRECT_PORT_SUFFIX for the redirect in homespool.conf.template when nobody chose one:
+# empty for the standard 443, ":$HTTPS_PORT" otherwise. Sourced by the base image's entrypoint
+# before 20-envsubst-on-templates.sh renders the template - in the same shell, which is what makes
+# the export visible to it.
+#
+# "auto" is compose.yaml's default, meaning REDIRECT_PORT_SUFFIX is not in .env at all. An explicit
+# value passes through untouched - INCLUDING explicit empty, for the deployment where a router
+# forwards 443 inward to a different published port and the browser's port really is 443 - so
+# every .env that names a suffix behaves exactly as it did before derivation existed.
+if [ "${REDIRECT_PORT_SUFFIX-auto}" = "auto" ]; then
+    if [ "${HTTPS_PORT:-443}" = "443" ]; then
+        export REDIRECT_PORT_SUFFIX=""
+    else
+        export REDIRECT_PORT_SUFFIX=":${HTTPS_PORT}"
+    fi
+fi

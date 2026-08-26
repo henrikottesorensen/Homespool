@@ -2,10 +2,9 @@
 @model ApiTokensModel
 @{
     ViewData["Title"] = Localiser["Manage_ApiTokens"].Value;
-    ViewData["ActivePage"] = ManageNavPages.ApiTokens;
 }
 
-<h3>@ViewData["Title"]</h3>
+<h1>@ViewData["Title"]</h1>
 <partial name="_StatusMessage" for="StatusMessage" />
 
 <p class="text-muted">
@@ -15,7 +14,7 @@
 @if (Model.CreatedToken is not null)
 {
     <div class="alert alert-success" role="alert">
-        <h4 class="alert-heading">@Localiser["Tokens_CopyNow"]</h4>
+        <h2 class="alert-heading h4">@Localiser["Tokens_CopyNow"]</h2>
         <p>@Localiser["Tokens_ShownOnce"]</p>
         <pre class="mb-0"><code id="created-token">@Model.CreatedToken</code></pre>
     </div>
@@ -35,6 +34,19 @@
                 <legend class="fs-6 fw-semibold">@Localiser["Tokens_ScopeLegend"]</legend>
                 <p class="text-muted small">@Localiser["Tokens_ScopeHint"]</p>
                 <span asp-validation-for="Input.Scope" class="text-danger d-block mb-2"></span>
+
+                @* Real submits with their own handlers, so they set the boxes with scripting off too.
+                   token-scope.js cancels the post and does it here instead; formnovalidate is for the
+                   case where that file is the one thing that did not load, so the fallback is not then
+                   blocked by a name nobody has typed yet. *@
+                <div class="d-flex gap-2 mb-3">
+                    <button type="submit" asp-page-handler="TickAll" formnovalidate
+                            data-tick-all="Input.Scope"
+                            class="btn btn-sm btn-outline-secondary">@Localiser["Tokens_TickAll"]</button>
+                    <button type="submit" asp-page-handler="UntickAll" formnovalidate
+                            data-untick-all="Input.Scope"
+                            class="btn btn-sm btn-outline-secondary">@Localiser["Tokens_UntickAll"]</button>
+                </div>
 
                 @foreach (var group in Homespool.Host.Localisation.CapabilityText.Groups)
                 {
@@ -60,7 +72,7 @@
     </div>
 </div>
 
-<h4 class="mt-4">@Localiser["Tokens_Yours"]</h4>
+<h2 class="mt-4">@Localiser["Tokens_Yours"]</h2>
 
 @if (Model.Tokens.Count == 0)
 {
@@ -98,4 +110,5 @@ else
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
+    <script src="~/js/token-scope.js" asp-append-version="true"></script>
 }

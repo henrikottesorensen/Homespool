@@ -80,6 +80,50 @@ public class PrintQueueService
     }
 
     /// <summary>
+    /// How many files are queued on each of a set of printers - the front page's "3 queued", counted
+    /// in one query rather than by listing every printer's queue in turn.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Access comes from <paramref name="printerIds"/>, and there is no per-printer check.</b>
+    /// The same shape as <see cref="Services.PrintHistoryService.CountForUserAsync"/> and for the same
+    /// reason: a question spanning printers has no single id to require a capability on. The caller
+    /// passes the ids it was already granted and this counts strictly inside that set.
+    /// </para>
+    /// <para>
+    /// <b>Every row counts, because every row is a wait.</b> A queued print leaves this table when it
+    /// becomes a <see cref="PrintJob"/>, so what is left is exactly what has not started - including
+    /// an entry held on a condition somebody has to clear. Filtering those out would quietly under-
+    /// report the queue that most needs attention.
+    /// </para>
+    /// <para>
+    /// Printers with an empty queue are absent from the result rather than present with a zero. The
+    /// page renders nothing for them, so absence and zero mean the same thing and the dictionary
+    /// stays the size of what it has to say.
+    /// </para>
+    /// </remarks>
+    public async Task<IReadOnlyDictionary<int, int>> CountByPrinterAsync(
+        IReadOnlyCollection<int> printerIds,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(printerIds);
+
+        if (printerIds.Count == 0)
+        {
+            return new Dictionary<int, int>();
+        }
+
+        var counted = await _dbContext.QueuedPrints
+                                      .AsNoTracking()
+                                      .Where(job => printerIds.Contains(job.PrinterId))
+                                      .GroupBy(job => job.PrinterId)
+                                      .Select(group => new { PrinterId = group.Key, Waiting = group.Count() })
+                                      .ToListAsync(cancellationToken);
+
+        return counted.ToDictionary(row => row.PrinterId, row => row.Waiting);
+    }
+
+    /// <summary>
     /// Adds one of the caller's files to the end of a printer's queue.
     /// </summary>
     /// <exception cref="PrinterNotFoundException">No printer has that id.</exception>
@@ -125,6 +169,25 @@ public class PrintQueueService
         };
 
         _dbContext.QueuedPrints.Add(queued);
+
+        // Queueing a file again is the deliberate act that answers an unresolved print start
+        // (PrintHoldReason.PrintStartUnresolved): the loop could not establish whether a previous
+        // START_PRINT of this file took, and asking for it now is somebody saying they have looked.
+        // Scoped to that one reason - the other holds are conditions on the printer, and none of
+        // them is cleared by wanting the file more.
+        PrintFileOnPrinter? unresolved = await _dbContext.PrintFilesOnPrinters
+                                                         .SingleOrDefaultAsync(
+                                                             row => row.PrinterId == printerId
+                                                                    && row.PrintFileId == file.Id
+                                                                    && row.HoldReason == PrintHoldReason.PrintStartUnresolved,
+                                                             cancellationToken);
+
+        if (unresolved is not null)
+        {
+            unresolved.HoldReason = null;
+            unresolved.BlockedAt = null;
+        }
+
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         // After the save, so the loop cannot wake and read a queue this row is not in yet. Somebody

@@ -5,7 +5,79 @@
     ViewData["Title"] = Localiser["Home_Title"].Value;
 }
 
-<div class="text-center">
-    <h1 class="display-4">Homespool</h1>
-    <p>@Localiser["Home_Tagline"]</p>
-</div>
+@if (!Model.SignedIn)
+{
+    @* The holding page, unchanged. A visitor who is not signed in has no printers to be shown and
+       no way for us to know whose they would be. *@
+    <div class="text-center">
+        <h1 class="display-4">Homespool</h1>
+        <p>@Localiser["Home_Tagline"]</p>
+    </div>
+}
+else
+{
+    <h1 class="visually-hidden">@ViewData["Title"]</h1>
+
+    @if (!string.IsNullOrEmpty(Model.StatusMessage))
+    {
+        @* Per file, so a drop where the upload worked and the queue refused says both. Dismissible,
+           and a success takes itself away after a while - see dismiss-alert.js. *@
+        <div class="alert @(Model.StatusSuccess ? "alert-success" : "alert-warning") alert-dismissible fade show"
+             role="alert">
+            @Model.StatusMessage
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="@Localiser["Common_Close"]"></button>
+        </div>
+    }
+
+    <div class="d-flex align-items-baseline justify-content-between mb-3">
+        <h2 class="h4 mb-0">@Localiser["Home_YourPrinters"]</h2>
+        <a asp-page="/Printers/Index">@Localiser["Home_AllPrinters"]</a>
+    </div>
+
+    @* Polled, for the reason printer-page.md §1 exists: a front page left open on a wall display is
+       exactly the thing that goes quietly stale. Ten seconds rather than the status card's two - this
+       is a plaque saying "Printing", not a temperature climbing, and six printers' worth of it. *@
+    <div data-live-region
+         data-live-url="@Url.Page("Index", "Tiles")"
+         data-live-interval="10000">
+        <partial name="_PrinterShortcuts" model="Model" />
+    </div>
+
+    @if (Model.CanUpload)
+    {
+        @* The dialog a drop raises. Empty until then: its contents come from the Conflicts handler,
+           which is what knows the printer, the file names and which of them already exist.
+
+           The form is the transport and never the trigger. The files are put into it from the
+           DataTransfer the drop carried, so the browser sends a plain multipart POST - no upload
+           progress to invent, and the antiforgery token comes along the way it does everywhere. *@
+        <form method="post" enctype="multipart/form-data" asp-page-handler="Drop" class="d-none" data-drop-form>
+            <input type="hidden" name="uuid" data-drop-form-uuid />
+            <input type="hidden" name="action" data-drop-form-action />
+            @* No multiple: a drag contributes one file. The handler still reads a list, because it is
+               an endpoint rather than a private arrangement with this script - see OnPostDropAsync. *@
+            <input type="file" name="files" data-drop-form-files />
+            <span data-drop-form-replace></span>
+        </form>
+
+        <div class="modal fade" tabindex="-1" data-drop-dialog aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content" data-drop-dialog-content></div>
+            </div>
+        </div>
+    }
+}
+
+@section Scripts {
+    <script src="~/js/live-region.js" asp-append-version="true"></script>
+    <script src="~/js/dismiss-alert.js" asp-append-version="true"></script>
+
+    @if (Model.CanUpload)
+    {
+        @* camera.js before tile-drop.js: the drop dialog's bed-clear step carries a camera view and
+           asks camera.js to bind it once that step is shown. There is no camera anywhere else on
+           this page, so this script exists purely for that one dialog. *@
+        <script src="~/js/camera.js" asp-append-version="true"></script>
+        <script src="~/js/tile-drop.js" asp-append-version="true"></script>
+    }
+}

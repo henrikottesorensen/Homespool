@@ -12,31 +12,31 @@ public enum DeviceState
     Undefined = 0,
 
     /// <summary>Powered on, nothing happening.</summary>
-    Idle,
+    Idle = 1,
 
     /// <summary>Occupied by something that is not a print job (e.g. a filament change).</summary>
-    Busy,
+    Busy = 2,
 
     /// <summary>A print job is running.</summary>
-    Printing,
+    Printing = 3,
 
     /// <summary>A print job is paused and resumable.</summary>
-    Paused,
+    Paused = 4,
 
     /// <summary>The last job completed; the finished screen is showing.</summary>
-    Finished,
+    Finished = 5,
 
     /// <summary>The last job was stopped; the stopped screen is showing.</summary>
-    Stopped,
+    Stopped = 6,
 
     /// <summary>An error screen. Commands are rejected wholesale in this state.</summary>
-    Error,
+    Error = 7,
 
     /// <summary>The printer wants the user's attention (e.g. filament runout).</summary>
-    Attention,
+    Attention = 8,
 
     /// <summary>Explicitly marked ready for the next queued job.</summary>
-    Ready,
+    Ready = 9,
 
     /// <summary>
     /// The firmware's fallback: <c>to_str</c>'s default arm renders it as <c>"UNKNOWN"</c>, so a
@@ -44,5 +44,5 @@ public enum DeviceState
     /// and this server's telemetry parsing rejects it. Never entered by the fake's own transitions -
     /// it exists for <see cref="FakeDevice.ForceState"/> to make that disagreement testable.
     /// </summary>
-    Unknown,
+    Unknown = 10,
 }

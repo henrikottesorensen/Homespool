@@ -372,23 +372,24 @@ public sealed class LocalisationTests
     /// A reader in the United States does not assume Celsius, and 215 °F is a plausible-looking bed
     /// temperature and a wrong nozzle one - so the unit is stated there and left off where the
     /// assumption is safe.
+    /// <para>
+    /// <b>The key moved when the printer page was rebuilt around a status card.</b> It was
+    /// <c>Printers_TemperatureTarget</c>, a whole "215.0 / target 215.0" line, and the card shows the
+    /// two numbers in separate places - so the unit rule now lives on <c>Printers_Degrees</c>, which
+    /// every one of them is rendered through. Carrying the override across mattered more than the
+    /// wording it used to sit in.
+    /// </para>
     /// </remarks>
     [Fact]
     public void AmericanEnglishStatesTheTemperatureUnit()
     {
         IStringLocalizer<SharedResource> localiser = Localiser();
 
-        InCulture("en-US", () =>
-            localiser["Printers_TemperatureTarget", "215.0", "215.0"].Value
-                     .Should().Be("215.0 °C / target 215.0 °C"));
+        InCulture("en-US", () => localiser["Printers_Degrees", "215"].Value.Should().Be("215 °C"));
 
-        InCulture("en-GB", () =>
-            localiser["Printers_TemperatureTarget", "215.0", "215.0"].Value
-                     .Should().Be("215.0° / target 215.0°"));
+        InCulture("en-GB", () => localiser["Printers_Degrees", "215"].Value.Should().Be("215°"));
 
-        InCulture("da", () =>
-            localiser["Printers_TemperatureTarget", "215,0", "215,0"].Value
-                     .Should().Be("215,0° / mål 215,0°"));
+        InCulture("da", () => localiser["Printers_Degrees", "215"].Value.Should().Be("215°"));
     }
 
     /// <summary>
@@ -420,7 +421,6 @@ public sealed class LocalisationTests
             "Save",                     // a form button and the language picker's own
             "Profile",                  // the nav entry and the page's heading
             "Camera streaming",         // ditto - Nav_LiveView and LiveView_Title
-            "Manage your account",      // the nav tooltip and the page title
             "Printer certificate",      // the nav tooltip and the page title
             "Resend email confirmation", // the link and the page it leads to
             "Workshop",                 // an example team name and an example camera name
@@ -459,7 +459,7 @@ public sealed class LocalisationTests
     /// coming to this file next would have had no way to tell they were dead.
     /// </para>
     /// <para>
-    /// <b>Two families are named rather than searched for, and cannot be found by this.</b>
+    /// <b>Three families are named rather than searched for, and cannot be found by this.</b>
     /// <see cref="PrinterStatusText"/> builds its keys from a prefix and an enum member, and
     /// <see cref="Plural"/> from a prefix and One/Other - so their keys appear nowhere as literals.
     /// They are matched by shape below. A third such family would need adding here, which is the
@@ -480,8 +480,10 @@ public sealed class LocalisationTests
 
         // Built from a prefix at run time, so they are never written out in full anywhere.
         // Capability_ is CapabilityText, which names a capability from the enum member - the same
-        // seam, and the reason a grep for the key finds nothing.
-        string[] constructed = ["PrinterStatus_", "Intent_", "Capability_"];
+        // seam, and the reason a grep for the key finds nothing. QueueStatus_ is the fourth, from
+        // DetailModel.QueueStatusText over QueueEntryStatus - the "third such family" this test's
+        // remarks predicted would have to be added by hand.
+        string[] constructed = ["PrinterStatus_", "Intent_", "Capability_", "QueueStatus_"];
         string[] constructedSuffixes = ["_One", "_Other"];
 
         List<string> orphans = ReadResources("SharedResource.resx")

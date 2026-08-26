@@ -61,6 +61,27 @@ public class ChangePasswordModel : PageModel
     public string StatusMessage { get; set; }
 
     /// <summary>
+    /// Whether this account has a local password at all. False means it signs in with an external
+    /// provider, and <b>the view shows an explanation instead of the form</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This used to redirect to <c>./SetPassword</c>, a page that has never existed in this
+    /// codebase</b> — Identity.UI took it with the package. An unresolvable <c>RedirectToPage</c>
+    /// throws in the executor rather than answering, so the account menu's <i>Password</i> entry
+    /// answered <b>500</b> for exactly the accounts an external provider creates. Nothing reached it
+    /// before external OIDC was built, because every other creation path sets a password.
+    /// </para>
+    /// <para>
+    /// <b>The page was not restored, deliberately: an account whose credential is the provider does
+    /// not get a local one</b> (Henrik, 2026-08-22). So there is nothing to redirect to and nothing
+    /// to offer — only something to say. <c>ForgotPassword</c> is gated for the same reason and by the
+    /// same test; between them there is no route to a password for such an account.
+    /// </para>
+    /// </remarks>
+    public bool HasPassword { get; private set; }
+
+    /// <summary>
     ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
     ///     directly from your code. This API may change or be removed in future releases.
     /// </summary>
@@ -103,26 +124,34 @@ public class ChangePasswordModel : PageModel
             return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
         }
 
-        bool hasPassword = await _userManager.HasPasswordAsync(user);
-        if (!hasPassword)
-        {
-            return RedirectToPage("./SetPassword");
-        }
+        HasPassword = await _userManager.HasPasswordAsync(user);
 
         return Page();
     }
 
     public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
     {
-        if (!ModelState.IsValid)
-        {
-            return Page();
-        }
-
         HSUser user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
             return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+        }
+
+        HasPassword = await _userManager.HasPasswordAsync(user);
+
+        // Checked on the post as well, not only rendered. The GET withholds the form; that keeps an
+        // external account from being offered something it cannot have, and keeps nothing at all from
+        // a hand-made request. ChangePasswordAsync would refuse this anyway - there is no old password
+        // to match - but as a validation error about the wrong thing, which reads as "you typed your
+        // current password incorrectly" to somebody who has never had one.
+        if (!HasPassword)
+        {
+            return Page();
+        }
+
+        if (!ModelState.IsValid)
+        {
+            return Page();
         }
 
         int revoked;

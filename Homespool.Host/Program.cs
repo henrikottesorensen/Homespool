@@ -19,6 +19,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.JsonWebTokens;
 
 using Scalar.AspNetCore;
 
@@ -115,6 +116,17 @@ public static class Program
             return;
         }
 
+        // The schema this build expects, written to a file so a deployed database can be compared
+        // against it. Also not a server run, and answered here for the third variant of the same
+        // reason: it is asked when the application will not start, so it must not need the
+        // application to start. See Homespool.Data.SchemaWriter, and note the older-image trap the
+        // two applets above share - an image that predates this argument starts the server instead.
+        if (args.Length > 0 && args[0] == SchemaWriter.Argument)
+        {
+            Environment.ExitCode = SchemaWriter.Write(args.Length > 1 ? args[1] : null);
+            return;
+        }
+
         Log.Logger = new LoggerConfiguration()
                      .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
                      .Enrich.FromLogContext()
@@ -138,15 +150,23 @@ public static class Program
 
             builder.Services.AddHomespoolDataProtection(builder.Configuration, builder.Environment);
 
+            // This is process-wide and belongs here rather than on a scheme, because what it protects
+            // is the DEFAULT for whatever is registered next. AddOidcAuthentication also sets
+            // MapInboundClaims = false on its own handler, and that is not redundant with this: this
+            // one makes a handler somebody adds later safe without their having to know the rule; that
+            // one states it where a reader of the registration can see it. Neither alone is the rule.
+            JsonWebTokenHandler.DefaultInboundClaimTypeMap.Clear();
+
             builder.Services.AddAuthentication()
-                   .AddPrusaConnectPrinterAuthentication()
-                   .AddApiTokenAuthentication()
-                   .AddXApiKeyAuthentication();
+                            .AddPrusaConnectPrinterAuthentication()
+                            .AddApiTokenAuthentication()
+                            .AddXApiKeyAuthentication()
+                            .AddOidcAuthentication(builder.Configuration);
 
             builder.Services.AddIdentity<Model.Entities.HSUser, IdentityRole<long>>(Services.IdentityConfiguration.Configure)
-                   .AddEntityFrameworkStores<HomespoolDbContext>()
-                   .AddErrorDescriber<Services.HSIdentityErrorDescriber>()
-                   .AddDefaultTokenProviders();
+                            .AddEntityFrameworkStores<HomespoolDbContext>()
+                            .AddErrorDescriber<Services.HSIdentityErrorDescriber>()
+                            .AddDefaultTokenProviders();
 
             builder.Services.ConfigureApplicationCookie(options =>
             {
@@ -168,6 +188,28 @@ public static class Program
                 // cross-site GET with side effects, of which there are none by design: Logout is a
                 // POST and the API's GETs are reads. Real friction against a marginal gain.
                 options.Cookie.SameSite = SameSiteMode.Lax;
+
+                // SameAsRequest, written down for the same reason as the line above: it is already
+                // the framework's default, and it is the sort of value somebody arrives at asking
+                // why it is not the stricter one.
+                //
+                // NOT Always, and the reason is that plaintext deployments are supported rather than
+                // tolerated. Always withholds the cookie from every http:// request, so the rig and
+                // any deployment run without the proxy could not sign in at all - not degraded,
+                // locked out.
+                //
+                // What SameAsRequest depends on is the application knowing it is behind TLS, which
+                // on the shipped stack it does: nginx sends X-Forwarded-Proto and
+                // XForwarded__KnownNetworks is defaulted to the proxy's subnet, so Request.IsHttps
+                // is true and the cookie is issued Secure. Empty PROXY_NETWORK and the middleware is
+                // not registered, the scheme reads http, and this cookie loses Secure - which is a
+                // deliberate opt-out that also raises the red insecure-connection banner on every
+                // page, rather than a state anybody lands in quietly.
+                //
+                // Deliberately not read from X-Forwarded-Proto directly: untrusted, that header is
+                // attacker-written, so honouring it where no proxy is trusted would be worse than
+                // the state it claims to fix.
+                options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
 
                 options.LoginPath = "/Account/Login";
                 options.AccessDeniedPath = "/Account/AccessDenied";
@@ -238,6 +280,9 @@ public static class Program
             builder.Services.Configure<Services.InvitationOptions>(
                 builder.Configuration.GetSection(Services.InvitationOptions.SectionName));
 
+            builder.Services.Configure<Services.SecurityOptions>(
+                builder.Configuration.GetSection(Services.SecurityOptions.SectionName));
+
             Services.SmtpOptions smtpOptions = new();
             builder.Configuration.GetSection(Services.SmtpOptions.SectionName).Bind(smtpOptions);
 
@@ -276,6 +321,7 @@ public static class Program
 
             // Likewise factory-activated, and it holds nothing at all.
             builder.Services.AddSingleton<Services.SecurityHeadersMiddleware>();
+            builder.Services.AddSingleton<Services.ClientGoneMiddleware>();
 
             builder.Services.AddScoped<PrusaConnect.PrusaConnectService>()
                             .AddScoped<PrusaConnect.WebSocketHandler>()
@@ -284,7 +330,9 @@ public static class Program
                             .AddScoped<PrusaConnect.ClaimAttemptLimiter>()
                             .AddScoped<PrusaConnect.MessageDispatcher>()
                             .AddScoped<Printing.PrinterCommandService>()
-                            .AddScoped<PrusaConnect.PrinterPreheatService>();
+                            .AddScoped<Printing.ToolTargetReader>()
+                            .AddScoped<PrusaConnect.PrinterPreheatService>()
+                            .AddScoped<PrusaConnect.PrinterFilamentService>();
 
             // Plain singletons, not TelemetryWriter's singleton-with-IServiceScopeFactory pattern below:
             // neither touches HomespoolDbContext, only in-memory state (the directory of live connection
@@ -438,6 +486,7 @@ public static class Program
             builder.Services.AddScoped<Services.InvitationService>();
             builder.Services.AddScoped<Services.PrinterQueryService>();
             builder.Services.AddScoped<Services.PrinterDeletionService>();
+            builder.Services.AddScoped<Services.UserNameLookup>();
             builder.Services.AddScoped<PrintQueueService>();
             builder.Services.AddScoped<Services.PrintHistoryService>();
             builder.Services.AddScoped<Services.PrintStopService>();
@@ -535,6 +584,11 @@ public static class Program
             // Requests handled before in the pipeline are NOT logged.
             app.UseSerilogRequestLogging();
 
+            // INSIDE the request logging, deliberately. It absorbs the cancellation and sets 499, and
+            // Serilog reads the status on the way back out - registered outside it instead, Serilog
+            // would already have logged the 500 and the unhandled exception it exists to prevent.
+            app.UseMiddleware<Services.ClientGoneMiddleware>();
+
             // Only when this process serves users over TLS itself. Otherwise there is no port to
             // redirect to that is not the printer's, and sending a browser there is worse than not
             // redirecting at all - see the pinned HttpsPort in ConfigureListeners.
@@ -569,6 +623,11 @@ public static class Program
 
             app.UseAuthentication();
             app.UseAuthorization();
+
+            // After authorization, so it sees a resolved principal and cannot be reached by anybody
+            // an endpoint would have refused anyway. It is inert unless Security:RequireTwoFactor is
+            // on, and it only ever acts on the application cookie - see the middleware's remarks.
+            app.UseMiddleware<Services.TwoFactorEnrolmentMiddleware>();
 
             // After authentication, and that ordering is load-bearing rather than tidy: the first
             // culture provider reads the signed-in account's stored language, so it needs

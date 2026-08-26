@@ -192,6 +192,14 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
                   .IsRequired()
                   .HasMaxLength(Camera.SourceMaxLength);
 
+            // The address is stored in the clear and the password beside it as ciphertext. Both
+            // nullable: most cameras need no credential at all.
+            entity.Property(e => e.CredentialUser)
+                  .HasMaxLength(Camera.CredentialUserMaxLength);
+
+            entity.Property(e => e.CredentialSecret)
+                  .HasMaxLength(Camera.CredentialSecretMaxLength);
+
             // Nullable on purpose: null is "whatever the camera offers", which is the default and a
             // real answer rather than a missing one. See Camera.Resolution.
             entity.Property(e => e.Resolution)

@@ -782,6 +782,10 @@ public sealed class TelemetryWriterTests : IDisposable
         TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
         await SeedPrinterAsync();
 
+        // Synthetic throughout. Built from a real event in a private capture, and when it was first
+        // written only the api_key was substituted - the SSID and the printer's MAC came through
+        // verbatim and reached a public repo. The MAC is from the RFC 7042 2.1.2 documentation range,
+        // which cannot collide with a real device. Keep it that way when this fixture is next updated.
         using JsonDocument payload = JsonDocument.Parse(
             """
             {"firmware":"6.5.7+12836","api_key":"vC7x4aZfohmcbzH","nozzle_diameter":0.4,
@@ -1440,6 +1444,48 @@ public sealed class TelemetryWriterTests : IDisposable
         }, TimeSpan.FromSeconds(5));
 
         populated.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// Unloading clears <see cref="Printer.LoadedMaterial"/> rather than leaving it naming filament
+    /// that is no longer in the machine.
+    /// </summary>
+    /// <remarks>
+    /// <b>The writeback cache had to learn the difference between "clear it" and "nothing
+    /// pending".</b> <c>PendingLoadedMaterial</c> was a <c>string?</c>, where null meant nothing to
+    /// write - so an unload, which arrives as present-with-null, was indistinguishable from silence
+    /// and the column kept its old value for ever. It is a <c>Field</c> now for that reason.
+    /// </remarks>
+    [Fact]
+    public async Task UnloadingClearsLoadedMaterialOnThePrinterRow()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE", Material = "PLA" });
+
+        bool populated = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+            Printer printer = await context.Printers.SingleAsync();
+            return printer.LoadedMaterial == "PLA";
+        }, TimeSpan.FromSeconds(5));
+
+        populated.Should().BeTrue("the printer had filament in it to begin with");
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE", Material = "---" });
+
+        // Assert
+        bool cleared = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+            Printer printer = await context.Printers.SingleAsync();
+            return printer.LoadedMaterial is null;
+        }, TimeSpan.FromSeconds(5));
+
+        cleared.Should().BeTrue("the sentinel says the filament is gone, and the column must say so too");
     }
 
     /// <summary>

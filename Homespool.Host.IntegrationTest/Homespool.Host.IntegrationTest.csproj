@@ -11,6 +11,10 @@
           <PrivateAssets>all</PrivateAssets>
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
+        <!-- ExternalOidcDexTests drives the real ASP.NET Core pipeline through the OIDC handler, the
+             one thing a service-level test cannot do: the callback is a request, and the external
+             cookie it reads is written by the handler earlier in the same pipeline. -->
+        <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
         <PackageReference Include="xunit.v3" Version="3.2.2" />
         <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
@@ -25,6 +29,11 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Homespool.Host\Homespool.Host.csproj" />
+      <!-- For HomespoolFactory alone. Reimplementing it here would reimplement its content-root
+           isolation with it, and that override exists because three components escaped into the
+           project tree one at a time - see its own remarks. A test project referencing another is
+           worth the smell to not rediscover those. -->
+      <ProjectReference Include="..\Homespool.Host.E2ETest\Homespool.Host.E2ETest.csproj" />
     </ItemGroup>
 
 </Project>

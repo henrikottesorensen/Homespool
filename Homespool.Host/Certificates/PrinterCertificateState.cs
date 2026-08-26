@@ -8,23 +8,23 @@ public enum PrinterCertificateState
     Undefined = 0,
 
     /// <summary>The certificate covers what printers are told to use, and is not near expiry.</summary>
-    Ok,
+    Ok = 1,
 
     /// <summary>Printers use plain HTTP, so there is no certificate and nothing to check.</summary>
-    NotInUse,
+    NotInUse = 2,
 
     /// <summary>No certificate has been issued at all.</summary>
-    Missing,
+    Missing = 3,
 
     /// <summary>The address printers are told to use is absent from the certificate.</summary>
-    ConfiguredAddressUncovered,
+    ConfiguredAddressUncovered = 4,
 
     /// <summary>Every address the certificate names has gone from this machine.</summary>
-    AddressesMoved,
+    AddressesMoved = 5,
 
     /// <summary>The leaf is close to expiring — a restart's worth of work.</summary>
-    LeafExpiring,
+    LeafExpiring = 6,
 
     /// <summary>The authority is close to expiring — a USB visit to every printer.</summary>
-    AuthorityExpiring,
+    AuthorityExpiring = 7,
 }

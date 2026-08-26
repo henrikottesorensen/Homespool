@@ -1,0 +1,68 @@
+@model Homespool.Host.Pages.PrinterFormFactor
+@*
+    A printer, in one of two form factors: an open bed slinger, or a closed box.
+
+    Geometry is printer-bedslinger.svg and printer-enclosed.svg verbatim, inlined here rather than
+    referenced with <img> - the same trade _BrandMark.cshtml makes, and for the same reason. Both
+    render brand blue either way; what inlining buys is that currentColor resolves against the page,
+    so the tile can lift the hue on a dark ground the way the link and navbar rules do. An <img>
+    would sit at the one fixed blue baked into the file, which is right in light mode only.
+
+    Three things are dropped from the source files on the way in. color="#278ED3", because it would
+    pin the blue and defeat exactly that - site.css puts the colour back on .printer-shortcut-drawing
+    instead. Then role="img" and its aria-label, because the plaque underneath already names the
+    printer and says what it is doing; keeping them would make a screen reader announce "Bed slinger
+    3D printer" before every name.
+
+    OURS, and it has to be. Homespool talks to other people's machines and is an independent
+    alternative to the software that ships with them - visual-identity.md §2 records the house blue
+    being chosen as "not Prusa's orange" on exactly that reasoning. Both shapes are generic: many
+    manufacturers build each.
+
+    No ids, defs or masks, unlike the mark. This renders once per tile and ids are document-global
+    once inlined; the mark's own comment records that trap, and six tiles on a page is where it would
+    bite.
+*@
+@if (Model == Homespool.Host.Pages.PrinterFormFactor.Enclosed)
+{
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"
+         fill="none" stroke="currentColor" stroke-width="4.5"
+         stroke-linecap="round" stroke-linejoin="round"
+         aria-hidden="true" focusable="false" class="printer-icon printer-icon-enclosed">
+        @* cabinet *@
+        <rect x="14" y="9" width="68" height="76" rx="9" />
+        @* lid seam and screen *@
+        <path d="M14 23 H82" />
+        <rect x="56" y="13" width="16" height="6" rx="2" stroke-width="2.5" />
+        @* door window *@
+        <rect x="25" y="31" width="46" height="42" rx="4" fill="currentColor" fill-opacity="0.08" stroke-width="4" />
+        @* gantry, carriage and nozzle *@
+        <path d="M29 36 H67" stroke-width="3" />
+        <rect x="42" y="37" width="12" height="7" rx="1.5" fill="currentColor" fill-opacity="0.12" stroke-width="3" />
+        <path d="M43 44 H53 V46 L49.5 51 H46.5 L43 46 Z" fill="currentColor" stroke="none" />
+        @* part on the bed *@
+        <rect x="43" y="58" width="10" height="5" rx="1" fill="currentColor" stroke="none" />
+        @* bed *@
+        <rect x="30" y="63" width="36" height="5" rx="1.5" fill="currentColor" fill-opacity="0.12" stroke-width="3" />
+    </svg>
+}
+else
+{
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"
+         fill="none" stroke="currentColor" stroke-width="4.5"
+         stroke-linecap="round" stroke-linejoin="round"
+         aria-hidden="true" focusable="false" class="printer-icon printer-icon-open">
+        @* base *@
+        <rect x="18" y="75" width="60" height="9" rx="3" fill="currentColor" fill-opacity="0.12" />
+        <circle cx="69" cy="79.5" r="2.5" fill="currentColor" stroke="none" />
+        @* gantry, broken where the bed passes *@
+        <path d="M24 56 V27 H72 V56" />
+        @* carriage and nozzle *@
+        <rect x="38" y="30" width="20" height="12" rx="2" fill="currentColor" fill-opacity="0.12" stroke-width="3" />
+        <path d="M41 42 H55 V45 L50 51 H46 L41 45 Z" fill="currentColor" stroke="none" />
+        @* part on the bed *@
+        <rect x="42" y="56.5" width="12" height="5" rx="1" fill="currentColor" stroke="none" />
+        @* bed, resting on the base, wider than the frame *@
+        <rect x="8" y="64" width="80" height="6" rx="2" fill="currentColor" fill-opacity="0.12" stroke-width="4" />
+    </svg>
+}

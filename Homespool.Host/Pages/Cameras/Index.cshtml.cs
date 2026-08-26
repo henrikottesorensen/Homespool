@@ -99,6 +99,36 @@ public class IndexModel : PageModel
     /// <summary>The camera being edited, if the query string names one.</summary>
     public Camera? Editing { get; private set; }
 
+    /// <summary>
+    /// What the edit form puts in its source box: the address, and the password as a placeholder.
+    /// </summary>
+    /// <remarks>
+    /// <b>Composed from the stored columns rather than decrypted.</b> The user name is stored in the
+    /// clear and the placeholder stands in for the password, so rendering this form never needs the
+    /// key ring and the real password never reaches a browser. A camera saved before the split still
+    /// carries its credential inline in the address, so that case is masked the old way.
+    /// </remarks>
+    public string EditingSource
+    {
+        get
+        {
+            if (Editing is null)
+            {
+                return string.Empty;
+            }
+
+            if (Editing.CredentialUser is null)
+            {
+                return CameraSourceDisplay.WithHiddenPassword(Editing.Source);
+            }
+
+            return CameraSourceDisplay.WithCredential(
+                Editing.Source,
+                Editing.CredentialUser,
+                Editing.CredentialSecret is null ? null : CameraSourceDisplay.HiddenPassword);
+        }
+    }
+
     [TempData]
     public string? Message { get; set; }
 
@@ -300,7 +330,7 @@ public class IndexModel : PageModel
         TimeSpan age = frame.AgeAt(DateTimeOffset.UtcNow);
 
         return age.TotalSeconds < 2 ?
-            _localiser["Cameras_JustNow"] :
+            _localiser["Common_JustNow"] :
             _localiser["Cameras_SecondsAgo", (int)age.TotalSeconds];
     }
 

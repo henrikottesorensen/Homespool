@@ -384,14 +384,8 @@
   <data name="Printers_BackToList" xml:space="preserve">
     <value>← Back to printers</value>
   </data>
-  <data name="Printers_CurrentStatus" xml:space="preserve">
-    <value>Current status</value>
-  </data>
   <data name="Printers_NotConnected" xml:space="preserve">
     <value>Not connected</value>
-  </data>
-  <data name="Printers_LastSeen" xml:space="preserve">
-    <value>Last seen</value>
   </data>
   <data name="Printers_Nozzle" xml:space="preserve">
     <value>Nozzle</value>
@@ -399,32 +393,14 @@
   <data name="Printers_Bed" xml:space="preserve">
     <value>Bed</value>
   </data>
-  <data name="Printers_NozzleTemp" xml:space="preserve">
-    <value>Nozzle temperature</value>
-  </data>
-  <data name="Printers_BedTemp" xml:space="preserve">
-    <value>Bed temperature</value>
-  </data>
   <data name="Printers_Temperature" xml:space="preserve">
     <value>Temperature</value>
   </data>
   <data name="Printers_Material" xml:space="preserve">
     <value>Material</value>
   </data>
-  <data name="Printers_Speed" xml:space="preserve">
-    <value>Speed</value>
-  </data>
-  <data name="Printers_Flow" xml:space="preserve">
-    <value>Flow</value>
-  </data>
   <data name="Printers_Progress" xml:space="preserve">
     <value>Progress</value>
-  </data>
-  <data name="Printers_TimePrinting" xml:space="preserve">
-    <value>Time printing</value>
-  </data>
-  <data name="Printers_TimeRemaining" xml:space="preserve">
-    <value>Time remaining</value>
   </data>
   <data name="Printers_FilamentChangeIn" xml:space="preserve">
     <value>Filament change in</value>
@@ -434,9 +410,6 @@
   </data>
   <data name="Printers_Starting" xml:space="preserve">
     <value>starting</value>
-  </data>
-  <data name="Printers_StartedAt" xml:space="preserve">
-    <value>Started {0}</value>
   </data>
   <data name="Printers_PrintHistory" xml:space="preserve">
     <value>Print history</value>
@@ -450,14 +423,8 @@
   <data name="Printers_NoEvents" xml:space="preserve">
     <value>No events yet.</value>
   </data>
-  <data name="Printers_RecentTelemetry" xml:space="preserve">
-    <value>Recent telemetry</value>
-  </data>
   <data name="Printers_NoTelemetry" xml:space="preserve">
     <value>No telemetry yet.</value>
-  </data>
-  <data name="Printers_NoTelemetryHistory" xml:space="preserve">
-    <value>No telemetry history yet.</value>
   </data>
   <data name="Printers_QueueHeld" xml:space="preserve">
     <value>The queue is held.</value>
@@ -471,14 +438,66 @@
   <data name="Printers_CoolDown" xml:space="preserve">
     <value>Cool down</value>
   </data>
+  <data name="Printers_Unload" xml:space="preserve">
+    <value>Unload {0}</value>
+    <comment>{0} is the material the printer reports as loaded, e.g. PLA. Naming it tells somebody what is about to come out.</comment>
+  </data>
+  <data name="Printers_UnloadStarted" xml:space="preserve">
+    <value>Unloading {0}. The printer heats the nozzle, ejects the filament, then switches everything off.</value>
+    <comment>Says started, not done: the printer answers a gcode command when it queues it, and the unload itself takes minutes.</comment>
+  </data>
+  <data name="Printers_UnloadStartedOnTool" xml:space="preserve">
+    <value>Unloading {0} from tool {1}. The printer heats the nozzle, ejects the filament, then switches everything off.</value>
+  </data>
+  <data name="Printers_UnloadEllipsis" xml:space="preserve">
+    <value>Unload…</value>
+    <comment>Opens the tool picker on a multi-tool printer. The ellipsis is the convention for a control that asks before acting.</comment>
+  </data>
+  <data name="Printers_UnloadWhichTool" xml:space="preserve">
+    <value>Unload which tool?</value>
+  </data>
+  <data name="Printers_UnloadPickerNote" xml:space="preserve">
+    <value>Each tool unloads at its own filament’s printing temperature. The printer picks the tool, ejects, then docks it again - a few minutes, and it declines other commands meanwhile.</value>
+  </data>
+  <data name="Printers_Tools" xml:space="preserve">
+    <value>Tools</value>
+  </data>
+  <data name="Printers_ToolsFitted" xml:space="preserve">
+    <value>{0} fitted</value>
+    <comment>{0} is how many heads the printer reports. Not how many positions exist - tool numbers are not contiguous.</comment>
+  </data>
+  <data name="Printers_ToolNothingLoaded" xml:space="preserve">
+    <value>None loaded</value>
+  </data>
+  <data name="Printers_ToolHardened" xml:space="preserve">
+    <value>hardened</value>
+    <comment>Marks a hardened nozzle. Load-bearing: an abrasive print is held when no hardened nozzle is reported, and this says which head has one.</comment>
+  </data>
+  <data name="Printers_ToolOnCarriage" xml:space="preserve">
+    <value>Tool {0} is on the carriage.</value>
+  </data>
+  <data name="Printers_ToolWithMaterial" xml:space="preserve">
+    <value>Tool {0} · {1}</value>
+    <comment>{0} is the tool number as the printer reports it, {1} the loaded material.</comment>
+  </data>
+  <data name="Printers_ToolEmpty" xml:space="preserve">
+    <value>Tool {0} · nothing loaded</value>
+  </data>
+  <data name="Printers_ToolPicked" xml:space="preserve">
+    <value>picked</value>
+    <comment>Marks the tool currently on the carriage. Informational: any tool can be unloaded.</comment>
+  </data>
+  <data name="Printers_UnloadConfirm" xml:space="preserve">
+    <value>Unload this tool</value>
+  </data>
+  <data name="Printers_UnloadNote" xml:space="preserve">
+    <value>Unloading heats the nozzle to the loaded filament’s printing temperature, ejects it, then turns the heaters off - so the printer is cold and empty when you reach it. It takes a few minutes, and the printer will decline other commands while it runs.</value>
+  </data>
   <data name="Printers_SlicerHeading" xml:space="preserve">
     <value>Send from a slicer</value>
   </data>
   <data name="Printers_ApiTokenLink" xml:space="preserve">
     <value>personal access token</value>
-  </data>
-  <data name="Printers_PrintersListLink" xml:space="preserve">
-    <value>printers list</value>
   </data>
   <data name="Common_Event" xml:space="preserve">
     <value>Event</value>
@@ -514,11 +533,11 @@
     <value>Copy</value>
   </data>
   <data name="Printers_SlicerHelp" xml:space="preserve">
-    <value>PrusaSlicer can send straight to this printer. Under {0}, set {1} to {2}, paste this as the hostname, and use a {3} as the API key. {4} adds the file to the queue above rather than starting it.</value>
+    <value>PrusaSlicer can send straight to this printer. Under {0}, set {1} to {2}, paste this as the hostname, and use a {3} as the API key. Pressing {4} will enqueue the print in Homespool.</value>
     <comment>The braces are PrusaSlicer's own menu labels and a link, kept English: they have to match what a person sees in the slicer, which this application does not author.</comment>
   </data>
   <data name="Printers_PreheatWarning" xml:space="preserve">
-    <value>Both are refused while the printer is busy, {0}: changing a heater&apos;s target mid-print ruins the print without ending it, and the printer will not refuse it on your behalf. To stop a print, use the controls on the {1}.</value>
+    <value>Both are refused while the printer is busy, {0}: changing a heater&apos;s target mid-print ruins the print without ending it, and the printer will not refuse it on your behalf.</value>
   </data>
   <data name="Printers_CoolingIncluded" xml:space="preserve">
     <value>cooling included</value>
@@ -547,22 +566,31 @@
     <value>Marked ready. The next queued print can start.</value>
   </data>
   <data name="Printers_RemoteReadyLabel" xml:space="preserve">
-    <value>Allow setting ready from this page</value>
+    <value>Allow setting ready from Homespool</value>
   </data>
   <data name="Printers_RemoteReadyHelp" xml:space="preserve">
-    <value>Turn this on only if anyone reading this page can tell whether the print sheet is empty. A camera that does not show the sheet is a reason to leave it off. With it off, marking ready means going to the printer and doing it at its own panel.</value>
+    <value>Turn this on only if anyone using Homespool can tell whether the print sheet is empty. A camera that does not show the sheet is a reason to leave it off. With it off, marking ready means going to the printer and doing it at its own panel.</value>
   </data>
   <data name="Printers_RemoteReadySaved" xml:space="preserve">
-    <value>Setting ready from this page is now allowed.</value>
+    <value>Setting ready from Homespool is now allowed.</value>
   </data>
   <data name="Printers_RemoteReadyCleared" xml:space="preserve">
-    <value>Setting ready from this page is no longer allowed.</value>
+    <value>Setting ready from Homespool is no longer allowed.</value>
   </data>
   <data name="Printers_ReadyNotAllowed" xml:space="preserve">
     <value>This printer is not set up to be marked ready from here.</value>
   </data>
   <data name="Printers_NothingQueued" xml:space="preserve">
     <value>Nothing queued. Send a file to this printer&apos;s queue from {0}.</value>
+  </data>
+  <data name="Account_OrAcceptWith" xml:space="preserve">
+    <value>Or accept with</value>
+  </data>
+  <data name="Account_OrSignInWith" xml:space="preserve">
+    <value>Or sign in with</value>
+  </data>
+  <data name="Account_SignInWithProviderTitle" xml:space="preserve">
+    <value>Sign in with {0}</value>
   </data>
   <data name="Account_LogIn" xml:space="preserve">
     <value>Log in</value>
@@ -578,6 +606,12 @@
   </data>
   <data name="Account_CreateAccount" xml:space="preserve">
     <value>Create account</value>
+  </data>
+  <data name="Account_ReactivateHelp" xml:space="preserve">
+    <value>Set a password for your account</value>
+  </data>
+  <data name="Account_InviteAddressAlreadyActive" xml:space="preserve">
+    <value>That address already has an account that can sign in, so this invitation cannot be used for it.</value>
   </data>
   <data name="Account_CreateAccountHelp" xml:space="preserve">
     <value>Create your account.</value>
@@ -620,6 +654,81 @@
   <data name="Home_Tagline" xml:space="preserve">
     <value>A self-hosted 3D printer spooler. Your models never leave your machines.</value>
   </data>
+  <data name="Home_YourPrinters" xml:space="preserve">
+    <value>Your printers</value>
+  </data>
+  <data name="Home_AllPrinters" xml:space="preserve">
+    <value>All printers</value>
+  </data>
+  <data name="Home_NoPrintersShown" xml:space="preserve">
+    <value>No printers to show.</value>
+  </data>
+  <data name="Home_Queued_One" xml:space="preserve">
+    <value>{0} file queued</value>
+  </data>
+  <data name="Home_Queued_Other" xml:space="preserve">
+    <value>{0} files queued</value>
+  </data>
+  <data name="Home_DropTitle" xml:space="preserve">
+    <value>Send to {0}</value>
+  </data>
+  <data name="Home_DropClashHeading" xml:space="preserve">
+    <value>You already have a file with this name</value>
+  </data>
+  <data name="Home_DropClashHelp" xml:space="preserve">
+    <value>Nothing has been uploaded yet.</value>
+  </data>
+  <data name="Home_DropReplaceUnavailable" xml:space="preserve">
+    <value>Your account cannot replace files, so the one you already have will be kept.</value>
+  </data>
+  <data name="Home_DropContinue" xml:space="preserve">
+    <value>Continue</value>
+  </data>
+  <data name="Home_DropActionHeading" xml:space="preserve">
+    <value>What should happen to this file?</value>
+  </data>
+  <data name="Home_DropActionUpload" xml:space="preserve">
+    <value>Upload only</value>
+  </data>
+  <data name="Home_DropActionQueue" xml:space="preserve">
+    <value>Upload and queue</value>
+  </data>
+  <data name="Home_DropActionReady" xml:space="preserve">
+    <value>Upload, make ready and print now</value>
+  </data>
+  <data name="Home_DropQueued" xml:space="preserve">
+    <value>Queued {0} on {1}.</value>
+  </data>
+  <data name="Home_DropQueueRefused" xml:space="preserve">
+    <value>{0} was uploaded but not queued: {1}</value>
+  </data>
+  <data name="Home_DropRejected" xml:space="preserve">
+    <value>{0} was not uploaded: {1}</value>
+  </data>
+  <data name="Home_DropKept" xml:space="preserve">
+    <value>Kept your existing {0}.</value>
+  </data>
+  <data name="Home_DropNothing" xml:space="preserve">
+    <value>Nothing was uploaded.</value>
+  </data>
+  <data name="Home_DropAccepts" xml:space="preserve">
+    <value>Homespool takes {0}, up to {1}.</value>
+  </data>
+  <data name="Common_Hours_One" xml:space="preserve">
+    <value>{0} hour</value>
+  </data>
+  <data name="Common_Hours_Other" xml:space="preserve">
+    <value>{0} hours</value>
+  </data>
+  <data name="Common_Minutes_One" xml:space="preserve">
+    <value>{0} minute</value>
+  </data>
+  <data name="Common_Minutes_Other" xml:space="preserve">
+    <value>{0} minutes</value>
+  </data>
+  <data name="Common_DurationParts" xml:space="preserve">
+    <value>{0} {1}</value>
+  </data>
   <data name="Account_AcceptInvitation" xml:space="preserve">
     <value>Accept invitation</value>
   </data>
@@ -628,6 +737,39 @@
   </data>
   <data name="Manage_Profile" xml:space="preserve">
     <value>Profile</value>
+  </data>
+  <data name="Manage_RemoveLogin" xml:space="preserve">
+    <value>Remove provider</value>
+  </data>
+  <data name="Manage_LinkedLogins" xml:space="preserve">
+    <value>Linked sign-in providers</value>
+  </data>
+  <data name="Manage_AddAnotherLogin" xml:space="preserve">
+    <value>Link a sign-in provider</value>
+  </data>
+  <data name="Manage_ExternalLoginLinked" xml:space="preserve">
+    <value>That provider is now linked to your account.</value>
+  </data>
+  <data name="Manage_ExternalLoginLinkError" xml:space="preserve">
+    <value>That provider could not be linked to your account.</value>
+  </data>
+  <data name="Manage_ExternalLoginRemoved" xml:space="preserve">
+    <value>That provider is no longer linked to your account.</value>
+  </data>
+  <data name="Manage_ExternalLoginRemoveError" xml:space="preserve">
+    <value>That provider could not be removed from your account.</value>
+  </data>
+  <data name="Manage_ExternalLoginSwappedForPassword" xml:space="preserve">
+    <value>That provider is no longer linked, and you now sign in with the password you just set.</value>
+  </data>
+  <data name="Manage_RemoveLastLoginHeading" xml:space="preserve">
+    <value>Remove this provider</value>
+  </data>
+  <data name="Manage_RemoveLastLoginExplanation" xml:space="preserve">
+    <value>This is the only way you sign in, so removing it means choosing a password first. Both happen together: you will sign in with the password from then on.</value>
+  </data>
+  <data name="Manage_RemoveLoginAndSetPassword" xml:space="preserve">
+    <value>Set the password and remove the provider</value>
   </data>
   <data name="Manage_ExternalLogins" xml:space="preserve">
     <value>External logins</value>
@@ -643,6 +785,9 @@
   </data>
   <data name="Manage_SendVerification" xml:space="preserve">
     <value>Send verification email</value>
+  </data>
+  <data name="Manage_NoLocalPassword" xml:space="preserve">
+    <value>You sign in with an external provider, so this account has no password here to change. Manage your password wherever you sign in.</value>
   </data>
   <data name="Manage_UpdatePassword" xml:space="preserve">
     <value>Update password</value>
@@ -782,11 +927,9 @@
   <data name="Account_ClickToLogIn" xml:space="preserve">
     <value>click here to log in</value>
   </data>
-  <data name="Manage_AccountTitle" xml:space="preserve">
-    <value>Manage your account</value>
-  </data>
-  <data name="Manage_AccountSubtitle" xml:space="preserve">
-    <value>Change your account settings</value>
+  <data name="Manage_AccountMenu" xml:space="preserve">
+    <value>your username</value>
+    <comment>Names the header menu in a sentence read by somebody signed out, who cannot be shown the name the menu actually carries.</comment>
   </data>
   <data name="Cert_Title" xml:space="preserve">
     <value>Printer certificate</value>
@@ -949,6 +1092,9 @@
   <data name="Account_ExternalLoginConfirmError" xml:space="preserve">
     <value>Error loading external login information during confirmation.</value>
   </data>
+  <data name="Account_ExternalNoInvite" xml:space="preserve">
+    <value>That sign-in succeeded, but no account here is linked to it and there is no invitation for it. Ask an administrator to invite you.</value>
+  </data>
   <data name="Account_EmailChangeError" xml:space="preserve">
     <value>Error changing email.</value>
   </data>
@@ -1043,7 +1189,7 @@
     <value>Any API tokens on the account have been revoked. Scripts using one will need a new token, which you can create under {0}.</value>
   </data>
   <data name="Files_DropHere" xml:space="preserve">
-    <value>Drop a file here, or choose one. .gcode, .bgcode, .gco or .bgc, up to {0}.</value>
+    <value>Drop a file here to upload it, or choose one. .gcode, .bgcode, .gco or .bgc, up to {0}.</value>
   </data>
   <data name="Printers_AddIntro" xml:space="preserve">
     <value>Provisions a printer and a token up front, for a USB stick - no need for the printer to contact this server first. The printer enrols itself the moment it connects using the token.</value>
@@ -1168,9 +1314,6 @@
   </data>
   <data name="LiveView_RestartWarning" xml:space="preserve">
     <value>Changing this restarts the camera stream server, which interrupts anyone watching for a moment. Cameras and still pictures are unaffected.</value>
-  </data>
-  <data name="Printers_TemperatureTarget" xml:space="preserve">
-    <value>{0}° / target {1}°</value>
   </data>
   <data name="Account_AccessDeniedTitle" xml:space="preserve">
     <value>Access denied</value>
@@ -1497,12 +1640,6 @@
   <data name="Printers_ClaimWaitOneSecond" xml:space="preserve">
     <value>1 second</value>
   </data>
-  <data name="Printers_ClaimWaitMinutes" xml:space="preserve">
-    <value>{0} minutes</value>
-  </data>
-  <data name="Printers_ClaimWaitOneMinute" xml:space="preserve">
-    <value>1 minute</value>
-  </data>
   <data name="Printers_ClaimNoSuchCode" xml:space="preserve">
     <value>No printer is waiting with that code. Check it against the printer’s screen - codes expire, so it may have already been replaced. Letters O, I and L are read as 0, 1 and 1, so those are safe to get wrong.</value>
   </data>
@@ -1612,9 +1749,6 @@
   <data name="Invites_NewAccountOwnTeam" xml:space="preserve">
     <value>New account (its own team)</value>
   </data>
-  <data name="Cameras_JustNow" xml:space="preserve">
-    <value>just now</value>
-  </data>
   <data name="Cameras_SecondsAgo" xml:space="preserve">
     <value>{0}s ago</value>
   </data>
@@ -1683,13 +1817,28 @@
     <value>The printer refused it: {0}</value>
     <comment>{0} is the printer&apos;s own reason, in its own words, and is not translated.</comment>
   </data>
+  <data name="Error_PrinterRefusedBusy" xml:space="preserve">
+    <value>The printer is still running a previous command, so it refused this one. Give it a moment and try again.</value>
+    <comment>A Rejected carrying no reason. Firmware constructs exactly one rejection without a reason - the one for "a background command is already running" - so this is a likely cause rather than a certainty.</comment>
+  </data>
   <data name="Error_PrinterRefusedEvent" xml:space="preserve">
     <value>The printer refused it ({0}).</value>
     <comment>{0} is the answering event name from firmware - Rejected or Failed - and stays as firmware spells it.</comment>
   </data>
   <data name="Error_PrinterBusy" xml:space="preserve">
-    <value>The printer is {0} - heater targets can only be changed when the printer is not busy.</value>
+    <value>The printer is {0} - this can only be done when the printer is not busy.</value>
     <comment>{0} is the printer status, put through PrinterStatusText so it reads in the same language as the sentence around it.</comment>
+  </data>
+   <data name="Error_NoToolPicked" xml:space="preserve">
+    <value>No tool is picked, so this would not reach a hotend. Pick a tool at the printer first.</value>
+    <comment>Multi-tool printers only. A gcode command without a tool argument acts on whichever tool is picked, and firmware declines silently when none is.</comment>
+  </data>
+  <data name="Error_FilamentTypeUnknown" xml:space="preserve">
+    <value>The printer hasn’t said what filament is loaded, so it can’t be unloaded from here.</value>
+    <comment>Firmware picks the unload temperature from its own stored filament type; with none set it opens a dialog on the panel and waits.</comment>
+  </data>
+  <data name="Error_PrinterHasQueuedWork" xml:space="preserve">
+    <value>The printer is ready with work queued - a print could start while the filament is out. Clear the queue, or unload once it has finished.</value>
   </data>
   <data name="Error_PrinterStateUnknown" xml:space="preserve">
     <value>The printer’s current state isn’t known yet - it reports one shortly after connecting.</value>
@@ -1770,6 +1919,10 @@
   <data name="Queue_HoldFileExistsUnknownSize" xml:space="preserve">
     <value>The printer already has a file called {0} and would not say how big it is, so it cannot be confirmed as this one. Delete it at the printer, or rename this one.</value>
     <comment>Deliberately not merged with Queue_HoldFileExists: one says the file is demonstrably not ours, this one says it cannot be confirmed either way, and a reader acts differently on each.</comment>
+  </data>
+  <data name="Queue_HoldPrintStartUnresolved" xml:space="preserve">
+    <value>The printer was asked to print {0} and never said whether it did. It is printing something it will not name, so this is holding rather than risk printing the same thing twice. Check the printer: cancel this print if it already ran, or queue it again if it did not.</value>
+    <comment>{0} is the file name. The only hold about something we do not know rather than something we do, so it says what was not established and hands the decision over. Both actions are named because either can be right and nothing here can tell which.</comment>
   </data>
   <data name="Queue_WarnAbrasiveNeedsHardened" xml:space="preserve">
     <value>{0} is sliced for abrasive filament and this printer reports no hardened nozzle. It has been queued, but it will not start until the printer reports that a hardened nozzle is fitted.</value>
@@ -2018,13 +2171,143 @@ A stick that already works with your printer is the right stick. If you are form
     <value>What this token may do</value>
   </data>
   <data name="Tokens_ScopeHint" xml:space="preserve">
-    <value>A token can never do more than you can. Untick anything the script does not need.</value>
+    <value>A token can never do more than you can. Tick only what the script needs.</value>
   </data>
   <data name="Tokens_ScopeColumn" xml:space="preserve">
     <value>Permissions</value>
   </data>
   <data name="Tokens_ScopeRequired" xml:space="preserve">
     <value>Choose at least one thing this token may do.</value>
+  </data>
+  <data name="Tokens_UntickAll" xml:space="preserve">
+    <value>Untick all</value>
+  </data>
+  <data name="Tokens_TickAll" xml:space="preserve">
+    <value>Tick all</value>
+  </data>
+  <data name="Common_JustNow" xml:space="preserve">
+    <value>just now</value>
+  </data>
+  <data name="Common_SecondsAgo_One" xml:space="preserve">
+    <value>{0} second ago</value>
+  </data>
+  <data name="Common_SecondsAgo_Other" xml:space="preserve">
+    <value>{0} seconds ago</value>
+  </data>
+  <data name="Common_MinutesAgo_One" xml:space="preserve">
+    <value>{0} minute ago</value>
+  </data>
+  <data name="Common_MinutesAgo_Other" xml:space="preserve">
+    <value>{0} minutes ago</value>
+  </data>
+  <data name="Common_HoursAgo_One" xml:space="preserve">
+    <value>{0} hour ago</value>
+  </data>
+  <data name="Common_HoursAgo_Other" xml:space="preserve">
+    <value>{0} hours ago</value>
+  </data>
+  <data name="Common_DaysAgo_One" xml:space="preserve">
+    <value>{0} day ago</value>
+  </data>
+  <data name="Common_DaysAgo_Other" xml:space="preserve">
+    <value>{0} days ago</value>
+  </data>
+  <data name="Printers_Updated" xml:space="preserve">
+    <value>Updated {0}</value>
+  </data>
+  <data name="Printers_TimeLeft" xml:space="preserve">
+    <value>{0} left</value>
+  </data>
+  <data name="Printers_TimeElapsed" xml:space="preserve">
+    <value>{0} elapsed</value>
+  </data>
+  <data name="Printers_SpeedAndFlow" xml:space="preserve">
+    <value>Speed {0}%, flow {1}%</value>
+  </data>
+  <data name="Printers_HeaterHeatingTo" xml:space="preserve">
+    <value>heating to {0}</value>
+  </data>
+  <data name="Printers_HeaterAtTarget" xml:space="preserve">
+    <value>at target {0}</value>
+  </data>
+  <data name="Printers_HeaterCoolingTo" xml:space="preserve">
+    <value>cooling to {0}</value>
+  </data>
+  <data name="Printers_HeaterCooling" xml:space="preserve">
+    <value>cooling</value>
+  </data>
+  <data name="Printers_HeaterOff" xml:space="preserve">
+    <value>off</value>
+  </data>
+  <data name="Printers_GraphNothing" xml:space="preserve">
+    <value>This printer has reported no temperatures over this period.</value>
+  </data>
+  <data name="Printers_GraphLabel" xml:space="preserve">
+    <value>Nozzle and bed temperature over time</value>
+  </data>
+  <data name="Printers_GraphTarget" xml:space="preserve">
+    <value>target</value>
+  </data>
+  <data name="Printers_GraphSincePrintStarted" xml:space="preserve">
+    <value>since this print started</value>
+  </data>
+  <data name="Printers_GraphLastHours_One" xml:space="preserve">
+    <value>the last hour</value>
+  </data>
+  <data name="Printers_GraphLastHours_Other" xml:space="preserve">
+    <value>the last {0} hours</value>
+  </data>
+  <data name="Printers_Degrees" xml:space="preserve">
+    <value>{0}°</value>
+  </data>
+  <data name="Printers_Reprint" xml:space="preserve">
+    <value>Print again</value>
+  </data>
+  <data name="Printers_ReprintFile" xml:space="preserve">
+    <value>Print {0} again</value>
+  </data>
+  <data name="Printers_ReprintNotYours" xml:space="preserve">
+    <value>Only whoever queued a print can print it again — the file is looked up among your own.</value>
+  </data>
+  <data name="Printers_Chamber" xml:space="preserve">
+    <value>Chamber</value>
+  </data>
+  <data name="Printers_Enclosure" xml:space="preserve">
+    <value>Enclosure</value>
+  </data>
+  <data name="Queue_QueuedBy" xml:space="preserve">
+    <value>Queued by</value>
+  </data>
+  <data name="QueueStatus_Waiting" xml:space="preserve">
+    <value>Waiting</value>
+  </data>
+  <data name="QueueStatus_Sending" xml:space="preserve">
+    <value>Sending</value>
+  </data>
+  <data name="QueueStatus_Held" xml:space="preserve">
+    <value>Held</value>
+  </data>
+  <data name="Common_SomebodyElse" xml:space="preserve">
+    <value>Somebody else</value>
+  </data>
+  <data name="TwoFactor_RecoveryCodesTitle" xml:space="preserve">
+    <value>Recovery codes</value>
+  </data>
+  <data name="TwoFactor_ResetKeyTitle" xml:space="preserve">
+    <value>Reset your authenticator key</value>
+  </data>
+  <data name="TwoFactor_ResetKeyWarning" xml:space="preserve">
+    <value>If you reset your authenticator key, your authenticator app will stop working until you set it up again.</value>
+  </data>
+  <data name="TwoFactor_ResetKeyDisables" xml:space="preserve">
+    <value>This turns two-factor authentication off until you have verified the new key. If you do not finish setting up your authenticator app, you may lose access to your account.</value>
+  </data>
+  <data name="TwoFactor_ResetKeyButton" xml:space="preserve">
+    <value>Reset authenticator key</value>
+    <comment>The button on the confirmation page. Shorter than the page title above it, the way Disable2fa and GenerateRecoveryCodes both pair a full-sentence heading with a terse button.</comment>
+  </data>
+  <data name="TwoFactor_KeyReset" xml:space="preserve">
+    <value>Your authenticator key has been reset. Set your authenticator app up again with the new key.</value>
   </data>
   <data name="Printers_DeleteHeading" xml:space="preserve">
     <value>Delete this printer</value>

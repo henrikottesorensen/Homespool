@@ -4,7 +4,6 @@
 #nullable disable
 
 using System.ComponentModel.DataAnnotations;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -12,16 +11,17 @@ using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.Pages.Account;
 
+[AllowAnonymous] // Carries its own credential in the reset token.
 public class ResetPasswordModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
@@ -92,18 +92,21 @@ public class ResetPasswordModel : PageModel
 
     public IActionResult OnGet(string code = null)
     {
-        if (code == null)
+        // Missing and malformed answer the same way: both mean there is no usable code here, and
+        // the distinction is not one the person holding the link can act on differently.
+        string token = EmailedToken.Decode(code);
+
+        if (token is null)
         {
             return BadRequest(_localiser["Account_ResetNeedsCode"].Value);
         }
-        else
+
+        Input = new InputModel
         {
-            Input = new InputModel
-            {
-                Code = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(code)),
-            };
-            return Page();
-        }
+            Code = token,
+        };
+
+        return Page();
     }
 
     public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)

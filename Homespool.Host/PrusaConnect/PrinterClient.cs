@@ -10,13 +10,13 @@ namespace Homespool.Host.PrusaConnect;
 public enum PrinterTransport
 {
     /// <summary>Reserved, so a default-constructed value is not a claim about anything.</summary>
-    Unknown = 0,
+    Undefined = 0,
 
     /// <summary>The Connect WebSocket, which is what modern firmware opens.</summary>
-    WebSocket,
+    WebSocket = 1,
 
     /// <summary>The pre-websocket transport: telemetry and events posted, commands collected in reply.</summary>
-    Http,
+    Http = 2,
 }
 
 /// <summary>

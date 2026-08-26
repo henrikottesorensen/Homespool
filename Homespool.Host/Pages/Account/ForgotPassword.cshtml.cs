@@ -12,6 +12,7 @@ using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -20,6 +21,7 @@ using Microsoft.Extensions.Localization;
 
 namespace Homespool.Host.Pages.Account;
 
+[AllowAnonymous] // Nobody asking for a password reset can be signed in.
 public class ForgotPasswordModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
@@ -63,9 +65,22 @@ public class ForgotPasswordModel : PageModel
         if (ModelState.IsValid)
         {
             HSUser user = await _userManager.FindByEmailAsync(Input.Email);
-            if (user == null || !(await _userManager.IsEmailConfirmedAsync(user)))
+
+            // The third test is what makes "an external account has no local password" a rule rather
+            // than a preference. ResetPasswordAsync does not care whether a password already exists -
+            // it writes the hash either way - so without this, an account created through a provider
+            // could give itself one by asking for a reset, and the decision would hold everywhere
+            // except the one door that is open to anybody who knows the address.
+            //
+            // Silently, and that matters: this arm already exists so as not to reveal whether an
+            // address is registered, and a refusal that looked different here would answer the same
+            // question the arm was written to refuse. No mail is sent, and the caller sees exactly
+            // what an unknown address sees. See ChangePasswordModel.HasPassword for the other half.
+            if (user == null
+                || !(await _userManager.IsEmailConfirmedAsync(user))
+                || !(await _userManager.HasPasswordAsync(user)))
             {
-                // Don't reveal that the user does not exist or is not confirmed
+                // Don't reveal that the user does not exist, is not confirmed, or signs in elsewhere
                 return RedirectToPage("./ForgotPasswordConfirmation");
             }
 

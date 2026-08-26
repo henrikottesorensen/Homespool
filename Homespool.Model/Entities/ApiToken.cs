@@ -4,9 +4,9 @@ using System.ComponentModel.DataAnnotations;
 namespace Homespool.Model.Entities;
 
 /// <summary>
-/// A personal access token: one long-lived bearer credential a person creates for a script, acting
-/// with exactly their own rights. Presented as <c>Authorization: Bearer hs_&lt;43 chars&gt;</c>, and
-/// stored here only as the hash of its secret.
+/// A personal access token: one long-lived bearer credential a person creates for a script, acting as
+/// its owner and never beyond the scope it was minted with. Presented as
+/// <c>Authorization: Bearer hs_&lt;43 chars&gt;</c>, and stored here only as the hash of its secret.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -19,10 +19,23 @@ namespace Homespool.Model.Entities;
 /// avoid. See <c>notes/api-tokens.md</c>.
 /// </para>
 /// <para>
-/// <b>No scopes, no expiry, no last-used stamp.</b> A token inherits its owner's rights entirely and
-/// authorisation stays where it already is, in <c>TeamMember.CanUse</c> via
-/// <c>PrinterCommandService</c>. Adding rights and lifetimes here is how a personal access token turns
-/// into a badly-implemented JWT; expiry is one nullable column if it is ever genuinely wanted.
+/// <b>No expiry and no last-used stamp.</b> Either is one nullable column if it is ever genuinely
+/// wanted. A last-used stamp is the more expensive of the two and not by a little: it is a write on
+/// every authenticated request, so it wants a question actually being asked before it is paid for.
+/// </para>
+/// <para>
+/// <b><see cref="Scope"/> narrows and never grants, and that is the line between this and a
+/// badly-implemented JWT.</b> It is evaluated <em>after</em> the membership gate rather than instead
+/// of it, so a token can only ever subtract from what its owner may already do — <b>if a scope can be
+/// made to widen anything, the design has gone wrong</b>. That is the constraint to check a change
+/// against, because a scope system drifting toward claims, audiences and lifetime policies is simply a
+/// worse JWT.
+/// </para>
+/// <para>
+/// <b>Authorisation itself stays out of this table.</b> The authentication handler turns the row into
+/// a <c>Caller</c>, and the access services intersect that with the membership held on each printer or
+/// camera — so rights are re-read per request and a membership change bites immediately, which a
+/// credential asserting its own rights could not manage. See <c>notes/permission-vocabulary.md</c>.
 /// </para>
 /// <para>
 /// Revocation is deleting the row, which is the whole reason this is a table rather than a signed
@@ -44,7 +57,10 @@ public class ApiToken
 
     public long Id { get; set; }
 
-    /// <summary>The user this token acts as. Its rights are theirs, in full.</summary>
+    /// <summary>
+    /// The user this token acts as. Its rights are theirs, narrowed by <see cref="Scope"/> and never
+    /// exceeding them.
+    /// </summary>
     public long UserId { get; set; }
 
     /// <summary>

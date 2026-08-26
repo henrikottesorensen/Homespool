@@ -53,6 +53,30 @@ public static class BuildInformation
     /// </remarks>
     private const string ModifiedMarker = ".dirty";
 
+    /// <summary>
+    /// How much of the commit the footer shows, matching git's own default abbreviation.
+    /// </summary>
+    private const int ShortCommitLength = 7;
+
+    /// <summary>
+    /// This build, as the footer shows it — <c>0.0.1 (dd029e0)</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Computed once rather than per request: the footer is on every page, and this is reflection
+    /// over an assembly attribute that cannot change while the process runs.
+    /// </para>
+    /// <para>
+    /// <b>Shown only to signed-in users</b> (`_Layout.cshtml`), which is a deliberate narrowing
+    /// rather than an accident of where it was convenient to put it. The layout renders on the
+    /// anonymous sign-in and registration pages too, and an exact commit on a public page names
+    /// precisely which known defects apply to the deployment — the same reasoning that keeps the
+    /// build off <c>/health</c>. The version alone would have been defensible in public; the commit
+    /// is not.
+    /// </para>
+    /// </remarks>
+    public static string Summary { get; } = Summarise(ReadInformationalVersion());
+
     /// <summary>Writes the build description to standard output.</summary>
     /// <param name="product">The name to print, as a person would say it.</param>
     /// <returns>Zero. There is no failure case - an absent stamp is reported, not an error.</returns>
@@ -87,29 +111,96 @@ public static class BuildInformation
     /// <returns>Two lines, without a trailing newline.</returns>
     public static string Describe(string product, string? informationalVersion)
     {
-        if (string.IsNullOrWhiteSpace(informationalVersion))
+        (string? version, string? commit, bool modified) = Parse(informationalVersion);
+
+        if (version is null)
         {
             return $"{product} (version unknown){Environment.NewLine}"
                  + "commit unknown - this assembly carries no version information";
+        }
+
+        if (commit is null)
+        {
+            // A container image built with no gitref passed in lands here, and it is the reason this
+            // branch explains itself instead of printing the version alone: the build succeeded, so
+            // the only place the broken chain can be noticed is right here.
+            return $"{product} {version}{Environment.NewLine}"
+                 + "commit unknown - built with no source control information";
+        }
+
+        return $"{product} {version}{Environment.NewLine}"
+             + $"commit {commit}{(modified ? " (modified)" : string.Empty)}";
+    }
+
+    /// <summary>
+    /// Renders a stamp as the one line the footer shows — <c>0.0.1 (dd029e0)</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The commit is abbreviated to <see cref="ShortCommitLength"/> because this is read by a person
+    /// glancing at a page, not pasted into a report. It is still enough to find the commit, and
+    /// <c>--version</c> remains the place that gives the whole thing.
+    /// </para>
+    /// <para>
+    /// <b>The commit is omitted entirely rather than replaced by a placeholder when it is unknown.</b>
+    /// That is the opposite of <see cref="Describe"/>, deliberately: the argument's whole job is to
+    /// answer "which build is this", so a missing answer there is the finding and has to be stated.
+    /// A footer is decoration on a page somebody opened for another reason, and "unknown" in it would
+    /// be noise on every page of every deployment built from an archive.
+    /// </para>
+    /// </remarks>
+    /// <param name="informationalVersion">The stamp, or <see langword="null"/> when there is none.</param>
+    /// <returns>The version, with the short commit in brackets when there is one.</returns>
+    public static string Summarise(string? informationalVersion)
+    {
+        (string? version, string? commit, bool modified) = Parse(informationalVersion);
+
+        if (version is null)
+        {
+            return string.Empty;
+        }
+
+        if (commit is null)
+        {
+            return version;
+        }
+
+        string shortCommit = commit.Length > ShortCommitLength ? commit[..ShortCommitLength] : commit;
+
+        return modified ? $"{version} ({shortCommit}, modified)" : $"{version} ({shortCommit})";
+    }
+
+    /// <summary>Splits a stamp into the three things anything here wants to know.</summary>
+    /// <remarks>
+    /// One parse behind both renderings, so the footer and <c>--version</c> cannot come to different
+    /// conclusions about the same assembly — which they could while each split the string itself.
+    /// </remarks>
+    /// <param name="informationalVersion">The stamp, or <see langword="null"/> when there is none.</param>
+    /// <returns>
+    /// The version (<see langword="null"/> when the assembly carries no stamp at all), the commit
+    /// (<see langword="null"/> when the stamp carries no build metadata), and whether the build path
+    /// marked it as coming from a modified working tree.
+    /// </returns>
+    private static (string? version, string? commit, bool modified) Parse(string? informationalVersion)
+    {
+        if (string.IsNullOrWhiteSpace(informationalVersion))
+        {
+            return (null, null, false);
         }
 
         int metadataStart = informationalVersion.IndexOf('+');
 
         if (metadataStart < 0)
         {
-            // A container image built with no gitref passed in lands here, and it is the reason this
-            // branch explains itself instead of printing the version alone: the build succeeded, so
-            // the only place the broken chain can be noticed is right here.
-            return $"{product} {informationalVersion}{Environment.NewLine}"
-                 + "commit unknown - built with no source control information";
+            return (informationalVersion, null, false);
         }
 
-        string version = informationalVersion[..metadataStart];
         string metadata = informationalVersion[(metadataStart + 1)..];
         bool modified = metadata.EndsWith(ModifiedMarker, StringComparison.Ordinal);
-        string commit = modified ? metadata[..^ModifiedMarker.Length] : metadata;
 
-        return $"{product} {version}{Environment.NewLine}"
-             + $"commit {commit}{(modified ? " (modified)" : string.Empty)}";
+        return (
+            informationalVersion[..metadataStart],
+            modified ? metadata[..^ModifiedMarker.Length] : metadata,
+            modified);
     }
 }

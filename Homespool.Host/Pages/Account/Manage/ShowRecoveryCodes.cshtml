@@ -1,0 +1,34 @@
+@page
+@model ShowRecoveryCodesModel
+@{
+    ViewData["Title"] = Localiser["TwoFactor_RecoveryCodesTitle"].Value;
+}
+
+<partial name="_StatusMessage" for="StatusMessage" />
+<h1>@ViewData["Title"]</h1>
+<div class="alert alert-warning" role="alert">
+    <p>
+        <strong>@Localiser["TwoFactor_KeepCodesSafe"]</strong>
+    </p>
+    <p>
+        @Localiser["TwoFactor_LoseDeviceWarning"]
+    </p>
+</div>
+<div class="row">
+    <div class="col-md-12">
+        @*  Two per row, and the odd one out is checked rather than assumed: Identity.UI's original
+            steps by two and indexes row + 1 unconditionally, which throws on any odd count. Both
+            callers ask for ten today, so the guard costs nothing and stops the count becoming a
+            load-bearing coincidence. *@
+        @for (int row = 0; row < Model.RecoveryCodes.Length; row += 2)
+        {
+            <div>
+                <code class="recovery-code me-2">@Model.RecoveryCodes[row]</code>
+                @if (row + 1 < Model.RecoveryCodes.Length)
+                {
+                    <code class="recovery-code">@Model.RecoveryCodes[row + 1]</code>
+                }
+            </div>
+        }
+    </div>
+</div>

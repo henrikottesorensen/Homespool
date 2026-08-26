@@ -18,7 +18,7 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.Services;
 
 /// <summary>
-/// Deletes a printer, and everything the deployment knows about it.
+/// Removes a printer, and everything the deployment knows about it.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -40,16 +40,16 @@ namespace Homespool.Host.Services;
 /// <c>PrintFileOnPrinter</c> row - knowledge about somebody else's drive - is the part that goes.
 /// </para>
 /// <para>
-/// <b>The printer itself is not told.</b> Its token lives in EEPROM, so a deleted printer goes on
+/// <b>The printer itself is not told.</b> Its token lives in EEPROM, so a removed printer goes on
 /// connecting and being refused until somebody re-registers it at the panel. Sending
 /// <c>SET_TOKEN</c> first was considered and left out: it reaches only a printer that is connected,
 /// which is the case that needs it least.
 /// </para>
 /// </remarks>
-public class PrinterDeletionService
+public class PrinterRemovalService
 {
     /// <summary>
-    /// The states a <b>connected</b> printer may be deleted in.
+    /// The states a <b>connected</b> printer may be removed in.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -65,7 +65,7 @@ public class PrinterDeletionService
     /// seconds - so the refusal says wait, which is true and brief.
     /// </para>
     /// </remarks>
-    private static readonly IReadOnlySet<PrinterStatus> DeletionAllowed = new HashSet<PrinterStatus>
+    private static readonly IReadOnlySet<PrinterStatus> RemovalAllowed = new HashSet<PrinterStatus>
     {
         PrinterStatus.Idle,
         PrinterStatus.Ready,
@@ -79,14 +79,14 @@ public class PrinterDeletionService
     private readonly QueueSnapshotReader _snapshots;
     private readonly PrinterConnectionRegistry _registry;
     private readonly ITelemetryEviction _telemetry;
-    private readonly ILogger<PrinterDeletionService> _logger;
+    private readonly ILogger<PrinterRemovalService> _logger;
 
-    public PrinterDeletionService(HomespoolDbContext dbContext,
+    public PrinterRemovalService(HomespoolDbContext dbContext,
                                   PrinterAccessService access,
                                   QueueSnapshotReader snapshots,
                                   PrinterConnectionRegistry registry,
                                   ITelemetryEviction telemetry,
-                                  ILogger<PrinterDeletionService> logger)
+                                  ILogger<PrinterRemovalService> logger)
     {
         _dbContext = dbContext;
         _access = access;
@@ -97,8 +97,8 @@ public class PrinterDeletionService
     }
 
     /// <summary>
-    /// Deletes the printer with <paramref name="uuid"/>. Answers <c>null</c> if the caller cannot see
-    /// it, and the deleted printer's display name otherwise.
+    /// Removes the printer with <paramref name="uuid"/>. Answers <c>null</c> if the caller cannot see
+    /// it, and the removed printer's display name otherwise.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -113,13 +113,13 @@ public class PrinterDeletionService
     /// <see cref="PrinterLiveState"/> - a printer that is unplugged mid-print keeps reporting
     /// <c>Printing</c> for ever, because the last thing it said is the last thing it said. Guarding
     /// on that value alone would make the unreachable printer, which is the one most people are
-    /// deleting, the single kind that cannot be. So an unreachable printer's state is treated as the
+    /// removing, the single kind that cannot be. So an unreachable printer's state is treated as the
     /// memory it is, and only a printer that is actually connected can refuse.
     /// </para>
     /// </remarks>
     /// <exception cref="TeamAccessDeniedException">Caller lacks <see cref="Capability.ManagePrinter"/>.</exception>
     /// <exception cref="PrinterBusyException">The printer is connected and mid-something.</exception>
-    public async Task<string?> DeletePrinterAsync(Guid uuid, Caller caller, CancellationToken cancellationToken)
+    public async Task<string?> RemovePrinterAsync(Guid uuid, Caller caller, CancellationToken cancellationToken)
     {
         if (await _access.FindAsync(uuid, caller, Capability.ViewPrinter, cancellationToken) is null)
         {
@@ -132,7 +132,7 @@ public class PrinterDeletionService
 
         QueueSnapshot snapshot = await _snapshots.ReadAsync(printer.Id, cancellationToken);
 
-        if (snapshot.Connected && !DeletionAllowed.Contains(snapshot.Status))
+        if (snapshot.Connected && !RemovalAllowed.Contains(snapshot.Status))
         {
             throw new PrinterBusyException(snapshot.Status);
         }
@@ -149,7 +149,7 @@ public class PrinterDeletionService
         // 2. Wait for the writer to drop what it still holds for this printer. A flush commits its
         //    whole batch in one transaction and keeps the buffers when it fails, so one row pointing
         //    at a deleted printer stops telemetry persisting for *every* printer until the buffer
-        //    ceilings trim it out. This is the step that makes the delete safe rather than usually
+        //    ceilings trim it out. This is the step that makes the removal safe rather than usually
         //    fine; see ITelemetryEviction.
         await _telemetry.ForgetPrinterAsync(printer.Id, cancellationToken);
 
@@ -157,7 +157,7 @@ public class PrinterDeletionService
         _dbContext.Printers.Remove(printer);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        _logger.LogInformation("[{PrinterId}] deleted by {Caller}.", printer.Id, caller.UserId);
+        _logger.LogInformation("[{PrinterId}] removed by {Caller}.", printer.Id, caller.UserId);
 
         return name;
     }

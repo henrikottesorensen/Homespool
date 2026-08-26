@@ -1889,7 +1889,7 @@ public sealed class TelemetryWriterTests : IDisposable
         // short fails here rather than passing quietly.
         await Task.Delay(TimeSpan.FromMilliseconds(500), TestContext.Current.CancellationToken);
 
-        // Act - the deletion sequence, in the order PrinterDeletionService performs it.
+        // Act - the deletion sequence, in the order PrinterRemovalService performs it.
         await writer.ForgetPrinterAsync(printerId: 1, CancellationToken.None);
 
         LogRecords.Should().Contain(

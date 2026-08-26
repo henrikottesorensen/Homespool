@@ -15,7 +15,7 @@ namespace Homespool.Host.Telemetry;
 /// implement a method it never calls.
 /// </para>
 /// <para>
-/// <b>Why deleting a printer needs this at all.</b> A flush commits its whole batch in one
+/// <b>Why removing a printer needs this at all.</b> A flush commits its whole batch in one
 /// transaction and, on failure, keeps the buffers for the next attempt - so one row referencing a
 /// printer that no longer exists fails the batch for <em>every</em> printer, and re-fails on each
 /// retry until the buffer ceilings trim it away. The suite already relies on this: removing the

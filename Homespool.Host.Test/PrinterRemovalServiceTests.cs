@@ -26,7 +26,7 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// <see cref="PrinterDeletionService"/> - the ordered teardown behind the delete button, and the
+/// <see cref="PrinterRemovalService"/> - the ordered teardown behind the remove button, and the
 /// two gates in front of it.
 /// </summary>
 /// <remarks>
@@ -35,9 +35,9 @@ namespace Homespool.Host.Test;
 /// keys or run cascades</b>, so the assertions about what a deleted printer takes with it would pass
 /// against a provider that had deleted nothing at all.
 /// </remarks>
-public sealed class PrinterDeletionServiceTests : IDisposable
+public sealed class PrinterRemovalServiceTests : IDisposable
 {
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-printerdelete-{Guid.NewGuid():N}.db");
+    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-printerremove-{Guid.NewGuid():N}.db");
 
     private readonly FakeLogger<PrinterConnectionRegistry> _registryLogger = new();
 
@@ -56,7 +56,7 @@ public sealed class PrinterDeletionServiceTests : IDisposable
     /// Everything a printer owns, deleted in one go by the cascades rather than by hand here.
     /// </summary>
     [Fact]
-    public async Task DeletingAPrinterTakesItsTelemetryEventsAndCamerasWithIt()
+    public async Task RemovingAPrinterTakesItsTelemetryEventsAndCamerasWithIt()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
@@ -84,7 +84,7 @@ public sealed class PrinterDeletionServiceTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
-        string? name = await NewService(context).DeletePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+        string? name = await NewService(context).RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         name.Should().Be("Workshop");
@@ -112,7 +112,7 @@ public sealed class PrinterDeletionServiceTests : IDisposable
     /// actually clears the buffers.
     /// </remarks>
     [Fact]
-    public async Task DeletingAPrinterTellsTheTelemetryWriterToForgetIt()
+    public async Task RemovingAPrinterTellsTheTelemetryWriterToForgetIt()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
@@ -124,7 +124,7 @@ public sealed class PrinterDeletionServiceTests : IDisposable
 
         // Act
         await NewService(context, telemetry: telemetry)
-            .DeletePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+            .RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         await telemetry.Received(1).ForgetPrinterAsync(printer.Id, Arg.Any<CancellationToken>());
@@ -132,7 +132,7 @@ public sealed class PrinterDeletionServiceTests : IDisposable
 
     /// <summary>A live connection is shut down, so the printer stops writing to a row that is going.</summary>
     [Fact]
-    public async Task DeletingAConnectedPrinterClosesItsConnection()
+    public async Task RemovingAConnectedPrinterClosesItsConnection()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
@@ -148,7 +148,7 @@ public sealed class PrinterDeletionServiceTests : IDisposable
         registry.Register(printer.Id, actor);
 
         // Act
-        await NewService(context, registry).DeletePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+        await NewService(context, registry).RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         actor.Received(1).Complete();
@@ -172,28 +172,28 @@ public sealed class PrinterDeletionServiceTests : IDisposable
         registry.Register(printer.Id, actor);
 
         // Act
-        Func<Task> deleting = () => NewService(context, registry)
-            .DeletePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+        Func<Task> removing = () => NewService(context, registry)
+            .RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
-        (await deleting.Should().ThrowAsync<PrinterBusyException>()).Which.Status.Should().Be(PrinterStatus.Printing);
+        (await removing.Should().ThrowAsync<PrinterBusyException>()).Which.Status.Should().Be(PrinterStatus.Printing);
 
         await using HomespoolDbContext verification = NewContext();
         verification.Printers.Should().ContainSingle();
     }
 
     /// <summary>
-    /// <b>The same stale <c>Printing</c>, but on a printer nobody can reach, deletes.</b>
+    /// <b>The same stale <c>Printing</c>, but on a printer nobody can reach, is removed.</b>
     /// </summary>
     /// <remarks>
     /// This is the case the feature is mostly for - a printer that was unplugged, sold or died - and
     /// it is only a separate test because the naive guard gets it exactly backwards. Nothing ever
     /// writes <see cref="PrinterStatus.Offline"/> into <see cref="PrinterLiveState"/>, so a printer
     /// pulled from the wall mid-print reports <c>Printing</c> for ever. Guarding on that value alone
-    /// would leave the machine in a skip as the one printer that could never be deleted.
+    /// would leave the machine in a skip as the one printer that could never be removed.
     /// </remarks>
     [Fact]
-    public async Task ADisconnectedPrinterDeletesEvenThoughItsLastKnownStateWasPrinting()
+    public async Task ADisconnectedPrinterIsRemovedEvenThoughItsLastKnownStateWasPrinting()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
@@ -204,7 +204,7 @@ public sealed class PrinterDeletionServiceTests : IDisposable
         await SetLiveStatusAsync(context, printer.Id, PrinterStatus.Printing);
 
         // Act - nothing registered, so nothing is connected.
-        await NewService(context).DeletePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+        await NewService(context).RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         await using HomespoolDbContext verification = NewContext();
@@ -213,7 +213,7 @@ public sealed class PrinterDeletionServiceTests : IDisposable
 
     /// <summary>A printer that has never reported at all deletes - it has no live state to consult.</summary>
     [Fact]
-    public async Task APrinterThatNeverConnectedDeletes()
+    public async Task APrinterThatNeverConnectedIsRemoved()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
@@ -222,7 +222,7 @@ public sealed class PrinterDeletionServiceTests : IDisposable
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
         // Act
-        await NewService(context).DeletePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+        await NewService(context).RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         await using HomespoolDbContext verification = NewContext();
@@ -243,11 +243,11 @@ public sealed class PrinterDeletionServiceTests : IDisposable
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
         // Act
-        Func<Task> deleting = () => NewService(context)
-            .DeletePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+        Func<Task> removing = () => NewService(context)
+            .RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
-        await deleting.Should().ThrowAsync<TeamAccessDeniedException>();
+        await removing.Should().ThrowAsync<TeamAccessDeniedException>();
 
         await using HomespoolDbContext verification = NewContext();
         verification.Printers.Should().ContainSingle();
@@ -270,7 +270,7 @@ public sealed class PrinterDeletionServiceTests : IDisposable
 
         // Act
         string? name = await NewService(context)
-            .DeletePrinterAsync(printer.Uuid, Caller.Unscoped(2), CancellationToken.None);
+            .RemovePrinterAsync(printer.Uuid, Caller.Unscoped(2), CancellationToken.None);
 
         // Assert
         name.Should().BeNull();
@@ -295,10 +295,10 @@ public sealed class PrinterDeletionServiceTests : IDisposable
         Caller scoped = Caller.Scoped(1, CapabilitySet.Parse(CapabilitySet.Format([Capability.ViewPrinter])));
 
         // Act
-        Func<Task> deleting = () => NewService(context).DeletePrinterAsync(printer.Uuid, scoped, CancellationToken.None);
+        Func<Task> removing = () => NewService(context).RemovePrinterAsync(printer.Uuid, scoped, CancellationToken.None);
 
         // Assert
-        await deleting.Should().ThrowAsync<CredentialScopeDeniedException>();
+        await removing.Should().ThrowAsync<CredentialScopeDeniedException>();
 
         await using HomespoolDbContext verification = NewContext();
         verification.Printers.Should().ContainSingle();
@@ -321,19 +321,19 @@ public sealed class PrinterDeletionServiceTests : IDisposable
         return context;
     }
 
-    private PrinterDeletionService NewService(HomespoolDbContext context,
+    private PrinterRemovalService NewService(HomespoolDbContext context,
                                               PrinterConnectionRegistry? registry = null,
                                               ITelemetryEviction? telemetry = null)
     {
         registry ??= new PrinterConnectionRegistry(_registryLogger);
 
-        return new PrinterDeletionService(
+        return new PrinterRemovalService(
             context,
             new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
             new QueueSnapshotReader(context, registry, TimeProvider.System),
             registry,
             telemetry ?? Substitute.For<ITelemetryEviction>(),
-            NullLogger<PrinterDeletionService>.Instance);
+            NullLogger<PrinterRemovalService>.Instance);
     }
 
     private static async Task<TeamMember> AddTeamAsync(HomespoolDbContext context, long userId, bool canManage)

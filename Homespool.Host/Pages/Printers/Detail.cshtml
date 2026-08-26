@@ -493,12 +493,12 @@
 @if (Model.CanManage)
 {
     <details class="printer-archive">
-        <summary>@Localiser["Printers_DeleteHeading"]</summary>
+        <summary>@Localiser["Printers_RemoveHeading"]</summary>
 
         <p class="my-2">
             <button type="button" class="btn btn-outline-danger"
                     data-bs-toggle="modal" data-bs-target="#remove-printer">
-                @Localiser["Printers_DeleteEllipsis"]
+                @Localiser["Printers_RemoveEllipsis"]
             </button>
         </p>
     </details>
@@ -515,7 +515,7 @@
                 <div class="modal-header">
                     <h5 class="modal-title" id="remove-printer-heading">
                         @string.Format(System.Globalization.CultureInfo.CurrentCulture,
-                                       Localiser["Printers_DeleteModalHeading"].Value,
+                                       Localiser["Printers_RemoveModalHeading"].Value,
                                        printerName)
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"
@@ -526,17 +526,17 @@
                    one submission. The name is checked on the server: a confirmation the server never
                    sees is a decoration, and this one costs a forged post the trouble of knowing which
                    printer it is removing. *@
-                <form method="post" asp-page-handler="Delete" asp-route-uuid="@uuid">
+                <form method="post" asp-page-handler="Remove" asp-route-uuid="@uuid">
                     <div class="modal-body">
-                        <p>@Localiser["Printers_DeleteWarning"]</p>
-                        <p class="text-body-secondary small">@Localiser["Printers_DeleteKnocking"]</p>
+                        <p>@Localiser["Printers_RemoveWarning"]</p>
+                        <p class="text-body-secondary small">@Localiser["Printers_RemoveKnocking"]</p>
 
-                        <label class="form-label" for="delete-confirmation">
-                            @Localiser["Printers_DeleteConfirmLabel", printerName]
+                        <label class="form-label" for="remove-confirmation">
+                            @Localiser["Printers_RemoveConfirmLabel", printerName]
                         </label>
                         @* No autocomplete: the browser offering the name back would undo the point of
                            asking for it. *@
-                        <input class="form-control" id="delete-confirmation" name="confirmation"
+                        <input class="form-control" id="remove-confirmation" name="confirmation"
                                autocomplete="off" required />
                     </div>
 
@@ -545,7 +545,7 @@
                             @Localiser["Common_Cancel"]
                         </button>
 
-                        <button type="submit" class="btn btn-danger">@Localiser["Printers_DeleteButton"]</button>
+                        <button type="submit" class="btn btn-danger">@Localiser["Printers_RemoveButton"]</button>
                     </div>
                 </form>
             </div>

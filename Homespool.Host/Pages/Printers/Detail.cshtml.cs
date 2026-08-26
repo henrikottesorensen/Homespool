@@ -55,7 +55,7 @@ namespace Homespool.Host.Pages.Printers;
 public class DetailModel : PageModel
 {
     private readonly PrinterQueryService _printerQueryService;
-    private readonly PrinterDeletionService _deletionService;
+    private readonly PrinterRemovalService _removalService;
     private readonly PrintQueueService _queueService;
     private readonly PrinterPreheatService _preheat;
     private readonly PrinterFilamentService _filament;
@@ -78,7 +78,7 @@ public class DetailModel : PageModel
     private readonly UserManager<HSUser> _userManager;
 
     public DetailModel(PrinterQueryService printerQueryService,
-                       PrinterDeletionService deletionService,
+                       PrinterRemovalService removalService,
                        PrintQueueService queueService,
                        PrinterPreheatService preheat,
                        PrinterFilamentService filament,
@@ -101,7 +101,7 @@ public class DetailModel : PageModel
                        UserManager<HSUser> userManager)
     {
         _printerQueryService = printerQueryService;
-        _deletionService = deletionService;
+        _removalService = removalService;
         _queueService = queueService;
         _preheat = preheat;
         _filament = filament;
@@ -954,7 +954,7 @@ public class DetailModel : PageModel
     }
 
     /// <summary>
-    /// Deletes the printer and everything this deployment knows about it.
+    /// Removes the printer and everything this deployment knows about it.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -966,12 +966,12 @@ public class DetailModel : PageModel
     /// <para>
     /// <b>The typed name is checked here rather than in the browser.</b> A confirmation the server
     /// never sees is a decoration; this one costs a forged post the trouble of knowing which printer
-    /// it is deleting. Compared ordinally and case-insensitively: the point is to make somebody read
+    /// it is removing. Compared ordinally and case-insensitively: the point is to make somebody read
     /// the name, not to test their shift key, and an ordinal comparison keeps a Turkish locale from
     /// deciding what two names mean.
     /// </para>
     /// </remarks>
-    public async Task<IActionResult> OnPostDeleteAsync(Guid uuid, string? confirmation, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostRemoveAsync(Guid uuid, string? confirmation, CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
@@ -992,14 +992,14 @@ public class DetailModel : PageModel
 
         if (!string.Equals(confirmation?.Trim(), name, StringComparison.OrdinalIgnoreCase))
         {
-            (StatusMessage, StatusSuccess) = (_localiser["Printers_DeleteNameMismatch", name].Value, false);
+            (StatusMessage, StatusSuccess) = (_localiser["Printers_RemoveNameMismatch", name].Value, false);
 
             return RedirectToPage(new { uuid });
         }
 
         try
         {
-            await _deletionService.DeletePrinterAsync(uuid, caller, cancellationToken);
+            await _removalService.RemovePrinterAsync(uuid, caller, cancellationToken);
         }
         catch (TeamAccessDeniedException)
         {
@@ -1012,13 +1012,13 @@ public class DetailModel : PageModel
             return RedirectToPage(new { uuid });
         }
 
-        (StatusMessage, StatusSuccess) = (_localiser["Printers_Deleted", name].Value, true);
+        (StatusMessage, StatusSuccess) = (_localiser["Printers_Removed", name].Value, true);
 
         return RedirectToPage("Index");
     }
 
     /// <summary>
-    /// What the page calls this printer, and what the delete confirmation asks to be typed. The
+    /// What the page calls this printer, and what the removal confirmation asks to be typed. The
     /// chain is <see cref="Printer.Name"/>'s documented one, and the view computes the same thing
     /// for its heading.
     /// </summary>

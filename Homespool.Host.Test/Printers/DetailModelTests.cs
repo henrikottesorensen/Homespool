@@ -110,9 +110,9 @@ public sealed class DetailModelTests : IDisposable
         IStringLocalizer<SharedResource> localiser = TestLocaliser.Shared();
 
         DetailModel model = new(new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System),
-                                new PrinterDeletionService(context, access, snapshots, connectionRegistry,
+                                new PrinterRemovalService(context, access, snapshots, connectionRegistry,
                                                            Substitute.For<ITelemetryEviction>(),
-                                                           NullLogger<PrinterDeletionService>.Instance),
+                                                           NullLogger<PrinterRemovalService>.Instance),
                                 queueService,
 
                                 // Constructed rather than substituted: these tests are about the page, and a real one
@@ -540,7 +540,7 @@ public sealed class DetailModelTests : IDisposable
         model.Connected.Should().BeTrue();
     }
 
-    // ---------- OnPostDeleteAsync ----------
+    // ---------- OnPostRemoveAsync ----------
 
     /// <summary>
     /// <b>The typed name is checked on the server.</b> A wrong one deletes nothing and says so.
@@ -552,7 +552,7 @@ public sealed class DetailModelTests : IDisposable
     /// that reported failure while deleting anyway would pass a message-only assertion.
     /// </remarks>
     [Fact]
-    public async Task DeleteRefusesWhenTheTypedNameDoesNotMatch()
+    public async Task RemoveRefusesWhenTheTypedNameDoesNotMatch()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
@@ -563,7 +563,7 @@ public sealed class DetailModelTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
-        IActionResult result = await model.OnPostDeleteAsync(printer.Uuid, "workshp", CancellationToken.None);
+        IActionResult result = await model.OnPostRemoveAsync(printer.Uuid, "workshp", CancellationToken.None);
 
         // Assert
         model.StatusSuccess.Should().BeFalse();
@@ -575,7 +575,7 @@ public sealed class DetailModelTests : IDisposable
 
     /// <summary>An empty box is a mismatch too, rather than a match against a printer with no name.</summary>
     [Fact]
-    public async Task DeleteRefusesAnEmptyConfirmation()
+    public async Task RemoveRefusesAnEmptyConfirmation()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
@@ -586,7 +586,7 @@ public sealed class DetailModelTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
-        await model.OnPostDeleteAsync(printer.Uuid, confirmation: null, CancellationToken.None);
+        await model.OnPostRemoveAsync(printer.Uuid, confirmation: null, CancellationToken.None);
 
         // Assert
         model.StatusSuccess.Should().BeFalse();
@@ -604,7 +604,7 @@ public sealed class DetailModelTests : IDisposable
     /// test their shift key - which is why this types it in lower case.
     /// </remarks>
     [Fact]
-    public async Task DeleteWithTheRightNameRemovesThePrinterAndReturnsToTheListing()
+    public async Task RemoveWithTheRightNameRemovesThePrinterAndReturnsToTheListing()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
@@ -615,7 +615,7 @@ public sealed class DetailModelTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
-        IActionResult result = await model.OnPostDeleteAsync(printer.Uuid, " workshop ", CancellationToken.None);
+        IActionResult result = await model.OnPostRemoveAsync(printer.Uuid, " workshop ", CancellationToken.None);
 
         // Assert
         model.StatusSuccess.Should().BeTrue();
@@ -641,7 +641,7 @@ public sealed class DetailModelTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
-        await model.OnPostDeleteAsync(printer.Uuid, printer.Uuid.ToString(), CancellationToken.None);
+        await model.OnPostRemoveAsync(printer.Uuid, printer.Uuid.ToString(), CancellationToken.None);
 
         // Assert
         model.StatusSuccess.Should().BeTrue();
@@ -652,14 +652,14 @@ public sealed class DetailModelTests : IDisposable
 
     /// <summary>A uuid the caller cannot read is a 404 here as much as on the GET.</summary>
     [Fact]
-    public async Task DeleteReturnsNotFoundForAnUnknownUuid()
+    public async Task RemoveReturnsNotFoundForAnUnknownUuid()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         (DetailModel model, _, _, _) = await NewModelAsync(context);
 
         // Act
-        IActionResult result = await model.OnPostDeleteAsync(Guid.NewGuid(), "anything", CancellationToken.None);
+        IActionResult result = await model.OnPostRemoveAsync(Guid.NewGuid(), "anything", CancellationToken.None);
 
         // Assert
         result.Should().BeOfType<NotFoundResult>();

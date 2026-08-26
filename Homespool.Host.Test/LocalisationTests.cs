@@ -432,11 +432,11 @@ public sealed class LocalisationTests
             // on the button - which is a UI change rather than a translation one.
             "Queue",
 
-            // Cameras_Remove takes a camera off a printer; Printers_DeleteButton removes the printer
+            // Cameras_Remove takes a camera off a printer; Printers_RemoveButton removes the printer
             // itself. Both are "Fjern" in Danish and correctly so - one verb doing one job in two
             // places, the same species as "Save" above, rather than two sentences that will drift.
             // Neither button stands alone: the camera's sits in its row, and the printer's inside a
-            // confirmation dialog titled Printers_DeleteModalHeading, which names the printer - so
+            // confirmation dialog titled Printers_RemoveModalHeading, which names the printer - so
             // what is being removed is never in question at the point of pressing.
             "Remove",
 

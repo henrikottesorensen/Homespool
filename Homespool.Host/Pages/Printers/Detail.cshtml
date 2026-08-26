@@ -477,6 +477,82 @@
 </details>
 
 
+@* Last on the page, and a disclosure like the two archives above it - not because removing is a
+   record, but because it is the one control here nobody should reach by accident. Closed by
+   default, so even seeing the button takes a deliberate act.
+
+   The disclosure holds the trigger and nothing else. Everything that makes this decision - what is
+   destroyed, that the printer is not told, and the name that has to be typed - lives in the dialog,
+   because a warning beside a button is read after the decision and a warning in front of one is
+   read before it. Ellipsis on the trigger, the convention the unload picker already sets: this
+   button opens a question rather than answering one.
+
+   The dialog is inside this CanManage block rather than down with the others, deliberately. The
+   unload picker's comment records what the alternative cost: a modal that sat beside an unrelated
+   block inherited that block's condition, and its trigger pointed at markup that was simply absent. *@
+@if (Model.CanManage)
+{
+    <details class="printer-archive">
+        <summary>@Localiser["Printers_RemoveHeading"]</summary>
+
+        <p class="my-2">
+            <button type="button" class="btn btn-outline-danger"
+                    data-bs-toggle="modal" data-bs-target="#remove-printer">
+                @Localiser["Printers_RemoveEllipsis"]
+            </button>
+        </p>
+    </details>
+
+    <div class="modal fade" id="remove-printer" tabindex="-1" aria-labelledby="remove-printer-heading"
+         aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            @* The danger border the card here used to carry, kept when the warning moved into the
+               dialog. It is the only thing marking this dialog apart from the two benign ones on the
+               page - set-ready and the unload picker share its shape otherwise - so a person who
+               opened the wrong one can see it before reading it. A Bootstrap utility rather than a
+               colour of our own; the utility wins on !important over .modal-content's own border. *@
+            <div class="modal-content border-danger">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="remove-printer-heading">
+                        @string.Format(System.Globalization.CultureInfo.CurrentCulture,
+                                       Localiser["Printers_RemoveModalHeading"].Value,
+                                       printerName)
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"
+                            aria-label="@Localiser["Common_Cancel"]"></button>
+                </div>
+
+                @* The form spans body and footer so the typed name and the button that acts on it are
+                   one submission. The name is checked on the server: a confirmation the server never
+                   sees is a decoration, and this one costs a forged post the trouble of knowing which
+                   printer it is removing. *@
+                <form method="post" asp-page-handler="Remove" asp-route-uuid="@uuid">
+                    <div class="modal-body">
+                        <p>@Localiser["Printers_RemoveWarning"]</p>
+                        <p class="text-body-secondary small">@Localiser["Printers_RemoveKnocking"]</p>
+
+                        <label class="form-label" for="remove-confirmation">
+                            @Localiser["Printers_RemoveConfirmLabel", printerName]
+                        </label>
+                        @* No autocomplete: the browser offering the name back would undo the point of
+                           asking for it. *@
+                        <input class="form-control" id="remove-confirmation" name="confirmation"
+                               autocomplete="off" required />
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                            @Localiser["Common_Cancel"]
+                        </button>
+
+                        <button type="submit" class="btn btn-danger">@Localiser["Printers_RemoveButton"]</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+}
+
 @* The dialog is gated on CanUse and on there being a choice - and on nothing else. It first
    went in beside the Set ready modal and inherited that block's RemoteReadyAllowed, so the
    trigger pointed at markup which was simply absent on any printer without the ready toggle:

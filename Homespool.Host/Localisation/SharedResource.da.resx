@@ -2225,4 +2225,32 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="TwoFactor_KeyReset" xml:space="preserve">
     <value>Din godkendelsesnøgle er nulstillet. Sæt din tofaktorapp op igen med den nye nøgle.</value>
   </data>
+  <data name="Printers_RemoveHeading" xml:space="preserve">
+    <value>Fjern printer</value>
+  </data>
+  <data name="Printers_RemoveWarning" xml:space="preserve">
+    <value>Dette fjerner printeren og alt, der er registreret om den: dens telemetri, dens hændelser, dens printhistorik, alt hvad der venter i dens kø, dens tilmelding og ethvert kamera, der holder øje med den. Filer, du har lagt op, bliver bevaret. Resten kan ikke hentes tilbage.</value>
+  </data>
+  <data name="Printers_RemoveKnocking" xml:space="preserve">
+    <value>Printeren får det ikke at vide. Den beholder sin adgangsnøgle, indtil nogen tilmelder den igen på dens eget panel, så indtil da bliver den ved med at forbinde hertil og blive afvist.</value>
+  </data>
+  <data name="Printers_RemoveConfirmLabel" xml:space="preserve">
+    <value>Skriv {0} for at bekræfte</value>
+  </data>
+  <data name="Printers_RemoveButton" xml:space="preserve">
+    <value>Fjern</value>
+    <comment>The button inside the disclosure whose summary is Printers_RemoveHeading. Terser than that heading, the way TwoFactor_ResetKeyButton pairs a full heading with a short button - and they cannot be identical, which NoTwoKeysCarryTheSameEnglish enforces.</comment>
+  </data>
+  <data name="Printers_RemoveNameMismatch" xml:space="preserve">
+    <value>Intet blev fjernet: det er ikke denne printer. Skriv {0} for at bekræfte.</value>
+  </data>
+  <data name="Printers_Removed" xml:space="preserve">
+    <value>Fjernede {0} og alt, der var registreret om den.</value>
+  </data>
+  <data name="Printers_RemoveEllipsis" xml:space="preserve">
+    <value>Fjern printer&#8230;</value>
+  </data>
+  <data name="Printers_RemoveModalHeading" xml:space="preserve">
+    <value>Fjern {0}?</value>
+  </data>
 </root>

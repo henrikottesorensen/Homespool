@@ -55,6 +55,7 @@ namespace Homespool.Host.Pages.Printers;
 public class DetailModel : PageModel
 {
     private readonly PrinterQueryService _printerQueryService;
+    private readonly PrinterRemovalService _removalService;
     private readonly PrintQueueService _queueService;
     private readonly PrinterPreheatService _preheat;
     private readonly PrinterFilamentService _filament;
@@ -77,6 +78,7 @@ public class DetailModel : PageModel
     private readonly UserManager<HSUser> _userManager;
 
     public DetailModel(PrinterQueryService printerQueryService,
+                       PrinterRemovalService removalService,
                        PrintQueueService queueService,
                        PrinterPreheatService preheat,
                        PrinterFilamentService filament,
@@ -99,6 +101,7 @@ public class DetailModel : PageModel
                        UserManager<HSUser> userManager)
     {
         _printerQueryService = printerQueryService;
+        _removalService = removalService;
         _queueService = queueService;
         _preheat = preheat;
         _filament = filament;
@@ -948,6 +951,80 @@ public class DetailModel : PageModel
 
             return (_localiser["Printers_HeatersOff"].Value, true);
         }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Removes the printer and everything this deployment knows about it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Not through <see cref="ActAsync"/>, and the reason is the redirect.</b> Every other handler
+    /// comes back to this page; this one has just removed the thing the page is about, so a success
+    /// goes to the listing and only a refusal returns here. The exception arms are otherwise the
+    /// same deliberately - the shapes a printer operation can fail in did not change.
+    /// </para>
+    /// <para>
+    /// <b>The typed name is checked here rather than in the browser.</b> A confirmation the server
+    /// never sees is a decoration; this one costs a forged post the trouble of knowing which printer
+    /// it is removing. Compared ordinally and case-insensitively: the point is to make somebody read
+    /// the name, not to test their shift key, and an ordinal comparison keeps a Turkish locale from
+    /// deciding what two names mean.
+    /// </para>
+    /// </remarks>
+    public async Task<IActionResult> OnPostRemoveAsync(Guid uuid, string? confirmation, CancellationToken cancellationToken)
+    {
+        HSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return Forbid();
+        }
+
+        Caller caller = CallerResolver.For(user, User);
+        Printer? printer = await _printerQueryService.GetPrinterForUserAsync(uuid, caller, cancellationToken);
+
+        if (printer is null)
+        {
+            return NotFound();
+        }
+
+        string name = DisplayNameFor(printer);
+
+        if (!string.Equals(confirmation?.Trim(), name, StringComparison.OrdinalIgnoreCase))
+        {
+            (StatusMessage, StatusSuccess) = (_localiser["Printers_RemoveNameMismatch", name].Value, false);
+
+            return RedirectToPage(new { uuid });
+        }
+
+        try
+        {
+            await _removalService.RemovePrinterAsync(uuid, caller, cancellationToken);
+        }
+        catch (TeamAccessDeniedException)
+        {
+            return Forbid();
+        }
+        catch (PrinterBusyException e)
+        {
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
+
+            return RedirectToPage(new { uuid });
+        }
+
+        (StatusMessage, StatusSuccess) = (_localiser["Printers_Removed", name].Value, true);
+
+        return RedirectToPage("Index");
+    }
+
+    /// <summary>
+    /// What the page calls this printer, and what the removal confirmation asks to be typed. The
+    /// chain is <see cref="Printer.Name"/>'s documented one, and the view computes the same thing
+    /// for its heading.
+    /// </summary>
+    private static string DisplayNameFor(Printer printer)
+    {
+        return printer.Name ?? printer.Model ?? printer.Uuid.ToString();
     }
 
     /// <summary>

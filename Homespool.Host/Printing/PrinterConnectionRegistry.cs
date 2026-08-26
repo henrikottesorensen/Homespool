@@ -91,6 +91,39 @@ public sealed class PrinterConnectionRegistry
     }
 
     /// <summary>
+    /// Shuts down the live connection for <paramref name="printerId"/>, if there is one, because the
+    /// printer is being deleted. Returns whether there was one to close.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Unconditional, unlike <see cref="Unregister"/></b>, and the difference is the caller's
+    /// intent rather than an oversight. Unregister matches on the instance because it runs in a
+    /// request's <c>finally</c> and must not reap a newer connection that displaced it. Here the
+    /// printer itself is going away, so whichever actor holds the id is the one to close - and a
+    /// reconnect landing in the same instant should be closed too, not left running.
+    /// </para>
+    /// <para>
+    /// <b>The entry is not removed.</b> <see cref="IPrinterLink.Complete"/>ing the actor ends its read loop, which
+    /// reaches the session teardown, which unregisters it by instance - removing it here as well
+    /// would take out whatever registered in between, which is exactly what Unregister's
+    /// instance-matching exists to prevent.
+    /// </para>
+    /// </remarks>
+    public bool Close(int printerId)
+    {
+        if (!_actors.TryGetValue(printerId, out IPrinterLink? actor))
+        {
+            return false;
+        }
+
+        _logger.LogInformation("[{PrinterId}] closing the live connection because the printer is being deleted.", printerId);
+
+        actor.Complete();
+
+        return true;
+    }
+
+    /// <summary>
     /// Installs <paramref name="actor"/> and returns whatever it replaced, atomically - so two
     /// simultaneous registrations for one printer cannot both report displacing the same actor, and
     /// no actor can be dropped from the map without being handed back to be shut down.

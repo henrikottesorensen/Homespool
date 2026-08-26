@@ -2309,4 +2309,34 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="TwoFactor_KeyReset" xml:space="preserve">
     <value>Your authenticator key has been reset. Set your authenticator app up again with the new key.</value>
   </data>
+  <data name="Printers_RemoveHeading" xml:space="preserve">
+    <value>Remove printer</value>
+  </data>
+  <data name="Printers_RemoveWarning" xml:space="preserve">
+    <value>This removes the printer and everything recorded about it: its telemetry, its events, its print history, anything waiting in its queue, its enrolment, and any camera watching it. Files you have uploaded are kept. None of the rest can be recovered.</value>
+  </data>
+  <data name="Printers_RemoveKnocking" xml:space="preserve">
+    <value>The printer itself is not told. It keeps its credential until somebody registers it again at its own panel, so until then it goes on connecting here and being turned away.</value>
+  </data>
+  <data name="Printers_RemoveConfirmLabel" xml:space="preserve">
+    <value>Type {0} to confirm</value>
+  </data>
+  <data name="Printers_RemoveButton" xml:space="preserve">
+    <value>Remove</value>
+    <comment>The button inside the disclosure whose summary is Printers_RemoveHeading. Terser than that heading, the way TwoFactor_ResetKeyButton pairs a full heading with a short button - and they cannot be identical, which NoTwoKeysCarryTheSameEnglish enforces.</comment>
+  </data>
+  <data name="Printers_RemoveNameMismatch" xml:space="preserve">
+    <value>Nothing was removed: that is not this printer. Type {0} to confirm.</value>
+  </data>
+  <data name="Printers_Removed" xml:space="preserve">
+    <value>Removed {0} and everything recorded about it.</value>
+  </data>
+  <data name="Printers_RemoveEllipsis" xml:space="preserve">
+    <value>Remove printer&#8230;</value>
+    <comment>The trigger inside the disclosure. Ellipsis because it opens the confirmation dialog rather than removing anything, the convention Printers_UnloadEllipsis sets.</comment>
+  </data>
+  <data name="Printers_RemoveModalHeading" xml:space="preserve">
+    <value>Remove {0}?</value>
+    <comment>The confirmation dialog's title. Names the printer, so a dialog opened on the wrong tab is answerable without closing it.</comment>
+  </data>
 </root>

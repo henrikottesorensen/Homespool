@@ -1844,6 +1844,144 @@ public sealed class TelemetryWriterTests : IDisposable
 
         trimmed.Should().BeTrue($"the pending event buffer must have a ceiling too, even a distant one. Log:\n{LogDump()}");
     }
+
+    // ---------- ForgetPrinterAsync ----------
+
+    /// <summary>
+    /// <b>Deleting a printer does not poison the flush for every other printer.</b>
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The failure this prevents is the one <see cref="BreakThePrinterRowAsync"/> injects on purpose
+    /// elsewhere in this file: a flush commits its whole batch in one transaction, and
+    /// <c>SafeFlushAsync</c> keeps the buffers when it fails - so a single row referencing a printer
+    /// that has been deleted fails the batch and re-fails it on every retry, taking a healthy
+    /// printer's telemetry down with it until the buffer ceilings trim it out.
+    /// </para>
+    /// <para>
+    /// Two printers, deliberately: asserting only that the deleted one wrote nothing would pass
+    /// against a writer that had simply stopped persisting altogether, which is the failure being
+    /// tested for.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ForgettingAPrinterLetsTheNextFlushSaveEverybodyElse()
+    {
+        // Arrange - nothing may flush before the deletion, or there is nothing buffered left to
+        // poison and this passes without testing anything. So: a batch size neither printer reaches
+        // and a timer that will not fire, with the shutdown flush as the only write.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1000, flushIntervalSeconds: 30));
+        await SeedPrinterAsync(printerId: 1);
+        await SeedPrinterAsync(printerId: 2);
+
+        for (int i = 0; i < 5; i++)
+        {
+            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow.AddSeconds(i),
+                           new TelemetryDTO { Status = "PRINTING", Progress = i });
+            writer.Enqueue(printerId: 2, DateTimeOffset.UtcNow.AddSeconds(i),
+                           new TelemetryDTO { Status = "PRINTING", Progress = i });
+        }
+
+        // Let the drain loop buffer them. Deliberate, and the one place this suite waits on a
+        // duration rather than a condition: the buffers are locals of the drain loop with nothing
+        // publishing their depth between flushes, and the point of the test is that they are full at
+        // the moment of deletion. The assertion below names the count, so a wait that turned out too
+        // short fails here rather than passing quietly.
+        await Task.Delay(TimeSpan.FromMilliseconds(500), TestContext.Current.CancellationToken);
+
+        // Act - the deletion sequence, in the order PrinterRemovalService performs it.
+        await writer.ForgetPrinterAsync(printerId: 1, CancellationToken.None);
+
+        LogRecords.Should().Contain(
+            record => record.StructuredState!.Any(kv => kv.Key == "SampleCount" && kv.Value == "5"),
+            $"the deleted printer's five buffered samples are what this test is about. Log:\n{LogDump()}");
+
+        await using (HomespoolDbContext deleting = NewVerificationContext())
+        {
+            Printer printer = await deleting.Printers.SingleAsync(p => p.Id == 1, TestContext.Current.CancellationToken);
+            deleting.Printers.Remove(printer);
+            await deleting.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        // The shutdown flush is the first and only write, and it happens with the printer gone.
+        await writer.StopAsync(CancellationToken.None);
+
+        // Assert - the surviving printer's rows reached the database.
+        await using HomespoolDbContext verification = NewVerificationContext();
+
+        (await verification.TelemetrySamples.CountAsync(s => s.PrinterId == 2, TestContext.Current.CancellationToken))
+            .Should().Be(5, $"a deleted printer must not stop anybody else persisting. Log:\n{LogDump()}");
+
+        LogRecords.Should().NotContain(record => record.Level == LogLevel.Error,
+                                       $"no flush should have failed at all. Log:\n{LogDump()}");
+    }
+
+    /// <summary>
+    /// Telemetry still in flight when the printer was deleted is dropped rather than buffered.
+    /// </summary>
+    /// <remarks>
+    /// Purging the buffers is only half of it. The connection is closed before the delete, but its
+    /// read loop can still be carrying a message - and one of those landing after the row is gone
+    /// poisons the next flush exactly as a buffered row would have. So the id is remembered, which is
+    /// what this asserts: enqueuing <em>after</em> the deletion has to be a no-op, not a delayed
+    /// failure.
+    /// </remarks>
+    [Fact]
+    public async Task TelemetryArrivingAfterADeletionIsDropped()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1000, flushIntervalSeconds: 0.1));
+        await SeedPrinterAsync(printerId: 1);
+        await SeedPrinterAsync(printerId: 2);
+
+        await writer.ForgetPrinterAsync(printerId: 1, CancellationToken.None);
+
+        await using (HomespoolDbContext deleting = NewVerificationContext())
+        {
+            Printer printer = await deleting.Printers.SingleAsync(p => p.Id == 1, TestContext.Current.CancellationToken);
+            deleting.Printers.Remove(printer);
+            await deleting.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        // Act - a straggler from the closing socket, then a live printer behind it so the assertion
+        // has something to wait for rather than a fixed sleep.
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING", Progress = 1 });
+        writer.Enqueue(printerId: 2, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING", Progress = 1 });
+
+        // Assert
+        bool survivorSaved = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+
+            return await context.TelemetrySamples.CountAsync(s => s.PrinterId == 2) == 1;
+        }, TimeSpan.FromSeconds(10));
+
+        survivorSaved.Should().BeTrue($"the straggler must not have blocked the flush. Log:\n{LogDump()}");
+
+        LogRecords.Should().NotContain(record => record.Level == LogLevel.Error,
+                                       $"a message for a deleted printer is dropped, not attempted. Log:\n{LogDump()}");
+    }
+
+    /// <summary>
+    /// A writer that has already been told to stop answers immediately rather than leaving a request
+    /// waiting out the timeout for a drain loop that will never run again.
+    /// </summary>
+    [Fact]
+    public async Task ForgettingAfterShutdownReturnsRatherThanWaiting()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1000, flushIntervalSeconds: 30));
+        await SeedPrinterAsync(printerId: 1);
+
+        await writer.StopAsync(CancellationToken.None);
+
+        // Act
+        Task forgetting = writer.ForgetPrinterAsync(printerId: 1, CancellationToken.None);
+
+        // Assert - completed, not merely started. The timeout is 10 s, so a hang would show here.
+        (await Task.WhenAny(forgetting, Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken)))
+            .Should().BeSameAs(forgetting);
+    }
 }
 
 /// <summary>

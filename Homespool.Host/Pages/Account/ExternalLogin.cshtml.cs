@@ -230,7 +230,13 @@ public class ExternalLoginModel : PageModel
                                                           bypassTwoFactor: true);
         if (result.Succeeded)
         {
-            _logger.LogInformation("{Name} logged in with {LoginProvider} provider.", info.Principal.Identity.Name,
+            // Null-conditional because ClaimsPrincipal.Identity is IIdentity? - but the reachable
+            // half is Name rather than Identity: it is the name claim, which plenty of providers
+            // never set, so this is null in ordinary operation and not only in some edge case. The
+            // line's job is recording that a sign-in happened and through which provider; the name
+            // is a convenience when the provider supplies one.
+            _logger.LogInformation("{Name} logged in with {LoginProvider} provider.",
+                                   info.Principal.Identity?.Name,
                                    info.LoginProvider);
             return LocalRedirect(returnUrl);
         }

@@ -52,6 +52,20 @@ public static class PrusaTelemetryMapping
         ["size", "m_timestamp", "read_only", "display_name", "type", "path", "file_count"];
 
     /// <summary>
+    /// What one stored payload may cost. Nothing firmware sends comes close: the largest payload in
+    /// Prusa's own <c>render-fixtures.json</c> is 450 bytes, and both <c>FILE_INFO</c> shapes reduce
+    /// to about 175 once <c>children</c> is lifted out.
+    /// </summary>
+    /// <remarks>
+    /// <b>A flat cap is only correct because no event type has a legitimately large payload any
+    /// more</b> - which is what removing <c>children</c> bought, and why the two changes arrived
+    /// together. The bound that matters is the rate: a printer is authenticated but not trusted, and
+    /// at the transport's 1200/min a megabyte apiece is a disk-fill primitive no retention window
+    /// survives (<c>notes/printer-event-bounds.md</c> §6).
+    /// </remarks>
+    internal const int MaxPayloadBytes = 4096;
+
+    /// <summary>
     /// Every <c>INFO</c> field masked before the payload reaches a row, as a dotted path from the
     /// object's root. See <see cref="RedactCredentials"/> for why this is a blacklist where its
     /// neighbour above is an allowlist.
@@ -406,6 +420,29 @@ public static class PrusaTelemetryMapping
                                              hasChildren ? children.GetRawText() : null);
     }
 
+    /// <summary>
+    /// <paramref name="payload"/> if it fits <see cref="MaxPayloadBytes"/>, and a marker naming what
+    /// was dropped if it does not.
+    /// </summary>
+    /// <remarks>
+    /// <b>Replaced wholesale rather than cut short</b>, because a JSON document sliced at a byte
+    /// offset is no longer JSON: <c>QueueAdvancer</c> deserialises stored payloads, and a truncated
+    /// one would reach it as a parse failure indistinguishable from a printer sending something
+    /// unmodelled. The marker is valid JSON, deserialises to a record with nothing set, and says
+    /// plainly what happened - so a clipped event reads as clipped rather than as corrupt.
+    /// </remarks>
+    private static string Bound(string payload)
+    {
+        int bytes = Encoding.UTF8.GetByteCount(payload);
+
+        if (bytes <= MaxPayloadBytes)
+        {
+            return payload;
+        }
+
+        return $$"""{"_truncated":true,"_bytes":{{bytes}}}""";
+    }
+
     private static string? FormatPayload(EventDTO dto)
     {
         if (dto.Data is not { } element)
@@ -415,7 +452,7 @@ public static class PrusaTelemetryMapping
 
         if (dto.EventType == Model.PrinterEventType.Info && element.ValueKind == JsonValueKind.Object)
         {
-            return RedactCredentials(element);
+            return Bound(RedactCredentials(element));
         }
 
         // Scoped to FILE_INFO deliberately. Every other event type has its own field set, and the
@@ -423,7 +460,7 @@ public static class PrusaTelemetryMapping
         // payloads that are entirely firmware's own work.
         if (dto.EventType != Model.PrinterEventType.FileInfo || element.ValueKind != JsonValueKind.Object)
         {
-            return element.GetRawText();
+            return Bound(element.GetRawText());
         }
 
         ArrayBufferWriter<byte> buffer = new();
@@ -443,7 +480,7 @@ public static class PrusaTelemetryMapping
             writer.WriteEndObject();
         }
 
-        return Encoding.UTF8.GetString(buffer.WrittenSpan);
+        return Bound(Encoding.UTF8.GetString(buffer.WrittenSpan));
     }
 
     /// <summary>

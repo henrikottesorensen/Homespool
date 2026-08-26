@@ -106,4 +106,50 @@ public sealed class PrusaTelemetryMappingPayloadTests
         record.Payload.Should().NotContain("estimated_print_time");
         record.Payload.Should().Contain("display_name", "which the queue reads to match an arrival");
     }
+
+    /// <summary>
+    /// <b>An oversized payload is replaced, not cut short.</b> A JSON document sliced at a byte
+    /// offset stops being JSON, and <c>QueueAdvancer</c> deserialises these.
+    /// </summary>
+    [Fact]
+    public void AnOversizedPayloadBecomesAMarker()
+    {
+        string huge = $$"""{"type":"PRINT_FILE","display_name":"{{new string('x', 8192)}}"}""";
+
+        PrinterEventRecord record = Map(huge);
+
+        record.Payload.Should().NotBeNull();
+        record.Payload!.Length.Should().BeLessThan(200, "the marker is small whatever it replaced");
+        record.Payload.Should().Contain("_truncated");
+    }
+
+    /// <summary>
+    /// <b>And the marker is still JSON the queue can read.</b> This is the property that makes
+    /// replacement better than truncation: the reader gets a record with nothing set rather than a
+    /// parse failure it cannot tell from a printer sending something unmodelled.
+    /// </summary>
+    [Fact]
+    public void TheMarkerRemainsDeserialisableByTheQueuesReader()
+    {
+        string huge = $$"""{"type":"PRINT_FILE","display_name":"{{new string('x', 8192)}}"}""";
+
+        PrinterEventRecord record = Map(huge);
+
+        FileInfoEventDataDTO? read = JsonSerializer.Deserialize<FileInfoEventDataDTO>(record.Payload!);
+
+        read.Should().NotBeNull();
+        read!.DisplayName.Should().BeNull("nothing survived, and the reader skips on a null name");
+    }
+
+    /// <summary>
+    /// An ordinary payload passes through untouched - the bound refuses the outsized, not everything.
+    /// </summary>
+    [Fact]
+    public void AnOrdinaryPayloadIsUnchanged()
+    {
+        PrinterEventRecord record = Map(SingleFile);
+
+        record.Payload.Should().NotContain("_truncated");
+        record.Payload.Should().Contain("a.bgcode");
+    }
 }

@@ -47,40 +47,6 @@ public class HSUser : IdentityUser<long>
     }
 
     /// <summary>
-    /// Consecutive registration codes this account has submitted that matched no pending
-    /// registration. Reset to zero by a successful claim.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Shortening the claim code to ten characters is safe on the anonymous path because
-    /// <c>/p/register</c> is rate limited; the claim page has no limiter at all, and this is what
-    /// bounds guessing there. Persisted rather than held in memory because a restart would otherwise
-    /// hand an attacker a fresh budget.
-    /// </para>
-    /// <para>
-    /// <b>Only a code matching nothing counts.</b> An already-claimed code and a team the user may
-    /// not claim into both mean the code was <i>right</i>, so neither is a guess.
-    /// </para>
-    /// <para>
-    /// <b>Keyed on the user, deliberately, not on the registration.</b> A wrong code finds no
-    /// registration row, so there is nothing to count against - per-registration counting needs a
-    /// second identifier submitted alongside the code, which only a pending-printer list would
-    /// supply. Keying on the account is also what makes the enrolment-DoS hazard unreachable: an
-    /// attacker can only burn their own budget, never a victim's pending registration.
-    /// </para>
-    /// </remarks>
-    public int FailedClaimAttempts { get; set; }
-
-    /// <summary>
-    /// When this account may attempt another claim, or null if it is not currently backed off.
-    /// </summary>
-    /// <remarks>
-    /// Backoff rather than invalidation, so a wrong guess never destroys a pending registration -
-    /// and the person is standing at the printer, where a fresh code is one menu press away.
-    /// </remarks>
-    public DateTimeOffset? ClaimLockoutEnd { get; set; }
-
-    /// <summary>
     /// The language this account reads Homespool in, as a culture name (<c>en</c>, <c>da</c>), or
     /// null to follow whatever the browser asks for.
     /// </summary>

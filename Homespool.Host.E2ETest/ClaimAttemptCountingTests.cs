@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Data;
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.E2ETest;
@@ -148,11 +149,16 @@ public sealed class ClaimAttemptCountingTests : IAsyncLifetime, IDisposable
 
         HomespoolDbContext database = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
-        HSUser reloaded = await database.Users
-                                        .AsNoTracking()
-                                        .SingleAsync(candidate => candidate.Id == userId, TestContext.Current.CancellationToken);
+        // The count lives in UserActionAttempts keyed on the action, not on HSUser - and a reset
+        // deletes the row rather than zeroing it, so "no row" is a count of zero.
+        UserActionAttempt? attempt = await database.UserActionAttempts
+                                                   .AsNoTracking()
+                                                   .SingleOrDefaultAsync(
+                                                       a => a.UserId == userId
+                                                            && a.Action == LimitedAction.ClaimPrinter,
+                                                       TestContext.Current.CancellationToken);
 
-        return reloaded.FailedClaimAttempts;
+        return attempt?.FailedCount ?? 0;
     }
 
     public ValueTask DisposeAsync()

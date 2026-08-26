@@ -19,6 +19,7 @@ using Homespool.Host.Exceptions;
 using Homespool.Host.Localisation;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Printers;
@@ -39,7 +40,7 @@ public class ClaimModel : PageModel
     private readonly TeamService _teamService;
     private readonly UserManager<HSUser> _userManager;
     private readonly UnitOfWork _unitOfWork;
-    private readonly ClaimAttemptLimiter _attemptLimiter;
+    private readonly AttemptLimiter _attemptLimiter;
     private readonly ILogger<ClaimModel> _logger;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
@@ -47,7 +48,7 @@ public class ClaimModel : PageModel
                       TeamService teamService,
                       UserManager<HSUser> userManager,
                       UnitOfWork unitOfWork,
-                      ClaimAttemptLimiter attemptLimiter,
+                      AttemptLimiter attemptLimiter,
                       ILogger<ClaimModel> logger,
                       IStringLocalizer<SharedResource> localiser)
     {
@@ -128,11 +129,12 @@ public class ClaimModel : PageModel
 
         DateTimeOffset now = TimeProvider.System.GetUtcNow();
 
-        if (_attemptLimiter.RemainingLockout(user, now) is { } remaining)
+        if (await _attemptLimiter.RemainingLockoutAsync(user.Id, LimitedAction.ClaimPrinter, now, cancellationToken)
+                is { } remaining)
         {
             // Deliberately says how long, rather than a bare refusal: the overwhelmingly likely
             // person reading this is someone who mistyped, standing at their own printer.
-            ModelState.AddModelError(string.Empty, _localiser["Printers_ClaimLockedOut", FormatWait(remaining)]);
+            ModelState.AddModelError(string.Empty, _localiser["Printers_ClaimLockedOut", BackoffWait.Format(_localiser, remaining)]);
 
             return Page();
         }
@@ -157,7 +159,7 @@ public class ClaimModel : PageModel
                 code, Input.Name, Input.Location, Input.TeamId, CallerResolver.For(user, User));
 
             // Inside the transaction the claim was made in, so a rollback takes the reset with it.
-            await _attemptLimiter.ResetAsync(user, cancellationToken);
+            await _attemptLimiter.ResetAsync(user.Id, LimitedAction.ClaimPrinter, cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
 
@@ -180,7 +182,7 @@ public class ClaimModel : PageModel
             //
             // Recorded after the transaction has rolled back, on the limiter's own save, so the
             // rollback cannot undo the count.
-            await _attemptLimiter.RecordFailedAttemptAsync(user, now, cancellationToken);
+            await _attemptLimiter.RecordFailedAttemptAsync(user.Id, LimitedAction.ClaimPrinter, now, cancellationToken);
 
             ModelState.AddModelError(string.Empty, _localiser["Printers_ClaimNoSuchCode"]);
 
@@ -206,29 +208,6 @@ public class ClaimModel : PageModel
 
             return Page();
         }
-    }
-
-    /// <summary>
-    /// Renders a backoff as something worth reading on a form - "45 seconds", "3 minutes" - rather
-    /// than a raw <see cref="TimeSpan"/>.
-    /// </summary>
-    /// <remarks>
-    /// Rounds up, so the message never tells someone to retry a moment before they may.
-    /// </remarks>
-    private string FormatWait(TimeSpan remaining)
-    {
-        if (remaining < TimeSpan.FromMinutes(1))
-        {
-            int seconds = (int)Math.Ceiling(remaining.TotalSeconds);
-
-            return seconds == 1 ? _localiser["Printers_ClaimWaitOneSecond"] : _localiser["Printers_ClaimWaitSeconds", seconds];
-        }
-
-        int minutes = (int)Math.Ceiling(remaining.TotalMinutes);
-
-        // The shared pair rather than two keys of this page's own: they carried the same two
-        // sentences, and one copy cannot drift from the other in translation.
-        return Plural.Format(_localiser, "Common_Minutes", minutes);
     }
 
     private async Task LoadTeamOptionsAsync(CancellationToken cancellationToken)

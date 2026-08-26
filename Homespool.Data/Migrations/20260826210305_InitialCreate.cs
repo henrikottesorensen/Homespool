@@ -32,8 +32,6 @@ namespace Homespool.Data.Migrations
                 {
                     Id = table.Column<long>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
-                    FailedClaimAttempts = table.Column<int>(type: "INTEGER", nullable: false),
-                    ClaimLockoutEnd = table.Column<long>(type: "INTEGER", nullable: true),
                     Language = table.Column<string>(type: "TEXT", maxLength: 16, nullable: true),
                     UserName = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
                     NormalizedUserName = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
@@ -248,6 +246,28 @@ namespace Homespool.Data.Migrations
                     table.PrimaryKey("PK_PrintFiles", x => x.Id);
                     table.ForeignKey(
                         name: "FK_PrintFiles_AspNetUsers_UserId",
+                        column: x => x.UserId,
+                        principalTable: "AspNetUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "UserActionAttempts",
+                columns: table => new
+                {
+                    Id = table.Column<long>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    UserId = table.Column<long>(type: "INTEGER", nullable: false),
+                    Action = table.Column<string>(type: "TEXT", nullable: false),
+                    FailedCount = table.Column<int>(type: "INTEGER", nullable: false),
+                    LockoutEnd = table.Column<long>(type: "INTEGER", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_UserActionAttempts", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_UserActionAttempts_AspNetUsers_UserId",
                         column: x => x.UserId,
                         principalTable: "AspNetUsers",
                         principalColumn: "Id",
@@ -927,6 +947,12 @@ namespace Homespool.Data.Migrations
                 table: "TelemetrySlotSamples",
                 columns: new[] { "TelemetrySampleId", "SlotNumber" },
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_UserActionAttempts_UserId_Action",
+                table: "UserActionAttempts",
+                columns: new[] { "UserId", "Action" },
+                unique: true);
         }
 
         /// <inheritdoc />
@@ -994,6 +1020,9 @@ namespace Homespool.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "TelemetrySlotSamples");
+
+            migrationBuilder.DropTable(
+                name: "UserActionAttempts");
 
             migrationBuilder.DropTable(
                 name: "AspNetRoles");

@@ -14,7 +14,8 @@ public class CodeGenerator
     /// code inside its lifetime (<see cref="PrusaConnectOptions.RegistrationCodeLifetimeMinutes"/>,
     /// 30 minutes): the anonymous <c>/p/register</c> endpoints sit behind a 300/min limiter, so an
     /// attacker gets ~9 000 attempts against ~1.1x10^15 - about one in 10^11. The claim page has no
-    /// limiter of its own, which is what <see cref="ClaimAttemptLimiter"/> is for.
+    /// limiter of its own, which is what <see cref="Services.AttemptLimiter"/> is for, under
+    /// <see cref="Homespool.Model.LimitedAction.ClaimPrinter"/>.
     /// </para>
     /// <para>
     /// It was 24 base36 characters, which is ~2^124 - some 74 bits more than anything here needs,

@@ -71,6 +71,10 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
     /// authenticated request; revoking one is deleting its row.</summary>
     public DbSet<ApiToken> ApiTokens { get; set; }
 
+    /// <summary>Per-account failed-attempt counts and backoffs, one row per account per action a
+    /// limiter guards. Absent for an account that has not got anything wrong.</summary>
+    public DbSet<UserActionAttempt> UserActionAttempts { get; set; }
+
     /// <summary>Index over the uploaded print files on disk. The filesystem is the truth; this exists
     /// so a queue entry can point at something a rename does not move.</summary>
     public DbSet<PrintFile> PrintFiles { get; set; }
@@ -467,6 +471,27 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
 
             // Cascade: a deleted account takes its credentials with it. Leaving them would leave live
             // bearer tokens pointing at a user id that no longer resolves.
+            entity.HasOne<HSUser>()
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<UserActionAttempt>(entity =>
+        {
+            // The only read there is: this account's standing against this action. Unique, because
+            // two rows for one pair would mean two disagreeing counters and a limiter that believes
+            // whichever it happened to load.
+            entity.HasIndex(e => new { e.UserId, e.Action })
+                  .IsUnique();
+
+            // Text, like every other enum column here: legible in a raw SQLite session, and the
+            // enum's declaration order stops being part of the schema.
+            entity.Property(e => e.Action)
+                  .HasConversion<string>();
+
+            // Cascade: a counter that outlived its account guards nothing and would keep a name
+            // attached to a row nobody can reach.
             entity.HasOne<HSUser>()
                   .WithMany()
                   .HasForeignKey(e => e.UserId)

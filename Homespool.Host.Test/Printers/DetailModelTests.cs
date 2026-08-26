@@ -1,5 +1,9 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.IO;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -72,8 +76,26 @@ public sealed class DetailModelTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// As <see cref="NewModelWithUsersAsync"/>, without the user manager - which most cases here do
+    /// not need.
+    /// </summary>
     private static async Task<(DetailModel model, HSUser user, Team team, PrinterConnectionRegistry connectionRegistry)>
         NewModelAsync(HomespoolDbContext context)
+    {
+        (DetailModel model, HSUser user, Team team, PrinterConnectionRegistry registry, _) =
+            await NewModelWithUsersAsync(context);
+
+        return (model, user, team, registry);
+    }
+
+    /// <summary>
+    /// The page under test, plus the user manager - which the two-factor cases need in order to turn
+    /// an authenticator on for the account the page is signed in as.
+    /// </summary>
+    private static async Task<(DetailModel model, HSUser user, Team team,
+                               PrinterConnectionRegistry connectionRegistry, UserManager<HSUser> users)>
+        NewModelWithUsersAsync(HomespoolDbContext context)
     {
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
 
@@ -111,8 +133,10 @@ public sealed class DetailModelTests : IDisposable
 
         DetailModel model = new(new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System),
                                 new PrinterRemovalService(context, access, snapshots, connectionRegistry,
-                                                           Substitute.For<ITelemetryEviction>(),
-                                                           NullLogger<PrinterRemovalService>.Instance),
+                                                          Substitute.For<ITelemetryEviction>(),
+                                                          NullLogger<PrinterRemovalService>.Instance),
+                                new AttemptLimiter(context, Options.Create(new AttemptLimitOptions()),
+                                                   NullLogger<AttemptLimiter>.Instance),
                                 queueService,
 
                                 // Constructed rather than substituted: these tests are about the page, and a real one
@@ -152,7 +176,7 @@ public sealed class DetailModelTests : IDisposable
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };
 
-        return (model, user, team, connectionRegistry);
+        return (model, user, team, connectionRegistry, users);
     }
 
     /// <summary>
@@ -540,6 +564,93 @@ public sealed class DetailModelTests : IDisposable
         model.Connected.Should().BeTrue();
     }
 
+    /// <summary>
+    /// Turns on an authenticator for <paramref name="user"/> and returns a code its app would be
+    /// showing right now.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The code has to be computed rather than asked for.</b> The authenticator provider can only
+    /// <em>validate</em> - <c>GenerateTwoFactorTokenAsync</c> answers empty for it, because in
+    /// production the code comes from a phone. So this is the same RFC 6238 that Identity's
+    /// <c>Rfc6238AuthenticationService</c> runs: HMAC-SHA1 over the 30-second step, dynamic
+    /// truncation, six digits.
+    /// </para>
+    /// <para>
+    /// Worth the twenty lines rather than testing only refusals: a gate that refused everything,
+    /// correct code included, would pass a suite that never presents a correct one.
+    /// </para>
+    /// </remarks>
+    private static async Task<string> EnableAuthenticatorAsync(UserManager<HSUser> users, HSUser user)
+    {
+        await users.SetTwoFactorEnabledAsync(user, true);
+        await users.ResetAuthenticatorKeyAsync(user);
+
+        string key = (await users.GetAuthenticatorKeyAsync(user))!;
+
+        return Totp(Base32Decode(key), DateTimeOffset.UtcNow);
+    }
+
+    /// <summary>Base32 as Identity encodes an authenticator key: A-Z then 2-7, no padding.</summary>
+    private static byte[] Base32Decode(string encoded)
+    {
+        const string Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+        List<byte> bytes = [];
+        int bits = 0;
+        int value = 0;
+
+        foreach (char c in encoded.TrimEnd('=').ToUpperInvariant())
+        {
+            value = (value << 5) | Alphabet.IndexOf(c, StringComparison.Ordinal);
+            bits += 5;
+
+            if (bits >= 8)
+            {
+                bytes.Add((byte)(value >> (bits - 8)));
+                bits -= 8;
+            }
+        }
+
+        return [.. bytes];
+    }
+
+    // CA5350 flags the SHA-1 family without distinguishing the construction, and that is the whole
+    // reason this suppression is honest rather than a concession. SHA-1 is broken for COLLISION
+    // resistance - signatures, certificates - which is what the rule is really about. HMAC does not
+    // rest on collision resistance; it rests on the compression function behaving as a PRF, there is
+    // no practical attack on HMAC-SHA1, and NIST still permits it for HMAC specifically.
+    //
+    // RFC 6238 specifies it, Identity's own Rfc6238AuthenticationService uses it, and a "stronger"
+    // hash here would compute codes the production verifier rejects - so this is not a weakness being
+    // tolerated for compatibility, it is the correct primitive for the job.
+    [SuppressMessage("Security", "CA5350:Do Not Use Weak Cryptographic Algorithms",
+                     Justification = "HMAC-SHA1 is not affected by SHA-1's collision weakness, and "
+                                     + "RFC 6238 specifies it for TOTP.")]
+    private static string Totp(byte[] key, DateTimeOffset when)
+    {
+        long step = when.ToUnixTimeSeconds() / 30;
+
+        byte[] counter = BitConverter.GetBytes(step);
+
+        if (BitConverter.IsLittleEndian)
+        {
+            Array.Reverse(counter);
+        }
+
+        using HMACSHA1 hmac = new(key);
+
+        byte[] hash = hmac.ComputeHash(counter);
+
+        int offset = hash[^1] & 0x0f;
+        int binary = ((hash[offset] & 0x7f) << 24)
+                     | ((hash[offset + 1] & 0xff) << 16)
+                     | ((hash[offset + 2] & 0xff) << 8)
+                     | (hash[offset + 3] & 0xff);
+
+        return (binary % 1_000_000).ToString("D6", CultureInfo.InvariantCulture);
+    }
+
     // ---------- OnPostRemoveAsync ----------
 
     /// <summary>
@@ -563,7 +674,7 @@ public sealed class DetailModelTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
-        IActionResult result = await model.OnPostRemoveAsync(printer.Uuid, "workshp", CancellationToken.None);
+        IActionResult result = await model.OnPostRemoveAsync(printer.Uuid, "workshp", code: null, CancellationToken.None);
 
         // Assert
         model.StatusSuccess.Should().BeFalse();
@@ -586,7 +697,7 @@ public sealed class DetailModelTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
-        await model.OnPostRemoveAsync(printer.Uuid, confirmation: null, CancellationToken.None);
+        await model.OnPostRemoveAsync(printer.Uuid, confirmation: null, code: null, CancellationToken.None);
 
         // Assert
         model.StatusSuccess.Should().BeFalse();
@@ -615,7 +726,7 @@ public sealed class DetailModelTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
-        IActionResult result = await model.OnPostRemoveAsync(printer.Uuid, " workshop ", CancellationToken.None);
+        IActionResult result = await model.OnPostRemoveAsync(printer.Uuid, " workshop ", code: null, CancellationToken.None);
 
         // Assert
         model.StatusSuccess.Should().BeTrue();
@@ -641,10 +752,107 @@ public sealed class DetailModelTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
-        await model.OnPostRemoveAsync(printer.Uuid, printer.Uuid.ToString(), CancellationToken.None);
+        await model.OnPostRemoveAsync(printer.Uuid, printer.Uuid.ToString(), code: null, CancellationToken.None);
 
         // Assert
         model.StatusSuccess.Should().BeTrue();
+
+        context.ChangeTracker.Clear();
+        (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+    }
+
+    /// <summary>
+    /// <b>With an authenticator on the account, the right name alone is not enough.</b>
+    /// </summary>
+    /// <remarks>
+    /// The case the whole control exists for: somebody at an unlocked, already-signed-in machine can
+    /// read the printer's name off the heading, so the typed name stops a stray click and nothing
+    /// more. Asserting the printer survives, not just that the message is unhappy.
+    /// </remarks>
+    [Fact]
+    public async Task RemoveWithTwoFactorRefusesWithoutACode()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, HSUser user, Team team, _, UserManager<HSUser> users) = await NewModelWithUsersAsync(context);
+
+        await EnableAuthenticatorAsync(users, user);
+
+        Printer printer = NewPrinter(team.Id, name: "Workshop");
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act - the name is exactly right; only the code is missing.
+        await model.OnPostRemoveAsync(printer.Uuid, "Workshop", code: null, CancellationToken.None);
+
+        // Assert
+        model.StatusSuccess.Should().BeFalse();
+
+        context.ChangeTracker.Clear();
+        (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+    }
+
+    /// <summary>A wrong code refuses, and is counted against the backoff.</summary>
+    [Fact]
+    public async Task RemoveWithTwoFactorRefusesAWrongCodeAndCountsIt()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, HSUser user, Team team, _, UserManager<HSUser> users) = await NewModelWithUsersAsync(context);
+
+        await EnableAuthenticatorAsync(users, user);
+
+        Printer printer = NewPrinter(team.Id, name: "Workshop");
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        await model.OnPostRemoveAsync(printer.Uuid, "Workshop", code: "000000", CancellationToken.None);
+
+        // Assert
+        model.StatusSuccess.Should().BeFalse();
+
+        context.ChangeTracker.Clear();
+        (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+
+        // The guess is counted, which is what makes the six digits worth anything.
+        UserActionAttempt? attempt = await context.UserActionAttempts
+                                                  .AsNoTracking()
+                                                  .SingleOrDefaultAsync(
+                                                      a => a.UserId == user.Id
+                                                           && a.Action == LimitedAction.RemovePrinter,
+                                                      TestContext.Current.CancellationToken);
+
+        attempt?.FailedCount.Should().Be(1);
+    }
+
+    /// <summary>
+    /// The gate can be passed: the right name and a code the authenticator is showing removes it.
+    /// </summary>
+    /// <remarks>
+    /// The counterweight to the two refusals above. Without this, a bug that refused every code -
+    /// correct ones included - would leave the suite green while making removal impossible for
+    /// anybody with two-factor on.
+    /// </remarks>
+    [Fact]
+    public async Task RemoveWithTwoFactorSucceedsWithTheCurrentCode()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, HSUser user, Team team, _, UserManager<HSUser> users) = await NewModelWithUsersAsync(context);
+
+        string code = await EnableAuthenticatorAsync(users, user);
+
+        Printer printer = NewPrinter(team.Id, name: "Workshop");
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        IActionResult result = await model.OnPostRemoveAsync(printer.Uuid, "Workshop", code, CancellationToken.None);
+
+        // Assert
+        model.StatusSuccess.Should().BeTrue();
+        result.Should().BeOfType<RedirectToPageResult>().Which.PageName.Should().Be("Index");
 
         context.ChangeTracker.Clear();
         (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
@@ -659,7 +867,7 @@ public sealed class DetailModelTests : IDisposable
         (DetailModel model, _, _, _) = await NewModelAsync(context);
 
         // Act
-        IActionResult result = await model.OnPostRemoveAsync(Guid.NewGuid(), "anything", CancellationToken.None);
+        IActionResult result = await model.OnPostRemoveAsync(Guid.NewGuid(), "anything", code: null, CancellationToken.None);
 
         // Assert
         result.Should().BeOfType<NotFoundResult>();

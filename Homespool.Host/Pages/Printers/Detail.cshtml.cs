@@ -56,6 +56,7 @@ public class DetailModel : PageModel
 {
     private readonly PrinterQueryService _printerQueryService;
     private readonly PrinterRemovalService _removalService;
+    private readonly AttemptLimiter _attemptLimiter;
     private readonly PrintQueueService _queueService;
     private readonly PrinterPreheatService _preheat;
     private readonly PrinterFilamentService _filament;
@@ -79,6 +80,7 @@ public class DetailModel : PageModel
 
     public DetailModel(PrinterQueryService printerQueryService,
                        PrinterRemovalService removalService,
+                       AttemptLimiter attemptLimiter,
                        PrintQueueService queueService,
                        PrinterPreheatService preheat,
                        PrinterFilamentService filament,
@@ -102,6 +104,7 @@ public class DetailModel : PageModel
     {
         _printerQueryService = printerQueryService;
         _removalService = removalService;
+        _attemptLimiter = attemptLimiter;
         _queueService = queueService;
         _preheat = preheat;
         _filament = filament;
@@ -353,6 +356,19 @@ public class DetailModel : PageModel
     public bool CanManage { get; private set; }
 
     /// <summary>
+    /// Whether this account has an authenticator, and so must confirm a removal with a code as well
+    /// as the typed name.
+    /// </summary>
+    /// <remarks>
+    /// <b>It raises the bar for accounts that opted in; it does not set one.</b> An account without
+    /// two-factor gets the typed name and nothing more, so this is not a guarantee about removal in
+    /// general - it is a guarantee about accounts that already carry a second factor. Turning
+    /// <c>Security:RequireTwoFactor</c> on is what makes it a floor for everybody, because
+    /// <c>TwoFactorEnrolmentMiddleware</c> then holds accounts until they enrol.
+    /// </remarks>
+    public bool RemovalNeedsCode { get; private set; }
+
+    /// <summary>
     /// The address to paste into a slicer's print-host field for this printer.
     /// </summary>
     /// <remarks>
@@ -536,6 +552,11 @@ public class DetailModel : PageModel
         _readerId = caller.UserId;
 
         CanManage = await _access.AllowsAsync(Statistics.Printer.Id, caller, Capability.ManagePrinter, cancellationToken);
+
+        // Only asked when the control it gates would be rendered - an account that cannot manage the
+        // printer never sees the removal disclosure, so its authenticator state is nobody's business
+        // here.
+        RemovalNeedsCode = CanManage && await _userManager.GetTwoFactorEnabledAsync(user);
 
         SlicerUrl = $"{Request.Scheme}://{Request.Host}/compat/octoprint/{Statistics.Printer.Uuid}/";
 
@@ -971,7 +992,10 @@ public class DetailModel : PageModel
     /// deciding what two names mean.
     /// </para>
     /// </remarks>
-    public async Task<IActionResult> OnPostRemoveAsync(Guid uuid, string? confirmation, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostRemoveAsync(Guid uuid,
+                                                       string? confirmation,
+                                                       string? code,
+                                                       CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
@@ -990,11 +1014,50 @@ public class DetailModel : PageModel
 
         string name = DisplayNameFor(printer);
 
+        // The backoff is checked before anything is compared, so a locked-out account cannot learn
+        // whether its guesses were close by watching which refusal comes back.
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+
+        if (await _attemptLimiter.RemainingLockoutAsync(caller.UserId, LimitedAction.RemovePrinter, now, cancellationToken)
+                is { } remaining)
+        {
+            (StatusMessage, StatusSuccess) = (_localiser["Printers_RemoveLockedOut", BackoffWait.Format(_localiser, remaining)].Value, false);
+
+            return RedirectToPage(new { uuid });
+        }
+
+        // The name first, and the code second, deliberately. A wrong name is not a guess at a secret
+        // - it is on the heading of the page the form sits on - so counting it would let somebody
+        // exhaust the allowance without ever attempting the thing the allowance protects.
         if (!string.Equals(confirmation?.Trim(), name, StringComparison.OrdinalIgnoreCase))
         {
             (StatusMessage, StatusSuccess) = (_localiser["Printers_RemoveNameMismatch", name].Value, false);
 
             return RedirectToPage(new { uuid });
+        }
+
+        // Authenticator codes only. A recovery code is for getting back into an account, and reaching
+        // for one here would mean spending a single-use credential to confirm a routine act - while
+        // widening what an unattended session can do to exactly what this exists to stop.
+        if (await _userManager.GetTwoFactorEnabledAsync(user))
+        {
+            string typed = (code ?? string.Empty).Replace(" ", string.Empty).Replace("-", string.Empty);
+
+            bool valid = typed.Length > 0
+                         && await _userManager.VerifyTwoFactorTokenAsync(
+                                user, _userManager.Options.Tokens.AuthenticatorTokenProvider, typed);
+
+            if (!valid)
+            {
+                await _attemptLimiter.RecordFailedAttemptAsync(
+                    caller.UserId, LimitedAction.RemovePrinter, now, cancellationToken);
+
+                (StatusMessage, StatusSuccess) = (_localiser["Printers_RemoveCodeInvalid"].Value, false);
+
+                return RedirectToPage(new { uuid });
+            }
+
+            await _attemptLimiter.ResetAsync(caller.UserId, LimitedAction.RemovePrinter, cancellationToken);
         }
 
         try

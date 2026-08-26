@@ -248,6 +248,9 @@ public static class Program
             builder.Services.Configure<PrusaConnect.PrusaConnectOptions>(
                 builder.Configuration.GetSection(PrusaConnect.PrusaConnectOptions.SectionName));
 
+            builder.Services.Configure<Services.AttemptLimitOptions>(
+                builder.Configuration.GetSection(Services.AttemptLimitOptions.SectionName));
+
             builder.Services.Configure<Certificates.CertificateOptions>(
                 builder.Configuration.GetSection(Certificates.CertificateOptions.SectionName));
 
@@ -327,7 +330,7 @@ public static class Program
                             .AddScoped<PrusaConnect.WebSocketHandler>()
                             .AddScoped<PrusaConnect.TokenService>()
                             .AddScoped<PrusaConnect.CodeGenerator>()
-                            .AddScoped<PrusaConnect.ClaimAttemptLimiter>()
+                            .AddScoped<Services.AttemptLimiter>()
                             .AddScoped<PrusaConnect.MessageDispatcher>()
                             .AddScoped<Printing.PrinterCommandService>()
                             .AddScoped<Printing.ToolTargetReader>()

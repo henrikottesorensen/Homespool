@@ -477,39 +477,78 @@
 </details>
 
 
-@* Last on the page, and behind CanManage. Deleting a printer is not an edit to it - it takes the
-   telemetry, the events, the print history, the queue, the enrolment and any camera watching it,
-   none of which comes back. The typed name is the whole safety mechanism, so what goes is stated
-   above the box rather than left to a dialog somebody dismisses.
+@* Last on the page, and a disclosure like the two archives above it - not because removing is a
+   record, but because it is the one control here nobody should reach by accident. Closed by
+   default, so even seeing the button takes a deliberate act.
 
-   Deliberately not inside a printer-archive disclosure like the two above it: those hold records,
-   and this is an action. It sits below them because it is the one control on the page nobody should
-   reach by accident. *@
+   The disclosure holds the trigger and nothing else. Everything that makes this decision - what is
+   destroyed, that the printer is not told, and the name that has to be typed - lives in the dialog,
+   because a warning beside a button is read after the decision and a warning in front of one is
+   read before it. Ellipsis on the trigger, the convention the unload picker already sets: this
+   button opens a question rather than answering one.
+
+   The dialog is inside this CanManage block rather than down with the others, deliberately. The
+   unload picker's comment records what the alternative cost: a modal that sat beside an unrelated
+   block inherited that block's condition, and its trigger pointed at markup that was simply absent. *@
 @if (Model.CanManage)
 {
-    <h2 class="h5">@Localiser["Printers_DeleteHeading"]</h2>
+    <details class="printer-archive">
+        <summary>@Localiser["Printers_DeleteHeading"]</summary>
 
-    <div class="card border-danger mb-4">
-        <div class="card-body">
-            <p>@Localiser["Printers_DeleteWarning"]</p>
-            <p class="text-body-secondary small">@Localiser["Printers_DeleteKnocking"]</p>
+        <p class="my-2">
+            <button type="button" class="btn btn-outline-danger"
+                    data-bs-toggle="modal" data-bs-target="#remove-printer">
+                @Localiser["Printers_DeleteEllipsis"]
+            </button>
+        </p>
+    </details>
 
-            <form method="post" asp-page-handler="Delete" asp-route-uuid="@uuid"
-                  class="row row-cols-lg-auto g-2 align-items-end">
-                <div class="col-12">
-                    <label class="form-label" for="delete-confirmation">
-                        @Localiser["Printers_DeleteConfirmLabel", printerName]
-                    </label>
-                    @* No autocomplete: the browser offering the name back would undo the point of
-                       asking for it. *@
-                    <input class="form-control" id="delete-confirmation" name="confirmation"
-                           autocomplete="off" required />
+    <div class="modal fade" id="remove-printer" tabindex="-1" aria-labelledby="remove-printer-heading"
+         aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            @* The danger border the card here used to carry, kept when the warning moved into the
+               dialog. It is the only thing marking this dialog apart from the two benign ones on the
+               page - set-ready and the unload picker share its shape otherwise - so a person who
+               opened the wrong one can see it before reading it. A Bootstrap utility rather than a
+               colour of our own; the utility wins on !important over .modal-content's own border. *@
+            <div class="modal-content border-danger">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="remove-printer-heading">
+                        @string.Format(System.Globalization.CultureInfo.CurrentCulture,
+                                       Localiser["Printers_DeleteModalHeading"].Value,
+                                       printerName)
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"
+                            aria-label="@Localiser["Common_Cancel"]"></button>
                 </div>
 
-                <div class="col-12">
-                    <button type="submit" class="btn btn-danger">@Localiser["Printers_DeleteButton"]</button>
-                </div>
-            </form>
+                @* The form spans body and footer so the typed name and the button that acts on it are
+                   one submission. The name is checked on the server: a confirmation the server never
+                   sees is a decoration, and this one costs a forged post the trouble of knowing which
+                   printer it is removing. *@
+                <form method="post" asp-page-handler="Delete" asp-route-uuid="@uuid">
+                    <div class="modal-body">
+                        <p>@Localiser["Printers_DeleteWarning"]</p>
+                        <p class="text-body-secondary small">@Localiser["Printers_DeleteKnocking"]</p>
+
+                        <label class="form-label" for="delete-confirmation">
+                            @Localiser["Printers_DeleteConfirmLabel", printerName]
+                        </label>
+                        @* No autocomplete: the browser offering the name back would undo the point of
+                           asking for it. *@
+                        <input class="form-control" id="delete-confirmation" name="confirmation"
+                               autocomplete="off" required />
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                            @Localiser["Common_Cancel"]
+                        </button>
+
+                        <button type="submit" class="btn btn-danger">@Localiser["Printers_DeleteButton"]</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 }

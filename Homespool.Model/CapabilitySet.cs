@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -22,27 +23,29 @@ namespace Homespool.Model;
 /// application, and refusing is already the safe answer.
 /// </para>
 /// </remarks>
-public sealed class CapabilitySet
+public sealed class CapabilitySet : IReadOnlyCollection<Capability>
 {
     /// <summary>Grants nothing. What an empty or absent column parses to.</summary>
     public static readonly CapabilitySet None = new([], []);
 
     /// <summary>
-    /// Every capability this build defines - the scope of a credential that narrows nothing.
+    /// Grants every capability this build defines - the scope of a credential that narrows nothing,
+    /// and the other pole from <see cref="None"/>.
     /// </summary>
     /// <remarks>
     /// <b>Intersecting with this is identity</b>, which is what makes "narrows nothing" expressible
-    /// without a null: a token holding all of them is bounded by its owner's memberships and by
+    /// without a null: a credential holding all of them is bounded by its owner's memberships and by
     /// nothing else.
     /// <para>
-    /// <b>It is evaluated when it is written, not when it is read</b>, and that is the right way
+    /// <b>When stored, it is evaluated at the write, not at the read</b>, and that is the right way
     /// round. A capability added next year does not retroactively widen a credential minted before it
     /// existed - the stored scope names what was granted at the time, and a grant nobody made is not
-    /// one to infer.
+    /// one to infer. A cookie session, by contrast, is never stored: its <see cref="Caller"/> is built
+    /// per request, so it holds whatever this build defines.
     /// </para>
     /// </remarks>
-    public static IReadOnlyList<Capability> Everything { get; } =
-        [.. Enum.GetValues<Capability>().Where(capability => capability != Capability.Undefined)];
+    public static readonly CapabilitySet Everything =
+        new([.. Enum.GetValues<Capability>().Where(capability => capability != Capability.Undefined)], []);
 
     private readonly ImmutableHashSet<Capability> _granted;
 
@@ -60,6 +63,9 @@ public sealed class CapabilitySet
 
     /// <summary>The capabilities this set grants, for display and for intersecting.</summary>
     public IReadOnlySet<Capability> Granted => _granted;
+
+    /// <summary>How many capabilities this set grants.</summary>
+    public int Count => _granted.Count;
 
     /// <summary>
     /// Reads a stored column. Whitespace-separated, order-insensitive, duplicate-tolerant;
@@ -221,5 +227,16 @@ public sealed class CapabilitySet
     public override string ToString()
     {
         return string.Join(' ', _granted.OrderBy(capability => capability));
+    }
+
+    /// <summary>What this set grants, in enum order so enumeration is deterministic.</summary>
+    public IEnumerator<Capability> GetEnumerator()
+    {
+        return _granted.OrderBy(capability => capability).GetEnumerator();
+    }
+
+    IEnumerator IEnumerable.GetEnumerator()
+    {
+        return GetEnumerator();
     }
 }

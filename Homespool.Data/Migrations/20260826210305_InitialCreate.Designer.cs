@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20260821010838_InitialCreate")]
+    [Migration("20260826210305_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -135,9 +135,6 @@ namespace Homespool.Data.Migrations
                     b.Property<int>("AccessFailedCount")
                         .HasColumnType("INTEGER");
 
-                    b.Property<long?>("ClaimLockoutEnd")
-                        .HasColumnType("INTEGER");
-
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
                         .HasColumnType("TEXT");
@@ -147,9 +144,6 @@ namespace Homespool.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("EmailConfirmed")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("FailedClaimAttempts")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Language")
@@ -1004,6 +998,33 @@ namespace Homespool.Data.Migrations
                     b.ToTable("TelemetrySlotSamples");
                 });
 
+            modelBuilder.Entity("Homespool.Model.Entities.UserActionAttempt", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("FailedCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("LockoutEnd")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Action")
+                        .IsUnique();
+
+                    b.ToTable("UserActionAttempts");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey", b =>
                 {
                     b.Property<int>("Id")
@@ -1346,6 +1367,15 @@ namespace Homespool.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("TelemetrySample");
+                });
+
+            modelBuilder.Entity("Homespool.Model.Entities.UserActionAttempt", b =>
+                {
+                    b.HasOne("Homespool.Model.Entities.HSUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<long>", b =>

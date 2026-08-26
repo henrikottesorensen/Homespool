@@ -10,7 +10,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 using Homespool.Data;
-using Homespool.Host.PrusaConnect;
+using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -21,27 +22,43 @@ namespace Homespool.Host.Test;
 /// </summary>
 /// <remarks>
 /// Real SQLite rather than the in-memory provider, matching the other enrolment suites: the counter
-/// has to survive a save, and "persisted rather than in memory" is the whole point of the column.
+/// has to survive a save, and "persisted rather than in memory" is the whole point of the row.
 /// </remarks>
-public sealed class ClaimAttemptLimiterTests : IDisposable
+public sealed class AttemptLimiterTests : IDisposable
 {
     private static readonly DateTimeOffset Now = new(2026, 7, 29, 12, 0, 0, TimeSpan.Zero);
 
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-claimcap-{Guid.NewGuid():N}.db");
 
-    private static ClaimAttemptLimiter NewLimiter(HomespoolDbContext context,
+    /// <summary>
+    /// What the limiter has recorded against this account for the claim action, or 0 when there is
+    /// no row - which is what a reset leaves behind, since it deletes rather than zeroes.
+    /// </summary>
+    private static async Task<int> FailedCountAsync(HomespoolDbContext context, HSUser user)
+    {
+        UserActionAttempt? attempt = await context.UserActionAttempts
+                                                  .AsNoTracking()
+                                                  .SingleOrDefaultAsync(
+                                                      a => a.UserId == user.Id
+                                                           && a.Action == LimitedAction.ClaimPrinter,
+                                                      TestContext.Current.CancellationToken);
+
+        return attempt?.FailedCount ?? 0;
+    }
+
+    private static AttemptLimiter NewLimiter(HomespoolDbContext context,
                                                   int maxAttempts = 5,
                                                   int baseSeconds = 30,
                                                   int maxSeconds = 3600)
     {
         return new(context,
-                   Options.Create(new PrusaConnectOptions
+                   Options.Create(new AttemptLimitOptions
                    {
-                       MaxFailedClaimAttempts = maxAttempts,
-                       ClaimLockoutBaseSeconds = baseSeconds,
-                       ClaimLockoutMaxSeconds = maxSeconds,
+                       MaxFailedAttempts = maxAttempts,
+                       LockoutBaseSeconds = baseSeconds,
+                       LockoutMaxSeconds = maxSeconds,
                    }),
-                   NullLogger<ClaimAttemptLimiter>.Instance);
+                   NullLogger<AttemptLimiter>.Instance);
     }
 
     private static async Task<HSUser> SeedUserAsync(HomespoolDbContext context)
@@ -82,7 +99,8 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
         HSUser user = await SeedUserAsync(context);
 
         // Assert
-        NewLimiter(context).RemainingLockout(user, Now).Should().BeNull();
+        (await NewLimiter(context).RemainingLockoutAsync(user.Id, LimitedAction.ClaimPrinter, Now, CancellationToken.None))
+            .Should().BeNull();
     }
 
     /// <summary>
@@ -98,17 +116,18 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await SeedUserAsync(context);
-        ClaimAttemptLimiter limiter = NewLimiter(context);
+        AttemptLimiter limiter = NewLimiter(context);
 
         // Act
         for (int i = 0; i < 5; i++)
         {
-            await limiter.RecordFailedAttemptAsync(user, Now, CancellationToken.None);
+            await limiter.RecordFailedAttemptAsync(user.Id, LimitedAction.ClaimPrinter, Now, CancellationToken.None);
         }
 
         // Assert
-        limiter.RemainingLockout(user, Now).Should().BeNull("five is the allowance, not the trigger");
-        user.FailedClaimAttempts.Should().Be(5);
+        (await limiter.RemainingLockoutAsync(user.Id, LimitedAction.ClaimPrinter, Now, CancellationToken.None))
+            .Should().BeNull("five is the allowance, not the trigger");
+        (await FailedCountAsync(context, user)).Should().Be(5);
     }
 
     /// <summary>
@@ -120,19 +139,19 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await SeedUserAsync(context);
-        ClaimAttemptLimiter limiter = NewLimiter(context);
+        AttemptLimiter limiter = NewLimiter(context);
 
         for (int i = 0; i < 5; i++)
         {
-            await limiter.RecordFailedAttemptAsync(user, Now, CancellationToken.None);
+            await limiter.RecordFailedAttemptAsync(user.Id, LimitedAction.ClaimPrinter, Now, CancellationToken.None);
         }
 
         // Act
-        await limiter.RecordFailedAttemptAsync(user, Now, CancellationToken.None);
-        TimeSpan? first = limiter.RemainingLockout(user, Now);
+        await limiter.RecordFailedAttemptAsync(user.Id, LimitedAction.ClaimPrinter, Now, CancellationToken.None);
+        TimeSpan? first = await limiter.RemainingLockoutAsync(user.Id, LimitedAction.ClaimPrinter, Now, CancellationToken.None);
 
-        await limiter.RecordFailedAttemptAsync(user, Now, CancellationToken.None);
-        TimeSpan? second = limiter.RemainingLockout(user, Now);
+        await limiter.RecordFailedAttemptAsync(user.Id, LimitedAction.ClaimPrinter, Now, CancellationToken.None);
+        TimeSpan? second = await limiter.RemainingLockoutAsync(user.Id, LimitedAction.ClaimPrinter, Now, CancellationToken.None);
 
         // Assert
         first.Should().Be(TimeSpan.FromSeconds(30));
@@ -152,16 +171,17 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await SeedUserAsync(context);
-        ClaimAttemptLimiter limiter = NewLimiter(context, maxSeconds: 120);
+        AttemptLimiter limiter = NewLimiter(context, maxSeconds: 120);
 
         // Act
         for (int i = 0; i < 40; i++)
         {
-            await limiter.RecordFailedAttemptAsync(user, Now, CancellationToken.None);
+            await limiter.RecordFailedAttemptAsync(user.Id, LimitedAction.ClaimPrinter, Now, CancellationToken.None);
         }
 
         // Assert
-        limiter.RemainingLockout(user, Now).Should()
+        (await limiter.RemainingLockoutAsync(user.Id, LimitedAction.ClaimPrinter, Now, CancellationToken.None))
+            .Should()
                .Be(TimeSpan.FromSeconds(120), "the backoff must always self-heal within a bounded time");
     }
 
@@ -174,15 +194,16 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await SeedUserAsync(context);
-        ClaimAttemptLimiter limiter = NewLimiter(context);
+        AttemptLimiter limiter = NewLimiter(context);
 
         for (int i = 0; i < 6; i++)
         {
-            await limiter.RecordFailedAttemptAsync(user, Now, CancellationToken.None);
+            await limiter.RecordFailedAttemptAsync(user.Id, LimitedAction.ClaimPrinter, Now, CancellationToken.None);
         }
 
         // Assert
-        limiter.RemainingLockout(user, Now.AddSeconds(31)).Should().BeNull();
+        (await limiter.RemainingLockoutAsync(user.Id, LimitedAction.ClaimPrinter, Now.AddSeconds(31), CancellationToken.None))
+            .Should().BeNull();
     }
 
     /// <summary>
@@ -200,11 +221,11 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
         await using (HomespoolDbContext context = await MigratedContextAsync())
         {
             HSUser user = await SeedUserAsync(context);
-            ClaimAttemptLimiter limiter = NewLimiter(context);
+            AttemptLimiter limiter = NewLimiter(context);
 
             for (int i = 0; i < 6; i++)
             {
-                await limiter.RecordFailedAttemptAsync(user, Now, CancellationToken.None);
+                await limiter.RecordFailedAttemptAsync(user.Id, LimitedAction.ClaimPrinter, Now, CancellationToken.None);
             }
         }
 
@@ -213,8 +234,9 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
         HSUser reloaded = await reopened.Users.SingleAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        reloaded.FailedClaimAttempts.Should().Be(6);
-        NewLimiter(reopened).RemainingLockout(reloaded, Now).Should().Be(TimeSpan.FromSeconds(30));
+        (await FailedCountAsync(reopened, reloaded)).Should().Be(6);
+        (await NewLimiter(reopened).RemainingLockoutAsync(reloaded.Id, LimitedAction.ClaimPrinter, Now, CancellationToken.None))
+            .Should().Be(TimeSpan.FromSeconds(30));
     }
 
     /// <summary>
@@ -226,20 +248,21 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await SeedUserAsync(context);
-        ClaimAttemptLimiter limiter = NewLimiter(context);
+        AttemptLimiter limiter = NewLimiter(context);
 
         for (int i = 0; i < 6; i++)
         {
-            await limiter.RecordFailedAttemptAsync(user, Now, CancellationToken.None);
+            await limiter.RecordFailedAttemptAsync(user.Id, LimitedAction.ClaimPrinter, Now, CancellationToken.None);
         }
 
         // Act
-        await limiter.ResetAsync(user, CancellationToken.None);
+        await limiter.ResetAsync(user.Id, LimitedAction.ClaimPrinter, CancellationToken.None);
 
         // Assert
-        user.FailedClaimAttempts.Should().Be(0);
-        user.ClaimLockoutEnd.Should().BeNull();
-        limiter.RemainingLockout(user, Now).Should().BeNull();
+        // Reset deletes the row rather than zeroing it, so "cleared" is "absent".
+        (await FailedCountAsync(context, user)).Should().Be(0);
+        (await limiter.RemainingLockoutAsync(user.Id, LimitedAction.ClaimPrinter, Now, CancellationToken.None))
+            .Should().BeNull();
     }
 
     /// <summary>
@@ -258,7 +281,7 @@ public sealed class ClaimAttemptLimiterTests : IDisposable
         HSUser user = await SeedUserAsync(context);
 
         // Act
-        await NewLimiter(context).ResetAsync(user, CancellationToken.None);
+        await NewLimiter(context).ResetAsync(user.Id, LimitedAction.ClaimPrinter, CancellationToken.None);
 
         // Assert
         context.ChangeTracker.HasChanges().Should().BeFalse("there was nothing to clear");

@@ -94,8 +94,8 @@ public sealed class ClaimModelTests : IDisposable
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
         ClaimModel model = new(NewService(context), new TeamService(context), users, new UnitOfWork(context),
-                               new ClaimAttemptLimiter(context, Options.Create(new PrusaConnectOptions()),
-                                                       NullLogger<ClaimAttemptLimiter>.Instance),
+                               new AttemptLimiter(context, Options.Create(new AttemptLimitOptions()),
+                                                  NullLogger<AttemptLimiter>.Instance),
                                NullLogger<ClaimModel>.Instance,
                                TestLocaliser.Shared())
         {

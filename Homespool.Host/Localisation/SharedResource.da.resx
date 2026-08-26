@@ -1593,10 +1593,10 @@
   <data name="Printers_ClaimLockedOut" xml:space="preserve">
     <value>For mange ukendte koder. Prøv igen om {0}. Printerens egen kode er upåvirket - den venter stadig.</value>
   </data>
-  <data name="Printers_ClaimWaitSeconds" xml:space="preserve">
+  <data name="Common_WaitSeconds" xml:space="preserve">
     <value>{0} sekunder</value>
   </data>
-  <data name="Printers_ClaimWaitOneSecond" xml:space="preserve">
+  <data name="Common_WaitOneSecond" xml:space="preserve">
     <value>1 sekund</value>
   </data>
   <data name="Printers_ClaimNoSuchCode" xml:space="preserve">
@@ -2252,5 +2252,11 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   </data>
   <data name="Printers_RemoveModalHeading" xml:space="preserve">
     <value>Fjern {0}?</value>
+  </data>
+  <data name="Printers_RemoveLockedOut" xml:space="preserve">
+    <value>For mange forkerte tofaktor forsøg, prøv igen om {0}.</value>
+  </data>
+  <data name="Printers_RemoveCodeInvalid" xml:space="preserve">
+    <value>Koden er ikke rigtig. Åbn din tofaktorapp, og prøv den aktuelle kode.</value>
   </data>
 </root>

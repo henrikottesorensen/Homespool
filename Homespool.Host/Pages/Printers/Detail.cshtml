@@ -538,6 +538,24 @@
                            asking for it. *@
                         <input class="form-control" id="remove-confirmation" name="confirmation"
                                autocomplete="off" required />
+
+                        @* Present only for an account that has an authenticator - which makes this a
+                           higher bar for people who opted in rather than a floor for everybody. The
+                           server checks GetTwoFactorEnabledAsync again on the post, so a field
+                           deleted from the DOM buys nothing.
+
+                           inputmode numeric and one-time-code so a phone offers the keypad and the
+                           OS can autofill it; autocomplete is off on the name above for the opposite
+                           reason - a browser offering the printer's name back would undo the point of
+                           asking for it. *@
+                        @if (Model.RemovalNeedsCode)
+                        {
+                            <label class="form-label mt-2" for="remove-code">
+                                @Localiser["Account_AuthenticatorCode"]
+                            </label>
+                            <input class="form-control" id="remove-code" name="code"
+                                   inputmode="numeric" autocomplete="one-time-code" required />
+                        }
                     </div>
 
                     <div class="modal-footer">

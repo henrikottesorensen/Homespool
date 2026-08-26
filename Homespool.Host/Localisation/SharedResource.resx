@@ -1634,10 +1634,10 @@
   <data name="Printers_ClaimLockedOut" xml:space="preserve">
     <value>Too many unrecognised codes. Try again in {0}. The printer’s own code is unaffected - it is still waiting.</value>
   </data>
-  <data name="Printers_ClaimWaitSeconds" xml:space="preserve">
+  <data name="Common_WaitSeconds" xml:space="preserve">
     <value>{0} seconds</value>
   </data>
-  <data name="Printers_ClaimWaitOneSecond" xml:space="preserve">
+  <data name="Common_WaitOneSecond" xml:space="preserve">
     <value>1 second</value>
   </data>
   <data name="Printers_ClaimNoSuchCode" xml:space="preserve">
@@ -2338,5 +2338,12 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Printers_RemoveModalHeading" xml:space="preserve">
     <value>Remove {0}?</value>
     <comment>The confirmation dialog's title. Names the printer, so a dialog opened on the wrong tab is answerable without closing it.</comment>
+  </data>
+  <data name="Printers_RemoveLockedOut" xml:space="preserve">
+    <value>Too many wrong two-factor attempts. Try again in {0}.</value>
+    <comment>The backoff after failed authenticator codes on the removal dialog. Says how long, like its claim-page counterpart: the likely reader mistyped.</comment>
+  </data>
+  <data name="Printers_RemoveCodeInvalid" xml:space="preserve">
+    <value>That code is not right. Open your authenticator app and try the current one.</value>
   </data>
 </root>

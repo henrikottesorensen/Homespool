@@ -201,6 +201,139 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
     }
 
     /// <summary>
+    /// <b>The credential's half of the gate, on the branch that omits the team.</b> A token scoped for
+    /// the documented slicer preset - upload and print, nothing structural - may not enrol hardware,
+    /// however much its owner's own membership allows. The membership here is Manager, so the scope is
+    /// the only thing that can refuse.
+    /// </summary>
+    [Fact]
+    public async Task ClaimingWithNoTeamIdOnACredentialThatDoesNotNameManagePrinterIsRefused()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
+
+        Caller slicerKey = Caller.Scoped(
+            1,
+            CapabilitySet.Parse(CapabilitySet.Format([Capability.UploadOwnFiles, Capability.Print])));
+
+        // Act
+        Func<Task> claim = () => service.ClaimPrinterAsync(code, null, null, teamId: null, caller: slicerKey);
+
+        // Assert
+        await claim.Should().ThrowAsync<CredentialScopeDeniedException>();
+    }
+
+    /// <summary>
+    /// The refusal above belongs to the scope and not to the branch: the same claim on a credential
+    /// that does name <see cref="Capability.ManagePrinter"/> still lands the printer in the default
+    /// team. Without this, refusing every scoped caller would look like a fix.
+    /// </summary>
+    [Fact]
+    public async Task ClaimingWithNoTeamIdOnACredentialNamingManagePrinterIsAllowed()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        TeamMember defaultTeam = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
+
+        Caller enrolling = Caller.Scoped(
+            1,
+            CapabilitySet.Parse(CapabilitySet.Format([Capability.ManagePrinter])));
+
+        // Act
+        Printer printer = await service.ClaimPrinterAsync(code, null, null, teamId: null, caller: enrolling);
+
+        // Assert
+        printer.TeamId.Should().Be(defaultTeam.TeamId);
+    }
+
+    /// <summary>
+    /// The explicit-team branch reads the credential, and has since scoped tokens existed. Pinned
+    /// beside the default-team case above so the two cannot drift into disagreeing about what a
+    /// narrowed credential may do - which is the shape the gap between them took.
+    /// </summary>
+    [Fact]
+    public async Task ClaimingWithAnExplicitTeamIdOnACredentialThatDoesNotNameManagePrinterIsRefused()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        TeamMember managedTeam = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: false);
+        string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
+
+        Caller slicerKey = Caller.Scoped(
+            1,
+            CapabilitySet.Parse(CapabilitySet.Format([Capability.UploadOwnFiles, Capability.Print])));
+
+        // Act
+        Func<Task> claim = () =>
+            service.ClaimPrinterAsync(code, null, null, teamId: managedTeam.TeamId, caller: slicerKey);
+
+        // Assert
+        await claim.Should().ThrowAsync<CredentialScopeDeniedException>();
+    }
+
+    /// <summary>
+    /// A narrowed credential is not mistaken for missing team access. The scope is asked first, so a
+    /// caller failing both halves is told the credential refused it - the order the refusal comment in
+    /// <c>RequireManageAsync</c> states and nothing else pins.
+    /// </summary>
+    [Fact]
+    public async Task ACredentialRefusalIsToldApartFromATeamRefusal()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        TeamMember unmanaged = await AddTeamAsync(context, userId: 1, canManage: false, isDefault: false);
+        string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
+
+        // Fails both halves: the team does not permit managing, and the credential never named it.
+        Caller slicerKey = Caller.Scoped(
+            1,
+            CapabilitySet.Parse(CapabilitySet.Format([Capability.UploadOwnFiles, Capability.Print])));
+
+        // Act
+        Func<Task> claim = () =>
+            service.ClaimPrinterAsync(code, null, null, teamId: unmanaged.TeamId, caller: slicerKey);
+
+        // Assert
+        await claim.Should().ThrowAsync<CredentialScopeDeniedException>();
+    }
+
+    /// <summary>
+    /// The membership half, on the branch that omits the team. A default team whose membership cannot
+    /// manage is refused rather than assumed - unreachable while <c>AddDefaultTeam</c> is the only
+    /// writer of a default membership, and precisely why the resolver checks instead of trusting that.
+    /// The caller is unscoped, so the credential cannot be what refuses.
+    /// </summary>
+    [Fact]
+    public async Task ClaimingWithNoTeamIdIntoADefaultTeamTheCallerCannotManageIsRefused()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        await AddTeamAsync(context, userId: 1, canManage: false, isDefault: true);
+        string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
+
+        // Act
+        Func<Task> claim = () => service.ClaimPrinterAsync(code, null, null, teamId: null, caller: Caller.Unscoped(1));
+
+        // Assert
+        await claim.Should().ThrowAsync<TeamAccessDeniedException>();
+    }
+
+    /// <summary>
     /// A second claim of the same code is rejected once the first has succeeded - the concrete answer
     /// to the "concurrent claim" question phase-1.5 §15 step 7 left open.
     /// </summary>

@@ -22,7 +22,7 @@ public class StorageOptions
 
     /// <summary>
     /// How long to keep <see cref="TelemetrySample"/> rows. Zero disables the retention sweep
-    /// entirely. Events are never swept.
+    /// entirely.
     /// </summary>
     /// <remarks>
     /// <c>ushort</c>, not <c>int</c>: negative retention is meaningless, and an unsigned type
@@ -31,6 +31,52 @@ public class StorageOptions
     /// "off".
     /// </remarks>
     public ushort TelemetryRetentionDays { get; set; } = 14;
+
+    /// <summary>
+    /// How long to keep <see cref="PrinterEvent"/> rows. Zero disables the age sweep.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Its own setting rather than <see cref="TelemetryRetentionDays"/></b>, because the two
+    /// differ in both volume and value: samples are a dense stream nobody reads past a chart's
+    /// window, events are sparse and each one is a thing that happened. A year is far past anything
+    /// that can be reached - the printer page shows the most recent handful, and the queue's
+    /// reconciler walks forward from a watermark, so neither can see an older row.
+    /// </para>
+    /// <para>
+    /// <b>Age alone does not bound the table</b>, which is what
+    /// <see cref="MaxEventsPerPrinter"/> is for; see its remarks.
+    /// </para>
+    /// </remarks>
+    public ushort EventRetentionDays { get; set; } = 365;
+
+    /// <summary>
+    /// The most <see cref="PrinterEvent"/> rows to keep for any one printer, oldest dropped first.
+    /// Zero disables the cap.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Age and count bound different things, and neither substitutes for the other.</b> A window
+    /// an operator would actually choose is measured in days, and a printer emitting at the
+    /// transport's ceiling fills a disk long inside it - so age bounds ordinary growth and this
+    /// bounds the worst case. Whichever binds first wins.
+    /// </para>
+    /// <para>
+    /// <b>Per printer, not a total.</b> A global cap would let one chatty printer evict every other
+    /// printer's events, which is the failure <c>notes/internet-exposure.md</c> describes for a
+    /// global rate limiter - "strictly worse than no limiting". The limiter cannot partition because
+    /// it runs before authentication and the only identity available there is forgeable; this sweep
+    /// runs over rows already attributed to a printer, so it can.
+    /// </para>
+    /// <para>
+    /// <b>Evicting an unread event costs a round-trip, not an arrival.</b>
+    /// <c>QueueAdvancer</c> learns of arrivals from <c>FILE_INFO</c> events, and a cap can drop one
+    /// before it is read. The queue re-asks the printer what is on the drive and adopts a file
+    /// already there, so the cost is a pass where the queue looks stuck - which is why the floor is
+    /// a tuning question rather than a correctness one.
+    /// </para>
+    /// </remarks>
+    public int MaxEventsPerPrinter { get; set; } = 10_000;
 
     /// <summary>
     /// Minimum seconds between stored samples per printer. Zero (default) stores every message.

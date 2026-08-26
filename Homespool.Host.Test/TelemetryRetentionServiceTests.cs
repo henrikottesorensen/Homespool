@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -139,6 +141,26 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
+    /// <summary>
+    /// One event, at a chosen time. Ids come from the table's own sequence, so the order events are
+    /// seeded in is the order the cap will trim them in.
+    /// </summary>
+    private async Task SeedEventAsync(int printerId, DateTimeOffset timestamp)
+    {
+        await using HomespoolDbContext context = NewVerificationContext();
+
+        context.PrinterEvents.Add(new PrinterEvent
+        {
+            PrinterId = printerId,
+            Timestamp = timestamp,
+            EventType = PrinterEventType.StateChanged,
+            WireType = "STATE_CHANGED",
+            Status = PrinterStatus.Idle,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
     private async Task SeedSampleAsync(int printerId, DateTimeOffset timestamp)
     {
         await using HomespoolDbContext context = NewVerificationContext();
@@ -224,5 +246,155 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
         await using HomespoolDbContext verify = NewVerificationContext();
         (await verify.TelemetrySlotSamples.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse(
             "the FK to TelemetrySample is ON DELETE CASCADE and this database has foreign keys enabled");
+    }
+
+    /// <summary>
+    /// Events past <see cref="StorageOptions.EventRetentionDays"/> go, and events inside it stay.
+    /// Both halves, because a sweep that deleted everything would satisfy the first alone.
+    /// </summary>
+    [Fact]
+    public async Task TheAgeSweepDeletesOldEventsAndKeepsRecentOnes()
+    {
+        // Arrange
+        await SeedPrinterAsync();
+        await SeedEventAsync(1, DateTimeOffset.UtcNow.AddDays(-40));
+        await SeedEventAsync(1, DateTimeOffset.UtcNow.AddDays(-1));
+
+        // Act
+        await StartServiceAsync(new StorageOptions
+        {
+            TelemetryRetentionDays = 0,
+            EventRetentionDays = 30,
+            MaxEventsPerPrinter = 0,
+        });
+
+        // Assert
+        bool swept = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+
+            return await context.PrinterEvents.CountAsync(TestContext.Current.CancellationToken) == 1;
+        }, TimeSpan.FromSeconds(10));
+
+        swept.Should().BeTrue("the 40-day-old event is past a 30-day window");
+
+        await using HomespoolDbContext verify = NewVerificationContext();
+        (await verify.PrinterEvents.SingleAsync(TestContext.Current.CancellationToken))
+            .Timestamp.Should().BeAfter(DateTimeOffset.UtcNow.AddDays(-2), "the recent one survives");
+    }
+
+    /// <summary>
+    /// Zero means off, the same way it does for samples - so a deployment that wants events forever
+    /// says so rather than discovering a default.
+    /// </summary>
+    [Fact]
+    public async Task ZeroEventRetentionDaysSweepsNothingByAge()
+    {
+        // Arrange
+        await SeedPrinterAsync();
+        await SeedEventAsync(1, DateTimeOffset.UtcNow.AddYears(-5));
+
+        // Act
+        await StartServiceAsync(new StorageOptions
+        {
+            TelemetryRetentionDays = 0,
+            EventRetentionDays = 0,
+            MaxEventsPerPrinter = 0,
+        });
+
+        // Assert - poll for the opposite, so the assertion is not just "it has not run yet"
+        bool swept = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+
+            return !await context.PrinterEvents.AnyAsync(TestContext.Current.CancellationToken);
+        }, TimeSpan.FromSeconds(2));
+
+        swept.Should().BeFalse("a five-year-old event survives a disabled sweep");
+    }
+
+    /// <summary>
+    /// <b>The cap keeps the newest and drops the rest.</b> Age cannot do this: a printer emitting at
+    /// the transport's ceiling fills a disk long inside any window an operator would choose.
+    /// </summary>
+    [Fact]
+    public async Task TheCountCapKeepsTheNewestEventsAndDropsTheOldest()
+    {
+        // Arrange - ten events, all recent, so only the cap can remove any
+        await SeedPrinterAsync();
+
+        for (int i = 0; i < 10; i++)
+        {
+            await SeedEventAsync(1, DateTimeOffset.UtcNow.AddMinutes(-i));
+        }
+
+        // Act
+        await StartServiceAsync(new StorageOptions
+        {
+            TelemetryRetentionDays = 0,
+            EventRetentionDays = 0,
+            MaxEventsPerPrinter = 4,
+        });
+
+        // Assert
+        bool trimmed = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+
+            return await context.PrinterEvents.CountAsync(TestContext.Current.CancellationToken) == 4;
+        }, TimeSpan.FromSeconds(10));
+
+        trimmed.Should().BeTrue("ten rows trimmed to a cap of four");
+
+        await using HomespoolDbContext verify = NewVerificationContext();
+        List<long> kept = await verify.PrinterEvents.Select(e => e.Id)
+                                      .OrderBy(id => id)
+                                      .ToListAsync(TestContext.Current.CancellationToken);
+
+        kept.Should().Equal([7, 8, 9, 10], "the newest four by id, not an arbitrary four");
+    }
+
+    /// <summary>
+    /// <b>The cap is per printer, and this is the half that matters.</b> A global cap would let one
+    /// chatty printer evict everybody else's events - the failure <c>internet-exposure.md</c> names
+    /// for a global rate limiter, in the one place partitioning is actually available.
+    /// </summary>
+    [Fact]
+    public async Task TheCountCapDoesNotLetOnePrintersFloodEvictAnothers()
+    {
+        // Arrange
+        await SeedPrinterAsync(1);
+        await SeedPrinterAsync(2);
+
+        for (int i = 0; i < 10; i++)
+        {
+            await SeedEventAsync(1, DateTimeOffset.UtcNow.AddMinutes(-i));
+        }
+
+        await SeedEventAsync(2, DateTimeOffset.UtcNow.AddMinutes(-1));
+        await SeedEventAsync(2, DateTimeOffset.UtcNow);
+
+        // Act
+        await StartServiceAsync(new StorageOptions
+        {
+            TelemetryRetentionDays = 0,
+            EventRetentionDays = 0,
+            MaxEventsPerPrinter = 4,
+        });
+
+        // Assert
+        bool trimmed = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+
+            return await context.PrinterEvents.CountAsync(e => e.PrinterId == 1,
+                                                          TestContext.Current.CancellationToken) == 4;
+        }, TimeSpan.FromSeconds(10));
+
+        trimmed.Should().BeTrue("the flooding printer is trimmed to the cap");
+
+        await using HomespoolDbContext verify = NewVerificationContext();
+        (await verify.PrinterEvents.CountAsync(e => e.PrinterId == 2, TestContext.Current.CancellationToken))
+            .Should().Be(2, "the quiet printer keeps everything it had");
     }
 }

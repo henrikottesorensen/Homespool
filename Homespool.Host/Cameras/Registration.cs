@@ -25,7 +25,10 @@ public static class Registration
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
 
-        services.Configure<CameraOptions>(configuration.GetSection(CameraOptions.SectionName));
+        services.AddOptions<CameraOptions>()
+                .Bind(configuration.GetSection(CameraOptions.SectionName))
+                .ValidateDataAnnotations()
+                .ValidateOnStart();
 
         // Both clients reach only the sidecar, on the Compose network. There is deliberately no
         // address policy on the handler any more: since Homespool stopped fetching camera sources

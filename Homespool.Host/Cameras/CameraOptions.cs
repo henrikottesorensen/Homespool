@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace Homespool.Host.Cameras;
 
@@ -123,6 +124,7 @@ public class CameraOptions
     /// board on frames nobody asked to be that fresh.
     /// </para>
     /// </remarks>
+    [Range(0, 3_600)]
     public int RefreshFloorSeconds { get; set; } = 2;
 
     /// <summary>
@@ -145,6 +147,7 @@ public class CameraOptions
     /// anything that could mislead.
     /// </para>
     /// </remarks>
+    [Range(1, 86_400)]
     public int MaxAgeSeconds { get; set; } = 60;
 
     /// <summary>
@@ -156,6 +159,7 @@ public class CameraOptions
     /// Bounded all the same: a camera that stops answering must not hold a connection open
     /// indefinitely.
     /// </remarks>
+    [Range(1, 300)]
     public int TimeoutSeconds { get; set; } = 15;
 
     /// <summary>
@@ -167,6 +171,7 @@ public class CameraOptions
     /// frames are 40-190 KB, so this is roughly twenty times the largest seen — generous enough
     /// that a higher-resolution camera is not silently broken by it.
     /// </remarks>
+    [Range(1_024, 1_073_741_824)]
     public long MaxFrameBytes { get; set; } = 4L * 1024 * 1024;
 
     /// <summary>

@@ -31,6 +31,7 @@ using Homespool.Data;
 using Homespool.Host.Authentication;
 using Homespool.Host.Cameras;
 using Homespool.Host.Certificates;
+using Homespool.Host.Configuration;
 using Homespool.Host.Listeners;
 using Homespool.Host.Localisation;
 using Homespool.Host.Queue;
@@ -136,6 +137,23 @@ public static class Program
         try
         {
             WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+
+            // The one writable configuration source, and it is layered LAST - above the environment
+            // variables - so a value an administrator saved wins over one an environment variable
+            // carries. That ordering is not a preference: compose substitutes its own default into
+            // the environment whether or not .env names the variable, so every key compose mentions
+            // is always present, and a layer underneath would be silently inert for exactly those
+            // keys. The other half of the choice is that a migrated key's compose line is deleted
+            // rather than kept as a fallback, so a setting has one home instead of two with an
+            // invisible winner.
+            //
+            // It must be added before anything reads configuration, which starts on the next line.
+            SettingsFile settingsFile = new(SettingsFile.Resolve(
+                builder.Configuration[SettingsFile.PathConfigurationKey],
+                builder.Environment.ContentRootPath));
+
+            builder.Configuration.AddJsonFile(settingsFile.Path, optional: true, reloadOnChange: false);
+            builder.Services.AddSingleton(settingsFile);
 
             // Add services to the container.
             builder.Services.AddSerilog((services, lc) => lc
@@ -245,11 +263,28 @@ public static class Program
 
             builder.Services.AddOpenApi();
 
-            builder.Services.Configure<PrusaConnect.PrusaConnectOptions>(
-                builder.Configuration.GetSection(PrusaConnect.PrusaConnectOptions.SectionName));
+            // Validated on start, and every section carrying an editable setting is. A value that
+            // used to arrive only from .env now arrives from a file the application writes, so the
+            // range that was previously somebody's care while editing compose has to be checked
+            // somewhere - and the earliest place that can refuse it is here. The ranges themselves
+            // exclude what is broken rather than what is unwise, so this cannot become a new reason a
+            // working deployment stops starting.
+            builder.Services.AddOptions<PrusaConnect.PrusaConnectOptions>()
+                   .Bind(builder.Configuration.GetSection(PrusaConnect.PrusaConnectOptions.SectionName))
+                   .ValidateDataAnnotations()
+                   .ValidateOnStart();
 
-            builder.Services.Configure<Accounts.AttemptLimitOptions>(
-                builder.Configuration.GetSection(Accounts.AttemptLimitOptions.SectionName));
+            builder.Services.AddOptions<Accounts.AttemptLimitOptions>()
+                   .Bind(builder.Configuration.GetSection(Accounts.AttemptLimitOptions.SectionName))
+                   .ValidateDataAnnotations()
+                   .ValidateOnStart();
+
+            // StorageOptions is bound by AddHomespoolData, in a project that does not reference the
+            // options DataAnnotations extension. The attributes live on the class there; the
+            // validator is added here, where the shared framework already carries it.
+            builder.Services.AddOptions<StorageOptions>()
+                   .ValidateDataAnnotations()
+                   .ValidateOnStart();
 
             builder.Services.Configure<Certificates.CertificateOptions>(
                 builder.Configuration.GetSection(Certificates.CertificateOptions.SectionName));
@@ -277,11 +312,15 @@ public static class Program
 
             AddForwardedHeaders(builder);
 
-            builder.Services.Configure<Mail.SmtpOptions>(
-                builder.Configuration.GetSection(Mail.SmtpOptions.SectionName));
+            builder.Services.AddOptions<Mail.SmtpOptions>()
+                   .Bind(builder.Configuration.GetSection(Mail.SmtpOptions.SectionName))
+                   .ValidateDataAnnotations()
+                   .ValidateOnStart();
 
-            builder.Services.Configure<Accounts.InvitationOptions>(
-                builder.Configuration.GetSection(Accounts.InvitationOptions.SectionName));
+            builder.Services.AddOptions<Accounts.InvitationOptions>()
+                   .Bind(builder.Configuration.GetSection(Accounts.InvitationOptions.SectionName))
+                   .ValidateDataAnnotations()
+                   .ValidateOnStart();
 
             builder.Services.Configure<Middleware.SecurityOptions>(
                 builder.Configuration.GetSection(Middleware.SecurityOptions.SectionName));
@@ -374,8 +413,10 @@ public static class Program
 
             // Uploaded gcode: options, the store, and the content-root accessor it needs. Singleton
             // because the store holds no per-request state - it is a path and a couple of rules.
-            builder.Services.Configure<PrintFiles.PrintFileStorageOptions>(
-                builder.Configuration.GetSection(PrintFiles.PrintFileStorageOptions.SectionName));
+            builder.Services.AddOptions<PrintFiles.PrintFileStorageOptions>()
+                   .Bind(builder.Configuration.GetSection(PrintFiles.PrintFileStorageOptions.SectionName))
+                   .ValidateDataAnnotations()
+                   .ValidateOnStart();
             builder.Services.AddSingleton<IHostEnvironmentAccessor>(sp => new HostEnvironmentAccessor(
                                                                         sp.GetRequiredService<IWebHostEnvironment>()
                                                                           .ContentRootPath));

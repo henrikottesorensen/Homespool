@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace Homespool.Host.Accounts;
 
 /// <summary>
@@ -14,17 +16,22 @@ public class AttemptLimitOptions
     public const string SectionName = "AttemptLimits";
 
     /// <summary>Failures tolerated before any backoff is applied.</summary>
+    [Range(0, 10_000)]
     public int MaxFailedAttempts { get; set; } = 5;
 
     /// <summary>
     /// The first backoff applied once <see cref="MaxFailedAttempts"/> is passed. Doubles per further
     /// failure, up to <see cref="LockoutMaxSeconds"/>.
     /// </summary>
+    // Not zero: a base of zero leaves every doubled backoff at zero, so the limiter would go on
+    // counting failures while bounding nothing, and look configured while doing it.
+    [Range(1, 86_400)]
     public int LockoutBaseSeconds { get; set; } = 30;
 
     /// <summary>
     /// The ceiling on a doubled backoff. A cap rather than an ever-growing wait: the point is to
     /// make grinding uneconomic, not to lock somebody out of their own printers for a day.
     /// </summary>
+    [Range(1, 604_800)]
     public int LockoutMaxSeconds { get; set; } = 3600;
 }

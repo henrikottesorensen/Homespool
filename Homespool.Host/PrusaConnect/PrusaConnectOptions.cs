@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace Homespool.Host.PrusaConnect;
 
@@ -30,6 +31,7 @@ public class PrusaConnectOptions
     /// real workflow; raise it if setup regularly spans longer than a sitting.
     /// </para>
     /// </remarks>
+    [Range(1, 10_080)]
     public int RegistrationCodeLifetimeMinutes { get; set; } = 30;
 
     /// <summary>
@@ -65,6 +67,7 @@ public class PrusaConnectOptions
     /// tripping it logs the printer and the byte count at warning level rather than closing quietly.
     /// </para>
     /// </remarks>
+    [Range(1_024, 1_073_741_824)]
     public long MaxIncomingMessageBytes { get; set; } = 1024 * 1024;
 
     /// <summary><see cref="RegistrationCodeLifetimeMinutes"/> as a <see cref="TimeSpan"/>.</summary>
@@ -174,6 +177,7 @@ public class PrusaConnectOptions
     /// <c>planner.cpp:667-790</c> at the pinned ref) - this mostly guards against a printer that
     /// goes quiet mid-command (e.g. drops off the network) rather than genuine processing latency.
     /// </remarks>
+    [Range(0.1, 600)]
     public double CommandResponseTimeoutSeconds { get; set; } = 10;
 
     /// <summary><see cref="CommandResponseTimeoutSeconds"/> as a <see cref="TimeSpan"/>.</summary>

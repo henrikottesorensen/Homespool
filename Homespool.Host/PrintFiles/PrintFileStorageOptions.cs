@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace Homespool.Host.PrintFiles;
 
 /// <summary>
@@ -30,5 +32,6 @@ public class PrintFileStorageOptions
     /// sliced model reaching hundreds of megabytes is already unusual, and an unbounded upload
     /// endpoint on an internet-facing deployment is a disk-exhaustion primitive.
     /// </remarks>
+    [Range(1, 68_719_476_736)]
     public long MaxUploadBytes { get; set; } = 512L * 1024 * 1024;
 }

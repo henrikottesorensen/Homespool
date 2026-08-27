@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace Homespool.Host.Mail;
 
@@ -19,6 +20,7 @@ public class SmtpOptions
     public string Host { get; set; } = string.Empty;
 
     /// <summary>Mail server port. 587 (submission, STARTTLS) by default; 465 for implicit TLS, 25 for unencrypted.</summary>
+    [Range(1, 65_535)]
     public int Port { get; set; } = 587;
 
     /// <summary>
@@ -61,6 +63,7 @@ public class SmtpOptions
     public string FromName { get; set; } = "Homespool";
 
     /// <summary>How long to wait on connect, authenticate and send before giving up, in seconds.</summary>
+    [Range(1, 600)]
     public int TimeoutSeconds { get; set; } = 30;
 
     /// <summary>

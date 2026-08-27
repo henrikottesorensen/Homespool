@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace Homespool.Host.Accounts;
 
@@ -14,6 +15,7 @@ public class InvitationOptions
     public const string SectionName = "Invitations";
 
     /// <summary>How long a new invite stays valid, in hours. 48 by default.</summary>
+    [Range(1, 8_760)]
     public int LifetimeHours { get; set; } = 48;
 
     /// <summary><see cref="LifetimeHours"/> as a <see cref="TimeSpan"/>.</summary>

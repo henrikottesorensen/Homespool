@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 using Homespool.Model.Entities;
 
 namespace Homespool.Data;
@@ -76,6 +78,7 @@ public class StorageOptions
     /// a tuning question rather than a correctness one.
     /// </para>
     /// </remarks>
+    [Range(0, 10_000_000)]
     public int MaxEventsPerPrinter { get; set; } = 10_000;
 
     /// <summary>
@@ -86,12 +89,15 @@ public class StorageOptions
     /// printers a 1 Hz stream is roughly 86k rows/printer/day, which SQLite handles without
     /// complaint. Raise it if a large fleet or a slow disk changes that.
     /// </remarks>
+    [Range(0, 86_400)]
     public double MinimumSampleIntervalSeconds { get; set; }
 
     /// <summary>Rows buffered before the writer flushes a batch.</summary>
+    [Range(1, 100_000)]
     public int WriteBatchSize { get; set; } = 500;
 
     /// <summary>Maximum seconds a buffered row waits before being flushed.</summary>
+    [Range(0, 3_600)]
     public double WriteFlushIntervalSeconds { get; set; } = 2;
 
     /// <summary>

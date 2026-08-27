@@ -4,8 +4,7 @@ namespace Homespool.Host.PrusaConnect;
 /// <remarks>
 /// A property of the connection, never of the printer: the same machine moves between these when its
 /// firmware is rebuilt with websockets on or off, so persisting it on a row would freeze a fact that
-/// moves - the shape of mistake <c>notes/tls-by-default.md</c> records about the certificate issued
-/// at first run.
+/// moves - the same shape of mistake as issuing the certificate once at first run.
 /// </remarks>
 public enum PrinterTransport
 {
@@ -32,8 +31,8 @@ public enum PrinterTransport
 /// worth being able to state.
 /// </para>
 /// <para>
-/// <b>It also answers something Homespool could not say before</b> (<c>notes/diagnostics.md</c>, the
-/// blind spots): a printer that behaves oddly could not be asked what it was running. The connect log
+/// <b>It also answers something Homespool could not say before</b>: a printer that behaves oddly
+/// could not be asked what it was running. The connect log
 /// line now carries it.
 /// </para>
 /// <para>

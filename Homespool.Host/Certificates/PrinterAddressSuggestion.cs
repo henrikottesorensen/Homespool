@@ -21,8 +21,8 @@ public record PrinterAddressSuggestion(string Value, AddressDurability Durabilit
     /// <para>
     /// <b>Suggestions, never a decision.</b> Detection reports what is true now; the question is what
     /// will stay true, and that depends on a router we cannot see. Whatever is chosen automatically
-    /// would be a guess wearing the costume of a decision — see <c>notes/tls-by-default.md</c>,
-    /// decision 2. This exists to turn an interrogation into a confirmation, nothing more.
+    /// would be a guess wearing the costume of a decision. This exists to turn an interrogation
+    /// into a confirmation, nothing more.
     /// </para>
     /// <para>
     /// <b>The trap it must not walk into:</b> the primary deployment is <c>compose.yaml</c>, and inside

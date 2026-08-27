@@ -16,7 +16,7 @@ namespace Homespool.Host.PrusaConnect;
 /// when any was absent — which the register actions caught and turned into a 400. That made
 /// enrolment impossible: Buddy sends **no** headers at all on <c>POST /p/register</c> and only
 /// <c>Code</c> on the poll, because during registration the printer has no token and its identity
-/// is being established rather than asserted. See notes/protocol-reference.md.
+/// is being established rather than asserted.
 /// </para>
 /// <para>
 /// The Python SDK does send <c>Fingerprint</c> on registration (its <c>make_headers()</c> adds it

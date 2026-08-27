@@ -13,8 +13,8 @@ namespace Homespool.Host.Test;
 /// </summary>
 /// <remarks>
 /// These are suggestions rather than a decision, deliberately: detection reports what is true now,
-/// and the question is what stays true — which depends on a router we cannot see
-/// (<c>notes/tls-by-default.md</c>, decision 2). What is tested here is that the offer is honest
+/// and the question is what stays true — which depends on a router we cannot see.
+/// What is tested here is that the offer is honest
 /// about which candidates are likely to break.
 /// </remarks>
 public class PrinterAddressSuggestionTests

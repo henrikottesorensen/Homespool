@@ -65,7 +65,7 @@ public sealed class ExternalOidcDexTests
     /// <c>SameSite=None</c> without it. Over plain http a cookie jar quite correctly declines to send
     /// them back, and the callback fails correlation before it has parsed anything. So this is not a
     /// test convenience: external login cannot work over http at all, which is no constraint given TLS
-    /// is the default (<c>tls-by-default.md</c>). TestServer does no real TLS - the scheme is all this
+    /// is the default. TestServer does no real TLS - the scheme is all this
     /// changes, and the scheme is the whole point.
     /// </remarks>
     private static readonly Uri AppBaseAddress = new("https://localhost/");

@@ -7,8 +7,7 @@ namespace Homespool.Model;
 /// <para>
 /// <b>A vocabulary, not a sentence.</b> The wording a person reads is a resource key chosen from
 /// this, and the numbers in it come from the rows the reader already has - which is what keeps the
-/// comparison out of the business of formatting a nozzle diameter for a Danish reader
-/// (<c>notes/localisation.md</c>).
+/// comparison out of the business of formatting a nozzle diameter for a Danish reader.
 /// </para>
 /// <para>
 /// <b>Two severities, and the split is wear against waste</b> - see

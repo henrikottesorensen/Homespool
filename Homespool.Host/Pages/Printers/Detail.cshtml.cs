@@ -173,7 +173,7 @@ public class DetailModel : PageModel
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>The entry itself carries no state, deliberately</b> - <c>notes/print-queue.md</c>: the
+    /// <b>The entry itself carries no state, deliberately</b>: the
     /// printer runs a producer loop and the queue is just a list it pulls from, so "prepared, waiting
     /// for the printer" is the loop sitting in not-ready rather than a column on the row. This names
     /// that for a reader and still stores nothing.
@@ -376,7 +376,7 @@ public class DetailModel : PageModel
     /// Built from the live request rather than from configuration, so it is right behind a reverse
     /// proxy and on a non-standard port with nothing to keep in step. <c>Request.Host</c> carries the
     /// port because the proxy forwards <c>$http_host</c> rather than <c>$host</c> - which strips it,
-    /// and which cost a session once already (<c>notes/tls-by-default.md</c>).
+    /// and which cost a session once already.
     /// </para>
     /// <para>
     /// The trailing slash is deliberate: the slicer appends <c>api/version</c> to whatever it is
@@ -500,7 +500,7 @@ public class DetailModel : PageModel
     /// <b>Not a permission check and not the guard</b> — the services re-establish it. This decides
     /// whether the heater and filament controls are offered at all, and what they are called: on a
     /// toolchanger with nothing picked they would reach no hotend, and <c>M140</c> would still heat
-    /// the bed. See <c>notes/toolchangers.md</c> §3d.
+    /// the bed.
     /// </remarks>
     public ToolTarget Tools { get; private set; } = ToolTarget.SingleTool;
 
@@ -582,7 +582,7 @@ public class DetailModel : PageModel
     /// <b>It answers with rendered HTML rather than JSON, and that is the load-bearing choice.</b>
     /// Every word on the card is localised and every number is culture-formatted - a comma decimal
     /// separator in <c>da</c>, a temperature widened by SQLite that has to be narrowed before it is
-    /// printed (<c>notes/floating-point.md</c>). Answering with JSON would mean a second
+    /// printed. Answering with JSON would mean a second
     /// implementation of all of that in JavaScript, kept in step by hand, with the resource files
     /// unable to see it. Rendering it here means the poll costs one partial and no vocabulary at all
     /// on the client.
@@ -602,8 +602,8 @@ public class DetailModel : PageModel
     /// answered when it is <em>queued</em>, so the post returns and the page re-renders within about
     /// a hundred milliseconds while the printer still has minutes of unloading to do - capturing the
     /// tool as still loaded, which was true at that instant and wrong by the time the dialog is
-    /// reopened. The control strip is deliberately outside the polled region
-    /// (<c>notes/printer-page.md</c> §2), so nothing corrects it. Fetching on open is the narrowest
+    /// reopened. The control strip is deliberately outside the polled region, so nothing corrects
+    /// it. Fetching on open is the narrowest
     /// fix: fresh at the one moment somebody is choosing, and no markup replaced under an open
     /// dialog.
     /// </remarks>
@@ -950,8 +950,8 @@ public class DetailModel : PageModel
     /// <summary>Turns setting-ready-from-this-page on or off for this printer.</summary>
     /// <remarks>
     /// Through <see cref="PrinterQueryService"/> rather than writing the column here, so the
-    /// <c>ManagePrinter</c> check cannot be skipped by a later caller - see
-    /// <c>notes/printer-authorisation.md</c> on why the gate lives in the service.
+    /// <c>ManagePrinter</c> check cannot be skipped by a later caller: the gate lives in the
+    /// service, not in its callers.
     /// </remarks>
     public Task<IActionResult> OnPostRemoteReadyAsync(Guid uuid, bool allowed, CancellationToken cancellationToken)
     {

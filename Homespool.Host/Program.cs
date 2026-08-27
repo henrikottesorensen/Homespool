@@ -759,7 +759,7 @@ public static class Program
     /// POSTs about once in its life and polls every 5s (≈12/min), so ten printers sit near 120/min
     /// against the 300/min ceiling here, while an attacker is bounded to ~430k attempts/day instead of
     /// unbounded. That is not the whole answer for the code-guessing surface - a per-registration
-    /// attempt cap is (see notes/claim-code-usability.md) - but it turns "unlimited" into "bounded".
+    /// attempt cap is - but it turns "unlimited" into "bounded".
     /// </para>
     /// <para>
     /// The login form is <em>not</em> rate-limited here, and deliberately so: Identity's account
@@ -782,9 +782,8 @@ public static class Program
     /// <para>
     /// <b>An unconfigured deployment is safe but inert</b>, because the framework then trusts loopback
     /// alone and a container proxy is not on loopback. That failure is silent - mail keeps saying
-    /// <c>http://</c> - so it is logged rather than left to be discovered. <c>housekeeping.md</c>
-    /// records four occasions where this repository declared a rule and never ran it; this is the
-    /// same shape, caught at startup.
+    /// <c>http://</c> - so it is logged rather than left to be discovered. This repository has
+    /// declared a rule and never run it four times over; this is the same shape, caught at startup.
     /// </para>
     /// </remarks>
     private static void AddForwardedHeaders(WebApplicationBuilder builder)
@@ -831,8 +830,8 @@ public static class Program
     /// <see cref="System.Net.Security.SslStream"/> ignores the RFC 6066 <c>max_fragment_length</c> a
     /// printer negotiates and OpenSSL honours it. A printer holds 1024 bytes of TLS plaintext at a
     /// time, so a record larger than that kills every file transfer — which is what shipped, until
-    /// nginx was moved in front of this listener too (<c>notes/tls-by-default.md</c>, "Decision 3a's
-    /// premise has shifted"). The leaf is still ours: <see cref="EnsurePrinterCertificate"/> mints it
+    /// nginx was moved in front of this listener too. The leaf is still ours:
+    /// <see cref="EnsurePrinterCertificate"/> mints it
     /// on the startup path, and nginx presents it.
     /// </para>
     /// <para>
@@ -984,7 +983,7 @@ public static class Program
     /// operator picking the wrong one costs a re-downloaded provisioning bundle instead of a
     /// re-provisioned printer. That is the same multi-name hedge that makes a moved DHCP lease
     /// survivable, doing a second job - and it is why nothing asks the operator to name this machine
-    /// at first run (<c>notes/tls-by-default.md</c>, "nobody stores the answer").
+    /// at first run - nobody stores the answer.
     /// </para>
     /// <para>
     /// The configured host goes first because <see cref="Certificates.PrinterCertificateAuthority"/>
@@ -1048,8 +1047,8 @@ public static class Program
 
             options.AddFixedWindowLimiter(PrinterSocketRateLimitPolicy, limiter =>
             {
-                // A printer holding a stale token retries roughly once a minute (observed in
-                // notes/cross-channel-identity-bug.md), so this is ample for a fleet while still
+                // A printer holding a stale token retries roughly once a minute (observed), so
+                // this is ample for a fleet while still
                 // bounding an attacker probing tokens.
                 limiter.PermitLimit = 120;
                 limiter.Window = TimeSpan.FromMinutes(1);
@@ -1067,8 +1066,8 @@ public static class Program
                 // no database work), so no identity is resolved when the partition key is computed.
                 // The Fingerprint header is the only pre-auth identity available and an attacker can
                 // mint a fresh one per request, which buys isolation between honest printers at the
-                // cost of an unbounded aggregate - the opposite of what internet-exposure.md's threat
-                // model asks for. One window for the transport keeps that ceiling.
+                // cost of an unbounded aggregate - the opposite of what the threat model asks
+                // for. One window for the transport keeps that ceiling.
                 limiter.PermitLimit = 1200;
                 limiter.Window = TimeSpan.FromMinutes(1);
                 limiter.QueueLimit = 0;

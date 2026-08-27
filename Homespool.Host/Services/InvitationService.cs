@@ -17,7 +17,7 @@ namespace Homespool.Host.Services;
 /// Issues, validates and revokes <see cref="Invitation"/>s. This is the single home for invite token
 /// handling, so the admin create page and the accept page never duplicate the generate/hash/verify
 /// dance — the token scheme is <see cref="TokenService"/> (PBKDF2/SHA-384), the same one that
-/// protects printer registration tokens (AGENT-NOTES phase-1.5 §15).
+/// protects printer registration tokens.
 /// </summary>
 /// <remarks>
 /// The stored <see cref="Invitation.HashedToken"/> is salted, so an invite cannot be located by
@@ -137,7 +137,8 @@ public class InvitationService
     /// <para>
     /// <b>No index on <see cref="Invitation.Email"/>, and that is a decision.</b> Adding one means
     /// regenerating the migration in place, which against a deployed appliance is the whole procedure
-    /// in <c>housekeeping.md</c>. At one-to-tens of printers this table holds tens of rows and the scan
+    /// for a migration against a deployed appliance. At one-to-tens of printers this table holds
+    /// tens of rows and the scan
     /// is free; the moment it does not, the index is a separate and obvious change.
     /// </para>
     /// <para>

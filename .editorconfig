@@ -599,8 +599,7 @@ dotnet_diagnostic.SA1210.severity = none
 # wherever a call accepts a token, and v3 brought it to 424 sites across 46 files at once. With
 # TreatWarningsAsErrors that is a wall, and adopting it is a different change from moving to v3 - so
 # it is off for exactly as long as it takes to do that separately, then it goes to warning like the
-# rest. Tracked in notes/backlog.md; if you are reading this and that entry is gone, the rule was
-# forgotten rather than retired.
+# rest.
 dotnet_diagnostic.xUnit1051.severity = warning
 dotnet_diagnostic.SA1309.severity = none
 dotnet_diagnostic.SA1310.severity = warning

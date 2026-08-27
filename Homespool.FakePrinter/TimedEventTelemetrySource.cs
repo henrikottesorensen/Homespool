@@ -17,8 +17,8 @@ namespace Homespool.FakePrinter;
 /// clock instead: telemetry floods, events tick.
 /// </para>
 /// <para>
-/// A rig instrument either way, per mitigation #3 in <c>notes/fake-printer-harness.md</c>: firmware
-/// emits events on occasions, not on a timer.
+/// A rig instrument either way, and labelled as one: firmware emits events on occasions, not on a
+/// timer.
 /// </para>
 /// <para>
 /// Substitutes rather than inserts, like its sibling, because the client's loop takes one message per

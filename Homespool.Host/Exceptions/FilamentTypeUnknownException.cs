@@ -11,8 +11,7 @@ namespace Homespool.Host.Exceptions;
 /// own stored filament type, and when there is none it opens a dialog on the panel and waits for
 /// somebody to answer it (<c>evaluate_preheat_conditions</c>, <c>M70X_preheat.cpp:201-227</c>).
 /// Sending the command anyway would leave a machine blocked on a prompt nobody is standing at, which
-/// is the same trap <c>gcode-allowlist.md</c> keeps <c>M997</c>'s neighbour <c>M1700</c> off the list
-/// for.
+/// is the same trap that keeps <c>M997</c>'s neighbour <c>M1700</c> off the gcode allowlist.
 /// </para>
 /// <para>
 /// In practice this is a printer with nothing loaded, which is also why the control is absent rather

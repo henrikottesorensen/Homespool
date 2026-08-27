@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Reruns the H.264 decode measurements recorded in Homespool.Notes
-# notes/camera-support.md, so another board yields a third data point rather than a
-# third methodology.
+# Reruns the recorded H.264 decode measurements, so another board yields a third
+# data point rather than a third methodology.
 #
 # The numbers in that file were taken twice with different tooling and the comparison
 # survives only because the workloads matched. This script exists so the next board
@@ -108,7 +107,7 @@ run() {
 }
 
 # ------------------------------------------------------------------ experiments ----
-# The three rows from camera-support.md, in the same order. Row 2 is the one where the
+# The three recorded rows, in the same order. Row 2 is the one where the
 # Pi 4's hardware path was *worse* than its software path: accelerating the decode puts
 # frames in DMA buffers that must be copied back out for a software JPEG encoder, and at
 # 25 fps that round trip costs more than the decode saved.
@@ -127,7 +126,7 @@ if [ -n "$hw_node" ]; then
 fi
 
 echo
-echo "Recorded figures for comparison (notes/camera-support.md):"
+echo "Recorded figures for comparison:"
 echo "                                        Pi 4 sw   Pi 4 hw   Pi 5 sw"
 echo "  decode only, 10 s                      5.0 s     1.4 s     2.22 s"
 echo "  decode + MJPEG at 25 fps, 10 s        18.3 s    36.6 s    11.28 s"

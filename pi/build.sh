@@ -184,8 +184,8 @@ install -m 0755 "$repo_root/setup-env.sh" "$payload_dir/setup-env.sh"
 # The whole directory, deliberately. A hand-list of just the files compose bind-mounts drifted when
 # two mounts were added without it noticing - and a missing bind source is not a merely absent
 # config: Docker on the card invents the path as an empty directory, nginx hits it through an
-# include, and the proxy never starts (notes/tls-by-default.md, "The file is named for what it
-# is"). The directory is also compose.yaml's build context for the proxy, so shipping it whole
+# include, and the proxy never starts. The directory is also compose.yaml's build context for the
+# proxy, so shipping it whole
 # keeps the card's compose project self-consistent. It is 64 KB against ~550 MB of images.
 cp -R "$repo_root/nginx/." "$payload_dir/nginx/"
 

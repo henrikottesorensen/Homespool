@@ -9,8 +9,8 @@ namespace Homespool.Model.Entities;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Keyed on <i>(file, printer)</i> rather than on a queue entry, and that is the design</b>
-/// (<c>notes/print-queue.md</c>). Transfer belongs to the pair, not to the intention: two queued
+/// <b>Keyed on <i>(file, printer)</i> rather than on a queue entry, and that is the design.</b>
+/// Transfer belongs to the pair, not to the intention: two queued
 /// prints of one file on one printer must move the bytes once, and reordering the queue past a file
 /// already sent must leave it sitting on the drive rather than re-sending it. A row here outlives
 /// every <see cref="QueuedPrint"/> that caused it.

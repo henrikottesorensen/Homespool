@@ -11,7 +11,7 @@ namespace Homespool.Model;
 /// here conceding it was "a state machine rather than only an outcome, despite the name".
 /// </para>
 /// <para>
-/// <b>The shape was never the problem</b> (<c>notes/print-queue.md</c>, 2026-08-04). Every spooler in
+/// <b>The shape was never the problem.</b> Every spooler in
 /// the lineage puts active states in the job's own state enum: PrusaLink's vendored <c>Job</c>
 /// schema is <c>PRINTING, PAUSED, FINISHED, STOPPED, ERROR</c>, and IPP/CUPS spans <c>pending</c>
 /// through <c>completed</c> in one attribute. Only the name here promised an ending it did not
@@ -19,8 +19,8 @@ namespace Homespool.Model;
 /// </para>
 /// <para>
 /// In this project's root beside <see cref="PrinterStatus"/> and <see cref="PrinterType"/> rather than
-/// under <c>Entities</c>, because it is a persisted column type - the arrangement
-/// <c>notes/protocol-vocabulary-boundary.md</c> describes. Unlike <see cref="PrinterStatus"/> it is
+/// under <c>Entities</c>, because it is a persisted column type rather than a wire vocabulary.
+/// Unlike <see cref="PrinterStatus"/> it is
 /// <b>ours</b>, not Prusa's vocabulary, which is the company <see cref="PrinterType"/> keeps.
 /// </para>
 /// </remarks>
@@ -45,8 +45,7 @@ public enum PrintState
     /// printer settles it.</b> Distinct from <see cref="Starting"/>, which means <i>accepted</i> -
     /// conflating the two would trade one wrong assertion for its mirror image, dropping a queue
     /// entry for a print that never began. It is resolved by asking <c>SEND_JOB_INFO</c> about the
-    /// job telemetry reports, never by assuming; <c>notes/print-queue.md</c>, "A timeout is not a
-    /// negative answer".
+    /// job telemetry reports, never by assuming: a timeout is not a negative answer.
     /// </para>
     /// <para>
     /// <b>A row in this state is not history yet.</b> It is the loop's record of an outstanding
@@ -79,8 +78,8 @@ public enum PrintState
     /// <para>
     /// <b>And <c>Printing</c> here does not mean extruding.</b> On that same run, plastic began
     /// 168 s after <c>START_PRINT</c> - homing, mesh probing and heating first - which is why
-    /// <c>notes/print-queue.md</c> records <c>FilamentUsed</c> increasing, never a state change, as
-    /// the signal for when a print actually begins.
+    /// <c>FilamentUsed</c> increasing, never a state change, is the signal for when a print actually
+    /// begins.
     /// </para>
     /// </remarks>
     Starting = 1,

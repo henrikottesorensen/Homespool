@@ -25,8 +25,7 @@ namespace Homespool.Host.Test;
 /// <remarks>
 /// Every assertion here corresponds to a way the hand-assembled version failed on 2026-07-28 - a
 /// <c>;</c> comment, an omitted key, a PEM renamed <c>.der</c>, files one directory deep. None was a
-/// protocol problem; all four were assembly problems, which is what generating the files removes
-/// (<c>notes/usb-provisioning-bundle.md</c>).
+/// protocol problem; all four were assembly problems, which is what generating the files removes.
 /// </remarks>
 public sealed class ProvisioningBundleBuilderTests : IDisposable
 {

@@ -145,7 +145,7 @@ internal sealed class SlicerConfigValues
         foreach (string part in parts)
         {
             // Invariant, not the ambient culture: the slicer writes a point regardless of where the
-            // machine that ran it thinks the decimal separator is (notes/floating-point.md).
+            // machine that ran it thinks the decimal separator is.
             if (!float.TryParse(part.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out float number))
             {
                 return null;

@@ -98,8 +98,8 @@ public sealed class CameraSourcePolicy
     /// <para>
     /// <b>The container half is closed; the outer half is only as good as
     /// <c>PrusaConnect:PrinterHost</c>.</b> That is not an oversight — the application is never told
-    /// its user-facing names (<c>USER_HOSTS</c> goes to the proxy alone, and
-    /// <c>notes/tls-by-default.md</c> records that nobody stores the answer), so it cannot refuse a
+    /// its user-facing names (<c>USER_HOSTS</c> goes to the proxy alone and nobody stores the
+    /// answer), so it cannot refuse a
     /// name it has never been given. What that leaves reachable is our own front door over nginx,
     /// answering an unauthenticated fetch with a login page; the sidecar's API, which is the target
     /// that matters, is container-side and fully covered.

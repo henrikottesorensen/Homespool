@@ -19,10 +19,9 @@ namespace Homespool.Host.E2ETest;
 /// <summary>
 /// Drives the real <c>/setup</c> page over HTTP - antiforgery token and all - rather than calling
 /// <c>SetupModel.OnPostAsync</c> directly or bypassing it via <see cref="SetupState.MarkComplete"/>
-/// the way <see cref="EndToEndEnrolmentTests"/> does. This is the "heavier tier" AGENT-NOTES
-/// phase-1.5 §15 flagged since step 4 as needing an integration harness the project didn't have yet
-/// - "deferred, still curl-verified only" - now that <c>Microsoft.AspNetCore.Mvc.Testing</c> exists
-/// in this project, closing that gap.
+/// the way <see cref="EndToEndEnrolmentTests"/> does. This is the heavier tier that needs a real
+/// integration harness, which <c>Microsoft.AspNetCore.Mvc.Testing</c> now provides; before it, this
+/// path was curl-verified only.
 /// </summary>
 /// <remarks>
 /// The one-time bootstrap token is, by design, never exposed anywhere except a single log line at
@@ -93,8 +92,7 @@ public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
     /// <summary>
     /// The full happy path: GET for the antiforgery token, POST the logged bootstrap token with
     /// credentials, and the admin account is genuinely created - the gate closes, a second GET 404s,
-    /// and the account holds the Admin role with a default team, exactly as a live click-through
-    /// verified once in step 4 (AGENT-NOTES phase-1.5 §15).
+    /// and the account holds the Admin role with a default team.
     /// </summary>
     [Fact]
     public async Task PostingTheLoggedBootstrapTokenCreatesTheAdministratorAndClosesSetup()

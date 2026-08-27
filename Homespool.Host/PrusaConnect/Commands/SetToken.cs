@@ -20,8 +20,7 @@ namespace Homespool.Host.PrusaConnect.Commands;
 /// against power loss mid-command.
 /// </para>
 /// <para>
-/// <b>Sending this is not rotation on its own.</b> The flow in
-/// <c>notes/duplicate-connection-identity.md</c> is: mint a provisioning row, send this, and let the
+/// <b>Sending this is not rotation on its own.</b> The flow is: mint a provisioning row, send this, and let the
 /// auth handler's existing rebind path adopt the new credential on the printer's next authenticated
 /// request. The ordering hazard is the whole point - <b>never retire the old credential until the new
 /// one has actually been used</b>, or a lost command locks the printer out with no way back short of

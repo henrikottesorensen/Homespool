@@ -15,8 +15,7 @@ namespace Homespool.Host.Queue;
 /// observing the machine - never by classifying the failure. For <c>START_PRINT</c> the point is
 /// sharper than it sounds, because the two are correlated rather than independent: the printer is
 /// slow to answer <b>because</b> it accepted the command and went off to home and heat, so the
-/// timeout is caused by the success it was read as ruling out (hardware, 2026-08-21;
-/// <c>notes/print-queue.md</c>).
+/// timeout is caused by the success it was read as ruling out (observed on hardware, 2026-08-21).
 /// </para>
 /// <para>
 /// <b>Pure and separate from the advancer, for the same reason <see cref="QueueRules"/> is.</b> Each

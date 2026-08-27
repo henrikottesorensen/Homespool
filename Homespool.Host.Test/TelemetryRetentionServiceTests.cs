@@ -356,8 +356,8 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
 
     /// <summary>
     /// <b>The cap is per printer, and this is the half that matters.</b> A global cap would let one
-    /// chatty printer evict everybody else's events - the failure <c>internet-exposure.md</c> names
-    /// for a global rate limiter, in the one place partitioning is actually available.
+    /// chatty printer evict everybody else's events - the failure a global rate limiter has, in the
+    /// one place partitioning is actually available.
     /// </summary>
     [Fact]
     public async Task TheCountCapDoesNotLetOnePrintersFloodEvictAnothers()

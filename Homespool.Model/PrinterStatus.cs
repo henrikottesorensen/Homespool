@@ -4,7 +4,7 @@ namespace Homespool.Model;
 /// Where a printer is, coarsely — Homespool's own vocabulary, not any protocol's. Each protocol
 /// maps its wire states into these values at its edge (for Prusa Connect that is
 /// <c>PrinterStatusExtensions.ParseWireState</c>), and a protocol that cannot express a value
-/// simply never produces it. See <c>notes/domain-vocabulary.md</c> for the mapping tables.
+/// simply never produces it. <c>PrinterStatusExtensions</c> holds the wire-name mapping.
 /// </summary>
 public enum PrinterStatus
 {

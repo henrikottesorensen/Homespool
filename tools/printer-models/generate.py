@@ -8,7 +8,7 @@ map that turns INFO's printer_type ("1.3.5") into a human name ("MK3.5").
 
 WHY A TOOL RATHER THAN A HAND-COPIED TABLE, AND WHY THE OUTPUT IS COMMITTED
 ==========================================================================
-The same arrangement as render-fixtures.json (notes/prusa-render-tests-as-fixtures.md):
+The same arrangement as render-fixtures.json:
 the firmware checkout is a *developer-time* dependency for regenerating, never a build-time
 one. A clean build and CI need nothing from Prusa's 9 GB tree - they compile the committed
 .cs file like any other source.
@@ -113,8 +113,7 @@ namespace Homespool.Model;
 /// <para>
 /// The firmware checkout is a <b>developer-time</b> dependency, never a build-time one - the
 /// generated file is committed and compiles like any other source, so a clean build needs nothing
-/// from Prusa's tree. Same arrangement as <c>render-fixtures.json</c>
-/// (<c>notes/prusa-render-tests-as-fixtures.md</c>).
+/// from Prusa's tree. Same arrangement as <c>render-fixtures.json</c>.
 /// </para>
 /// <para>
 /// Staleness is additive and benign: a version triple cannot change meaning without breaking every

@@ -21,8 +21,7 @@ namespace Homespool.Host.Certificates;
 /// live connections whenever an interface appeared, make the certificate a function of what the
 /// machine happened to look like at boot, and silently expand what this server claims to be. The cost
 /// of that choice is exactly this — a moved DHCP lease leaves a certificate nobody can verify — and
-/// this is what makes the cost payable. Detect and explain; the operator decides
-/// (<c>notes/tls-by-default.md</c>, decision 2).
+/// this is what makes the cost payable. Detect and explain; the operator decides.
 /// </para>
 /// <para>
 /// <b>A health check rather than a new notification path</b>, because <c>HealthBanner</c> derives its

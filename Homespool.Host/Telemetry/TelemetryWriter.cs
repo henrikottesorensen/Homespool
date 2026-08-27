@@ -37,7 +37,7 @@ namespace Homespool.Host.Telemetry;
 /// <b>Channel capacity is derived from <see cref="StorageOptions.WriteBatchSize"/></b> rather than
 /// configured separately — four batches' worth of headroom is enough for a flush to fall behind
 /// briefly without losing anything, and one to tens of printers never come close to filling it.
-/// <see cref="BoundedChannelFullMode.DropOldest"/> per the accepted trade (AGENT-NOTES §5): the
+/// <see cref="BoundedChannelFullMode.DropOldest"/> per the accepted trade: the
 /// socket read loop must never block on a slow writer. Dropping is silent to the printer - it never
 /// discovers this happened - but not to an operator: the first drop of an overload episode logs a
 /// warning immediately, and further drops are aggregated into at most one summary per
@@ -45,8 +45,7 @@ namespace Homespool.Host.Telemetry;
 /// <see cref="TelemetryHealthSnapshot.DroppedMessages"/>. Per-drop logging was the original design
 /// and it failed its first load test: 20 seconds of blast telemetry produced 722,973 warnings and a
 /// 1.0 GB log - a self-feeding cycle, since the log I/O steals exactly the capacity the writer is
-/// already short of, and it fires on the producer's thread, taxing the message path itself
-/// (notes/fake-printer-harness.md, the blast run).
+/// already short of, and it fires on the producer's thread, taxing the message path itself.
 /// </para>
 /// <para>
 /// <b>One bad message must not stop persistence for every other printer.</b> An uncaught throw
@@ -115,7 +114,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// Measured 2026-07-30 with events pinned to one per 2 s through a 20 s blast: roughly ten
     /// emitted, three persisted, against a 96.7% drop rate. "Events are the last thing to give way"
     /// was stated here as though it were end to end; it is not. Open question, not a defect to fix
-    /// in passing - see backlog.md, "Event loss under saturation".
+    /// in passing.
     ///
     /// Sized as a bound on catastrophe, not as working headroom. Anything that outlives it is a
     /// database outage measured in hours, which is a bigger problem than the events being dropped.

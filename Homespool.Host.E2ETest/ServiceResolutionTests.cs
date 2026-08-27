@@ -25,7 +25,7 @@ namespace Homespool.Host.E2ETest;
 /// <c>builder.Host.UseDefaultServiceProvider</c> it does <i>not</i> take effect on a
 /// <c>WebApplicationBuilder</c> - an application with a deliberately unsatisfiable singleton started
 /// happily with the flag on. Relying on it would have been a guard that never ran, which this
-/// repository has done four times already (<c>notes/housekeeping.md</c>).
+/// repository has done four times already.
 /// </para>
 /// <para>
 /// <b>No known defect motivated this.</b> One was suspected - <c>PrinterCertificateAuthority</c>

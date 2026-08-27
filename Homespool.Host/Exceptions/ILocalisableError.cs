@@ -20,7 +20,7 @@ namespace Homespool.Host.Exceptions;
 /// <para>
 /// Found late: exception messages were a user-facing surface for as long as this application has had
 /// pages, and three separate audits missed them because they searched for literals *in* page models
-/// and services rather than in the types those files throw. See <c>notes/localisation.md</c>.
+/// and services rather than in the types those files throw.
 /// </para>
 /// </remarks>
 public interface ILocalisableError

@@ -19,9 +19,7 @@ namespace Homespool.Host.E2ETest;
 /// <remarks>
 /// <para>
 /// <b>The scaffold is deliberately kept</b> — external identity providers are scoped out rather than
-/// rejected (<c>notes/phase-1.5-enrollment.md</c>, "External OIDC scoped out"), and
-/// <c>notes/user-identity.md</c> records it being maintained rather than deleted for exactly that
-/// reason. So the fix here is a check, not a removal.
+/// rejected, so it is maintained rather than deleted. The fix here is a check, not a removal.
 /// </para>
 /// <para>
 /// Nothing in the UI reaches this: with no provider registered the login page renders no buttons,

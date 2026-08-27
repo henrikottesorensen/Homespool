@@ -7,7 +7,7 @@ namespace Homespool.Host.DTO;
 /// <summary>One entry in a printer's storage listing, as this API reports it.</summary>
 /// <remarks>
 /// Translated out of firmware's vocabulary rather than passed through: <c>/api/v1</c> is ours, and
-/// only <c>/p/*</c> owes Prusa anything (<c>notes/file-storage.md</c>, "The API is ours"). The
+/// only <c>/p/*</c> owes Prusa anything. The
 /// translation earns its keep on two fields in particular - a Unix timestamp becomes a real instant,
 /// and the wire's <c>name</c>/<c>display_name</c> pair becomes
 /// <see cref="ShortName"/>/<see cref="Name"/>, which says which of the two is which.

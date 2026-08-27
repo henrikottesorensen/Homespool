@@ -11,8 +11,7 @@ namespace Homespool.Host.PrusaConnect.DTO.EventMessages;
 /// <b>Telemetry cannot answer this and never could.</b> It carries <c>job_id</c> and a status, so it
 /// can say a printer is printing something; it has no field naming the file. That is the whole
 /// reason this type exists: adopting a running print as ours is a decision that deletes somebody's
-/// queue entry, and it has to rest on identity rather than on coincidence
-/// (<c>notes/print-queue.md</c>, "A timeout is not a negative answer").
+/// queue entry, and it has to rest on identity rather than on coincidence.
 /// </para>
 /// <para>
 /// <b>Only the current job renders a name.</b> Firmware's own fixtures have four shapes for this

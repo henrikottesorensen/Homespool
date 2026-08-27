@@ -130,7 +130,7 @@ public class ExternalLoginModel : PageModel
         /// </summary>
         /// <remarks>
         /// <b>The address is not on this form</b>, and was until the invite gate landed. It is the
-        /// invite's, exactly as on <c>Register</c> (phase-1.5 §15 decision 3) - an address the caller
+        /// invite's, exactly as on <c>Register</c> - an address the caller
         /// could type would let a verified sign-in create an account bound to somebody else's.
         /// </remarks>
         [Required]
@@ -176,8 +176,7 @@ public class ExternalLoginModel : PageModel
     /// passes and this path is unchanged.
     /// </para>
     /// <para>
-    /// The scaffold stays. External identity providers are scoped out rather than rejected
-    /// (<c>notes/phase-1.5-enrollment.md</c>, "External OIDC scoped out"), and that note carries the
+    /// The scaffold stays. External identity providers are scoped out rather than rejected. The
     /// trap for whoever adds one: inbound claim mapping must be turned off on the new handler, or the
     /// short JWT names this codebase uses stop matching.
     /// </para>

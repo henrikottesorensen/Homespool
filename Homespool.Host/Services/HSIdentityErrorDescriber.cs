@@ -27,8 +27,7 @@ namespace Homespool.Host.Services;
 /// <b>Every other message is still Identity's own, and still English.</b> Overriding one member to
 /// read from resources does not localise the base class: a wrong password and a too-short one are
 /// answered by <c>IdentityErrorDescriber</c> in whatever language it shipped in. Localising those
-/// means overriding each in turn, which is Phase B work and deliberately not smuggled in here - see
-/// <c>notes/localisation.md</c>.
+/// means overriding each in turn, which is deliberately not smuggled in here.
 /// </para>
 /// </remarks>
 public class HSIdentityErrorDescriber : IdentityErrorDescriber

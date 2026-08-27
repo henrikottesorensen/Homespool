@@ -11,8 +11,7 @@ namespace Homespool.Host.PrusaConnect.DTO.App;
 /// <summary>
 /// The app-facing printer read shape (Connect's <c>Printer-read</c>). Fields the phase-1.5 claim
 /// flow has no data for yet - <c>networkInfo</c>, <c>prusaLink</c>, snapshots, printer icon/image -
-/// are omitted rather than faked: AGENT-NOTES phase-1.5 §15 calls this "honest nulls plus
-/// <c>state: UNKNOWN</c>".
+/// are omitted rather than faked - honest nulls plus <c>state: UNKNOWN</c>.
 /// </summary>
 /// <remarks>
 /// <b><c>state</c> now comes from <see cref="PrinterLiveState"/>, not from <see cref="Printer"/>.</b>
@@ -96,7 +95,7 @@ public class PrinterReadDTO
     /// value is the double widening of what the printer sent - a real MK3.5 reporting 0.4 is held as
     /// 0.400000005960464. Narrowing back to <see cref="float"/> here is what makes
     /// <c>System.Text.Json</c> emit <c>0.4</c>; typed <c>double?</c> this field would put
-    /// <c>0.40000000596046448</c> on the wire. See <c>notes/floating-point.md</c>.
+    /// <c>0.40000000596046448</c> on the wire.
     /// </remarks>
     public float? NozzleDiameter { get; set; }
 

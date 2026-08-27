@@ -30,11 +30,11 @@ using Microsoft.Extensions.Logging;
 namespace Homespool.Host.Pages.Account;
 
 /// <summary>
-/// Invite-accept page. Registration is invite-only (phase-1.5 §15 step 6): this page is reachable
+/// Invite-accept page. Registration is invite-only: this page is reachable
 /// only with a valid, unexpired, unused invite token, and creates the account bound to the invite's
 /// email. It replaces the public self-service registration the Identity scaffold shipped with.
 /// </summary>
-[AllowAnonymous] // The invite token is the credential here, not a session (phase-1.5 §15 step 6).
+[AllowAnonymous] // The invite token is the credential here, not a session.
 public class RegisterModel : PageModel
 {
     private readonly SignInManager<HSUser> _signInManager;
@@ -157,7 +157,7 @@ public class RegisterModel : PageModel
         /// </summary>
         /// <remarks>
         /// The one thing on this form the invitee chooses about their identity - the address is the
-        /// invite's and is never taken from what they typed (§15 dec. 3). Only the length is checked
+        /// invite's and is never taken from what they typed. Only the length is checked
         /// here; the character set and uniqueness belong to Identity's <c>UserValidator</c>.
         /// </remarks>
         [Required]
@@ -270,7 +270,7 @@ public class RegisterModel : PageModel
 
         try
         {
-            // The address is bound to the invite, never anything the invitee typed (§15 dec. 3). The
+            // The address is bound to the invite, never anything the invitee typed. The
             // username is theirs to pick: it is not an identity the invite confers, and it cannot be
             // used to reach anything the invite did not already grant.
             await _userStore.SetUserNameAsync(user, Input.Username, cancellationToken);
@@ -311,7 +311,7 @@ public class RegisterModel : PageModel
 
         _logger.LogInformation("Invitation {InviteId} accepted; account created for {Email}.", InviteId, invitation.Email);
 
-        // Follow AccountConfirmationPolicy (§15 decision 3): when SMTP is configured the account is
+        // Follow AccountConfirmationPolicy: when SMTP is configured the account is
         // unconfirmed, so send the confirmation mail and hold at RegisterConfirmation; otherwise it is
         // already confirmed and we can sign straight in.
         if (!user.EmailConfirmed)
@@ -353,7 +353,7 @@ public class RegisterModel : PageModel
     /// and reissues the same subject id, a stale row is a live credential nobody remembered granting.
     /// </para>
     /// <para>
-    /// <b>One transaction, for the reason <c>transactions.md</c> gives.</b> The half-done states are
+    /// <b>One transaction, because it is several round trips.</b> The half-done states are
     /// both wrong in the way this flow exists to prevent: a password added while the dead links remain
     /// is the parallel credential the rule refuses, and links removed while the password was rejected
     /// takes an account that was merely orphaned and makes it unreachable.

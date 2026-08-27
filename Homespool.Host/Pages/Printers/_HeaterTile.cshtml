@@ -13,7 +13,7 @@
        The unit comes from Printers_Degrees rather than being written here, and that is the one thing
        in this file worth not simplifying: en-US states "°C" where en-GB and da leave it off, because
        an unqualified 215° reads as Fahrenheit to an American - which has gone wrong in support before
-       now. It is the whole reason an en-US resource file exists. See notes/localisation.md. *@
+       now. It is the whole reason an en-US resource file exists. *@
     string Degrees(float? value) =>
         value is { } reading ? Localiser["Printers_Degrees", reading.ToString("0", culture)].Value : "—";
 }

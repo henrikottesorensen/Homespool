@@ -19,9 +19,8 @@ namespace Homespool.Host.Test;
 /// <para>
 /// <c>TypedResults.StatusCode(…)</c> decides its status at run time and so adds nothing to the
 /// document, leaving the action to restate it in a <c>[ProducesResponseType]</c> — two statements
-/// that can disagree, which is the hazard the union rule was introduced to remove
-/// (<c>AGENT-NOTES.md</c> §7). Putting the status in the type makes the arm and the document the
-/// same fact.
+/// that can disagree, which is the hazard the union rule removes. Putting the status in the type
+/// makes the arm and the document the same fact.
 /// </para>
 /// <para>
 /// The metadata is read the way <c>ControllerResponseDocumentationTests</c> reads it, and the way

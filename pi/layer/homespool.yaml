@@ -111,7 +111,7 @@ mmdebstrap:
     # Compressed swap in RAM, and the alternative it rules out is the point: a swapfile on the card
     # would be the worst possible place for it. Measured on the cards this project actually uses -
     # ~500 random write IOPS with 51-107 ms stalls at p99.9, and over a second on one of them
-    # (notes/sd-card-performance.md) - and swap is the most latency-sensitive random I/O a system
+    # - and swap is the most latency-sensitive random I/O a system
     # does. That buys "does not OOM" at the price of "unusable", while grinding write cycles into an
     # SD card. zram never touches the card.
     #

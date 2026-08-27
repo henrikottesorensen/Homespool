@@ -34,7 +34,7 @@ public static class DataServiceCollectionExtensions
 
         // Foreign key enforcement is a connection-string keyword, so it is applied by the driver as
         // the connection opens rather than issued as a statement afterwards. That matters because the
-        // retention sweep relies on ON DELETE CASCADE to remove slot rows (see AGENT-NOTES §12): if
+        // retention sweep relies on ON DELETE CASCADE to remove slot rows: if
         // enforcement were ever missed, those rows would leak silently. Setting it here also means an
         // operator cannot omit it by editing the connection string in configuration.
         connectionString = new SqliteConnectionStringBuilder(connectionString)

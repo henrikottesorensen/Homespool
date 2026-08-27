@@ -26,8 +26,7 @@ public sealed class FakePrinterOptions
     /// <summary>
     /// Keep-alive ping cadence. The firmware pings after 15 s without sending anything
     /// (<c>ping_inactivity</c>, connect.cpp:49-50). .NET cannot send explicit Ping frames, so this
-    /// is approximated via the socket's keep-alive - a documented deviation
-    /// (notes/fake-printer-harness.md, "Ping compromise").
+    /// is approximated via the socket's keep-alive - a documented deviation.
     /// </summary>
     public TimeSpan KeepAliveInterval { get; init; } = TimeSpan.FromSeconds(15);
 

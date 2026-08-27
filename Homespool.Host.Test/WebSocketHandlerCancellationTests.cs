@@ -35,7 +35,7 @@ namespace Homespool.Host.Test;
 /// Deliberately <b>not</b> covered here: cancelling a <c>StreamPipeReader</c> over a
 /// <c>WebSocketStream</c> aborts the socket. That is the stream's behaviour, not the handler's, and
 /// asserting it against a plain <see cref="Pipe"/> would only confirm our model of it. Nor is
-/// shutdown <i>promptness</i> - see notes/cancellation-path-coverage.md.
+/// shutdown <i>promptness</i>.
 /// </para>
 /// </remarks>
 public class WebSocketHandlerCancellationTests

@@ -14,9 +14,8 @@ namespace Homespool.Host.Test;
 /// allowlist, the drive listing, and the payload bound.
 /// </summary>
 /// <remarks>
-/// <c>notes/printer-event-bounds.md</c> is the argument these pin. The short version: a directory
-/// listing is a snapshot and the event log is append-only, so the listing goes to its own upserted
-/// row and the event keeps only the fact that one arrived.
+/// A directory listing is a snapshot and the event log is append-only, so the listing goes to its
+/// own upserted row and the event keeps only the fact that one arrived.
 /// </remarks>
 public sealed class PrusaTelemetryMappingPayloadTests
 {

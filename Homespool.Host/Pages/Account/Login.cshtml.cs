@@ -117,7 +117,7 @@ public class LoginModel : PageModel
             {
                 // Deliberately the same message and the same page as a wrong password: telling an
                 // anonymous caller which addresses and usernames exist is the enumeration this form is
-                // exposed enough to care about (notes/internet-exposure.md).
+                // exposed enough to care about.
                 ModelState.AddModelError(string.Empty, _localiser["Account_InvalidLogin"]);
 
                 return Page();

@@ -38,8 +38,8 @@ jobs:
 
       # Brings up Mailpit with STARTTLS and generates the throwaway CA the integration tests verify
       # against. Without it those tests skip themselves, which is right for a laptop and wrong here:
-      # this is the only place a genuine STARTTLS negotiation is put in front of SmtpEmailSender, and
-      # notes/housekeeping.md records that alert mail had never actually been sent by anything.
+      # this is the only place a genuine STARTTLS negotiation is put in front of SmtpEmailSender,
+      # which had once gone a long time without alert mail ever actually being sent.
       - name: Start Mailpit with STARTTLS
         run: ./Homespool.Host.IntegrationTest/start-mailpit-tls.sh
 

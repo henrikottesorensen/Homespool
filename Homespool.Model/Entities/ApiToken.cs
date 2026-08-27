@@ -16,7 +16,7 @@ namespace Homespool.Model.Entities;
 /// <c>TokenService</c>, which protects the printer token: slow salted hashing defends
 /// <em>guessable</em> secrets, and 32 CSPRNG bytes are not guessable at any work factor. A salt would
 /// also make this column unindexable and reintroduce the "find the row first" problem it exists to
-/// avoid. See <c>notes/api-tokens.md</c>.
+/// avoid.
 /// </para>
 /// <para>
 /// <b>No expiry and no last-used stamp.</b> Either is one nullable column if it is ever genuinely
@@ -35,7 +35,7 @@ namespace Homespool.Model.Entities;
 /// <b>Authorisation itself stays out of this table.</b> The authentication handler turns the row into
 /// a <c>Caller</c>, and the access services intersect that with the membership held on each printer or
 /// camera — so rights are re-read per request and a membership change bites immediately, which a
-/// credential asserting its own rights could not manage. See <c>notes/permission-vocabulary.md</c>.
+/// credential asserting its own rights could not manage.
 /// </para>
 /// <para>
 /// Revocation is deleting the row, which is the whole reason this is a table rather than a signed

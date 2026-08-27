@@ -235,8 +235,7 @@ public class FirmwareFaithfulPolicyTests
     /// It looks like a bug and is the opposite. The queue's rule that a finished printer is not
     /// available is the <i>server's</i> discipline with nothing underneath it, so a fake that refused
     /// here would fail a loop that advanced on <c>Finished</c> and pass the same loop against
-    /// hardware - teaching that the printer protects us when it does not. See
-    /// <c>notes/print-queue.md</c>, "Firmware will start a print onto a finished part".
+    /// hardware - teaching that the printer protects us when it does not.
     /// </remarks>
     [Theory]
     [InlineData(DeviceState.Idle)]
@@ -358,7 +357,7 @@ public class FirmwareFaithfulPolicyTests
     /// <remarks>
     /// Telemetry carries a <c>job_id</c> and a status and no file name at all, so a server working out
     /// whether a print it commanded and never heard back about is its own has nothing else to ask.
-    /// See <c>notes/print-queue.md</c>, "A timeout is not a negative answer".
+    /// A timeout is not a negative answer.
     /// </remarks>
     [Fact]
     public void SendJobInfoNamesTheFileTheRunningJobIsPrinting()

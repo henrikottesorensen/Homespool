@@ -35,7 +35,7 @@ namespace Homespool.Data;
 /// </para>
 /// <para>
 /// <b>WAL requires real local disk.</b> Its locking is unreliable on NFS/CIFS/SMB, so the database
-/// must not live on a network share — see AGENT-NOTES §5.
+/// must not live on a network share.
 /// </para>
 /// </remarks>
 public class SqlitePragmaInterceptor : DbConnectionInterceptor
@@ -82,7 +82,7 @@ public class SqlitePragmaInterceptor : DbConnectionInterceptor
         // retries the command itself until CommandTimeout, so the two layers compound: with both set
         // to the same 5,000 ms, a blocked command took ~10 s, twice what the option documents.
         // Measured 2026-07-30, and it was what kept a shutdown at ~30 s even after the command
-        // timeout was wired up (notes/fake-printer-harness.md). Halving it lets at most two waits
+        // timeout was wired up. Halving it lets at most two waits
         // fit inside the caller's budget, so the total lands on the configured value rather than
         // double it, and callers that want a tighter bound (TelemetryWriter's shutdown flush) can
         // still lower both together on their own connection.

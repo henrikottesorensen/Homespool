@@ -12,8 +12,8 @@ namespace Homespool.Model;
 /// rate.
 /// </para>
 /// <para>
-/// <b>Members are pinned and zero is reserved</b>, per the two rules in
-/// <c>notes/housekeeping.md</c>. This one is persisted as text in <c>UserActionAttempt.Action</c>,
+/// <b>Members are pinned and zero is reserved.</b> This one is persisted as text in
+/// <c>UserActionAttempt.Action</c>,
 /// so a reordering must not be able to relabel an existing row - and <see cref="Undefined"/> keeps
 /// <c>default</c> from silently naming a real action.
 /// </para>

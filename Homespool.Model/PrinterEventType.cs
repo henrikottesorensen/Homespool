@@ -6,7 +6,7 @@ namespace Homespool.Model;
 /// that is <c>PrusaEventWireMapping</c>), and the wire's own word travels alongside in
 /// <see cref="Entities.PrinterEvent.WireType"/>. A value here names a fact about a printer or a
 /// command; not every protocol can produce every fact, and a protocol that cannot simply never
-/// emits the value. See <c>notes/domain-vocabulary.md</c> for the mapping tables.
+/// emits the value. <c>PrusaEventWireMapping</c> holds the wire-name mapping.
 /// </summary>
 public enum PrinterEventType
 {

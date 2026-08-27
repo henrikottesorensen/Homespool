@@ -29,8 +29,7 @@ namespace Homespool.Host.E2ETest;
 /// <para>
 /// <b>The polled handler is exercised as well as the page</b>, because the two render the same
 /// partial by different routes and only one of them is covered by loading the page - which is
-/// exactly the asymmetry that let a control strip vanish on refresh once
-/// (<c>notes/printer-page.md</c> §6e).
+/// exactly the asymmetry that let a control strip vanish on refresh once.
 /// </para>
 /// </remarks>
 [Collection("WebApplicationFactory")]
@@ -220,7 +219,7 @@ public sealed class FrontPageTests : IAsyncLifetime, IDisposable
 
         // Assert
         // "tile-drop" without the extension: asp-append-version fingerprints the FILE NAME in
-        // .NET 10, so this renders as tile-drop.<hash>.js - the trap printer-page.md §4 records.
+        // .NET 10, so this renders as tile-drop.<hash>.js.
         page.Should().Contain("tile-drop", "without the script a tile is only a link");
         page.Should().Contain("data-drop-target", "the tiles have to be targets");
         page.Should().Contain("data-drop-form", "the upload needs its form");

@@ -12,8 +12,8 @@ namespace Homespool.Host.Telemetry;
 /// <remarks>
 /// <para>
 /// A plain nullable can express only two of the three states - null has to mean either "unchanged"
-/// or "gone", and choosing wrong is how a finished print reported 99% for nine hours
-/// (<c>notes/print-queue.md</c>). The third state is the whole reason this type exists, and the
+/// or "gone", and choosing wrong is how a finished print reported 99% for nine hours.
+/// The third state is the whole reason this type exists, and the
 /// default is <see cref="Absent"/> so an edge mapper that forgets a field says nothing about it
 /// rather than destroying it.
 /// </para>

@@ -27,8 +27,8 @@ namespace Homespool.Host.Test;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The decision and its cost are in <c>notes/api-tokens.md</c>. The short version: the state worth
-/// making unreachable is "new password, old tokens still live", because that is precisely what
+/// The state worth making unreachable is "new password, old tokens still live", because that is
+/// precisely what
 /// someone changing their password after a compromise believes they have escaped.
 /// </para>
 /// <para>

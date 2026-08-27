@@ -9,8 +9,7 @@
 }
 @*
     The front page's tiles. Rendered inline on first load and again on every poll, so everything it
-    reads must come from OnGetTilesAsync - printer-page.md §6e, the rule a half-extracted partial
-    already cost us once.
+    reads must come from OnGetTilesAsync - a rule a half-extracted partial already cost us once.
 *@
 @if (Model.Shortcuts.Count == 0)
 {
@@ -62,7 +61,7 @@ else
                     else
                     {
                         @* Hollow, because absence is a shape rather than a severity - a printer
-                           switched off overnight is offline and perfectly well. visual-identity.md §4b. *@
+                           switched off overnight is offline and perfectly well. *@
                         <span class="badge @PrinterStatusBadge.Absent">@Localiser["PrinterStatus_Offline"]</span>
                     }
 

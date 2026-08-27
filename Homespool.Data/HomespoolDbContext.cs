@@ -144,7 +144,7 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
 
             // Homespool has no use for a phone number and no channel that would send to one: there is
             // no SMS two-factor provider registered, and the notification design rejected even email
-            // as a channel (notes/filament-change-notification.md). The properties themselves are
+            // as a channel. The properties themselves are
             // IdentityUser's and cannot be removed short of not deriving from it; ignoring them keeps
             // the columns off the table, so the application never stores a number it cannot use.
             entity.Ignore(e => e.PhoneNumber);
@@ -221,9 +221,9 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
 
             // Cascade, and deliberately not SetNull. Null on PrinterId already means "not bound to
             // a printer", so setting it null on delete would make a camera orphaned by a deletion
-            // indistinguishable from one left unbound on purpose - which is exactly the trap
-            // user-identity.md records against StoppedByUserId, where null already meant "stopped
-            // at the panel". Restrict was the other candidate and is worse here: it would block
+            // indistinguishable from one left unbound on purpose - the same trap StoppedByUserId
+            // has, where null already means "stopped at the panel".
+            // Restrict was the other candidate and is worse here: it would block
             // deleting a printer because a camera watches it.
             entity.HasOne(e => e.Printer)
                   .WithMany()
@@ -243,7 +243,7 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
         builder.Entity<PrusaConnectAuthenticationData>(entity =>
         {
             // A printer is identified on the wire by its fingerprint, on every request and on
-            // the WebSocket upgrade (AGENT-NOTES §9). That lookup is the hot path for every
+            // the WebSocket upgrade. That lookup is the hot path for every
             // connection, and two rows sharing a fingerprint would make identity ambiguous.
             //
             // Keyed on the truncated 16-character form the headers carry, not the 50-character form
@@ -568,8 +568,8 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
 
             // Restrict, deliberately, and this is the one delete rule worth arguing for: cascading
             // here would let deleting a file silently cancel a print somebody else had queued.
-            // print-queue.md reaches the same conclusion about the printer's own copy of a file -
-            // "delete only when no queued print still wants it" - and the same instinct applies to ours.
+            // The printer's own copy of a file follows the same rule - delete only when no queued
+            // print still wants it - and the same instinct applies to ours.
             // PrintFileCatalog turns the resulting failure into a sentence rather than an exception.
             entity.HasOne(e => e.PrintFile)
                   .WithMany(e => e.QueuedPrints)
@@ -577,7 +577,7 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
                   .OnDelete(DeleteBehavior.Restrict);
 
             // QueuedByUserId deliberately has no foreign key. It records who asked - the same
-            // "a record, not a pointer" treatment file-storage.md gives history rows - and an FK here
+            // "a record, not a pointer" treatment history rows get - and an FK here
             // would add a second cascade path into a table PrintFile already cascades from, for no
             // reader that needs the join.
         });
@@ -598,8 +598,7 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // Cascade, unlike QueuedPrint's Restrict on the same table. This row is knowledge about
             // somebody else's drive rather than an intention of ours, so there is nothing here to
             // protect a person from losing - and the bytes it describes are findable again through
-            // the printer's own storage listing, which is what notes/print-queue.md relies on for
-            // exactly this.
+            // the printer's own storage listing, which the queue relies on for exactly this.
             entity.HasOne(e => e.PrintFile)
                   .WithMany()
                   .HasForeignKey(e => e.PrintFileId)

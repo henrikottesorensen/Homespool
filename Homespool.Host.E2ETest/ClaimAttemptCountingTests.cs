@@ -28,8 +28,7 @@ namespace Homespool.Host.E2ETest;
 /// </para>
 /// <para>
 /// <b>Why it matters:</b> the per-account cap is the only thing bounding registration-code guessing.
-/// The global rate limiter deliberately cannot reach an authenticated page
-/// (<c>internet-exposure.md</c> #2, <c>claim-code-usability.md</c>), and the counter lives on the
+/// The global rate limiter deliberately cannot reach an authenticated page, and the counter lives on the
 /// user rather than on the registration precisely because a wrong code finds no registration to
 /// count against.
 /// </para>

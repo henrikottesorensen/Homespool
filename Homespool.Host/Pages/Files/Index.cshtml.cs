@@ -34,8 +34,7 @@ namespace Homespool.Host.Pages.Files;
 /// <para>
 /// <b>The page this app was missing.</b> Uploading, renaming and deleting have been reachable only
 /// through <c>/api/v1/files</c> since the store was rewritten, which meant a file a user uploaded
-/// was invisible to them - the exact confusion that made overwriting opt-in in the first place
-/// (<c>notes/file-storage.md</c>).
+/// was invisible to them - the exact confusion that made overwriting opt-in in the first place.
 /// </para>
 /// <para>
 /// Talks to <see cref="PrintFileCatalog"/> directly rather than to its own API over HTTP, as every
@@ -155,10 +154,8 @@ public class IndexModel : PageModel
         // was that the separator would follow the machine rather than the person. Now that a request
         // carries the reader's culture, following it is what puts the separator where they read it -
         // and 4,1 MB is simply how a number is written in Danish, so invariant here means being
-        // wrong for them on purpose.
-        //
-        // notes/floating-point.md records the hazard this replaced, and is about precision rather
-        // than culture; the two are separate questions on the same value.
+        // wrong for them on purpose. The precision hazard on this value is a separate question
+        // from the culture one.
         return unit == 0 ?
             string.Create(CultureInfo.CurrentCulture, $"{bytes} B") :
             string.Create(CultureInfo.CurrentCulture, $"{size:0.#} {units[unit]}");
@@ -205,7 +202,7 @@ public class IndexModel : PageModel
     /// <b>The bytes are kept while the question is asked.</b> A clash is only knowable once the file
     /// has arrived, so discarding it would make the answer "yes, replace it" cost a second upload of
     /// the same file. Staging it instead makes that answer free, at the price of holding the bytes
-    /// until the question is answered or swept (<c>notes/file-storage.md</c>).
+    /// until the question is answered or swept.
     /// </para>
     /// <para>
     /// <b>Bound as <see cref="IFormFile"/> rather than read with <c>MultipartReader</c></b>, which
@@ -335,7 +332,7 @@ public class IndexModel : PageModel
     /// <para>
     /// <b>Answers when the printer accepts the command, not when the transfer finishes.</b> A
     /// full-size model takes minutes to move, so the message here says it has started; the page has
-    /// no way to show progress yet (<c>notes/file-storage.md</c>).
+    /// no way to show progress yet.
     /// </para>
     /// </remarks>
     /// <summary>

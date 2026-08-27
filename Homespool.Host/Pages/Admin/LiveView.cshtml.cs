@@ -25,7 +25,7 @@ namespace Homespool.Host.Pages.Admin;
 /// before it is chosen — a file cannot put two named conditions in front of somebody and wait.
 /// </para>
 /// <para>
-/// <b>The prompt follows the <c>Set Ready</c> checklist</b> (<c>notes/print-queue.md</c>): named
+/// <b>The prompt follows the <c>Set Ready</c> checklist</b>: named
 /// conditions rather than a bare "are you sure", and a confirm button carrying the assertion rather
 /// than agreement. The two conditions are that your public address is placed in every offer, which
 /// is inherent to a reflexive candidate rather than a go2rtc quirk, and that a third party is

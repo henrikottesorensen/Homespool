@@ -31,8 +31,7 @@ namespace Homespool.Host.Cameras;
 /// <para>
 /// <b>No transaction.</b> One <c>SaveChangesAsync</c> is already transactional, and the other half
 /// of this - registering with the stream server - is an HTTP call no rollback would undo. Adding
-/// one would buy the appearance of atomicity over an effect that is not atomic. See
-/// <c>notes/transactions.md</c>.
+/// one would buy the appearance of atomicity over an effect that is not atomic.
 /// </para>
 /// </remarks>
 public class CameraService

@@ -83,7 +83,7 @@ public class TeamService
 
     /// <summary>
     /// The caller's default team membership - where a printer claim lands when it doesn't name a
-    /// team (phase-1.5 §15 step 7). Every account has exactly one, enforced by the filtered unique
+    /// team. Every account has exactly one, enforced by the filtered unique
     /// index on <c>(UserId) WHERE IsDefault</c>.
     /// </summary>
     public Task<TeamMember?> GetDefaultTeamMembershipAsync(long userId, CancellationToken cancellationToken)
@@ -110,7 +110,7 @@ public class TeamService
 
     /// <summary>
     /// Every team <paramref name="userId"/> belongs to, with its own <see cref="Team"/> loaded -
-    /// the shape <c>GET /api/v1/user</c>'s <c>teams[]</c> needs (phase-1.5 §15 step 7b). Read-only,
+    /// the shape <c>GET /api/v1/user</c>'s <c>teams[]</c> needs. Read-only,
     /// so untracked.
     /// </summary>
     public async Task<IReadOnlyList<TeamMember>> GetTeamsForUserAsync(long userId, CancellationToken cancellationToken)

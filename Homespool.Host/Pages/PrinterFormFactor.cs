@@ -7,17 +7,17 @@ namespace Homespool.Host.Pages;
 /// <para>
 /// <b>Form factor, and deliberately nothing finer.</b> The front page draws a printer, not
 /// <i>this</i> printer: an open frame or a closed box. Both are generic engineering shapes that
-/// dozens of manufacturers build, which is what keeps the drawing ours - see
-/// <c>notes/visual-identity.md</c> §2, where the house blue was chosen as "not Prusa's orange" for
-/// the same reason. A recognisable per-model likeness would be somebody else's trade dress with our
+/// dozens of manufacturers build, which is what keeps the drawing ours - the same reasoning that
+/// chose the house blue as "not Prusa's orange".
+/// A recognisable per-model likeness would be somebody else's trade dress with our
 /// stroke width on it.
 /// </para>
 /// <para>
 /// <b>Not a table keyed on <see cref="Model.PrinterModelGroup"/>, and that is the whole point.</b>
 /// Writing <c>CoreOne =&gt; Enclosed</c> beside <c>Mk4 =&gt; Open</c> reads as obvious, and every row
 /// of it is a claim about hardware that nothing in this codebase can check - written from memory of a
-/// product line, which is exactly how three wrong hardware claims reached these notes in a single day
-/// (<c>notes/printer-page.md</c> §6c). What the printer reports is checkable, so this asks the printer
+/// product line, which is exactly how three wrong hardware claims got written down in a single day.
+/// What the printer reports is checkable, so this asks the printer
 /// instead and the question never has to be answered from memory again.
 /// </para>
 /// </remarks>

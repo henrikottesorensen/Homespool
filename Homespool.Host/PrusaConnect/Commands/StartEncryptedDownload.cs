@@ -13,8 +13,8 @@ namespace Homespool.Host.PrusaConnect.Commands;
 /// <b>Nothing sends this</b>, and it stays here for the same reason its ~25 hollow siblings in this
 /// folder do: the command vocabulary is worth describing whether or not we use it. Unlike them it is
 /// <i>proven</i> - an MK3.5 accepted this exact shape on 2026-07-31 and fetched the file. The path
-/// was then rejected on measurement, being ~13% slower than inline
-/// (<c>notes/encrypted-download.md</c>), so what survives is the description, not a caller.
+/// was then rejected on measurement, being ~13% slower than inline, so what survives is the
+/// description, not a caller.
 /// </para>
 /// <para>
 /// <b>Buddy answers a Connect-initiated print upload inline every time</b> (command.cpp:186-196 at

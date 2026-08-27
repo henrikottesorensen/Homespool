@@ -5,8 +5,8 @@ namespace Homespool.Host.Pages.Printers;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Derived on every read, never stored.</b> <c>QueuedPrint</c> is deliberately property-less -
-/// <c>notes/print-queue.md</c>: the printer runs a producer loop and the queue is just a list it
+/// <b>Derived on every read, never stored.</b> <c>QueuedPrint</c> is deliberately property-less:
+/// the printer runs a producer loop and the queue is just a list it
 /// pulls from, so "prepared, waiting for the printer" is the loop sitting in not-ready rather than a
 /// column on the row. This names that for a reader and adds no state to the entity.
 /// </para>

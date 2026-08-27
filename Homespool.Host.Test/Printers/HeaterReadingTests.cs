@@ -15,7 +15,6 @@ public sealed class HeaterReadingTests
     /// <remarks>
     /// <b>Worth a test rather than trusting the enum's shape</b> - deleting the sentinel does not
     /// break a build, it silently makes zero mean whichever member moves up into it.
-    /// <c>notes/housekeeping.md</c>, "Enums need a reserved zero".
     /// </remarks>
     [Fact]
     public void TheDefaultStateIsNotARealOne()

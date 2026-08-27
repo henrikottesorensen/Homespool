@@ -11,8 +11,7 @@ namespace Homespool.Host.Certificates;
 /// This is the anchor a provisioned printer trusts, and <c>custom_cert</c> is exclusive — it replaces
 /// Prusa's roots wholesale — so this CA becomes each printer's <b>entire</b> trust store. Its private
 /// key is correspondingly the most sensitive secret in the deployment: whoever holds it can mint a
-/// certificate for any name those printers will believe, permanently and undetectably. See
-/// <c>notes/tls-by-default.md</c>.
+/// certificate for any name those printers will believe, permanently and undetectably.
 /// </remarks>
 public class CertificateOptions
 {
@@ -75,7 +74,7 @@ public class CertificateOptions
     /// </para>
     /// <para>
     /// Renewal is expensive here in a way it is not for a web certificate: a <c>.der</c> cannot be
-    /// transferred over Connect (<c>notes/tls-by-default.md</c>), so replacing the anchor means a USB
+    /// transferred over Connect, so replacing the anchor means a USB
     /// visit to every printer. <b>And there is no revocation either</b> — nothing on the printer does
     /// CRL or OCSP — so a shorter life does not reduce the cost of a compromised key; that is a
     /// fleet-wide visit whatever the validity says. Lifetime therefore only schedules <i>guaranteed</i>

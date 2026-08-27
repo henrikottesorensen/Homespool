@@ -48,7 +48,7 @@ namespace Homespool.Host.Services;
 /// pass.
 /// </para>
 /// <para>
-/// HSTS is not here. It stays opt-in, which `internet-exposure.md` explains: the default deployment
+/// HSTS is not here. It stays opt-in: the default deployment
 /// serves a self-signed certificate, and pinning a browser to HTTPS against one is a way to lock
 /// somebody out of their own printer.
 /// </para>

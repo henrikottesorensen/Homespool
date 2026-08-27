@@ -38,8 +38,8 @@ namespace Homespool.Host.Pages;
 /// </para>
 /// <para>
 /// <b>The tiles poll, like the printer page's status card.</b> A front page whose plaques go stale
-/// is the exact complaint that started the printer-page rebuild - <c>notes/printer-page.md</c> §1,
-/// "a page left open showed a live photograph beside a dead status" - and shipping a fresh one with
+/// is the exact complaint that started the printer-page rebuild - a page left open showed a live
+/// photograph beside a dead status - and shipping a fresh one with
 /// the same defect would be perverse when the machinery already exists.
 /// </para>
 /// </remarks>
@@ -179,8 +179,8 @@ public class IndexModel : PageModel
     /// </summary>
     /// <remarks>
     /// <b>It reloads everything the fragment renders</b>, including the usage counts that decide the
-    /// order. That is the rule <c>notes/printer-page.md</c> §6e was written for - a polled fragment
-    /// may only render state its own handler loads - and here it also means a print started from
+    /// order. That is the rule - a polled fragment may only render state its own handler loads -
+    /// and here it also means a print started from
     /// another tab reorders the page by itself.
     /// </remarks>
     public async Task<IActionResult> OnGetTilesAsync(CancellationToken cancellationToken)

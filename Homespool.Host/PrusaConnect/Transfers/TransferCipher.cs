@@ -13,7 +13,7 @@ namespace Homespool.Host.PrusaConnect.Transfers;
 /// <b>Nothing calls this, deliberately.</b> The encrypted download was built out, run against an
 /// MK3.5 on 2026-07-31 and <b>rejected</b>: it is ~13% slower than the inline path at every size
 /// measured, because the ceiling is the printer's write path rather than the transport
-/// (<c>notes/encrypted-download.md</c>). Kept because this class and the keystream fixture beside it
+/// itself. Kept because this class and the keystream fixture beside it
 /// are <i>evidence about firmware</i> rather than plumbing of ours - verified against Buddy's own
 /// decryptor and against ciphertext Connect itself produced. Regenerating that costs a container
 /// build and a firmware checkout; carrying it costs nothing. Delete both together, or neither.
@@ -27,7 +27,7 @@ namespace Homespool.Host.PrusaConnect.Transfers;
 /// all, unlike the inline one. An on-path attacker cannot read the gcode but <b>can corrupt it</b>,
 /// bit for bit at a position of their choosing, and nothing at any layer will notice. That is gcode
 /// driving heaters and steppers, so it is the reason this path is a LAN proposition and not an
-/// internet-facing one; <c>notes/internet-exposure.md</c> is the other half of that argument.
+/// internet-facing one.
 /// </para>
 /// <para>
 /// <b>Never reuse a key and IV across two files.</b> CTR turns a repeated (key, nonce) pair into the

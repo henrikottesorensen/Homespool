@@ -19,7 +19,7 @@ namespace Homespool.Host.PrusaConnect;
 /// each now a visible choice of <see cref="Field{T}"/> spelling: most fields <b>coalesce</b> (the
 /// wire omits what has not changed, so null maps to absent); the <b>job block clears as a unit</b>
 /// when wholly absent, because firmware guards it with <c>if (params.has_job)</c> and absence is
-/// its own boolean on the wire (the 99%-forever fix, <c>notes/print-queue.md</c>); and the
+/// its own boolean on the wire (the 99%-forever fix); and the
 /// <b>chamber/enclosure/slot blocks are atomic</b> - firmware renders each whole or not at all, so
 /// a present block overwrites every field in it.
 /// </summary>
@@ -61,7 +61,7 @@ public static class PrusaTelemetryMapping
     /// more</b> - which is what removing <c>children</c> bought, and why the two changes arrived
     /// together. The bound that matters is the rate: a printer is authenticated but not trusted, and
     /// at the transport's 1200/min a megabyte apiece is a disk-fill primitive no retention window
-    /// survives (<c>notes/printer-event-bounds.md</c> §6).
+    /// survives.
     /// </remarks>
     internal const int MaxPayloadBytes = 4096;
 

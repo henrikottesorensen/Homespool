@@ -329,8 +329,8 @@ public sealed class TelemetryWriterTests : IDisposable
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This pins the fix for a permanent wedge the slow-database rig found (2026-07-29,
-    /// notes/fake-printer-harness.md): the buffers survive a failed flush by design, but the failed
+    /// This pins the fix for a permanent wedge the slow-database rig found on 2026-07-29:
+    /// the buffers survive a failed flush by design, but the failed
     /// flush's relationship fix-up had written its tracked <see cref="Printer"/> stub onto every
     /// buffered row's navigation property. The next flush re-tracked that dead context's stub via
     /// the navigation, collided with its own fresh stub ("another instance with the same key value
@@ -1599,7 +1599,7 @@ public sealed class TelemetryWriterTests : IDisposable
     /// A sustained drop burst logs one warning, not one per drop. Per-drop logging failed its first
     /// load test: 20 seconds of blast telemetry produced 722,973 warnings and a 1.0 GB log - and
     /// because the callback runs on the producer's thread, the logging itself taxed the message path
-    /// that was already overloaded (notes/fake-printer-harness.md, the blast run).
+    /// that was already overloaded.
     /// </summary>
     [Fact]
     public void ADropBurstInsideTheWarningIntervalLogsExactlyOneWarning()
@@ -1988,7 +1988,7 @@ public sealed class TelemetryWriterTests : IDisposable
     /// </summary>
     /// <remarks>
     /// The event still records that a listing arrived; the entries live where supersession can be
-    /// expressed. <c>notes/printer-event-bounds.md</c>.
+    /// expressed.
     /// </remarks>
     [Fact]
     public async Task ADirectoryListingIsStoredAsADriveListingRow()

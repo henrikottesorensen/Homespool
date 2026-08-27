@@ -21,8 +21,8 @@ namespace Homespool.Host.PrusaConnect;
 /// </para>
 /// <para>
 /// <b>Reachable from the web UI only, and that is a security decision rather than a scoping
-/// accident</b> (Henrik, 2026-08-07). Personal access tokens are deliberately unscoped
-/// (<c>notes/api-tokens.md</c>: "no scopes, no expiry - that way lies a badly-implemented JWT"), so
+/// accident.</b> Personal access tokens are deliberately unscoped - no scopes and no expiry,
+/// because that way lies a badly-implemented JWT - so
 /// any token is full authority over everything <c>/api/v1</c> offers. **The printer's own idle
 /// cutoff is no defence against one**, because reissuing the command before it expires resets it: a
 /// leaked token would mean a nozzle held at maximum indefinitely.
@@ -36,7 +36,7 @@ namespace Homespool.Host.PrusaConnect;
 /// reason not to lean on it.
 /// </para>
 /// <para>
-/// That is a different argument from the one <c>api-tokens.md</c> settled, and worth keeping
+/// That is a different argument from the one that settled token scoping, and worth keeping
 /// separate. Everything an unscoped token can do today is <em>data</em> harm - cancel prints, delete
 /// files, queue rubbish. This would be the first capability with a <b>physical</b> consequence that
 /// persists after the holder stops paying attention. Exposing it on the API needs either scoped

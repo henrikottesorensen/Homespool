@@ -10,7 +10,6 @@ namespace Homespool.Host.Telemetry;
 /// <see cref="ITelemetrySink"/> accepts. Each cell is a <see cref="Field{T}"/>, so the edge states
 /// its merge policy per field - coalesce, authoritative value, or clear - and
 /// <see cref="PrinterLiveStateMerger"/> applies it mechanically with no protocol knowledge at all.
-/// The mapping tables per protocol are in <c>notes/domain-vocabulary.md</c>.
 /// </summary>
 public sealed record TelemetryUpdate
 {

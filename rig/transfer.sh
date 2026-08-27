@@ -8,7 +8,7 @@
 #
 # Run it directly rather than as `sh transfer.sh` - it wants bash, not POSIX sh.
 #
-# Authenticates with a personal access token (notes/api-tokens.md), read from rig/api-token, which
+# Authenticates with a personal access token, read from rig/api-token, which
 # `enrol.sh` writes. Override with TOKEN, or make one at /Account/Manage/ApiTokens.
 #
 # UUID below is a *default and it goes stale*: it names whichever printer was enrolled when this was

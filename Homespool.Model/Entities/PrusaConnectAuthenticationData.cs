@@ -6,7 +6,7 @@ namespace Homespool.Model.Entities;
 /// <summary>
 /// An enrolled printer's standing credential: the fingerprint it presents on the wire and the hash of
 /// the token it authenticates with. One row per enrolled printer, read on the hot path of every
-/// authenticated request and the WebSocket upgrade (AGENT-NOTES §9).
+/// authenticated request and the WebSocket upgrade.
 /// </summary>
 /// <remarks>
 /// <para>

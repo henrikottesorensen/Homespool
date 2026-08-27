@@ -16,8 +16,7 @@ namespace Homespool.Host.Services;
 /// of blast telemetry produced 722,973 drop warnings and a 1.0 GB log - a self-feeding cycle, since
 /// the log I/O runs on the producing thread and steals exactly the capacity the overloaded
 /// component is short of. A normal printer never drives these paths; an attacker can, at wire rate,
-/// which makes an unthrottled Warning/Error site a log-disk denial of service
-/// (notes/fake-printer-harness.md, the blast run and the audit table).
+/// which makes an unthrottled Warning/Error site a log-disk denial of service.
 /// </para>
 /// <para>
 /// Thread-safe and lock-free: any number of threads may <see cref="Record"/> concurrently; a

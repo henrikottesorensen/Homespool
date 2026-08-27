@@ -48,8 +48,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// <para>
 /// <b>The consequence to know about:</b> an account that takes this route is no longer covered by
 /// disabling it at the provider. That is inherent in allowing the transition at all, and it is why
-/// the alternative — refusing the removal outright — was considered first. <c>user-identity.md</c>
-/// carries the reasoning.
+/// the alternative — refusing the removal outright — was considered first.
 /// </para>
 /// <para>
 /// <b>Linking does not go through the invite gate</b>, and must not: <c>Account/ExternalLogin</c>'s

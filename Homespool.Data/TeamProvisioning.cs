@@ -9,10 +9,10 @@ namespace Homespool.Data;
 /// Creates the default team every user is entitled to at account creation.
 /// </summary>
 /// <remarks>
-/// Both places that create a user need this — the bootstrap admin (<c>/setup</c>) and, later,
-/// invite acceptance that mints a new account (phase-1.5 §15 step 6). It lives here, once, so the
-/// second caller cannot drift from the first: the same reasoning that consolidated
-/// <c>AccountConfirmationPolicy</c> in step 4 rather than letting a fourth copy appear.
+/// Both places that create a user need this — the bootstrap admin (<c>/setup</c>) and invite
+/// acceptance that mints a new account. It lives here, once, so the second caller cannot drift from
+/// the first: the same reasoning that consolidated <c>AccountConfirmationPolicy</c> rather than
+/// letting a fourth copy appear.
 /// </remarks>
 public static class TeamProvisioning
 {

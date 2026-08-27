@@ -15,8 +15,7 @@ namespace Homespool.Host.Printing;
 /// <b>The failure is worse for the heaters than for unloading, because it is partial.</b>
 /// <c>M140</c> is the bed and a bed has no tool, so it always applies. Preheat therefore heats the
 /// bed and not the nozzle, and cooling leaves the nozzle hot while reporting both heaters off -
-/// with the printer answering the frame <c>Accepted</c> either way. See
-/// <c>notes/toolchangers.md</c> §3d.
+/// with the printer answering the frame <c>Accepted</c> either way.
 /// </para>
 /// <para>
 /// <b>The wire says which case a printer is in, and it needs no new plumbing.</b> Firmware packs the
@@ -48,8 +47,8 @@ public sealed record ToolTarget
     /// nothing is picked. Always null on a single-tool printer, which has nothing to name.
     /// </summary>
     /// <remarks>
-    /// <b>1-based.</b> Gcode's own <c>T</c> is 0-based, so a caller composing one subtracts - see
-    /// <c>notes/toolchangers.md</c> §2, where getting that backwards unloads the next tool along.
+    /// <b>1-based.</b> Gcode's own <c>T</c> is 0-based, so a caller composing one subtracts.
+    /// Getting that backwards unloads the next tool along.
     /// </remarks>
     public int? PickedTool { get; }
 

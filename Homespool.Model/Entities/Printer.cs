@@ -43,13 +43,13 @@ public class Printer
     public PrinterType Type { get; set; }
 
     /// <summary>
-    /// The team that owns this printer. Printers belong to teams, not users (phase-1.5 §15): this
+    /// The team that owns this printer. Printers belong to teams, not users: this
     /// is what makes sharing a printer between people a matter of team membership rather than a
     /// schema change later.
     /// </summary>
     /// <remarks>
     /// Replaces the earlier <c>Owner</c> (a user id). Keeping both would put authority in two
-    /// places — the same mistake the <c>Material</c>/<c>LoadedMaterial</c> duplication (§13) removed.
+    /// places — the same mistake the <c>Material</c>/<c>LoadedMaterial</c> duplication removed.
     /// An <see cref="int"/> foreign key rather than the team's own surrogate width for the same
     /// reason <see cref="Id"/> is an int: it is cheap and this is a self-hosted service.
     /// </remarks>
@@ -86,7 +86,7 @@ public class Printer
     /// marks the info state dirty on every connect ("Will trigger an Info message on the next
     /// one"), so <c>INFO</c> is guaranteed on connection and re-sent whenever
     /// <c>info_fingerprint()</c> changes. Anything stored at registration would be a strictly
-    /// poorer, staler copy. See AGENT-NOTES §13.
+    /// poorer, staler copy.
     /// </remarks>
     public string? Model { get; set; }
 

@@ -192,9 +192,9 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime, IDisposable
     /// <para>
     /// The websocket transport has always had this bound; the HTTP one did not, and the two carry the
     /// same messages — so a body that would cost the socket its connection could be parsed whole here.
-    /// It takes a valid fingerprint and token to reach it, so this is a blast-radius limit rather than
-    /// a drive-by: <c>notes/duplicate-connection-identity.md</c> treats a leaked printer credential as
-    /// a thing that happens, and one should not be able to stop the server for everyone.
+    /// It takes a valid fingerprint and token to reach it, so this is a blast-radius limit rather
+    /// than a drive-by: a leaked printer credential is a thing that happens, and one should not be
+    /// able to stop the server for everyone.
     /// </para>
     /// <para>
     /// Answered 400 rather than 413, because firmware reads status codes here and treats every 4xx
@@ -578,7 +578,7 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime, IDisposable
         };
 
         // The 16-character header form, which is what a real printer sends on every request of this
-        // transport - see PrinterFingerprint and notes/cross-channel-identity-bug.md.
+        // transport - see PrinterFingerprint.
         request.Headers.Add(Headers.Fingerprint, identity.HeaderFingerprint);
         request.Headers.Add(Headers.Token, token);
 

@@ -16,9 +16,8 @@ services:
     # Pinned, because Docker otherwise derives it from the container id - a new name on every
     # recreation. The printer certificate carries this name and is issued once, so an unpinned name
     # would churn between reissues and go stale the moment the container is replaced; pinning also
-    # keeps the provisioning page able to recognise it (the resolve-to-judge rule,
-    # Homespool.Notes notes/usb-provisioning-bundle.md) and the logs saying "homespool" rather than
-    # a hex id.
+    # keeps the provisioning page able to recognise it (the resolve-to-judge rule) and the logs
+    # saying "homespool" rather than a hex id.
     hostname: homespool
 
     # NOTHING is published from this container. All three listeners - people on 8080, printers on
@@ -29,7 +28,7 @@ services:
     # The printer port is not served TLS from here because .NET cannot serve that TLS correctly:
     # SslStream emits records far larger than the kilobyte of plaintext the firmware holds - a real
     # limit the printer never advertises - and file transfers fail. nginx (OpenSSL) can be capped;
-    # see notes/tls-by-default.md and nginx/homespool-printer.conf.
+    # see nginx/homespool-printer.conf.
     #
     # To read the printer wire in the clear, use the plaintext override rather than adding a port
     # here: `docker compose -f compose.yaml -f compose.plaintext.yaml up`.
@@ -55,7 +54,7 @@ services:
 
       # Floor on how often a printer's telemetry is stored, in seconds; 0 keeps every sample, the
       # right answer on a machine with a real disk. Raise it on an SD card, where telemetry is the
-      # dominant write and cards die of writes - Homespool.Notes notes/sd-card-performance.md.
+      # dominant write and cards die of writes.
       Storage__MinimumSampleIntervalSeconds: "${TELEMETRY_MIN_SAMPLE_INTERVAL_SECONDS:-0}"
 
       # Cameras. The sidecar is addressed by service name on this network; nothing about a camera
@@ -207,8 +206,7 @@ services:
     # Pinned by digest: this is 1.9.14, the same digest pi/decode-bench.sh pins, so the sidecar
     # that runs is the sidecar that was measured. Upstream publishes no floating 1.9 or 1 tag, so
     # an exact pin is the only option that does not drift; bumping is manual and rare, and the
-    # bench script's pin moves with this one. The tag survey and the decode figures are in
-    # Homespool.Notes notes/camera-support.md.
+    # bench script's pin moves with this one.
     #
     # Plain, not -hardware: that variant is linux/amd64 ONLY and would not pull on a Pi at all.
     image: alexxit/go2rtc@sha256:675c318b23c06fd862a61d262240c9a63436b4050d177ffc68a32710d9e05bae  # 1.9.14
@@ -225,8 +223,8 @@ services:
     # an empty password turns authentication ON with an empty key and answers 401 to everything,
     # including Homespool. Set the pair together or not at all - half of it is worse than none.
     #
-    # allow_paths lists exactly the endpoints Go2RtcClient calls; each path's why is in
-    # Homespool.Notes notes/camera-support.md. go2rtc applies the list by never registering the
+    # allow_paths lists exactly the endpoints Go2RtcClient calls. go2rtc applies the list by
+    # never registering the
     # other paths with its mux, so a missing path answers a bare 404 - distinguishable from "no
     # such stream" only by the body: Go's mux says "404 page not found", a registered handler says
     # go2rtc's own "stream not found". Any new endpoint Homespool calls needs this list edited, and
@@ -242,7 +240,7 @@ services:
     # holding the credential, and config can carry a camera's RTSP password when its source embeds
     # one. What buys that back is Homespool owning the WebRTC candidate (WebRtcConfigurer) - an
     # address it did not write is one it could never check. What this list is NOT is closing a
-    # remote-execution hole - see Homespool.Notes notes/security-audit-2026-08-17.md.
+    # remote-execution hole.
     command:
       - go2rtc
       - -c

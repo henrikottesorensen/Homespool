@@ -85,8 +85,8 @@ public sealed class RegistrationRetentionService : BackgroundService
     /// Public for the reason <c>QueueAdvancer</c> and <c>TelemetryWriter</c> are: on .NET 10
     /// <see cref="BackgroundService.StartAsync"/> schedules <c>ExecuteAsync</c> onto the pool and
     /// returns, so starting and stopping a hosted service proves nothing about whether its first pass
-    /// ran — see <c>notes/net10-breaking-changes.md</c>, where that race cost a day of chasing a
-    /// telemetry flake. A test that wants a sweep calls this.
+    /// ran; that race once cost a day of chasing a telemetry flake. A test that wants a sweep
+    /// calls this.
     /// </remarks>
     public async Task SweepAsync(CancellationToken cancellationToken)
     {

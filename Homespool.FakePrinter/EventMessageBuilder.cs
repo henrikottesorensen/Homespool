@@ -142,7 +142,7 @@ public static class EventMessageBuilder
     /// <param name="startCommandId">
     /// The command that started it, or null for a transfer the server did not start - in which case
     /// <b>no <c>data</c> object is emitted at all</b> (render.cpp:538-543), a shape confirmed on a
-    /// real wire in <c>notes/protocol-reference.md</c>.
+    /// real wire.
     /// </param>
     /// <remarks>These are unsolicited reports, so they carry no <c>command_id</c>.</remarks>
     public static byte[] BuildTransferTerminal(string eventType, string state, int transferId, uint? startCommandId)
@@ -182,8 +182,7 @@ public static class EventMessageBuilder
     /// <para>
     /// <b>Not <c>FILE_CHANGED</c>.</b> One ternary picks between them (planner.cpp:503) and a created
     /// <i>file</i> takes this arm; <c>FILE_CHANGED</c> is for deletions, folder creations and the
-    /// combined case. Two notes in this repository had that backwards - see
-    /// <c>notes/protocol-reference.md</c>, "<c>FILE_INFO</c> vs <c>FILE_CHANGED</c>".
+    /// combined case.
     /// </para>
     /// <para>
     /// Field order is render.cpp:466-498. Two <b>documented deviations</b> from what real hardware
@@ -418,7 +417,7 @@ public static class EventMessageBuilder
     /// (<c>Homespool.Host.Test/websocket.capture</c>, a Core One on 6.4.0) with this identity's
     /// values substituted, minus the model-specific extras (<c>mmu</c>, <c>addon_power</c>). Note
     /// it carries the <b>full 50-character</b> fingerprint and the serial - the one place either
-    /// appears on <c>/p/ws</c> (see <c>notes/cross-channel-identity-bug.md</c>).
+    /// appears on <c>/p/ws</c>.
     /// </remarks>
     public static byte[] BuildInfo(PrinterIdentity identity,
                                    string state,

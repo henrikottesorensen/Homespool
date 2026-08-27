@@ -10,8 +10,8 @@ namespace Homespool.Host.PrusaConnect;
 
 /// <summary>
 /// Writes the <c>[service::connect]</c> section of a <c>prusa_printer_settings.ini</c> — as a snippet
-/// to read on screen, or as the whole file that goes into a provisioning bundle
-/// (protocol-reference.md, "The .ini path is a second enrolment channel").
+/// to read on screen, or as the whole file that goes into a provisioning bundle. The <c>.ini</c>
+/// path is a second enrolment channel alongside the code exchange.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -29,8 +29,7 @@ namespace Homespool.Host.PrusaConnect;
 /// <para>
 /// <b>Every key, every time.</b> An omitted key is not left alone by the firmware — it is reset to its
 /// struct default, and <c>token</c>'s default is empty, which de-enrols the printer. That is one of the
-/// four hand-assembly failures this path exists to make unrepresentable
-/// (<c>notes/usb-provisioning-bundle.md</c>).
+/// four hand-assembly failures this path exists to make unrepresentable.
 /// </para>
 /// </remarks>
 public static class ConnectIni
@@ -132,8 +131,7 @@ public static class ConnectIni
     /// <remarks>
     /// Left in English for the same reason PrusaSlicer's menu paths are: it names something the reader
     /// will look for on another screen, spelled the way that screen spells it. Whether that is right
-    /// depends on whether their firmware speaks their language, which this cannot know - see
-    /// <c>notes/localisation.md</c>.
+    /// depends on whether their firmware speaks their language, which this cannot know.
     /// </remarks>
     private const string PrinterMenuPath = "Prusa Connect -> Load Settings";
 

@@ -27,7 +27,7 @@ namespace Homespool.Host.Controllers;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Files are owned by the user, not by a printer</b> (<c>notes/file-storage.md</c>), which is why
+/// <b>Files are owned by the user, not by a printer</b>, which is why
 /// this is its own controller rather than more routes on <see cref="PrinterController"/>. An upload
 /// names no printer; choosing one happens later, and is that controller's business.
 /// </para>
@@ -41,7 +41,7 @@ namespace Homespool.Host.Controllers;
 /// </para>
 /// <para>
 /// Cookie- or token-authenticated like the rest of <c>/api/v1</c>, so every call here is curl-able
-/// with a personal access token (<c>notes/api-tokens.md</c>).
+/// with a personal access token.
 /// </para>
 /// </remarks>
 [ApiController]

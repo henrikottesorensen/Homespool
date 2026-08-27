@@ -3,8 +3,8 @@ using System;
 namespace Homespool.FakePrinter;
 
 /// <summary>
-/// Generates telemetry from the device's live state - our invention, clearly labelled as such
-/// (mitigation #3 in <c>notes/fake-printer-harness.md</c>): shapes come from
+/// Generates telemetry from the device's live state - our invention, clearly labelled as such:
+/// shapes come from
 /// <see cref="TelemetryMessageBuilder"/>, cadence and the full/slim alternation mimic the firmware's
 /// scheduler, but the values are synthesized.
 /// </summary>

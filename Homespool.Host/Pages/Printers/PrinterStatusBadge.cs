@@ -10,14 +10,14 @@ namespace Homespool.Host.Pages.Printers;
 /// <para>
 /// <b>Shared by the listing and the detail page, so the two cannot drift.</b> Both answer "what is
 /// this printer doing" in the same vocabulary, and a second copy of the mapping would be free to
-/// disagree with <c>notes/visual-identity.md</c> §4b one page at a time.
+/// disagree one page at a time.
 /// </para>
 /// <para>
 /// <b>Nothing here is localised, and that is the boundary rather than an omission.</b> These return
 /// CSS class names - values Bootstrap parses, not values a person reads - so translating one would
 /// produce a class that styles nothing. The words beside them come from
 /// <see cref="Localisation.PrinterStatusText"/>: same enum, same corner of the page, opposite sides
-/// of the line <c>notes/localisation.md</c> §2 draws.
+/// of the same line.
 /// </para>
 /// </remarks>
 public static class PrinterStatusBadge
@@ -47,7 +47,7 @@ public static class PrinterStatusBadge
     /// <remarks>
     /// <b>Hollow, and the shape is the whole point.</b> Absence is not a severity - a printer
     /// switched off overnight is offline and perfectly well - so it gets a form of its own rather
-    /// than a hue that would over-claim on the common case. <c>notes/visual-identity.md</c> §4b.
+    /// than a hue that would over-claim on the common case.
     /// </remarks>
     public const string Absent = "border border-secondary text-body-secondary";
 }

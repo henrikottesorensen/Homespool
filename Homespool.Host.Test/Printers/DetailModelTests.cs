@@ -350,7 +350,7 @@ public sealed class DetailModelTests : IDisposable
     /// <b><c>M140</c> is the bed and has no tool, so it lands regardless; <c>M104</c> declines.</b>
     /// Sending the pair would heat the bed and not the nozzle - or, cooling, leave the nozzle hot
     /// while the page reported both heaters off - with the printer answering the frame
-    /// <c>Accepted</c> either way. <c>notes/toolchangers.md</c> §3d.
+    /// <c>Accepted</c> either way.
     /// </para>
     /// <para>
     /// <c>PreheatPartiallyAppliedException</c> was written for that shape and cannot reach it: it

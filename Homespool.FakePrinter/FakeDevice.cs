@@ -71,7 +71,7 @@ public sealed class FakeDevice
     /// Settable because the queue's loop is supposed to check this before pushing a file, and a
     /// constant makes that check untestable - pipelining means files land ahead of the print and
     /// nothing removes them, so a queue running for a week fills a stick that a one-at-a-time workflow
-    /// never would (<c>notes/print-queue.md</c>).
+    /// never would.
     /// </remarks>
     public long FreeSpace { get; set; } = 63729893376;
 
@@ -158,8 +158,7 @@ public sealed class FakeDevice
     /// finished printer is <i>not</i> available is therefore entirely the server's own discipline,
     /// with nothing underneath it, and a fake that refused here would hide exactly that: a loop
     /// advancing on <c>Finished</c> would fail against this double and pass against hardware, which is
-    /// the worst way round. See <c>notes/print-queue.md</c>, "Firmware will start a print onto a
-    /// finished part".
+    /// the worst way round.
     /// </para>
     /// <para>
     /// One simplification: firmware can also answer <c>"Can't print now"</c> a second way, when
@@ -190,7 +189,7 @@ public sealed class FakeDevice
     /// <remarks>
     /// The transition the whole queue turns on: a finished print <b>parks</b> until a person clears
     /// the bed and readies the printer - observed on hardware as 93 seconds in <c>FINISHED</c>
-    /// (<c>notes/print-queue.md</c>). Distinct from <see cref="TryStop"/>, which is a cancellation and
+    /// on hardware. Distinct from <see cref="TryStop"/>, which is a cancellation and
     /// lands on <c>STOPPED</c> with no job.
     /// </remarks>
     public bool FinishPrint()

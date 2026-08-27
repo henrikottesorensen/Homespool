@@ -30,7 +30,7 @@ namespace Homespool.Host.PrusaConnect.Commands;
 /// </para>
 /// <para>
 /// Connect sends this in production - 13 times across the captures, always with a <c>job_id</c>
-/// kwarg - and hardware answered one in 0.13 s (<c>notes/protocol-reference.md</c>).
+/// kwarg - and hardware answered one in 0.13 s.
 /// </para>
 /// </remarks>
 public class SendJobInfo : ISendableCommand<JobInfoEventDataDTO>

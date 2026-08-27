@@ -80,7 +80,7 @@ public sealed class RequiredTwoFactorTests : IAsyncLifetime, IDisposable
     /// <b>"Was not sent to enrol", not "did not redirect".</b> Two of these three redirect for reasons
     /// of their own and always did: <c>Logout</c> lands on the home page, and <c>ShowRecoveryCodes</c>
     /// sends a reader holding no codes to <c>TwoFactorAuthentication</c> rather than drawing an empty
-    /// list (<c>user-identity.md</c>). Asserting on the absence of a redirect failed against correct
+    /// list. Asserting on the absence of a redirect failed against correct
     /// behaviour and would have been "fixed" by exempting less.
     /// </remarks>
     [Theory]

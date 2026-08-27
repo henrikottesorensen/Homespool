@@ -13,7 +13,7 @@ namespace Homespool.Host.PrusaConnect;
 /// <remarks>
 /// The gcode allowlist is preserved by construction: no intent carries gcode, and
 /// <see cref="Printing.SetTemperatures"/> translates to the composing command the allowlist
-/// already vets line by line - see <c>notes/gcode-allowlist.md</c>.
+/// already vets line by line.
 /// </remarks>
 public static class PrusaIntentTranslator
 {

@@ -91,8 +91,8 @@ public class ConfirmEmailChangeModel : PageModel
             return Page();
         }
 
-        // One round trip, so no transaction: SaveChangesAsync is already transactional
-        // (notes/transactions.md). It used to need one because the username was the email and had to
+        // One round trip, so no transaction: SaveChangesAsync is already transactional.
+        // It used to need one because the username was the email and had to
         // move with it - two UserManager calls that could half-land, leaving an account signing in
         // under the old address while displaying the new one. The username is now the person's own and
         // an address change does not touch it, so the pairing that needed the transaction is gone

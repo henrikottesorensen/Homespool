@@ -11,7 +11,7 @@ namespace Homespool.Host.DTO;
 /// <c>text</c> and only checks it when present, where <c>PrusaLink::validate_version_text</c>
 /// <em>rejects</em> a missing one and requires it to name PrusaLink or OctoPrint
 /// (<c>docs/prusa-slicer-integration.md</c> §2.3, §3.1). So this is the one compatible answer that
-/// claims to be nobody. See <c>notes/prusa-slicer-print-host.md</c>.
+/// claims to be nobody.
 /// </para>
 /// <para>
 /// <see cref="Api"/> is the API level the client expects to find and reads no further into;

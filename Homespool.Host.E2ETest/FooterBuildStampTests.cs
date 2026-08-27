@@ -20,8 +20,8 @@ namespace Homespool.Host.E2ETest;
 /// <para>
 /// <b>The anonymous case is the test that matters.</b> The shared layout renders on the sign-in and
 /// registration pages, so an unguarded stamp would put the exact commit of the running deployment on
-/// a public page - which names precisely which known defects apply, under the standing assumption in
-/// <c>notes/internet-exposure.md</c> that the deployment is internet-facing. The guard is one
+/// a public page - which names precisely which known defects apply, under the standing assumption
+/// that the deployment is internet-facing. The guard is one
 /// <c>@@if</c> in a shared file, which is exactly the kind of thing a later edit removes without
 /// noticing, and nothing else in the suite would go red.
 /// </para>

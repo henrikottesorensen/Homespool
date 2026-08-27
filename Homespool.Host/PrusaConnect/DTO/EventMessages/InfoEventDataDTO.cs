@@ -7,7 +7,7 @@ namespace Homespool.Host.PrusaConnect.DTO.EventMessages;
 /// <summary>
 /// The <c>INFO</c> event's <c>data</c> object - the one event payload typed now rather than left
 /// as raw JSON, because <c>Printer.Model</c>/<c>Firmware</c> are meant to come from it
-/// (<c>phase-1-storage.md</c> §13). Every field is nullable: only <c>firmware</c>/<c>printer_type</c>/
+/// Every field is nullable: only <c>firmware</c>/<c>printer_type</c>/
 /// <c>sn</c>/<c>appendix</c>/<c>fingerprint</c>/<c>nozzle_diameter</c>/<c>transfer_paused</c>/
 /// <c>network_info</c>/<c>slots</c> look unconditional in firmware source, but that reading isn't
 /// backed by a real multi-hardware capture the way the telemetry DTO is - so nothing here is
@@ -47,8 +47,7 @@ public class InfoEventDataDTO
     /// <b>Treat as a credential.</b> Combined with <c>network_info</c>'s address it grants full
     /// authenticated access to the printer's HTTP API - including <c>GET /usb/&lt;path&gt;</c>, which
     /// serves any file on the drive. That is the only route by which a file can be fetched
-    /// <i>from</i> a printer; the Connect protocol has no such command. See
-    /// <c>notes/transfer-protocol.md</c>, "The other direction".
+    /// <i>from</i> a printer; the Connect protocol has no such command.
     /// </remarks>
     [JsonPropertyName("api_key")]
     public string? ApiKey { get; set; }

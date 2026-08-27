@@ -15,7 +15,7 @@ namespace Homespool.Host.Cameras;
 /// <remarks>
 /// <para>
 /// <b>A camera password cannot be hashed</b>, because it is presented on every connection - the same
-/// property <c>bambu-protocol.md</c> records for a Bambu access code, and the first case in this
+/// property a Bambu access code has, and the first case in this
 /// application where "hash it" is not the answer. Data Protection is already wired up and gives
 /// AES-256-CBC + HMAC-SHA256 with key rotation, so the realistic alternative is not "nothing", it is
 /// somebody writing AES code.

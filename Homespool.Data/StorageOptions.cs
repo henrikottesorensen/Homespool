@@ -63,8 +63,8 @@ public class StorageOptions
     /// </para>
     /// <para>
     /// <b>Per printer, not a total.</b> A global cap would let one chatty printer evict every other
-    /// printer's events, which is the failure <c>notes/internet-exposure.md</c> describes for a
-    /// global rate limiter - "strictly worse than no limiting". The limiter cannot partition because
+    /// printer's events, which is the failure a global rate limiter has - strictly worse than no
+    /// limiting. The limiter cannot partition because
     /// it runs before authentication and the only identity available there is forgeable; this sweep
     /// runs over rows already attributed to a printer, so it can.
     /// </para>

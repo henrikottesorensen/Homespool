@@ -12,7 +12,7 @@ namespace Homespool.FakePrinter;
 /// The <c>"transfer": "inline"</c> marker leading the object is what keeps these out of the server's
 /// telemetry branch: the message carries neither <c>event</c> nor <c>state</c>, so without the marker
 /// it would be parsed as telemetry and throw on the missing <c>state</c>, closing the socket
-/// mid-upload. That was the trap <c>notes/transfer-protocol.md</c> flagged for the dispatcher.
+/// mid-upload. That is the trap the dispatcher has to avoid.
 /// </remarks>
 public static class TransferRequestBuilder
 {

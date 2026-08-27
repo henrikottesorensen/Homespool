@@ -8,8 +8,8 @@ namespace Homespool.FakePrinter;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>A rig instrument, not firmware-faithful</b> - the same labelling mitigation #3 in
-/// <c>notes/fake-printer-harness.md</c> applies to <see cref="SyntheticTelemetrySource"/>. Firmware
+/// <b>A rig instrument, not firmware-faithful</b> - the same labelling that applies to
+/// <see cref="SyntheticTelemetrySource"/>. Firmware
 /// emits events <em>in addition to</em> telemetry, driven by things actually happening; this
 /// substitutes one for a telemetry message on a fixed count, which no printer does. What it
 /// reproduces faithfully is the only property the writer's buffers care about: the <em>ratio</em>

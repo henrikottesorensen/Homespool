@@ -57,7 +57,7 @@ public class PrintStopService
     /// <para>
     /// <b>The row is found before the command is sent, and written after.</b> Not for tidiness:
     /// <c>STOP_PRINT</c>'s ack means the abort was <i>accepted</i>, not that the print has ended
-    /// (<c>notes/print-queue.md</c>, "Stop, and the ack that lies"), so the queue's loop may close the
+    /// rather than finished, so the queue's loop may close the
     /// row from telemetry while this call is still in flight. Reading the id first means a close
     /// landing in that window costs the attribution nothing.
     /// </para>

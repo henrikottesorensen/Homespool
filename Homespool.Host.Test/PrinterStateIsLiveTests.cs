@@ -219,7 +219,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
 
         // The value a real MK3.5 wrote on 2026-07-28 is held as 0.400000005960464, because SQLite
         // has no 4-byte float. It reaches the wire as "0.4" only because this field is a float at
-        // both ends - typed double? it would serialise the widening artefact. notes/floating-point.md.
+        // both ends - typed double? it would serialise the widening artefact.
         System.Text.Json.JsonSerializer.Serialize(dto.NozzleDiameter).Should().Be("0.4");
     }
 

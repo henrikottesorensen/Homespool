@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Drives the real Prusa Connect SDK against a running Homespool.
 
-WHY THIS EXISTS. `notes/http-transport.md` records that the HTTP transport's ingest half is built
-and that "the SDK-driven MK3S+-via-a-Pi case remains untested and ungated". This is what tests it.
+WHY THIS EXISTS. The HTTP transport's ingest half is built, but the SDK-driven MK3S+-via-a-Pi
+case was untested and ungated. This is what tests it.
 The other rig in this directory runs the *firmware's* Connect client; this runs the *Python* one,
 which is the client an MK3S+ behind a Raspberry Pi actually uses, and which speaks HTTP only.
 
@@ -48,7 +48,7 @@ from prusa.connect.printer.const import Event as EventType, Source, State
 from prusa.connect.printer.models import Event, Register, Telemetry
 
 # Any 37-character string. The SDK sends the same value in the body and in every header, where the
-# firmware truncates to 16 in headers only - the trap notes/cross-channel-identity-bug.md is about.
+# firmware truncates to 16 in headers only - the cross-channel identity trap.
 # Homespool keys on the first 16 characters of whichever form arrives, so a consistent sender agrees
 # with itself and the trap does not apply here. Long on purpose, so that truncation is exercised.
 FINGERPRINT = "sdkshimfingerprint0123456789abcdef0123"

@@ -16,7 +16,7 @@ namespace Homespool.Host.Test;
 /// A <c>Content-Length</c> check is not a limit: the header is optional and a client can lie about
 /// it. These assert the cap holds on what is actually read, which is the only version an attacker
 /// cannot route around - and an unbounded upload endpoint on an internet-facing deployment is a
-/// disk-exhaustion primitive (notes/internet-exposure.md).
+/// disk-exhaustion primitive.
 /// </remarks>
 public class LengthLimitingStreamTests
 {

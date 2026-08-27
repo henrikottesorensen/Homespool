@@ -10,8 +10,8 @@ namespace Homespool.Model.Entities;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>The filesystem is the truth and this is its index</b>, not the other way round
-/// (<c>notes/file-storage.md</c>). A file that is on disk is a file the user has, whether or not a row
+/// <b>The filesystem is the truth and this is its index</b>, not the other way round. A file that is
+/// on disk is a file the user has, whether or not a row
 /// describes it; the two can disagree only across a crash between the write and the commit, and
 /// reconciliation is cheap because the tree is enumerable and self-describing. So nothing here is
 /// consulted to decide whether a file <i>exists</i> - <c>UserFileStore</c> answers that by looking.
@@ -71,18 +71,18 @@ public class PrintFile
     /// null.
     /// </para>
     /// <para>
-    /// <b>SHA-384 rather than the SHA-256 <c>notes/file-storage.md</c> sketched</b> (Henrik,
-    /// 2026-08-02). Interop was the only argument for 256 and it did not survive checking: PrusaLink's
+    /// <b>SHA-384 rather than SHA-256.</b> Interop was the only argument for 256 and it did not
+    /// survive checking: PrusaLink's
     /// vendored spec carries no content hash at all, so there is nothing on the other side to compare
     /// against. What is left is that every other hash in this codebase is 384, and that on a CPU with
     /// no SHA acceleration - the Pi 3B's Cortex-A53 - 64-bit words are the friendlier ones.
     /// </para>
     /// <para>
-    /// <b>Pinned, not chosen per host.</b> <c>notes/api-tokens.md</c> reaches the same rule for the
-    /// token hash and for a different reason - a varying lookup key looks like mass revocation. Here
+    /// <b>Pinned, not chosen per host.</b> The token hash is pinned by the same rule for a different
+    /// reason - a varying lookup key looks like mass revocation. Here
     /// the reason is dedup: if this column is ever indexed to find identical content, an algorithm
     /// that differs between two hosts silently stops matching. This one is <i>not</i> security-
-    /// relevant, and should not inherit that note's reasoning by association.
+    /// relevant, and should not inherit that reasoning by association.
     /// </para>
     /// </remarks>
     public string? Digest { get; set; }
@@ -116,8 +116,8 @@ public class PrintFile
     /// <remarks>
     /// <b>Compared with a tolerance, never for equality</b>, matching firmware's own check
     /// (<c>gcode_compatibility.cpp</c> allows 0.001 mm). It is a <c>float</c> for symmetry with
-    /// <c>Printer.NozzleDiameter</c>; nothing filters on it in SQL, which is the thing
-    /// <c>notes/floating-point.md</c> warns about.
+    /// <c>Printer.NozzleDiameter</c>; nothing filters on it in SQL, which is where a stored float
+    /// would be a hazard.
     /// </remarks>
     public float? NozzleDiameter { get; set; }
 

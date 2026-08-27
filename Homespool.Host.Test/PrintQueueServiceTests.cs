@@ -29,7 +29,7 @@ namespace Homespool.Host.Test;
 /// <remarks>
 /// The permission split is the part worth pinning: <b>one shared queue per printer</b>, changed by
 /// anyone with <c>CanUse</c> including entries somebody else added, and merely readable with
-/// <c>CanRead</c> (<c>notes/print-queue.md</c>).
+/// <c>CanRead</c>.
 /// </remarks>
 public sealed class PrintQueueServiceTests : IDisposable
 {

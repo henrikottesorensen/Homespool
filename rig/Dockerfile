@@ -1,5 +1,5 @@
 # Build environment for the Buddy connect rig - the real Prusa firmware Connect client, built as a
-# host binary and pointed at Homespool. See notes/buddy-rig.md.
+# host binary and pointed at Homespool.
 #
 # This lives here rather than in the firmware checkout on purpose: the rig branch there is shaped to
 # be offerable upstream, and a Homespool-specific Dockerfile would undo that.

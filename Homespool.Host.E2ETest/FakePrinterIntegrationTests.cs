@@ -37,7 +37,7 @@ namespace Homespool.Host.E2ETest;
 /// The FakePrinter driven against the full pipeline - auth handler, WebSocket handler, dispatcher,
 /// actor, telemetry writer, real SQLite. Covers what one physical printer cannot: capture replay
 /// into persisted rows without hardware, reconnect churn, and the command-path misbehaviours a
-/// healthy printer refuses to produce (<c>notes/fake-printer-harness.md</c>).
+/// healthy printer refuses to produce.
 /// </summary>
 /// <remarks>
 /// The command response timeout is dropped to 2 s via options so the timeout tests cost seconds,

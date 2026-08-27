@@ -63,4 +63,4 @@ and threw before reaching the database. Fixed by removing the navigations outrig
 is pinned by `AFlushFailureDoesNotWedgeTheWriterOnceTheDatabaseRecovers`.
 
 Also measured: both ceilings hold exactly, events survive ~7.6× longer than samples, and an outage
-turns three log sites into wire-rate ones. Full record in `notes/fake-printer-harness.md`.
+turns three log sites into wire-rate ones.

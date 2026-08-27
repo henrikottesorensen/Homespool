@@ -34,8 +34,8 @@ namespace Homespool.Host.E2ETest;
 /// for the ownership cases, that the caller's identity is what scopes the answer.
 /// </para>
 /// <para>
-/// <b>The routes are ours as of 2026-07-31</b> (<c>notes/file-storage.md</c>): files are addressed by
-/// name rather than by a Connect-shaped hash, and the two start operations became send-versus-print.
+/// <b>The routes are ours as of 2026-07-31</b>: files are addressed by name rather than by a
+/// Connect-shaped hash, and the two start operations became send-versus-print.
 /// The tests for <c>printNow</c> and for the <c>hash</c>-shaped upload response went with those
 /// shapes rather than being rewritten.
 /// </para>
@@ -117,7 +117,7 @@ public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
     /// the printer <i>reports</i> paths that way (<c>is_sfn: true</c>) - but
     /// <c>MarlinPrinter::start_print</c> passes ours to <c>print_begin</c> unconverted
     /// (marlin_printer.cpp:540), and a derived <c>~N</c> index would be a guess that prints a different
-    /// file. See <c>notes/protocol-reference.md</c>, "<c>FILE_INFO</c> vs <c>FILE_CHANGED</c>".
+    /// file.
     /// </remarks>
     [Fact]
     public async Task AnUploadReportsThePathThePrinterWillKnowItBy()
@@ -374,8 +374,7 @@ public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
 
     /// <summary>
     /// Uploading is not anonymous. The endpoint carries <c>[Authorize]</c>, and an unauthenticated
-    /// caller must not be able to write to the server's disk - the reason
-    /// <c>notes/internet-exposure.md</c> exists at all.
+    /// caller must not be able to write to the server's disk.
     /// </summary>
     /// <remarks>
     /// <b>401, exactly</b> - not the login redirect this asserted until personal access tokens landed.
@@ -405,8 +404,8 @@ public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
 
     /// <summary>
     /// The whole point of the feature: a bearer token gets a script through the same endpoint a
-    /// browser session reaches by cookie, with no login page, no cookie jar and no antiforgery dance
-    /// (<c>notes/api-tokens.md</c>).
+    /// browser session reaches by cookie, with no login page, no cookie jar and no antiforgery
+    /// dance.
     /// </summary>
     [Fact]
     public async Task AnUploadAuthenticatedByBearerTokenSucceeds()

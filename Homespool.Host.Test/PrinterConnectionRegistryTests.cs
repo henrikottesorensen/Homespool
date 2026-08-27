@@ -106,7 +106,7 @@ public class PrinterConnectionRegistryTests
     /// Before this, displacement was a silent overwrite: the loser's read loop kept persisting
     /// telemetry under the same printer id while being unreachable for commands, so one printer had
     /// two writers and a live state that flip-flopped between them. Found when two Buddy-rig clients
-    /// accidentally ran against one identity (notes/buddy-rig.md).
+    /// accidentally ran against one identity.
     /// </remarks>
     [Fact]
     public void ASecondConnectionTakesOverAndShutsTheFirstOneDown()

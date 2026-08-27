@@ -6,8 +6,7 @@ namespace Homespool.FakePrinter.Test;
 
 /// <summary>
 /// The identity's shape rules: <c>printerHash()</c>'s 50-symbol output alphabet, and the
-/// 16-character header truncation that once broke real enrolment
-/// (<c>notes/cross-channel-identity-bug.md</c>).
+/// 16-character header truncation that once broke real enrolment.
 /// </summary>
 public class PrinterIdentityTests
 {

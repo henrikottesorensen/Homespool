@@ -145,8 +145,7 @@ public sealed class RemoteReadyAllowedTests : IDisposable
     /// <remarks>
     /// Asserted by the flag being reachable only through the page and the settings write, which is
     /// what this test pins: turning it off changes no permission and blocks no service call. If this
-    /// test ever has to change, the decision in <c>notes/print-queue.md</c> has been reversed and
-    /// should be reversed there too rather than here.
+    /// test ever has to change, that decision has been reversed.
     /// </remarks>
     [Fact]
     public async Task TurningItOffChangesNoPermissionOnThePrinterItself()

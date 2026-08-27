@@ -18,7 +18,7 @@ namespace Homespool.Host.Test;
 
 /// <summary>
 /// <see cref="TeamService.GetAllTeamsAsync"/> - the admin lookup used to populate the team picker when
-/// inviting someone into an existing team (AGENT-NOTES phase-1.5 §15 step 6).
+/// inviting someone into an existing team.
 /// </summary>
 public sealed class TeamServiceTests : IDisposable
 {

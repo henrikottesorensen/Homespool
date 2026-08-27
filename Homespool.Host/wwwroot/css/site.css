@@ -329,8 +329,8 @@ body.camera-maximised-open {
    The printer page's status card, its metric tiles and its temperature graph.
 
    Every colour below is a Bootstrap CSS variable rather than a literal, which is what makes the
-   whole block answer both themes at once - the same discipline §1 of notes/visual-identity.md
-   argues for, and for the same reason: a hex written here is a hex that is wrong in one mode. */
+   whole block answer both themes at once, for the same reason: a hex written here is a hex that
+   is wrong in one mode. */
 
 /* The card is deliberately plain. It carries the loudest thing on the page - a status badge in a
    semantic colour - and a border or a tint around that would be a second voice saying the same
@@ -702,7 +702,7 @@ body.camera-maximised-open {
 
 /* Per-tool rows on the status card. TWO FIXED COLUMNS above the breakpoint, one below - not
    auto-fit, which was the first attempt and measured out at three columns at 1000px and four at
-   1280 (notes/toolchangers.md §3b). "As many as fit" is not a design here: tool numbers are not
+   1280. "As many as fit" is not a design here: tool numbers are not
    contiguous, so a reader hunting tool 5 among 1, 2, 4, 8 in a reflowed grid has no rule to follow.
 
    Its own grid rather than Bootstrap's .row, because .row's gutters are negative margins on a

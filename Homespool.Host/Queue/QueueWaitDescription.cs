@@ -15,7 +15,7 @@ namespace Homespool.Host.Queue;
 /// </para>
 /// <para>
 /// <b>No percentages.</b> Nothing persists transfer progress yet, so "sending" is the whole of what
-/// can honestly be said - see <c>file-storage.md</c>, "Still not done".
+/// can honestly be said.
 /// </para>
 /// <para>
 /// The one worth reading twice is <see cref="QueueWaitReason.PrinterNotAvailable"/>. It carries a rule

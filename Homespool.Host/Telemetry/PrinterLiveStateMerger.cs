@@ -7,9 +7,8 @@ namespace Homespool.Host.Telemetry;
 
 /// <summary>
 /// Applies a <see cref="TelemetryUpdate"/> to a <see cref="PrinterLiveState"/>, and projects the
-/// merged result into a dense <see cref="TelemetrySample"/>. See phase-3 notes
-/// (<c>notes/phase-3-persistence.md</c>) for why this has to be a two-step merge-then-snapshot
-/// rather than writing the raw message straight to a sample row.
+/// merged result into a dense <see cref="TelemetrySample"/>. Two steps rather than one, because a
+/// raw message speaks for only some of the fields a sample row carries.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -21,8 +20,7 @@ namespace Homespool.Host.Telemetry;
 /// assigned - null included, which is how a job block clears - and an absent one keeps the
 /// last-known value. Every judgement about <i>which</i> fields a message speaks for belongs to
 /// the protocol edge that heard it (<c>PrusaTelemetryMapping</c> for Prusa Connect), because the
-/// answer differs per protocol and even per model - <c>notes/domain-vocabulary.md</c> and the
-/// Bambu X1/P1 split in <c>notes/bambu-protocol.md</c>.
+/// answer differs per protocol and even per model.
 /// </para>
 /// </remarks>
 public static class PrinterLiveStateMerger
@@ -239,9 +237,8 @@ public static class PrinterLiveStateMerger
     /// <remarks>
     /// <see cref="PrinterLiveState.ExtruderFilamentSensorStatus"/>/
     /// <see cref="PrinterLiveState.RemoteFilamentSensorStatus"/> have no counterpart on
-    /// <see cref="TelemetrySample"/> and are deliberately not copied - AGENT-NOTES §5 scopes the
-    /// sample table to "the numeric fields worth graphing", and a discrete sensor-status string
-    /// isn't one.
+    /// <see cref="TelemetrySample"/> and are deliberately not copied - the sample table is scoped
+    /// to the numeric fields worth graphing, and a discrete sensor-status string isn't one.
     /// </remarks>
     public static TelemetrySample ToSample(PrinterLiveState state, DateTimeOffset timestamp)
     {

@@ -11,8 +11,7 @@ namespace Homespool.Host.PrusaConnect;
 /// The single-threaded owner of one printer's live connection - the socket write side, command-id
 /// allocation, the in-flight command and its ack correlation, and (once built) the transfer state
 /// machine. Everything arrives as a <see cref="ConnectionMessage"/> and is processed strictly in
-/// order, so none of that state needs a lock: same shape as <see cref="Telemetry.TelemetryWriter"/>, per
-/// notes/concurrency-model.md.
+/// order, so none of that state needs a lock: same shape as <see cref="Telemetry.TelemetryWriter"/>.
 /// </summary>
 /// <remarks>
 /// <b>The Prusa Connect implementation of <see cref="IPrinterLink"/></b>, and deliberately wider

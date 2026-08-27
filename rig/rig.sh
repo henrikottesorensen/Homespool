@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build and run a Buddy connect-rig target in the container. See notes/buddy-rig.md.
+# Build and run a Buddy connect-rig target in the container.
 #
 #   ./rig/rig.sh build connect_rig            # configure if needed, then build the target
 #   ./rig/rig.sh run connect_rig --help       # run a built binary, passing arguments through

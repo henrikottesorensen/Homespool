@@ -21,7 +21,7 @@ namespace Homespool.Host.Test;
 /// <remarks>
 /// Every property here is a firmware constraint rather than a preference, and each fails in a way
 /// that looks like something else: an RSA key produces a handshake alert that reads like a printer
-/// fault, and an RFC-correct IP SAN produces a name mismatch. See <c>notes/tls-by-default.md</c>.
+/// fault, and an RFC-correct IP SAN produces a name mismatch.
 /// </remarks>
 public sealed class PrinterCertificateAuthorityTests : IDisposable
 {

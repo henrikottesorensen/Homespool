@@ -4,8 +4,8 @@
         Deliberately references neither Homespool.Host nor Homespool.Model. The fake encodes the
         *firmware's* model of the wire - JSON built the way render.cpp builds it, command frames
         parsed the way connect.cpp parses them - so that where this library and the server disagree,
-        the disagreement is a test result rather than a shared assumption. See
-        notes/fake-printer-harness.md, "The central risk: a fake agrees with us".
+        the disagreement is a test result rather than a shared assumption. The central risk a fake
+        carries is that it agrees with us.
     -->
 
 </Project>

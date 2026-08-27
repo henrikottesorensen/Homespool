@@ -29,8 +29,8 @@ namespace Homespool.Host.E2ETest;
 /// surface, and a browser reaches <c>/p/ws</c>.
 /// </para>
 /// <para>
-/// <c>notes/housekeeping.md</c> records this repository declaring a rule and never enforcing it four
-/// separate times. So the rule is enumerated here against every endpoint the application actually
+/// This repository has declared a rule and never enforced it four separate times.
+/// So the rule is enumerated here against every endpoint the application actually
 /// publishes: nothing is asserted about the mechanism, only about the outcome, which is what a future
 /// change to either would have to keep true.
 /// </para>

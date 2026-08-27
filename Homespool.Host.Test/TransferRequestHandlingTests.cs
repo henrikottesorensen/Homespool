@@ -194,8 +194,8 @@ public class TransferRequestHandlingTests
     }
 
     /// <summary>
-    /// A read that never returns must not wedge the actor. This is the hazard
-    /// <c>notes/concurrency-model.md</c> warns about - file I/O on the loop - and the reason the read
+    /// A read that never returns must not wedge the actor. This is the hazard of file I/O on the
+    /// loop, and the reason the read
     /// goes through an awaitable API at all: the wait can be bounded, and on expiry the actor gives up
     /// on the <i>connection</i> rather than just the chunk, exactly as a stalled socket write does.
     /// </summary>

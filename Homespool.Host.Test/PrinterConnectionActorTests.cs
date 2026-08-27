@@ -887,8 +887,8 @@ public class PrinterConnectionActorTests
 
     /// <summary>
     /// A wire state outside the known vocabulary costs one message, never the connection. The
-    /// deliberate throw moved here with the edge mapping (<c>ParseWireState</c>'s loud rejection,
-    /// <c>notes/protocol-vocabulary-boundary.md</c>), and it is the loop's throttled catch-all
+    /// deliberate throw moved here with the edge mapping (<c>ParseWireState</c>'s loud rejection),
+    /// and it is the loop's throttled catch-all
     /// that absorbs it - a burst logs one aggregated Error, and the messages behind the bad ones
     /// still flow. <c>"UNKNOWN"</c> is the probe because it is both the attacker shape and a real
     /// possibility: firmware's <c>to_str</c> default arm can genuinely emit it.
@@ -1185,9 +1185,9 @@ public class PrinterConnectionActorTests
     /// <summary>
     /// A command's arguments never reach the log - only its wire name and id.
     /// <see cref="StartConnectDownload.Hash"/> is the live case rather than a hypothetical one: it is
-    /// today the capability token that lets whoever holds it fetch the file
-    /// (<c>notes/backlog.md</c>, "once ownership is enforced by path, the wire token no longer has to
-    /// be unguessable"), and <c>SET_TOKEN</c> will be a sharper one when token rotation is built.
+    /// today the capability token that lets whoever holds it fetch the file - once ownership is
+    /// enforced by path the wire token no longer has to be unguessable - and <c>SET_TOKEN</c> will
+    /// be a sharper one when token rotation is built.
     /// </summary>
     [Fact]
     public async Task ACommandsArgumentsAreNeverLogged()

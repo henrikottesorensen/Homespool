@@ -17,7 +17,7 @@ namespace Homespool.Host.Printing;
 /// </para>
 /// </remarks>
 /// <param name="ToolNumber">As telemetry and <c>INFO</c> number it, 1-based, and <b>not necessarily
-/// contiguous</b>: a machine may report 1, 2, 4 and 8 (<c>notes/toolchangers.md</c> §2).</param>
+/// contiguous</b>: a machine may report 1, 2, 4 and 8.</param>
 /// <param name="Material">What is loaded, or null for an empty tool - already free of the
 /// <c>"---"</c> sentinel.</param>
 /// <param name="Temperature">The tool's own nozzle reading, where it reports one.</param>
@@ -46,7 +46,7 @@ public sealed record PrinterToolState(int ToolNumber,
     /// <remarks>
     /// <b>Keyed on the material, and that is a firmware precondition rather than a nicety.</b> With
     /// no stored filament type <c>M702</c> falls into <c>preheatTempUnKnown</c> and blocks on a dialog
-    /// at the panel (<c>notes/filament-unload.md</c> §2). Being picked has nothing to do with it:
+    /// at the panel. Being picked has nothing to do with it:
     /// <c>M702_unload</c> changes to the target tool itself (<c>M701_2.cpp:168-171</c>).
     /// </remarks>
     public bool CanUnload => Material is not null;

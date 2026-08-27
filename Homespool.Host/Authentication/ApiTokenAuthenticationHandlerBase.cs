@@ -17,7 +17,7 @@ namespace Homespool.Host.Authentication;
 
 /// <summary>
 /// Resolves a personal access token to its owner. Everything except <em>which header the credential
-/// arrived in</em> lives here; a subclass supplies only that. Design: <c>notes/api-tokens.md</c>.
+/// arrived in</em> lives here; a subclass supplies only that.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -89,9 +89,9 @@ public abstract class ApiTokenAuthenticationHandlerBase : AuthenticationHandler<
     /// <para>
     /// <b>Distinct per scheme, deliberately.</b> One shared value would have been defensible - it is one
     /// kind of token either way - but it throws away the only provenance the principal carries, in the
-    /// claim whose entire job is to record how it was authenticated. <c>diagnostics.md</c>'s finding is
-    /// that this application has no correlation handles at all; spending one it already emits would be
-    /// the wrong direction, and keeping it costs nothing.
+    /// claim whose entire job is to record how it was authenticated. This application has few
+    /// correlation handles as it is; spending one it already emits would be the wrong direction, and
+    /// keeping it costs nothing.
     /// </para>
     /// <para>
     /// <b>Do not read it as "is this a token".</b> The values are two, so an equality test against one

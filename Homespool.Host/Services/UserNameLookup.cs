@@ -28,7 +28,7 @@ namespace Homespool.Host.Services;
 /// <para>
 /// <b>An id with no row comes back absent rather than blank</b>, which is what lets a caller tell
 /// "somebody we can no longer name" from "nobody" - two different facts, and an account is never hard
-/// deleted (<c>notes/user-identity.md</c>), so the absent case is rarer than it looks.
+/// deleted, so the absent case is rarer than it looks.
 /// </para>
 /// </remarks>
 public sealed class UserNameLookup

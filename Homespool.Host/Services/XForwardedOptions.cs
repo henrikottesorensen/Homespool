@@ -82,7 +82,7 @@ public class XForwardedOptions
     /// <b>Do not "fix" an inert configuration by trusting everything.</b> Clearing the known networks
     /// — the remedy most readily found online — means believing an address header from any client that
     /// sends one, which is worse than not reading it at all: it launders attacker input into logs and
-    /// into any future per-IP rate limiting (<c>notes/internet-exposure.md</c> #1).
+    /// into any future per-IP rate limiting.
     /// </para>
     /// </remarks>
     public string[] KnownNetworks { get; set; } = [];

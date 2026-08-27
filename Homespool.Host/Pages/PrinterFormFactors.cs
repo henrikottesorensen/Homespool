@@ -28,8 +28,7 @@ public static class PrinterFormFactors
     /// temperature means a sensor sitting in one, which is as close to proof as the wire carries. The
     /// chamber <em>fan</em> fields are not used as evidence because nothing here has established that
     /// an open-framed printer leaves them null - and guessing that it does is the same class of
-    /// unchecked hardware claim this whole type exists to avoid (<c>notes/printer-page.md</c> §6c
-    /// records three of them landing in one day).
+    /// unchecked hardware claim this whole type exists to avoid.
     /// </para>
     /// <para>
     /// <b>Open is the default, so an unknown printer is drawn as the commoner thing</b> rather than

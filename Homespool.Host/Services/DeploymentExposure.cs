@@ -12,10 +12,10 @@ namespace Homespool.Host.Services;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <c>internet-exposure.md</c> #4 asked for this, in terms that have since moved: it named
-/// <c>PublicHost</c> and <c>PublicTls</c>, from before the rename and before printers and people got
-/// separate transports. There are two questions now, and only one of them is answerable from
-/// configuration — hence two rules here rather than one.
+/// This was asked for in terms that have since moved, naming <c>PublicHost</c> and
+/// <c>PublicTls</c> — from before the rename and before printers and people got separate transports.
+/// There are two questions now, and only one of them is answerable from configuration — hence two
+/// rules here rather than one.
 /// </para>
 /// <para>
 /// <b>Both are about credentials on the wire, not about tidiness.</b> A printer token authenticates a

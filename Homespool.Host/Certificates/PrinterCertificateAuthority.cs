@@ -21,8 +21,7 @@ namespace Homespool.Host.Certificates;
 /// <b>ECDSA P-256</b>, because the firmware compiles exactly one ciphersuite
 /// (<c>ECDHE-ECDSA-AES128-GCM-SHA256</c>) and an RSA certificate shares none with it; <b>DER</b>,
 /// because PEM is unsupported and a renamed file fails as <c>Error::Tls</c> with no explanation; and
-/// names carried as <b>dNSName</b> SAN entries even when they are IP addresses. See
-/// <c>notes/tls-by-default.md</c>.
+/// names carried as <b>dNSName</b> SAN entries even when they are IP addresses.
 /// </para>
 /// <para>
 /// <b>The IP-as-dNSName encoding is the load-bearing oddity</b>, and it is deliberate rather than
@@ -47,8 +46,7 @@ public class PrinterCertificateAuthority
     /// <b>The certificate file holds the leaf alone, with no chain appended, and that is
     /// load-bearing.</b> Firmware's <c>x509_crt_check_ee_locally_trusted</c> requires exactly one
     /// certificate to be presented; a terminator that sends leaf + authority fails verification in a
-    /// way that reads as a protocol bug rather than a certificate one
-    /// (<c>notes/tls-by-default.md</c>, decision 3a).
+    /// way that reads as a protocol bug rather than a certificate one.
     /// </remarks>
     private const string LeafCertificatePemFileName = "printer-leaf.pem";
 
@@ -220,7 +218,7 @@ public class PrinterCertificateAuthority
     /// </para>
     /// <para>
     /// So a moved DHCP lease is an operator action, not a self-healing one. That is what leaves drift
-    /// detection a real job (<c>notes/tls-by-default.md</c> step 6): notice that this machine's
+    /// detection a real job: notice that this machine's
     /// address is no longer in the certificate and offer the reissue, rather than performing it
     /// unasked. Deleting <c>printer.pfx</c> is the manual form of the same thing, and costs nothing at
     /// a printer — they trust the authority, not the leaf.

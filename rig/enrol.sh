@@ -21,7 +21,7 @@
 #
 # Also writes rig/api-token - a personal access token for this account, so that any *later* script
 # can call /api/v1 with a single `Authorization: Bearer` header instead of repeating the sign-in and
-# antiforgery dance below (notes/api-tokens.md). This script still has to do that dance itself: it
+# antiforgery dance below. This script still has to do that dance itself: it
 # starts from an empty server where no account, and therefore no token, exists yet.
 set -euo pipefail
 
@@ -40,7 +40,7 @@ BASE="${BASE:-http://localhost:5052}"
 PRINTER_BASE="${PRINTER_BASE:-http://localhost:15443}"
 PRINTER_TYPE="${PRINTER_TYPE:-1.3.5}"
 # An account is identified by one name, and sign-in takes it in a single Input.Login field that
-# accepts either the username or the email - notes/user-identity.md. Both are needed here: /setup
+# accepts either the username or the email. Both are needed here: /setup
 # asks for a username, and posting Input.Email to the login form silently signs nobody in.
 USERNAME="${USERNAME:-rig}"
 EMAIL="${EMAIL:-rig@example.com}"
@@ -51,7 +51,7 @@ API_TOKEN_OUT="${API_TOKEN_OUT:-$RIG_DIR/api-token}"
 JAR="$(mktemp)"
 
 # A 50-character fingerprint, as the firmware sends on /p/register; the WebSocket upgrade later
-# presents its first 16 (notes/cross-channel-identity-bug.md).
+# presents its first 16.
 # Not `tr </dev/urandom | head -c`: head closes the pipe, tr dies of SIGPIPE, and `set -o pipefail`
 # then fails the script with no output at all.
 FINGERPRINT="$(python3 -c "import random,string;print(''.join(random.choices(string.ascii_uppercase+string.digits,k=50)))")"
@@ -84,8 +84,8 @@ curl -sS -c "$JAR" -b "$JAR" -o /dev/null \
     --data-urlencode "Input.RememberMe=false" \
     "$BASE/Account/Login"
 
-# A token is scoped now, and a scopeless post is refused rather than defaulted - see
-# notes/permission-vocabulary.md. Every capability, because this token exists for whatever script
+# A token is scoped now, and a scopeless post is refused rather than defaulted.
+# Every capability, because this token exists for whatever script
 # comes next rather than for a known job; narrow it at the call site if that ever matters.
 SCOPE_ARGS=""
 for scope in ViewPrinter ControlPrinter ManagePrinter Print ViewQueue ViewHistory \

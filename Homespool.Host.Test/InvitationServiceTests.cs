@@ -19,7 +19,7 @@ namespace Homespool.Host.Test;
 
 /// <summary>
 /// Issuing, validating, spending and revoking invitations - the single home for the invite token
-/// generate/hash/verify dance (AGENT-NOTES phase-1.5 §15 step 6).
+/// generate/hash/verify dance.
 /// </summary>
 /// <remarks>
 /// Run against real SQLite rather than the in-memory provider, matching <c>PrinterRegistrationTests</c>,

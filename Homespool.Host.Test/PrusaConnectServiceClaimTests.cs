@@ -21,7 +21,7 @@ namespace Homespool.Host.Test;
 
 /// <summary>
 /// <see cref="PrusaConnectService.ClaimPrinterAsync"/> - the app-facing half of enrolment, where a
-/// signed-in user redeems the code a printer is displaying (AGENT-NOTES phase-1.5 §15 step 7a).
+/// signed-in user redeems the code a printer is displaying.
 /// </summary>
 /// <remarks>
 /// Run against real SQLite rather than the in-memory provider, matching <c>PrinterRegistrationTests</c>,
@@ -107,7 +107,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
 
     /// <summary>
     /// Claiming with no team id lands the printer in the caller's default team, sets a fresh Uuid,
-    /// and links the registration - the three things §14/§15 required and nothing generated before.
+    /// and links the registration - the three things a claim has to do.
     /// </summary>
     [Fact]
     public async Task ClaimingWithNoTeamIdUsesTheCallersDefaultTeam()
@@ -334,8 +334,8 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
     }
 
     /// <summary>
-    /// A second claim of the same code is rejected once the first has succeeded - the concrete answer
-    /// to the "concurrent claim" question phase-1.5 §15 step 7 left open.
+    /// A second claim of the same code is rejected once the first has succeeded, rather than the
+    /// second silently overwriting the printer the first created.
     /// </summary>
     [Fact]
     public async Task ASecondClaimOfAnAlreadyClaimedCodeIsRejected()

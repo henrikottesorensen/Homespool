@@ -14,7 +14,7 @@ namespace Homespool.Host.PrusaConnect;
 /// One message in a <see cref="PrinterConnectionActor"/>'s mailbox. Everything that touches a
 /// connection's state - the socket write side, the in-flight command, transfer state once that
 /// feature lands - travels as one of these and is processed strictly in order by the actor's loop,
-/// which is what makes "never interleave" true by construction (notes/concurrency-model.md).
+/// which is what makes "never interleave" true by construction.
 /// </summary>
 public abstract record ConnectionMessage
 {
@@ -67,7 +67,7 @@ public sealed record InboundTelemetryMessage(DateTimeOffset ReceivedAt, Telemetr
 /// The printer asking for the next byte range of an inline file transfer
 /// (<c>{"transfer":"inline", ...}</c>, firmware render.cpp:100-119 at the pinned ref). Routed to the
 /// actor because transfer state and command-id allocation are the same state and want the same owner
-/// (<c>file_id</c> <i>is</i> a command id - notes/transfer-protocol.md).
+/// (<c>file_id</c> <i>is</i> a command id).
 /// </summary>
 public sealed record InboundTransferRequestMessage(DateTimeOffset ReceivedAt, InlineRequestDTO Request)
     : ConnectionMessage;

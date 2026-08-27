@@ -12,7 +12,7 @@ public sealed record HeaterReading(float? Current, float? Target, HeaterState St
     /// A real MK3.5 holding 215 reports 214.6 and 215.3 either side of a second. Comparing floats for
     /// equality would leave a card flickering between "heating" and "at target" once a second and
     /// saying nothing true - and against SQLite's widened doubles it would essentially never match at
-    /// all (<c>notes/floating-point.md</c>).
+    /// all.
     /// </remarks>
     public const float Tolerance = 2;
 

@@ -14,8 +14,7 @@ namespace Homespool.Host.Exceptions;
 /// </para>
 /// <para>
 /// <b>The cap is a judgement, not a protocol fact</b>, so this carries the numbers: the message is
-/// what a person needs to decide whether a real printer tripped it or an abusive client did. See
-/// <c>notes/protocol-reference.md</c>, "Message size and fragmentation".
+/// what a person needs to decide whether a real printer tripped it or an abusive client did.
 /// </para>
 /// </remarks>
 public class PrinterMessageTooLargeException : Exception

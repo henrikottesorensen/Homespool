@@ -12,9 +12,9 @@ riderModule.iml
 # materialises them.
 Homespool.Host/wwwroot/lib/
 
-# Working memo / session handoff notes (local only). No trailing slash on either: both are
-# symlinks into a shared worktree location as of 2026-07-28, and "notes/" matches a directory
-# only - so the slash let the symlink show up as untracked, one `git add -A` from being committed.
+# Local-only working notes. No trailing slash on either: both are symlinks as of 2026-07-28, and a
+# trailing slash matches a directory only - so it let the symlink show up as untracked, one
+# `git add -A` from being committed.
 AGENT-NOTES.md
 notes
 
@@ -56,7 +56,7 @@ Homespool.Host.IntegrationTest/.mailpit-tls/
 firmware/
 
 # The rig container's /usb mount - whatever a test transfer downloaded. Scratch, and potentially
-# large gcode. See notes/buddy-rig.md.
+# large gcode.
 rig/usb/
 
 # The rig's enrolled identity: fingerprint plus the issued token. A credential.
@@ -68,18 +68,18 @@ rig/usb/
 rig/identity*.json
 
 # The rig account's personal access token, written by enrol.sh. A credential, and one that acts as a
-# whole user rather than a printer. See notes/api-tokens.md. The glob also covers editor backups
+# whole user rather than a printer. The glob also covers editor backups
 # (api-token~) - one of those was committed on 2026-07-28 by a `git add -A` and had to be amended out.
 rig/api-token*
 
 # Self-signed TLS material for printer-transport testing: CA key, server key, PFX, and the .der the
-# printer trusts. Private keys - never committed. See notes/printer-transport-tls.md.
+# printer trusts. Private keys - never committed.
 rig/tls/
 
 # The rig container's /internal/connect mount - the trust anchor connect_rig verifies against, and
 # the private keys of whatever lab CA minted it. Deliberately separate from rig/tls/ above, which is
 # stale material kept as a worked example and never to be reused: this one is minted fresh and
-# expected to be thrown away after every database wipe. See notes/connect-rig-tls-handoff.md.
+# expected to be thrown away after every database wipe.
 rig/lab/
 
 # Uploaded gcode. Runtime data, and the E2E tests leave some here when they exercise the upload

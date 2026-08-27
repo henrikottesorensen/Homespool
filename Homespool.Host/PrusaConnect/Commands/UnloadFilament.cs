@@ -24,11 +24,11 @@ namespace Homespool.Host.PrusaConnect.Commands;
 /// <para>
 /// <b><c>I</c> is deliberately absent.</b> It means <i>ask successful unload</i>, and it puts a
 /// confirmation prompt on the panel that nobody is standing at
-/// (<c>src/marlin_stubs/pause/M701_2_parse.cpp</c>, read at the ref <c>AGENT-NOTES.md</c> pins).
+/// (<c>src/marlin_stubs/pause/M701_2_parse.cpp</c>, read at the pinned ref).
 /// </para>
 /// <para>
-/// <b>This is not the <c>M1700</c> trap.</b> <c>gcode-allowlist.md</c> records why the panel's
-/// preheat menu cannot be driven from off-machine: its arguments only choose which menu entries to
+/// <b>This is not the <c>M1700</c> trap.</b> The panel's preheat menu cannot be driven from
+/// off-machine: its arguments only choose which menu entries to
 /// show, so there is no headless form of it. <c>M702</c> genuinely has one - but only while the
 /// printer knows what is loaded. <c>evaluate_preheat_conditions</c>
 /// (<c>M70X_preheat.cpp:201-227</c>) reads <c>config_store().get_filament_type(i)</c> for

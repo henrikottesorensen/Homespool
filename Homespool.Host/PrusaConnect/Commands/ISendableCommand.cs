@@ -13,7 +13,7 @@ namespace Homespool.Host.PrusaConnect.Commands;
 public interface ISendableCommand : ICommand
 {
     /// <summary>The wire string for a J-command's JSON payload. Confirmed against firmware source
-    /// (Prusa-Firmware-Buddy command.cpp:149-166 at e96ce2b, the ref AGENT-NOTES.md pins).</summary>
+    /// (Prusa-Firmware-Buddy command.cpp:149-166 at the pinned ref <c>e96ce2b</c>).</summary>
     string WireName { get; }
 
     /// <summary>

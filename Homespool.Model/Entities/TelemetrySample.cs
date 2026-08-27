@@ -19,7 +19,7 @@ namespace Homespool.Model.Entities;
 /// last-known value to carry — a MINI has no chamber.
 /// </para>
 /// <para>
-/// Subject to retention (default 14 days, configurable). See AGENT-NOTES §5.
+/// Subject to retention (default 14 days, configurable).
 /// </para>
 /// </remarks>
 public class TelemetrySample

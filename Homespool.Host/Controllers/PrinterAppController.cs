@@ -23,7 +23,7 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.Controllers;
 
 /// <summary>
-/// The app-facing surface phase-1.5 emulates from Connect's mobile API (AGENT-NOTES phase-1.5 §15).
+/// The app-facing surface emulated from Connect's mobile API.
 /// Authenticated by sign-in cookie <b>or</b> personal access token, unlike
 /// <see cref="PrusaConnectPrinterController"/>'s printer-facing endpoints - exercisable with curl or a
 /// browser, not by the real Prusa app, which expects a bearer JWT of its own shape.
@@ -33,7 +33,7 @@ namespace Homespool.Host.Controllers;
 /// <remarks>
 /// <c>GET /api/v1/init</c> is deliberately not implemented - its spec schema
 /// (<c>createdAt/updatedAt/finishedAt/failedAt</c>) doesn't correspond to anything in our model,
-/// and what it's even for isn't clear from the spec alone (Henrik, phase-1.5 §15 step 7b).
+/// and what it's even for isn't clear from the spec alone.
 /// </remarks>
 [ApiController]
 [Route("/api/v1")]

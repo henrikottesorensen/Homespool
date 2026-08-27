@@ -12,7 +12,7 @@
 
     Nothing machine-facing belongs here: CSS class names, protocol values, gcode, filenames and
     go2rtc source strings are not text a person reads, and localising one produces a value another
-    system rejects. See notes/localisation.md.
+    system rejects.
   -->
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
@@ -1960,7 +1960,7 @@
   </data>
   <data name="Ini_HowToLoad" xml:space="preserve">
     <value>Homespool provisioning. Copy this file to the root of a USB stick - not into a folder, or the printer will not find it - and load it from the printer&apos;s own menu:</value>
-    <comment>Ends at the colon. The menu path follows on a line of its own, unwrapped and in English, because it names a menu in the printer&apos;s firmware and is the one thing in this comment somebody will hunt for. Same class as the PrusaSlicer paths - see notes/localisation.md.</comment>
+    <comment>Ends at the colon. The menu path follows on a line of its own, unwrapped and in English, because it names a menu in the printer&apos;s firmware and is the one thing in this comment somebody will hunt for. Same class as the PrusaSlicer paths.</comment>
   </data>
   <data name="Ini_TokenIsAPassword" xml:space="preserve">
     <value>This file carries a token that enrols this printer. Treat it as you would a password, and delete it from the stick once the printer has connected.</value>

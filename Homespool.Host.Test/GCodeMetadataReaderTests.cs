@@ -163,7 +163,7 @@ public class GCodeMetadataReaderTests
 
     /// <summary>
     /// The slicer writes a decimal point wherever it runs. Parsing under a comma-decimal culture
-    /// must not turn 0.4 into 4 (<c>notes/floating-point.md</c>).
+    /// must not turn 0.4 into 4.
     /// </summary>
     [Fact]
     public void TheDecimalSeparatorIsNotTheMachinesBusiness()

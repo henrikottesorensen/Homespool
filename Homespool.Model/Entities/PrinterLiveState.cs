@@ -100,8 +100,8 @@ public class PrinterLiveState
     /// </para>
     /// <para>
     /// It is also the only honest signal that a print has actually begun - <c>PRINTING</c> arrives with
-    /// a cold nozzle, and plastic followed 168 s later on a measured run
-    /// (<c>notes/print-queue.md</c>). <b>That use survives a reset</b> where a subtraction does not: it
+    /// a cold nozzle, and plastic followed 168 s later on a measured run.
+    /// <b>That use survives a reset</b> where a subtraction does not: it
     /// waits for the value to <i>increase</i>, so a reset merely means it counts up from zero instead
     /// of from a kilometre. The signal is a change, not a level.
     /// </para>

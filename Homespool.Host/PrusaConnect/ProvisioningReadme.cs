@@ -160,8 +160,7 @@ public static class ProvisioningReadme
     /// <summary>The printer's own menu paths, in firmware's wording rather than ours.</summary>
     /// <remarks>
     /// Kept out of the resources for the same reason as <see cref="ConnectIni"/>'s: they name
-    /// something on another screen, spelled the way that screen spells it. See
-    /// <c>notes/localisation.md</c> on why that is right for Danish by accident rather than by rule.
+    /// something on another screen, spelled the way that screen spells it.
     /// </remarks>
     private const string LongMenuPath = "Settings → Network → Prusa Connect → Load Settings";
 

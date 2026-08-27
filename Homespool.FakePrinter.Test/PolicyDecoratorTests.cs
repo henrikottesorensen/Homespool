@@ -8,8 +8,7 @@ using AwesomeAssertions;
 namespace Homespool.FakePrinter.Test;
 
 /// <summary>
-/// The adversarial decorators - each models one misbehaviour a real printer refuses to produce
-/// (<c>notes/fake-printer-harness.md</c>, "Cases a real printer refuses to produce").
+/// The adversarial decorators - each models one misbehaviour a real printer refuses to produce.
 /// </summary>
 public class PolicyDecoratorTests
 {

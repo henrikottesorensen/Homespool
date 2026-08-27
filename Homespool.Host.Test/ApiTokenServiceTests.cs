@@ -17,8 +17,7 @@ namespace Homespool.Host.Test;
 
 /// <summary>
 /// Minting, resolving and revoking personal access tokens - the scheme whose whole safety property is
-/// that finding the row by an indexed unsalted hash <i>is</i> verifying the credential
-/// (<c>notes/api-tokens.md</c>).
+/// that finding the row by an indexed unsalted hash <i>is</i> verifying the credential.
 /// </summary>
 /// <remarks>
 /// Run against real SQLite rather than the in-memory provider, like the sibling credential suites: the

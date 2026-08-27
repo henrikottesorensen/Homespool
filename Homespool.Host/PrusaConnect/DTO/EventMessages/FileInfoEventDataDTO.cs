@@ -63,8 +63,8 @@ public class FileInfoEventDataDTO
     /// </summary>
     /// <remarks>
     /// Not an enum, deliberately: an unrecognised value would then throw while parsing an answer
-    /// that is otherwise perfectly readable, which is the failure <c>protocol-vocabulary-boundary.md</c>
-    /// records against <c>ParseWireState</c>. A caller comparing against a known string degrades to
+    /// that is otherwise perfectly readable, which is the failure <c>ParseWireState</c>'s loud
+    /// rejection has. A caller comparing against a known string degrades to
     /// "some other kind of entry" instead.
     /// </remarks>
     [JsonPropertyName("type")]

@@ -22,8 +22,8 @@ namespace Homespool.Host.PrintFiles;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>The layout is <c>{root}/{userId}/{name}</c>, and that is the whole design</b>
-/// (<c>notes/file-storage.md</c>). The user's mental model is a folder of files, so the store is
+/// <b>The layout is <c>{root}/{userId}/{name}</c>, and that is the whole design.</b>
+/// The user's mental model is a folder of files, so the store is
 /// one: names are unique per user and are the identity, <c>ls</c> shows you exactly what a user has,
 /// and ownership is <i>where a file lives</i> rather than a column somebody forgets to check. Every
 /// lookup here is scoped to a user id, so there is no way to ask for a file without saying whose.
@@ -279,8 +279,7 @@ public sealed class UserFileStore
     /// <b>Exists so that a name clash need not cost the upload twice.</b> A page that wants to ask
     /// "replace the file you already have?" can only ask after it knows there is a clash, which is
     /// after the bytes have arrived - so throwing them away would mean the answer "yes, replace it"
-    /// re-sends the whole file. Staged bytes make that answer free
-    /// (<c>notes/file-storage.md</c>).
+    /// re-sends the whole file. Staged bytes make that answer free.
     /// </para>
     /// <para>
     /// The name is validated here rather than at publish time, so a file no printer would accept is
@@ -694,9 +693,7 @@ public sealed record StoredFile(string FileName, string Path, long Length, DateT
     /// than inferred: the captures show <c>/usb</c> running FAT32 with long-name support live, a
     /// 57-character name written and then reported back as <c>LAMPEN~2.BGC</c>. Deriving a short name
     /// ourselves would mean inventing the <c>~N</c> collision index against directory contents we
-    /// cannot see, and a wrong guess prints a different file. See
-    /// <c>notes/protocol-reference.md</c>, "<c>FILE_INFO</c> vs <c>FILE_CHANGED</c>" and "The
-    /// captures, fully decoded".
+    /// cannot see, and a wrong guess prints a different file.
     /// </para>
     /// </remarks>
     public string PrinterPath => $"/usb/{FileName}";

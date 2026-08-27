@@ -60,8 +60,7 @@ public class PrinterRefusedException : Exception, ILocalisableError
     /// <b>So the empty string is load-bearing rather than missing information</b>, and the sentence
     /// says so plainly rather than hedging. The one thing that would make it a guess is a second
     /// protocol: this reads Buddy's implementation, and nothing else speaks for a printer that is not
-    /// one. If that day comes, this is the decision to revisit - <c>notes/buddy-rig.md</c> carries
-    /// the wire fact independently of the bug that exposed it.
+    /// one. If that day comes, this is the decision to revisit.
     /// </para>
     /// <para>
     /// <b>Only for <c>Rejected</c>.</b> A reason-less <c>Failed</c> says nothing about a busy

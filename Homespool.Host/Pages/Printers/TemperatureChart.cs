@@ -16,8 +16,8 @@ namespace Homespool.Host.Pages.Printers;
 /// <para>
 /// <b>Drawn by hand rather than by a charting library, and not for the sake of it.</b> Every script
 /// and stylesheet this deployment serves comes from this deployment - a box can be internet-facing
-/// and still have no route outward, so a CDN is not available and nothing is bundled
-/// (<c>notes/client-side-assets.md</c>). Two lines and a pair of axes is a smaller thing to write
+/// and still have no route outward, so a CDN is not available and nothing is bundled.
+/// Two lines and a pair of axes is a smaller thing to write
 /// than a library is to vendor.
 /// </para>
 /// <para>

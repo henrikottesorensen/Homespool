@@ -11,8 +11,7 @@ namespace Homespool.Host.Queue;
 /// <para>
 /// <b>Pure, and separate from the service that acts on it</b>, because this is where the rule that
 /// protects a finished print lives and that rule has no backstop underneath it: firmware will
-/// cheerfully start a print onto a bed that still holds the last one
-/// (<c>notes/print-queue.md</c>, "Firmware will start a print onto a finished part"). A decision
+/// cheerfully start a print onto a bed that still holds the last one. A decision
 /// function with no I/O can be tested exhaustively over every printer state, which is the only way
 /// that rule gets held down.
 /// </para>

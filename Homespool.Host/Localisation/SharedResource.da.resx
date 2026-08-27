@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <root>
   <!--
-    Danish. The proof that the pipeline switches at all - see notes/localisation.md.
+    Danish. The proof that the pipeline switches at all.
 
     A key missing here falls back to the neutral file rather than failing, so a partial translation
     is a mixed page and never a broken one. That is what makes Phase B able to proceed a page at a

@@ -34,8 +34,8 @@ else
         <a asp-page="/Printers/Index">@Localiser["Home_AllPrinters"]</a>
     </div>
 
-    @* Polled, for the reason printer-page.md §1 exists: a front page left open on a wall display is
-       exactly the thing that goes quietly stale. Ten seconds rather than the status card's two - this
+    @* Polled: a front page left open on a wall display is exactly the thing that goes quietly
+       stale. Ten seconds rather than the status card's two - this
        is a plaque saying "Printing", not a temperature climbing, and six printers' worth of it. *@
     <div data-live-region
          data-live-url="@Url.Page("Index", "Tiles")"

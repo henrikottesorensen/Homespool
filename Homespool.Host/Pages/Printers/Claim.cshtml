@@ -12,7 +12,7 @@
 
 @* The printer's registration dialog is hardcoded to Prusa's production instance - the QR URL and the
    "visit prusa.io/add" line are both compile-time literals no configuration reaches, unchanged across
-   every published firmware release (notes/protocol-reference.md, "The QR is not a gate"). So this
+   every published firmware release - the QR is not a gate. So this
    warning is permanent, not a workaround for something Prusa might fix. *@
 <div class="alert alert-warning" role="alert">
     <strong>@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Printers_IgnoreQr"].Value, "<em>prusa.io/add</em>"))</strong>

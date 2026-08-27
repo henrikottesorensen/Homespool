@@ -125,7 +125,7 @@ public sealed class HttpPrinterSessions : BackgroundService
             _registry.Register(printerId, actor);
 
             // Says what connected, not just that something did: Homespool could not previously
-            // answer "what is this printer running", which notes/diagnostics.md lists as a blind spot.
+            // answer "what is this printer running", which was a diagnostic blind spot.
             _logger.LogInformation("Printer {PrinterId} connected over the HTTP transport ({Client}).",
                                    printerId,
                                    connection.Client.Describe);

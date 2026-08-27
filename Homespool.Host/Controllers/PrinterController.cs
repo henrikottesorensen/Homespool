@@ -45,8 +45,8 @@ namespace Homespool.Host.Controllers;
 /// </para>
 /// <para>
 /// <b>Uploads left for <see cref="PrintFileController"/> on 2026-07-31</b>, when files stopped being
-/// something that happens to a printer and became a thing a user owns
-/// (<c>notes/file-storage.md</c>). What is left here genuinely needs a printer in the route.
+/// something that happens to a printer and became a thing a user owns. What is left here genuinely
+/// needs a printer in the route.
 /// </para>
 /// <para>
 /// Transfer and print are deliberately <b>not</b> combined: a transfer takes as long as it takes and
@@ -57,8 +57,8 @@ namespace Homespool.Host.Controllers;
 /// </para>
 /// <para>
 /// Cookie- or token-authenticated like <see cref="PrinterAppController"/>, so it is exercisable with
-/// curl or a browser session - a personal access token is what makes the curl half pleasant
-/// (notes/api-tokens.md). Permission is not checked here: the services this calls ask
+/// curl or a browser session - a personal access token is what makes the curl half pleasant.
+/// Permission is not checked here: the services this calls ask
 /// <see cref="Authorisation.PrinterAccessService"/>, which is the one place that decides what an
 /// account may do to a printer, and going around it would be a second answer to the same question.
 /// That claim used to name <see cref="PrinterCommandService"/> and had quietly stopped being true -
@@ -108,8 +108,8 @@ public class PrinterController : ControllerBase
     /// <para>
     /// <b>Was <c>command/start/cloud</c></b>, which named where <i>Connect</i> kept the bytes. What
     /// actually distinguishes this from <see cref="Print"/> is whether the file has to be
-    /// transferred first, so that is what the two routes are named for now
-    /// (<c>notes/file-storage.md</c>). Gone with the old shape: <c>printNow</c>, which could only
+    /// transferred first, so that is what the two routes are named for now.
+    /// Gone with the old shape: <c>printNow</c>, which could only
     /// answer 501, and the body's <c>teamId</c>, which existed because the spec carried it - the
     /// team is a property of the printer and is read from it.
     /// </para>
@@ -369,7 +369,7 @@ public class PrinterController : ControllerBase
     /// <para>
     /// All six were verified against the real MK3.5 on 2026-07-24, before any of them had an endpoint
     /// - each sent while a genuine job was running, each answered with a real correlated event
-    /// (AGENT-NOTES §3 item 3). What is new here is the route, not the command path.
+    /// What is new here is the route, not the command path.
     /// </para>
     /// </remarks>
     [HttpPut]

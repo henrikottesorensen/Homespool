@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 #
 # The slow-database rig: reaches TelemetryWriter's failure path by making flushes *fail*, rather
-# than by making the client fast. See tools/slow-db/README.md for what it is for and what it found;
-# the full record is in notes/fake-printer-harness.md, "Two rigs, 2026-07-29".
+# than by making the client fast. See tools/slow-db/README.md for what it is for and what it found.
 #
 #   ./tools/slow-db/slow-db-rig.sh                       # 90 s outage, full-disk mechanism
 #   STALL_SECONDS=180 WRITE_BATCH_SIZE=50 ./tools/slow-db/slow-db-rig.sh

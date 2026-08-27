@@ -29,9 +29,8 @@ namespace Homespool.Host.Test;
 
 /// <summary>
 /// The invite-accept flow: creates the account bound to the invite's email, joins a team when the
-/// invite names one, and spends the invite atomically with the account creation
-/// (AGENT-NOTES phase-1.5 §15 step 6). Replaces the open self-service registration the Identity
-/// scaffold shipped with.
+/// invite names one, and spends the invite atomically with the account creation. Replaces the open
+/// self-service registration the Identity scaffold shipped with.
 /// </summary>
 public sealed class RegisterModelTests : IDisposable
 {

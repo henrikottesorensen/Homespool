@@ -18,8 +18,7 @@ namespace Homespool.Host.Certificates;
 /// <c>PrusaConnect:PrinterHost</c> says <i>and</i> every address this machine can see, so an operator
 /// picking the wrong one costs a re-downloaded bundle instead of a re-provisioned printer. That is the
 /// multi-name hedge that makes a moved DHCP lease survivable, doing a second job — and it is why
-/// nothing asks the operator to name this machine at first run (<c>notes/tls-by-default.md</c>,
-/// "nobody stores the answer").
+/// nothing asks the operator to name this machine at first run - nobody stores the answer.
 /// </para>
 /// <para>
 /// <b>One definition, two callers, deliberately.</b> Startup issues the first certificate from this,

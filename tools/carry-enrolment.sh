@@ -3,8 +3,8 @@
 # Move an enrolled printer into a current database, or bring an old database forward, so that
 # regenerating the migration does not mean walking to the machine.
 #
-# WHY THIS EXISTS. AGENT-NOTES section 2 regenerates the single migration in place while this project
-# is pre-release, and says to delete the database afterwards. That is cheap until the database has a
+# WHY THIS EXISTS. This project regenerates its single migration in place while it is pre-release,
+# and the database is deleted afterwards. That is cheap until the database has a
 # printer enrolled in it, because re-enrolling is the one thing that cannot be done from a keyboard:
 # both channels need somebody at the printer, reading a code off its screen or carrying a USB key to
 # it. On 2026-08-18 that was somebody 25 km away.

@@ -28,8 +28,8 @@ namespace Homespool.Host.IntegrationTest;
 /// <para>
 /// <b>It is not a licence to leave the test unrun.</b> CI runs <c>start-mailpit-tls.sh</c> first, so
 /// there the real handshake is exercised on every push - which matters, because this is the only test
-/// anywhere that puts a genuine STARTTLS negotiation in front of <c>SmtpEmailSender</c>, and
-/// <c>housekeeping.md</c> records that alert mail had never actually been sent.
+/// anywhere that puts a genuine STARTTLS negotiation in front of <c>SmtpEmailSender</c>, which had
+/// once gone a long time without alert mail ever actually being sent.
 /// </para>
 /// <para>
 /// The check runs at discovery, which is why this is an attribute rather than a call inside the test:

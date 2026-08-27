@@ -16,8 +16,7 @@ namespace Homespool.Host.PrusaConnect.Commands;
 /// <para>
 /// Confirmed on the wire before this was written: a capture shows Prusa's Connect sending it nine
 /// times over 57 seconds, unanswered, because the first one had already taken the printer down -
-/// 76 seconds of silence, then a fresh <c>/p/ws</c> upgrade and <c>INFO</c>. See
-/// <c>notes/protocol-reference.md</c>, "Every control button, exercised against hardware".
+/// 76 seconds of silence, then a fresh <c>/p/ws</c> upgrade and <c>INFO</c>.
 /// </para>
 /// <para>
 /// Sendable, but deliberately not reachable from any endpoint or page: rebooting someone's printer

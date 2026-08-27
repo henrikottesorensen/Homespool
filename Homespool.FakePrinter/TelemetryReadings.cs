@@ -53,8 +53,8 @@ public sealed record TelemetryReadings(
     int ActiveTool = 1,
 
     // MMU progress code and command character - params.progress_code and a single char, emitted only
-    // on MMU builds. Null on a non-MMU printer, which is not the same as present-and-zero: see
-    // backlog.md on mmu.enabled, where "cannot have one" and "has one, disabled" are distinct states
-    // and absent is what distinguishes them.
+    // on MMU builds. Null on a non-MMU printer, which is not the same as present-and-zero:
+    // "cannot have one" and "has one, disabled" are distinct states, and absent is what
+    // distinguishes them.
     int? MmuState = null,
     string? MmuCommand = null);

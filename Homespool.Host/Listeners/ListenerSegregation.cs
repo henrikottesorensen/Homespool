@@ -20,7 +20,7 @@ namespace Homespool.Host.Listeners;
 /// <para>
 /// That promotes Connect's own URL prefixes into the thing the boundary is built on: <c>/p/*</c> is
 /// printer-authenticated (including <c>POST /p/camera</c>, which is a printer endpoint wearing a
-/// camera name), and <c>/c/*</c> will be camera-authenticated. See <c>notes/tls-by-default.md</c>.
+/// camera name), and <c>/c/*</c> will be camera-authenticated.
 /// </para>
 /// <para>
 /// The remaining way to lose the boundary is a <c>Map…</c> call that never passes through here, and

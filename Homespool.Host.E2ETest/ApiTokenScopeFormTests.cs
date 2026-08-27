@@ -23,8 +23,8 @@ namespace Homespool.Host.E2ETest;
 /// <b>Rendered rather than asserted from the page model</b>, because the failures this guards are all
 /// between the model and the browser: a capability with no label, a key that resolves to its own
 /// name, a checkbox that carries the wrong value, or a service that was never registered. Every one
-/// of those leaves the page-model tests green - which is the mistake <c>notes/localisation.md</c>
-/// records being made twice, by audits that could not see what they were looking for.
+/// of those leaves the page-model tests green - a mistake made twice here already, by audits that
+/// could not see what they were looking for.
 /// </remarks>
 [Collection("WebApplicationFactory")]
 public sealed class ApiTokenScopeFormTests : IAsyncLifetime, IDisposable

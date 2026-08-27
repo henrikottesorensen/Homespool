@@ -16,7 +16,7 @@ namespace Homespool.Host.Exceptions;
 /// <para>
 /// <b>For the heaters it is worse than doing nothing.</b> <c>M140</c> is the bed and a bed has no
 /// tool, so it applies regardless: preheating would heat the bed and not the nozzle, and cooling
-/// would leave the nozzle hot while reporting both heaters off. <c>notes/toolchangers.md</c> §3d.
+/// would leave the nozzle hot while reporting both heaters off.
 /// </para>
 /// <para>
 /// <b>This is a hardware condition, not a state one</b>, which is why it is separate from

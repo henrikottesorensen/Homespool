@@ -14,8 +14,7 @@ namespace Homespool.Host.PrintFiles;
 /// <para>
 /// <b>A key rather than the words</b>, so the page decides the language - the same trade
 /// <c>QueueWaitDescription</c> and the hold reasons make. The numbers travel as numbers, not as
-/// preformatted text, so a Danish reader gets <c>0,4</c> and an English one <c>0.4</c>
-/// (<c>notes/localisation.md</c>).
+/// preformatted text, so a Danish reader gets <c>0,4</c> and an English one <c>0.4</c>.
 /// </para>
 /// <para>
 /// <b>The two holding findings say what will happen, and the warnings do not.</b> "It is queued but

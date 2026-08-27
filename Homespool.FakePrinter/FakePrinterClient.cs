@@ -22,8 +22,7 @@ namespace Homespool.FakePrinter;
 /// <see cref="ITelemetrySource"/>, and answers server commands through a
 /// <see cref="CommandAnswerPolicy"/>. Drives a running server via the default
 /// <see cref="ClientWebSocket"/> connector, or an in-process <c>TestServer</c> via a substituted
-/// <see cref="WebSocketConnector"/> - same fake, both modes, per
-/// <c>notes/fake-printer-harness.md</c>.
+/// <see cref="WebSocketConnector"/> - same fake, both modes.
 /// </summary>
 /// <remarks>
 /// Wire fidelity notes: the register body carries the full 50-character fingerprint while the
@@ -423,7 +422,7 @@ public sealed class FakePrinterClient : IAsyncDisposable
         ClientWebSocket socket = new();
         socket.Options.AddSubProtocol(request.SubProtocol);
 
-        // The ping compromise (notes/fake-printer-harness.md): .NET cannot send explicit Ping
+        // The ping compromise: .NET cannot send explicit Ping
         // frames, so Buddy's 15s-inactivity ping / 60s socket timeout pair is approximated with
         // the managed keep-alive.
         socket.Options.KeepAliveInterval = _options.KeepAliveInterval;

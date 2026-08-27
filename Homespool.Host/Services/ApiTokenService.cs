@@ -18,7 +18,7 @@ namespace Homespool.Host.Services;
 /// <summary>
 /// Mints, lists, revokes and resolves <see cref="ApiToken"/>s — the single home for the personal
 /// access token scheme, so the management page and the authentication handler never duplicate the
-/// generate/hash/look-up dance. Design and rejected alternatives: <c>notes/api-tokens.md</c>.
+/// generate/hash/look-up dance.
 /// </summary>
 /// <remarks>
 /// <para>

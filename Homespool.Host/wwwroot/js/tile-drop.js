@@ -1,7 +1,7 @@
 // Dropping files onto a printer tile.
 //
 // The shape, and why it is not the Files page's shape. There, a drop fills a file input and submits
-// the form - the intent is unambiguous, so the drop is the commit (notes/printer-page.md §6f). Here
+// the form - the intent is unambiguous, so the drop is the commit. Here
 // a drop onto a *printer* could mean three different things, and one of them starts a print without
 // anybody looking at the machine. So the drop opens a dialog and the dialog commits.
 //

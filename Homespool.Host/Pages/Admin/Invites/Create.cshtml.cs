@@ -26,7 +26,7 @@ namespace Homespool.Host.Pages.Admin.Invites;
 /// Admin-only page that issues an invitation: mints a token, stores its hash, mails the accept link,
 /// and shows the link back so the admin can copy it (needed when SMTP is not configured). The invite
 /// either mints a new account with its own default team (no team selected) or adds the invitee to an
-/// existing team (AGENT-NOTES phase-1.5 §15 step 6).
+/// existing team.
 /// </summary>
 [Authorize(Roles = AdminBootstrap.AdminRole)]
 public class CreateModel : PageModel

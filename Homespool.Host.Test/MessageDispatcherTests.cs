@@ -29,9 +29,9 @@ public class MessageDispatcherTests
     /// <summary>
     /// The <c>InlineRequest</c> shape from firmware's <c>render.cpp:100-119</c>
     /// (<c>transfers::Download::InlineRequest</c>) - the printer asking for the next chunk of a
-    /// Connect-initiated file upload. No captured message of this shape exists (see
-    /// <c>notes/transfer-protocol.md</c>), so this is built from the documented firmware source
-    /// rather than replayed. Has neither <c>"event"</c> nor <c>"state"</c>, which is exactly what
+    /// Connect-initiated file upload. No captured message of this shape exists, so this is built
+    /// from the documented firmware source rather than replayed. Has neither <c>"event"</c> nor
+    /// <c>"state"</c>, which is exactly what
     /// would previously have mis-routed it into the telemetry branch.
     /// </summary>
     private const string InlineTransferChunkRequest =

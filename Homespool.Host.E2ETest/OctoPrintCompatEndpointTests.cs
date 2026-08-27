@@ -27,7 +27,7 @@ namespace Homespool.Host.E2ETest;
 /// <summary>
 /// The OctoPrint compatibility surface under <c>/compat/octoprint/{uuid}</c>, driven the way
 /// PrusaSlicer drives it: <c>X-Api-Key</c> for every request, a real multipart body, and the two
-/// requests a send actually makes. Design: <c>notes/prusa-slicer-print-host.md</c>.
+/// requests a send actually makes.
 /// </summary>
 /// <remarks>
 /// <para>

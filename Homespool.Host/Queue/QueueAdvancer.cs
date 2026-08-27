@@ -28,8 +28,8 @@ namespace Homespool.Host.Queue;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>A hosted service rather than anything inside <c>PrinterConnectionActor</c></b>
-/// (<c>notes/print-queue.md</c>). The actor has no database access by design - that is what keeps its
+/// <b>A hosted service rather than anything inside <c>PrinterConnectionActor</c>.</b>
+/// The actor has no database access by design - that is what keeps its
 /// loop single-threaded and free of permission checks - so the thing that reads queues and writes
 /// rows lives out here and talks to the actor the same way a person does, through
 /// <see cref="PrinterCommandService"/>.
@@ -1018,7 +1018,7 @@ public sealed class QueueAdvancer : BackgroundService
 
         // English in the log on purpose, and the numbers as fields: this line is read by whoever runs
         // the deployment, while the page says the same thing to whoever is waiting for the print, in
-        // their own language. See notes/localisation.md.
+        // their own language.
         _logger.LogWarning(
             "[{PrinterId}] {FileName} is already on the printer as {PrinterBytes} bytes against {OurBytes} here; "
             + "holding the queue.",
@@ -1123,8 +1123,8 @@ public sealed class QueueAdvancer : BackgroundService
             // English, and staying that way. PrintJob.Reason is a history record whose other writer is
             // HandleRefusal, passing firmware's own refusal string through verbatim - so the column
             // holds what was said at the time rather than something to re-say later. The live hold is
-            // what a reader acts on, and that is HoldReason, which is localised. See
-            // notes/localisation.md on why the two are different jobs.
+            // what a reader acts on, and that is HoldReason, which is localised: the two are
+            // different jobs.
             string recorded = string.Create(
                 CultureInfo.InvariantCulture,
                 $"Not enough space on the printer: {head.PrintFile!.Name} needs {length} bytes, {free} free.");
@@ -1163,8 +1163,7 @@ public sealed class QueueAdvancer : BackgroundService
     /// <b>And the absence of any answer is not a refusal either.</b> The row is opened
     /// <see cref="PrintState.Unconfirmed"/> <i>before</i> the command goes out, so that a print the
     /// printer accepts but does not acknowledge in time leaves a record of the question rather than
-    /// nothing at all. That is not defensive: it is the case that happened
-    /// (<c>notes/print-queue.md</c>, "A timeout is not a negative answer"), and it happened because
+    /// nothing at all. That is not defensive: a timeout is not a negative answer, and it happened because
     /// the printer accepted the command and went off to home and heat - so the timeout is caused by
     /// the success it was being read as ruling out. Writing the row afterwards leaves a window in
     /// which the effect exists and the record does not, which is the same shape
@@ -1259,8 +1258,7 @@ public sealed class QueueAdvancer : BackgroundService
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Only four reasons are reachable and <b>only one is transient</b>
-    /// (<c>notes/print-queue.md</c>, corrected 2026-08-02): <c>Can't print now</c> is a wrong state or
+    /// Only four reasons are reachable and <b>only one is transient</b>: <c>Can't print now</c> is a wrong state or
     /// a <c>print_begin</c> that did not take, and waiting is the whole response.
     /// <c>Forbidden path</c> and <c>Tools mapping not enabled</c> are terminal, and retrying either
     /// would hide a misconfiguration behind a queue that looks merely slow.

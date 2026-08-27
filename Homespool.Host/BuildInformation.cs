@@ -34,8 +34,8 @@ namespace Homespool.Host;
 /// </para>
 /// <para>
 /// <b>Not localised, deliberately.</b> This is operator-facing machine text printed before the host
-/// is built, so there is no request culture and no localiser yet; it sits on the same side of
-/// <c>notes/localisation.md</c>'s boundary as log lines.
+/// is built, so there is no request culture and no localiser yet; it sits on the same side of that
+/// boundary as log lines.
 /// </para>
 /// </remarks>
 public static class BuildInformation

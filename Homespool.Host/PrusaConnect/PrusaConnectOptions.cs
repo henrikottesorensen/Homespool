@@ -48,13 +48,12 @@ public class PrusaConnectOptions
     /// <para>
     /// <b>It takes a valid fingerprint and token to reach this code</b>, so this is not a drive-by.
     /// It is a blast-radius limit: one leaked printer credential should not be able to stop the
-    /// server for everyone (<c>notes/duplicate-connection-identity.md</c> treats a compromised
-    /// credential as a thing that happens).
+    /// server for everyone - a compromised credential is a thing that happens.
     /// </para>
     /// <para>
     /// <b>1 MiB is roughly eleven times the largest message ever measured</b> - 92 831 bytes, a
     /// <c>FILE_INFO</c> carrying an 89 KB base64 preview and 21 KB of <c>objects_info</c>
-    /// (<c>notes/protocol-reference.md</c>). That figure is a <em>sample, not a ceiling</em>, which is
+    /// measured on the wire. That figure is a <em>sample, not a ceiling</em>, which is
     /// why the headroom is generous and why this is configurable at all: the preview is the thumbnail
     /// embedded in the gcode and its size is a slicer setting, while <c>SEND_FILE_INFO</c> on a
     /// directory enumerates it, so that response grows with the number of files on the drive. Neither
@@ -89,7 +88,7 @@ public class PrusaConnectOptions
     /// absolute URLs in mail come from <c>Url.Page(..., protocol: Request.Scheme)</c>, i.e. from the
     /// incoming request, so the user-facing address is never configured at all. The rename matters
     /// because the printer address is about to stop being the same thing as the user address: they get
-    /// separate listeners and separate certificates (<c>notes/tls-by-default.md</c>).
+    /// separate listeners and separate certificates.
     /// </para>
     /// </remarks>
     public string PrinterHost { get; set; } = string.Empty;

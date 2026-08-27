@@ -18,7 +18,7 @@ namespace Homespool.Host.Services;
 
 /// <summary>
 /// Team-permission-checked reads and edits of <see cref="Printer"/>, for the app-facing
-/// <c>GET/PATCH /api/v1/printers</c> surface (phase-1.5 §15 step 7b). Kept separate from
+/// <c>GET/PATCH /api/v1/printers</c> surface. Kept separate from
 /// <see cref="PrusaConnect.PrusaConnectService"/>, which owns the registration protocol and the
 /// claim that creates a printer - this owns everything that happens to one afterwards.
 /// </summary>

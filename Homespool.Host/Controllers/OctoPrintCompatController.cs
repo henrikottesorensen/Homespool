@@ -26,12 +26,12 @@ namespace Homespool.Host.Controllers;
 
 /// <summary>
 /// The print-host compatibility shell: the two requests PrusaSlicer makes when it sends a sliced file
-/// to a printer. Design and the rejected alternatives: <c>notes/prusa-slicer-print-host.md</c>.
+/// to a printer.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>This is an adapter, not API surface.</b> <c>notes/file-storage.md</c> settled that <c>/api/v1</c>
-/// is ours and only <c>/p/*</c> owes Prusa anything, while keeping a compatibility shell possible
+/// <b>This is an adapter, not API surface.</b> <c>/api/v1</c> is ours and only <c>/p/*</c> owes
+/// Prusa anything, while keeping a compatibility shell possible
 /// later - gated on a retargetable client appearing. PrusaSlicer is that client, because
 /// <c>print_host</c> is a free-text field. The shape here is therefore dictated by the slicer and the
 /// translation stops at this class: everything below it is called exactly as the web UI calls it.
@@ -138,7 +138,7 @@ public class OctoPrintCompatController : ControllerBase
     /// </para>
     /// <para>
     /// <b><c>print=true</c> queues rather than prints.</b> "Upload and Print" honestly becomes upload
-    /// and queue: <c>notes/print-queue.md</c> is emphatic that a person does not start prints - the
+    /// and queue: a person does not start prints - the
     /// printer's producer loop pulls when the printer is <c>Ready</c> - so a shell that sent
     /// <c>START_PRINT</c> would be racing the loop and reintroducing the shape that design dissolved.
     /// </para>

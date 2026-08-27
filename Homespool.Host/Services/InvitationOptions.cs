@@ -6,7 +6,7 @@ namespace Homespool.Host.Services;
 /// Invitation configuration, bound from the <c>Invitations</c> configuration section.
 /// </summary>
 /// <remarks>
-/// Only the lifetime is configurable for now (AGENT-NOTES phase-1.5 §15 decision 5). An admin can
+/// Only the lifetime is configurable for now. An admin can
 /// still override the expiry per invite at creation time; this is the default when they don't.
 /// </remarks>
 public class InvitationOptions

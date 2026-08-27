@@ -33,7 +33,7 @@ public class CommandWireEncoderTests
     /// <remarks>
     /// <para>
     /// <b>Asserted byte for byte because nothing else checks it.</b> The J shape was confirmed
-    /// against the live MK3.5 (<c>AGENT-NOTES.md</c> §3); this one is read from
+    /// against the live MK3.5; this one is read from
     /// <c>connect.cpp:469-508</c> and has never been sent to a printer. A malformed header would be
     /// refused by firmware as an unknown frame type and surface as a command that silently does
     /// nothing, so the test is the only thing standing in for hardware until it is run against some.

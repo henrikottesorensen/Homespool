@@ -47,7 +47,7 @@ public sealed class TwoFactorEnrolmentMiddleware
     /// </summary>
     /// <remarks>
     /// <c>ShowRecoveryCodes</c> is not optional company for the enrolment page — it is the single
-    /// render of a secret nothing can produce again (<c>user-identity.md</c>), so shutting an account
+    /// render of a secret nothing can produce again, so shutting an account
     /// out of it would complete enrolment while withholding the codes.
     /// </remarks>
     private static readonly string[] Allowed =

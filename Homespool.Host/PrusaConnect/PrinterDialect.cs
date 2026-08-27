@@ -25,7 +25,7 @@ namespace Homespool.Host.PrusaConnect;
 /// inline transfer over a socket it does not have, which is the <c>assert(0)</c> annotated <i>"Not
 /// used in non-websocket mode"</i>. The plain team-URL download it once had was removed in v6.0.0
 /// (<i>Rip out parsing of plain downloads</i>, 2023-10-10) and has never come back; only the SDK
-/// still implements it. Full timeline in <c>notes/http-transport.md</c>.
+/// still implements it.
 /// </para>
 /// <para>
 /// <b>Which makes the conservative default load-bearing rather than tidy.</b> Anything unrecognised
@@ -35,8 +35,7 @@ namespace Homespool.Host.PrusaConnect;
 /// <para>
 /// <b>This is a dialect, not a protocol.</b> All three are Prusa Connect and share its vocabulary,
 /// its endpoints and its command names; what differs is which subset each implements. A second
-/// <i>protocol</i> - Moonraker, Bambu - is a different module entirely and does not belong here, per
-/// <c>notes/domain-vocabulary.md</c>.
+/// <i>protocol</i> - Moonraker, Bambu - is a different module entirely and does not belong here.
 /// </para>
 /// <para>
 /// <b>Derived from the connection, never stored on the printer.</b> The same machine changes dialect

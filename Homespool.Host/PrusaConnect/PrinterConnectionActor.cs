@@ -371,7 +371,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             // Mailbox completed and drained: the connection is gone. A command still awaiting its
             // reply will never get one - fail it now rather than making the caller wait out the
             // response timeout. This line is what replaced the controller-finally-plus-exception-
-            // filter dance (notes/concurrency-model.md: "a line in a switch").
+            // filter dance.
             _pending?.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.NotConnected, null));
             _pending = null;
 
@@ -523,8 +523,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         }
 
         // The wire name and the id, never the frame or the command's arguments. SetToken exists as a
-        // command class already, and duplicate-connection-identity.md makes SET_TOKEN the answer to a
-        // compromised printer credential - so a payload-logging habit here would turn that fix into a
+        // command class already, and SET_TOKEN is the answer to a compromised printer
+        // credential - so a payload-logging habit here would turn that fix into a
         // credential written to disk. Same rule as UnknownFieldTracker's.
         _logger.LogDebug("sent {Command} as command {CommandId}", send.Command.WireName, commandId);
 
@@ -605,7 +605,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// <summary>
     /// Converts at the edge and hands the sink the neutral currency - the last point that knows
     /// this connection speaks Prusa Connect. Deliberately no try/catch of its own: an unmapped
-    /// wire state (ParseWireState's loud throw, <c>notes/protocol-vocabulary-boundary.md</c>) is
+    /// wire state (ParseWireState's loud throw) is
     /// handled by the loop's throttled catch-all, which drops the one message and aggregates the
     /// logging - a local catch here would log unthrottled at wire rate, the exact flood
     /// <see cref="Services.LogThrottle"/> exists to prevent.

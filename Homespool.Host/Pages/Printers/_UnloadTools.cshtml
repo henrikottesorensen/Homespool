@@ -4,8 +4,8 @@
    true at page load. The control strip sits outside the polled region on purpose - replacing markup
    under an open dialog would be worse than staleness - so this is fetched once, on show.
 
-   It has to be its own handler's state, not the page's: notes/printer-page.md §6e. A fragment that
-   renders something only the full page load supplies fails silently and invisibly. *@
+   It has to be its own handler's state, not the page's. A fragment that renders something only
+   the full page load supplies fails silently and invisibly. *@
 @foreach (var tool in Model.ToolStates)
 {
     <div class="form-check mb-2 @(tool.CanUnload ? null : "text-body-secondary")">

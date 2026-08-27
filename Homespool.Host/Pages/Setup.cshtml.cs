@@ -23,7 +23,7 @@ namespace Homespool.Host.Pages;
 /// <summary>
 /// First-run page that creates the administrator account, gated on the one-time bootstrap token
 /// logged at startup. Reachable only while no administrator exists; it 404s the moment one does, so
-/// it cannot be used to mint a second admin (AGENT-NOTES phase-1.5 decision 2).
+/// it cannot be used to mint a second admin.
 /// </summary>
 [AllowAnonymous] // First-run bootstrap. Guarded by 404ing once an administrator exists, not by a sign-in.
 public class SetupModel : PageModel
@@ -134,8 +134,8 @@ public class SetupModel : PageModel
 
         HSUser user = new();
 
-        // Everything below - the Identity user, its admin role, and its default team (§15 — "admin
-        // first, backfill team") - shares this one transaction, because a user without a team cannot
+        // Everything below - the Identity user, its admin role, and its default team - shares this
+        // one transaction, because a user without a team cannot
         // own a printer and a user without the admin role leaves setup stuck. Any early return before
         // CommitAsync leaves the transaction disposed uncommitted, which rolls back every write made
         // through it so far - no compensating delete needed on any failure path.

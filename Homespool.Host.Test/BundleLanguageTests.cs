@@ -21,9 +21,7 @@ namespace Homespool.Host.Test;
 /// <para>
 /// <b>Three things stay English on purpose</b>, and the tests below say so rather than leaving it to
 /// be re-derived: the ini's keys and section names, because firmware parses them; and the printer's
-/// own menu path, because it names a screen this application does not author. See
-/// <c>notes/localisation.md</c> on why that last one is right for Danish by accident rather than by
-/// rule.
+/// own menu path, because it names a screen this application does not author.
 /// </para>
 /// </remarks>
 public sealed class BundleLanguageTests

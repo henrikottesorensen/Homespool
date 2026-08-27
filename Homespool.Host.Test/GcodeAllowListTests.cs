@@ -59,8 +59,8 @@ public class GcodeAllowListTests
     /// </para>
     /// <para>
     /// <b>The bare form is refused now</b>, and that is a deliberate narrowing: without <c>T</c>
-    /// firmware acts on whichever tool is picked and silently does nothing when none is
-    /// (<c>notes/toolchangers.md</c> §3c). Nothing composes it any more.
+    /// firmware acts on whichever tool is picked and silently does nothing when none is.
+    /// Nothing composes it any more.
     /// </para>
     /// </remarks>
     [Theory]

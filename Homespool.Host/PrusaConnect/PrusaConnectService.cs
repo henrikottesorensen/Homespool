@@ -134,7 +134,7 @@ public class PrusaConnectService
     /// enrolled row; that row is updated in place rather than colliding on its unique index, rotating
     /// the credential onto the printer <see cref="ClaimPrinterAsync"/> already linked the claim to. A
     /// mainboard replacement changes the fingerprint itself and so still produces a second printer -
-    /// that one is genuinely different hardware (AGENT-NOTES protocol-reference §570).
+    /// that one is genuinely different hardware.
     /// </para>
     /// <para>
     /// <c>TemporaryCode</c> is deliberately non-uniquely indexed, so a collision yields more than one
@@ -251,8 +251,7 @@ public class PrusaConnectService
     /// </para>
     /// <para>
     /// <b>Rejects a second claim of the same code</b> rather than silently overwriting the printer the
-    /// first claim created - the concrete answer to the "concurrent claim" question AGENT-NOTES
-    /// phase-1.5 §15 step 7 left open as "even 'last write wins' is fine".
+    /// first claim created, rather than letting the last write win.
     /// </para>
     /// </remarks>
     public async Task<Printer> ClaimPrinterAsync(string temporaryCode, string? name, string? location, int? teamId, Caller caller)
@@ -507,7 +506,7 @@ public class PrusaConnectService
     /// check the explicit branch runs. Its membership is Manager at creation
     /// (<c>TeamProvisioning.AddDefaultTeam</c>) and nothing today can lower it or make a weaker
     /// membership default - but that is an invariant of the code writing memberships, not of this
-    /// method, and the member editor <c>notes/teams-ui.md</c> designs would inherit it.
+    /// method, and a member editor would inherit it.
     /// </remarks>
     private async Task<int> ResolveTeamForWriteAsync(int? teamId, Caller caller)
     {

@@ -33,8 +33,8 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// next step.
 /// </para>
 /// <para>
-/// <b>The two writes are one transaction</b>, for the reason <c>notes/transactions.md</c> gives -
-/// several round trips, not several entities. The state worth making unreachable here is the
+/// <b>The two writes are one transaction</b>, because it is several round trips rather than
+/// several entities. The state worth making unreachable here is the
 /// half-done one: two-factor off while the old app still works, which reads to the account holder as
 /// a reset that did nothing while quietly having removed their second factor.
 /// </para>

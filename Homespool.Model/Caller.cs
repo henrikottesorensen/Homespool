@@ -26,9 +26,9 @@ namespace Homespool.Model;
 /// <i>team</i> permits, and the answer is the intersection.
 /// </para>
 /// <para>
-/// <b>Not the thing <c>notes/printer-authorisation.md</c> rejected.</b> That argument was against
-/// handing domain services an HTTP identity and coupling the domain to the framework. A user id and a
-/// <see cref="CapabilitySet"/> are domain vocabulary; nothing here knows what a claim is.
+/// <b>This is not an HTTP identity in domain clothing.</b> The argument against passing one down was
+/// that it couples the domain to the framework. A user id and a <see cref="CapabilitySet"/> are domain
+/// vocabulary; nothing here knows what a claim is.
 /// </para>
 /// </remarks>
 public sealed class Caller

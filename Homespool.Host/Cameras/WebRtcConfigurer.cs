@@ -41,7 +41,7 @@ namespace Homespool.Host.Cameras;
 /// <see cref="CameraStreamReconciler"/> putting them back is what makes that acceptable. That
 /// requires this to finish first, and on .NET 10 registration order does not give it: every
 /// <c>BackgroundService.ExecuteAsync</c> is scheduled onto the thread pool, so two of them start
-/// together (<c>notes/net10-breaking-changes.md</c>). Hosted services started from
+/// together on .NET 10. Hosted services started from
 /// <c>StartAsync</c> are awaited in order, which does.
 /// </para>
 /// <para>

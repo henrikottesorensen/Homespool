@@ -10,7 +10,7 @@ namespace Homespool.Host.Test;
 
 /// <summary>
 /// Covers the header contract of the two registration endpoints, which is dictated entirely by the
-/// firmware — see notes/protocol-reference.md.
+/// firmware.
 /// </summary>
 public class PrinterClientHeadersTests
 {

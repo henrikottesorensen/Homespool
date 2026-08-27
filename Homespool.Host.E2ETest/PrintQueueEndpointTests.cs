@@ -268,7 +268,7 @@ public sealed class PrintQueueEndpointTests : IAsyncLifetime, IDisposable
         using HttpResponseMessage response = await client.GetAsync(
             $"/api/v1/printers/{Guid.NewGuid()}/queue", TestContext.Current.CancellationToken);
 
-        // Assert - 401, not a login redirect: /api answers status codes (notes/api-tokens.md).
+        // Assert - 401, not a login redirect: /api answers status codes.
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 

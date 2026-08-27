@@ -13,14 +13,13 @@ namespace Homespool.Host.PrusaConnect.DTO;
 /// fingerprint mints a row. Uncapped, one request could store as much text as the listener accepts,
 /// which is the thirty-odd megabytes nginx and Kestrel allow between them. The rate limiter
 /// (<c>Program.PrinterRegistrationRateLimitPolicy</c>) bounds how many requests arrive and says
-/// nothing about how large each one is, and the deployment that fills up first is an SD card
-/// (<c>notes/sd-card-performance.md</c>).
+/// nothing about how large each one is, and the deployment that fills up first is an SD card.
 /// </para>
 /// <para>
 /// <b>The caps are generous against what firmware actually sends</b>, because refusing a real printer
 /// is expensive: firmware reads any non-2xx here as <c>OnlineError::Server</c> and burns one of only
 /// three registration retries. The fingerprint is 50 characters in this body
-/// (<c>notes/cross-channel-identity-bug.md</c>, traced to firmware rather than guessed), a serial is
+/// (traced to firmware rather than guessed), a serial is
 /// around twenty, and the type and firmware strings are shorter still — so each cap is a comfortable
 /// multiple of the real value rather than a fit to it.
 /// </para>
@@ -36,9 +35,8 @@ public class RegisterPrinterRequestDTO
     public const int SerialNumberMaxLength = 64;
 
     /// <summary>
-    /// Longest fingerprint accepted. Firmware sends 50 characters here — see
-    /// <c>notes/cross-channel-identity-bug.md</c> for why this body and the headers disagree about
-    /// that length.
+    /// Longest fingerprint accepted. Firmware sends 50 characters here, where the headers carry
+    /// only the first 16 of the same buffer.
     /// </summary>
     public const int FingerPrintMaxLength = 64;
 

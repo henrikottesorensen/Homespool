@@ -7,7 +7,7 @@ namespace Homespool.Host.Printing;
 /// construction. Each protocol translates an intent into its own wire command at the edge (for
 /// Prusa Connect that is <c>PrusaIntentTranslator</c>), and a protocol that cannot express one
 /// refuses it there rather than pretending. The vocabulary is drawn against more than one
-/// protocol; <c>notes/domain-vocabulary.md</c> carries the mapping tables.
+/// protocol rather than against Prusa Connect alone.
 /// </summary>
 public interface IPrinterIntent
 {

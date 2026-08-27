@@ -10,11 +10,10 @@ namespace Homespool.Model.Entities;
 /// <remarks>
 /// <para>
 /// <b>A snapshot, so it is upserted and never appended to.</b> A directory listing is wholly
-/// superseded by the next one, which makes it the shape AGENT-NOTES §5 gives
-/// <see cref="PrinterLiveState"/> rather than the shape it gives <c>PrinterEvent</c>. It lived in the
+/// superseded by the next one, which makes it the shape <see cref="PrinterLiveState"/> has rather
+/// than the shape <c>PrinterEvent</c> has. It lived in the
 /// event log until 2026-08-26 and that is what made events unbounded: firmware puts print files in
-/// the drive root, so one listing is the entire drive and only ever grows -
-/// <c>notes/printer-event-bounds.md</c> has the measurements.
+/// the drive root, so one listing is the entire drive and only ever grows.
 /// </para>
 /// <para>
 /// <b>Not <see cref="PrintFileOnPrinter"/>, which is the confusable neighbour.</b> That table is

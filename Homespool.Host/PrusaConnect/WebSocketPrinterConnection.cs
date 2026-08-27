@@ -59,7 +59,6 @@ public sealed class WebSocketPrinterConnection : IClosablePrinterConnection, ICh
     /// it</b> - 536-byte records against a client asking for 2^9, measured the same day. nginx is
     /// OpenSSL and terminates the printer connection, which leaves nothing here to guess at: this
     /// process writes plain HTTP to a proxy on the same host, and record size is not its business.
-    /// See <c>notes/tls-by-default.md</c>, "Decision 3a's premise has shifted".
     /// </para>
     /// <para>
     /// <b>If a transfer over TLS fails again, this is the thing to suspect first and NOT the thing to

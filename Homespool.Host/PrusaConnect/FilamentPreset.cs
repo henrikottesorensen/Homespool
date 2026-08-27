@@ -9,8 +9,8 @@ namespace Homespool.Host.PrusaConnect;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Taken from firmware's own table</b>, <c>src/common/filament_presets.cpp</c> at the ref
-/// <c>AGENT-NOTES.md</c> pins - not from a slicer profile and not from memory. The point is that the
+/// <b>Taken from firmware's own table</b>, <c>src/common/filament_presets.cpp</c> at the pinned
+/// ref - not from a slicer profile and not from memory. The point is that the
 /// numbers match what the printer's own preheat menu would have chosen, so preheating from here and
 /// preheating at the panel do not disagree.
 /// </para>

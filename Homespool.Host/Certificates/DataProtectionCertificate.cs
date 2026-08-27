@@ -13,9 +13,8 @@ namespace Homespool.Host.Certificates;
 /// Without this, the key ring is written to <c>DataProtectionKeys</c> as plaintext XML — the startup
 /// warning "No XML encryptor configured" says exactly that — and those keys protect authentication
 /// cookies, antiforgery tokens, and the email-confirmation and password-reset tokens Identity issues.
-/// Anyone holding the database can mint a cookie for any account, so under
-/// <c>notes/internet-exposure.md</c>'s assume-internet-facing model the plaintext ring is the
-/// finding, not a tidiness matter.
+/// Anyone holding the database can mint a cookie for any account, so under an
+/// assume-internet-facing threat model the plaintext ring is the finding, not a tidiness matter.
 /// </para>
 /// <para>
 /// <b>The certificate is on disk while the ring it protects is in the database, and that separation

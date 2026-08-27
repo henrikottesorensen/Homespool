@@ -20,9 +20,8 @@ namespace Homespool.Host.E2ETest;
 /// <summary>
 /// The full enrolment loop through the real ASP.NET Core pipeline - routing, the setup gate,
 /// cookie authentication, <c>[Authorize]</c>, and every controller and service in between - rather
-/// than calling services directly the way the rest of this project's tests do. This is what
-/// AGENT-NOTES phase-1.5 §15 had flagged, since step 4, as "not verified: no live walk-through",
-/// turned into something that runs on every test pass instead of a one-off manual click-through.
+/// than calling services directly the way the rest of this project's tests do. It runs the live
+/// walk-through on every test pass instead of as a one-off manual click-through.
 /// </summary>
 /// <remarks>
 /// Each test spins up its own <see cref="WebApplicationFactory{TEntryPoint}"/> against a fresh

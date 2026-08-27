@@ -41,8 +41,8 @@ namespace Homespool.Host.PrusaConnect.Transfers;
 /// replaced, which is the problem this pinning exists to avoid.
 /// </para>
 /// <para>
-/// A <see cref="ConcurrentDictionary{TKey,TValue}"/> here does not contradict
-/// <c>notes/concurrency-model.md</c>'s argument against them: this is a shared lookup table with no
+/// A <see cref="ConcurrentDictionary{TKey,TValue}"/> here does not contradict the general argument
+/// against them: this is a shared lookup table with no
 /// per-entry workflow state, which is exactly what that type is for. The state that has a lifecycle -
 /// which transfer is active, how much has been served - lives on the actor, single-threaded.
 /// </para>

@@ -78,8 +78,7 @@
            mistake quietly.
 
            Absent on a toolchanger with nothing picked: M140 is the bed and would apply, M104 is the
-           nozzle and would not, so the pair half-lands while the frame is answered Accepted. See
-           notes/toolchangers.md §3d. *@
+           nozzle and would not, so the pair half-lands while the frame is answered Accepted. *@
         @if (Model.Tools.ReachesAHotend)
         {
         <form method="post" asp-page-handler="Preheat" asp-route-uuid="@uuid"
@@ -584,7 +583,7 @@
 
        Rendered from the page load, not from the poll: the control strip sits outside the refreshed
        region on purpose, so these temperatures are as old as the page. That is the honest trade for
-       not having the markup replaced under somebody mid-choice - see notes/printer-page.md §6e. *@
+       not having the markup replaced under somebody mid-choice. *@
         <div class="modal fade" id="unload-tool" tabindex="-1" aria-labelledby="unload-tool-heading" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">

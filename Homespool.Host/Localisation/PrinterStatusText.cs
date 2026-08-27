@@ -19,8 +19,7 @@ namespace Homespool.Host.Localisation;
 /// <b>Only the words are localised. The badge colour is not</b>, and the pair is worth looking at
 /// together: <c>StatusBadgeClass</c> returns <c>text-bg-danger</c>, which is a CSS class name — a
 /// value Bootstrap parses, not a value a person reads. Translating it would produce a class that
-/// styles nothing. Same enum, same page, two sides of the boundary
-/// <c>notes/localisation.md</c> §2 draws.
+/// styles nothing. Same enum, same page, two sides of the same boundary.
 /// </para>
 /// <para>
 /// <b>A missing key falls back rather than throws.</b> If a state is added to
@@ -33,8 +32,7 @@ namespace Homespool.Host.Localisation;
 /// fallback is demonstrated on. Buddy cannot produce it: firmware's <c>DeviceState</c>
 /// (<c>printer_state.hpp</c>) has ten members and no such value, and <c>ParseWireState</c> is the
 /// only writer of a live status. It reached <see cref="PrinterStatus"/> because Connect's own
-/// twelve-value enum was transcribed wholesale (Henrik, December 2025 - see
-/// <c>notes/protocol-vocabulary-boundary.md</c>), so writing words for it would be inventing a
+/// twelve-value enum was transcribed wholesale, so writing words for it would be inventing a
 /// sentence for a badge that cannot render, in two languages, with nothing able to check either.
 /// <see cref="PrinterStatus.Offline"/> keeps its words on the opposite reasoning: Homespool could
 /// synthesise that one itself, since it is a verdict about a connection rather than a report from a

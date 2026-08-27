@@ -18,7 +18,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       git ca-certificates curl sudo uidmap zstd
 
-# Pinned, not a branch. The house rule for the firmware repos (AGENT-NOTES §3) applies for the same
+# Pinned, not a branch. The house rule for the firmware repos applies for the same
 # reason here: this tool is under active development, its layer names and variable spellings are what
 # pi/layer/homespool.yaml is written against, and a silent upstream rename would fail the build in a
 # place that names neither.

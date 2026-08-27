@@ -10,8 +10,8 @@ namespace Homespool.FakePrinter.Cli;
 /// <para>
 /// <b>A deliberate copy of <c>Homespool.Host/BuildInformation.cs</c>, and it stays a copy.</b> The
 /// FakePrinter references neither Homespool.Host nor Homespool.Model, so that where the fake and the
-/// server disagree about the wire the disagreement is a test result rather than a shared assumption
-/// (<c>notes/fake-printer-harness.md</c>). Sharing eight lines of attribute reading is not worth the
+/// server disagree about the wire the disagreement is a test result rather than a shared assumption.
+/// Sharing eight lines of attribute reading is not worth the
 /// first hole in that; the full reasoning for the mechanism lives beside the other copy rather than
 /// being restated here, where it would drift.
 /// </para>

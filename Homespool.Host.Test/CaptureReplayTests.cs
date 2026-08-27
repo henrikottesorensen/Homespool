@@ -32,8 +32,8 @@ namespace Homespool.Host.Test;
 /// <see cref="TelemetryDTO.TransferId"/>, the Prusa-iX fields, and <see cref="TelemetryDTO.CommandId"/>
 /// are proven absent-safe here, not proven correct when present. The capture also only ever shows
 /// <c>INFO</c>, <c>REJECTED</c>, <c>JOB_INFO</c> and <c>FILE_INFO</c> events - the other 10 event
-/// types (including the firmware-only <see cref="PrinterEventType.CancelableChanged"/>) rest on the firmware
-/// source reading in <c>notes/phase-2-dispatch.md</c> alone, same as the untested telemetry fields.
+/// types (including the firmware-only <see cref="PrinterEventType.CancelableChanged"/>) rest on the
+/// firmware source reading alone, same as the untested telemetry fields.
 /// </para>
 /// </remarks>
 public class CaptureReplayTests
@@ -104,8 +104,8 @@ public class CaptureReplayTests
     /// <remarks>
     /// <para>
     /// The capture turns out to contain the <b>directory</b> variant as well as the file one: 69
-    /// entries with their short/long name pairs, which is the listing mechanism
-    /// <c>protocol-reference.md</c> derives from render.cpp, observed rather than inferred. Every one
+    /// entries with their short/long name pairs, which is the listing mechanism render.cpp
+    /// implements, observed rather than inferred. Every one
     /// of the 69 is aliased.
     /// </para>
     /// <para>

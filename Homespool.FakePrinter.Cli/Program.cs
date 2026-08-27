@@ -11,8 +11,7 @@ namespace Homespool.FakePrinter.Cli;
 
 /// <summary>
 /// Thin driver over <see cref="FakePrinterClient"/> against a genuinely running server - the mode
-/// that reaches Kestrel, real TCP and SIGTERM, which the in-process tests cannot
-/// (<c>notes/fake-printer-harness.md</c>, "Form factor"). Three verbs:
+/// that reaches Kestrel, real TCP and SIGTERM, which the in-process tests cannot. Three verbs:
 /// <c>enrol</c> (register, print the claim code, poll for the token, save the identity file),
 /// <c>run</c> (connect and behave like a printer until Ctrl-C), and
 /// <c>blast</c> (flood telemetry with no delays, for load/backpressure work).
@@ -347,7 +346,7 @@ public static class Program
     /// </summary>
     /// <remarks>
     /// <c>--mmu</c> adds the MMU-only <c>state</c>/<c>command</c> pair. Absent is meaningful and not
-    /// the same as zero, so it stays null unless asked for - see backlog.md on <c>mmu.enabled</c>.
+    /// the same as zero, so it stays null unless asked for.
     /// </remarks>
     private static TelemetryReadings ReadingsFrom(Dictionary<string, string> named)
     {

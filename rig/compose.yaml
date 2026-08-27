@@ -1,5 +1,5 @@
 # connect_rig in a container - the real Prusa firmware Connect client, built as a host binary and
-# pointed at Homespool. See notes/buddy-rig.md and notes/connect-rig-tls-handoff.md.
+# pointed at Homespool.
 #
 #   cd rig
 #   docker compose run --rm build                     # configure if needed, then build connect_rig
@@ -139,8 +139,7 @@ services:
       #
       # MINT THIS FRESH, and expect to redo it after every database wipe. Do NOT point it at
       # rig/tls/ - those files are internally consistent and useless at once, predating nginx
-      # terminating printer TLS, and `openssl verify` saying OK about them tells you nothing. See
-      # notes/connect-rig-tls-handoff.md, issue 2.
+      # terminating printer TLS, and `openssl verify` saying OK about them tells you nothing.
       - ${CONNECT_DIR:-./lab}:/internal/connect:ro
     # Homespool runs on the host; this is how the container reaches it.
     extra_hosts:

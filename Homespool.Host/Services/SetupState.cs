@@ -12,7 +12,7 @@ namespace Homespool.Host.Services;
 /// <para>
 /// Registered as a singleton and seeded once at startup by <see cref="AdminBootstrap"/>. The secret
 /// is a 24-byte CSPRNG value kept <b>in memory only</b> - never persisted - so a restart mints a
-/// fresh one and nothing sensitive lands on disk (see AGENT-NOTES phase-1.5 decision 2). At
+/// fresh one and nothing sensitive lands on disk. At
 /// one-container scale that is the whole story; two replicas would each print their own token, which
 /// is the reason not to do this if that ever changes.
 /// </para>

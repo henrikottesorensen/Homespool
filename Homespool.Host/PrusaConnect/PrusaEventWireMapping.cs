@@ -26,7 +26,7 @@ namespace Homespool.Host.PrusaConnect;
 /// <see cref="Homespool.Model.Entities.PrinterEvent.WireType"/> by formatting the parsed value
 /// back through <see cref="Format"/>, which reproduces the received word byte-for-byte precisely
 /// because each value maps to exactly one word. An unknown word throws in <see cref="Parse"/> —
-/// the same posture as <c>ParseWireState</c>, per <c>notes/protocol-vocabulary-boundary.md</c>:
+/// the same posture as <c>ParseWireState</c>:
 /// the wire vocabulary demonstrably does not grow, so a silent unknown would be worse than a loud
 /// one — and therefore never reaches persistence at all.
 /// </para>

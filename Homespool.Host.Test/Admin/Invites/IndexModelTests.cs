@@ -19,8 +19,7 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// The admin invitation list: status/target display and the revoke action
-/// (AGENT-NOTES phase-1.5 §15 step 6).
+/// The admin invitation list: status/target display and the revoke action.
 /// </summary>
 public sealed class IndexModelTests : IDisposable
 {

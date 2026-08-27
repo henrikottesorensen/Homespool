@@ -10,8 +10,8 @@ namespace Homespool.FakePrinter;
 /// warm-up could plausibly exceed the server's response timeout while the printer is merely busy.
 /// </summary>
 /// <remarks>
-/// <b>That question was answered on 2026-08-21, and against us</b> (<c>notes/housekeeping.md</c>,
-/// <c>notes/print-queue.md</c>): a real <c>START_PRINT</c> exceeded the timeout on a printer that had
+/// <b>That question was answered on 2026-08-21, and against us:</b> a real <c>START_PRINT</c>
+/// exceeded the timeout on a printer that had
 /// accepted it and gone off to home and heat, and the queue recorded the print as not having
 /// happened. So this is no longer a hypothetical to model - it is the shape of a defect, and the
 /// reason it can be reproduced end to end.

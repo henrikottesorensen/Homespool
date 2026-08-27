@@ -9,8 +9,7 @@ namespace Homespool.FakePrinter;
 /// Builds the two telemetry shapes the wire actually carries, field order taken from the committed
 /// capture (<c>Homespool.Host.Test/websocket.capture</c>): <b>slim</b> - state plus the job block -
 /// and <b>full</b> - temperatures, speed/flow, material and the rest. The full/reduced split is
-/// explicit firmware behaviour, not sampling noise (<c>SendTelemetry::Mode</c>; see
-/// <c>notes/phase-1-storage.md</c> §12).
+/// explicit firmware behaviour, not sampling noise (<c>SendTelemetry::Mode</c>).
 /// </summary>
 /// <remarks>
 /// The job block (<c>job_id</c>, <c>time_printing</c>, <c>time_remaining</c>, <c>progress</c>) is
@@ -89,8 +88,8 @@ public static class TelemetryMessageBuilder
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Shape and key order from the real capture recorded in <c>notes/phase-1-storage.md</c> §12,
-    /// not from our own DTO - a fake built from our model can only ever agree with us. Keys are
+    /// Shape and key order from the real capture, not from our own DTO - a fake built from our
+    /// model can only ever agree with us. Keys are
     /// <b>1-based</b>, and <c>fan_hotend</c>/<c>fan_print</c> are floats on the wire despite being
     /// <c>uint16_t</c> in firmware, because they are rendered with <c>JSON_FIELD_FFIXED</c>.
     /// </para>

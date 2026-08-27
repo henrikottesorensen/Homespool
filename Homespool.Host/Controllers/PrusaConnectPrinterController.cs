@@ -304,7 +304,7 @@ public class PrusaConnectPrinterController : ControllerBase
     /// there; what decides whether these bytes may be served is <c>hash</c>, which is the per-send
     /// random token the offer was made under - unguessable, revoked when the send finishes or fails,
     /// and never derived from the content. A digest would have been a stable URL for the life of the
-    /// file, which <c>notes/file-storage.md</c> records as the rejected design's one privacy leak.
+    /// file, which was the rejected design's one privacy leak.
     /// </para>
     /// <para>
     /// <b>Plaintext, deliberately, and only to a client that cannot do better.</b> Firmware gets the

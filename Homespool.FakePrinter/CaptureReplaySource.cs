@@ -8,8 +8,7 @@ namespace Homespool.FakePrinter;
 
 /// <summary>
 /// Replays a recorded printer-to-server stream document by document - the highest-fidelity
-/// telemetry source, because replayed bytes encode no opinion of ours (see
-/// <c>notes/fake-printer-harness.md</c>, mitigation #1). The committed redacted capture
+/// telemetry source, because replayed bytes encode no opinion of ours. The committed redacted capture
 /// (<c>Homespool.Host.Test/websocket.capture</c>) is the default diet; the CLI can point it at a
 /// fuller private capture.
 /// </summary>
@@ -94,8 +93,7 @@ public sealed class CaptureReplaySource : ITelemetrySource
             try
             {
                 // With default reader options TryParseValue throws on a non-JSON token rather than
-                // returning false (see notes/housekeeping.md, "TryParseValue and trailing
-                // whitespace") - so both the false return and the exception mean the same thing.
+                // returning false - so both the false return and the exception mean the same thing.
                 if (!JsonDocument.TryParseValue(ref reader, out JsonDocument? document))
                 {
                     throw new JsonException("No JSON token found.");

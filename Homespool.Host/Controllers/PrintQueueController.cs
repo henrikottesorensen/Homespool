@@ -32,7 +32,7 @@ namespace Homespool.Host.Controllers;
 /// turns an entry into a command later. Two different failure modes, so two controllers.
 /// </para>
 /// <para>
-/// <b>Not Connect-shaped</b> (<c>notes/file-storage.md</c>, "The API is ours"). Prusa's spec spells
+/// <b>Not Connect-shaped</b> - the API is ours. Prusa's spec spells
 /// this <c>planned_jobs</c>; that is their vocabulary and this is not their API.
 /// </para>
 /// <para>
@@ -210,8 +210,8 @@ public class PrintQueueController : ControllerBase
     /// </summary>
     /// <remarks>
     /// <b>This never stops a print that has already started.</b> Once the loop has taken an entry it
-    /// is a print, not a plan, and ending one is a deliberate separate act - "don't cancel prints on
-    /// people" (Henrik, <c>notes/print-queue.md</c>).
+    /// is a print, not a plan, and ending one is a deliberate separate act: do not cancel prints on
+    /// people.
     /// </remarks>
     [HttpDelete]
     [Route("printers/{uuid:guid}/queue/{trackingId:guid}")]

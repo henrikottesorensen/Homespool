@@ -13,8 +13,7 @@ namespace Homespool.Host.PrintFiles;
 /// A <c>Content-Length</c> check alone is not a limit: the header is optional, and a client that
 /// omits it or lies about it would otherwise stream until the disk filled. This bounds what is
 /// actually read, so the cap holds regardless of what the client claimed - which matters on an
-/// internet-facing deployment, where an unbounded upload endpoint is a disk-exhaustion primitive
-/// (notes/internet-exposure.md).
+/// internet-facing deployment, where an unbounded upload endpoint is a disk-exhaustion primitive.
 /// </remarks>
 [SuppressMessage("Usage", "CA2213:Disposable fields should be disposed",
                  Justification =

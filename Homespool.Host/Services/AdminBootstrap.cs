@@ -20,7 +20,7 @@ namespace Homespool.Host.Services;
 public static class AdminBootstrap
 {
     /// <summary>
-    /// The single privileged role. Ordinary users hold no role (AGENT-NOTES phase-1.5 decision 6).
+    /// The single privileged role. Ordinary users hold no role.
     /// </summary>
     public const string AdminRole = "Admin";
 

@@ -25,7 +25,7 @@ namespace Homespool.Host.PrusaConnect;
 /// <para>
 /// <b>Every failure of the afternoon printer TLS first worked by hand was a hand-assembly failure</b>
 /// — a <c>;</c> comment, an omitted key, a PEM renamed <c>.der</c>, a mis-transcribed claim code — and
-/// not one was a protocol problem (<c>notes/usb-provisioning-bundle.md</c>). Each becomes
+/// not one was a protocol problem. Each becomes
 /// unrepresentable when the server writes the files instead of describing them. The snippet asked a
 /// person to be a careful compiler; this asks them to unzip.
 /// </para>

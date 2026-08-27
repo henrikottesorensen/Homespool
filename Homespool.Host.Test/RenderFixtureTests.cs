@@ -27,10 +27,10 @@ namespace Homespool.Host.Test;
 /// claims it emits, and regenerating at a newer firmware revision is a command rather than a re-read.
 /// </para>
 /// <para>
-/// Generated from the pinned upstream ref <c>e96ce2b92</c> (v6.6.0), the same ref every citation in
-/// <c>notes/protocol-reference.md</c> was read at. To regenerate, build <c>connect_render_dump</c> in
-/// the firmware checkout and redirect its stdout over this file; see <c>notes/buddy-rig.md</c> for the
-/// build recipe. Nothing here reads the firmware checkout at test time - it is a machine-local path,
+/// Generated from the pinned upstream ref <c>e96ce2b92</c> (v6.6.0), the same ref every firmware
+/// citation in this codebase was read at. To regenerate, build <c>connect_render_dump</c> in the
+/// firmware checkout and redirect its stdout over this file.
+/// Nothing here reads the firmware checkout at test time - it is a machine-local path,
 /// and a fixture that silently vanishes on another machine is worse than one that is committed.
 /// </para>
 /// <para>
@@ -197,9 +197,8 @@ public class RenderFixtureTests
 
     /// <summary>
     /// The <c>INFO</c> event's payload deserializes into <see cref="InfoEventDataDTO"/>, in both the
-    /// single-tool and multi-tool shapes. The multi-tool one cross-checks what
-    /// <c>notes/phase-1-storage.md</c> §12 had to derive from firmware source, there being no
-    /// multi-tool printer to capture from.
+    /// single-tool and multi-tool shapes. The multi-tool one cross-checks what had to be derived
+    /// from firmware source, there being no multi-tool printer to capture from.
     /// </summary>
     [Fact]
     public void TheInfoEventPayloadDeserializes()

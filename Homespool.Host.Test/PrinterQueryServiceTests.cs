@@ -21,7 +21,7 @@ namespace Homespool.Host.Test;
 
 /// <summary>
 /// <see cref="PrinterQueryService"/> - team-permission-checked reads and edits of a printer for the
-/// app-facing <c>GET/PATCH /api/v1/printers</c> surface (AGENT-NOTES phase-1.5 §15 step 7b).
+/// app-facing <c>GET/PATCH /api/v1/printers</c> surface.
 /// </summary>
 /// <remarks>
 /// Run against real SQLite rather than the in-memory provider, matching the other phase-1.5 service

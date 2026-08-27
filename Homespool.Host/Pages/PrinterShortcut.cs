@@ -8,9 +8,9 @@ namespace Homespool.Host.Pages;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Flattened deliberately.</b> The tile renders inside a polled fragment, and the rule
-/// <c>notes/printer-page.md</c> §6e paid for is that a polled fragment may only render state its own
-/// handler loads. Handing the view a record it can read end to end - rather than a printer it must
+/// <b>Flattened deliberately.</b> The tile renders inside a polled fragment, and the rule there is
+/// that a polled fragment may only render state its own handler loads.
+/// Handing the view a record it can read end to end - rather than a printer it must
 /// walk relationships from - is what makes that rule easy to keep.
 /// </para>
 /// <para>

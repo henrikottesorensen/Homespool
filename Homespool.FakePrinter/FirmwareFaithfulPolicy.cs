@@ -172,8 +172,8 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
     /// The event's <c>state</c> is not the command's outcome - it is
     /// <c>params.state.device_state</c> sampled when the event is <i>rendered</i>. Job control is
     /// asynchronous: the planner hands the request to Marlin and the ack goes out long before the
-    /// machine has actually moved, so the old state is what is on the wire. Consistent with
-    /// <c>protocol-reference.md</c>'s "<c>Finished</c> means dispatched, not done" - the same capture
+    /// machine has actually moved, so the old state is what is on the wire. <c>Finished</c> means
+    /// dispatched, not done - the same capture
     /// shows a <c>STOP_PRINT</c> acked <c>FINISHED</c> in 130 ms that did nothing at all, because the
     /// machine was still mid-resume.
     /// </para>
@@ -325,7 +325,7 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
     /// <c>Can't print now</c> and <c>Tools mapping not enabled</c>. <c>File is busy</c> and
     /// <c>File is being transferred</c> belong to <c>delete_file</c> and are deliberately not sent
     /// here; a server waiting on either as a busy signal would wait for something firmware cannot
-    /// produce (<c>notes/print-queue.md</c>, corrected 2026-08-02).
+    /// produce.
     /// </para>
     /// <para>
     /// A file still arriving is <b>not</b> refused: <c>is_valid_file_or_transfer</c> accepts a partial

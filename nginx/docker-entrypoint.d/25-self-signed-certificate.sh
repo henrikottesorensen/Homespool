@@ -31,7 +31,7 @@ HOSTS="${USER_HOSTS:-localhost}"
 # follow OPPOSITE rules. A browser resolves an IP URL against the iPAddress entries only and ignores
 # a name that happens to look like an address. The printer leaf is the other way round - the
 # firmware's mbedTLS understands dNSName and nothing else, so an address there has to be spelled as
-# a name to match at all (notes/tls-by-default.md). Copying either rule to the other certificate
+# a name to match at all. Copying either rule to the other certificate
 # produces a handshake failure that names neither.
 #
 # IFS rather than a pipeline: the loop appends to $SAN and a pipeline would run it in a subshell,

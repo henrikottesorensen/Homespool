@@ -19,8 +19,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 
 /// <summary>
 /// Create, list and revoke personal access tokens — the credential that lets a script call
-/// <c>/api/v1</c> without reproducing the sign-in and antiforgery dance in bash
-/// (<c>notes/api-tokens.md</c>).
+/// <c>/api/v1</c> without reproducing the sign-in and antiforgery dance in bash.
 /// </summary>
 /// <remarks>
 /// <para>

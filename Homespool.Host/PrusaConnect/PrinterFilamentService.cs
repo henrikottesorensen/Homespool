@@ -26,8 +26,8 @@ namespace Homespool.Host.PrusaConnect;
 /// </para>
 /// <para>
 /// <b>Which is also why the answer says "started".</b> That same <c>Accepted</c> is the whole of
-/// what is known when this returns (<c>notes/backlog.md</c>: <i>"Accepted is treated as a command
-/// completing, and for gcode it means queued"</i>). Claiming the filament is out would be claiming
+/// what is known when this returns - <c>Accepted</c> is treated as a command completing, and for
+/// gcode it means queued. Claiming the filament is out would be claiming
 /// something no event has yet said. A caller reporting this should say the unload has begun.
 /// </para>
 /// <para>

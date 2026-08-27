@@ -25,8 +25,7 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// The admin "create invitation" page: mints a token, mails the accept link, and shows it back
-/// (AGENT-NOTES phase-1.5 §15 step 6).
+/// The admin "create invitation" page: mints a token, mails the accept link, and shows it back.
 /// </summary>
 public sealed class CreateModelTests : IDisposable
 {

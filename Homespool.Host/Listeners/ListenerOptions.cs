@@ -9,8 +9,8 @@ namespace Homespool.Host.Listeners;
 /// <para>
 /// <b>One listener per credential class</b>, which is the rule the split is keyed on rather than
 /// "printers versus everything": a printer authenticates with a fingerprint and a token, a user with
-/// a cookie or a personal access token, and a camera will one day arrive with a third
-/// (<c>notes/tls-by-default.md</c>, decision 3a). Separating them means a leaked printer token
+/// a cookie or a personal access token, and a camera will one day arrive with a third.
+/// Separating them means a leaked printer token
 /// reaches no application surface, because those routes do not exist on that listener at all.
 /// </para>
 /// <para>
@@ -33,8 +33,7 @@ public class ListenerOptions
     /// <b>Plain HTTP, with nginx terminating the printer's TLS in front of it</b> — it used to serve
     /// the leaf minted from our own authority, and stopped because
     /// <see cref="System.Net.Security.SslStream"/> ignores the <c>max_fragment_length</c> a printer
-    /// negotiates while OpenSSL honours it, which broke every file transfer
-    /// (<c>notes/tls-by-default.md</c>, "Decision 3a's premise has shifted"). Nothing but the proxy
+    /// negotiates while OpenSSL honours it, which broke every file transfer. Nothing but the proxy
     /// reaches this port, so it is not published.
     /// </para>
     /// <para>
@@ -88,8 +87,7 @@ public class ListenerOptions
     /// <para>
     /// <b>Not integrity-protected</b> - CTR is malleable, and firmware checks nothing about the body
     /// but its length. An on-path attacker cannot read the gcode but can corrupt it, bit for bit.
-    /// <c>notes/encrypted-download.md</c> and <c>internet-exposure.md</c> together make this a LAN
-    /// proposition; publish this port to the internet knowingly or not at all.
+    /// That makes this a LAN proposition; publish this port to the internet knowingly or not at all.
     /// </para>
     /// <para>
     /// 15080 beside the printer's 15443: the same range, the suffix saying plain against TLS.

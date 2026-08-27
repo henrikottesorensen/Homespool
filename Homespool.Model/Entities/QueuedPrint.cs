@@ -9,9 +9,9 @@ namespace Homespool.Model.Entities;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Property-less by design</b> (<c>notes/print-queue.md</c>). The first sketch put a state machine
-/// here - queued, transferring, ready, printing, done - and Henrik replaced it with the right shape:
-/// <b>the printer runs a producer loop and the queue is a list it pulls from</b>. Everything the
+/// <b>Property-less by design.</b> A state machine here - queued, transferring, ready, printing,
+/// done - is the wrong shape: <b>the printer runs a producer loop and the queue is a list it pulls
+/// from</b>. Everything the
 /// machine wanted to record belongs somewhere that already owns it. Progress, the firmware job id and
 /// the outcome are the <c>Job</c>'s. Paused and Attention are printer states. And whether the bytes
 /// have reached the drive belongs to <i>(file, printer)</i>, not to this row - two entries for one
@@ -85,7 +85,7 @@ public class QueuedPrint
     /// <remarks>
     /// A plain integer, rewritten across the affected rows on a reorder. At a queue depth measured in
     /// single digits that is a handful of updates in one <c>SaveChangesAsync</c> - which is one round
-    /// trip, so it needs no transaction of its own (<c>notes/transactions.md</c>). A gap-based or
+    /// trip, so it needs no transaction of its own. A gap-based or
     /// fractional key buys nothing here and costs a rebalancing story.
     /// </remarks>
     public int Position { get; set; }

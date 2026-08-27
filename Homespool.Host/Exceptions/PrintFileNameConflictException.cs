@@ -6,7 +6,7 @@ namespace Homespool.Host.Exceptions;
 /// A file of that name already exists for this user, and the caller did not ask to replace it.
 /// </summary>
 /// <remarks>
-/// Overwriting is deliberately opt-in rather than the default (<c>notes/file-storage.md</c>): a
+/// Overwriting is deliberately opt-in rather than the default: a
 /// re-slice legitimately produces the same name with new content, but so does an accident, and only
 /// one of the two should be silent. OctoPrint overwrites silently; we make the caller say so.
 /// </remarks>

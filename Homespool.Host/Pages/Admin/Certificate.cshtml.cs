@@ -30,7 +30,7 @@ namespace Homespool.Host.Pages.Admin;
 /// reissue was rejected because it would drop live printer connections whenever an interface appeared
 /// and make the certificate a function of what the machine happened to look like at boot. This is
 /// what that decision owes the operator in return: somewhere to see the drift and one button to fix
-/// it (<c>notes/tls-by-default.md</c>).
+/// it.
 /// </para>
 /// <para>
 /// <b>Reissuing the leaf is a small act, and it is worth knowing why.</b> Printers trust the

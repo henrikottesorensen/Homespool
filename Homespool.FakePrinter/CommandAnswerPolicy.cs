@@ -6,8 +6,7 @@ namespace Homespool.FakePrinter;
 /// Decides how the fake answers a server command. <see cref="FirmwareFaithfulPolicy"/> is the
 /// default and answers like the firmware; the other implementations decorate or replace it with
 /// the misbehaviours a real printer refuses to produce - the response-timeout path, mismatched and
-/// duplicated acks, mid-command disconnects (see <c>notes/fake-printer-harness.md</c>, "Cases a
-/// real printer refuses to produce").
+/// duplicated acks, mid-command disconnects.
 /// </summary>
 public abstract class CommandAnswerPolicy
 {

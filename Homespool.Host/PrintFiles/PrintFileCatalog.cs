@@ -23,9 +23,8 @@ namespace Homespool.Host.PrintFiles;
 /// <remarks>
 /// <para>
 /// <b>Why this exists rather than a <c>DbContext</c> inside <see cref="UserFileStore"/>.</b> The store
-/// is a singleton and the context is scoped, so one cannot hold the other; and
-/// <c>notes/file-storage.md</c> said of the table that "the table joins and this class keeps its
-/// shape". It keeps its shape. The store stays a thing that knows about directories, this knows about
+/// is a singleton and the context is scoped, so one cannot hold the other. The table joins and the
+/// store keeps its shape: the store stays a thing that knows about directories, this knows about
 /// both, and callers that change files talk to this.
 /// </para>
 /// <para>
@@ -283,8 +282,8 @@ public sealed class PrintFileCatalog
     /// <para>
     /// <b>Refusing is the deliberate part.</b> Cascading instead would let one person tidying up their
     /// files silently cancel a print somebody else had queued on a shared printer, with the first
-    /// symptom being a job that never runs. <c>notes/print-queue.md</c> reaches the same conclusion
-    /// about the printer's own copy of a file - delete only when no queued print still wants it - and
+    /// symptom being a job that never runs. The printer's own copy of a file follows the same rule
+    /// - delete only when no queued print still wants it - and
     /// the reasoning does not change for ours.
     /// </para>
     /// <para>

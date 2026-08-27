@@ -25,8 +25,7 @@ namespace Homespool.FakePrinter;
 /// per window rather than growing memory per message.
 /// </para>
 /// <para>
-/// <b>Rig instrument, not firmware-faithful</b> - mitigation #3 in
-/// <c>notes/fake-printer-harness.md</c>. No printer sends these. What is faithful is the *shape* of
+/// <b>Rig instrument, not firmware-faithful.</b> No printer sends these. What is faithful is the *shape* of
 /// the hazard: extra properties on an otherwise well-formed message, which is exactly how a firmware
 /// upgrade or a hostile client would present.
 /// </para>

@@ -13,7 +13,7 @@ namespace Homespool.Host.Printing;
 /// <para>
 /// <b>Deliberately narrower than the protocol's own actor interface.</b> Prusa Connect's
 /// <c>IPrinterConnectionActor</c> owns a socket, a mailbox, transfer state and command-id
-/// allocation - all legitimately wire-shaped, per <c>notes/concurrency-model.md</c>. None of that
+/// allocation - all legitimately wire-shaped. None of that
 /// is a consumer's business, and a survey of every caller outside the Prusa edge found they ask
 /// exactly two things of a connection: whether it is up, and to send an intent. That is this
 /// interface, and it is why a second protocol's link is one class implementing two members.

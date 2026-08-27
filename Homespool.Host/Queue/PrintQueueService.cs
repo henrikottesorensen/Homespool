@@ -21,8 +21,8 @@ namespace Homespool.Host.Queue;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>One queue per printer, shared by everyone who may use it</b> (Henrik,
-/// <c>notes/print-queue.md</c>): if you may use the printer, you may manipulate its queue - reorder
+/// <b>One queue per printer, shared by everyone who may use it</b>: if you may use the printer,
+/// you may manipulate its queue - reorder
 /// it, cancel from it, including entries somebody else added. That is how a shared printer is
 /// actually used, and it needs no permission this app does not already have. A queue per person
 /// would have to answer whose turn it is, which is a question nobody asked.
@@ -243,13 +243,13 @@ public class PrintQueueService
     /// <para>
     /// Renumbering the whole queue rather than swapping two rows: at a depth measured in single digits
     /// that is a handful of updates in one <c>SaveChangesAsync</c> - one round trip, so no transaction
-    /// of its own (<c>notes/transactions.md</c>) - and it leaves the positions describing the order
+    /// of its own - and it leaves the positions describing the order
     /// plainly rather than as an arithmetic puzzle.
     /// </para>
     /// <para>
     /// <b>Reordering past a file already sent to the printer is allowed</b> and costs nothing: the
-    /// bytes simply sit on the drive unused. That is the pipelining trade
-    /// (<c>notes/print-queue.md</c>), and the printer's storage listing is what can find them again.
+    /// bytes simply sit on the drive unused. That is the pipelining trade, and the printer's
+    /// storage listing is what can find them again.
     /// </para>
     /// <para>
     /// <b>By <see cref="QueuedPrint.TrackingId"/>, not the primary key</b> - the handle is the only

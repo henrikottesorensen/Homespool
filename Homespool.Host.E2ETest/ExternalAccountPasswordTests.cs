@@ -42,8 +42,7 @@ namespace Homespool.Host.E2ETest;
 /// What is under test is the passwordless state, not how an account arrives in it; the OIDC path that
 /// produces it for real is covered by <c>ExternalOidcDexTests</c>, which needs a container. Removing
 /// the password moves the security stamp, which is survivable here only because
-/// <c>SecurityStampValidator</c> revalidates on an interval rather than per request — see the
-/// <c>IssuedUtc</c> finding in <c>user-identity.md</c> for the case where that is not true.
+/// <c>SecurityStampValidator</c> revalidates on an interval rather than per request.
 /// </para>
 /// </remarks>
 [Collection("WebApplicationFactory")]

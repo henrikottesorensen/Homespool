@@ -22,7 +22,7 @@ namespace Homespool.FakePrinter;
 /// <c>/p/ws</c> upgrade (<c>FINGERPRINT_HDR_SIZE</c>, <c>src/connect/printer.hpp</c> +
 /// <c>connect.cpp:137,164</c>). <see cref="HeaderFingerprint"/> is that truncation; the fake
 /// reproduces the asymmetry faithfully because the server's identity keying was once broken by
-/// exactly this (see <c>notes/cross-channel-identity-bug.md</c>).
+/// exactly this.
 /// </para>
 /// </remarks>
 public sealed class PrinterIdentity

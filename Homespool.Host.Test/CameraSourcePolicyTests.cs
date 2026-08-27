@@ -157,8 +157,7 @@ public class CameraSourcePolicyTests
 
     /// <summary>
     /// The sidecar, by the name the deployment was configured to reach it on. This is the address
-    /// that turns a camera source into a way to drive go2rtc's own API - see
-    /// <c>notes/security-audit-2026-08-17.md</c> #1.
+    /// that turns a camera source into a way to drive go2rtc's own API.
     /// </summary>
     [Theory]
     [InlineData("http://go2rtc:1984/api/stream.mjpeg?src=exec:whoami")]

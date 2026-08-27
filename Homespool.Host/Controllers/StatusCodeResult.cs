@@ -18,8 +18,8 @@ namespace Homespool.Host.Controllers;
 /// <see cref="Microsoft.AspNetCore.Http.HttpResults.StatusCodeHttpResult"/>, whose status is decided
 /// at run time and which therefore adds nothing to the document — so an action returning one has to
 /// restate the status in a <c>[ProducesResponseType]</c>. That is two statements which can disagree,
-/// and removing exactly that hazard is why the union rule exists at all
-/// (<c>AGENT-NOTES.md</c> §7, <c>notes/typed-results.md</c>). Putting the status in the type closes
+/// and removing exactly that hazard is why the union rule exists at all.
+/// Putting the status in the type closes
 /// it: the arm and the document cannot drift, because they are the same fact.
 /// </para>
 /// <para>

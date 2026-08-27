@@ -68,7 +68,7 @@ public class TelemetryMessageBuilderTests
     /// </summary>
     /// <remarks>
     /// The field was missing from this builder until 2026-07-27, found by running the real firmware
-    /// client (notes/buddy-rig.md) and corroborated by Prusa's own <c>render.cpp</c> "Telemetry -
+    /// client and corroborated by Prusa's own <c>render.cpp</c> "Telemetry -
     /// reduced" expectation. It matters more than its size suggests: the firmware gates it on
     /// <c>time_to_pause</c> (render.cpp:164), so an ordinary print omits it and the committed capture
     /// contains none - meaning this builder is the only way anything exercises the field's path from
@@ -122,7 +122,7 @@ public class TelemetryMessageBuilderTests
 
     /// <summary>
     /// Above one tool the <c>slot</c> object carries a 1-based numbered sub-object per tool beside
-    /// <c>active</c>, as captured in notes/phase-1-storage.md §12.
+    /// <c>active</c>, as the committed capture shows.
     /// </summary>
     /// <remarks>
     /// The keys being 1-based and the fan values being floats are both things the wire does and an

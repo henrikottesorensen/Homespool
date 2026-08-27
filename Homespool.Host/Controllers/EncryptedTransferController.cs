@@ -117,15 +117,15 @@ public sealed class EncryptedTransferController : ControllerBase
     /// <remarks>
     /// <para>
     /// <b>An <see cref="IResult"/>, not an <see cref="ActionResult"/>, and public rather than
-    /// private</b> - both forced by the rule in <c>AGENT-NOTES.md</c> §7 that an action's return type
-    /// names every answer it can give. A <c>Results&lt;…&gt;</c> union is built from
+    /// private</b> - both forced by the rule that an action's return type names every answer it can
+    /// give. A <c>Results&lt;…&gt;</c> union is built from
     /// <see cref="IResult"/> arms, and an arm of a public action's signature cannot be a private
     /// type.
     /// </para>
     /// <para>
     /// It documents nothing of its own, which is why the action keeps
     /// <c>[ProducesResponseType]</c> for its 200 and 206: a status this class decides at run time is
-    /// exactly the case <c>notes/typed-results.md</c> keeps the attribute for.
+    /// exactly the case the attribute is kept for.
     /// </para>
     /// </remarks>
     public sealed class EncryptedBodyResult : IResult

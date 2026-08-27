@@ -20,9 +20,9 @@ namespace Homespool.Model.Entities;
 /// <c>JOB_INFO</c> ack and the <c>job_id</c> telemetry carries while it runs.
 /// </para>
 /// <para>
-/// <b>It records rather than points.</b> The file's name and digest are copied in, not referenced -
-/// <c>notes/file-storage.md</c>: "History rows keep whatever they record (name, digest) as a
-/// <i>record</i>, not a pointer - a deleted or renamed file dangling behind history is by design."
+/// <b>It records rather than points.</b> The file's name and digest are copied in, not referenced: a
+/// history row keeps what it records as a <i>record</i>, and a deleted or renamed file dangling
+/// behind history is by design.
 /// So there is deliberately no foreign key to <see cref="PrintFile"/>: renaming a file does not
 /// rewrite what happened, and deleting one does not erase it.
 /// </para>
@@ -124,8 +124,8 @@ public class PrintJob
     /// <remarks>
     /// <para>
     /// Recorded at the time because it cannot be recovered afterwards: a stop we sent and a stop made
-    /// at the panel produce an identical state change, and <c>notes/print-queue.md</c> makes the same
-    /// point about causation not being inferable from state. Same shape as the id mapping above.
+    /// at the panel produce an identical state change, and causation is not inferable from state.
+    /// Same shape as the id mapping above.
     /// </para>
     /// <para>
     /// <b>Was a <c>bool StoppedByUs</c></b> until 2026-08-03. The id costs the same column and answers

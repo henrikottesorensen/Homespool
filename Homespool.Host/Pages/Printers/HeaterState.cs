@@ -17,8 +17,7 @@ public enum HeaterState
     /// means nothing computed a state - a default-valued field, a record built without one - where
     /// <see cref="Unknown"/> is a real answer about a real printer that has reported no temperature.
     /// Without the sentinel, whichever member sat first would silently become what "nobody looked"
-    /// means. <see cref="HeaterReading.For"/> never produces it. See
-    /// <c>notes/housekeeping.md</c>, "Enums need a reserved zero".
+    /// means. <see cref="HeaterReading.For"/> never produces it.
     /// </remarks>
     Undefined = 0,
 

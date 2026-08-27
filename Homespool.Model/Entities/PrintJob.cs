@@ -88,6 +88,20 @@ public class PrintJob
 
     public DateTimeOffset StartedAt { get; set; }
 
+    /// <summary>
+    /// When Homespool sent the <c>START_PRINT</c> that opened this row. <b>Null means no command of
+    /// ours started it</b>: the print was begun at the printer, on a file the queue had staged, and
+    /// the row was adopted from what the printer reported.
+    /// </summary>
+    /// <remarks>
+    /// The start-side sibling of <see cref="StoppedByUserId"/>, recorded for the same reason: a print
+    /// we commanded and one begun at the panel produce identical telemetry, so causation is written
+    /// down at the moment it is known or never. A timestamp rather than a flag because the command
+    /// moment is otherwise lost - <see cref="StartedAt"/> on an adopted row is when the print was
+    /// noticed, not when anything was asked for.
+    /// </remarks>
+    public DateTimeOffset? CommandedAt { get; set; }
+
     /// <summary>When the printer stopped printing. <b>Null means this print is the active one.</b></summary>
     public DateTimeOffset? EndedAt { get; set; }
 

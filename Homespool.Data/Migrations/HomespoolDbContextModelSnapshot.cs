@@ -327,6 +327,9 @@ namespace Homespool.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<long?>("CommandedAt")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Digest")
                         .HasColumnType("TEXT");
 

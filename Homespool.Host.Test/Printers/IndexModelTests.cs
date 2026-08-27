@@ -19,6 +19,7 @@ using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Certificates;
 using Homespool.Host.Localisation;

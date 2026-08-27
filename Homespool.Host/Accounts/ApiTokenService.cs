@@ -13,7 +13,7 @@ using Homespool.Data;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// Mints, lists, revokes and resolves <see cref="ApiToken"/>s — the single home for the personal

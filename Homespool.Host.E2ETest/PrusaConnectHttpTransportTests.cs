@@ -13,10 +13,10 @@ using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.FakePrinter;
+using Homespool.Host.Accounts;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
-using Homespool.Host.Services;
 using Homespool.Model;
 
 namespace Homespool.Host.E2ETest;

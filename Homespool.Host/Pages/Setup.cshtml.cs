@@ -5,6 +5,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
 using Homespool.Host.Mail;
 using Homespool.Host.Services;

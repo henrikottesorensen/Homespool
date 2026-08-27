@@ -9,7 +9,7 @@ using AwesomeAssertions;
 
 using Microsoft.Extensions.DependencyInjection;
 
-using Homespool.Host.Services;
+using Homespool.Host.Accounts;
 
 namespace Homespool.Host.E2ETest;
 

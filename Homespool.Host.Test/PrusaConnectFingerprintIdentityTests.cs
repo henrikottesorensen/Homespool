@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;

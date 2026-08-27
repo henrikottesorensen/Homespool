@@ -1,6 +1,6 @@
 using System;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// Invitation configuration, bound from the <c>Invitations</c> configuration section.

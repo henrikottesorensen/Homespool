@@ -10,7 +10,7 @@ using Homespool.Data;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// Wraps <see cref="HomespoolDbContext"/> access for team and team-membership operations, so callers
@@ -28,7 +28,7 @@ public class TeamService
     /// <summary>
     /// Stages a default team for <paramref name="userId"/> via <see cref="TeamProvisioning.AddDefaultTeam"/>
     /// and saves. Exceptions propagate - callers doing this alongside other writes (e.g. Identity user
-    /// creation) should wrap the whole sequence in a transaction from <see cref="UnitOfWork.BeginTransactionAsync"/>
+    /// creation) should wrap the whole sequence in a transaction from <see cref="Services.UnitOfWork.BeginTransactionAsync"/>
     /// so a failure here rolls back everything instead of needing a compensating delete.
     /// </summary>
     public Task AddDefaultTeamAsync(long userId, DateTimeOffset createdAt, CancellationToken cancellationToken)

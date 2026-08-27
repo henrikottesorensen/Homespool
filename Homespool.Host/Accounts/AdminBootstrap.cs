@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 
 using Homespool.Model.Entities;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// First-run administrator bootstrap: ensures the <see cref="AdminRole"/> exists and, when no

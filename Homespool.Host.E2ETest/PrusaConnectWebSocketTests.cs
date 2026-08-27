@@ -11,8 +11,8 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.FakePrinter;
+using Homespool.Host.Accounts;
 using Homespool.Host.PrusaConnect;
-using Homespool.Host.Services;
 
 namespace Homespool.Host.E2ETest;
 

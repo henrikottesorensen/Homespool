@@ -4,8 +4,8 @@ using AwesomeAssertions;
 
 using Microsoft.AspNetCore.Http;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Middleware;
-using Homespool.Host.Services;
 
 namespace Homespool.Host.Test;
 

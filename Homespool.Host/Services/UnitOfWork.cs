@@ -10,7 +10,7 @@ namespace Homespool.Host.Services;
 /// <summary>
 /// Begins transactions on the request-scoped <see cref="HomespoolDbContext"/>, so a page or controller
 /// can span writes made through several domain services (e.g. ASP.NET Core Identity's
-/// <c>UserManager</c> plus <see cref="TeamService"/>) atomically, without any of those services
+/// <c>UserManager</c> plus <see cref="Accounts.TeamService"/>) atomically, without any of those services
 /// needing to know about the others or about transaction boundaries themselves.
 /// </summary>
 /// <remarks>

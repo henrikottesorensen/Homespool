@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Localisation;
 using Homespool.Host.Queue;

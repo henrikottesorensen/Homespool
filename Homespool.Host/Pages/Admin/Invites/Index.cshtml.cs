@@ -8,8 +8,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
-using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Admin.Invites;

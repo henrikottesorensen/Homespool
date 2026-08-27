@@ -41,7 +41,7 @@ public class TokenServiceTests
     /// generating <see cref="TokenService.PrinterTokenLength"/>-derived bytes.
     /// </summary>
     /// <remarks>
-    /// <see cref="Homespool.Host.Services.InvitationService.CreateAsync"/> calls this overload with
+    /// <see cref="Homespool.Host.Accounts.InvitationService.CreateAsync"/> calls this overload with
     /// <c>InviteTokenLength = 32</c>, expecting a 32-byte token; a mint that silently ignored the
     /// parameter would issue shorter, weaker invite tokens without any visible failure.
     /// </remarks>

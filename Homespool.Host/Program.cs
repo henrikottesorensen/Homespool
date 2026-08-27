@@ -163,9 +163,9 @@ public static class Program
                             .AddXApiKeyAuthentication()
                             .AddOidcAuthentication(builder.Configuration);
 
-            builder.Services.AddIdentity<Model.Entities.HSUser, IdentityRole<long>>(Services.IdentityConfiguration.Configure)
+            builder.Services.AddIdentity<Model.Entities.HSUser, IdentityRole<long>>(Accounts.IdentityConfiguration.Configure)
                             .AddEntityFrameworkStores<HomespoolDbContext>()
-                            .AddErrorDescriber<Services.HSIdentityErrorDescriber>()
+                            .AddErrorDescriber<Accounts.HSIdentityErrorDescriber>()
                             .AddDefaultTokenProviders();
 
             builder.Services.ConfigureApplicationCookie(options =>
@@ -248,8 +248,8 @@ public static class Program
             builder.Services.Configure<PrusaConnect.PrusaConnectOptions>(
                 builder.Configuration.GetSection(PrusaConnect.PrusaConnectOptions.SectionName));
 
-            builder.Services.Configure<Services.AttemptLimitOptions>(
-                builder.Configuration.GetSection(Services.AttemptLimitOptions.SectionName));
+            builder.Services.Configure<Accounts.AttemptLimitOptions>(
+                builder.Configuration.GetSection(Accounts.AttemptLimitOptions.SectionName));
 
             builder.Services.Configure<Certificates.CertificateOptions>(
                 builder.Configuration.GetSection(Certificates.CertificateOptions.SectionName));
@@ -280,8 +280,8 @@ public static class Program
             builder.Services.Configure<Mail.SmtpOptions>(
                 builder.Configuration.GetSection(Mail.SmtpOptions.SectionName));
 
-            builder.Services.Configure<Services.InvitationOptions>(
-                builder.Configuration.GetSection(Services.InvitationOptions.SectionName));
+            builder.Services.Configure<Accounts.InvitationOptions>(
+                builder.Configuration.GetSection(Accounts.InvitationOptions.SectionName));
 
             builder.Services.Configure<Middleware.SecurityOptions>(
                 builder.Configuration.GetSection(Middleware.SecurityOptions.SectionName));
@@ -316,7 +316,7 @@ public static class Program
 
             // Holds the first-run bootstrap secret and the one-way "an admin exists" flag; seeded once
             // by SeedAdminBootstrap after migration. Singleton so the flag is process-wide.
-            builder.Services.AddSingleton<Services.SetupState>();
+            builder.Services.AddSingleton<Accounts.SetupState>();
 
             // Factory-activated (IMiddleware) so it is resolved from the container. Singleton: it holds
             // no per-request state, only the singleton SetupState.
@@ -330,7 +330,7 @@ public static class Program
                             .AddScoped<PrusaConnect.WebSocketHandler>()
                             .AddScoped<PrusaConnect.TokenService>()
                             .AddScoped<PrusaConnect.CodeGenerator>()
-                            .AddScoped<Services.AttemptLimiter>()
+                            .AddScoped<Accounts.AttemptLimiter>()
                             .AddScoped<PrusaConnect.MessageDispatcher>()
                             .AddScoped<Printing.PrinterCommandService>()
                             .AddScoped<Printing.ToolTargetReader>()
@@ -484,12 +484,12 @@ public static class Program
             builder.Services.AddScoped<Authorisation.PrinterAccessService>();
 
             // Scoped, unlike their singleton neighbors above, because they hold the scoped HomespoolDbContext.
-            builder.Services.AddScoped<Services.TeamService>();
+            builder.Services.AddScoped<Accounts.TeamService>();
             builder.Services.AddScoped<Services.UnitOfWork>();
-            builder.Services.AddScoped<Services.InvitationService>();
+            builder.Services.AddScoped<Accounts.InvitationService>();
             builder.Services.AddScoped<Services.PrinterQueryService>();
             builder.Services.AddScoped<Services.PrinterRemovalService>();
-            builder.Services.AddScoped<Services.UserNameLookup>();
+            builder.Services.AddScoped<Accounts.UserNameLookup>();
             builder.Services.AddScoped<PrintQueueService>();
             builder.Services.AddScoped<Printing.PrintHistoryService>();
             builder.Services.AddScoped<Printing.PrintStopService>();
@@ -504,7 +504,7 @@ public static class Program
             // needs to drive one pass deterministically rather than wait out a poll interval.
             builder.Services.AddSingleton<QueueAdvancer>();
             builder.Services.AddHostedService(sp => sp.GetRequiredService<QueueAdvancer>());
-            builder.Services.AddScoped<Services.ApiTokenService>();
+            builder.Services.AddScoped<Accounts.ApiTokenService>();
 
             WebApplication app = builder.Build();
 
@@ -523,7 +523,7 @@ public static class Program
 
             // Ensure the admin role exists and, if no administrator has been created yet, mint and log
             // the one-time /setup token. Runs inline so setup state is settled before the first request.
-            Services.AdminBootstrap.SeedAdminBootstrap(app.Services);
+            Accounts.AdminBootstrap.SeedAdminBootstrap(app.Services);
 
             // The certificate nginx presents to printers. Inline, before Run, because the proxy waits
             // on this container's health check and then reads the leaf off the shared volume.

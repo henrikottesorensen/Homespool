@@ -9,7 +9,7 @@ using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
-using Homespool.Host.Services;
+using Homespool.Host.Accounts;
 using Homespool.Model;
 using Homespool.Model.Entities;
 

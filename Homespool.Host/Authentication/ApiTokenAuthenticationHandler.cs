@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 using Microsoft.Net.Http.Headers;
 
-using Homespool.Host.Services;
+using Homespool.Host.Accounts;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Authentication;

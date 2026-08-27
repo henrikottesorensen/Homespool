@@ -10,9 +10,9 @@ using AwesomeAssertions;
 
 using Microsoft.Extensions.DependencyInjection;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Controllers;
 using Homespool.Host.PrusaConnect.Transfers;
-using Homespool.Host.Services;
 
 namespace Homespool.Host.E2ETest;
 

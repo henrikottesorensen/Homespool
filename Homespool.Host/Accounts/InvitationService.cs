@@ -11,7 +11,7 @@ using Homespool.Data;
 using Homespool.Host.PrusaConnect;
 using Homespool.Model.Entities;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// Issues, validates and revokes <see cref="Invitation"/>s. This is the single home for invite token

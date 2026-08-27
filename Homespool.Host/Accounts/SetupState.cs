@@ -2,7 +2,7 @@ using System;
 using System.Security.Cryptography;
 using System.Threading;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// Holds the first-run bootstrap secret and the one-way "an administrator exists" flag for the

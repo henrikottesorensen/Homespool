@@ -8,7 +8,7 @@ using Homespool.Host.Localisation;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// Builds the team picker options shared by every page that lets a user add a printer to a team

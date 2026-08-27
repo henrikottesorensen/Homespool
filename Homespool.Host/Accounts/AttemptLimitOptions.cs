@@ -1,4 +1,4 @@
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// How hard an account may guess at a short secret before it is backed off.

@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 
-using Homespool.Host.Services;
+using Homespool.Host.Accounts;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Authentication;

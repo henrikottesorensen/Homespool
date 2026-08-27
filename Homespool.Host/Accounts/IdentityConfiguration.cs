@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Identity;
 
 using Homespool.Model.Entities;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// Every deviation from Identity's default <see cref="IdentityOptions"/>, in one place.

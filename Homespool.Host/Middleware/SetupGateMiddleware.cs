@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Http;
 
-using Homespool.Host.Services;
+using Homespool.Host.Accounts;
 
 namespace Homespool.Host.Middleware;
 

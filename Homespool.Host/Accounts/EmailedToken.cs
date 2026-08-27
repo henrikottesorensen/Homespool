@@ -3,7 +3,7 @@ using System.Text;
 
 using Microsoft.AspNetCore.WebUtilities;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// Reads back a token that travelled in a link, and answers null rather than throwing when what

@@ -8,7 +8,7 @@ using AwesomeAssertions;
 
 using Microsoft.Extensions.DependencyInjection;
 
-using Homespool.Host.Services;
+using Homespool.Host.Accounts;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.E2ETest;

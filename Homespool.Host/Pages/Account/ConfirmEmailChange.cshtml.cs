@@ -2,8 +2,8 @@
 
 using System.Threading.Tasks;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
-using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;
@@ -122,6 +122,6 @@ public class ConfirmEmailChangeModel : PageModel
     private async Task<bool> IsAlertRecipientAsync(HSUser user)
     {
         return _smtp.Value.IsConfigured
-               && await _userManager.IsInRoleAsync(user, Services.AdminBootstrap.AdminRole);
+               && await _userManager.IsInRoleAsync(user, Accounts.AdminBootstrap.AdminRole);
     }
 }

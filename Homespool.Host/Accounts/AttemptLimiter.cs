@@ -11,7 +11,7 @@ using Homespool.Data;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// Bounds how fast one account can guess at one <see cref="LimitedAction"/>, with an exponential

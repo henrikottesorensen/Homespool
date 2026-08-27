@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Identity;
 
 using Homespool.Model.Entities;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// A password hash belonging to nobody, to verify against when there is no account to verify

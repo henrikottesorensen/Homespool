@@ -13,6 +13,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;

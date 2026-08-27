@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// Usernames for a handful of user ids, for pages that show who did something.

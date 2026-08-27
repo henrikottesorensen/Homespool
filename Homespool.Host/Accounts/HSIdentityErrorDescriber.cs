@@ -3,7 +3,7 @@ using Microsoft.Extensions.Localization;
 
 using Homespool.Host.Localisation;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// Corrects the one Identity message that this application makes untrue, in the reader's language.

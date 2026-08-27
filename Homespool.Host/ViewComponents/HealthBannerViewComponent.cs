@@ -42,7 +42,7 @@ public sealed class HealthBannerViewComponent : ViewComponent
 
     public async Task<IViewComponentResult> InvokeAsync()
     {
-        if (!UserClaimsPrincipal.IsInRole(Services.AdminBootstrap.AdminRole))
+        if (!UserClaimsPrincipal.IsInRole(Accounts.AdminBootstrap.AdminRole))
         {
             return View(new List<HealthBannerItem>());
         }

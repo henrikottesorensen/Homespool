@@ -2,7 +2,7 @@ using System;
 
 using AwesomeAssertions;
 
-using Homespool.Host.Services;
+using Homespool.Host.Accounts;
 
 namespace Homespool.Host.Test;
 

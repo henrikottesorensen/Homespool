@@ -15,9 +15,9 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.E2ETest;
-using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.IntegrationTest;

@@ -10,6 +10,7 @@ using AwesomeAssertions;
 
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Host.Services;
@@ -342,5 +343,102 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
 
         IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, correctResponse)
                                 .Should().BeFalse("a locked-out account must not sign in even with the right password");
+    }
+
+    /// <summary>
+    /// <b>An unknown identifier costs a password verification too</b>, so the form's sameness covers
+    /// the work and not only the wording.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Counts the verification rather than timing the response, and that is the whole design of
+    /// this test.</b> A wall-clock assertion here would be measuring a hash against garbage
+    /// collection, JIT warm-up and CI scheduling; the threshold needed to stop it flaking is wide
+    /// enough that it would pass with the fix reverted, which is the worst kind of green. What the
+    /// property actually says is "both branches do the expensive thing", and that is countable.
+    /// </para>
+    /// <para>
+    /// Only <c>VerifyHashedPassword</c> is counted. Creating the account hashes, and the decoy hashes
+    /// once when it is first resolved - neither is a verification, so neither can flatter the count.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AnUnknownIdentifierVerifiesAPasswordJustAsAWrongOneDoes()
+    {
+        // Arrange
+        await CreateUserAsync("user@example.com", confirmed: true);
+
+        CountingPasswordHasher counter = new();
+
+        using WebApplicationFactory<Controllers.PrinterAppController> counted =
+            _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(
+                                            services => services.AddSingleton<IPasswordHasher<HSUser>>(counter)));
+
+        // A derived factory is a second host with its own in-memory SetupState, so the gate has to be
+        // opened again here or /Account/Login redirects to /setup and renders no form. The database is
+        // the same file, so the account created above is visible to it.
+        using (IServiceScope scope = counted.Services.CreateScope())
+        {
+            scope.ServiceProvider.GetRequiredService<SetupState>().MarkComplete();
+        }
+
+        // Act - a wrong password against a real account, then an identifier nobody holds
+        int afterWrongPassword = await AttemptAsync(counted, "user@example.com", "wrong-" + Password);
+        int afterUnknown = await AttemptAsync(counted, "nobody", "wrong-" + Password);
+
+        // Assert
+        afterWrongPassword.Should().Be(1, "a wrong password is verified against the stored hash");
+        afterUnknown.Should().Be(1, "and an unknown identifier is verified against the decoy");
+    }
+
+    /// <summary>
+    /// Posts one login attempt through <paramref name="factory"/> and returns how many password
+    /// verifications it cost.
+    /// </summary>
+    private static async Task<int> AttemptAsync(WebApplicationFactory<Controllers.PrinterAppController> factory,
+                                                string login,
+                                                string password)
+    {
+        using HttpClient client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        HttpResponseMessage getResponse = await client.GetAsync("/Account/Login", TestContext.Current.CancellationToken);
+        string token =
+            AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+
+        CountingPasswordHasher counter =
+            (CountingPasswordHasher)factory.Services.GetRequiredService<IPasswordHasher<HSUser>>();
+        counter.Reset();
+
+        using FormUrlEncodedContent body = LoginBody(token, login, password);
+        using HttpResponseMessage postResponse =
+            await client.PostAsync("/Account/Login", body, TestContext.Current.CancellationToken);
+
+        postResponse.StatusCode.Should().Be(HttpStatusCode.OK, "both attempts are refusals, rendered on the form");
+
+        return counter.Verifications;
+    }
+
+    /// <summary>
+    /// Identity's own hasher, with a count of the verifications through it.
+    /// </summary>
+    private sealed class CountingPasswordHasher : PasswordHasher<HSUser>
+    {
+        private int _verifications;
+
+        public int Verifications => Volatile.Read(ref _verifications);
+
+        public void Reset()
+        {
+            Volatile.Write(ref _verifications, 0);
+        }
+
+        public override PasswordVerificationResult VerifyHashedPassword(HSUser user,
+                                                                        string hashedPassword,
+                                                                        string providedPassword)
+        {
+            Interlocked.Increment(ref _verifications);
+
+            return base.VerifyHashedPassword(user, hashedPassword, providedPassword);
+        }
     }
 }

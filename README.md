@@ -160,6 +160,45 @@ deployments behind a router or tunnel.
   [nginx/homespool-printer.conf](nginx/homespool-printer.conf) before substituting anything for
   that half.
 
+### Minimum firmware for TLS
+
+The printer verifies Homespool's certificate through the firmware's `custom_cert` mechanism.
+**That mechanism is broken in most earlier firmware** — the certificate file is never read, the
+printer shows an error and sends no network traffic at all, and nothing points at the firmware. The
+rule: **update the printer to the newest firmware for its model** (from
+[Prusa's downloads](https://help.prusa3d.com/downloads)) — every model's current release loads the
+certificate correctly. Firmware release trains differ by model, so ignore specific version numbers
+you may see elsewhere; the table below is for diagnosing a printer you cannot update right now.
+
+| Printer firmware | TLS to Homespool |
+|---|---|
+| 6.5.7 and newer | works |
+| 6.5.1 – 6.5.3 | broken — update the printer first |
+| 6.4.2 | works |
+| 6.4.0, 6.4.1 | broken — update the printer first |
+| 6.2.0 – 6.3.4 | broken — update the printer first |
+| older than 6.2.0 | no custom-certificate support at all — update the printer first |
+
+Updating is the same gesture as provisioning: put the firmware `.bbf` on the USB stick alongside
+the bundle files, and the printer offers to install it. Do that first, then load the settings.
+
+**Reading the printer's error message.** What the panel says tells you which of the three it is:
+
+| The panel says | It means |
+|---|---|
+| `Bug: TLS error` | **The firmware is too old** — this is what a broken release shows, seen on 6.2.6. Nothing at this end can fix it; update the printer |
+| `TLS error` | The certificate was read but the handshake failed — check that the bundle came from this deployment, and that the address in it still reaches this server |
+| `Bug` | The certificate file on the printer is missing, empty or truncated — re-provision from a freshly downloaded bundle |
+
+The last two are only distinguishable on firmware that has the fix. Either way, a printer that sends
+no network traffic at all — nothing in a packet capture, nothing in this server's log — is failing
+before it opens a socket, which is the old-firmware defect rather than anything about your
+certificate.
+
+A printer deliberately kept on an older release can still be reached, by opening a second,
+unencrypted printer listener — see `LEGACY_PRINTER_PORT` in `.env.example`, which explains what that
+costs.
+
 ### Mail
 
 Optional. Configure an SMTP server on the settings page and Homespool sends confirmation, invite

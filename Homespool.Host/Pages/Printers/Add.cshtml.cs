@@ -183,8 +183,9 @@ public class AddModel : PageModel
             printerName,
             token,
             names,
-            ConnectIni.BuildSnippet(_options, names.Count > 0 ? names[0].Value : _options.PrinterHost, token),
-            _options.PrinterTls);
+            ConnectIni.BuildSnippet(PrinterEndpoint.Default(_options), names.Count > 0 ? names[0].Value : _options.PrinterHost, token),
+            _options.PrinterTls,
+            _options.LegacyPrinterPort);
     }
 
     private async Task LoadTeamOptionsAsync(CancellationToken cancellationToken)

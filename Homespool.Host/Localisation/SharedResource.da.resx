@@ -1269,8 +1269,29 @@
   <data name="Bundle_Root" xml:space="preserve">
     <value>roden</value>
   </data>
+  <data name="Bundle_LegacySummary" xml:space="preserve">
+    <value>Denne printers firmware understøtter ikke brug af TLS med Homespool.</value>
+  </data>
+  <data name="Bundle_LegacyWhen" xml:space="preserve">
+    <value>Ældre firmware har et bug og kan slet ikke indlæse et brugerdefineret TLS-certifikat: printeren viser en TLS-fejl og sender aldrig nogen trafik. Den rigtige løsning er at opdatere den - firmwarefilen kan ligge på den samme USB-nøgle - og alle modellers nyeste udgave virker. Brug kun HTTP uden TLS, hvis du bevidst holder printeren på en ældre udgave af firmwaren.</value>
+  </data>
+  <data name="Bundle_LegacyCost" xml:space="preserve">
+    <value>Printeren sender sit eget token, alle de filer du sender til den, sit WiFi SSID, og den PrusaLink-adgangskode den selv oplyser, i klartekst på dit netværk - og enhver på vejen kan i teorien ændre dens gcode og kommandoer undervejs, ikke bare læse dem. Dine andre printere bliver ved med at bruge TLS.</value>
+  </data>
+  <data name="Bundle_LegacyNotNeeded" xml:space="preserve">
+    <value>Denne printer meldte sidst at den kørte på firmware {0}, som GODT kan indlæse et TLS-certifikat - så der er ikke brug for dette, og vælger du det her, gør du printeren mindre sikker uden grund.</value>
+  </data>
+  <data name="Bundle_LegacyChoose" xml:space="preserve">
+    <value>Peg denne printer mod den ukrypterede port ({0}) i stedet for</value>
+  </data>
+  <data name="Bundle_LegacyConfirm" xml:space="preserve">
+    <value>Jeg forstår, at denne printers kommunikation vil ikke blive beskyttet af TLS</value>
+  </data>
   <data name="Bundle_TrustStore" xml:space="preserve">
     <value>Zip-filen indeholder også {0}, og ini-filen sætter {1}. Det {2} printerens trust store frem for at føje til den, så mens den er sat, kan printeren ikke tale med Prusa Connect. Den samme advarsel står inde i ini-filen, hvor den læses i det øjeblik, den betyder noget.</value>
+  </data>
+  <data name="Bundle_FirmwareFloor" xml:space="preserve">
+    <value>Kræver nyere printerfirmware, der kan indlæse et brugerdefineret TLS-certifikat. Opdater først printeren til den nyeste firmwareversion for printeren. Ældre firmware viser {0} uden nogensinde at forbinde til Homespool.</value>
   </data>
   <data name="Bundle_Replaces" xml:space="preserve">
     <value>erstatter</value>
@@ -2037,6 +2058,9 @@
   <data name="Ini_CustomCertNote" xml:space="preserve">
     <value>custom_cert = 1 gør connect.der, som ligger ved siden af denne fil, til printerens HELE trust store - den erstatter de certifikater, printeren kom med, i stedet for at lægge sig oveni. Så længe det er sat, kan denne printer ikke tale med Prusa Connect. Sæt custom_cert = 0 for at fortryde.</value>
   </data>
+  <data name="Ini_FirmwareFloor" xml:space="preserve">
+    <value>Kræver nyere printerfirmware, der kan indlæse et brugerdefineret TLS-certifikat. Opdater først printeren til den nyeste firmwareversion for printeren. Ældre firmware viser 'Bug: TLS error' på printeren uden nogensinde at forbinde til Homespool.</value>
+  </data>
   <data name="Ini_PlainHttpNote" xml:space="preserve">
     <value>tls = False: denne printers token sendes i klartekst over netværket, og det samme gør alt, hvad den siger bagefter. Det er en indstilling til at aflytte trafikken på et netværk, du selv styrer.</value>
   </data>
@@ -2130,7 +2154,7 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>**Printeren siger, at konfigurationen ikke kunne indlæses.** Noget har redigeret filen. Den er nærtagende med kommentartegn (kun `#`, aldrig `;`) og med at være komplet - hver eneste nøgle skal være der. Hent pakken igen frem for at reparere den i hånden; det er hele grunden til, at den bliver genereret.</value>
   </data>
   <data name="Readme_TroubleTls" xml:space="preserve">
-    <value>**Printeren melder om en TLS- eller certifikatfejl.** Tre sædvanlige årsager, efter sandsynlighed: `connect.der` blev ikke kopieret med ved siden af ini-filen; serverens certifikat er blevet genudstedt, siden denne pakke blev hentet, så hent en ny; eller printerens ur går så meget forkert, at den afviser certifikatet, hvilket retter sig selv, når den har været på et netværk med internetadgang et minuts tid.</value>
+    <value>**Printeren melder om en TLS- eller certifikatfejl.** Fire sædvanlige årsager, efter sandsynlighed: firmwaren er for gammel til overhovedet at kunne indlæse et brugerdefineret TLS-certifikat, hvilket printeren viser som `Bug: TLS error` - opdater den til den nyeste firmwareversion for printeren, og indlæs så indstillingerne igen; `connect.der` blev ikke kopieret med ved siden af ini-filen; serverens certifikat er blevet genudstedt, siden denne pakke blev hentet, så hent en ny; eller printerens ur går så meget forkert, at den afviser certifikatet, hvilket retter sig selv, når den har været på et netværk med internetadgang et minuts tid.</value>
   </data>
   <data name="Readme_TroubleNothing" xml:space="preserve">
     <value>**Der sker ingenting overhovedet.** Tjek, at printeren kan nå `{0}` på port `{1}` derfra, hvor den står - et andet wifi-netværk eller en firewall imellem de to er det sædvanlige svar.</value>

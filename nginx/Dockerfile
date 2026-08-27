@@ -35,6 +35,7 @@ USER 101
 # certificate several lines later - so the cause and the symptom do not look related. Stating the
 # mode here also survives a checkout that did not preserve it.
 COPY --chown=101:101 --chmod=755 docker-entrypoint.d/20-printer-listener.sh /docker-entrypoint.d/
+COPY --chown=101:101 --chmod=755 docker-entrypoint.d/21-legacy-printer-listener.sh /docker-entrypoint.d/
 COPY --chown=101:101 --chmod=755 docker-entrypoint.d/25-self-signed-certificate.sh /docker-entrypoint.d/
 
 # 26 after 25, and the numbers are load-bearing: 25 mints a certificate for every name that has

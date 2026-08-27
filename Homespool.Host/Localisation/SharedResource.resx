@@ -1303,8 +1303,32 @@
   <data name="Bundle_Root" xml:space="preserve">
     <value>root</value>
   </data>
+  <data name="Bundle_LegacySummary" xml:space="preserve">
+    <value>This printer&apos;s firmware does not support using TLS with Homespool.</value>
+  </data>
+  <data name="Bundle_LegacyWhen" xml:space="preserve">
+    <value>Older firmware has a bug and cannot load a custom TLS certificate at all: the printer shows a TLS error and never sends any traffic. Updating it is the right fix - the firmware file can go on the same USB stick - and every model&apos;s newest release works. Only use HTTP without TLS if you are deliberately keeping the printer on an older firmware release.</value>
+  </data>
+  <data name="Bundle_LegacyCost" xml:space="preserve">
+    <value>The printer sends its own token, every file you send it, its WiFi SSID, and the PrusaLink password it reports about itself, in clear text on your network - and anyone on the path can in theory alter its gcode and commands in flight, not just read them. Your other printers keep using TLS.</value>
+  </data>
+  <data name="Bundle_LegacyNotNeeded" xml:space="preserve">
+    <value>This printer last reported that it was running firmware {0}, which CAN load a TLS certificate - so there is no need for this, and choosing it here makes the printer less safe for no reason.</value>
+    <comment>{0} is the firmware version the printer stated, rendered as code.</comment>
+  </data>
+  <data name="Bundle_LegacyChoose" xml:space="preserve">
+    <value>Point this printer at the unencrypted port ({0}) instead</value>
+    <comment>{0} is the port number.</comment>
+  </data>
+  <data name="Bundle_LegacyConfirm" xml:space="preserve">
+    <value>I understand this printer&apos;s communication will not be protected by TLS</value>
+  </data>
   <data name="Bundle_TrustStore" xml:space="preserve">
     <value>The zip carries {0} as well, and the ini sets {1}. That {2} the printer&apos;s trust store rather than adding to it, so while it is set the printer cannot talk to Prusa Connect. The same warning is written inside the ini, where it is read at the moment it matters.</value>
+  </data>
+  <data name="Bundle_FirmwareFloor" xml:space="preserve">
+    <value>Requires newer printer firmware that can load a custom TLS certificate. Update the printer to its newest firmware version first. Older firmware shows {0} without ever connecting to Homespool.</value>
+    <comment>{0} is the printer&apos;s own error string, rendered as code and left in firmware&apos;s language.</comment>
   </data>
   <data name="Bundle_Replaces" xml:space="preserve">
     <value>replaces</value>
@@ -2121,6 +2145,10 @@
     <value>custom_cert = 1 makes connect.der, beside this file, the printer&apos;s ENTIRE trust store - replacing the certificates it shipped with rather than adding to them. While that is set, this printer cannot talk to Prusa Connect. Set custom_cert = 0 to undo it.</value>
     <comment>The key names are firmware&apos;s and stay as they are. &quot;trust store&quot; stays too - it is the term the firmware documentation uses.</comment>
   </data>
+  <data name="Ini_FirmwareFloor" xml:space="preserve">
+    <value>Requires newer printer firmware that can load a custom TLS certificate. Update the printer to its newest firmware version first. Older firmware shows 'Bug: TLS error' on the printer without ever connecting to Homespool.</value>
+    <comment>'TLS error' is the printer&apos;s own error string and stays in firmware&apos;s language.</comment>
+  </data>
   <data name="Ini_PlainHttpNote" xml:space="preserve">
     <value>tls = False: this printer&apos;s token crosses the network in clear, and so does everything it says afterwards. That is a setting for reading the wire on a network you control.</value>
   </data>
@@ -2217,7 +2245,7 @@ A stick that already works with your printer is the right stick. If you are form
     <value>**The printer says the config failed to load.** Something edited the file. It is sensitive about comment characters (`#` only, never `;`) and about being complete - every key has to be there. Re-download the bundle rather than repairing it by hand; that is the entire reason it is generated.</value>
   </data>
   <data name="Readme_TroubleTls" xml:space="preserve">
-    <value>**The printer says there is a TLS or certificate error.** Three usual causes, in order of likelihood: `connect.der` was not copied alongside the ini; the server&apos;s certificate has been reissued since this bundle was downloaded, so download a fresh one; or the printer&apos;s clock is far enough out to reject the certificate, which fixes itself once it has been on a network with internet access for a minute.</value>
+    <value>**The printer says there is a TLS or certificate error.** Four usual causes, in order of likelihood: the firmware is too old to load a custom certificate at all, which the printer shows as `Bug: TLS error` — update it to the newest firmware for its model, then load the settings again; `connect.der` was not copied alongside the ini; the server&apos;s certificate has been reissued since this bundle was downloaded, so download a fresh one; or the printer&apos;s clock is far enough out to reject the certificate, which fixes itself once it has been on a network with internet access for a minute.</value>
   </data>
   <data name="Readme_TroubleNothing" xml:space="preserve">
     <value>**Nothing happens at all.** Check the printer can reach `{0}` on port `{1}` from where it sits - a different wifi network or a firewall between the two is the usual answer.</value>

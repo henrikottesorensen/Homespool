@@ -142,6 +142,25 @@ services:
       PrusaConnect__PrinterPort: "${PRINTER_PORT:-15443}"
       PrusaConnect__PrinterTls: "${PRINTER_TLS:-true}"
 
+      # The legacy plaintext printer listener, and EMPTY BY DEFAULT - which binds to null and means the
+      # socket is never opened. Set LEGACY_PRINTER_PORT only if you own a printer whose firmware
+      # cannot load a custom certificate; every printer provisioned onto it sends its token, its
+      # files and the PrusaLink password in its own INFO across the network in clear, and plain HTTP
+      # has no integrity, so gcode and commands can be altered in flight rather than only read.
+      # Unlike PRINTER_TLS this leaves TLS standing for every other printer, which is the whole
+      # reason it exists as a second listener rather than a switch.
+      #
+      # ONE VARIABLE, read three times here, so the listener, the number written into a legacy ini
+      # and the proxy's server block cannot disagree about whether the listener exists or where it is.
+      #
+      # The two halves are the same split PrinterPort already has, and they are not the same number
+      # when the host port is moved: Listeners is the port INSIDE this container - fixed, because the
+      # server block in front of it is a static file - and PrusaConnect is what a printer DIALS, which
+      # is the published port and goes into the ini. `:+` yields the fixed port only when the variable
+      # is set at all, so unset means an empty string, which binds to null and opens nothing.
+      Listeners__LegacyPrinterPort: "${LEGACY_PRINTER_PORT:+15800}"
+      PrusaConnect__LegacyPrinterPort: "${LEGACY_PRINTER_PORT:-}"
+
       # The port written into START_ENCRYPTED_DOWNLOAD - what a printer on the pre-websocket transport
       # fetches a file from. Plain HTTP by design (the printer opens it with a raw socket; see
       # nginx/homespool-transfer.conf), so it is proxied without TLS and stays plain whatever
@@ -360,10 +379,23 @@ services:
       # any further than the LAN.
       - "0.0.0.0:${TRANSFER_PORT:-15080}:15080"
 
+      # The legacy plaintext printer listener. PUBLISHED UNCONDITIONALLY AND CLOSED UNLESS ASKED FOR:
+      # with LEGACY_PRINTER_PORT unset the application opens no such listener and the proxy installs
+      # no server block, so this port refuses connections. That is deliberate - making the
+      # publication itself conditional would mean two things that must agree, which is exactly the
+      # trap compose.plaintext.yaml documents, where a variable set and an override file forgotten
+      # leaves printers reaching a port nothing serves.
+      - "${LEGACY_PRINTER_PORT:-15800}:15800"
+
     environment:
       # The same zone the application uses, so the two logs can be read side by side without
       # arithmetic. Only nginx's own timestamps read it - envsubst is filtered below.
       TZ: "${TZ:-UTC}"
+
+      # Read by 21-legacy-printer-listener.sh, which installs the plaintext printer block only when
+      # this is set - the same variable that opens the application's own listener above, so one
+      # answer serves both halves. Empty is the normal case and installs nothing.
+      LEGACY_PRINTER_PORT: "${LEGACY_PRINTER_PORT:-}"
 
       # The names this proxy answers to - server_name in both user-facing blocks, and the subject and
       # subject-alternative names of the self-signed certificate generated on first start. A
@@ -421,6 +453,12 @@ services:
       # Straight into conf.d, unlike the printer block: there is no certificate to wait for. Plain
       # HTTP, /f/* only.
       - ./nginx/homespool-transfer.conf:/etc/nginx/conf.d/homespool-transfer.conf:ro
+
+      # NOT into conf.d, for a different reason than the printer block: there is no certificate to
+      # wait for here either, but this listener must not exist unless LEGACY_PRINTER_PORT asked for it.
+      # The hook copies it across on that one condition, which is the same variable that opens the
+      # application's listener - so the block and the socket behind it cannot disagree.
+      - ./nginx/homespool-legacy-printer.conf:/etc/nginx/homespool-legacy-printer.conf:ro
 
       # The user-facing certificate. Named rather than a bind mount so the directory keeps the
       # ownership the image gave it - an unprivileged nginx has to be able to write the self-signed

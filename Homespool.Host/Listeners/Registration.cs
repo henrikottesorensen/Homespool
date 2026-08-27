@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
+using Serilog;
+
 namespace Homespool.Host.Listeners;
 
 /// <summary>
@@ -104,6 +106,23 @@ public static class Registration
             // difference is what sits in front, which is compose.yaml's business rather than this
             // process's - so there is one listener here and no branch.
             options.ListenAnyIP(listeners.PrinterPort);
+
+            // The legacy listener, and only when a deployment has asked for one. Bound here rather
+            // than conditioned further out so that "is there a plain printer listener" has exactly one
+            // answer in this process: unset means the socket does not exist, which is a stronger
+            // statement than a listener that exists and refuses.
+            if (listeners.LegacyPrinterPort is int legacyPrinterPort)
+            {
+                Log.Warning("A PLAINTEXT printer listener is open on port {Port} for firmware that cannot load a "
+                            + "custom certificate. Every printer provisioned onto it sends its token, its files and "
+                            + "the PrusaLink password in its own INFO across the network in clear, and plain HTTP has "
+                            + "no integrity, so gcode and commands can be altered in flight rather than only read. "
+                            + "Printers that can load a custom certificate should use Listeners:PrinterPort instead; "
+                            + "unset Listeners:LegacyPrinterPort to close it.",
+                            legacyPrinterPort);
+
+                options.ListenAnyIP(legacyPrinterPort);
+            }
 
             // Plain HTTP and never anything else - see ListenerOptions.TransferPort. The one listener
             // whose being unencrypted is the design rather than a proxy's business.

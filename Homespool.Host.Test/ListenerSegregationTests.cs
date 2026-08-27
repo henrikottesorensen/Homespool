@@ -23,6 +23,7 @@ public class ListenerSegregationTests
 {
     private const int PrinterPort = 15443;
     private const int UserPort = 8080;
+    private const int LegacyPrinterPort = 15800;
 
     /// <summary>
     /// The printer protocol lives under <c>/p</c>, the transfer path under <c>/f</c>, and nothing
@@ -62,6 +63,64 @@ public class ListenerSegregationTests
         // Assert
         nextCalled.Should().BeTrue();
         context.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
+    }
+
+    /// <summary>
+    /// The legacy plaintext listener carries the same protocol, so a printer endpoint reached on it is
+    /// served exactly as on the TLS-terminated one. One surface, two ways in.
+    /// </summary>
+    [Fact]
+    public async Task APrinterEndpointOnTheLegacyPrinterListenerIsServed()
+    {
+        // Act
+        (bool nextCalled, HttpContext context) = await RunAsync(ListenerClass.Printer,
+                                                                arrivedOnPort: LegacyPrinterPort,
+                                                                legacyPrinterPort: LegacyPrinterPort);
+
+        // Assert
+        nextCalled.Should().BeTrue();
+        context.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
+    }
+
+    /// <summary>
+    /// <b>The legacy listener is closed unless a deployment opens it</b>, and this is the assertion that
+    /// says so from the classification's side rather than from Kestrel's.
+    /// </summary>
+    /// <remarks>
+    /// With <c>LegacyPrinterPort</c> unset there is no socket at all in a running deployment, so this
+    /// case cannot arise there. It is asserted anyway because the two halves fail differently: if the
+    /// classification ever answered <see cref="ListenerClass.Printer"/> for a port nobody configured,
+    /// then a deployment that published 15800 by habit - or a future listener bound for another reason
+    /// - would serve the printer protocol in the clear having been asked for no such thing.
+    /// </remarks>
+    [Fact]
+    public async Task ThePrinterProtocolIsRefusedOnTheLegacyPortWhenNoLegacyListenerIsConfigured()
+    {
+        // Act - the same port, with the deployment not having asked for a plaintext listener.
+        (bool nextCalled, HttpContext context) = await RunAsync(ListenerClass.Printer,
+                                                                arrivedOnPort: LegacyPrinterPort,
+                                                                legacyPrinterPort: null);
+
+        // Assert
+        nextCalled.Should().BeFalse();
+        context.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
+    }
+
+    /// <summary>
+    /// The legacy listener carries the printer protocol and nothing else, exactly as the other two
+    /// printer-facing listeners do - opening it must not put pages on a plaintext port.
+    /// </summary>
+    [Fact]
+    public async Task AUserEndpointOnTheLegacyPrinterListenerIsRefused()
+    {
+        // Act
+        (bool nextCalled, HttpContext context) = await RunAsync(ListenerClass.User,
+                                                                arrivedOnPort: LegacyPrinterPort,
+                                                                legacyPrinterPort: LegacyPrinterPort);
+
+        // Assert
+        nextCalled.Should().BeFalse();
+        context.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
     }
 
     /// <summary>
@@ -202,19 +261,27 @@ public class ListenerSegregationTests
         context.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
     }
 
-    private static Task<(bool nextCalled, HttpContext context)> RunAsync(ListenerClass requirement, int arrivedOnPort)
+    private static Task<(bool nextCalled, HttpContext context)> RunAsync(ListenerClass requirement,
+                                                                         int arrivedOnPort,
+                                                                         int? legacyPrinterPort = null)
     {
-        return RunAsync((ListenerClass?)requirement, arrivedOnPort);
+        return RunAsync((ListenerClass?)requirement, arrivedOnPort, legacyPrinterPort: legacyPrinterPort);
     }
 
     private static async Task<(bool nextCalled, HttpContext context)> RunAsync(ListenerClass? requirement,
                                                                                int arrivedOnPort,
                                                                                bool matched = true,
-                                                                               string path = "/p/ws")
+                                                                               string path = "/p/ws",
+                                                                               int? legacyPrinterPort = null)
     {
         // Arrange
         ListenerSegregationMiddleware middleware = new(
-            Options.Create(new ListenerOptions { PrinterPort = PrinterPort, UserPort = UserPort }),
+            Options.Create(new ListenerOptions
+            {
+                PrinterPort = PrinterPort,
+                UserPort = UserPort,
+                LegacyPrinterPort = legacyPrinterPort,
+            }),
             NullLogger<ListenerSegregationMiddleware>.Instance);
 
         DefaultHttpContext context = new();

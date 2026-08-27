@@ -45,7 +45,7 @@ public static class ProvisioningReadme
     /// <summary>
     /// The instructions, filled in for this bundle.
     /// </summary>
-    /// <param name="options">Supplies the port and whether TLS is in use.</param>
+    /// <param name="endpoint">The port written into the ini, and whether the printer verifies anything.</param>
     /// <param name="hostname">The address written into the ini — what this printer will connect to.</param>
     /// <param name="printerName">The printer this was provisioned for, or null if it was left unnamed.</param>
     /// <param name="localiser">Reads the document in the culture of whoever asked for the bundle.</param>
@@ -55,19 +55,18 @@ public static class ProvisioningReadme
     /// project has spent two rounds removing. Markdown structure, code spans and the printer's own
     /// menu paths stay here rather than travelling into the resources.
     /// </remarks>
-    public static string Build(PrusaConnectOptions options,
+    public static string Build(PrinterEndpoint endpoint,
                                string hostname,
                                string? printerName,
                                IStringLocalizer<SharedResource> localiser)
     {
-        ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(localiser);
 
         string forPrinter = string.IsNullOrWhiteSpace(printerName) ?
             localiser["Readme_APrinter"].Value :
             $"**{printerName.Trim()}**";
 
-        string certificateStep = options.PrinterTls ?
+        string certificateStep = endpoint.Tls ?
             $"""
             ### {localiser["Readme_Step3TlsHeading"].Value}
 
@@ -79,7 +78,7 @@ public static class ProvisioningReadme
             {localiser["Readme_Step3PlainBody"].Value}
             """;
 
-        string afterwards = options.PrinterTls ?
+        string afterwards = endpoint.Tls ?
             $"""
             ## {localiser["Readme_NoConnectHeading"].Value}
 
@@ -87,11 +86,11 @@ public static class ProvisioningReadme
             """ :
             string.Empty;
 
-        string certificateRow = options.PrinterTls ?
+        string certificateRow = endpoint.Tls ?
             $"| `{ProvisioningBundleBuilder.AuthorityFileName}` | {localiser["Readme_RowDer"].Value} |" :
             string.Empty;
 
-        string connection = options.PrinterTls ?
+        string connection = endpoint.Tls ?
             localiser["Readme_ConnectionTls"].Value :
             localiser["Readme_ConnectionPlain"].Value;
 
@@ -140,7 +139,7 @@ public static class ProvisioningReadme
 
                 {localiser["Readme_TroubleTls"].Value}
 
-                {localiser["Readme_TroubleNothing", hostname, options.PrinterPort].Value}
+                {localiser["Readme_TroubleNothing", hostname, endpoint.Port].Value}
 
                 {localiser["Readme_TroubleStopped"].Value}
 
@@ -151,7 +150,7 @@ public static class ProvisioningReadme
                 | | |
                 |---|---|
                 | {localiser["Readme_RowServerAddress"].Value} | `{hostname}` |
-                | {localiser["Readme_RowPort"].Value} | `{options.PrinterPort}` |
+                | {localiser["Readme_RowPort"].Value} | `{endpoint.Port}` |
                 | {localiser["Readme_RowConnection"].Value} | {connection} |
 
                 """;

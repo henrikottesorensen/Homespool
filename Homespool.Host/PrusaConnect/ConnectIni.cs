@@ -44,13 +44,11 @@ public static class ConnectIni
     /// The section on its own, to paste into an existing ini — for someone who would rather read what
     /// they are about to do than trust a zip.
     /// </summary>
-    /// <param name="options">Supplies the port and whether TLS is in use.</param>
+    /// <param name="endpoint">The port to dial and whether to verify anything on arrival.</param>
     /// <param name="hostname">The address this printer should use: one of the names in the certificate.</param>
     /// <param name="token">The provisioning token, which is what makes this a credential.</param>
-    public static string BuildSnippet(PrusaConnectOptions options, string hostname, string token)
+    public static string BuildSnippet(PrinterEndpoint endpoint, string hostname, string token)
     {
-        ArgumentNullException.ThrowIfNull(options);
-
         // custom_cert follows tls and is never a separate question: the firmware carries no public CA
         // bundle at all - not even ISRG Root X1 - so its own certificates are useless against any
         // server but Prusa's. A Let's Encrypt deployment needs a DER shipped exactly as a private one
@@ -58,9 +56,9 @@ public static class ConnectIni
         return $"""
                 [service::connect]
                 hostname = {hostname}
-                port = {options.PrinterPort}
-                tls = {(options.PrinterTls ? "True" : "False")}
-                custom_cert = {(options.PrinterTls ? "1" : "0")}
+                port = {endpoint.Port}
+                tls = {(endpoint.Tls ? "True" : "False")}
+                custom_cert = {(endpoint.Tls ? "1" : "0")}
                 token = {token}
                 """;
     }
@@ -94,21 +92,29 @@ public static class ConnectIni
     /// path are not. Firmware parses the first two; the third names a menu in firmware's language
     /// rather than ours.
     /// </remarks>
-    /// <param name="options">Supplies the port and whether TLS is in use.</param>
+    /// <param name="endpoint">The port to dial and whether to verify anything on arrival.</param>
     /// <param name="hostname">The address this printer should use: one of the names in the certificate.</param>
     /// <param name="token">The provisioning token, which is what makes this a credential.</param>
     /// <param name="localiser">Reads the comments in the culture of whoever asked for the bundle.</param>
-    public static string BuildFile(PrusaConnectOptions options,
+    public static string BuildFile(PrinterEndpoint endpoint,
                                    string hostname,
                                    string token,
                                    IStringLocalizer<SharedResource> localiser)
     {
-        ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(localiser);
 
-        string transportNote = options.PrinterTls ?
-            localiser["Ini_CustomCertNote"].Value :
-            localiser["Ini_PlainHttpNote"].Value;
+        // On the TLS path the firmware note rides along: custom_cert never worked before each
+        // model's mid-2026 release, and the failure it produces - "TLS error", no traffic at all -
+        // points at the certificate, not the firmware. This file is what is in hand when that
+        // happens, so this is where the sentence has to be.
+        //
+        // Off it, the plain note says what crosses the network in clear - and that sentence is now
+        // read by two very different people. One is running a capture on a network they control;
+        // the other has a printer whose firmware cannot do better, and will keep this file. It is
+        // written for the second, because the first already knows.
+        string transportBlock = endpoint.Tls ?
+            $"{Commented(localiser["Ini_CustomCertNote"].Value)}\n#\n{Commented(localiser["Ini_FirmwareFloor"].Value)}" :
+            Commented(localiser["Ini_PlainHttpNote"].Value);
 
         return $"""
                 {Commented(localiser["Ini_HowToLoad"].Value)}
@@ -116,11 +122,11 @@ public static class ConnectIni
                 #
                 {Commented(localiser["Ini_TokenIsAPassword"].Value)}
                 #
-                {Commented(transportNote)}
+                {transportBlock}
                 #
                 {Commented(localiser["Ini_SectionScope"].Value)}
 
-                {BuildSnippet(options, hostname, token)}
+                {BuildSnippet(endpoint, hostname, token)}
 
                 """;
     }

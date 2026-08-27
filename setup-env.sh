@@ -24,6 +24,12 @@
 # so everyone who wants it is already editing this file by hand, and a wizard that offered it would
 # mostly succeed at turning it off by accident.
 #
+# LEGACY_PRINTER_PORT IS offered, and the distinction is worth stating because the two look alike.
+# PRINTER_TLS=false downgrades the whole fleet the moment it is set; LEGACY_PRINTER_PORT opens a
+# second listener that stays inert until somebody separately downloads a legacy bundle for one named
+# printer, and leaves TLS standing for every other. It exists for firmware that cannot verify a
+# certificate at all, which no amount of configuring at this end can fix.
+#
 # The questions are the small part. The checks are the point: an address inside a Docker network is
 # an address no printer can reach, and it is frozen into a certificate on the first start.
 #
@@ -1273,6 +1279,40 @@ acme_host_suggestion() {
     printf '%s' "${result%;}"
 }
 
+# The one question here that makes a deployment less safe, which is why it is shaped the way it is:
+# default no, the cost stated before the question rather than after it, and a second confirmation.
+#
+# It is offered at all - where PRINTER_TLS deliberately is not - because the two are different acts.
+# PRINTER_TLS=false is an immediate fleet-wide downgrade one keystroke away, and a wizard offering it
+# would mostly succeed at turning it off by accident. This opens a listener that stays INERT until
+# somebody separately downloads a legacy bundle for one named printer, and it leaves TLS standing for
+# every other. A wrong answer here costs an open port; a wrong answer there costs every token.
+ask_legacy_printer_port() {
+    local current
+    current="$(env_get LEGACY_PRINTER_PORT)"
+
+    say
+    say $"Some older firmware cannot verify this server's certificate at all - the printer reports a TLS error and sends no traffic whatsoever. Every model's newest release fixes it, and updating the printer is the right answer: the firmware file goes on the same USB stick as the provisioning bundle."
+    say
+    say $"If you deliberately keep a printer on an older release, Homespool can open a SECOND printer port that carries the protocol with no encryption. Every other printer keeps TLS."
+
+    if ! ask_yes_no $"Open the plaintext printer port" n; then
+        # Answering no to a listener that is already open is a request to close it, not a no-op.
+        [ -n "$current" ] && plan_set LEGACY_PRINTER_PORT ""
+
+        return 0
+    fi
+
+    warn $"A printer on that port sends its token in both directions, every file you send it, its WiFi SSID, and the PrusaLink password it reports about itself, all in clear text on your network."
+    warn $"Plain HTTP has no integrity either, so anyone on the path can ALTER gcode and commands in flight, not merely read them. Treat the port as LAN-only: publish it to the internet knowingly or not at all."
+
+    if ! ask_yes_no $"  I understand, open it" n; then
+        return 0
+    fi
+
+    plan_set LEGACY_PRINTER_PORT "$(ask $"  Port" "${current:-15800}")"
+}
+
 ask_public_tls() {
     local suggestion current names email provider fmt
 
@@ -1827,6 +1867,7 @@ main() {
         # After ask_user_host, which it validates against, and after ask_ports because it is the
         # last thing anyone needs and the first thing they can skip.
         ask_public_tls
+        ask_legacy_printer_port
         ensure_go2rtc_credential
         ensure_ca_passphrase
         check_subnet_collision

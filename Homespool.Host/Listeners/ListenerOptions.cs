@@ -98,6 +98,44 @@ public class ListenerOptions
     public int? UserHttpsPort { get; set; }
 
     /// <summary>
+    /// An optional second listener carrying the printer protocol in the clear, for firmware that
+    /// cannot load a custom certificate. Null — the default — means no such listener, and is what a
+    /// deployment should keep unless it owns one of those printers.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>It exists because some firmware cannot reach us over TLS at all.</b> <c>custom_cert</c> was
+    /// broken for the twenty months after it shipped — the certificate file is never read, so the
+    /// printer reports a TLS error and sends no packets whatever we serve. Every model's newest
+    /// release carries the fix and updating is the right answer, but a printer deliberately held on an
+    /// older release for its behaviour has no other way in: firmware carries no public CA bundle
+    /// either, so a publicly-trusted certificate would not help.
+    /// </para>
+    /// <para>
+    /// <b>The same routes as <see cref="PrinterPort"/>, with nothing in front of them.</b> It is a
+    /// second listener onto one protocol rather than a second protocol, so everything downstream —
+    /// authentication, the actor, enrolment — is reached identically. What separates the two is the
+    /// port a connection arrived on, which is also how anything that wants to warn about this can
+    /// tell that it happened.
+    /// </para>
+    /// <para>
+    /// <b>Everything such a printer sends is readable and modifiable.</b> Its token in both
+    /// directions, every file it is sent, and the PrusaLink password it reports in its own
+    /// <c>INFO</c> — and plain HTTP has no integrity, so gcode and commands can be altered in flight
+    /// rather than merely read. That makes this a LAN proposition on the same terms as
+    /// <see cref="TransferPort"/>: publish it to the internet knowingly or not at all.
+    /// </para>
+    /// <para>
+    /// <b>A capable printer is warned about, never refused.</b> Refusing one at the socket would cut
+    /// off a printer for being <i>updated</i> — the connection that worked yesterday failing today
+    /// because its firmware improved, unattended, recoverable only by walking to the machine with a
+    /// USB stick. The version a printer states is also its own claim, so nothing may be gated on it.
+    /// The push-back belongs where a person is reading it, which is the bundle page.
+    /// </para>
+    /// </remarks>
+    public int? LegacyPrinterPort { get; set; }
+
+    /// <summary>
     /// The plain-HTTP listener carrying encrypted downloads: <c>/f/*</c> and nothing else.
     /// </summary>
     /// <remarks>
@@ -130,7 +168,8 @@ public class ListenerOptions
     /// </remarks>
     public void Validate()
     {
-        if (PrinterPort == UserPort || PrinterPort == UserHttpsPort)
+        if (PrinterPort == UserPort ||
+            PrinterPort == UserHttpsPort)
         {
             throw new InvalidOperationException(
                 $"Listeners:PrinterPort ({PrinterPort}) must differ from the user-facing ports "
@@ -139,12 +178,30 @@ public class ListenerOptions
                 + "separation this exists to keep.");
         }
 
-        if (TransferPort == UserPort || TransferPort == UserHttpsPort || TransferPort == PrinterPort)
+        if (TransferPort == UserPort ||
+            TransferPort == UserHttpsPort ||
+            TransferPort == PrinterPort)
         {
             throw new InvalidOperationException(
                 $"Listeners:TransferPort ({TransferPort}) must differ from every other listener "
                 + $"(UserPort {UserPort}, UserHttpsPort {UserHttpsPort?.ToString() ?? "none"}, PrinterPort {PrinterPort}). "
                 + "It is the one deliberately plain-HTTP door, and it must serve nothing but transfers.");
+        }
+
+        // Checked even though this listener is optional, because the failure it prevents is the worst
+        // one available here: sharing the user port would put the printer protocol - unauthenticated
+        // until its own handler runs - on the listener browsers reach, and sharing the printer port
+        // would silently mean no plain listener exists at all while the configuration says one does.
+        if (LegacyPrinterPort is not null && (LegacyPrinterPort == UserPort ||
+                                              LegacyPrinterPort == UserHttpsPort ||
+                                              LegacyPrinterPort == PrinterPort ||
+                                              LegacyPrinterPort == TransferPort))
+        {
+            throw new InvalidOperationException(
+                $"Listeners:LegacyPrinterPort ({LegacyPrinterPort}) must differ from every other listener "
+                + $"(UserPort {UserPort}, UserHttpsPort {UserHttpsPort?.ToString() ?? "none"}, PrinterPort {PrinterPort}, "
+                + $"TransferPort {TransferPort}). It carries the printer protocol with no TLS in front of it, so it "
+                + "must be a listener of its own that a deployment opens deliberately.");
         }
     }
 }

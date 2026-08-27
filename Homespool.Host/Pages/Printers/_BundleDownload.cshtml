@@ -39,6 +39,45 @@
                 </div>
             </div>
 
+@*  The escape hatch, and only where the deployment has opened one. Two checkboxes rather than one
+    and no script anywhere: the second is the confirmation, so choosing this cannot be a single
+    mis-click, and both survive scripting being off. The push-back lives HERE rather than at the
+    printer's socket because this is the one moment a person is present to read it - refusing the
+    connection instead would cut a printer off for having been updated, unattended, and recoverable
+    only by walking to it with a stick. *@
+            @if (Model.CanOfferLegacyEndpoint)
+            {
+                <details class="mb-2">
+                    <summary>@Localiser["Bundle_LegacySummary"]</summary>
+
+                    <div class="alert alert-warning mt-2 mb-2" role="alert">
+                        <p class="mb-1">@Localiser["Bundle_LegacyWhen"]</p>
+                        <p class="mb-1"><strong>@Localiser["Bundle_LegacyCost"]</strong></p>
+
+                        @if (Model.FirmwareCouldUseTls)
+                        {
+                            <p class="mb-0">
+                                <strong>@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Bundle_LegacyNotNeeded"].Value, $"<code>{Model.KnownFirmware}</code>"))</strong>
+                            </p>
+                        }
+                    </div>
+
+                    <div class="form-check mb-1">
+                        <input class="form-check-input" type="checkbox" name="Legacy" value="true" id="bundle-legacy" />
+                        <label class="form-check-label" for="bundle-legacy">
+                            @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Bundle_LegacyChoose"].Value, Model.LegacyPort))
+                        </label>
+                    </div>
+
+                    <div class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" name="LegacyConfirmed" value="true" id="bundle-legacy-confirmed" />
+                        <label class="form-check-label" for="bundle-legacy-confirmed">
+                            @Localiser["Bundle_LegacyConfirm"]
+                        </label>
+                    </div>
+                </details>
+            }
+
             <button type="submit" class="btn btn-primary">@Localiser["Bundle_Download"]</button>
         </form>
 
@@ -50,6 +89,9 @@
         {
             <p class="mb-2">
                 @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Bundle_TrustStore"].Value, "<code>connect.der</code>", "<code>custom_cert = 1</code>", $"<strong>{Localiser["Bundle_Replaces"].Value}</strong>"))
+            </p>
+            <p class="mb-2">
+                @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Bundle_FirmwareFloor"].Value, "<code>Bug: TLS error</code>"))
             </p>
         }
         else

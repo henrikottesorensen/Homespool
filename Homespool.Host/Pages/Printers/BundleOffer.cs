@@ -29,14 +29,47 @@ namespace Homespool.Host.Pages.Printers;
 /// </param>
 /// <param name="Snippet">The ini section, rendered for <see cref="PreferredName"/>, for anyone who wants to read it.</param>
 /// <param name="TlsEnabled">Whether the bundle will carry a trust anchor at all.</param>
+/// <param name="LegacyPort">
+/// The plaintext printer port this deployment offers, or null if it has not opened one. Null is the
+/// default and means the choice below is not presented at all.
+/// </param>
+/// <param name="KnownFirmware">
+/// What this printer last said its firmware was, or null for one that has never connected — which is
+/// the ordinary case when provisioning by USB key, since the whole point is that it has not reached us
+/// yet.
+/// </param>
 public sealed record BundleOffer(
     int PrinterId,
     string? PrinterName,
     string Token,
     IReadOnlyList<PrinterAddressSuggestion> Names,
     string Snippet,
-    bool TlsEnabled)
+    bool TlsEnabled,
+    int? LegacyPort = null,
+    string? KnownFirmware = null)
 {
+    /// <summary>
+    /// Whether this deployment has a plaintext printer listener to offer at all.
+    /// </summary>
+    /// <remarks>
+    /// Only ever true when TLS is on: with printer TLS off the whole deployment is already plaintext,
+    /// so offering a choice between two plain listeners would be a question with one meaning and two
+    /// answers.
+    /// </remarks>
+    public bool CanOfferLegacyEndpoint => LegacyPort is not null && TlsEnabled;
+
+    /// <summary>
+    /// Whether we know this printer could reach us over TLS — so that choosing the plaintext listener for
+    /// it is a downgrade rather than a necessity.
+    /// </summary>
+    /// <remarks>
+    /// <b>False for a printer that has never connected</b>, which is not the same as "it cannot".
+    /// Nothing is inferred from ignorance here: the stronger warning is shown only when the printer
+    /// itself has stated a version that carries the fix, and the version is its own claim, so this
+    /// advises and never refuses.
+    /// </remarks>
+    public bool FirmwareCouldUseTls => PrusaConnect.PrinterFirmwareVersion.CanLoadCustomCertificate(KnownFirmware);
+
     /// <summary>The address selected by default: the first, which is the configured one when it is covered.</summary>
     public string? PreferredName => Names.Count > 0 ? Names[0].Value : null;
 

@@ -164,6 +164,28 @@ public class PrusaConnectOptions
     public int TransferPort { get; set; } = 15080;
 
     /// <summary>
+    /// The port a printer that cannot load a custom certificate is told to use, written into a legacy
+    /// provisioning bundle's <c>[service::connect]</c> section instead of <see cref="PrinterPort"/>.
+    /// Null — the default — means this deployment offers no such bundle.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The host side of the mapping onto <see cref="Listeners.ListenerOptions.LegacyPrinterPort"/>,
+    /// exactly as <see cref="PrinterPort"/> is for the TLS listener, and set from the same one variable in
+    /// <c>compose.yaml</c> so a deployment cannot open a listener nobody is told about or advertise a
+    /// port nothing serves.
+    /// </para>
+    /// <para>
+    /// <b>A bundle naming this port also writes <c>tls = False</c> and <c>custom_cert = 0</c>, and
+    /// carries no <c>connect.der</c></b> — there is nothing for the printer to verify, which is the
+    /// whole point of it. Whether a given printer is offered one is a decision made per printer
+    /// on the bundle page, where somebody is present to be warned; this setting only says whether the
+    /// deployment has such a listener at all.
+    /// </para>
+    /// </remarks>
+    public int? LegacyPrinterPort { get; set; }
+
+    /// <summary>
     /// Whether printers reach this server over TLS. On by default, as the firmware is.
     /// </summary>
     /// <remarks>

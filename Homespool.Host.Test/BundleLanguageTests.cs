@@ -37,8 +37,8 @@ public sealed class BundleLanguageTests
     [Fact]
     public void TheIniIsCommentedInTheReadersLanguage()
     {
-        string english = InCulture("en-GB", () => ConnectIni.BuildFile(Options(), "printers.example.com", "abc", TestLocaliser.Shared()));
-        string danish = InCulture("da", () => ConnectIni.BuildFile(Options(), "printers.example.com", "abc", TestLocaliser.Shared()));
+        string english = InCulture("en-GB", () => ConnectIni.BuildFile(PrinterEndpoint.Default(Options()), "printers.example.com", "abc", TestLocaliser.Shared()));
+        string danish = InCulture("da", () => ConnectIni.BuildFile(PrinterEndpoint.Default(Options()), "printers.example.com", "abc", TestLocaliser.Shared()));
 
         english.Should().Contain("Copy this file to the root of a USB stick");
         danish.Should().Contain("Kopiér denne fil til roden af en USB-nøgle");
@@ -56,7 +56,7 @@ public sealed class BundleLanguageTests
     [Fact]
     public void TheKeysFirmwareParsesAreNotTranslated()
     {
-        string danish = InCulture("da", () => ConnectIni.BuildFile(Options(), "printers.example.com", "abc", TestLocaliser.Shared()));
+        string danish = InCulture("da", () => ConnectIni.BuildFile(PrinterEndpoint.Default(Options()), "printers.example.com", "abc", TestLocaliser.Shared()));
 
         foreach (string key in new[] { "[service::connect]", "hostname =", "port =", "tls =", "custom_cert =", "token =" })
         {
@@ -70,7 +70,7 @@ public sealed class BundleLanguageTests
     [Fact]
     public void ThePrintersMenuPathIsQuotedNotTranslated()
     {
-        string danish = InCulture("da", () => ConnectIni.BuildFile(Options(), "printers.example.com", "abc", TestLocaliser.Shared()));
+        string danish = InCulture("da", () => ConnectIni.BuildFile(PrinterEndpoint.Default(Options()), "printers.example.com", "abc", TestLocaliser.Shared()));
 
         danish.Should().Contain("Prusa Connect -> Load Settings",
                                 "it names a menu on the printer, which this application does not author");
@@ -83,7 +83,7 @@ public sealed class BundleLanguageTests
     public void TheReadmeIsWrittenInTheReadersLanguage()
     {
         string danish = InCulture(
-            "da", () => ProvisioningReadme.Build(Options(), "printers.example.com", "Bænken", TestLocaliser.Shared()));
+            "da", () => ProvisioningReadme.Build(PrinterEndpoint.Default(Options()), "printers.example.com", "Bænken", TestLocaliser.Shared()));
 
         danish.Should().Contain("Klargøringspakke til **Bænken**");
         danish.Should().Contain("Pak ud på en USB-nøgle");
@@ -102,7 +102,7 @@ public sealed class BundleLanguageTests
     public void TheReadmeKeepsItsStructure()
     {
         string danish = InCulture(
-            "da", () => ProvisioningReadme.Build(Options(), "printers.example.com", "Bænken", TestLocaliser.Shared()));
+            "da", () => ProvisioningReadme.Build(PrinterEndpoint.Default(Options()), "printers.example.com", "Bænken", TestLocaliser.Shared()));
 
         danish.Should().StartWith("# ");
         danish.Should().Contain("|---|---|", "the tables survive translation");
@@ -117,7 +117,7 @@ public sealed class BundleLanguageTests
     public void ThePlainHttpWarningIsTranslatedToo()
     {
         string danish = InCulture(
-            "da", () => ConnectIni.BuildFile(Options(tls: false), "printers.example.com", "abc", TestLocaliser.Shared()));
+            "da", () => ConnectIni.BuildFile(PrinterEndpoint.Default(Options(tls: false)), "printers.example.com", "abc", TestLocaliser.Shared()));
 
         danish.Should().Contain("klartekst", "the reader has to understand what plain HTTP costs them");
         danish.Should().Contain("tls = False", "and the key is still the key");
@@ -152,7 +152,7 @@ public sealed class BundleLanguageTests
     [Fact]
     public void TheContentsTableNamesTheFileItIs()
     {
-        InCulture("da", () => ProvisioningReadme.Build(Options(), "printers.example.com", "Bænken", TestLocaliser.Shared()))
+        InCulture("da", () => ProvisioningReadme.Build(PrinterEndpoint.Default(Options()), "printers.example.com", "Bænken", TestLocaliser.Shared()))
             .Should().Contain("`LÆSMIG.Pakke.md`").And.NotContain("README.Bundle.md");
     }
 

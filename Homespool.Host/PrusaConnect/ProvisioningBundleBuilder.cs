@@ -117,10 +117,10 @@ public sealed class ProvisioningBundleBuilder
     /// </remarks>
     public static bool CouldReachAPrinter(IPAddress address, IReadOnlyList<IPNetwork> containerNetworks)
     {
-        return address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
-               && !IPAddress.IsLoopback(address)
-               && !address.GetAddressBytes().Take(2).SequenceEqual<byte>([169, 254])
-               && !PrinterAddressSuggestion.IsProbablyTheContainersOwn(address, containerNetworks);
+        return address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork &&
+               !IPAddress.IsLoopback(address) &&
+               !address.GetAddressBytes().Take(2).SequenceEqual<byte>([169, 254]) &&
+               !PrinterAddressSuggestion.IsProbablyTheContainersOwn(address, containerNetworks);
     }
 
     /// <summary>
@@ -198,6 +198,30 @@ public sealed class ProvisioningBundleBuilder
                                          string? printerName,
                                          CancellationToken cancellationToken)
     {
+        return await BuildAsync(hostname, token, printerName, PrinterEndpoint.Default(_options), cancellationToken);
+    }
+
+    /// <summary>
+    /// The same bundle, pointed at a named endpoint.
+    /// </summary>
+    /// <remarks>
+    /// <b>The name check follows the trust anchor rather than the deployment.</b> A legacy bundle
+    /// verifies nothing, so refusing an address because the printer certificate omits it would be
+    /// refusing on the strength of a certificate this printer will never be shown — and would make
+    /// the escape hatch unusable in exactly the case it exists for, where the certificate is not the
+    /// problem but cannot be used either.
+    /// </remarks>
+    /// <param name="hostname">The address to write into the ini.</param>
+    /// <param name="token">The provisioning token.</param>
+    /// <param name="printerName">Named in the instructions, so a folder of these can be told apart.</param>
+    /// <param name="endpoint">Which way in this bundle points the printer.</param>
+    /// <param name="cancellationToken">The usual.</param>
+    public async Task<byte[]> BuildAsync(string hostname,
+                                         string token,
+                                         string? printerName,
+                                         PrinterEndpoint endpoint,
+                                         CancellationToken cancellationToken)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostname);
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
 
@@ -205,13 +229,14 @@ public sealed class ProvisioningBundleBuilder
 
         // Before the certificate check, and independent of it: the bundle page can address a bundle
         // to a kept name that never went through the options validation, and a name the printer
-        // truncates fails whether or not the certificate covers it.
+        // truncates fails whether or not the certificate covers it. It applies to a legacy bundle
+        // too - the length is the printer's limit, not the certificate's.
         if (PrinterHostLengthValidator.Refusal(name) is string tooLong)
         {
             throw new ArgumentException(tooLong, nameof(hostname));
         }
 
-        if (_options.PrinterTls
+        if (endpoint.CarriesATrustAnchor
             && !(await AvailableNamesAsync(cancellationToken))
                 .Any(suggestion => suggestion.Value.Equals(name, StringComparison.OrdinalIgnoreCase)))
         {
@@ -229,7 +254,7 @@ public sealed class ProvisioningBundleBuilder
             // UTF-8 with no BOM, and LF endings. A BOM ahead of the first section header is not a
             // comment to an ini parser, it is three bytes of rubbish before '[' - the same class of
             // silent, unexplained parse failure that generating this file exists to remove.
-            string ini = ConnectIni.BuildFile(_options, name, token, _localiser).ReplaceLineEndings("\n");
+            string ini = ConnectIni.BuildFile(endpoint, name, token, _localiser).ReplaceLineEndings("\n");
 
             WriteEntry(archive, ConnectIni.FileName, new UTF8Encoding(false).GetBytes(ini));
 
@@ -239,11 +264,11 @@ public sealed class ProvisioningBundleBuilder
             WriteEntry(archive,
                        ProvisioningReadme.FileNameFor(_localiser),
                        new UTF8Encoding(false).GetBytes(
-                           ProvisioningReadme.Build(_options, name, printerName, _localiser).ReplaceLineEndings("\n")));
+                           ProvisioningReadme.Build(endpoint, name, printerName, _localiser).ReplaceLineEndings("\n")));
 
             // No anchor when nothing is verified: with tls off the ini says custom_cert = 0, and a der
             // beside it would be a file the printer never opens and the operator has to wonder about.
-            if (_options.PrinterTls)
+            if (endpoint.CarriesATrustAnchor)
             {
                 WriteEntry(archive, AuthorityFileName,
                            await File.ReadAllBytesAsync(_authority.AuthorityDerPath, cancellationToken));

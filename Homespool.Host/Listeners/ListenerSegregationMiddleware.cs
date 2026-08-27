@@ -130,12 +130,22 @@ public sealed class ListenerSegregationMiddleware : IMiddleware
     /// </remarks>
     private ListenerClass ClassOf(int localPort)
     {
-        if (localPort == _listeners.PrinterPort)
+        if (_listeners.PrinterPort == localPort)
         {
             return ListenerClass.Printer;
         }
 
-        if (localPort == _listeners.TransferPort)
+        // The legacy listener is the same class, deliberately: it carries one protocol reached two ways,
+        // so every route, every check and every handler behind it is the same code. What differs is
+        // only that nothing terminated TLS in front of it, which is a fact about the connection rather
+        // than about the surface, and is read from the local port by whatever wants to warn about it.
+        if (_listeners.LegacyPrinterPort is not null &&
+            _listeners.LegacyPrinterPort == localPort)
+        {
+            return ListenerClass.Printer;
+        }
+
+        if (_listeners.TransferPort == localPort)
         {
             return ListenerClass.Transfer;
         }

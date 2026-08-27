@@ -62,6 +62,25 @@ public class SmtpOptions
     /// <summary>Username for SMTP AUTH. Empty means connect without authenticating.</summary>
     public string UserName { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The password as Data Protection ciphertext, which is how the settings file stores it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Nothing reads this but the post-configure step that decrypts it</b> into
+    /// <see cref="Password"/>; every consumer keeps using that one and never learns protection
+    /// exists. Set both and this wins, because it is the one an administrator saved through the
+    /// application.
+    /// </para>
+    /// <para>
+    /// <b>Empty is the ordinary state for a password that arrived any other way</b> - written by the
+    /// migration one-shot, typed into the file by hand, or still coming from the environment. Such a
+    /// value is used as it stands and protected on its next save, which is the whole of the upgrade
+    /// path and the same adopt-on-save rule a camera credential follows.
+    /// </para>
+    /// </remarks>
+    public string ProtectedPassword { get; set; } = string.Empty;
+
     /// <summary>Password for SMTP AUTH.</summary>
     /// <remarks>
     /// Supply this through user-secrets, an environment variable or a Docker secret rather than appsettings.json,

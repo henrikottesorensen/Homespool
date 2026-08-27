@@ -128,6 +128,16 @@ public static class Program
             return;
         }
 
+        // The editable settings this deployment currently carries in its environment, written to the
+        // file that now owns them. A one-shot for the upgrade that moved them out of compose.yaml,
+        // and the fourth variant of the same not-a-server-run shape - including the older-image trap
+        // the three above describe.
+        if (args.Length > 0 && args[0] == SettingsWriter.Argument)
+        {
+            Environment.ExitCode = SettingsWriter.Write(args.Length > 1 ? args[1] : null);
+            return;
+        }
+
         Log.Logger = new LoggerConfiguration()
                      .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
                      .Enrich.FromLogContext()

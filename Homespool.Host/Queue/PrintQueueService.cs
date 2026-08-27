@@ -86,7 +86,7 @@ public class PrintQueueService
     /// <remarks>
     /// <para>
     /// <b>Access comes from <paramref name="printerIds"/>, and there is no per-printer check.</b>
-    /// The same shape as <see cref="Services.PrintHistoryService.CountForUserAsync"/> and for the same
+    /// The same shape as <see cref="Printing.PrintHistoryService.CountForUserAsync"/> and for the same
     /// reason: a question spanning printers has no single id to require a capability on. The caller
     /// passes the ids it was already granted and this counts strictly inside that set.
     /// </para>

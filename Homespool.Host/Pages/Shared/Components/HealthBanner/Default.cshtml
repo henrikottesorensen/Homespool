@@ -1,8 +1,8 @@
-@model IReadOnlyList<Homespool.Host.Services.HealthBannerItem>
+@model IReadOnlyList<Homespool.Host.Health.HealthBannerItem>
 
 @* Renders nothing at all when healthy - no empty container, no reserved space, so a healthy service
    looks exactly as it did before this existed. *@
-@foreach (Homespool.Host.Services.HealthBannerItem item in Model)
+@foreach (Homespool.Host.Health.HealthBannerItem item in Model)
 {
     <div class="alert @item.CssClass" role="alert">
         <strong>@Localiser[item.HeadingKey]</strong> @item.Message

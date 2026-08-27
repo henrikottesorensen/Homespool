@@ -21,6 +21,7 @@ using Microsoft.Extensions.Options;
 using NSubstitute;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Cameras;
 using Homespool.Host.Localisation;

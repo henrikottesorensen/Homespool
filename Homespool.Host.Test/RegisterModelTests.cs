@@ -19,6 +19,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
+using Homespool.Host.Mail;
 using Homespool.Host.Pages.Account;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Services;

@@ -13,6 +13,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
 using Homespool.Host.Pages.Account;
 using Homespool.Host.Pages.Account.Manage;
 using Homespool.Host.Services;

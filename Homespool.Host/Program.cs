@@ -163,9 +163,9 @@ public static class Program
                             .AddXApiKeyAuthentication()
                             .AddOidcAuthentication(builder.Configuration);
 
-            builder.Services.AddIdentity<Model.Entities.HSUser, IdentityRole<long>>(Services.IdentityConfiguration.Configure)
+            builder.Services.AddIdentity<Model.Entities.HSUser, IdentityRole<long>>(Accounts.IdentityConfiguration.Configure)
                             .AddEntityFrameworkStores<HomespoolDbContext>()
-                            .AddErrorDescriber<Services.HSIdentityErrorDescriber>()
+                            .AddErrorDescriber<Accounts.HSIdentityErrorDescriber>()
                             .AddDefaultTokenProviders();
 
             builder.Services.ConfigureApplicationCookie(options =>
@@ -248,8 +248,8 @@ public static class Program
             builder.Services.Configure<PrusaConnect.PrusaConnectOptions>(
                 builder.Configuration.GetSection(PrusaConnect.PrusaConnectOptions.SectionName));
 
-            builder.Services.Configure<Services.AttemptLimitOptions>(
-                builder.Configuration.GetSection(Services.AttemptLimitOptions.SectionName));
+            builder.Services.Configure<Accounts.AttemptLimitOptions>(
+                builder.Configuration.GetSection(Accounts.AttemptLimitOptions.SectionName));
 
             builder.Services.Configure<Certificates.CertificateOptions>(
                 builder.Configuration.GetSection(Certificates.CertificateOptions.SectionName));
@@ -277,60 +277,60 @@ public static class Program
 
             AddForwardedHeaders(builder);
 
-            builder.Services.Configure<Services.SmtpOptions>(
-                builder.Configuration.GetSection(Services.SmtpOptions.SectionName));
+            builder.Services.Configure<Mail.SmtpOptions>(
+                builder.Configuration.GetSection(Mail.SmtpOptions.SectionName));
 
-            builder.Services.Configure<Services.InvitationOptions>(
-                builder.Configuration.GetSection(Services.InvitationOptions.SectionName));
+            builder.Services.Configure<Accounts.InvitationOptions>(
+                builder.Configuration.GetSection(Accounts.InvitationOptions.SectionName));
 
-            builder.Services.Configure<Services.SecurityOptions>(
-                builder.Configuration.GetSection(Services.SecurityOptions.SectionName));
+            builder.Services.Configure<Middleware.SecurityOptions>(
+                builder.Configuration.GetSection(Middleware.SecurityOptions.SectionName));
 
-            Services.SmtpOptions smtpOptions = new();
-            builder.Configuration.GetSection(Services.SmtpOptions.SectionName).Bind(smtpOptions);
+            Mail.SmtpOptions smtpOptions = new();
+            builder.Configuration.GetSection(Mail.SmtpOptions.SectionName).Bind(smtpOptions);
 
             // Stateless, so a singleton is fine; it exists purely so tests can substitute a fake transport.
-            builder.Services.AddSingleton<Services.ISmtpTransportFactory, Services.MailKitSmtpTransportFactory>();
+            builder.Services.AddSingleton<Mail.ISmtpTransportFactory, Mail.MailKitSmtpTransportFactory>();
 
             // Which sender is registered is decided by configuration alone, never by probing the network, so that a
             // mail server being down cannot quietly change how accounts are created. See SmtpOptions.IsConfigured.
             if (smtpOptions.IsConfigured)
             {
-                builder.Services.AddScoped<Services.IEmailSender, Services.SmtpEmailSender>();
+                builder.Services.AddScoped<Mail.IEmailSender, Mail.SmtpEmailSender>();
 
                 // Only with a mail server to send through - otherwise this is a background service
                 // whose whole job is to log that it cannot do its job. The banner and /health cover
                 // deployments without SMTP.
-                builder.Services.AddHostedService<Services.TelemetryAlertService>();
+                builder.Services.AddHostedService<Health.TelemetryAlertService>();
             }
             else
             {
-                builder.Services.AddScoped<Services.IEmailSender, Services.LoggingEmailSender>();
+                builder.Services.AddScoped<Mail.IEmailSender, Mail.LoggingEmailSender>();
             }
 
-            builder.Services.AddHostedService<Services.SmtpConnectivityProbe>();
+            builder.Services.AddHostedService<Mail.SmtpConnectivityProbe>();
 
             // Resolves the "confirm accounts at creation" rule once from SmtpOptions, so account-creation
             // pages inject this instead of SmtpOptions. Singleton: SMTP config is fixed at startup.
-            builder.Services.AddSingleton<Services.AccountConfirmationPolicy>();
+            builder.Services.AddSingleton<Mail.AccountConfirmationPolicy>();
 
             // Holds the first-run bootstrap secret and the one-way "an admin exists" flag; seeded once
             // by SeedAdminBootstrap after migration. Singleton so the flag is process-wide.
-            builder.Services.AddSingleton<Services.SetupState>();
+            builder.Services.AddSingleton<Accounts.SetupState>();
 
             // Factory-activated (IMiddleware) so it is resolved from the container. Singleton: it holds
             // no per-request state, only the singleton SetupState.
-            builder.Services.AddSingleton<Services.SetupGateMiddleware>();
+            builder.Services.AddSingleton<Middleware.SetupGateMiddleware>();
 
             // Likewise factory-activated, and it holds nothing at all.
-            builder.Services.AddSingleton<Services.SecurityHeadersMiddleware>();
-            builder.Services.AddSingleton<Services.ClientGoneMiddleware>();
+            builder.Services.AddSingleton<Middleware.SecurityHeadersMiddleware>();
+            builder.Services.AddSingleton<Middleware.ClientGoneMiddleware>();
 
             builder.Services.AddScoped<PrusaConnect.PrusaConnectService>()
                             .AddScoped<PrusaConnect.WebSocketHandler>()
                             .AddScoped<PrusaConnect.TokenService>()
                             .AddScoped<PrusaConnect.CodeGenerator>()
-                            .AddScoped<Services.AttemptLimiter>()
+                            .AddScoped<Accounts.AttemptLimiter>()
                             .AddScoped<PrusaConnect.MessageDispatcher>()
                             .AddScoped<Printing.PrinterCommandService>()
                             .AddScoped<Printing.ToolTargetReader>()
@@ -396,7 +396,7 @@ public static class Program
 
             // Scoped, following the command service it wraps. Shared by the API endpoint and the
             // Files page so that "a send that did not take leaves no offer" has one implementation.
-            builder.Services.AddScoped<Services.PrintFileSender>();
+            builder.Services.AddScoped<Printing.PrintFileSender>();
 
             AddPrinterEndpointRateLimiting(builder);
 
@@ -458,7 +458,7 @@ public static class Program
 
                    // Also untagged: a deployment handing tokens to the internet is misconfigured, not
                    // broken, and a restart would faithfully reproduce it.
-                   .AddCheck<Services.DeploymentExposureHealthCheck>("deployment-exposure")
+                   .AddCheck<Health.DeploymentExposureHealthCheck>("deployment-exposure")
 
                    // Untagged for the same reason. Cameras stop working entirely without a sidecar
                    // credential, and the person who can fix that otherwise sees only blank cameras.
@@ -471,12 +471,12 @@ public static class Program
 
             // Sweeps TelemetrySample rows past StorageOptions.TelemetryRetentionDays. No interface
             // registration needed, unlike TelemetryWriter above - nothing else ever needs to reach it.
-            builder.Services.AddHostedService<Services.TelemetryRetentionService>();
+            builder.Services.AddHostedService<Telemetry.TelemetryRetentionService>();
 
             // Sweeps PrusaConnectRegistration rows whose code has expired. Nothing else ever removed
             // one, and POST /p/register is anonymous - so without this the only bound on the table is
             // the rate limiter, which counts requests rather than rows.
-            builder.Services.AddHostedService<Services.RegistrationRetentionService>();
+            builder.Services.AddHostedService<PrusaConnect.RegistrationRetentionService>();
 
             // Scoped so its per-request memo of "may this account touch this printer" is bounded by
             // the request, which is the only window in which the answer cannot change.
@@ -484,15 +484,15 @@ public static class Program
             builder.Services.AddScoped<Authorisation.PrinterAccessService>();
 
             // Scoped, unlike their singleton neighbors above, because they hold the scoped HomespoolDbContext.
-            builder.Services.AddScoped<Services.TeamService>();
+            builder.Services.AddScoped<Accounts.TeamService>();
             builder.Services.AddScoped<Services.UnitOfWork>();
-            builder.Services.AddScoped<Services.InvitationService>();
+            builder.Services.AddScoped<Accounts.InvitationService>();
             builder.Services.AddScoped<Services.PrinterQueryService>();
             builder.Services.AddScoped<Services.PrinterRemovalService>();
-            builder.Services.AddScoped<Services.UserNameLookup>();
+            builder.Services.AddScoped<Accounts.UserNameLookup>();
             builder.Services.AddScoped<PrintQueueService>();
-            builder.Services.AddScoped<Services.PrintHistoryService>();
-            builder.Services.AddScoped<Services.PrintStopService>();
+            builder.Services.AddScoped<Printing.PrintHistoryService>();
+            builder.Services.AddScoped<Printing.PrintStopService>();
             builder.Services.AddScoped<Queue.QueueSnapshotReader>();
 
             // The producer loop and the poke that saves it waiting out a tick. Singletons: the signal
@@ -504,7 +504,7 @@ public static class Program
             // needs to drive one pass deterministically rather than wait out a poll interval.
             builder.Services.AddSingleton<QueueAdvancer>();
             builder.Services.AddHostedService(sp => sp.GetRequiredService<QueueAdvancer>());
-            builder.Services.AddScoped<Services.ApiTokenService>();
+            builder.Services.AddScoped<Accounts.ApiTokenService>();
 
             WebApplication app = builder.Build();
 
@@ -523,7 +523,7 @@ public static class Program
 
             // Ensure the admin role exists and, if no administrator has been created yet, mint and log
             // the one-time /setup token. Runs inline so setup state is settled before the first request.
-            Services.AdminBootstrap.SeedAdminBootstrap(app.Services);
+            Accounts.AdminBootstrap.SeedAdminBootstrap(app.Services);
 
             // The certificate nginx presents to printers. Inline, before Run, because the proxy waits
             // on this container's health check and then reads the leaf off the shared volume.
@@ -566,7 +566,7 @@ public static class Program
             // entirely when both lists are empty, which means "trust anybody". Proven by probe:
             // unconfigured, a loopback client's X-Forwarded-Proto was honoured; trusting 10.0.0.0/8
             // instead, the same request was ignored. Leaving the middleware out is unambiguous.
-            if (app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Services.XForwardedOptions>>().Value
+            if (app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Middleware.XForwardedOptions>>().Value
                    .TrustsAnything)
             {
                 int printerPort = ReadListenerOptions(builder.Configuration).PrinterPort;
@@ -581,7 +581,7 @@ public static class Program
             // so a response short-circuited further down - an HTTPS redirect, a segregation 404, a
             // rate-limiter 429 - carries them as well. It goes after the forwarded-headers block only
             // because that block reads the request and writes no response.
-            app.UseMiddleware<Services.SecurityHeadersMiddleware>();
+            app.UseMiddleware<Middleware.SecurityHeadersMiddleware>();
 
             // Log HTTP requests with Serilog, order of this matters.
             // Requests handled before in the pipeline are NOT logged.
@@ -590,7 +590,7 @@ public static class Program
             // INSIDE the request logging, deliberately. It absorbs the cancellation and sets 499, and
             // Serilog reads the status on the way back out - registered outside it instead, Serilog
             // would already have logged the 500 and the unhandled exception it exists to prevent.
-            app.UseMiddleware<Services.ClientGoneMiddleware>();
+            app.UseMiddleware<Middleware.ClientGoneMiddleware>();
 
             // Only when this process serves users over TLS itself. Otherwise there is no port to
             // redirect to that is not the printer's, and sending a browser there is worse than not
@@ -618,7 +618,7 @@ public static class Program
 
             // Before an administrator exists, funnel every navigable page to /setup. No-op once setup
             // completes. Placed after routing so static-asset and printer endpoints resolve normally.
-            app.UseMiddleware<Services.SetupGateMiddleware>();
+            app.UseMiddleware<Middleware.SetupGateMiddleware>();
 
             // After UseRouting, so the endpoint's [EnableRateLimiting] metadata is resolved, and
             // before authentication, so a rejected request costs no database work.
@@ -630,7 +630,7 @@ public static class Program
             // After authorization, so it sees a resolved principal and cannot be reached by anybody
             // an endpoint would have refused anyway. It is inert unless Security:RequireTwoFactor is
             // on, and it only ever acts on the application cookie - see the middleware's remarks.
-            app.UseMiddleware<Services.TwoFactorEnrolmentMiddleware>();
+            app.UseMiddleware<Middleware.TwoFactorEnrolmentMiddleware>();
 
             // After authentication, and that ordering is load-bearing rather than tidy: the first
             // culture provider reads the signed-in account's stored language, so it needs
@@ -769,7 +769,7 @@ public static class Program
     /// </para>
     /// </remarks>
     /// <summary>
-    /// Translates <see cref="Services.XForwardedOptions"/> onto the framework's forwarded-headers
+    /// Translates <see cref="Middleware.XForwardedOptions"/> onto the framework's forwarded-headers
     /// middleware, and says at startup what it ended up trusting.
     /// </summary>
     /// <remarks>
@@ -788,14 +788,14 @@ public static class Program
     /// </remarks>
     private static void AddForwardedHeaders(WebApplicationBuilder builder)
     {
-        Services.XForwardedOptions forwarded = new();
-        builder.Configuration.GetSection(Services.XForwardedOptions.SectionName).Bind(forwarded);
+        Middleware.XForwardedOptions forwarded = new();
+        builder.Configuration.GetSection(Middleware.XForwardedOptions.SectionName).Bind(forwarded);
 
-        builder.Services.Configure<Services.XForwardedOptions>(
-            builder.Configuration.GetSection(Services.XForwardedOptions.SectionName));
+        builder.Services.Configure<Middleware.XForwardedOptions>(
+            builder.Configuration.GetSection(Middleware.XForwardedOptions.SectionName));
 
         builder.Services.Configure<ForwardedHeadersOptions>(options =>
-                                                                Services.ForwardedHeadersConfigurator.Apply(
+                                                                Middleware.ForwardedHeadersConfigurator.Apply(
                                                                     forwarded, options, Log.Warning));
 
         if (forwarded.TrustsAnything)

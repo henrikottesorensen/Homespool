@@ -2,8 +2,8 @@
 
 using System.Threading.Tasks;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
-using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;
@@ -36,12 +36,12 @@ public class ConfirmEmailChangeModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly SignInManager<HSUser> _signInManager;
-    private readonly IOptions<Services.SmtpOptions> _smtp;
+    private readonly IOptions<Mail.SmtpOptions> _smtp;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public ConfirmEmailChangeModel(UserManager<HSUser> userManager,
                                    SignInManager<HSUser> signInManager,
-                                   IOptions<Services.SmtpOptions> smtp,
+                                   IOptions<Mail.SmtpOptions> smtp,
                                    IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
@@ -57,7 +57,7 @@ public class ConfirmEmailChangeModel : PageModel
     /// Tells an administrator that health alerts keep going to the old address until a restart.
     /// </summary>
     /// <remarks>
-    /// <see cref="Services.TelemetryAlertService"/> reads the administrator list once and caches
+    /// <see cref="Health.TelemetryAlertService"/> reads the administrator list once and caches
     /// it, deliberately, because the alert most worth sending is the one about the database being
     /// unreachable - looking recipients up at send time would fail exactly then. The cost of that
     /// choice is this staleness, and this is the one moment someone can do something about it, so
@@ -122,6 +122,6 @@ public class ConfirmEmailChangeModel : PageModel
     private async Task<bool> IsAlertRecipientAsync(HSUser user)
     {
         return _smtp.Value.IsConfigured
-               && await _userManager.IsInRoleAsync(user, Services.AdminBootstrap.AdminRole);
+               && await _userManager.IsInRoleAsync(user, Accounts.AdminBootstrap.AdminRole);
     }
 }

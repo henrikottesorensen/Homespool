@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-using Homespool.Host.Services;
+using Homespool.Host.Health;
 
 namespace Homespool.Host.ViewComponents;
 
@@ -42,7 +42,7 @@ public sealed class HealthBannerViewComponent : ViewComponent
 
     public async Task<IViewComponentResult> InvokeAsync()
     {
-        if (!UserClaimsPrincipal.IsInRole(Services.AdminBootstrap.AdminRole))
+        if (!UserClaimsPrincipal.IsInRole(Accounts.AdminBootstrap.AdminRole))
         {
             return View(new List<HealthBannerItem>());
         }

@@ -6,7 +6,7 @@ using AwesomeAssertions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.HttpOverrides;
 
-using Homespool.Host.Services;
+using Homespool.Host.Middleware;
 
 namespace Homespool.Host.Test;
 

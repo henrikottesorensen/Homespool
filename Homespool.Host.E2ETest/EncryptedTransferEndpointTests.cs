@@ -10,9 +10,9 @@ using AwesomeAssertions;
 
 using Microsoft.Extensions.DependencyInjection;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Controllers;
 using Homespool.Host.PrusaConnect.Transfers;
-using Homespool.Host.Services;
 
 namespace Homespool.Host.E2ETest;
 
@@ -237,7 +237,7 @@ public sealed class EncryptedTransferEndpointTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
-    /// Does what <see cref="PrintFileSender"/> does for an HTTP printer, minus the command: writes
+    /// Does what <see cref="Homespool.Host.Printing.PrintFileSender"/> does for an HTTP printer, minus the command: writes
     /// the bytes, offers them under the IV's hex, and registers the key beside the offer.
     /// </summary>
     private (string ivHex, byte[] key, byte[] iv) OfferEncrypted(byte[] plaintext)

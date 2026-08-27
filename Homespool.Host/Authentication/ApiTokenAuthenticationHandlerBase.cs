@@ -10,7 +10,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-using Homespool.Host.Services;
+using Homespool.Host.Accounts;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Authentication;
@@ -53,12 +53,12 @@ public abstract class ApiTokenAuthenticationHandlerBase : AuthenticationHandler<
     private readonly ApiTokenService _tokens;
     private readonly UserManager<HSUser> _userManager;
     private readonly IUserClaimsPrincipalFactory<HSUser> _claimsFactory;
-    private readonly IOptions<Services.SecurityOptions> _security;
+    private readonly IOptions<Middleware.SecurityOptions> _security;
 
     protected ApiTokenAuthenticationHandlerBase(ApiTokenService tokens,
                                                 UserManager<HSUser> userManager,
                                                 IUserClaimsPrincipalFactory<HSUser> claimsFactory,
-                                                IOptions<Services.SecurityOptions> security,
+                                                IOptions<Middleware.SecurityOptions> security,
                                                 IOptionsMonitor<ApiTokenAuthenticationSchemeOptions> options,
                                                 ILoggerFactory loggerFactory,
                                                 UrlEncoder encoder)

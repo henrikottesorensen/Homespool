@@ -11,7 +11,7 @@ using Microsoft.Extensions.Options;
 namespace Homespool.Host.E2ETest;
 
 /// <summary>
-/// Guards the one assumption <see cref="Host.Services.PasswordVerificationDecoy"/> rests on: that
+/// Guards the one assumption <see cref="Host.Accounts.PasswordVerificationDecoy"/> rests on: that
 /// nothing configures <see cref="PasswordHasherOptions"/>.
 /// </summary>
 /// <remarks>

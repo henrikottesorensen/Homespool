@@ -2,7 +2,7 @@ using AwesomeAssertions;
 
 using Microsoft.Extensions.Options;
 
-using Homespool.Host.Services;
+using Homespool.Host.Mail;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;

@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 using Microsoft.Net.Http.Headers;
 
-using Homespool.Host.Services;
+using Homespool.Host.Accounts;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Authentication;
@@ -28,7 +28,7 @@ public class ApiTokenAuthenticationHandler : ApiTokenAuthenticationHandlerBase
     public ApiTokenAuthenticationHandler(ApiTokenService tokens,
                                          UserManager<HSUser> userManager,
                                          IUserClaimsPrincipalFactory<HSUser> claimsFactory,
-                                         IOptions<Services.SecurityOptions> security,
+                                         IOptions<Middleware.SecurityOptions> security,
                                          IOptionsMonitor<ApiTokenAuthenticationSchemeOptions> options,
                                          ILoggerFactory loggerFactory,
                                          UrlEncoder encoder)

@@ -13,8 +13,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
+using Homespool.Host.Health;
 using Homespool.Host.Localisation;
-using Homespool.Host.Services;
+using Homespool.Host.Mail;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.IntegrationTest;

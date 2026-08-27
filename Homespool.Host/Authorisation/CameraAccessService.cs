@@ -153,7 +153,7 @@ public class CameraAccessService
                                    role => role.Id,
                                    (userRole, role) => new { userRole.UserId, role.Name })
                                .AnyAsync(
-                                   pair => pair.UserId == userId && pair.Name == Services.AdminBootstrap.AdminRole,
+                                   pair => pair.UserId == userId && pair.Name == Accounts.AdminBootstrap.AdminRole,
                                    cancellationToken)
                                .ConfigureAwait(false);
     }

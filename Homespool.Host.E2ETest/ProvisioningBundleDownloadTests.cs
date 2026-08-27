@@ -50,7 +50,7 @@ public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime, IDisposabl
 
         _ = _factory.Server;
 
-        _factory.Services.GetRequiredService<Services.SetupState>().MarkComplete();
+        _factory.Services.GetRequiredService<Accounts.SetupState>().MarkComplete();
 
         return ValueTask.CompletedTask;
     }

@@ -1,7 +1,7 @@
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 
-using Homespool.Host.Services;
+using Homespool.Host.Mail;
 
 namespace Homespool.Host.IntegrationTest;
 

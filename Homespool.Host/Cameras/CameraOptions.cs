@@ -54,7 +54,7 @@ public class CameraOptions
     /// <remarks>
     /// <para>
     /// <b>Decided by configuration alone, never by asking the sidecar</b> — the same rule as
-    /// <see cref="Services.SmtpOptions.IsConfigured"/>, and for the same reason: a service being
+    /// <see cref="Mail.SmtpOptions.IsConfigured"/>, and for the same reason: a service being
     /// briefly unreachable must not quietly change what this deployment permits.
     /// </para>
     /// <para>

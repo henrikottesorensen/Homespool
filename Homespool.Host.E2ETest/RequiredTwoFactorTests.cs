@@ -13,7 +13,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
-using Homespool.Host.Services;
+using Homespool.Host.Accounts;
 using Homespool.Model;
 using Homespool.Model.Entities;
 

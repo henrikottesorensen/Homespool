@@ -17,8 +17,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
-using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -104,7 +104,7 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
             new ApiTokenService(context),
             users,
             provider.GetRequiredService<IUserClaimsPrincipalFactory<HSUser>>(),
-            Microsoft.Extensions.Options.Options.Create(new Homespool.Host.Services.SecurityOptions()),
+            Microsoft.Extensions.Options.Options.Create(new Homespool.Host.Middleware.SecurityOptions()),
             new StaticOptionsMonitor(),
             NullLoggerFactory.Instance,
             UrlEncoder.Default);

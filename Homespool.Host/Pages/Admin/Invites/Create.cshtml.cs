@@ -16,8 +16,9 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
-using Homespool.Host.Services;
+using Homespool.Host.Mail;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Admin.Invites;

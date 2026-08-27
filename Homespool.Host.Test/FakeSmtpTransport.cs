@@ -6,7 +6,7 @@ using MailKit.Security;
 
 using MimeKit;
 
-using Homespool.Host.Services;
+using Homespool.Host.Mail;
 
 namespace Homespool.Host.Test;
 

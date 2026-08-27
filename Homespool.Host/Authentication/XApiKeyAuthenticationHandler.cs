@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 
-using Homespool.Host.Services;
+using Homespool.Host.Accounts;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Authentication;
@@ -41,7 +41,7 @@ public class XApiKeyAuthenticationHandler : ApiTokenAuthenticationHandlerBase
     public XApiKeyAuthenticationHandler(ApiTokenService tokens,
                                         UserManager<HSUser> userManager,
                                         IUserClaimsPrincipalFactory<HSUser> claimsFactory,
-                                        IOptions<Services.SecurityOptions> security,
+                                        IOptions<Middleware.SecurityOptions> security,
                                         IOptionsMonitor<ApiTokenAuthenticationSchemeOptions> options,
                                         ILoggerFactory loggerFactory,
                                         UrlEncoder encoder)

@@ -16,8 +16,10 @@ using System.Threading.Tasks;
 
 using Duende.IdentityModel;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
+using Homespool.Host.Mail;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;

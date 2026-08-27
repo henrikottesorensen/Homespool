@@ -9,6 +9,7 @@ using System.Linq;
 using System.Threading.Tasks;
 
 using Homespool.Host.Localisation;
+using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authentication;
@@ -28,14 +29,16 @@ public class LoginModel : PageModel
     private readonly UserManager<HSUser> _userManager;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<LoginModel> _logger;
+    private readonly IPasswordHasher<HSUser> _passwordHasher;
 
     public LoginModel(SignInManager<HSUser> signInManager, UserManager<HSUser> userManager, ILogger<LoginModel> logger,
-                      IStringLocalizer<SharedResource> localiser)
+                      IStringLocalizer<SharedResource> localiser, IPasswordHasher<HSUser> passwordHasher)
     {
         _signInManager = signInManager;
         _userManager = userManager;
         _localiser = localiser;
         _logger = logger;
+        _passwordHasher = passwordHasher;
     }
 
     [BindProperty]
@@ -115,9 +118,14 @@ public class LoginModel : PageModel
 
             if (user is null)
             {
-                // Deliberately the same message and the same page as a wrong password: telling an
-                // anonymous caller which addresses and usernames exist is the enumeration this form is
-                // exposed enough to care about.
+                // Verified against a decoy before answering, so this branch costs what the branch
+                // below costs. The same message and the same page were already deliberate - telling
+                // an anonymous caller which addresses and usernames exist is the enumeration this
+                // form is exposed enough to care about - but sameness that stops at the wording
+                // leaves the timing to answer the question instead: a miss returned after two
+                // indexed lookups where a hit runs a full PBKDF2 verification first.
+                PasswordVerificationDecoy.Verify(_passwordHasher, Input.Password);
+
                 ModelState.AddModelError(string.Empty, _localiser["Account_InvalidLogin"]);
 
                 return Page();

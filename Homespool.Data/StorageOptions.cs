@@ -85,9 +85,18 @@ public class StorageOptions
     /// Minimum seconds between stored samples per printer. Zero (default) stores every message.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Present as an escape hatch, not because it is expected to be needed: at one-to-tens of
     /// printers a 1 Hz stream is roughly 86k rows/printer/day, which SQLite handles without
     /// complaint. Raise it if a large fleet or a slow disk changes that.
+    /// </para>
+    /// <para>
+    /// <b>The case that makes it worth having is an SD card</b>, which wears out by being written to
+    /// rather than by age, and on which telemetry is the largest single source of writes. A value of
+    /// 10 removes about 90% of them and still leaves a graph somebody can read; what it costs is
+    /// resolution, so a spike shorter than the interval may never be recorded. <b>Shortening
+    /// retention instead is not a substitute — a delete is a write too.</b>
+    /// </para>
     /// </remarks>
     [Range(0, 86_400)]
     public double MinimumSampleIntervalSeconds { get; set; }

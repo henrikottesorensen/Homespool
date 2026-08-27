@@ -99,7 +99,7 @@ pending=""
 # Values never echoed back to the terminal or into the summary. The summary has to be reviewable by
 # the person typing, and a password on screen is not something they asked to publish to whoever is
 # standing behind them.
-secret_keys="SMTP_PASSWORD GO2RTC_PASSWORD"
+secret_keys="GO2RTC_PASSWORD"
 
 # ------------------------------------------------------------------------------------------------
 # Reading what is already there
@@ -121,7 +121,7 @@ file_get() {
     compose_unescape "$value"
 }
 
-# A dollar in .env is compose's, not yours. `SMTP_PASSWORD=p@ss$xword` reaches the container as
+# A dollar in .env is compose's, not yours. `GO2RTC_PASSWORD=p@ss$xword` reaches the container as
 # `p@ss` - the rest is read as a variable name, found undefined, and dropped in silence, so the
 # server reports an authentication failure and the file on disk looks exactly right. `$$` is the
 # escape that survives; verified by reading the value back out of a running container rather than out
@@ -146,9 +146,9 @@ env_get() {
     echo "$value"
 }
 
-# Deliberately distinct from "has a non-empty value". SMTP_HOST= is a supported configuration that
-# means "no outgoing mail", and treating that as absent would make the wizard re-offer .env.example's
-# default to somebody who has already deliberately cleared it.
+# Deliberately distinct from "has a non-empty value". PRINTER_HOST= is a supported configuration -
+# it means "no USB provisioning yet" - and treating that as absent would make the wizard re-offer
+# .env.example's default to somebody who has already deliberately cleared it.
 key_present() {
     local file="$1" key="$2"
     [ -f "$file" ] || return 1
@@ -159,7 +159,8 @@ key_present() {
 #
 # The distinction is the whole of --no-overwrite and it is easy to get backwards. A seeded .env has
 # `PRINTER_HOST=` - present, and empty - and filling that in is the entire point on a board setting
-# itself up. But `SMTP_HOST=` is empty *deliberately*, meaning "no outgoing mail". Both are empty;
+# itself up. But `REGISTRY=` is empty *deliberately*, meaning "build the images here". Both are
+# empty;
 # only one is an answer. So: empty counts as a blank to fill, and only a non-empty value is
 # protected, which is why this reads .env directly rather than through env_get - env_get falls back
 # to .env.example, and every documented default there is non-empty.
@@ -1200,77 +1201,6 @@ ask_ports() {
     fi
 }
 
-ask_smtp() {
-    say
-    say $"Outgoing mail is optional. Without it, new accounts are created already confirmed and password reset is unavailable - invitations still work, you just pass the link on yourself."
-    say
-
-    local current_host
-    current_host="$(env_get SMTP_HOST)"
-    if ! ask_yes_no "Configure outgoing mail" "$([ -n "$current_host" ] && echo y || echo n)"; then
-        # Only clears a host that is actually set, so answering "no" on a stack that never had mail
-        # is not a change to anything.
-        [ -n "$current_host" ] && ask_yes_no "  Turn off the mail you have configured" n \
-            && plan_set SMTP_HOST ""
-        return 0
-    fi
-
-    local host
-    host="$(ask "  Mail server" "$current_host")"
-
-    # The same mistake PRINTER_HOST is checked for, and for the same reason: this runs in a
-    # container, so localhost is the container. A mail server on the machine is refused from in
-    # there, and the error says "connection refused" about a server that is plainly running.
-    case "$host" in
-        localhost|127.0.0.1|::1)
-            warn $"Homespool runs in a container, so $host is the container itself - not this machine."
-            if ask_yes_no "  Use host.docker.internal, which reaches the host" y; then
-                host="host.docker.internal"
-            fi
-            ;;
-    esac
-    plan_set SMTP_HOST "$host"
-
-    # Port and encryption are one decision on the three well-known ports, so one question settles
-    # both - asked separately they can be made to disagree, and each half then fails in a way that
-    # reads as a broken server rather than a wrong setting.
-    local port implicit disable
-    port="$(ask "  Port - 587 for STARTTLS, 465 for implicit TLS, 25 for none" "$(env_get SMTP_PORT)")"
-    case "$port" in
-        465) implicit=true;  disable=false ;;
-        587) implicit=false; disable=false ;;
-        25)  implicit=false; disable=true  ;;
-        *)
-            # Any other port says nothing about encryption, and guessing STARTTLS is how a local
-            # Mailpit on 1025 fails at send time with "does not support the STARTTLS extension" -
-            # long after this question, when the connection is the last thing anyone suspects.
-            say
-            say $"  Port $port is not one of the three well-known ones, so it does not say how the connection is encrypted. It has to match what the server offers."
-            say $"    1) STARTTLS - upgraded after connecting 2) implicit TLS - encrypted from the first byte 3) none - only for a server on this machine; sends the password in the clear"
-            case "$(ask "  Which" 1)" in
-                2) implicit=true;  disable=false ;;
-                3) implicit=false; disable=true  ;;
-                *) implicit=false; disable=false ;;
-            esac
-            ;;
-    esac
-    plan_set SMTP_PORT "$port"
-    plan_set SMTP_USE_IMPLICIT_TLS "$implicit"
-    plan_set SMTP_DISABLE_TLS "$disable"
-
-    local username
-    username="$(ask "  Username (empty connects without authenticating)" "$(env_get SMTP_USERNAME)")"
-    plan_set SMTP_USERNAME "$username"
-    if [ -n "$username" ]; then
-        local password
-        password="$(ask_secret "  Password (empty keeps the current one)")"
-        [ -n "$password" ] && plan_set SMTP_PASSWORD "$password"
-    fi
-
-    plan_set SMTP_FROM_ADDRESS "$(ask "  From address (empty uses the username)" "$(env_get SMTP_FROM_ADDRESS)")"
-    plan_set SMTP_FROM_NAME "$(ask "  From name" "$(env_get SMTP_FROM_NAME)")"
-}
-
 # ------------------------------------------------------------------------------------------------
 # The checks nobody is asked about
 # ------------------------------------------------------------------------------------------------
@@ -1537,8 +1467,8 @@ apply() {
     fi
 
     # A copy before anything is written, because .env is the one file here with nothing behind it:
-    # it is gitignored, so there is no commit to go back to, and it holds SMTP_PASSWORD and
-    # GO2RTC_PASSWORD. Every other mistake in this repository is recoverable and this one is not.
+    # it is gitignored, so there is no commit to go back to, and it holds GO2RTC_PASSWORD. Every
+    # other mistake in this repository is recoverable and this one is not.
     #
     # Timestamped rather than a single .env.bak so a second run does not eat the first backup - which
     # is exactly when somebody is fixing a wrong answer and most wants the one before it. Taken on
@@ -1632,7 +1562,7 @@ apply() {
     cat "$tmp" > "$env_file"
     rm -f "$tmp" "$pairs"
 
-    # A file holding an SMTP password should not be world-readable.
+    # A file holding a sidecar password should not be world-readable.
     chmod 600 "$env_file" 2>/dev/null || true
 }
 
@@ -1708,7 +1638,6 @@ main() {
         ask_user_host
         ask_timezone
         ask_ports
-        ask_smtp
         ensure_go2rtc_credential
         check_subnet_collision
     fi

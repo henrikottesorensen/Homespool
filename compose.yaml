@@ -43,6 +43,13 @@ services:
     # Compose reads .env only for ${...} substitution: a variable not mapped in this block never
     # reaches the container at all. Setting an App__Key directly in .env does nothing, silently.
     environment:
+      # What is NOT here: everything an administrator changes from the application. Mail, retention,
+      # upload and attempt limits, the camera timings and the STUN address now live in
+      # data/settings.json on the mounted volume, written by the settings page - so they survive a
+      # compose edit and can be changed without a redeploy. They were removed from here rather than
+      # left as a fallback: two homes for one setting means a winner nobody can see. What remains
+      # below is what must agree with this file - published ports, volume paths, the sidecar's
+      # address - plus the credentials a page has no business holding.
       # The zone every timestamp a person reads is rendered in - rendering is server-side
       # (ToLocalTime), so a container left on the UTC default shows people UTC times. Presentation
       # only: stored times are DateTimeOffset in Unix milliseconds and unaffected.
@@ -52,16 +59,10 @@ services:
       # running outside a container still works.
       ConnectionStrings__HomespoolDb: "Data Source=/app/data/Homespool.Sqlite"
 
-      # Floor on how often a printer's telemetry is stored, in seconds; 0 keeps every sample, the
-      # right answer on a machine with a real disk. Raise it on an SD card, where telemetry is the
-      # dominant write and cards die of writes.
-      Storage__MinimumSampleIntervalSeconds: "${TELEMETRY_MIN_SAMPLE_INTERVAL_SECONDS:-0}"
 
       # Cameras. The sidecar is addressed by service name on this network; nothing about a camera
       # itself is configured here, because Homespool registers cameras with the sidecar itself.
       Cameras__StreamServerBaseUrl: "${CAMERA_STREAM_SERVER_BASE_URL:-http://go2rtc:1984}"
-      Cameras__RefreshFloorSeconds: "${CAMERA_REFRESH_FLOOR_SECONDS:-2}"
-      Cameras__MaxAgeSeconds: "${CAMERA_MAX_AGE_SECONDS:-60}"
 
       # The same pair the go2rtc service is started with, from the same .env values - one source, two
       # readers, so they cannot disagree. Empty password means the sidecar is unauthenticated, which
@@ -82,12 +83,6 @@ services:
       # when WEBRTC_CANDIDATE names a port of its own.
       Cameras__WebRtcPort: "${WEBRTC_PORT:-8555}"
 
-      # Which STUN server is contacted IF an administrator allows it, on the Live view page; the
-      # default is off, and nothing contacts it otherwise. The default address is go2rtc's own, so
-      # allowing it contacts whoever go2rtc would have; point it at your own coturn if you would
-      # rather not use a public one. One address rather than a list: whether the sidecar already has
-      # it applied is decided by exact string comparison, which stays honest with one value.
-      Cameras__WebRtcStunServer: "${WEBRTC_STUN_SERVER:-stun:stun.l.google.com:19302}"
 
       # Which peer may speak for the client - the proxy's network below, and nothing else. It must
       # agree with PROXY_SUBNET: change one and you must change the other, or forwarded headers are
@@ -133,27 +128,6 @@ services:
       # PRINTER_TLS says. Same variable as the proxy's published port below, so they cannot drift.
       PrusaConnect__TransferPort: "${TRANSFER_PORT:-15080}"
 
-      # Outgoing mail. Values come from .env - copy .env.example to .env and edit that, rather
-      # than editing this file, so secrets stay out of the repository. Leaving SMTP_HOST empty
-      # runs without a mail server: accounts are created already confirmed, and password reset
-      # is unavailable.
-      Smtp__Host: "${SMTP_HOST:-}"
-      Smtp__Port: "${SMTP_PORT:-587}"
-      # true for implicit TLS on port 465; false for STARTTLS on 587.
-      Smtp__UseImplicitTls: "${SMTP_USE_IMPLICIT_TLS:-false}"
-      # No encryption at all - mail and any credentials in the clear, so for a mail server on this
-      # same machine and nothing else. (With this false, STARTTLS is required rather than attempted:
-      # a server offering none is refused, not sent credentials in the clear.)
-      Smtp__DisableTls: "${SMTP_DISABLE_TLS:-false}"
-      Smtp__UserName: "${SMTP_USERNAME:-}"
-      # Never put the real password here - compose.yaml is committed. Put SMTP_PASSWORD in a
-      # local .env file (gitignored) or export it in the shell before running compose.
-      Smtp__Password: "${SMTP_PASSWORD:-}"
-      Smtp__FromAddress: "${SMTP_FROM_ADDRESS:-}"
-      Smtp__FromName: "${SMTP_FROM_NAME:-Homespool}"
-      # Connects and authenticates once at startup purely to report a broken configuration.
-      # Set false if the mail server lives in this stack and starts after this container.
-      Smtp__ProbeOnStartup: "${SMTP_PROBE_ON_STARTUP:-true}"
 
     volumes:
       - homespool-data:/app/data

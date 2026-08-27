@@ -17,9 +17,22 @@ public class SmtpOptions
     /// <summary>
     /// Mail server hostname. Empty (the default) means no SMTP, which is a supported configuration.
     /// </summary>
+    /// <remarks>
+    /// <b>Not <c>localhost</c>.</b> This runs in a container, so <c>localhost</c> is the container
+    /// itself and a mail server on the host is refused from inside it. The name that reaches the host
+    /// is <c>host.docker.internal</c>, which <c>compose.yaml</c> maps on Linux as well as on Docker
+    /// Desktop. It is the first thing to check when a server that plainly works refuses every
+    /// connection.
+    /// </remarks>
     public string Host { get; set; } = string.Empty;
 
     /// <summary>Mail server port. 587 (submission, STARTTLS) by default; 465 for implicit TLS, 25 for unencrypted.</summary>
+    /// <remarks>
+    /// <b>A port number on its own decides nothing here.</b> The encryption is chosen by
+    /// <see cref="UseImplicitTls"/> and <see cref="DisableTls"/>, and those have to match what the
+    /// server actually offers - naming 465 without <see cref="UseImplicitTls"/> produces a connection
+    /// that hangs rather than an error explaining itself.
+    /// </remarks>
     [Range(1, 65_535)]
     public int Port { get; set; } = 587;
 

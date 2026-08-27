@@ -50,7 +50,7 @@ public sealed class PrinterCertificateHealthCheck : IHealthCheck
     private readonly TimeProvider _time;
 
     public PrinterCertificateHealthCheck(PrinterCertificateAuthority authority,
-                                         IOptions<PrusaConnectOptions> connect,
+                                         IOptionsMonitor<PrusaConnectOptions> connect,
                                          IOptions<CertificateOptions> certificates,
                                          IHostAddressResolver resolver,
                                          TimeProvider time)
@@ -59,7 +59,7 @@ public sealed class PrinterCertificateHealthCheck : IHealthCheck
         ArgumentNullException.ThrowIfNull(certificates);
 
         _authority = authority;
-        _connect = connect.Value;
+        _connect = connect.CurrentValue;
         _certificates = certificates.Value;
         _resolver = resolver;
         _time = time;

@@ -41,13 +41,13 @@ namespace Homespool.Host.Cameras;
 public sealed class WebRtcCandidateHealthCheck : IHealthCheck
 {
     private readonly CameraLiveAvailability _availability;
-    private readonly IOptions<CameraOptions> _cameras;
-    private readonly IOptions<PrusaConnectOptions> _connect;
+    private readonly IOptionsMonitor<CameraOptions> _cameras;
+    private readonly IOptionsMonitor<PrusaConnectOptions> _connect;
     private readonly HomespoolDbContext _dbContext;
 
     public WebRtcCandidateHealthCheck(CameraLiveAvailability availability,
-                                      IOptions<CameraOptions> cameras,
-                                      IOptions<PrusaConnectOptions> connect,
+                                      IOptionsMonitor<CameraOptions> cameras,
+                                      IOptionsMonitor<PrusaConnectOptions> connect,
                                       HomespoolDbContext dbContext)
     {
         ArgumentNullException.ThrowIfNull(availability);
@@ -83,11 +83,11 @@ public sealed class WebRtcCandidateHealthCheck : IHealthCheck
         // an operator who set nothing needs to know a name is missing, and one who set a name that
         // resolves to nothing useful would otherwise read the same sentence and check the same
         // setting twice.
-        string remedy = _cameras.Value.WebRtcCandidate.Length > 0
+        string remedy = _cameras.CurrentValue.WebRtcCandidate.Length > 0
             ? "WEBRTC_CANDIDATE is set but was not usable - it should be an address and port a browser can reach, "
               + "such as 192.168.1.10:8555, with no scheme."
-            : _connect.Value.IsPrinterAddressConfigured
-                ? $"PRINTER_HOST is set to '{_connect.Value.PrinterHost.Trim()}' but does not resolve to an address "
+            : _connect.CurrentValue.IsPrinterAddressConfigured
+                ? $"PRINTER_HOST is set to '{_connect.CurrentValue.PrinterHost.Trim()}' but does not resolve to an address "
                   + "outside this deployment's own container networks. Set WEBRTC_CANDIDATE to the address and port "
                   + "a browser should use."
                 : "Set PRINTER_HOST to a name this machine answers to, which is what the address is worked out from, "

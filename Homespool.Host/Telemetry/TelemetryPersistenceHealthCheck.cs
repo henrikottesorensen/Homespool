@@ -59,12 +59,12 @@ public sealed class TelemetryPersistenceHealthCheck : IHealthCheck
 
     public TelemetryPersistenceHealthCheck(ITelemetryHealthSource source,
                                            UnknownFieldTracker unknownFields,
-                                           IOptions<StorageOptions> storage,
+                                           IOptionsMonitor<StorageOptions> storage,
                                            TimeProvider timeProvider)
     {
         _source = source;
         _unknownFields = unknownFields;
-        _storage = storage.Value;
+        _storage = storage.CurrentValue;
         _timeProvider = timeProvider;
     }
 

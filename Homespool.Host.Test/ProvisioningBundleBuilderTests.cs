@@ -69,7 +69,7 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
                                                  string host = "printers.example.com",
                                                  IHostAddressResolver? resolver = null)
     {
-        return new(Options.Create(new PrusaConnectOptions { PrinterHost = host, PrinterPort = 15443, PrinterTls = tls }),
+        return new(TestOptions.Monitor(new PrusaConnectOptions { PrinterHost = host, PrinterPort = 15443, PrinterTls = tls }),
                    Options.Create(new CertificateOptions { ContainerNetworks = ["172.16.0.0/12"] }),
                    authority,
                    resolver ?? new FakeResolver(),

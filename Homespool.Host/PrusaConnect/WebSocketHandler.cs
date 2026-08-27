@@ -20,11 +20,11 @@ public class WebSocketHandler
 
     public WebSocketHandler(ILogger<WebSocketHandler> logger,
                             MessageDispatcher dispatcher,
-                            IOptions<PrusaConnectOptions> options)
+                            IOptionsMonitor<PrusaConnectOptions> options)
     {
         _logger = logger;
         _dispatcher = dispatcher;
-        _options = options.Value;
+        _options = options.CurrentValue;
     }
 
     private static readonly JsonReaderOptions ReaderOptions = new()

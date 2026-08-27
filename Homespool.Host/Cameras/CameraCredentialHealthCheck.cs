@@ -36,10 +36,10 @@ namespace Homespool.Host.Cameras;
 /// </remarks>
 public sealed class CameraCredentialHealthCheck : IHealthCheck
 {
-    private readonly IOptions<CameraOptions> _options;
+    private readonly IOptionsMonitor<CameraOptions> _options;
     private readonly HomespoolDbContext _dbContext;
 
-    public CameraCredentialHealthCheck(IOptions<CameraOptions> options, HomespoolDbContext dbContext)
+    public CameraCredentialHealthCheck(IOptionsMonitor<CameraOptions> options, HomespoolDbContext dbContext)
     {
         ArgumentNullException.ThrowIfNull(options);
 
@@ -50,12 +50,12 @@ public sealed class CameraCredentialHealthCheck : IHealthCheck
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context,
                                                           CancellationToken cancellationToken = default)
     {
-        if (_options.Value.IsAuthenticated)
+        if (_options.CurrentValue.IsAuthenticated)
         {
             // Checked before the happy answer, because this state looks exactly like health from
             // every other angle: the credential is set, this process holds it, and only the sidecar
             // disagrees - by answering 401 to everything, with nothing saying why.
-            if (!_options.Value.CredentialSurvivesTransport)
+            if (!_options.CurrentValue.CredentialSurvivesTransport)
             {
                 return HealthCheckResult.Degraded(
                     "The camera stream server's credential contains a double quote or a backslash, which cannot "

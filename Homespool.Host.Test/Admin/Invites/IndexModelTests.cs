@@ -8,7 +8,6 @@ using AwesomeAssertions;
 
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
@@ -27,7 +26,7 @@ public sealed class IndexModelTests : IDisposable
 
     private static InvitationService NewInvitationService(HomespoolDbContext context)
     {
-        return new(context, new TokenService(), Options.Create(new InvitationOptions()));
+        return new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()));
     }
 
     private static IndexModel NewModel(HomespoolDbContext context)

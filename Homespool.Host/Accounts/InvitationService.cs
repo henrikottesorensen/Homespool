@@ -33,7 +33,7 @@ public class InvitationService
     private readonly TokenService _tokenService;
     private readonly InvitationOptions _options;
 
-    public InvitationService(HomespoolDbContext dbContext, TokenService tokenService, IOptions<InvitationOptions> options)
+    public InvitationService(HomespoolDbContext dbContext, TokenService tokenService, IOptionsSnapshot<InvitationOptions> options)
     {
         ArgumentNullException.ThrowIfNull(options);
 

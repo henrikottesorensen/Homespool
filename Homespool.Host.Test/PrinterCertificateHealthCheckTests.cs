@@ -41,7 +41,7 @@ public sealed class PrinterCertificateHealthCheckTests : IDisposable
     private static PrinterCertificateHealthCheck NewCheck(PrinterCertificateAuthority authority, string host, bool tls = true)
     {
         return new(authority,
-                   Options.Create(new PrusaConnectOptions { PrinterHost = host, PrinterTls = tls }),
+                   TestOptions.Monitor(new PrusaConnectOptions { PrinterHost = host, PrinterTls = tls }),
                    Options.Create(new CertificateOptions()),
                    new DnsHostAddressResolver(),
                    TimeProvider.System);

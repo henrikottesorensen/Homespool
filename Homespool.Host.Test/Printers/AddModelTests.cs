@@ -80,7 +80,7 @@ public sealed class AddModelTests : IDisposable
             authority.EnsureLeaf([options.PrinterHost]);
         }
 
-        return new ProvisioningBundleBuilder(Options.Create(options), Options.Create(new CertificateOptions()), authority,
+        return new ProvisioningBundleBuilder(TestOptions.Monitor(options), Options.Create(new CertificateOptions()), authority,
                                              new DnsHostAddressResolver(), TestLocaliser.Shared());
     }
 
@@ -111,11 +111,11 @@ public sealed class AddModelTests : IDisposable
 
         PrusaConnectService prusaConnectService = new(context, new CodeGenerator(), new TokenService(), new TeamService(context),
                                                       TimeProvider.System, NullLogger<PrusaConnectService>.Instance,
-                                                      Options.Create(options));
+                                                      TestOptions.Monitor(options));
 
         AddModel model = new(prusaConnectService, NewBundleBuilder(options), new TeamService(context), users,
                              new UnitOfWork(context),
-                             Options.Create(options), TestLocaliser.Shared(), NullLogger<AddModel>.Instance)
+                             TestOptions.Snapshot(options), TestLocaliser.Shared(), NullLogger<AddModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };

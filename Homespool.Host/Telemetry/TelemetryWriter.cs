@@ -180,6 +180,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
     private readonly Channel<TelemetryWriteItem> _channel;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IOptionsMonitor<StorageOptions> _storage;
     private readonly StorageOptions _options;
     private readonly ILogger<TelemetryWriter> _logger;
     private readonly TimeProvider _timeProvider;
@@ -217,12 +218,20 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     private volatile bool _shuttingDown;
 
     public TelemetryWriter(IServiceScopeFactory scopeFactory,
-                           IOptions<StorageOptions> options,
+                           IOptionsMonitor<StorageOptions> options,
                            ILogger<TelemetryWriter> logger,
                            TimeProvider timeProvider)
     {
         _scopeFactory = scopeFactory;
-        _options = options.Value;
+        _storage = options;
+
+        // Captured, deliberately, and not read from the monitor at the point of use like the ingest
+        // throttle below. The batch size and flush interval are graded as needing a restart because
+        // they are ALSO fixed at construction - the channel's capacity here, and the PeriodicTimer
+        // when the loop starts. Reading them live would move the batching threshold while the
+        // channel kept its old capacity, which is a half-applied number and harder to reason about
+        // than one that did not change at all.
+        _options = options.CurrentValue;
         _logger = logger;
         _timeProvider = timeProvider;
 
@@ -730,7 +739,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             entry.PendingLoadedMaterial = item.Data.Material;
         }
 
-        double throttle = _options.MinimumSampleIntervalSeconds;
+        double throttle = _storage.CurrentValue.MinimumSampleIntervalSeconds;
         bool dueForSample = throttle <= 0
                             || entry.LastSampledAt is null
                             || (item.ReceivedAt - entry.LastSampledAt.Value).TotalSeconds >= throttle;

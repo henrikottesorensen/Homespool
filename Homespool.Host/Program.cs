@@ -1015,8 +1015,8 @@ public static class Program
     /// </remarks>
     private static bool PrinterTransportIsSecure(IServiceProvider services)
     {
-        return services.GetRequiredService<Microsoft.Extensions.Options.IOptions<PrusaConnect.PrusaConnectOptions>>()
-                       .Value.PrinterTls;
+        return services.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<PrusaConnect.PrusaConnectOptions>>()
+                       .CurrentValue.PrinterTls;
     }
 
     /// <summary>

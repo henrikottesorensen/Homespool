@@ -41,8 +41,8 @@ namespace Homespool.Host.Test;
 public class WebSocketHandlerCancellationTests
 {
     /// <summary>The shipped defaults - a 1 MiB message cap, which nothing here approaches.</summary>
-    private static readonly IOptions<PrusaConnectOptions> DefaultOptions =
-        Options.Create(new PrusaConnectOptions());
+    private static readonly IOptionsMonitor<PrusaConnectOptions> DefaultOptions =
+        TestOptions.Monitor(new PrusaConnectOptions());
 
     private static WebSocketHandler NewHandler(RecordingMessageDispatcher dispatcher)
     {

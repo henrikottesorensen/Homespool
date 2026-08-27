@@ -9,7 +9,6 @@ using AwesomeAssertions;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 using NSubstitute;
 
@@ -304,7 +303,7 @@ public sealed class PrintFileSenderTests : IDisposable
         return new PrintFileSender(_offers,
                                    _encrypted,
                                    commands,
-                                   Options.Create(new PrusaConnectOptions { TransferPort = TransferPort }));
+                                   TestOptions.Monitor(new PrusaConnectOptions { TransferPort = TransferPort }));
     }
 
     private StoredFile WriteFile(string name, int length)

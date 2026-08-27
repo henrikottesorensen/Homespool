@@ -52,12 +52,12 @@ public class PrintFileSender
     private readonly ITransferOffers _offers;
     private readonly EncryptedTransferOffers _encrypted;
     private readonly PrinterCommandService _commands;
-    private readonly IOptions<PrusaConnectOptions> _options;
+    private readonly IOptionsMonitor<PrusaConnectOptions> _options;
 
     public PrintFileSender(ITransferOffers offers,
                            EncryptedTransferOffers encrypted,
                            PrinterCommandService commands,
-                           IOptions<PrusaConnectOptions> options)
+                           IOptionsMonitor<PrusaConnectOptions> options)
     {
         _offers = offers;
         _encrypted = encrypted;
@@ -185,7 +185,7 @@ public class PrintFileSender
                 Key = (byte[])key.Clone(),
                 Iv = (byte[])iv.Clone(),
                 OriginalSize = file.Length,
-                Port = checked((ushort)_options.Value.TransferPort),
+                Port = checked((ushort)_options.CurrentValue.TransferPort),
             };
 
             return await SendAndCleanUpAsync(printer,

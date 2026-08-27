@@ -45,15 +45,15 @@ public sealed class TelemetryRetentionService : BackgroundService
     private static readonly TimeSpan SweepInterval = TimeSpan.FromHours(1);
 
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly StorageOptions _options;
+    private readonly IOptionsMonitor<StorageOptions> _options;
     private readonly ILogger<TelemetryRetentionService> _logger;
 
     public TelemetryRetentionService(IServiceScopeFactory scopeFactory,
-                                     IOptions<StorageOptions> options,
+                                     IOptionsMonitor<StorageOptions> options,
                                      ILogger<TelemetryRetentionService> logger)
     {
         _scopeFactory = scopeFactory;
-        _options = options.Value;
+        _options = options;
         _logger = logger;
     }
 
@@ -103,14 +103,14 @@ public sealed class TelemetryRetentionService : BackgroundService
 
     private async Task SweepSamplesAsync(HomespoolDbContext context, CancellationToken cancellationToken)
     {
-        if (_options.TelemetryRetentionDays == 0)
+        if (_options.CurrentValue.TelemetryRetentionDays == 0)
         {
             _logger.LogDebug("Telemetry retention is disabled (TelemetryRetentionDays = 0); skipping sweep.");
 
             return;
         }
 
-        DateTimeOffset cutoff = DateTimeOffset.UtcNow - TimeSpan.FromDays(_options.TelemetryRetentionDays);
+        DateTimeOffset cutoff = DateTimeOffset.UtcNow - TimeSpan.FromDays(_options.CurrentValue.TelemetryRetentionDays);
 
         int deleted = await context.TelemetrySamples
                                    .Where(s => s.Timestamp < cutoff)
@@ -126,14 +126,14 @@ public sealed class TelemetryRetentionService : BackgroundService
 
     private async Task SweepEventsByAgeAsync(HomespoolDbContext context, CancellationToken cancellationToken)
     {
-        if (_options.EventRetentionDays == 0)
+        if (_options.CurrentValue.EventRetentionDays == 0)
         {
             _logger.LogDebug("Event age retention is disabled (EventRetentionDays = 0); skipping sweep.");
 
             return;
         }
 
-        DateTimeOffset cutoff = DateTimeOffset.UtcNow - TimeSpan.FromDays(_options.EventRetentionDays);
+        DateTimeOffset cutoff = DateTimeOffset.UtcNow - TimeSpan.FromDays(_options.CurrentValue.EventRetentionDays);
 
         int deleted = await context.PrinterEvents
                                    .Where(e => e.Timestamp < cutoff)
@@ -166,10 +166,10 @@ public sealed class TelemetryRetentionService : BackgroundService
     /// </remarks>
     private async Task SweepEventsByCountAsync(HomespoolDbContext context, CancellationToken cancellationToken)
     {
-        if (_options.MaxEventsPerPrinter <= 0)
+        if (_options.CurrentValue.MaxEventsPerPrinter <= 0)
         {
             _logger.LogDebug("Event count cap is disabled (MaxEventsPerPrinter = {Cap}); skipping sweep.",
-                             _options.MaxEventsPerPrinter);
+                             _options.CurrentValue.MaxEventsPerPrinter);
 
             return;
         }
@@ -186,7 +186,7 @@ public sealed class TelemetryRetentionService : BackgroundService
             long threshold = await context.PrinterEvents
                                           .Where(e => e.PrinterId == printerId)
                                           .OrderByDescending(e => e.Id)
-                                          .Skip(_options.MaxEventsPerPrinter - 1)
+                                          .Skip(_options.CurrentValue.MaxEventsPerPrinter - 1)
                                           .Select(e => e.Id)
                                           .FirstOrDefaultAsync(cancellationToken);
 
@@ -203,7 +203,7 @@ public sealed class TelemetryRetentionService : BackgroundService
             {
                 _logger.LogInformation(
                     "Event cap sweep deleted {Count} event(s) for printer {PrinterId}, keeping the newest {Cap}.",
-                    deleted, printerId, _options.MaxEventsPerPrinter);
+                    deleted, printerId, _options.CurrentValue.MaxEventsPerPrinter);
             }
         }
     }

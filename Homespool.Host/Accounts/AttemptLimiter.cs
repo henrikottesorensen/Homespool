@@ -48,7 +48,7 @@ public class AttemptLimiter
     private readonly ILogger<AttemptLimiter> _logger;
 
     public AttemptLimiter(HomespoolDbContext dbContext,
-                          IOptions<AttemptLimitOptions> options,
+                          IOptionsSnapshot<AttemptLimitOptions> options,
                           ILogger<AttemptLimiter> logger)
     {
         _dbContext = dbContext;

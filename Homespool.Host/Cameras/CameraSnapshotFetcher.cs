@@ -26,12 +26,12 @@ public sealed class CameraSnapshotFetcher : ICameraSnapshotFetcher
     public const string HttpClientName = "camera";
 
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly IOptions<CameraOptions> _options;
+    private readonly IOptionsMonitor<CameraOptions> _options;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<CameraSnapshotFetcher> _logger;
 
     public CameraSnapshotFetcher(IHttpClientFactory httpClientFactory,
-                                 IOptions<CameraOptions> options,
+                                 IOptionsMonitor<CameraOptions> options,
                                  TimeProvider timeProvider,
                                  ILogger<CameraSnapshotFetcher> logger)
     {
@@ -46,7 +46,7 @@ public sealed class CameraSnapshotFetcher : ICameraSnapshotFetcher
     {
         ArgumentNullException.ThrowIfNull(uri);
 
-        CameraOptions options = _options.Value;
+        CameraOptions options = _options.CurrentValue;
 
         using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(options.TimeoutSeconds));

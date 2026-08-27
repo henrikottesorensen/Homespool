@@ -60,7 +60,7 @@ public class IndexModel : PageModel
 
     public IndexModel(PrintFileCatalog files,
                       UserManager<HSUser> userManager,
-                      IOptions<PrintFileStorageOptions> options,
+                      IOptionsSnapshot<PrintFileStorageOptions> options,
                       PrinterQueryService printers,
                       PrintFileSender sender,
                       PrintQueueService queue,

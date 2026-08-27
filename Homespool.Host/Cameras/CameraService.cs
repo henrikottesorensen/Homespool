@@ -46,7 +46,7 @@ public class CameraService
     private readonly LocalCameraDevices _devices;
     private readonly CameraCredentialProtector _credentials;
     private readonly TimeProvider _timeProvider;
-    private readonly IOptions<CameraOptions> _options;
+    private readonly IOptionsMonitor<CameraOptions> _options;
 
     public CameraService(HomespoolDbContext dbContext,
                          CameraAccessService access,
@@ -58,7 +58,7 @@ public class CameraService
                          LocalCameraDevices devices,
                          CameraCredentialProtector credentials,
                          TimeProvider timeProvider,
-                         IOptions<CameraOptions> options)
+                         IOptionsMonitor<CameraOptions> options)
     {
         _dbContext = dbContext;
         _access = access;
@@ -180,7 +180,7 @@ public class CameraService
 
         // After the permission check rather than before it, so that a deployment's configuration is
         // only described to somebody who could otherwise have saved this camera.
-        if (!_options.Value.IsAuthenticated)
+        if (!_options.CurrentValue.IsAuthenticated)
         {
             return CameraSaveOutcome.Refused("Cameras_StreamServerNoCredential");
         }
@@ -264,7 +264,7 @@ public class CameraService
 
         // After the permission check rather than before it, so that a deployment's configuration is
         // only described to somebody who could otherwise have saved this camera.
-        if (!_options.Value.IsAuthenticated)
+        if (!_options.CurrentValue.IsAuthenticated)
         {
             return CameraSaveOutcome.Refused("Cameras_StreamServerNoCredential");
         }

@@ -51,7 +51,7 @@ public class CertificateModel : PageModel
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public CertificateModel(PrinterCertificateAuthority authority,
-                            IOptions<PrusaConnectOptions> connect,
+                            IOptionsSnapshot<PrusaConnectOptions> connect,
                             IOptions<CertificateOptions> certificates,
                             IHostAddressResolver resolver,
                             ILogger<CertificateModel> logger,

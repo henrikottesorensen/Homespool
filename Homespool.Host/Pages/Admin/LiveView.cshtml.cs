@@ -44,13 +44,13 @@ public class LiveViewModel : PageModel
     private readonly DeploymentSettingStore _settings;
     private readonly WebRtcSidecarWriter _writer;
     private readonly CameraLiveAvailability _availability;
-    private readonly IOptions<CameraOptions> _cameras;
+    private readonly IOptionsSnapshot<CameraOptions> _cameras;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public LiveViewModel(DeploymentSettingStore settings,
                          WebRtcSidecarWriter writer,
                          CameraLiveAvailability availability,
-                         IOptions<CameraOptions> cameras,
+                         IOptionsSnapshot<CameraOptions> cameras,
                          IStringLocalizer<SharedResource> localiser)
     {
         _settings = settings;

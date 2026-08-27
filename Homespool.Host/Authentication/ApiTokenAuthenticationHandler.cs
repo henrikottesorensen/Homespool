@@ -28,7 +28,7 @@ public class ApiTokenAuthenticationHandler : ApiTokenAuthenticationHandlerBase
     public ApiTokenAuthenticationHandler(ApiTokenService tokens,
                                          UserManager<HSUser> userManager,
                                          IUserClaimsPrincipalFactory<HSUser> claimsFactory,
-                                         IOptions<Middleware.SecurityOptions> security,
+                                         IOptionsMonitor<Middleware.SecurityOptions> security,
                                          IOptionsMonitor<ApiTokenAuthenticationSchemeOptions> options,
                                          ILoggerFactory loggerFactory,
                                          UrlEncoder encoder)

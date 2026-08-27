@@ -14,7 +14,6 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
@@ -80,7 +79,7 @@ public sealed class CreateModelTests : IDisposable
             IdentityTestHarness.SignInAsPrincipal(httpContext, admin);
         }
 
-        InvitationService invitationService = new(context, new TokenService(), Options.Create(new InvitationOptions()));
+        InvitationService invitationService = new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()));
         CapturingEmailSender emailSender = new();
 
         CreateModel model = new(invitationService, new TeamService(context), users, emailSender,
@@ -178,7 +177,7 @@ public sealed class CreateModelTests : IDisposable
         (CreateModel model, _, _) = await NewModelAsync(context);
         model.Input.Email = "invitee@example.com";
 
-        InvitationService invitationService = new(context, new TokenService(), Options.Create(new InvitationOptions()));
+        InvitationService invitationService = new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()));
 
         // Act
         await model.OnPostAsync(CancellationToken.None);

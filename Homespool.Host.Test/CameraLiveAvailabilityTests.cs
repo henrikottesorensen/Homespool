@@ -10,7 +10,6 @@ using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 using NSubstitute;
 
@@ -47,7 +46,7 @@ public sealed class CameraLiveAvailabilityTests : IDisposable
         IHttpClientFactory factory = Substitute.For<IHttpClientFactory>();
 
         Go2RtcClient client = new(factory,
-                                  Options.Create(new CameraOptions()),
+                                  TestOptions.Monitor(new CameraOptions()),
                                   NullLogger<Go2RtcClient>.Instance);
 
         WebRtcOffer answer = await client.OfferAsync(Guid.NewGuid(), "v=0", CancellationToken.None);
@@ -284,8 +283,8 @@ public sealed class CameraLiveAvailabilityTests : IDisposable
 
         WebRtcCandidateHealthCheck check = new(
             availability,
-            Options.Create(new CameraOptions { WebRtcCandidate = configured }),
-            Options.Create(new PrusaConnectOptions { PrinterHost = printerHost }),
+            TestOptions.Monitor(new CameraOptions { WebRtcCandidate = configured }),
+            TestOptions.Monitor(new PrusaConnectOptions { PrinterHost = printerHost }),
             context);
 
         return await check.CheckHealthAsync(new HealthCheckContext(), TestContext.Current.CancellationToken);

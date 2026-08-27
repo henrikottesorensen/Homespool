@@ -13,7 +13,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
-using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.PrusaConnect;
@@ -190,7 +189,7 @@ public sealed class TelemetryWriterTests : IDisposable
         }
 
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
-                                      Options.Create(options),
+                                      TestOptions.Monitor(options),
                                       _fakeLogger,
                                       TimeProvider.System)
         {
@@ -1695,7 +1694,7 @@ public sealed class TelemetryWriterTests : IDisposable
         _provider = services.BuildServiceProvider();
 
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
-                                      Options.Create(options),
+                                      TestOptions.Monitor(options),
                                       _fakeLogger,
                                       TimeProvider.System)
         {

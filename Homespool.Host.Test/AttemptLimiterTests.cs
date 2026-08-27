@@ -7,7 +7,6 @@ using AwesomeAssertions;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
@@ -52,7 +51,7 @@ public sealed class AttemptLimiterTests : IDisposable
                                                   int maxSeconds = 3600)
     {
         return new(context,
-                   Options.Create(new AttemptLimitOptions
+                   TestOptions.Snapshot(new AttemptLimitOptions
                    {
                        MaxFailedAttempts = maxAttempts,
                        LockoutBaseSeconds = baseSeconds,

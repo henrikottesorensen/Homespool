@@ -70,14 +70,14 @@ public sealed class CameraSourcePolicy
         new(StringComparer.OrdinalIgnoreCase) { "rtsp", "rtsps", "http", "https", "rtmp", "onvif" };
 
     private readonly IHostAddressResolver _resolver;
-    private readonly IOptions<CameraOptions> _options;
-    private readonly IOptions<CertificateOptions> _certificates;
-    private readonly IOptions<PrusaConnect.PrusaConnectOptions> _connect;
+    private readonly IOptionsMonitor<CameraOptions> _options;
+    private readonly IOptionsMonitor<CertificateOptions> _certificates;
+    private readonly IOptionsMonitor<PrusaConnect.PrusaConnectOptions> _connect;
 
     public CameraSourcePolicy(IHostAddressResolver resolver,
-                              IOptions<CameraOptions> options,
-                              IOptions<CertificateOptions> certificates,
-                              IOptions<PrusaConnect.PrusaConnectOptions> connect)
+                              IOptionsMonitor<CameraOptions> options,
+                              IOptionsMonitor<CertificateOptions> certificates,
+                              IOptionsMonitor<PrusaConnect.PrusaConnectOptions> connect)
     {
         _resolver = resolver;
         _options = options;
@@ -279,7 +279,7 @@ public sealed class CameraSourcePolicy
 
         // The sidecar, by the address we were configured to reach it on - so a deployment that
         // renamed or re-homed it is covered without this class knowing how.
-        if (Uri.TryCreate(_options.Value.StreamServerBaseUrl, UriKind.Absolute, out Uri? streamServer))
+        if (Uri.TryCreate(_options.CurrentValue.StreamServerBaseUrl, UriKind.Absolute, out Uri? streamServer))
         {
             names.Add(streamServer.Host);
         }
@@ -296,9 +296,9 @@ public sealed class CameraSourcePolicy
         }
 
         // The one outer address the application is actually told about.
-        if (_connect.Value.IsPrinterAddressConfigured)
+        if (_connect.CurrentValue.IsPrinterAddressConfigured)
         {
-            names.Add(_connect.Value.PrinterHost.Trim());
+            names.Add(_connect.CurrentValue.PrinterHost.Trim());
         }
 
         return names;
@@ -330,7 +330,7 @@ public sealed class CameraSourcePolicy
             return CameraSourceCheck.Refused("Cameras_SourceScheme", uri.Scheme);
         }
 
-        if (!_options.Value.RefuseLoopbackAndLinkLocal)
+        if (!_options.CurrentValue.RefuseLoopbackAndLinkLocal)
         {
             return CameraSourceCheck.Accepted;
         }
@@ -350,7 +350,7 @@ public sealed class CameraSourcePolicy
         IReadOnlyList<IPAddress> addresses =
             await _resolver.ResolveAsync(uri.Host, cancellationToken).ConfigureAwait(false);
 
-        IReadOnlyList<IPNetwork> containerNetworks = _certificates.Value.ParsedContainerNetworks;
+        IReadOnlyList<IPNetwork> containerNetworks = _certificates.CurrentValue.ParsedContainerNetworks;
         IReadOnlyList<IPAddress> ownAddresses = OwnAddresses();
 
         foreach (IPAddress address in addresses)

@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using AwesomeAssertions;
 
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 using NSubstitute;
@@ -145,7 +144,7 @@ public class CameraFrameCacheTests
         };
 
         CameraFrameCache cache = new(
-            fetcher, Options.Create(options), time, NullLogger<CameraFrameCache>.Instance);
+            fetcher, TestOptions.Monitor(options), time, NullLogger<CameraFrameCache>.Instance);
 
         return (cache, fetcher, time);
     }

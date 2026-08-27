@@ -62,8 +62,8 @@ public sealed class WebRtcConfigurer : IHostedService
     private readonly WebRtcSidecarWriter _writer;
     private readonly CameraLiveAvailability _availability;
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly IOptions<CameraOptions> _cameras;
-    private readonly IOptions<PrusaConnectOptions> _connect;
+    private readonly IOptionsMonitor<CameraOptions> _cameras;
+    private readonly IOptionsMonitor<PrusaConnectOptions> _connect;
     private readonly IOptions<CertificateOptions> _certificates;
     private readonly IHostAddressResolver _resolver;
     private readonly ILogger<WebRtcConfigurer> _logger;
@@ -71,8 +71,8 @@ public sealed class WebRtcConfigurer : IHostedService
     public WebRtcConfigurer(WebRtcSidecarWriter writer,
                             CameraLiveAvailability availability,
                             IServiceScopeFactory scopeFactory,
-                            IOptions<CameraOptions> cameras,
-                            IOptions<PrusaConnectOptions> connect,
+                            IOptionsMonitor<CameraOptions> cameras,
+                            IOptionsMonitor<PrusaConnectOptions> connect,
                             IOptions<CertificateOptions> certificates,
                             IHostAddressResolver resolver,
                             ILogger<WebRtcConfigurer> logger)
@@ -197,10 +197,10 @@ public sealed class WebRtcConfigurer : IHostedService
 
     private async Task ConfigureAsync(CancellationToken cancellationToken)
     {
-        CameraOptions cameras = _cameras.Value;
+        CameraOptions cameras = _cameras.CurrentValue;
 
-        IReadOnlyList<IPAddress> resolved = _connect.Value.IsPrinterAddressConfigured
-            ? await _resolver.ResolveAsync(_connect.Value.PrinterHost.Trim(), cancellationToken).ConfigureAwait(false)
+        IReadOnlyList<IPAddress> resolved = _connect.CurrentValue.IsPrinterAddressConfigured
+            ? await _resolver.ResolveAsync(_connect.CurrentValue.PrinterHost.Trim(), cancellationToken).ConfigureAwait(false)
             : [];
 
         string candidate = CandidateFor(

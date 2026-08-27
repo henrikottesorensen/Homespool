@@ -12,7 +12,6 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.Telemetry;
@@ -106,7 +105,7 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
         }
 
         _service = new TelemetryRetentionService(_provider.GetRequiredService<IServiceScopeFactory>(),
-                                                 Options.Create(options),
+                                                 TestOptions.Monitor(options),
                                                  NullLogger<TelemetryRetentionService>.Instance);
 
         await _service.StartAsync(CancellationToken.None);

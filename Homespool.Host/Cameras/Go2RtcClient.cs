@@ -64,12 +64,12 @@ public sealed class Go2RtcClient : ICameraCodecProbe
     private static readonly TimeSpan UncredentialedWarningInterval = TimeSpan.FromMinutes(1);
 
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly IOptions<CameraOptions> _options;
+    private readonly IOptionsMonitor<CameraOptions> _options;
     private readonly ILogger<Go2RtcClient> _logger;
     private readonly Services.LogThrottle _uncredentialed = new(UncredentialedWarningInterval);
 
     public Go2RtcClient(IHttpClientFactory httpClientFactory,
-                        IOptions<CameraOptions> options,
+                        IOptionsMonitor<CameraOptions> options,
                         ILogger<Go2RtcClient> logger)
     {
         _httpClientFactory = httpClientFactory;
@@ -96,7 +96,7 @@ public sealed class Go2RtcClient : ICameraCodecProbe
     /// </remarks>
     private bool IsUsable()
     {
-        if (_options.Value.IsAuthenticated)
+        if (_options.CurrentValue.IsAuthenticated)
         {
             return true;
         }
@@ -906,6 +906,6 @@ public sealed class Go2RtcClient : ICameraCodecProbe
 
     private string BaseAddress()
     {
-        return _options.Value.StreamServerBaseUrl;
+        return _options.CurrentValue.StreamServerBaseUrl;
     }
 }

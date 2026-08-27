@@ -56,7 +56,7 @@ public class PrintFileController : ControllerBase
     private readonly UserManager<HSUser> _userManager;
     private readonly PrintFileStorageOptions _options;
 
-    public PrintFileController(PrintFileCatalog files, UserManager<HSUser> userManager, IOptions<PrintFileStorageOptions> options)
+    public PrintFileController(PrintFileCatalog files, UserManager<HSUser> userManager, IOptionsSnapshot<PrintFileStorageOptions> options)
     {
         _files = files;
         _userManager = userManager;

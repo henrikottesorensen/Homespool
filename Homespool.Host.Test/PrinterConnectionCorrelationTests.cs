@@ -10,7 +10,6 @@ using AwesomeAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
-using Microsoft.Extensions.Options;
 
 using NSubstitute;
 
@@ -164,7 +163,7 @@ public sealed class PrinterConnectionCorrelationTests : IDisposable
         new MessageDispatcher(NullLogger<MessageDispatcher>.Instance,
                               new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
                               TimeProvider.System),
-        Options.Create(new PrusaConnectOptions()))
+        TestOptions.Monitor(new PrusaConnectOptions()))
     {
         public override Task HandlePrusaWebsocket(PipeReader input,
                                                   int printerId,
@@ -185,7 +184,7 @@ public sealed class PrinterConnectionCorrelationTests : IDisposable
         : PrinterConnectionActorFactory(
             Substitute.For<ITelemetrySink>(),
             NullLogger<PrinterConnectionActor>.Instance,
-            Microsoft.Extensions.Options.Options.Create(new PrusaConnectOptions()),
+            TestOptions.Monitor(new PrusaConnectOptions()),
             Substitute.For<ITransferContentStore>())
     {
         public override IPrinterConnectionActor Create(int printerId, IPrinterConnection connection)

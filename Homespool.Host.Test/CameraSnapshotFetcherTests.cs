@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using AwesomeAssertions;
 
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 using NSubstitute;
@@ -107,7 +106,7 @@ public class CameraSnapshotFetcherTests
 
         return new CameraSnapshotFetcher(
             factory,
-            Options.Create(options),
+            TestOptions.Monitor(options),
             new FakeTimeProvider(Now),
             NullLogger<CameraSnapshotFetcher>.Instance);
     }

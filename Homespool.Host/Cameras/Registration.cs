@@ -107,7 +107,7 @@ public static class Registration
     /// </remarks>
     private static void ApplyCredential(IServiceProvider serviceProvider, System.Net.Http.HttpClient client)
     {
-        CameraOptions options = serviceProvider.GetRequiredService<IOptions<CameraOptions>>().Value;
+        CameraOptions options = serviceProvider.GetRequiredService<IOptionsMonitor<CameraOptions>>().CurrentValue;
 
         // Not a silent skip any more: Go2RtcClient refuses every call when this is false, so a client
         // without the header is never actually used. Returning early keeps this from inventing a

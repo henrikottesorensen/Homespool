@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using AwesomeAssertions;
 
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
@@ -538,7 +537,7 @@ public sealed class UserFileStoreTests : IDisposable
 
     private UserFileStore NewStore()
     {
-        return new(Options.Create(new PrintFileStorageOptions { Directory = _root }),
+        return new(TestOptions.Monitor(new PrintFileStorageOptions { Directory = _root }),
                    new HostEnvironmentAccessor(_root),
                    TimeProvider.System,
                    NullLogger<UserFileStore>.Instance);

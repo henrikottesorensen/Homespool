@@ -34,14 +34,14 @@ public sealed class DeploymentExposureHealthCheck : IHealthCheck
     private readonly CertificateOptions _certificates;
     private readonly IHostAddressResolver _resolver;
 
-    public DeploymentExposureHealthCheck(IOptions<PrusaConnectOptions> connect,
+    public DeploymentExposureHealthCheck(IOptionsMonitor<PrusaConnectOptions> connect,
                                          IOptions<CertificateOptions> certificates,
                                          IHostAddressResolver resolver)
     {
         ArgumentNullException.ThrowIfNull(connect);
         ArgumentNullException.ThrowIfNull(certificates);
 
-        _connect = connect.Value;
+        _connect = connect.CurrentValue;
         _certificates = certificates.Value;
         _resolver = resolver;
     }

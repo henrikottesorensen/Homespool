@@ -5,8 +5,6 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
-using Microsoft.Extensions.Options;
-
 using NSubstitute;
 
 using Homespool.Host.Cameras;
@@ -290,8 +288,8 @@ public class CameraSourcePolicyTests
         };
 
         return new CameraSourcePolicy(resolver,
-                                      Options.Create(options),
-                                      Options.Create(certificates),
-                                      Options.Create(connect));
+                                      TestOptions.Monitor(options),
+                                      TestOptions.Monitor(certificates),
+                                      TestOptions.Monitor(connect));
     }
 }

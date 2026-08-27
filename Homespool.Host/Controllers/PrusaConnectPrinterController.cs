@@ -55,7 +55,7 @@ public class PrusaConnectPrinterController : ControllerBase
                                          HttpPrinterSessions sessions,
                                          PrusaConnect.Transfers.ITransferContentStore content,
                                          IHostApplicationLifetime lifetime,
-                                         IOptions<PrusaConnectOptions> options,
+                                         IOptionsSnapshot<PrusaConnectOptions> options,
                                          ILogger<PrusaConnectPrinterController> logger)
     {
         ArgumentNullException.ThrowIfNull(options);

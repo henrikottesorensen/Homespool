@@ -30,14 +30,17 @@ public class MessageDispatcher
     private readonly ILogger<MessageDispatcher> _logger;
     private readonly UnknownFieldTracker _unknownFields;
     private readonly TimeProvider _timeProvider;
+    private readonly PrinterTrafficLog _traffic;
 
     public MessageDispatcher(ILogger<MessageDispatcher> logger,
                              UnknownFieldTracker unknownFields,
-                             TimeProvider timeProvider)
+                             TimeProvider timeProvider,
+                             PrinterTrafficLog traffic)
     {
         _logger = logger;
         _unknownFields = unknownFields;
         _timeProvider = timeProvider;
+        _traffic = traffic;
     }
 
     /// <summary>
@@ -49,6 +52,11 @@ public class MessageDispatcher
     public virtual ConnectionMessage? Classify(int printerId, JsonElement root)
     {
         DateTimeOffset receivedAt = _timeProvider.GetUtcNow();
+
+        // Before any deserialization below, deliberately: a message that will not parse is the one
+        // with the least other evidence behind it, since it costs the connection and leaves only an
+        // exception. Off unless somebody turned it on.
+        _traffic.RecordInbound(printerId, root);
 
         if (root.TryGetProperty("event", out _))
         {

@@ -154,6 +154,17 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// </remarks>
     public TimeSpan SendTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// The optional traffic log, which records each command's arguments where the log line below
+    /// deliberately records only its name. Null means nothing is recorded.
+    /// </summary>
+    /// <remarks>
+    /// An <c>init</c> property rather than a constructor parameter because it is a tap, not a
+    /// collaborator: the actor works identically without one, and every test that does not care
+    /// about traffic says nothing about it. <see cref="SendTimeout"/> is here for the same reason.
+    /// </remarks>
+    public PrinterTrafficLog? TrafficLog { get; init; }
+
     public PrinterConnectionActor(int printerId,
                                   IPrinterConnection connection,
                                   ITelemetrySink sink,
@@ -527,6 +538,12 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         // credential - so a payload-logging habit here would turn that fix into a
         // credential written to disk. Same rule as UnknownFieldTracker's.
         _logger.LogDebug("sent {Command} as command {CommandId}", send.Command.WireName, commandId);
+
+        // The exception to the rule above, and the only one: the traffic log is off by default,
+        // writes to a file of its own rather than the operator's console, and redacts the argument
+        // names that carry secrets - token, hash, key and iv among them. Placed after the handover
+        // because a send that never reached the printer is not traffic.
+        TrafficLog?.RecordOutbound(_printerId, commandId, send.Command);
 
         if (!send.Command.ExpectsReply)
         {

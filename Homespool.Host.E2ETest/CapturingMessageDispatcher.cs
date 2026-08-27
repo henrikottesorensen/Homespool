@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text.Json;
 
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 using Homespool.Host.PrusaConnect;
 
@@ -23,10 +24,19 @@ namespace Homespool.Host.E2ETest;
 /// </remarks>
 internal sealed class CapturingMessageDispatcher : MessageDispatcher
 {
+    /// <summary>
+    /// Disabled, so it opens no file and records nothing - and static, because a disabled one holds
+    /// nothing to own or dispose. This spy's <see cref="Classify"/> never calls base anyway; the
+    /// argument exists only to satisfy the constructor.
+    /// </summary>
+    private static readonly PrinterTrafficLog NoTrafficLog =
+        new(Options.Create(new PrinterTrafficLogOptions()), NullLogger<PrinterTrafficLog>.Instance);
+
     public CapturingMessageDispatcher()
         : base(NullLogger<MessageDispatcher>.Instance,
                new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
-               TimeProvider.System)
+               TimeProvider.System,
+               NoTrafficLog)
     {
     }
 

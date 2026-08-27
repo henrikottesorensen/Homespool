@@ -163,7 +163,8 @@ public sealed class PrinterConnectionCorrelationTests : IDisposable
         NullLogger<WebSocketHandler>.Instance,
         new MessageDispatcher(NullLogger<MessageDispatcher>.Instance,
                               new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
-                              TimeProvider.System),
+                              TimeProvider.System,
+                              PrinterTrafficLogTests.Off),
         Options.Create(new PrusaConnectOptions()))
     {
         public override Task HandlePrusaWebsocket(PipeReader input,
@@ -186,7 +187,8 @@ public sealed class PrinterConnectionCorrelationTests : IDisposable
             Substitute.For<ITelemetrySink>(),
             NullLogger<PrinterConnectionActor>.Instance,
             Microsoft.Extensions.Options.Options.Create(new PrusaConnectOptions()),
-            Substitute.For<ITransferContentStore>())
+            Substitute.For<ITransferContentStore>(),
+            PrinterTrafficLogTests.Off)
     {
         public override IPrinterConnectionActor Create(int printerId, IPrinterConnection connection)
         {

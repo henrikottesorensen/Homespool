@@ -279,6 +279,13 @@ public static class Program
                    .ValidateDataAnnotations()
                    .ValidateOnStart();
 
+            builder.Services.Configure<PrusaConnect.PrinterTrafficLogOptions>(
+                builder.Configuration.GetSection(PrusaConnect.PrinterTrafficLogOptions.SectionName));
+
+            // Singleton because it owns a file handle, and resolved eagerly below so that turning it
+            // on is reported at startup rather than whenever the first printer happens to connect.
+            builder.Services.AddSingleton<PrusaConnect.PrinterTrafficLog>();
+
             // StorageOptions is bound by AddHomespoolData, in a project that does not reference the
             // options DataAnnotations extension. The attributes live on the class there; the
             // validator is added here, where the shared framework already carries it.
@@ -569,6 +576,12 @@ public static class Program
             // The certificate nginx presents to printers. Inline, before Run, because the proxy waits
             // on this container's health check and then reads the leaf off the shared volume.
             EnsurePrinterCertificate(app);
+
+            // Resolved here only so that its "this is ON" warning is emitted at startup. Left to the
+            // container it would be constructed when the first printer connects, which is both later
+            // and buried - and something writing message bodies to disk should say so where an
+            // operator scanning a boot log will see it.
+            app.Services.GetRequiredService<PrusaConnect.PrinterTrafficLog>();
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())

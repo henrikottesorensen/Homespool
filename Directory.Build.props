@@ -42,6 +42,27 @@
             until this was set, because severity is a filter and this is the switch.
         -->
         <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+        <!--
+            One VBCSCompiler process serves every worktree on the machine, and this splits them apart.
+            Roslyn names the compiler server's pipe after SHA256(user . isAdmin . <SDK Roslyn dir>) -
+            the working directory is not an input - so all ~18 worktrees checked out here share a
+            single server process. That shared process is the only machine-wide state left after a
+            failure rules out the branch, the worktree and the working tree, which is what
+            notes/housekeeping.md keeps recording. Whether it is the CAUSE is unproven; this makes it
+            testable, and unlike UseSharedCompilation=false it costs no build speed.
+
+            SharedCompilationId is used VERBATIM as the pipe name - Roslyn does not hash it - so the
+            value has to be short, stable and filesystem-safe, because on Unix it becomes a socket
+            path. Two traps, both verified rather than assumed:
+
+            - GetHashCode() is randomised per process, so it yields a different id on every build and
+              spawns a fresh server each time. Measured: two runs gave -4091601 and -186581780.
+            - StableStringHash is the deterministic intrinsic and Sha256 is one of its modes. The
+              64-char hex fits the socket path here; the same id reuses one server across builds, and
+              a different id spawns a second, so the isolation is real.
+        -->
+        <SharedCompilationId>$([MSBuild]::StableStringHash('$(MSBuildThisFileDirectory)', 'Sha256'))</SharedCompilationId>
     </PropertyGroup>
 
     <ItemGroup>

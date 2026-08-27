@@ -1,4 +1,4 @@
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Middleware;
 
 /// <summary>
 /// Deployment-wide security choices that are an operator's to make, bound from the <c>Security</c>

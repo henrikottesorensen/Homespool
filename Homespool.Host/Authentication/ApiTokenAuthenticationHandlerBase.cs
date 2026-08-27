@@ -53,12 +53,12 @@ public abstract class ApiTokenAuthenticationHandlerBase : AuthenticationHandler<
     private readonly ApiTokenService _tokens;
     private readonly UserManager<HSUser> _userManager;
     private readonly IUserClaimsPrincipalFactory<HSUser> _claimsFactory;
-    private readonly IOptions<Services.SecurityOptions> _security;
+    private readonly IOptions<Middleware.SecurityOptions> _security;
 
     protected ApiTokenAuthenticationHandlerBase(ApiTokenService tokens,
                                                 UserManager<HSUser> userManager,
                                                 IUserClaimsPrincipalFactory<HSUser> claimsFactory,
-                                                IOptions<Services.SecurityOptions> security,
+                                                IOptions<Middleware.SecurityOptions> security,
                                                 IOptionsMonitor<ApiTokenAuthenticationSchemeOptions> options,
                                                 ILoggerFactory loggerFactory,
                                                 UrlEncoder encoder)

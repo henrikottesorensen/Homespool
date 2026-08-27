@@ -2,7 +2,7 @@ using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Http;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Middleware;
 
 /// <summary>
 /// Sets the three response headers that cost nothing and are absent by default: no MIME sniffing, no

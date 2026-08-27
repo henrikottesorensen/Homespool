@@ -3,7 +3,7 @@ using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Http;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Middleware;
 
 /// <summary>
 /// Turns "the client hung up" into 499 rather than letting it escape as a 500.

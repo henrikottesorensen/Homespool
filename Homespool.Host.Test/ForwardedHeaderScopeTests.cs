@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Host.Listeners;
-using Homespool.Host.Services;
+using Homespool.Host.Middleware;
 
 namespace Homespool.Host.Test;
 

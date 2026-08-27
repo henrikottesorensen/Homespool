@@ -41,7 +41,7 @@ public class XApiKeyAuthenticationHandler : ApiTokenAuthenticationHandlerBase
     public XApiKeyAuthenticationHandler(ApiTokenService tokens,
                                         UserManager<HSUser> userManager,
                                         IUserClaimsPrincipalFactory<HSUser> claimsFactory,
-                                        IOptions<Services.SecurityOptions> security,
+                                        IOptions<Middleware.SecurityOptions> security,
                                         IOptionsMonitor<ApiTokenAuthenticationSchemeOptions> options,
                                         ILoggerFactory loggerFactory,
                                         UrlEncoder encoder)

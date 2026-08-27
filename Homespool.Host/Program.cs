@@ -283,8 +283,8 @@ public static class Program
             builder.Services.Configure<Services.InvitationOptions>(
                 builder.Configuration.GetSection(Services.InvitationOptions.SectionName));
 
-            builder.Services.Configure<Services.SecurityOptions>(
-                builder.Configuration.GetSection(Services.SecurityOptions.SectionName));
+            builder.Services.Configure<Middleware.SecurityOptions>(
+                builder.Configuration.GetSection(Middleware.SecurityOptions.SectionName));
 
             Mail.SmtpOptions smtpOptions = new();
             builder.Configuration.GetSection(Mail.SmtpOptions.SectionName).Bind(smtpOptions);
@@ -320,11 +320,11 @@ public static class Program
 
             // Factory-activated (IMiddleware) so it is resolved from the container. Singleton: it holds
             // no per-request state, only the singleton SetupState.
-            builder.Services.AddSingleton<Services.SetupGateMiddleware>();
+            builder.Services.AddSingleton<Middleware.SetupGateMiddleware>();
 
             // Likewise factory-activated, and it holds nothing at all.
-            builder.Services.AddSingleton<Services.SecurityHeadersMiddleware>();
-            builder.Services.AddSingleton<Services.ClientGoneMiddleware>();
+            builder.Services.AddSingleton<Middleware.SecurityHeadersMiddleware>();
+            builder.Services.AddSingleton<Middleware.ClientGoneMiddleware>();
 
             builder.Services.AddScoped<PrusaConnect.PrusaConnectService>()
                             .AddScoped<PrusaConnect.WebSocketHandler>()
@@ -566,7 +566,7 @@ public static class Program
             // entirely when both lists are empty, which means "trust anybody". Proven by probe:
             // unconfigured, a loopback client's X-Forwarded-Proto was honoured; trusting 10.0.0.0/8
             // instead, the same request was ignored. Leaving the middleware out is unambiguous.
-            if (app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Services.XForwardedOptions>>().Value
+            if (app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Middleware.XForwardedOptions>>().Value
                    .TrustsAnything)
             {
                 int printerPort = ReadListenerOptions(builder.Configuration).PrinterPort;
@@ -581,7 +581,7 @@ public static class Program
             // so a response short-circuited further down - an HTTPS redirect, a segregation 404, a
             // rate-limiter 429 - carries them as well. It goes after the forwarded-headers block only
             // because that block reads the request and writes no response.
-            app.UseMiddleware<Services.SecurityHeadersMiddleware>();
+            app.UseMiddleware<Middleware.SecurityHeadersMiddleware>();
 
             // Log HTTP requests with Serilog, order of this matters.
             // Requests handled before in the pipeline are NOT logged.
@@ -590,7 +590,7 @@ public static class Program
             // INSIDE the request logging, deliberately. It absorbs the cancellation and sets 499, and
             // Serilog reads the status on the way back out - registered outside it instead, Serilog
             // would already have logged the 500 and the unhandled exception it exists to prevent.
-            app.UseMiddleware<Services.ClientGoneMiddleware>();
+            app.UseMiddleware<Middleware.ClientGoneMiddleware>();
 
             // Only when this process serves users over TLS itself. Otherwise there is no port to
             // redirect to that is not the printer's, and sending a browser there is worse than not
@@ -618,7 +618,7 @@ public static class Program
 
             // Before an administrator exists, funnel every navigable page to /setup. No-op once setup
             // completes. Placed after routing so static-asset and printer endpoints resolve normally.
-            app.UseMiddleware<Services.SetupGateMiddleware>();
+            app.UseMiddleware<Middleware.SetupGateMiddleware>();
 
             // After UseRouting, so the endpoint's [EnableRateLimiting] metadata is resolved, and
             // before authentication, so a rejected request costs no database work.
@@ -630,7 +630,7 @@ public static class Program
             // After authorization, so it sees a resolved principal and cannot be reached by anybody
             // an endpoint would have refused anyway. It is inert unless Security:RequireTwoFactor is
             // on, and it only ever acts on the application cookie - see the middleware's remarks.
-            app.UseMiddleware<Services.TwoFactorEnrolmentMiddleware>();
+            app.UseMiddleware<Middleware.TwoFactorEnrolmentMiddleware>();
 
             // After authentication, and that ordering is load-bearing rather than tidy: the first
             // culture provider reads the signed-in account's stored language, so it needs
@@ -769,7 +769,7 @@ public static class Program
     /// </para>
     /// </remarks>
     /// <summary>
-    /// Translates <see cref="Services.XForwardedOptions"/> onto the framework's forwarded-headers
+    /// Translates <see cref="Middleware.XForwardedOptions"/> onto the framework's forwarded-headers
     /// middleware, and says at startup what it ended up trusting.
     /// </summary>
     /// <remarks>
@@ -788,14 +788,14 @@ public static class Program
     /// </remarks>
     private static void AddForwardedHeaders(WebApplicationBuilder builder)
     {
-        Services.XForwardedOptions forwarded = new();
-        builder.Configuration.GetSection(Services.XForwardedOptions.SectionName).Bind(forwarded);
+        Middleware.XForwardedOptions forwarded = new();
+        builder.Configuration.GetSection(Middleware.XForwardedOptions.SectionName).Bind(forwarded);
 
-        builder.Services.Configure<Services.XForwardedOptions>(
-            builder.Configuration.GetSection(Services.XForwardedOptions.SectionName));
+        builder.Services.Configure<Middleware.XForwardedOptions>(
+            builder.Configuration.GetSection(Middleware.XForwardedOptions.SectionName));
 
         builder.Services.Configure<ForwardedHeadersOptions>(options =>
-                                                                Services.ForwardedHeadersConfigurator.Apply(
+                                                                Middleware.ForwardedHeadersConfigurator.Apply(
                                                                     forwarded, options, Log.Warning));
 
         if (forwarded.TrustsAnything)

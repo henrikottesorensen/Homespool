@@ -104,7 +104,7 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
             new ApiTokenService(context),
             users,
             provider.GetRequiredService<IUserClaimsPrincipalFactory<HSUser>>(),
-            Microsoft.Extensions.Options.Options.Create(new Homespool.Host.Services.SecurityOptions()),
+            Microsoft.Extensions.Options.Options.Create(new Homespool.Host.Middleware.SecurityOptions()),
             new StaticOptionsMonitor(),
             NullLoggerFactory.Instance,
             UrlEncoder.Default);

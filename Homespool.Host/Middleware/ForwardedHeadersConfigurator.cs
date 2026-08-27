@@ -4,7 +4,7 @@ using System.Net;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.HttpOverrides;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Middleware;
 
 /// <summary>
 /// Translates <see cref="XForwardedOptions"/> onto the framework's

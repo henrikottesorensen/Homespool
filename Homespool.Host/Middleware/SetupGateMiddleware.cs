@@ -4,7 +4,9 @@ using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Http;
 
-namespace Homespool.Host.Services;
+using Homespool.Host.Services;
+
+namespace Homespool.Host.Middleware;
 
 /// <summary>
 /// First-run gate: while no administrator exists, redirects human-facing pages to <c>/setup</c> so

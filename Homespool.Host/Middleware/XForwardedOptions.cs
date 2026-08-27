@@ -1,4 +1,4 @@
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Middleware;
 
 /// <summary>
 /// Which proxy this deployment trusts, and what it is allowed to say about the client. Bound from the

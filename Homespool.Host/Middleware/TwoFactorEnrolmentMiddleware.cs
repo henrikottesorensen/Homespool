@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 
 using Homespool.Model.Entities;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Middleware;
 
 /// <summary>
 /// When <see cref="SecurityOptions.RequireTwoFactor"/> is on, holds a signed-in account that has no

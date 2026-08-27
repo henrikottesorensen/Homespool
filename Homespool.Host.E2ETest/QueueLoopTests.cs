@@ -444,6 +444,187 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
+    /// A <c>START_PRINT</c> the printer takes but answers <c>REJECTED "No job in progress"</c> is
+    /// not read as a refusal: the print is adopted, recorded once, and not started a second time.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The phantom of 2026-08-27, reproduced end to end.</b> Firmware renders the ack to a
+    /// <c>START_PRINT</c> against its momentary state, and a print it has accepted passes through a
+    /// state with no job before it reports <c>PRINTING</c> - so a successful start can be answered
+    /// as a rejection, command id and all. The loop used to route that through the transient arm,
+    /// which removed the row and kept the entry: the print ran with no record, and the file printed
+    /// again later. The fake's knob reproduces exactly that answer while really starting the print,
+    /// which is what hardware does.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task APrintFalselyRejectedAsNoJobInProgressIsAdoptedNotFailed()
+    {
+        // Arrange - a printer whose next accepted START_PRINT answers with the false rejection
+        (PrinterIdentity identity, string token, int printerId, long userId) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        FirmwareFaithfulPolicy policy = new(identity, TimeProvider.System);
+        FakePrinterOptions options = new()
+        {
+            TelemetrySource = FastTelemetry().TelemetrySource,
+            Policy = policy,
+        };
+
+        await using FakePrinterClient fake = new(identity, TimeProvider.System, options) { Token = token };
+        await fake.ConnectAsync(ConnectAsync, TestContext.Current.CancellationToken);
+        Task run = fake.RunAsync(TestContext.Current.CancellationToken);
+
+        (await WaitUntilAsync(() => Task.FromResult(Registry.IsConnected(printerId)), TimeSpan.FromSeconds(10)))
+            .Should().BeTrue();
+
+        await UploadAsync(userId, "phantom.bgcode");
+        await EnqueueAsync(printerId, userId, "phantom.bgcode");
+
+        await AdvanceAsync(printerId);
+        (await WaitUntilAsync(async () => await ArrivedAsync(printerId), TimeSpan.FromSeconds(30))).Should().BeTrue();
+
+        fake.Device.TrySetReady().Should().BeTrue();
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Ready), TimeSpan.FromSeconds(30)))
+            .Should().BeTrue();
+
+        // Act 1 - the print is commanded, taken, and answered with the lie
+        policy.NextStartPrintAnswersNoJobInProgress = true;
+        await AdvanceAsync(printerId);
+
+        // Assert - the printer is printing, and the loop holds a question rather than a verdict
+        fake.Device.State.Should().Be(DeviceState.Printing, "the rejection lied; the command was accepted");
+
+        PrintJob question = await ActiveAsync(printerId);
+        question.State.Should().Be(PrintState.Unconfirmed,
+                                   "\"No job in progress\" moments after a command is the start window, not an answer");
+        (await QueueDepthAsync(printerId)).Should().Be(1, "nothing has confirmed that the entry can be consumed");
+
+        // Act 2 - telemetry names the job, and the loop asks the printer whose it is
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Printing), TimeSpan.FromSeconds(30)))
+            .Should().BeTrue();
+
+        (await WaitUntilAsync(async () =>
+                              {
+                                  await AdvanceAsync(printerId);
+
+                                  return (await ActiveAsync(printerId)).State != PrintState.Unconfirmed;
+                              },
+                              TimeSpan.FromSeconds(30)))
+            .Should().BeTrue("SEND_JOB_INFO names the file, which identifies the print as ours");
+
+        PrintJob adopted = await ActiveAsync(printerId);
+        adopted.FileName.Should().Be("phantom.bgcode");
+        adopted.FirmwareJobId.Should().Be(fake.Device.JobId);
+        adopted.CommandedAt.Should().NotBeNull("this print was commanded; only the ack lied");
+        (await QueueDepthAsync(printerId)).Should().Be(0, "the entry has done its job");
+
+        // Act 3 - the print ends and the printer is readied again, where the duplicate used to run
+        fake.Device.FinishPrint().Should().BeTrue();
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Finished), TimeSpan.FromSeconds(30)))
+            .Should().BeTrue();
+
+        await AdvanceAsync(printerId);
+
+        fake.Device.TrySetIdle().Should().BeTrue();
+        fake.Device.TrySetReady().Should().BeTrue();
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Ready), TimeSpan.FromSeconds(30)))
+            .Should().BeTrue();
+
+        await AdvanceAsync(printerId);
+        await AdvanceAsync(printerId);
+
+        // Assert - one print, once
+        fake.Device.State.Should().Be(DeviceState.Ready, "the queue is empty; there is nothing left to print");
+        (await JobCountAsync(printerId)).Should().Be(1, "one intention, one print");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// A print started at the printer, of a staged file, is adopted without any command having been
+    /// sent - and its entry is consumed, so the file does not print a second time.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The other phantom of 2026-08-27, reproduced end to end.</b> A staged file is also the
+    /// panel's offer - firmware opens its one-click preview for a file that arrives over the wire -
+    /// so the person at the machine can start the queued file before the loop does, and always wins,
+    /// being behind a button rather than a poll. No command is ever sent here: the printer simply
+    /// begins printing the file the loop staged, exactly as the panel does it.
+    /// </para>
+    /// <para>
+    /// The adopted row records the distinction: <c>CommandedAt</c> is null, which is the start-side
+    /// sibling of <c>StoppedByUserId</c>'s null meaning "the panel".
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task APanelPrintOfAStagedFileIsAdoptedAndItsEntryConsumed()
+    {
+        // Arrange - a staged file on an idle printer nobody made ready
+        (PrinterIdentity identity, string token, int printerId, long userId) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        await using FakePrinterClient fake = new(identity, TimeProvider.System, FastTelemetry()) { Token = token };
+        await fake.ConnectAsync(ConnectAsync, TestContext.Current.CancellationToken);
+        Task run = fake.RunAsync(TestContext.Current.CancellationToken);
+
+        (await WaitUntilAsync(() => Task.FromResult(Registry.IsConnected(printerId)), TimeSpan.FromSeconds(10)))
+            .Should().BeTrue();
+
+        await UploadAsync(userId, "puck.bgcode");
+        Guid handle = await EnqueueAsync(printerId, userId, "puck.bgcode");
+
+        await AdvanceAsync(printerId);
+        (await WaitUntilAsync(async () => await ArrivedAsync(printerId), TimeSpan.FromSeconds(30))).Should().BeTrue();
+
+        // Act - the person at the machine starts the staged file; nothing here commands anything
+        fake.Device.TryStartPrint("/usb/puck.bgcode").Should().NotBeNull();
+
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Printing), TimeSpan.FromSeconds(30)))
+            .Should().BeTrue();
+
+        (await WaitUntilAsync(async () =>
+                              {
+                                  await AdvanceAsync(printerId);
+
+                                  using IServiceScope scope = _factory.Services.CreateScope();
+
+                                  return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
+                                                    .PrintJobs.AnyAsync(job => job.PrinterId == printerId,
+                                                                        TestContext.Current.CancellationToken);
+                              },
+                              TimeSpan.FromSeconds(30)))
+            .Should().BeTrue("a running job at the path the loop wrote, for a still-queued file, is ours by construction");
+
+        // Assert - adopted, attributed, and the entry consumed
+        PrintJob adopted = await ActiveAsync(printerId);
+        adopted.FileName.Should().Be("puck.bgcode");
+        adopted.State.Should().Be(PrintState.Printing);
+        adopted.TrackingId.Should().Be(handle);
+        adopted.QueuedByUserId.Should().Be(userId);
+        adopted.FirmwareJobId.Should().Be(fake.Device.JobId);
+        adopted.CommandedAt.Should().BeNull("no command of ours started this print, and null is that record");
+
+        (await QueueDepthAsync(printerId)).Should().Be(0,
+            "the surviving entry is what used to print the file a second time");
+
+        // Act - the print ends; the row closes like any other
+        fake.Device.FinishPrint().Should().BeTrue();
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Finished), TimeSpan.FromSeconds(30)))
+            .Should().BeTrue();
+
+        await AdvanceAsync(printerId);
+
+        PrintJob finished = await SingleJobAsync(printerId);
+        finished.State.Should().Be(PrintState.Finished);
+        finished.EndedAt.Should().NotBeNull();
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
     /// A file that does not fit holds the queue rather than being skipped or cancelled - spooler
     /// behaviour - and the hold clears by itself once there is room.
     /// </summary>

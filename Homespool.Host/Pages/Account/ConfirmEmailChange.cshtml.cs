@@ -36,12 +36,12 @@ public class ConfirmEmailChangeModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly SignInManager<HSUser> _signInManager;
-    private readonly IOptions<Services.SmtpOptions> _smtp;
+    private readonly IOptions<Mail.SmtpOptions> _smtp;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public ConfirmEmailChangeModel(UserManager<HSUser> userManager,
                                    SignInManager<HSUser> signInManager,
-                                   IOptions<Services.SmtpOptions> smtp,
+                                   IOptions<Mail.SmtpOptions> smtp,
                                    IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;

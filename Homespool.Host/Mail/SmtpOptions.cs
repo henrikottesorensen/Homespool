@@ -1,6 +1,6 @@
 using System;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Mail;
 
 /// <summary>
 /// Outgoing mail configuration, bound from the <c>Smtp</c> configuration section.

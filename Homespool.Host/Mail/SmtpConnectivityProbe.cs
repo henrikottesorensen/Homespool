@@ -8,7 +8,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Mail;
 
 /// <summary>
 /// Connects to the configured SMTP server once at startup and reports the result. Diagnostic only.

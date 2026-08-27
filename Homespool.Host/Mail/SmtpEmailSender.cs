@@ -9,7 +9,7 @@ using Microsoft.Extensions.Options;
 using MimeKit;
 using MimeKit.Text;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Mail;
 
 /// <summary>
 /// Sends mail through the SMTP server configured in <see cref="SmtpOptions"/>.

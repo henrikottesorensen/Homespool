@@ -6,7 +6,7 @@ using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
-using Homespool.Host.Services;
+using Homespool.Host.Mail;
 
 namespace Homespool.Host.IntegrationTest;
 

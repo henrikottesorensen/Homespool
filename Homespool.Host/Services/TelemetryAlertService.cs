@@ -12,6 +12,7 @@ using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
 using Homespool.Host.Localisation;
+using Homespool.Host.Mail;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Services;

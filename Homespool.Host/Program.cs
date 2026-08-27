@@ -277,8 +277,8 @@ public static class Program
 
             AddForwardedHeaders(builder);
 
-            builder.Services.Configure<Services.SmtpOptions>(
-                builder.Configuration.GetSection(Services.SmtpOptions.SectionName));
+            builder.Services.Configure<Mail.SmtpOptions>(
+                builder.Configuration.GetSection(Mail.SmtpOptions.SectionName));
 
             builder.Services.Configure<Services.InvitationOptions>(
                 builder.Configuration.GetSection(Services.InvitationOptions.SectionName));
@@ -286,17 +286,17 @@ public static class Program
             builder.Services.Configure<Services.SecurityOptions>(
                 builder.Configuration.GetSection(Services.SecurityOptions.SectionName));
 
-            Services.SmtpOptions smtpOptions = new();
-            builder.Configuration.GetSection(Services.SmtpOptions.SectionName).Bind(smtpOptions);
+            Mail.SmtpOptions smtpOptions = new();
+            builder.Configuration.GetSection(Mail.SmtpOptions.SectionName).Bind(smtpOptions);
 
             // Stateless, so a singleton is fine; it exists purely so tests can substitute a fake transport.
-            builder.Services.AddSingleton<Services.ISmtpTransportFactory, Services.MailKitSmtpTransportFactory>();
+            builder.Services.AddSingleton<Mail.ISmtpTransportFactory, Mail.MailKitSmtpTransportFactory>();
 
             // Which sender is registered is decided by configuration alone, never by probing the network, so that a
             // mail server being down cannot quietly change how accounts are created. See SmtpOptions.IsConfigured.
             if (smtpOptions.IsConfigured)
             {
-                builder.Services.AddScoped<Services.IEmailSender, Services.SmtpEmailSender>();
+                builder.Services.AddScoped<Mail.IEmailSender, Mail.SmtpEmailSender>();
 
                 // Only with a mail server to send through - otherwise this is a background service
                 // whose whole job is to log that it cannot do its job. The banner and /health cover
@@ -305,14 +305,14 @@ public static class Program
             }
             else
             {
-                builder.Services.AddScoped<Services.IEmailSender, Services.LoggingEmailSender>();
+                builder.Services.AddScoped<Mail.IEmailSender, Mail.LoggingEmailSender>();
             }
 
-            builder.Services.AddHostedService<Services.SmtpConnectivityProbe>();
+            builder.Services.AddHostedService<Mail.SmtpConnectivityProbe>();
 
             // Resolves the "confirm accounts at creation" rule once from SmtpOptions, so account-creation
             // pages inject this instead of SmtpOptions. Singleton: SMTP config is fixed at startup.
-            builder.Services.AddSingleton<Services.AccountConfirmationPolicy>();
+            builder.Services.AddSingleton<Mail.AccountConfirmationPolicy>();
 
             // Holds the first-run bootstrap secret and the one-way "an admin exists" flag; seeded once
             // by SeedAdminBootstrap after migration. Singleton so the flag is process-wide.

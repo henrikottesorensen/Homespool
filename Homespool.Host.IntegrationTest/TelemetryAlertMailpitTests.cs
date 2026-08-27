@@ -14,6 +14,7 @@ using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.Localisation;
+using Homespool.Host.Mail;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 

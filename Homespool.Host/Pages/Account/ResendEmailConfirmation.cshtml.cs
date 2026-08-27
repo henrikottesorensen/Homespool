@@ -9,7 +9,7 @@ using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 
 using Homespool.Host.Localisation;
-using Homespool.Host.Services;
+using Homespool.Host.Mail;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;

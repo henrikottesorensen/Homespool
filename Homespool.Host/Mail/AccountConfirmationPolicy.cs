@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 
 using Homespool.Model.Entities;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Mail;
 
 /// <summary>
 /// The single place that decides a newly created account's initial email-confirmation state.

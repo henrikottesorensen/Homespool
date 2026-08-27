@@ -1,4 +1,4 @@
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Mail;
 
 /// <summary>
 /// Creates an <see cref="ISmtpTransport"/> per send/probe attempt - a new one each time, mirroring

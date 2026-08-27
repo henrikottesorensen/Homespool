@@ -19,6 +19,7 @@ using Microsoft.Extensions.Options;
 using Homespool.Data;
 using Homespool.FakePrinter;
 using Homespool.Host.Controllers;
+using Homespool.Host.Mail;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;

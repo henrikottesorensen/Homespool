@@ -1,6 +1,6 @@
 using System.Threading.Tasks;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Mail;
 
 /// <summary>
 /// Sends account-related email (confirmation links, password resets).

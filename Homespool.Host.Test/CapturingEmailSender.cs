@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-using Homespool.Host.Services;
+using Homespool.Host.Mail;
 
 namespace Homespool.Host.Test;
 

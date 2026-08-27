@@ -5,7 +5,7 @@
 
 using System.Threading.Tasks;
 
-using Homespool.Host.Services;
+using Homespool.Host.Mail;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;

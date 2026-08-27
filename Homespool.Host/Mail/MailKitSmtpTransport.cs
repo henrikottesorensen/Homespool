@@ -7,7 +7,7 @@ using MailKit.Security;
 
 using MimeKit;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Mail;
 
 /// <summary>
 /// The real <see cref="ISmtpTransport"/>, delegating every call straight to a MailKit

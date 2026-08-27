@@ -6,7 +6,7 @@ using MailKit.Security;
 
 using MimeKit;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Mail;
 
 /// <summary>
 /// The handful of <c>MailKit.Net.Smtp.SmtpClient</c> operations <see cref="SmtpEmailSender"/> and

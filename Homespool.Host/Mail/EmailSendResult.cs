@@ -1,4 +1,4 @@
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Mail;
 
 /// <summary>
 /// Outcome of an attempt to send mail.

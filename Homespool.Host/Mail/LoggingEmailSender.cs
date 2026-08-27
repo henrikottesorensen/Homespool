@@ -2,7 +2,7 @@ using System.Threading.Tasks;
 
 using Microsoft.Extensions.Logging;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Mail;
 
 /// <summary>
 /// Fallback <see cref="IEmailSender"/> for deployments with no SMTP configured: logs the message instead of sending it.

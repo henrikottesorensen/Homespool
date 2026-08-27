@@ -46,4 +46,15 @@ public sealed record EditableSetting(
     /// The configuration path this setting is read and written at, in <c>Section:Key</c> form.
     /// </summary>
     public string Path => $"{Section}:{Key}";
+
+    /// <summary>
+    /// The path the value is actually stored under in the settings file.
+    /// </summary>
+    /// <remarks>
+    /// The same as <see cref="Path"/> for everything except a secret, which is stored beside its
+    /// property as ciphertext under a <c>Protected</c>-prefixed name — <c>Smtp:Password</c> is read
+    /// from <c>Smtp:ProtectedPassword</c>. Keeping the two apart is what lets a plaintext value that
+    /// arrived some other way be recognised and adopted rather than mistaken for ciphertext.
+    /// </remarks>
+    public string StoredPath => IsSecret ? $"{Section}:Protected{Key}" : Path;
 }

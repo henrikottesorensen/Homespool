@@ -491,7 +491,14 @@ public sealed class LocalisationTests
         // seam, and the reason a grep for the key finds nothing. QueueStatus_ is the fourth, from
         // DetailModel.QueueStatusText over QueueEntryStatus - the "third such family" this test's
         // remarks predicted would have to be added by hand.
-        string[] constructed = ["PrinterStatus_", "Intent_", "Capability_", "QueueStatus_"];
+        // Settings_Section_ and Settings_Label_ are the fifth and sixth families: the settings page
+        // renders the editable allowlist, so both are composed from a section name and a property
+        // name that only exist as nameof() in EditableSettings.
+        string[] constructed =
+        [
+            "PrinterStatus_", "Intent_", "Capability_", "QueueStatus_",
+            "Settings_Section_", "Settings_Label_",
+        ];
         string[] constructedSuffixes = ["_One", "_Other"];
 
         List<string> orphans = ReadResources("SharedResource.resx")

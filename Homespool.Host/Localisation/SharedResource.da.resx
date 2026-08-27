@@ -2259,4 +2259,157 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Printers_RemoveCodeInvalid" xml:space="preserve">
     <value>Koden er ikke rigtig. Åbn din tofaktorapp, og prøv den aktuelle kode.</value>
   </data>
+  <data name="Settings_Title" xml:space="preserve">
+    <value>Indstillinger</value>
+  </data>
+  <data name="Settings_Intro" xml:space="preserve">
+    <value>Indstillinger for hele installationen. Alt andet - porte, stier og de adresser printere bruger - sættes der hvor stakken startes, fordi det skal stemme overens med den fil.</value>
+  </data>
+  <data name="Settings_Save" xml:space="preserve">
+    <value>Gem indstillinger</value>
+  </data>
+  <data name="Settings_Saved" xml:space="preserve">
+    <value>Indstillinger gemt.</value>
+  </data>
+  <data name="Settings_NotSaved" xml:space="preserve">
+    <value>Intet blev gemt. Ret de markerede værdier nedenfor.</value>
+  </data>
+  <data name="Settings_On" xml:space="preserve">
+    <value>Til</value>
+  </data>
+  <data name="Settings_Off" xml:space="preserve">
+    <value>Fra</value>
+  </data>
+  <data name="Settings_AppliesImmediately" xml:space="preserve">
+    <value>Træder i kraft med det samme</value>
+  </data>
+  <data name="Settings_AppliesOnRestart" xml:space="preserve">
+    <value>Træder i kraft efter genstart</value>
+  </data>
+  <data name="Settings_AppliesOnNextSweep" xml:space="preserve">
+    <value>Træder i kraft ved næste oprydning, inden for en time</value>
+  </data>
+  <data name="Settings_AppliesOnNextPrinterConnection" xml:space="preserve">
+    <value>Træder i kraft når hver printer forbinder næste gang</value>
+  </data>
+  <data name="Nav_SettingsTitle" xml:space="preserve">
+    <value>Ændr hvad denne installation gør</value>
+  </data>
+  <data name="Settings_Section_Security" xml:space="preserve">
+    <value>Kontosikkerhed</value>
+  </data>
+  <data name="Settings_Section_AttemptLimits" xml:space="preserve">
+    <value>Forsøgsgrænser</value>
+  </data>
+  <data name="Settings_Section_Invitations" xml:space="preserve">
+    <value>Standard for invitationer</value>
+  </data>
+  <data name="Settings_Section_PrintFiles" xml:space="preserve">
+    <value>Uploadgrænser</value>
+  </data>
+  <data name="Settings_Section_PrusaConnect" xml:space="preserve">
+    <value>Printerprotokol</value>
+  </data>
+  <data name="Settings_Section_Storage" xml:space="preserve">
+    <value>Telemetrilager</value>
+  </data>
+  <data name="Settings_Section_Cameras" xml:space="preserve">
+    <value>Kameraopførsel</value>
+  </data>
+  <data name="Settings_Section_Smtp" xml:space="preserve">
+    <value>Udgående post</value>
+  </data>
+  <data name="Settings_Label_Security_RequireTwoFactor" xml:space="preserve">
+    <value>Kræv en godkendelsesapp på alle konti</value>
+  </data>
+  <data name="Settings_Label_AttemptLimits_MaxFailedAttempts" xml:space="preserve">
+    <value>Mislykkede forsøg før ventetid</value>
+  </data>
+  <data name="Settings_Label_AttemptLimits_LockoutBaseSeconds" xml:space="preserve">
+    <value>Første ventetid, i sekunder</value>
+  </data>
+  <data name="Settings_Label_AttemptLimits_LockoutMaxSeconds" xml:space="preserve">
+    <value>Længste ventetid, i sekunder</value>
+  </data>
+  <data name="Settings_Label_Invitations_LifetimeHours" xml:space="preserve">
+    <value>Hvor længe en invitation gælder, i timer</value>
+  </data>
+  <data name="Settings_Label_PrintFiles_MaxUploadBytes" xml:space="preserve">
+    <value>Største upload, i bytes</value>
+  </data>
+  <data name="Settings_Label_PrusaConnect_MaxIncomingMessageBytes" xml:space="preserve">
+    <value>Største besked fra en printer, i bytes</value>
+  </data>
+  <data name="Settings_Label_PrusaConnect_RegistrationCodeLifetimeMinutes" xml:space="preserve">
+    <value>Hvor længe en tilknytningskode varer, i minutter</value>
+  </data>
+  <data name="Settings_Label_PrusaConnect_CommandResponseTimeoutSeconds" xml:space="preserve">
+    <value>Ventetid på svar fra en printer, i sekunder</value>
+  </data>
+  <data name="Settings_Label_Storage_MinimumSampleIntervalSeconds" xml:space="preserve">
+    <value>Korteste interval mellem gemte målinger, i sekunder</value>
+  </data>
+  <data name="Settings_Label_Storage_TelemetryRetentionDays" xml:space="preserve">
+    <value>Gem telemetri i, dage</value>
+  </data>
+  <data name="Settings_Label_Storage_EventRetentionDays" xml:space="preserve">
+    <value>Gem hændelser i, dage</value>
+  </data>
+  <data name="Settings_Label_Storage_MaxEventsPerPrinter" xml:space="preserve">
+    <value>Flest hændelser gemt pr. printer</value>
+  </data>
+  <data name="Settings_Label_Storage_WriteBatchSize" xml:space="preserve">
+    <value>Rækker i buffer før skrivning</value>
+  </data>
+  <data name="Settings_Label_Storage_WriteFlushIntervalSeconds" xml:space="preserve">
+    <value>Længste ventetid for en bufret række, i sekunder</value>
+  </data>
+  <data name="Settings_Label_Cameras_RefreshFloorSeconds" xml:space="preserve">
+    <value>Korteste interval mellem kamerahentninger, i sekunder</value>
+  </data>
+  <data name="Settings_Label_Cameras_MaxAgeSeconds" xml:space="preserve">
+    <value>Ældste billede der stadig vises, i sekunder</value>
+  </data>
+  <data name="Settings_Label_Cameras_TimeoutSeconds" xml:space="preserve">
+    <value>Ventetid på svar fra et kamera, i sekunder</value>
+  </data>
+  <data name="Settings_Label_Cameras_MaxFrameBytes" xml:space="preserve">
+    <value>Største billede der accepteres, i bytes</value>
+  </data>
+  <data name="Settings_Label_Cameras_RefuseLoopbackAndLinkLocal" xml:space="preserve">
+    <value>Afvis kameraer på loopback- og link-local-adresser</value>
+  </data>
+  <data name="Settings_Label_Cameras_WebRtcStunServer" xml:space="preserve">
+    <value>STUN-server, kontaktes kun når det er tilladt</value>
+  </data>
+  <data name="Settings_Label_Smtp_Host" xml:space="preserve">
+    <value>Mailserver</value>
+  </data>
+  <data name="Settings_Label_Smtp_Port" xml:space="preserve">
+    <value>Port til mailserver</value>
+  </data>
+  <data name="Settings_Label_Smtp_UseImplicitTls" xml:space="preserve">
+    <value>Krypteret fra første byte (port 465)</value>
+  </data>
+  <data name="Settings_Label_Smtp_DisableTls" xml:space="preserve">
+    <value>Ingen kryptering overhovedet</value>
+  </data>
+  <data name="Settings_Label_Smtp_UserName" xml:space="preserve">
+    <value>Brugernavn til mailserver</value>
+  </data>
+  <data name="Settings_Label_Smtp_Password" xml:space="preserve">
+    <value>Adgangskode til mailserver</value>
+  </data>
+  <data name="Settings_Label_Smtp_FromAddress" xml:space="preserve">
+    <value>Afsenderadresse</value>
+  </data>
+  <data name="Settings_Label_Smtp_FromName" xml:space="preserve">
+    <value>Afsendernavn</value>
+  </data>
+  <data name="Settings_Label_Smtp_TimeoutSeconds" xml:space="preserve">
+    <value>Giv op efter, i sekunder</value>
+  </data>
+  <data name="Settings_Label_Smtp_ProbeOnStartup" xml:space="preserve">
+    <value>Kontrollér mailserveren ved opstart</value>
+  </data>
 </root>

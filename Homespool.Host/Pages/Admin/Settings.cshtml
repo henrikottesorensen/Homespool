@@ -1,0 +1,62 @@
+@page
+@using Homespool.Host.Configuration
+@model SettingsModel
+@{
+    ViewData["Title"] = Localiser["Settings_Title"].Value;
+}
+
+<h1>@ViewData["Title"]</h1>
+
+<p class="text-body-secondary">@Localiser["Settings_Intro"]</p>
+
+@if (!string.IsNullOrEmpty(Model.StatusMessage))
+{
+    <div class="alert @(Model.StatusSuccess ? "alert-success" : "alert-warning")" role="alert">@Model.StatusMessage</div>
+}
+
+<form method="post">
+    @foreach (var section in Model.Sections)
+    {
+        <h2 class="h5 mt-4">@Localiser["Settings_Section_" + section.Key]</h2>
+
+        @foreach (EditableSetting setting in section)
+        {
+            var path = setting.Path;
+            var id = path.Replace(':', '-');
+            var error = Model.Errors.TryGetValue(path, out var message) ? message : null;
+            var isFlag = setting.OptionsType.GetProperty(setting.Key)?.PropertyType == typeof(bool);
+
+            <div class="mb-3">
+                <label class="form-label" for="@id">@Localiser["Settings_Label_" + id.Replace('-', '_')]</label>
+
+                @if (isFlag)
+                {
+                    <select class="form-select @(error is null ? "" : "is-invalid")" id="@id" name="Values[@path]">
+                        <option value="false" selected="@(!string.Equals(Model.Values.GetValueOrDefault(path), "true", StringComparison.OrdinalIgnoreCase))">@Localiser["Settings_Off"]</option>
+                        <option value="true" selected="@(string.Equals(Model.Values.GetValueOrDefault(path), "true", StringComparison.OrdinalIgnoreCase))">@Localiser["Settings_On"]</option>
+                    </select>
+                }
+                else
+                {
+                    <input class="form-control @(error is null ? "" : "is-invalid")"
+                           id="@id"
+                           name="Values[@path]"
+                           type="@(setting.IsSecret ? "password" : "text")"
+                           autocomplete="@(setting.IsSecret ? "new-password" : "off")"
+                           value="@Model.Values.GetValueOrDefault(path)" />
+                }
+
+                @if (error is not null)
+                {
+                    <div class="invalid-feedback d-block">@error</div>
+                }
+
+                <div class="form-text">
+                    <span class="badge text-bg-secondary">@Model.AppliesWhen(setting)</span>
+                </div>
+            </div>
+        }
+    }
+
+    <button type="submit" class="btn btn-primary mt-3">@Localiser["Settings_Save"]</button>
+</form>

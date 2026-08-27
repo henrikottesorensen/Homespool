@@ -331,6 +331,7 @@ public static class Program
             // decrypts it into SmtpOptions.Password after binding, so every consumer keeps reading
             // the plain property and none of them knows protection exists.
             builder.Services.AddSingleton<SettingsSecretProtector>();
+            builder.Services.AddScoped<SettingsStore>();
             builder.Services
                    .AddSingleton<IPostConfigureOptions<Mail.SmtpOptions>, Mail.SmtpPasswordUnprotector>();
 

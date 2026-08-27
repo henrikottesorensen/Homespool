@@ -1,4 +1,4 @@
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Health;
 
 /// <summary>One problem worth showing an administrator, already styled.</summary>
 /// <param name="Message">The sentence, written by whatever produced it and shown verbatim.</param>

@@ -6,7 +6,7 @@ using AwesomeAssertions;
 
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-using Homespool.Host.Services;
+using Homespool.Host.Health;
 
 namespace Homespool.Host.Test;
 

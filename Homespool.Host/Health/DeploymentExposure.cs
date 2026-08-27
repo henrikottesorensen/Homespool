@@ -4,7 +4,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Health;
 
 /// <summary>
 /// Decides whether a deployment is exposed in a way that gives its credentials away — the judgement,

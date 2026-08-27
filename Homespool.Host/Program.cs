@@ -301,7 +301,7 @@ public static class Program
                 // Only with a mail server to send through - otherwise this is a background service
                 // whose whole job is to log that it cannot do its job. The banner and /health cover
                 // deployments without SMTP.
-                builder.Services.AddHostedService<Services.TelemetryAlertService>();
+                builder.Services.AddHostedService<Health.TelemetryAlertService>();
             }
             else
             {
@@ -458,7 +458,7 @@ public static class Program
 
                    // Also untagged: a deployment handing tokens to the internet is misconfigured, not
                    // broken, and a restart would faithfully reproduce it.
-                   .AddCheck<Services.DeploymentExposureHealthCheck>("deployment-exposure")
+                   .AddCheck<Health.DeploymentExposureHealthCheck>("deployment-exposure")
 
                    // Untagged for the same reason. Cameras stop working entirely without a sidecar
                    // credential, and the person who can fix that otherwise sees only blank cameras.

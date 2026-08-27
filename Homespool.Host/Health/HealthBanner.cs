@@ -4,7 +4,7 @@ using System.Linq;
 
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Health;
 
 /// <summary>
 /// Turns a <see cref="HealthReport"/> into banner items.

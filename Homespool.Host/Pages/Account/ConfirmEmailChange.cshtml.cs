@@ -57,7 +57,7 @@ public class ConfirmEmailChangeModel : PageModel
     /// Tells an administrator that health alerts keep going to the old address until a restart.
     /// </summary>
     /// <remarks>
-    /// <see cref="Services.TelemetryAlertService"/> reads the administrator list once and caches
+    /// <see cref="Health.TelemetryAlertService"/> reads the administrator list once and caches
     /// it, deliberately, because the alert most worth sending is the one about the database being
     /// unreachable - looking recipients up at send time would fail exactly then. The cost of that
     /// choice is this staleness, and this is the one moment someone can do something about it, so

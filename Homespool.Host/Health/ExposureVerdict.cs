@@ -1,4 +1,4 @@
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Health;
 
 /// <summary>The verdict, and the sentence an administrator reads.</summary>
 /// <param name="State">What is wrong.</param>

@@ -19,11 +19,11 @@ namespace Homespool.Host.Cameras;
 /// Without a credential <see cref="Go2RtcClient"/> refuses every call, so an existing deployment
 /// that upgrades into this rule does not see an error - it sees cameras that used to work and now
 /// show nothing, which reads as a broken camera rather than a missing setting.
-/// <see cref="Services.HealthBanner"/> turns any unhealthy check into an administrator's banner, so
+/// <see cref="Health.HealthBanner"/> turns any unhealthy check into an administrator's banner, so
 /// answering here is the whole of that job.
 /// </para>
 /// <para>
-/// <b>Degraded, never Unhealthy</b>, following <see cref="Services.DeploymentExposureHealthCheck"/>:
+/// <b>Degraded, never Unhealthy</b>, following <see cref="Health.DeploymentExposureHealthCheck"/>:
 /// Unhealthy makes <c>/health</c> a 503 that reads as "the service is down" to whatever is watching,
 /// and this is a judgement about configuration. Deliberately untagged, so it can never reach
 /// <c>/health/live</c> and drive a restart loop - a restart would faithfully reproduce it.

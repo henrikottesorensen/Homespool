@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Health;
 
 /// <summary>What, if anything, to send about the current health status.</summary>
 public enum AlertAction

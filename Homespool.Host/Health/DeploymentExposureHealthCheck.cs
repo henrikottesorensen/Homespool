@@ -10,7 +10,7 @@ using Microsoft.Extensions.Options;
 using Homespool.Host.Certificates;
 using Homespool.Host.PrusaConnect;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Health;
 
 /// <summary>
 /// Reports a deployment that is handing printer tokens to the internet in clear text.

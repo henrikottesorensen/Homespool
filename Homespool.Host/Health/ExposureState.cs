@@ -1,4 +1,4 @@
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Health;
 
 /// <summary>What is wrong with how this deployment is reachable, if anything.</summary>
 public enum ExposureState

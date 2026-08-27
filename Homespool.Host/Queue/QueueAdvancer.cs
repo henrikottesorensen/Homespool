@@ -42,10 +42,10 @@ namespace Homespool.Host.Queue;
 /// </para>
 /// <para>
 /// <b>Everything it needs is persisted, so a tick is stateless.</b> It holds no per-printer memory
-/// between passes beyond the event watermark, which is an optimisation rather than state: losing it
-/// costs a re-scan, not correctness. A restart therefore resumes without ceremony, and the design's
-/// "nudged on enqueue and on connect" is a latency improvement over the timer rather than the
-/// mechanism.
+/// between passes beyond the event watermark and the last panel job examined, both optimisations
+/// rather than state: losing either costs a re-scan or a repeated question, not correctness. A
+/// restart therefore resumes without ceremony, and the design's "nudged on enqueue and on connect"
+/// is a latency improvement over the timer rather than the mechanism.
 /// </para>
 /// </remarks>
 public sealed class QueueAdvancer : BackgroundService
@@ -145,6 +145,17 @@ public sealed class QueueAdvancer : BackgroundService
 
     /// <summary>Last <c>PrinterEvent</c> id examined per printer - see the class remarks.</summary>
     private readonly Dictionary<int, long> _watermarks = [];
+
+    /// <summary>
+    /// The last firmware job id each printer was asked about by
+    /// <see cref="TryAdoptPanelPrintAsync"/> and found not to be ours - so a stranger's print costs
+    /// one question, not one per pass.
+    /// </summary>
+    /// <remarks>
+    /// Like <see cref="_watermarks"/>, memory as an optimisation rather than state: losing it - a
+    /// restart - costs one repeated <c>SEND_JOB_INFO</c>, not correctness.
+    /// </remarks>
+    private readonly Dictionary<int, int> _examinedPanelJobs = [];
 
     /// <summary>
     /// One pass at a time per printer.
@@ -529,7 +540,7 @@ public sealed class QueueAdvancer : BackgroundService
 
         if (active is null)
         {
-            return null;
+            return await TryAdoptPanelPrintAsync(scope, dbContext, printerId, live, cancellationToken);
         }
 
         PrinterStatus status = live?.Status ?? PrinterStatus.Unknown;
@@ -606,6 +617,161 @@ public sealed class QueueAdvancer : BackgroundService
         _logger.LogInformation("[{PrinterId}] {FileName} ended: {Outcome}", printerId, active.FileName, outcome);
 
         return null;
+    }
+
+    /// <summary>
+    /// Attributes a print the printer started by itself, when it is one of ours by construction:
+    /// a running job whose reported path is one this loop wrote, for a file that is still queued.
+    /// </summary>
+    /// <returns>The adopted row, or null when there is nothing to adopt.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>A staged file is also the panel's offer.</b> Firmware opens its one-click print preview
+    /// for a file that arrives over the wire, so the person at the machine is offered exactly the
+    /// file this loop was about to command - and they are behind a button while the loop is behind
+    /// a poll, so when both want the same print, the panel wins. Such a print is indistinguishable
+    /// in telemetry from any other panel print, and without this it left no history row while its
+    /// queue entry survived to print the file a second time.
+    /// </para>
+    /// <para>
+    /// <b>Adopted on the path, never on the status.</b> "The printer is printing and something is
+    /// queued" would attach somebody's queue entry to a stranger's print and then delete the entry.
+    /// The <c>JOB_INFO</c> answer naming the path recorded at transfer time, for an entry still in
+    /// the queue, is a different claim: ours by construction rather than by inference. A running
+    /// print that matches nothing stays unattributed, and the queue holds on the printer not being
+    /// <c>Ready</c>, as it always has.
+    /// </para>
+    /// <para>
+    /// <b>Only from <c>Printing</c> or <c>Paused</c>.</b> A job id is already on the wire during
+    /// the preview's own questions (<c>ATTENTION</c>), while the person can still back out -
+    /// adopting there would consume the entry for a print that never runs. A print that stalls into
+    /// attention later is adopted once it resumes.
+    /// </para>
+    /// </remarks>
+    private async Task<PrintJob?> TryAdoptPanelPrintAsync(AsyncServiceScope scope,
+                                                          HomespoolDbContext dbContext,
+                                                          int printerId,
+                                                          PrinterLiveState? live,
+                                                          CancellationToken cancellationToken)
+    {
+        if (live?.JobId is not { } jobId
+            || live.Status is not (PrinterStatus.Printing or PrinterStatus.Paused)
+            || !_registry.IsConnected(printerId))
+        {
+            return null;
+        }
+
+        if (_examinedPanelJobs.TryGetValue(printerId, out int examined) && examined == jobId)
+        {
+            return null;
+        }
+
+        // The candidates are queued entries whose file this loop put on the drive, in queue order.
+        // The recorded path is the thing adoption matches on, so an entry without one cannot be
+        // claimed - and with no candidates at all the running print cannot be ours, and there is
+        // nothing to ask.
+        var candidates = await dbContext.QueuedPrints
+                                        .Include(queued => queued.PrintFile)
+                                        .Join(dbContext.PrintFilesOnPrinters,
+                                              queued => new { queued.PrinterId, queued.PrintFileId },
+                                              onPrinter => new { onPrinter.PrinterId, onPrinter.PrintFileId },
+                                              (queued, onPrinter) => new { Entry = queued, onPrinter.PrinterPath })
+                                        .Where(candidate => candidate.Entry.PrinterId == printerId
+                                                            && candidate.PrinterPath != null)
+                                        .OrderBy(candidate => candidate.Entry.Position)
+                                        .ThenBy(candidate => candidate.Entry.Id)
+                                        .ToListAsync(cancellationToken);
+
+        if (candidates.Count == 0)
+        {
+            _examinedPanelJobs[printerId] = jobId;
+
+            return null;
+        }
+
+        PrinterCommandService commands = scope.ServiceProvider.GetRequiredService<PrinterCommandService>();
+        CommandOutcome<JobInfoEventDataDTO>? answer;
+
+        try
+        {
+            answer = await commands.AskAsync(printerId,
+                                             new PrusaConnect.Commands.SendJobInfo { JobId = jobId },
+                                             CallerFor(candidates[0].Entry),
+                                             cancellationToken);
+        }
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
+                                      or CommandResponseTimedOutException or CommandSendTimedOutException or
+                                      TeamAccessDeniedException or CredentialScopeDeniedException
+                                      or CommandAnswerUnreadableException)
+        {
+            _logger.LogDebug(e, "[{PrinterId}] could not ask about firmware job {JobId}", printerId, jobId);
+
+            return null;
+        }
+
+        if (answer?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
+        {
+            // "No job in progress" while telemetry reports one is the start window - the job may be
+            // about to become describable, so it is asked about again rather than written off.
+            // Anything else is an answer: the printer will not name this job, and asking every pass
+            // for the rest of a stranger's print would not change that.
+            if (answer.Reason != "No job in progress")
+            {
+                _examinedPanelJobs[printerId] = jobId;
+            }
+
+            return null;
+        }
+
+        if (answer?.Answer is not { } job || (job.Path is null && job.DisplayName is null))
+        {
+            // A job described without a name settles nothing - and a *current* job should always
+            // carry one, so there is no point asking this id again.
+            _examinedPanelJobs[printerId] = jobId;
+
+            return null;
+        }
+
+        var claimed = candidates.FirstOrDefault(
+            candidate => (job.Path is { } path && path == candidate.PrinterPath)
+                         || (job.DisplayName is { } displayName && displayName == candidate.Entry.PrintFile!.Name));
+
+        _examinedPanelJobs[printerId] = jobId;
+
+        if (claimed is null)
+        {
+            _logger.LogInformation(
+                "[{PrinterId}] firmware job {JobId} is {TheirPath}, which nothing here queued; leaving it alone.",
+                printerId, jobId, job.Path ?? job.DisplayName);
+
+            return null;
+        }
+
+        _logger.LogWarning(
+            "[{PrinterId}] {FileName} was started at the printer, not by a command of ours - adopting "
+            + "firmware job {JobId} and consuming the entry so it does not print twice.",
+            printerId, claimed.Entry.PrintFile!.Name, jobId);
+
+        PrintJob adopted = new()
+        {
+            PrinterId = printerId,
+            TrackingId = claimed.Entry.TrackingId,
+            FileName = claimed.Entry.PrintFile!.Name,
+            Digest = claimed.Entry.PrintFile.Digest,
+            QueuedByUserId = claimed.Entry.QueuedByUserId,
+            PrinterPath = claimed.PrinterPath,
+            StartedAt = _timeProvider.GetUtcNow(),
+
+            // CommandedAt stays null: that is the record that no command of ours started this.
+            State = PrintState.Printing,
+            FirmwareJobId = jobId,
+        };
+
+        dbContext.PrintJobs.Add(adopted);
+        dbContext.QueuedPrints.Remove(claimed.Entry);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return adopted;
     }
 
     /// <summary>
@@ -761,9 +927,11 @@ public sealed class QueueAdvancer : BackgroundService
 
         if (answer?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
         {
-            // "No job in progress" is the one definite negative anywhere on this path: the machine
-            // stating in an answer of its own that there is nothing running, rather than a status
-            // that could be a telemetry interval out of date.
+            // "No job in progress" is a negative, but not an instant one: firmware renders it
+            // against the machine's momentary state, and a print it has accepted passes through a
+            // state with no job before it reports PRINTING - so inside the start window this is
+            // what a print that is starting sounds like. The rules weigh it against the grace
+            // period rather than trusting it outright.
             return answer.Reason == "No job in progress" ? JobAnswer.NoJob : JobAnswer.Inconclusive;
         }
 
@@ -1183,6 +1351,8 @@ public sealed class QueueAdvancer : BackgroundService
     {
         PrinterCommandService commands = scope.ServiceProvider.GetRequiredService<PrinterCommandService>();
 
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+
         PrintJob commanded = new()
         {
             PrinterId = printerId,
@@ -1191,7 +1361,8 @@ public sealed class QueueAdvancer : BackgroundService
             Digest = head.PrintFile.Digest,
             QueuedByUserId = head.QueuedByUserId,
             PrinterPath = printerPath,
-            StartedAt = _timeProvider.GetUtcNow(),
+            StartedAt = now,
+            CommandedAt = now,
             State = PrintState.Unconfirmed,
         };
 
@@ -1268,11 +1439,12 @@ public sealed class QueueAdvancer : BackgroundService
     /// cleared and the file is offered again rather than the entry being failed.
     /// </para>
     /// <para>
-    /// <b>Every arm here settles <paramref name="commanded"/>, because a refusal is an answer.</b>
-    /// The row was opened before the command went out to survive the case where no answer comes at
-    /// all; once the printer has said <i>no</i>, nothing is outstanding. A terminal refusal closes it
-    /// as the failed print it is, and a transient one removes it - a row per retry would turn history
-    /// into a log of a printer repeating itself.
+    /// <b>Every arm here settles <paramref name="commanded"/> except one, because a refusal is an
+    /// answer - except one.</b> The row was opened before the command went out to survive the case
+    /// where no answer comes at all; once the printer has said <i>no</i>, nothing is outstanding. A
+    /// terminal refusal closes it as the failed print it is, and a transient one removes it - a row
+    /// per retry would turn history into a log of a printer repeating itself. The exception is
+    /// <c>No job in progress</c>, which is not the printer saying no: see that arm.
     /// </para>
     /// </remarks>
     private void HandleRefusal(int printerId,
@@ -1292,6 +1464,21 @@ public sealed class QueueAdvancer : BackgroundService
                          .ExecuteDelete();
 
                 dbContext.PrintJobs.Remove(commanded);
+                break;
+
+            case "No job in progress":
+                // The ack lying, not the printer refusing. Firmware renders the JOB_INFO answer to
+                // a START_PRINT against its momentary state, and a print it has accepted passes
+                // through a state that reports READY with no job before it reports PRINTING - so
+                // this rejection arrives, command id and all, for a print that is starting. Nothing
+                // is settled: the row stays Unconfirmed, the entry stays queued, and
+                // ResolveUnconfirmedPrintAsync settles it by asking, exactly as for a timeout.
+                // Removing the row here is how a phantom print is minted - the effect exists, the
+                // record does not, and the entry survives to print the file a second time.
+                _logger.LogWarning(
+                    "[{PrinterId}] START_PRINT for {Path} was answered \"No job in progress\", which firmware "
+                    + "also says about a print that is starting; treating it as unanswered and asking the printer.",
+                    printerId, commanded.PrinterPath);
                 break;
 
             case "Forbidden path":

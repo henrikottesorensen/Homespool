@@ -10,10 +10,11 @@ using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Localisation;
 using Homespool.Host.Queue;
+using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Printing;
 
 /// <summary>
 /// What a printer has printed, and what it is printing now.

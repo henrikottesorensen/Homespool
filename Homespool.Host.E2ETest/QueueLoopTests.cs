@@ -22,6 +22,7 @@ using Homespool.FakePrinter;
 using Homespool.Host.Controllers;
 using Homespool.Host.Localisation;
 using Homespool.Host.PrintFiles;
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Queue;
 using Homespool.Host.Services;

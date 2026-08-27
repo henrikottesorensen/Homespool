@@ -8,14 +8,13 @@ using Microsoft.Extensions.Options;
 
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
-using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Printing;
 
 /// <summary>
 /// Telling a printer to fetch one of a user's files: mint a transfer token, offer the bytes under

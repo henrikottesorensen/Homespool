@@ -13,7 +13,7 @@ using Microsoft.Extensions.Options;
 using Homespool.Data;
 using Homespool.Model.Entities;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Telemetry;
 
 /// <summary>
 /// Sweeps <see cref="TelemetrySample"/> rows older than

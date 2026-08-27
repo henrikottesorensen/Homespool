@@ -1,6 +1,4 @@
-using Homespool.Host.Printing;
-
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Printing;
 
 /// <summary>
 /// What a file send did: the command that actually went on the wire, and how the printer answered.

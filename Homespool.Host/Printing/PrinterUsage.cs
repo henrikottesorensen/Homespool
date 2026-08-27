@@ -1,6 +1,6 @@
 using System;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Printing;
 
 /// <summary>
 /// How much one person has used one printer lately.

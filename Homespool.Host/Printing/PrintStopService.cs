@@ -7,11 +7,10 @@ using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
 using Homespool.Host.Authorisation;
-using Homespool.Host.Printing;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.Printing;
 
 /// <summary>
 /// Stops a running print, and records that a person here asked for it.

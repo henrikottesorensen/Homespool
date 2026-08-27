@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
 
-namespace Homespool.Host.Services;
+namespace Homespool.Host.PrusaConnect;
 
 /// <summary>
 /// Deletes pending registrations whose code has expired.
@@ -37,7 +37,7 @@ namespace Homespool.Host.Services;
 /// printer polling a code that has just expired is told to register again either way.
 /// </para>
 /// <para>
-/// Modelled on <see cref="TelemetryRetentionService"/>: hourly, its own scope per pass because a
+/// Modelled on <see cref="Telemetry.TelemetryRetentionService"/>: hourly, its own scope per pass because a
 /// <see cref="HomespoolDbContext"/> must not outlive one, and failures logged rather than thrown so
 /// one bad pass does not end the service.
 /// </para>
@@ -45,7 +45,7 @@ namespace Homespool.Host.Services;
 public sealed class RegistrationRetentionService : BackgroundService
 {
     /// <summary>
-    /// How often to sweep. Hourly, matching <see cref="TelemetryRetentionService"/> — a registration
+    /// How often to sweep. Hourly, matching <see cref="Telemetry.TelemetryRetentionService"/> — a registration
     /// code lives 30 minutes by default, so an expired row is never around for long.
     /// </summary>
     private static readonly TimeSpan SweepInterval = TimeSpan.FromHours(1);

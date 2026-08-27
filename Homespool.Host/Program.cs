@@ -396,7 +396,7 @@ public static class Program
 
             // Scoped, following the command service it wraps. Shared by the API endpoint and the
             // Files page so that "a send that did not take leaves no offer" has one implementation.
-            builder.Services.AddScoped<Services.PrintFileSender>();
+            builder.Services.AddScoped<Printing.PrintFileSender>();
 
             AddPrinterEndpointRateLimiting(builder);
 
@@ -471,12 +471,12 @@ public static class Program
 
             // Sweeps TelemetrySample rows past StorageOptions.TelemetryRetentionDays. No interface
             // registration needed, unlike TelemetryWriter above - nothing else ever needs to reach it.
-            builder.Services.AddHostedService<Services.TelemetryRetentionService>();
+            builder.Services.AddHostedService<Telemetry.TelemetryRetentionService>();
 
             // Sweeps PrusaConnectRegistration rows whose code has expired. Nothing else ever removed
             // one, and POST /p/register is anonymous - so without this the only bound on the table is
             // the rate limiter, which counts requests rather than rows.
-            builder.Services.AddHostedService<Services.RegistrationRetentionService>();
+            builder.Services.AddHostedService<PrusaConnect.RegistrationRetentionService>();
 
             // Scoped so its per-request memo of "may this account touch this printer" is bounded by
             // the request, which is the only window in which the answer cannot change.
@@ -491,8 +491,8 @@ public static class Program
             builder.Services.AddScoped<Services.PrinterRemovalService>();
             builder.Services.AddScoped<Services.UserNameLookup>();
             builder.Services.AddScoped<PrintQueueService>();
-            builder.Services.AddScoped<Services.PrintHistoryService>();
-            builder.Services.AddScoped<Services.PrintStopService>();
+            builder.Services.AddScoped<Printing.PrintHistoryService>();
+            builder.Services.AddScoped<Printing.PrintStopService>();
             builder.Services.AddScoped<Queue.QueueSnapshotReader>();
 
             // The producer loop and the poke that saves it waiting out a tick. Singletons: the signal

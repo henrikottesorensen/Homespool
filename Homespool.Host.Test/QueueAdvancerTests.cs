@@ -22,7 +22,6 @@ using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Queue;
-using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
 

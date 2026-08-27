@@ -80,25 +80,76 @@ public class PrintStartRulesTests
     }
 
     /// <summary>
-    /// A print that turns out to be somebody else's, and a printer with no job at all, both mean the
-    /// command was not acted on.
+    /// A print that turns out to be somebody else's means the command was not acted on, and it means
+    /// it immediately.
     /// </summary>
     /// <remarks>
-    /// <b>These are the only definite negatives anywhere on this path</b> - the machine answering a
-    /// question about its own job, rather than a status that could be a telemetry interval out of
-    /// date. Note they do not wait out the grace: an answer needs no corroboration from a clock.
+    /// <b>The one definite negative anywhere on this path</b> - a <i>name</i> was compared to reach
+    /// it, which is the thing the start window cannot fake. It does not wait out the grace: an
+    /// answer that names a different file needs no corroboration from a clock. <c>NoJob</c> used to
+    /// sit beside it here, and that was a defect - see the start-window tests below.
     /// </remarks>
-    [Theory]
-    [InlineData(JobAnswer.SomebodyElses)]
-    [InlineData(JobAnswer.NoJob)]
-    public void AnAnswerAboutSomeOtherJobSettlesItImmediately(JobAnswer answer)
+    [Fact]
+    public void SomebodyElsesFileSettlesItImmediately()
     {
-        PrintStartVerdict verdict = Decide(Seen(PrinterStatus.Printing, answer) with
+        PrintStartVerdict verdict = Decide(Seen(PrinterStatus.Printing, JobAnswer.SomebodyElses) with
         {
             SinceCommanded = TimeSpan.FromSeconds(1),
         });
 
         verdict.Should().Be(PrintStartVerdict.NeverStarted);
+    }
+
+    /// <summary>
+    /// <b>"No job in progress" inside the grace is the start window, not an answer.</b>
+    /// </summary>
+    /// <remarks>
+    /// Firmware renders that answer against its momentary state, and a print it has accepted passes
+    /// through a state that reports <c>READY</c> with no job before it reports <c>PRINTING</c> - so
+    /// moments after a command, this is what a print that is <i>starting</i> sounds like. Concluding
+    /// from it deletes the record of a print that is running, which is a phantom minted by the
+    /// resolution itself.
+    /// </remarks>
+    [Theory]
+    [InlineData(PrinterStatus.Ready)]
+    [InlineData(PrinterStatus.Idle)]
+    [InlineData(PrinterStatus.Printing)]
+    public void NoJobInsideTheGraceIsTheStartWindowNotAnAnswer(PrinterStatus status)
+    {
+        PrintStartVerdict verdict = Decide(Seen(status, JobAnswer.NoJob) with
+        {
+            SinceCommanded = TimeSpan.FromSeconds(3),
+        });
+
+        verdict.Should().Be(PrintStartVerdict.KeepWaiting);
+    }
+
+    /// <summary>
+    /// The same answer, past the grace, from a printer with nothing in hand: now it concludes. The
+    /// start window is seconds; a minute later it is the machine stating there is nothing running.
+    /// </summary>
+    [Fact]
+    public void NoJobPastTheGraceOnAnIdleHandedPrinterMeansItNeverStarted()
+    {
+        PrintStartVerdict verdict = Decide(Seen(PrinterStatus.Ready, JobAnswer.NoJob));
+
+        verdict.Should().Be(PrintStartVerdict.NeverStarted);
+    }
+
+    /// <summary>
+    /// A printer that reports a job in telemetry while answering that it has none is contradicting
+    /// itself - that never concludes, and is eventually given up on like any other refusal to
+    /// describe.
+    /// </summary>
+    [Fact]
+    public void NoJobFromAPrinterThatLooksBusyNeverConcludes()
+    {
+        PrintStartObservation seen = Seen(PrinterStatus.Printing, JobAnswer.NoJob);
+
+        Decide(seen).Should().Be(PrintStartVerdict.KeepWaiting);
+
+        Decide(seen with { SinceCommanded = TimeSpan.FromMinutes(16) })
+            .Should().Be(PrintStartVerdict.Unresolvable);
     }
 
     /// <summary>

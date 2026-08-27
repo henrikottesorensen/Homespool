@@ -61,17 +61,17 @@ public static class PrintStartRules
         ArgumentNullException.ThrowIfNull(observation);
 
         // The printer's own words about its own job, which outrank every inference below. Note that
-        // all three arms are reached only by having asked and been answered, so none of them can be
-        // produced by a printer that has merely gone quiet.
+        // both arms are reached only by having asked and been answered, so neither can be produced
+        // by a printer that has merely gone quiet.
         switch (observation.Answer)
         {
             case JobAnswer.Ours:
                 return PrintStartVerdict.Started;
 
-            // Whatever is running, our command did not start it - somebody printed from the panel,
-            // or the machine has nothing at all. The entry stays queued and waits its turn.
+            // Whatever is running, our command did not start it - somebody printed from the panel.
+            // A name was compared to reach this, which is what the start window cannot fake, so it
+            // concludes immediately where NoJob below may not. The entry stays queued and waits.
             case JobAnswer.SomebodyElses:
-            case JobAnswer.NoJob:
                 return PrintStartVerdict.NeverStarted;
 
             default:
@@ -86,12 +86,17 @@ public static class PrintStartRules
             return PrintStartVerdict.KeepWaiting;
         }
 
-        // A printer reporting no job at all, freshly, and for longer than it could plausibly still
-        // be getting started. This is the ordinary negative - the command was written to a socket
-        // and never acted on - and it is deliberately the only inference here that is allowed to
-        // conclude anything, because it rests on the printer having spoken since we asked.
-        if (observation.Answer == JobAnswer.NotAsked
-            && observation.ReportedSinceCommand
+        // A no-job report concludes only outside the start window. That covers the inferred kind -
+        // telemetry naming no job, freshly, with nothing to ask about - and firmware's literal
+        // "No job in progress" alike: the latter is rendered against the machine's momentary state,
+        // and a print it has accepted passes through a state with no job before it reports PRINTING,
+        // so inside the grace period that answer is what a print that is starting sounds like.
+        // Taken at face value it reads a starting print as one that never happened, which mints the
+        // duplicate this whole resolution exists to prevent.
+        bool reportsNoJob = observation.Answer == JobAnswer.NoJob
+                            || (observation.Answer == JobAnswer.NotAsked && observation.ReportedSinceCommand);
+
+        if (reportsNoJob
             && !LooksBusy(observation.Status)
             && observation.SinceCommanded >= grace)
         {

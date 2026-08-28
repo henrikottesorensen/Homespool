@@ -2412,12 +2412,6 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Settings_Label_AttemptLimits_MaxFailedAttempts" xml:space="preserve">
     <value>Failed attempts before a backoff</value>
   </data>
-  <data name="Settings_Label_AttemptLimits_LockoutBaseSeconds" xml:space="preserve">
-    <value>First backoff, in seconds</value>
-  </data>
-  <data name="Settings_Label_AttemptLimits_LockoutMaxSeconds" xml:space="preserve">
-    <value>Longest backoff, in seconds</value>
-  </data>
   <data name="Settings_Label_Invitations_LifetimeHours" xml:space="preserve">
     <value>How long an invitation stays valid, in hours</value>
   </data>

@@ -2263,7 +2263,7 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>Indstillinger</value>
   </data>
   <data name="Settings_Intro" xml:space="preserve">
-    <value>Indstillinger for hele installationen. Alt andet - porte, stier og de adresser printere bruger - sættes der hvor stakken startes, fordi det skal stemme overens med den fil.</value>
+    <value>Indstillinger for hele denne installation, gemt i datavolumenet. Porte, mapper og den adresse, printere forbinder til, står bevidst ikke her: de hører hjemme i .env og compose.yaml, fordi de skal stemme overens med det, Docker rent faktisk åbner og monterer. At ændre dem her ville ikke få Docker til at følge med.</value>
   </data>
   <data name="Settings_Save" xml:space="preserve">
     <value>Gem indstillinger</value>
@@ -2314,22 +2314,16 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>Telemetrilager</value>
   </data>
   <data name="Settings_Section_Cameras" xml:space="preserve">
-    <value>Kameraopførsel</value>
+    <value>Kameraindstillinger</value>
   </data>
   <data name="Settings_Section_Smtp" xml:space="preserve">
-    <value>Udgående post</value>
+    <value>Udgående e-mail</value>
   </data>
   <data name="Settings_Label_Security_RequireTwoFactor" xml:space="preserve">
-    <value>Kræv en godkendelsesapp på alle konti</value>
+    <value>Påkræv at alle kontoer logger ind med en tofaktorapp</value>
   </data>
   <data name="Settings_Label_AttemptLimits_MaxFailedAttempts" xml:space="preserve">
-    <value>Mislykkede forsøg før ventetid</value>
-  </data>
-  <data name="Settings_Label_AttemptLimits_LockoutBaseSeconds" xml:space="preserve">
-    <value>Første ventetid, i sekunder</value>
-  </data>
-  <data name="Settings_Label_AttemptLimits_LockoutMaxSeconds" xml:space="preserve">
-    <value>Længste ventetid, i sekunder</value>
+    <value>Antal tilladte mislykkede loginforsøg før kontoen låses</value>
   </data>
   <data name="Settings_Label_Invitations_LifetimeHours" xml:space="preserve">
     <value>Hvor længe en invitation gælder, i timer</value>
@@ -2359,10 +2353,10 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>Flest hændelser gemt pr. printer</value>
   </data>
   <data name="Settings_Label_Storage_WriteBatchSize" xml:space="preserve">
-    <value>Rækker i buffer før skrivning</value>
+    <value>Rækker der samles før skrivning</value>
   </data>
   <data name="Settings_Label_Storage_WriteFlushIntervalSeconds" xml:space="preserve">
-    <value>Længste ventetid for en bufret række, i sekunder</value>
+    <value>Længste ventetid før en række skrives, i sekunder</value>
   </data>
   <data name="Settings_Label_Cameras_RefreshFloorSeconds" xml:space="preserve">
     <value>Korteste interval mellem kamerahentninger, i sekunder</value>

@@ -194,6 +194,15 @@ public class CameraOptions
     /// camera is the entire point.
     /// </para>
     /// <para>
+    /// <b>Not offered on the settings page, and that follows from the paragraph above</b> (Henrik) -
+    /// kept here so it is not proposed again. If the restriction costs nothing, being able to switch
+    /// it off buys nothing, while turning an administrator's account into a way to reach the
+    /// addresses this paragraph lists. A deployment is assumed to be internet-facing, so that is a
+    /// real widening for no gain. It was never settable in <c>.env</c> either, so a control would
+    /// have invented a surface rather than rehoused one. Still bindable for anyone editing the
+    /// settings file, which is the escape hatch a developer occasionally wants.
+    /// </para>
+    /// <para>
     /// <b>Known and unhandled: DNS rebinding.</b> This is checked when a camera is saved and the
     /// sidecar connects later, so a name that resolves past the check and then elsewhere defeats it.
     /// Closing that means pinning the resolved address for the life of the stream, and that

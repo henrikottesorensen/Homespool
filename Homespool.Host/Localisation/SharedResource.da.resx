@@ -2370,9 +2370,6 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Settings_Label_Cameras_MaxFrameBytes" xml:space="preserve">
     <value>Største billede der accepteres, i bytes</value>
   </data>
-  <data name="Settings_Label_Cameras_RefuseLoopbackAndLinkLocal" xml:space="preserve">
-    <value>Afvis kameraer på loopback- og link-local-adresser</value>
-  </data>
   <data name="Settings_Label_Cameras_WebRtcStunServer" xml:space="preserve">
     <value>STUN-server, kontaktes kun når det er tilladt</value>
   </data>

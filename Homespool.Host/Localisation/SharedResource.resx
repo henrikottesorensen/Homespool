@@ -2457,9 +2457,6 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Settings_Label_Cameras_MaxFrameBytes" xml:space="preserve">
     <value>Largest picture accepted, in bytes</value>
   </data>
-  <data name="Settings_Label_Cameras_RefuseLoopbackAndLinkLocal" xml:space="preserve">
-    <value>Refuse cameras on loopback and link-local addresses</value>
-  </data>
   <data name="Settings_Label_Cameras_WebRtcStunServer" xml:space="preserve">
     <value>STUN server, contacted only when allowed</value>
   </data>

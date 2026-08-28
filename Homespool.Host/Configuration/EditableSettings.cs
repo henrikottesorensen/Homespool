@@ -104,7 +104,6 @@ public static class EditableSettings
         new(typeof(CameraOptions), CameraOptions.SectionName, nameof(CameraOptions.MaxAgeSeconds), SettingGrade.Live),
         new(typeof(CameraOptions), CameraOptions.SectionName, nameof(CameraOptions.TimeoutSeconds), SettingGrade.Live),
         new(typeof(CameraOptions), CameraOptions.SectionName, nameof(CameraOptions.MaxFrameBytes), SettingGrade.Live),
-        new(typeof(CameraOptions), CameraOptions.SectionName, nameof(CameraOptions.RefuseLoopbackAndLinkLocal), SettingGrade.Live),
         new(typeof(CameraOptions), CameraOptions.SectionName, nameof(CameraOptions.WebRtcStunServer), SettingGrade.Live),
 
         // Mail. Every one of these is Restart, and the reason is three startup decisions rather than

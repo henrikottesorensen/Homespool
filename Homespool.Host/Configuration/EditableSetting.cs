@@ -24,6 +24,10 @@ namespace Homespool.Host.Configuration;
 /// The heading this appears under, when that is not its own <paramref name="Section"/>. Null for
 /// almost everything.
 /// </param>
+/// <param name="DisplaySubgroup">
+/// A subheading within the group, for a group large enough that one list of fields stops being
+/// readable. Null for a group that needs none.
+/// </param>
 /// <remarks>
 /// <para>
 /// <b>An allowlist entry, not a description of configuration.</b> The 65 options properties are not
@@ -45,7 +49,8 @@ public sealed record EditableSetting(
     SettingGrade Grade,
     bool IsSecret = false,
     string? AppliesWhenKey = null,
-    string? DisplayGroup = null)
+    string? DisplayGroup = null,
+    string? DisplaySubgroup = null)
 {
     /// <summary>
     /// The configuration path this setting is read and written at, in <c>Section:Key</c> form.

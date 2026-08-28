@@ -2388,9 +2388,6 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Settings_Section_Invitations" xml:space="preserve">
     <value>Invitation defaults</value>
   </data>
-  <data name="Settings_Section_PrintFiles" xml:space="preserve">
-    <value>Upload limits</value>
-  </data>
   <data name="Settings_Section_PrusaConnect" xml:space="preserve">
     <value>Printer protocol</value>
   </data>
@@ -2483,5 +2480,11 @@ A stick that already works with your printer is the right stick. If you are form
   </data>
   <data name="Settings_Label_Smtp_ProbeOnStartup" xml:space="preserve">
     <value>Check the mail server at startup</value>
+  </data>
+  <data name="Settings_Subsection_PrintFiles" xml:space="preserve">
+    <value>Print files</value>
+  </data>
+  <data name="Settings_Subsection_Telemetry" xml:space="preserve">
+    <value>Telemetry</value>
   </data>
 </root>

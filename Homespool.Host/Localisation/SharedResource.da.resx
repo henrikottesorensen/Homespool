@@ -2301,9 +2301,6 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Settings_Section_Invitations" xml:space="preserve">
     <value>Standard for invitationer</value>
   </data>
-  <data name="Settings_Section_PrintFiles" xml:space="preserve">
-    <value>Uploadgrænser</value>
-  </data>
   <data name="Settings_Section_PrusaConnect" xml:space="preserve">
     <value>Printerprotokol</value>
   </data>
@@ -2396,5 +2393,11 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   </data>
   <data name="Settings_Label_Smtp_ProbeOnStartup" xml:space="preserve">
     <value>Kontrollér mailserveren ved opstart</value>
+  </data>
+  <data name="Settings_Subsection_PrintFiles" xml:space="preserve">
+    <value>Printfiler</value>
+  </data>
+  <data name="Settings_Subsection_Telemetry" xml:space="preserve">
+    <value>Telemetri</value>
   </data>
 </root>

@@ -61,10 +61,6 @@ public static class EditableSettings
         // Invitations - read when an invite is created, at InvitationService:73.
         new(typeof(InvitationOptions), InvitationOptions.SectionName, nameof(InvitationOptions.LifetimeHours), SettingGrade.Live),
 
-        // Uploads - read per upload in PrintFileController, OctoPrintCompatController, Files/Index
-        // and BoundedUploadAttribute.
-        new(typeof(PrintFileStorageOptions), PrintFileStorageOptions.SectionName, nameof(PrintFileStorageOptions.MaxUploadBytes), SettingGrade.Live),
-
         // Printer protocol.
         new(typeof(PrusaConnectOptions), PrusaConnectOptions.SectionName, nameof(PrusaConnectOptions.RegistrationCodeLifetimeMinutes), SettingGrade.Live),
 
@@ -76,8 +72,20 @@ public static class EditableSettings
             SettingGrade.Deferred,
             AppliesWhenKey: "Settings_AppliesOnNextPrinterConnection"),
 
+        // What this deployment stores, of both kinds. Uploads sit here rather than under a heading of
+        // their own because "how much disk does this take" is one question, and a reader should not
+        // have to know that files and telemetry are bound from different classes to find it. Read per
+        // upload in PrintFileController, OctoPrintCompatController, Files/Index and
+        // BoundedUploadAttribute.
+        new(typeof(PrintFileStorageOptions),
+            PrintFileStorageOptions.SectionName,
+            nameof(PrintFileStorageOptions.MaxUploadBytes),
+            SettingGrade.Live,
+            DisplayGroup: StorageOptions.SectionName,
+            DisplaySubgroup: "PrintFiles"),
+
         // Telemetry ingest - read per sample at TelemetryWriter:733.
-        new(typeof(StorageOptions), StorageOptions.SectionName, nameof(StorageOptions.MinimumSampleIntervalSeconds), SettingGrade.Live),
+        new(typeof(StorageOptions), StorageOptions.SectionName, nameof(StorageOptions.MinimumSampleIntervalSeconds), SettingGrade.Live, DisplaySubgroup: "Telemetry"),
 
         // Retention - TelemetryRetentionService reads these inside each sweep, and SweepInterval is
         // one hour.
@@ -85,23 +93,26 @@ public static class EditableSettings
             StorageOptions.SectionName,
             nameof(StorageOptions.TelemetryRetentionDays),
             SettingGrade.Deferred,
-            AppliesWhenKey: "Settings_AppliesOnNextSweep"),
+            AppliesWhenKey: "Settings_AppliesOnNextSweep",
+            DisplaySubgroup: "Telemetry"),
         new(typeof(StorageOptions),
             StorageOptions.SectionName,
             nameof(StorageOptions.EventRetentionDays),
             SettingGrade.Deferred,
-            AppliesWhenKey: "Settings_AppliesOnNextSweep"),
+            AppliesWhenKey: "Settings_AppliesOnNextSweep",
+            DisplaySubgroup: "Telemetry"),
         new(typeof(StorageOptions),
             StorageOptions.SectionName,
             nameof(StorageOptions.MaxEventsPerPrinter),
             SettingGrade.Deferred,
-            AppliesWhenKey: "Settings_AppliesOnNextSweep"),
+            AppliesWhenKey: "Settings_AppliesOnNextSweep",
+            DisplaySubgroup: "Telemetry"),
 
         // Sizes the writer's bounded channel at TelemetryWriter:234 and is read per batch at :547.
-        new(typeof(StorageOptions), StorageOptions.SectionName, nameof(StorageOptions.WriteBatchSize), SettingGrade.Restart),
+        new(typeof(StorageOptions), StorageOptions.SectionName, nameof(StorageOptions.WriteBatchSize), SettingGrade.Restart, DisplaySubgroup: "Telemetry"),
 
         // Builds a PeriodicTimer once when the writer's loop starts, at TelemetryWriter:462.
-        new(typeof(StorageOptions), StorageOptions.SectionName, nameof(StorageOptions.WriteFlushIntervalSeconds), SettingGrade.Restart),
+        new(typeof(StorageOptions), StorageOptions.SectionName, nameof(StorageOptions.WriteFlushIntervalSeconds), SettingGrade.Restart, DisplaySubgroup: "Telemetry"),
 
         // Cameras - all read at the point of use, in CameraFrameCache, CameraSnapshotFetcher and
         // CameraSourcePolicy.

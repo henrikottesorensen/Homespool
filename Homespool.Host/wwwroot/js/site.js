@@ -1,19 +1,11 @@
 // Please see documentation at https://docs.microsoft.com/aspnet/core/client-side/bundling-and-minification
 // for details on configuring this project to bundle and minify static web assets.
 
-// Dropping a file onto the upload area uploads it.
-//
-// Deliberately an enhancement rather than an upload path of its own: the drop hands the file to the
-// input the form already posts and then submits that form, so it goes through the same handler, the
-// same antiforgery token and the same multipart body. With scripting off the picker works exactly as
-// it did - which is why this is still not the start of an uploader.
-//
-// It used to stop at filling the input, so that a file dropped by accident could not begin a 300 MB
-// upload before anyone could object. That trade is reversed deliberately: the objection window cost
-// a press on every single upload, including the overwhelming majority that were meant, and a drop
-// onto a file list is recoverable - the file lands in your own tree and can be deleted. The same
-// gesture onto a *printer* is not equally cheap, which is why the printer page's box answers the
-// question separately rather than inheriting this.
+// Picking a file, by drop or through the picker, uploads it as soon as it is chosen - the button
+// stays for when this script never runs, but nobody has to reach for it otherwise. The objection
+// window this skips would have cost a press on every intended upload to save an accidental one, and
+// a file that lands in your own tree is one you can delete; the printer page's drop box answers that
+// question separately because a drop straight onto a *printer* is not equally cheap.
 (function () {
     "use strict";
 
@@ -35,6 +27,20 @@
         event.stopPropagation();
     }
 
+    // Substitutes into a resource string the localiser rendered unformatted - {0}, {1}, {2} - the
+    // same placeholder syntax IStringLocalizer itself uses server-side, so a translator sees one
+    // convention rather than two. The count or name being placed is only known once a drop happens,
+    // which is after the page has already rendered.
+    function format(template) {
+        var args = arguments;
+
+        return template.replace(/\{(\d+)\}/g, function (match, index) {
+            var value = args[Number(index) + 1];
+
+            return value === undefined ? match : value;
+        });
+    }
+
     ["dragenter", "dragover"].forEach(function (name) {
         zone.addEventListener(name, function (event) {
             suppress(event);
@@ -49,31 +55,95 @@
         });
     });
 
+    // The picker only ever hands back one file - there is no `multiple` on the input - so this is
+    // the whole submit path for it. requestSubmit rather than submit: it runs the form's own
+    // validation and fires the submit event, where submit() silently skips both. The fallback is for
+    // a browser without it, where skipping validation is better than a choice that does nothing.
+    input.addEventListener("change", function () {
+        if (!input.form) {
+            return;
+        }
+
+        if (input.form.requestSubmit) {
+            input.form.requestSubmit();
+        } else {
+            input.form.submit();
+        }
+    });
+
+    // A drop can carry more files than the picker ever could, so it gets its own path: post each
+    // one to the same handler in turn, then reload once. Sequential rather than concurrent because
+    // the handler holds one pending-conflict slot at a time - two uploads racing each other through
+    // it would let the second's answer clobber the first's before anyone saw the question.
+    var MAX_DROPPED_FILES = 16;
+
+    function uploadDropped(files) {
+        var status = document.createElement("p");
+
+        status.className = "text-body-secondary small mb-0 mt-2";
+        zone.appendChild(status);
+
+        var index = 0;
+
+        function next() {
+            if (index >= files.length) {
+                // Reloading rather than patching the table in place is what lets the redirect this
+                // POST already produces - the file list, the flash message, a held conflict waiting
+                // on Replace/Discard - render exactly as it would have for an ordinary form post.
+                window.location.reload();
+
+                return;
+            }
+
+            var file = files[index];
+
+            index += 1;
+            status.textContent = format(zone.dataset.uploadProgress, index, files.length, file.name);
+
+            // Built from the real form so the antiforgery field and the route values it already
+            // carries - sort, printer, handler - travel with it unchanged; only the file differs
+            // from what a native submit would have sent.
+            var body = new FormData(input.form);
+
+            body.set("file", file);
+
+            fetch(input.form.action, { method: "POST", body: body, credentials: "same-origin" })
+                .catch(function () {
+                    // One file failing to reach the server is not a reason to abandon the rest.
+                })
+                .then(next, next);
+        }
+
+        next();
+    }
+
     zone.addEventListener("drop", function (event) {
         if (!event.dataTransfer || event.dataTransfer.files.length === 0) {
             return;
         }
 
-        // Rebuilt as a one-file list rather than assigned straight across: the input takes a single
-        // file, and handing it a longer list is not something every browser agrees about.
-        var single = new DataTransfer();
+        var dropped = event.dataTransfer.files;
 
-        single.items.add(event.dataTransfer.files[0]);
-        input.files = single.files;
+        // One file is unambiguous and goes straight through, same as the picker. More than one asks
+        // first - a multi-file drop is easier to do by accident than a single one, and confirming
+        // once is cheap next to discovering only afterwards that a whole folder went up.
+        if (dropped.length === 1) {
+            uploadDropped(dropped);
 
-        // So anything watching the input - validation now, a preview later - sees the same event it
-        // would have seen had the file been chosen through the picker.
-        input.dispatchEvent(new Event("change", { bubbles: true }));
+            return;
+        }
 
-        // requestSubmit rather than submit: it runs the form's own validation and fires the submit
-        // event, where submit() silently skips both. The fallback is for a browser without it, where
-        // skipping validation is better than a drop that does nothing at all.
-        if (input.form) {
-            if (input.form.requestSubmit) {
-                input.form.requestSubmit();
-            } else {
-                input.form.submit();
-            }
+        // Past the cap this refuses outright rather than offering a partial upload: silently
+        // keeping sixteen out of however many were dropped is its own kind of surprise, and asking
+        // "upload sixteen and skip the rest?" only invites picking a number nobody chose.
+        if (dropped.length > MAX_DROPPED_FILES) {
+            window.alert(format(zone.dataset.uploadTooMany, MAX_DROPPED_FILES, dropped.length));
+
+            return;
+        }
+
+        if (window.confirm(format(zone.dataset.uploadConfirmBatch, dropped.length))) {
+            uploadDropped(dropped);
         }
     });
 })();

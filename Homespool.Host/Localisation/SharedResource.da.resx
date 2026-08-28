@@ -1440,11 +1440,17 @@
   <data name="Files_UploadLabel" xml:space="preserve">
     <value>Fil, der skal uploades</value>
   </data>
+  <data name="Files_ConfirmBatchUpload" xml:space="preserve">
+    <value>Upload disse {0} filer?</value>
+  </data>
+  <data name="Files_TooManyDropped" xml:space="preserve">
+    <value>Kun {0} filer kan uploades ad gangen - {1} blev sluppet. Slip {0} eller færre.</value>
+  </data>
+  <data name="Files_UploadingProgress" xml:space="preserve">
+    <value>Uploader {0} af {1}: {2}</value>
+  </data>
   <data name="Files_NewNameLabel" xml:space="preserve">
     <value>Nyt filnavn</value>
-  </data>
-  <data name="Files_SendToPrinterLabel" xml:space="preserve">
-    <value>Printer, som {0} skal sendes til</value>
   </data>
   <data name="Printers_MoveUp" xml:space="preserve">
     <value>Flyt op</value>

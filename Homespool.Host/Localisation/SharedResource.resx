@@ -2502,4 +2502,13 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Settings_Refuse_Security_RequireTwoFactor" xml:space="preserve">
     <value>Set up an authenticator on your own account first. The requirement applies to accounts rather than sessions, so turning it on without one would send you to enrol and leave you unable to reach this page - or to undo it.</value>
   </data>
+  <data name="Settings_TestMail" xml:space="preserve">
+    <value>Test the mail server</value>
+  </data>
+  <data name="Settings_MailTestWorked" xml:space="preserve">
+    <value>Connected to the mail server, and signed in where a username was given. Nothing was sent, and nothing was saved.</value>
+  </data>
+  <data name="Settings_MailTestFailed" xml:space="preserve">
+    <value>Could not use the mail server: {0}</value>
+  </data>
 </root>

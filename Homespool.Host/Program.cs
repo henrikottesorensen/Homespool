@@ -348,6 +348,7 @@ public static class Program
 
             // Stateless, so a singleton is fine; it exists purely so tests can substitute a fake transport.
             builder.Services.AddSingleton<Mail.ISmtpTransportFactory, Mail.MailKitSmtpTransportFactory>();
+            builder.Services.AddSingleton<Mail.SmtpConnectivityCheck>();
 
             // Which sender is registered is decided by configuration alone, never by probing the network, so that a
             // mail server being down cannot quietly change how accounts are created. See SmtpOptions.IsConfigured.

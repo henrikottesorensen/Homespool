@@ -28,7 +28,9 @@ public sealed class SmtpConnectivityProbeTests
     private sealed class TestableSmtpConnectivityProbe : SmtpConnectivityProbe
     {
         public TestableSmtpConnectivityProbe(IOptions<SmtpOptions> options, ISmtpTransportFactory transportFactory)
-            : base(options, transportFactory, NullLogger<SmtpConnectivityProbe>.Instance)
+            : base(options,
+                   new SmtpConnectivityCheck(transportFactory, NullLogger<SmtpConnectivityCheck>.Instance),
+                   NullLogger<SmtpConnectivityProbe>.Instance)
         {
         }
 

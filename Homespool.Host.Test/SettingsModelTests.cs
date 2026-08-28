@@ -10,10 +10,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 
 using Homespool.Data;
 using Homespool.Host.Configuration;
+using Homespool.Host.Mail;
 using Homespool.Host.Pages.Admin;
 using Homespool.Model.Entities;
 
@@ -157,6 +159,80 @@ public class SettingsModelTests : IDisposable
         page.AwaitingConfirmation.Should().BeEmpty();
     }
 
+    /// <summary>
+    /// The question is "would this work?", so it must use the values on the form. Mail settings need
+    /// a restart, so the running configuration is the old answer by definition.
+    /// </summary>
+    [Fact]
+    public async Task TheMailTestUsesWhatIsOnTheFormRatherThanWhatIsRunning()
+    {
+        FakeSmtpTransport transport = new();
+        (SettingsModel page, _) = await PageAsync(twoFactor: false, transport);
+
+        page.Values = new Dictionary<string, string?>
+        {
+            ["Smtp:Host"] = "typed.example.com",
+            ["Smtp:Port"] = "2525",
+        };
+
+        await page.OnPostTestMail(TestContext.Current.CancellationToken);
+
+        transport.ConnectCall!.Value.host.Should().Be("typed.example.com", "nothing was saved, and that is the point");
+        transport.ConnectCall!.Value.port.Should().Be(2525);
+        page.StatusSuccess.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// A password nobody was shown comes back as the mask, and must not be tested as though the mask
+    /// were the password - the same rule that stops a save destroying it.
+    /// </summary>
+    [Fact]
+    public async Task TheMailTestUsesTheStoredPasswordWhenTheMaskComesBack()
+    {
+        _store.Save(new Dictionary<string, string?> { ["Smtp:Password"] = "hunter2" }).Saved.Should().BeTrue();
+
+        FakeSmtpTransport transport = new();
+        (SettingsModel page, _) = await PageAsync(twoFactor: false, transport);
+
+        page.Values = new Dictionary<string, string?>
+        {
+            ["Smtp:Host"] = "mail.example.com",
+            ["Smtp:UserName"] = "postmaster",
+            ["Smtp:Password"] = SettingsStore.SecretPlaceholder,
+        };
+
+        await page.OnPostTestMail(TestContext.Current.CancellationToken);
+
+        transport.AuthenticateCall!.Value.password.Should().Be("hunter2");
+    }
+
+    [Fact]
+    public async Task AFailedMailTestSaysWhatTheServerSaid()
+    {
+        FakeSmtpTransport transport = new() { ThrowOnConnect = new InvalidOperationException("no route to host") };
+        (SettingsModel page, _) = await PageAsync(twoFactor: false, transport);
+
+        page.Values = new Dictionary<string, string?> { ["Smtp:Host"] = "nowhere.example.com" };
+
+        await page.OnPostTestMail(TestContext.Current.CancellationToken);
+
+        page.StatusSuccess.Should().BeFalse();
+        page.StatusMessage.Should().Contain("no route to host");
+    }
+
+    [Fact]
+    public async Task TheMailTestSavesNothing()
+    {
+        FakeSmtpTransport transport = new();
+        (SettingsModel page, _) = await PageAsync(twoFactor: false, transport);
+
+        page.Values = new Dictionary<string, string?> { ["Smtp:Host"] = "typed.example.com" };
+
+        await page.OnPostTestMail(TestContext.Current.CancellationToken);
+
+        _store.Current()["Smtp:Host"].Should().BeEmpty("testing is not saving");
+    }
+
     protected virtual void Dispose(bool disposing)
     {
         if (!disposing)
@@ -176,7 +252,9 @@ public class SettingsModelTests : IDisposable
         }
     }
 
-    private async Task<(SettingsModel page, HomespoolDbContext context)> PageAsync(bool twoFactor)
+    private async Task<(SettingsModel page, HomespoolDbContext context)> PageAsync(
+        bool twoFactor,
+        FakeSmtpTransport? transport = null)
     {
         HomespoolDbContext context = new(new DbContextOptionsBuilder<HomespoolDbContext>()
                                          .UseSqlite($"Data Source={_databasePath}")
@@ -193,7 +271,11 @@ public class SettingsModelTests : IDisposable
 
         IdentityTestHarness.SignInAsPrincipal(httpContext, admin);
 
-        SettingsModel page = new(_store, users, TestLocaliser.Shared())
+        SettingsModel page = new(_store,
+                                 users,
+                                 new SmtpConnectivityCheck(new FakeSmtpTransportFactory(transport ?? new FakeSmtpTransport()),
+                                                           NullLogger<SmtpConnectivityCheck>.Instance),
+                                 TestLocaliser.Shared())
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };

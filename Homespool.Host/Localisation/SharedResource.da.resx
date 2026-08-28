@@ -2415,4 +2415,13 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Settings_Refuse_Security_RequireTwoFactor" xml:space="preserve">
     <value>Opsæt først en tofaktorapp på din egen konto. Kravet gælder konti og ikke sessioner, så hvis du slår det til uden en, bliver du sendt til opsætning og kan hverken nå denne side eller fortryde det.</value>
   </data>
+  <data name="Settings_TestMail" xml:space="preserve">
+    <value>Test mailserveren</value>
+  </data>
+  <data name="Settings_MailTestWorked" xml:space="preserve">
+    <value>Der blev oprettet forbindelse til mailserveren, og logget ind hvor der var angivet et brugernavn. Der blev hverken sendt eller gemt noget.</value>
+  </data>
+  <data name="Settings_MailTestFailed" xml:space="preserve">
+    <value>Mailserveren kunne ikke bruges: {0}</value>
+  </data>
 </root>

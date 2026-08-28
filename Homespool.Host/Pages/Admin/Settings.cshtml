@@ -98,5 +98,10 @@
         }
     }
 
-    <button type="submit" class="btn btn-primary mt-3">@Localiser["Settings_Save"]</button>
+    <div class="mt-3">
+        <button type="submit" class="btn btn-primary">@Localiser["Settings_Save"]</button>
+        @* Tests what is on the form rather than what is running, which is the only useful question
+           for a setting that needs a restart. Saves nothing. *@
+        <button type="submit" class="btn btn-outline-secondary" asp-page-handler="TestMail">@Localiser["Settings_TestMail"]</button>
+    </div>
 </form>

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authorization;
@@ -11,6 +12,7 @@ using Microsoft.Extensions.Localization;
 using Homespool.Host.Accounts;
 using Homespool.Host.Configuration;
 using Homespool.Host.Localisation;
+using Homespool.Host.Mail;
 using Homespool.Host.Middleware;
 using Homespool.Model.Entities;
 
@@ -42,18 +44,22 @@ public class SettingsModel : PageModel
 {
     private readonly SettingsStore _store;
     private readonly UserManager<HSUser> _users;
+    private readonly SmtpConnectivityCheck _mail;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     /// <summary>Creates the page model.</summary>
     /// <param name="store">Reads and writes the settings.</param>
     /// <param name="users">Answers whether the administrator doing this has an authenticator.</param>
+    /// <param name="mail">Tries a mail server on request.</param>
     /// <param name="localiser">Page text.</param>
     public SettingsModel(SettingsStore store,
                          UserManager<HSUser> users,
+                         SmtpConnectivityCheck mail,
                          IStringLocalizer<SharedResource> localiser)
     {
         _store = store;
         _users = users;
+        _mail = mail;
         _localiser = localiser;
     }
 
@@ -136,6 +142,37 @@ public class SettingsModel : PageModel
 
         // The submitted values are kept so somebody can see and correct what they typed; only the
         // grouping is reloaded.
+        Sections = Grouped();
+
+        return Page();
+    }
+
+    /// <summary>
+    /// Tries the mail server the form currently describes, without saving anything.
+    /// </summary>
+    /// <remarks>
+    /// <b>The values on the form, not the ones in force.</b> Mail settings need a restart, so the
+    /// running configuration is what the deployment is doing rather than what somebody is asking
+    /// about - and after a save the two differ, which is exactly when this button gets pressed. A
+    /// password nobody was shown is taken from what is stored, so the mask does not have to be
+    /// re-typed to test the rest.
+    /// </remarks>
+    /// <param name="cancellationToken">Abandons the attempt if the request goes away.</param>
+    /// <returns>The page, with the outcome on it.</returns>
+    public async Task<IActionResult> OnPostTestMail(CancellationToken cancellationToken)
+    {
+        SmtpOptions candidate = _store.CandidateFor<SmtpOptions>(Values);
+
+        SmtpCheckResult result = await _mail.RunAsync(candidate, cancellationToken);
+
+        StatusSuccess = result.Succeeded;
+        StatusMessage = result.Succeeded ?
+            _localiser["Settings_MailTestWorked"] :
+            string.Format(
+                System.Globalization.CultureInfo.CurrentCulture,
+                _localiser["Settings_MailTestFailed"],
+                result.Error);
+
         Sections = Grouped();
 
         return Page();

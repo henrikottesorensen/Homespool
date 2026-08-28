@@ -135,6 +135,62 @@ public sealed class SettingsStore
         return new SettingsSaveResult(true, errors);
     }
 
+    /// <summary>
+    /// What a section would look like if these values were applied, without applying them.
+    /// </summary>
+    /// <remarks>
+    /// <b>Used both to check a save before writing it and to answer "would this work?" for the mail
+    /// test</b>, which is why it exists rather than being inlined into validation. Mail settings only
+    /// take effect at the next restart, so testing the running configuration would answer a question
+    /// nobody asked - what the deployment is doing, rather than what was just typed.
+    /// </remarks>
+    /// <typeparam name="T">The options type.</typeparam>
+    /// <param name="submitted">Values keyed by <see cref="EditableSetting.Path"/>.</param>
+    /// <returns>An instance carrying the current values with the submitted ones over them.</returns>
+    public T CandidateFor<T>(IReadOnlyDictionary<string, string?> submitted)
+        where T : class, new()
+    {
+        ArgumentNullException.ThrowIfNull(submitted);
+
+        List<EditableSetting> settings = [.. EditableSettings.All.Where(setting => setting.OptionsType == typeof(T))];
+
+        if (settings.Count == 0)
+        {
+            return new T();
+        }
+
+        string section = settings[0].Section;
+
+        Dictionary<string, string?> overlay = [];
+
+        foreach (EditableSetting setting in settings)
+        {
+            if (!submitted.TryGetValue(setting.Path, out string? value))
+            {
+                continue;
+            }
+
+            // A secret comes back from a browser as the mask when it was never shown, which means
+            // "the stored one" - so the stored one is what gets tested.
+            overlay[setting.Key] = setting.IsSecret && value == SecretPlaceholder ?
+                _protector.Reveal(_configuration[setting.StoredPath], setting.StoredPath) :
+                value;
+        }
+
+        return (T)Candidate(typeof(T), section, overlay);
+    }
+
+    private object Candidate(Type type, string section, IReadOnlyDictionary<string, string?> overlay)
+    {
+        object instance = Activator.CreateInstance(type)!;
+
+        _configuration.GetSection(section).Bind(instance);
+
+        new ConfigurationBuilder().AddInMemoryCollection(overlay).Build().Bind(instance);
+
+        return instance;
+    }
+
     private static void Write(JsonObject stored, string path, string? value)
     {
         string[] parts = path.Split(':');
@@ -184,11 +240,7 @@ public sealed class SettingsStore
                 continue;
             }
 
-            object instance = Activator.CreateInstance(group.Key)!;
-
-            _configuration.GetSection(section).Bind(instance);
-
-            new ConfigurationBuilder().AddInMemoryCollection(overlay).Build().Bind(instance);
+            object instance = Candidate(group.Key, section, overlay);
 
             List<ValidationResult> results = [];
 

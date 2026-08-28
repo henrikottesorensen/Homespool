@@ -192,13 +192,14 @@ public sealed class SettingsPageTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
-    /// Turning this on breaks other people's integrations as a 401 that explains nothing, which is
-    /// invisible from the outcome. So it is asked about, and asking means nothing is written yet.
+    /// An administrator with no authenticator of their own cannot turn the requirement on: it applies
+    /// to accounts rather than sessions, so doing it would send them to enrol and leave them unable to
+    /// reach the page that would undo it.
     /// </summary>
     [Fact]
-    public async Task EnablingTwoFactorAsksBeforeItSavesAnything()
+    public async Task EnablingTwoFactorWithoutOneOfYourOwnIsRefused()
     {
-        HttpClient admin = await AdminAsync("settings-confirm@example.com");
+        HttpClient admin = await AdminAsync("settings-refuse@example.com");
 
         using HttpResponseMessage response = await PostAsync(admin, new Dictionary<string, string>
         {
@@ -207,8 +208,7 @@ public sealed class SettingsPageTests : IAsyncLifetime, IDisposable
 
         string body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
-        body.Should().Contain("Read this before it takes effect");
-        body.Should().Contain("fails as a 401", "the consequence is named, not merely flagged");
+        body.Should().Contain("Set up an authenticator on your own account first");
 
         using IServiceScope scope = _factory.Services.CreateScope();
 
@@ -217,43 +217,15 @@ public sealed class SettingsPageTests : IAsyncLifetime, IDisposable
              .CurrentValue
              .RequireTwoFactor
              .Should()
-             .BeFalse("being asked is not agreeing");
+             .BeFalse();
 
         admin.Dispose();
     }
 
-    [Fact]
-    public async Task AgreeingAppliesIt()
-    {
-        HttpClient admin = await AdminAsync("settings-agree@example.com");
-
-        using (HttpResponseMessage asked = await PostAsync(admin, new Dictionary<string, string>
-        {
-            ["Values[Security:RequireTwoFactor]"] = "true",
-        }))
-        {
-            asked.IsSuccessStatusCode.Should().BeTrue();
-        }
-
-        using HttpResponseMessage agreed = await PostAsync(admin, new Dictionary<string, string>
-        {
-            ["Values[Security:RequireTwoFactor]"] = "true",
-            ["Confirmed"] = "Security:RequireTwoFactor",
-        });
-
-        agreed.IsSuccessStatusCode.Should().BeTrue();
-
-        using IServiceScope scope = _factory.Services.CreateScope();
-
-        scope.ServiceProvider
-             .GetRequiredService<IOptionsMonitor<SecurityOptions>>()
-             .CurrentValue
-             .RequireTwoFactor
-             .Should()
-             .BeTrue();
-
-        admin.Dispose();
-    }
+    // Being asked, agreeing, and turning it back off are covered in SettingsModelTests rather than
+    // here. An administrator created by the enrolment helper has no authenticator, so this page can
+    // only ever reach the refusal above - and once the requirement is on, the account that turned it
+    // on is redirected to enrol before it can fetch any page at all.
 
     // Turning it back off is not asserted here, and cannot be: enabling the requirement locks the
     // enabling administrator out of every page until they enrol an authenticator, which is what

@@ -1,7 +1,9 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
@@ -9,6 +11,8 @@ using Microsoft.Extensions.Localization;
 using Homespool.Host.Accounts;
 using Homespool.Host.Configuration;
 using Homespool.Host.Localisation;
+using Homespool.Host.Middleware;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Admin;
 
@@ -37,14 +41,19 @@ namespace Homespool.Host.Pages.Admin;
 public class SettingsModel : PageModel
 {
     private readonly SettingsStore _store;
+    private readonly UserManager<HSUser> _users;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     /// <summary>Creates the page model.</summary>
     /// <param name="store">Reads and writes the settings.</param>
+    /// <param name="users">Answers whether the administrator doing this has an authenticator.</param>
     /// <param name="localiser">Page text.</param>
-    public SettingsModel(SettingsStore store, IStringLocalizer<SharedResource> localiser)
+    public SettingsModel(SettingsStore store,
+                         UserManager<HSUser> users,
+                         IStringLocalizer<SharedResource> localiser)
     {
         _store = store;
+        _users = users;
         _localiser = localiser;
     }
 
@@ -83,8 +92,20 @@ public class SettingsModel : PageModel
 
     /// <summary>Applies the submitted settings, or reports why it did not.</summary>
     /// <returns>The page, either way — a redirect would lose the field-level errors.</returns>
-    public IActionResult OnPost()
+    public async Task<IActionResult> OnPost()
     {
+        IReadOnlyDictionary<string, string> refusals = await RefusalsAsync();
+
+        if (refusals.Count > 0)
+        {
+            Errors = refusals;
+            StatusMessage = _localiser["Settings_NotSaved"];
+            StatusSuccess = false;
+            Sections = Grouped();
+
+            return Page();
+        }
+
         AwaitingConfirmation = Unagreed();
 
         if (AwaitingConfirmation.Count > 0)
@@ -135,6 +156,47 @@ public class SettingsModel : PageModel
             SettingGrade.Deferred => _localiser[setting.AppliesWhenKey!],
             SettingGrade.Restart => _localiser["Settings_AppliesOnRestart"],
             _ => string.Empty,
+        };
+    }
+
+    /// <summary>
+    /// Changes this administrator may not make, whatever they agree to.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Requiring an authenticator is refused unless the person asking already has one</b> (Henrik).
+    /// The requirement applies to the account rather than the session, so an administrator without one
+    /// is redirected to enrol before they can reach any page - including this one, and including the
+    /// way back. Turning it on would be locking yourself out of the room you are standing in.
+    /// </para>
+    /// <para>
+    /// <b>A refusal rather than a warning</b>, because there is nothing to weigh: enrolling first
+    /// costs a minute, reaches the same state, and proves the flow works before it is imposed on
+    /// everybody else.
+    /// </para>
+    /// <para>
+    /// One case, written as one case. A second earns a general shape; one does not.
+    /// </para>
+    /// </remarks>
+    private async Task<IReadOnlyDictionary<string, string>> RefusalsAsync()
+    {
+        string path = $"{SecurityOptions.SectionName}:{nameof(SecurityOptions.RequireTwoFactor)}";
+
+        if (!IsOn(Values.GetValueOrDefault(path)) || IsOn(_store.Current().GetValueOrDefault(path)))
+        {
+            return new Dictionary<string, string>();
+        }
+
+        HSUser? user = await _users.GetUserAsync(User);
+
+        if (user is not null && await _users.GetTwoFactorEnabledAsync(user))
+        {
+            return new Dictionary<string, string>();
+        }
+
+        return new Dictionary<string, string>
+        {
+            [path] = _localiser["Settings_Refuse_Security_RequireTwoFactor"],
         };
     }
 

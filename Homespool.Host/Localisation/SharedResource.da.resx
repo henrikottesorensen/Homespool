@@ -2410,6 +2410,9 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>Lad det være</value>
   </data>
   <data name="Settings_Confirm_Security_RequireTwoFactor" xml:space="preserve">
-    <value>Alle konti uden en tofaktorapp bliver sendt til opsætning, før de kan foretage sig noget - også din egen. Personlige adgangstokens, der tilhører sådan en konto, holder op med at virke med det samme og fejler med en 401, der intet forklarer, så integrationer går i stykker, før deres ejere ved hvorfor.</value>
+    <value>Alle konti uden en tofaktorapp bliver sendt til opsætning, før de kan foretage sig noget. Personlige adgangstokens, der tilhører sådan en konto, holder op med at virke med det samme og fejler med en 401, der intet forklarer, så integrationer går i stykker, før deres ejere ved hvorfor.</value>
+  </data>
+  <data name="Settings_Refuse_Security_RequireTwoFactor" xml:space="preserve">
+    <value>Opsæt først en tofaktorapp på din egen konto. Kravet gælder konti og ikke sessioner, så hvis du slår det til uden en, bliver du sendt til opsætning og kan hverken nå denne side eller fortryde det.</value>
   </data>
 </root>

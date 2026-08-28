@@ -1,30 +1,36 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Testing;
 
+using Homespool.Data;
 using Homespool.Host.Configuration;
 using Homespool.Host.Pages.Admin;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// Which changes the settings page stops to ask about.
+/// What the settings page stops to ask about, and the one change it refuses outright.
 /// </summary>
 /// <remarks>
-/// <b>Here rather than end to end, for the on-to-off case.</b> Enabling the two-factor requirement
-/// locks the administrator who enabled it out of every page until they enrol, so a test driving the
-/// real page cannot reach it again to turn it off. That is the setting behaving as documented, not a
-/// gap in it.
+/// <b>Here rather than end to end for anything after the requirement is on.</b> Enabling it locks the
+/// administrator who enabled it out of every page until they enrol, so a test driving the real page
+/// cannot reach it again. That is the setting behaving as its options class describes, not a gap.
 /// </remarks>
 public class SettingsModelTests : IDisposable
 {
     private readonly string _directory;
+    private readonly string _databasePath;
     private readonly SettingsFile _file;
     private readonly ConfigurationManager _configuration;
     private readonly SettingsStore _store;
@@ -35,6 +41,7 @@ public class SettingsModelTests : IDisposable
 
         Directory.CreateDirectory(_directory);
 
+        _databasePath = Path.Combine(_directory, "identity.db");
         _file = new SettingsFile(Path.Combine(_directory, "settings.json"));
 
         _configuration = new ConfigurationManager();
@@ -55,16 +62,51 @@ public class SettingsModelTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
+    /// <summary>
+    /// Turning the requirement on without an authenticator of your own would send you to enrol and
+    /// leave you unable to reach the page that would undo it.
+    /// </summary>
     [Fact]
-    public void TurningItOnIsAskedAbout()
+    public async Task AnAdministratorWithoutAnAuthenticatorIsRefused()
     {
-        SettingsModel page = Page();
+        (SettingsModel page, _) = await PageAsync(twoFactor: false);
 
         page.Values = new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = "true" };
-        page.OnPost();
 
+        await page.OnPost();
+
+        page.Errors.Should().ContainKey("Security:RequireTwoFactor");
+        page.AwaitingConfirmation.Should().BeEmpty("a refusal is not a question");
+        _store.Current()["Security:RequireTwoFactor"].Should().NotBe("true");
+    }
+
+    [Fact]
+    public async Task WithOneOfTheirOwnTheyAreAskedInstead()
+    {
+        (SettingsModel page, _) = await PageAsync(twoFactor: true);
+
+        page.Values = new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = "true" };
+
+        await page.OnPost();
+
+        page.Errors.Should().BeEmpty();
         page.AwaitingConfirmation.Should().ContainSingle()
             .Which.Path.Should().Be("Security:RequireTwoFactor");
+        _store.Current()["Security:RequireTwoFactor"].Should().NotBe("true", "being asked is not agreeing");
+    }
+
+    [Fact]
+    public async Task AgreeingAppliesIt()
+    {
+        (SettingsModel page, _) = await PageAsync(twoFactor: true);
+
+        page.Values = new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = "true" };
+        page.Confirmed = ["Security:RequireTwoFactor"];
+
+        await page.OnPost();
+
+        page.AwaitingConfirmation.Should().BeEmpty();
+        _store.Current()["Security:RequireTwoFactor"].Should().Be("true");
     }
 
     /// <summary>
@@ -72,53 +114,46 @@ public class SettingsModelTests : IDisposable
     /// click past the question that matters.
     /// </summary>
     [Fact]
-    public void TurningItBackOffIsNot()
+    public async Task TurningItBackOffIsNeitherRefusedNorAskedAbout()
     {
         _store.Save(new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = "true" })
               .Saved.Should().BeTrue();
 
-        SettingsModel page = Page();
+        (SettingsModel page, _) = await PageAsync(twoFactor: false);
 
         page.Values = new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = "false" };
-        page.OnPost();
 
+        await page.OnPost();
+
+        page.Errors.Should().BeEmpty();
         page.AwaitingConfirmation.Should().BeEmpty();
+        _store.Current()["Security:RequireTwoFactor"].Should().Be("false");
     }
 
     [Fact]
-    public void AlreadyOnIsNotAskedAboutAgain()
+    public async Task AlreadyOnIsNotAskedAboutAgain()
     {
         _store.Save(new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = "true" });
 
-        SettingsModel page = Page();
+        (SettingsModel page, _) = await PageAsync(twoFactor: true);
 
         page.Values = new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = "true" };
-        page.OnPost();
+
+        await page.OnPost();
 
         page.AwaitingConfirmation.Should().BeEmpty("it is not a change");
     }
 
     [Fact]
-    public void AgreeingLetsItThrough()
+    public async Task ASettingThatCarriesNoConsequenceIsNeverAskedAbout()
     {
-        SettingsModel page = Page();
-
-        page.Values = new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = "true" };
-        page.Confirmed = ["Security:RequireTwoFactor"];
-        page.OnPost();
-
-        page.AwaitingConfirmation.Should().BeEmpty();
-        _store.Current()["Security:RequireTwoFactor"].Should().Be("true");
-    }
-
-    [Fact]
-    public void ASettingThatCarriesNoConsequenceIsNeverAskedAbout()
-    {
-        SettingsModel page = Page();
+        (SettingsModel page, _) = await PageAsync(twoFactor: false);
 
         page.Values = new Dictionary<string, string?> { ["Invitations:LifetimeHours"] = "72" };
-        page.OnPost();
 
+        await page.OnPost();
+
+        page.Errors.Should().BeEmpty();
         page.AwaitingConfirmation.Should().BeEmpty();
     }
 
@@ -141,8 +176,28 @@ public class SettingsModelTests : IDisposable
         }
     }
 
-    private SettingsModel Page()
+    private async Task<(SettingsModel page, HomespoolDbContext context)> PageAsync(bool twoFactor)
     {
-        return new SettingsModel(_store, TestLocaliser.Shared());
+        HomespoolDbContext context = new(new DbContextOptionsBuilder<HomespoolDbContext>()
+                                         .UseSqlite($"Data Source={_databasePath}")
+                                         .Options);
+
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
+
+        (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) =
+            IdentityTestHarness.BuildIdentityServices(context);
+
+        HSUser admin = new("admin") { Email = "admin@example.com", TwoFactorEnabled = twoFactor };
+
+        (await users.CreateAsync(admin)).Succeeded.Should().BeTrue();
+
+        IdentityTestHarness.SignInAsPrincipal(httpContext, admin);
+
+        SettingsModel page = new(_store, users, TestLocaliser.Shared())
+        {
+            PageContext = IdentityTestHarness.NewPageContext(httpContext),
+        };
+
+        return (page, context);
     }
 }

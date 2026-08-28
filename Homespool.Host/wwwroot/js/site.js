@@ -27,6 +27,20 @@
         event.stopPropagation();
     }
 
+    // Substitutes into a resource string the localiser rendered unformatted - {0}, {1}, {2} - the
+    // same placeholder syntax IStringLocalizer itself uses server-side, so a translator sees one
+    // convention rather than two. The count or name being placed is only known once a drop happens,
+    // which is after the page has already rendered.
+    function format(template) {
+        var args = arguments;
+
+        return template.replace(/\{(\d+)\}/g, function (match, index) {
+            var value = args[Number(index) + 1];
+
+            return value === undefined ? match : value;
+        });
+    }
+
     ["dragenter", "dragover"].forEach(function (name) {
         zone.addEventListener(name, function (event) {
             suppress(event);
@@ -84,7 +98,7 @@
             var file = files[index];
 
             index += 1;
-            status.textContent = "Uploading " + index + " of " + files.length + ": " + file.name;
+            status.textContent = format(zone.dataset.uploadProgress, index, files.length, file.name);
 
             // Built from the real form so the antiforgery field and the route values it already
             // carries - sort, printer, handler - travel with it unchanged; only the file differs
@@ -123,14 +137,12 @@
         // keeping sixteen out of however many were dropped is its own kind of surprise, and asking
         // "upload sixteen and skip the rest?" only invites picking a number nobody chose.
         if (dropped.length > MAX_DROPPED_FILES) {
-            window.alert(
-                "Only " + MAX_DROPPED_FILES + " files can be uploaded at once - " + dropped.length +
-                " were dropped. Drop " + MAX_DROPPED_FILES + " or fewer.");
+            window.alert(format(zone.dataset.uploadTooMany, MAX_DROPPED_FILES, dropped.length));
 
             return;
         }
 
-        if (window.confirm("Upload these " + dropped.length + " files?")) {
+        if (window.confirm(format(zone.dataset.uploadConfirmBatch, dropped.length))) {
             uploadDropped(dropped);
         }
     });

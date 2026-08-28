@@ -1477,6 +1477,18 @@
   <data name="Files_UploadLabel" xml:space="preserve">
     <value>File to upload</value>
   </data>
+  <data name="Files_ConfirmBatchUpload" xml:space="preserve">
+    <value>Upload these {0} files?</value>
+    <comment>{0} is the number of files dropped. Read by site.js, which substitutes {0} itself - the count is only known once a drop happens.</comment>
+  </data>
+  <data name="Files_TooManyDropped" xml:space="preserve">
+    <value>Only {0} files can be uploaded at once - {1} were dropped. Drop {0} or fewer.</value>
+    <comment>{0} is the limit, {1} the number dropped. Read by site.js, same as Files_ConfirmBatchUpload.</comment>
+  </data>
+  <data name="Files_UploadingProgress" xml:space="preserve">
+    <value>Uploading {0} of {1}: {2}</value>
+    <comment>{0}/{1} are the file's position and the batch size, {2} its name. Read by site.js, same as Files_ConfirmBatchUpload.</comment>
+  </data>
   <data name="Files_NewNameLabel" xml:space="preserve">
     <value>New file name</value>
   </data>

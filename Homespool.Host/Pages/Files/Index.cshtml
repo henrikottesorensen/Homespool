@@ -55,8 +55,14 @@
 }
 
 @* data-upload-dropzone is what site.js looks for. It submits this form itself, on a drop or on a
-   file picked through the input - the button is the fallback for when that script never runs. *@
-<div class="upload-dropzone mb-2" data-upload-dropzone>
+   file picked through the input - the button is the fallback for when that script never runs.
+   The three data-upload-* attributes carry the sentences a multi-file drop needs, unformatted -
+   site.js substitutes the placeholders itself once it knows how many files were dropped, which
+   the localiser cannot know at render time. *@
+<div class="upload-dropzone mb-2" data-upload-dropzone
+     data-upload-confirm-batch="@Localiser["Files_ConfirmBatchUpload"]"
+     data-upload-too-many="@Localiser["Files_TooManyDropped"]"
+     data-upload-progress="@Localiser["Files_UploadingProgress"]">
     <form method="post" asp-page-handler="Upload" enctype="multipart/form-data"
           asp-route-sort="@Model.Sort" asp-route-desc="@Model.Descending" asp-route-printerId="@Model.SelectedPrinterId"
           class="d-flex align-items-center gap-2">

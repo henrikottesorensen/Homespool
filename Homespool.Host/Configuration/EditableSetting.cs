@@ -24,6 +24,10 @@ namespace Homespool.Host.Configuration;
 /// The heading this appears under, when that is not its own <paramref name="Section"/>. Null for
 /// almost everything.
 /// </param>
+/// <param name="ConfirmOnEnableKey">
+/// A localisation key naming what turning this on does, when that is not visible from the outcome.
+/// Set only for the settings where somebody should be asked; null everywhere else.
+/// </param>
 /// <param name="DisplaySubgroup">
 /// A subheading within the group, for a group large enough that one list of fields stops being
 /// readable. Null for a group that needs none.
@@ -50,7 +54,8 @@ public sealed record EditableSetting(
     bool IsSecret = false,
     string? AppliesWhenKey = null,
     string? DisplayGroup = null,
-    string? DisplaySubgroup = null)
+    string? DisplaySubgroup = null,
+    string? ConfirmOnEnableKey = null)
 {
     /// <summary>
     /// The configuration path this setting is read and written at, in <c>Section:Key</c> form.
@@ -80,4 +85,14 @@ public sealed record EditableSetting(
     /// has written.
     /// </remarks>
     public string Group => DisplayGroup ?? Section;
+
+    /// <summary>
+    /// Whether turning this on has to be agreed to first.
+    /// </summary>
+    /// <remarks>
+    /// <b>On the dangerous direction only</b>, following the live-view prompt: turning something off
+    /// is undoable and asking about it is how people learn to click through the question that
+    /// matters. So this asks when a value goes from off to on, and never when it goes back.
+    /// </remarks>
+    public bool NeedsConfirmingToEnable => ConfirmOnEnableKey is not null;
 }

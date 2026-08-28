@@ -14,6 +14,38 @@
     <div class="alert @(Model.StatusSuccess ? "alert-success" : "alert-warning")" role="alert">@Model.StatusMessage</div>
 }
 
+@if (Model.AwaitingConfirmation.Count > 0)
+{
+    @* The whole form is replaced rather than shown alongside: the question is about the values that
+       were just submitted, and leaving the fields editable underneath would let them drift between
+       being asked and answering. *@
+    <div class="alert alert-warning" role="alert">
+        <h2 class="h5">@Localiser["Settings_ConfirmHeading"]</h2>
+
+        @foreach (EditableSetting setting in Model.AwaitingConfirmation)
+        {
+            <p class="mb-2">@Localiser[setting.ConfirmOnEnableKey!]</p>
+        }
+    </div>
+
+    <form method="post">
+        @foreach (var pair in Model.Values)
+        {
+            <input type="hidden" name="Values[@pair.Key]" value="@pair.Value" />
+        }
+
+        @foreach (EditableSetting setting in Model.AwaitingConfirmation)
+        {
+            <input type="hidden" name="Confirmed" value="@setting.Path" />
+        }
+
+        <button type="submit" class="btn btn-warning">@Localiser["Settings_ConfirmButton"]</button>
+        <a class="btn btn-outline-secondary" asp-page="/Admin/Settings">@Localiser["Settings_ConfirmCancel"]</a>
+    </form>
+
+    return;
+}
+
 <form method="post">
     @foreach (var section in Model.Sections)
     {

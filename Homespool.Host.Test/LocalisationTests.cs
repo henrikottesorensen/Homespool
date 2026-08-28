@@ -497,7 +497,7 @@ public sealed class LocalisationTests
         string[] constructed =
         [
             "PrinterStatus_", "Intent_", "Capability_", "QueueStatus_",
-            "Settings_Section_", "Settings_Subsection_", "Settings_Label_",
+            "Settings_Section_", "Settings_Subsection_", "Settings_Label_", "Settings_Confirm_",
         ];
         string[] constructedSuffixes = ["_One", "_Other"];
 

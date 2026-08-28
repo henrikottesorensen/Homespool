@@ -13,6 +13,7 @@ using Microsoft.Extensions.Options;
 using Homespool.Host.Accounts;
 using Homespool.Host.Configuration;
 using Homespool.Host.Mail;
+using Homespool.Host.Middleware;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.E2ETest;
@@ -190,6 +191,74 @@ public sealed class SettingsPageTests : IAsyncLifetime, IDisposable
         admin.Dispose();
     }
 
+    /// <summary>
+    /// Turning this on breaks other people's integrations as a 401 that explains nothing, which is
+    /// invisible from the outcome. So it is asked about, and asking means nothing is written yet.
+    /// </summary>
+    [Fact]
+    public async Task EnablingTwoFactorAsksBeforeItSavesAnything()
+    {
+        HttpClient admin = await AdminAsync("settings-confirm@example.com");
+
+        using HttpResponseMessage response = await PostAsync(admin, new Dictionary<string, string>
+        {
+            ["Values[Security:RequireTwoFactor]"] = "true",
+        });
+
+        string body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        body.Should().Contain("Read this before it takes effect");
+        body.Should().Contain("fails as a 401", "the consequence is named, not merely flagged");
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        scope.ServiceProvider
+             .GetRequiredService<IOptionsMonitor<SecurityOptions>>()
+             .CurrentValue
+             .RequireTwoFactor
+             .Should()
+             .BeFalse("being asked is not agreeing");
+
+        admin.Dispose();
+    }
+
+    [Fact]
+    public async Task AgreeingAppliesIt()
+    {
+        HttpClient admin = await AdminAsync("settings-agree@example.com");
+
+        using (HttpResponseMessage asked = await PostAsync(admin, new Dictionary<string, string>
+        {
+            ["Values[Security:RequireTwoFactor]"] = "true",
+        }))
+        {
+            asked.IsSuccessStatusCode.Should().BeTrue();
+        }
+
+        using HttpResponseMessage agreed = await PostAsync(admin, new Dictionary<string, string>
+        {
+            ["Values[Security:RequireTwoFactor]"] = "true",
+            ["Confirmed"] = "Security:RequireTwoFactor",
+        });
+
+        agreed.IsSuccessStatusCode.Should().BeTrue();
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        scope.ServiceProvider
+             .GetRequiredService<IOptionsMonitor<SecurityOptions>>()
+             .CurrentValue
+             .RequireTwoFactor
+             .Should()
+             .BeTrue();
+
+        admin.Dispose();
+    }
+
+    // Turning it back off is not asserted here, and cannot be: enabling the requirement locks the
+    // enabling administrator out of every page until they enrol an authenticator, which is what
+    // SecurityOptions describes as "the first administrator meets it immediately". The page cannot be
+    // fetched afterwards, so the off direction is covered in SettingsModelTests instead.
     private async Task<HttpClient> AdminAsync(string email)
     {
         (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(

@@ -2487,4 +2487,16 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Settings_Subsection_Telemetry" xml:space="preserve">
     <value>Telemetry</value>
   </data>
+  <data name="Settings_ConfirmHeading" xml:space="preserve">
+    <value>Read this before it takes effect</value>
+  </data>
+  <data name="Settings_ConfirmButton" xml:space="preserve">
+    <value>I understand, apply it</value>
+  </data>
+  <data name="Settings_ConfirmCancel" xml:space="preserve">
+    <value>Leave it as it is</value>
+  </data>
+  <data name="Settings_Confirm_Security_RequireTwoFactor" xml:space="preserve">
+    <value>Every account without an authenticator is sent to enrol before it can do anything else, including yours. Any personal access token belonging to such an account stops working immediately, and fails as a 401 that explains nothing - so integrations break before their owners know why.</value>
+  </data>
 </root>

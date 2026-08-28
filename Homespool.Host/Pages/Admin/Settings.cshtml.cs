@@ -52,6 +52,16 @@ public class SettingsModel : PageModel
     [BindProperty]
     public Dictionary<string, string?> Values { get; set; } = [];
 
+    /// <summary>Paths whose consequences have been read and agreed to on this post.</summary>
+    [BindProperty]
+    public List<string> Confirmed { get; set; } = [];
+
+    /// <summary>
+    /// Settings this post would turn on that nobody has agreed to yet. Non-empty means nothing was
+    /// saved and the page is asking.
+    /// </summary>
+    public IReadOnlyList<EditableSetting> AwaitingConfirmation { get; private set; } = [];
+
     /// <summary>The settings to render, in allowlist order, grouped by section.</summary>
     public IReadOnlyList<IGrouping<string, EditableSetting>> Sections { get; private set; } = [];
 
@@ -75,6 +85,18 @@ public class SettingsModel : PageModel
     /// <returns>The page, either way — a redirect would lose the field-level errors.</returns>
     public IActionResult OnPost()
     {
+        AwaitingConfirmation = Unagreed();
+
+        if (AwaitingConfirmation.Count > 0)
+        {
+            // Nothing is written on this pass. The submitted values are carried back into the form so
+            // the answer is applied to exactly what was asked about, rather than to whatever the page
+            // looks like by the time somebody agrees.
+            Sections = Grouped();
+
+            return Page();
+        }
+
         SettingsSaveResult result = _store.Save(Values);
 
         if (result.Saved)
@@ -114,6 +136,33 @@ public class SettingsModel : PageModel
             SettingGrade.Restart => _localiser["Settings_AppliesOnRestart"],
             _ => string.Empty,
         };
+    }
+
+    /// <summary>
+    /// The settings this post turns on that carry a consequence nobody has agreed to yet.
+    /// </summary>
+    /// <remarks>
+    /// <b>Only the off-to-on transition asks.</b> A setting already on, or being turned off, or
+    /// absent from the post, is not a decision anybody needs talking through - and asking about the
+    /// safe direction is how a person learns to click past the question that matters.
+    /// </remarks>
+    private IReadOnlyList<EditableSetting> Unagreed()
+    {
+        IReadOnlyDictionary<string, string> current = _store.Current();
+
+        return
+        [
+            .. EditableSettings.All.Where(
+                setting => setting.NeedsConfirmingToEnable
+                           && IsOn(Values.GetValueOrDefault(setting.Path))
+                           && !IsOn(current.GetValueOrDefault(setting.Path))
+                           && !Confirmed.Contains(setting.Path, System.StringComparer.Ordinal)),
+        ];
+    }
+
+    private static bool IsOn(string? value)
+    {
+        return string.Equals(value, "true", System.StringComparison.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyList<IGrouping<string, EditableSetting>> Grouped()

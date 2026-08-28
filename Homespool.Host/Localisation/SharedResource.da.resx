@@ -2400,4 +2400,16 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Settings_Subsection_Telemetry" xml:space="preserve">
     <value>Telemetri</value>
   </data>
+  <data name="Settings_ConfirmHeading" xml:space="preserve">
+    <value>Læs dette, før det træder i kraft</value>
+  </data>
+  <data name="Settings_ConfirmButton" xml:space="preserve">
+    <value>Jeg forstår, anvend det</value>
+  </data>
+  <data name="Settings_ConfirmCancel" xml:space="preserve">
+    <value>Lad det være</value>
+  </data>
+  <data name="Settings_Confirm_Security_RequireTwoFactor" xml:space="preserve">
+    <value>Alle konti uden en tofaktorapp bliver sendt til opsætning, før de kan foretage sig noget - også din egen. Personlige adgangstokens, der tilhører sådan en konto, holder op med at virke med det samme og fejler med en 401, der intet forklarer, så integrationer går i stykker, før deres ejere ved hvorfor.</value>
+  </data>
 </root>

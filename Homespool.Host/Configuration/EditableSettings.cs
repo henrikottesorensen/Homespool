@@ -46,7 +46,13 @@ public static class EditableSettings
     [
 
         // Security - read per request at TwoFactorEnrolmentMiddleware:79.
-        new(typeof(SecurityOptions), SecurityOptions.SectionName, nameof(SecurityOptions.RequireTwoFactor), SettingGrade.Live),
+        // Asked about before it is turned on: what it does is invisible from the outcome, since the
+        // integrations it breaks belong to other people and fail as a 401 that explains nothing.
+        new(typeof(SecurityOptions),
+            SecurityOptions.SectionName,
+            nameof(SecurityOptions.RequireTwoFactor),
+            SettingGrade.Live,
+            ConfirmOnEnableKey: "Settings_Confirm_Security_RequireTwoFactor"),
 
         // Attempt limits - read per check at AttemptLimiter:121,130.
         // Only the count. The two timing knobs are deliberately absent - see AttemptLimitOptions.

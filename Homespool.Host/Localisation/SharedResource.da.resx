@@ -1443,9 +1443,6 @@
   <data name="Files_NewNameLabel" xml:space="preserve">
     <value>Nyt filnavn</value>
   </data>
-  <data name="Files_SendToPrinterLabel" xml:space="preserve">
-    <value>Printer, som {0} skal sendes til</value>
-  </data>
   <data name="Printers_MoveUp" xml:space="preserve">
     <value>Flyt op</value>
   </data>

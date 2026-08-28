@@ -1480,10 +1480,6 @@
   <data name="Files_NewNameLabel" xml:space="preserve">
     <value>New file name</value>
   </data>
-  <data name="Files_SendToPrinterLabel" xml:space="preserve">
-    <value>Printer to send {0} to</value>
-    <comment>{0} is the file name.</comment>
-  </data>
   <data name="Printers_MoveUp" xml:space="preserve">
     <value>Move up</value>
   </data>

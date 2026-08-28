@@ -219,6 +219,7 @@ public class PrintStartRulesTests
     [InlineData(PrinterStatus.Printing)]
     [InlineData(PrinterStatus.Paused)]
     [InlineData(PrinterStatus.Attention)]
+    [InlineData(PrinterStatus.Busy)]
     public void APrinterWithAPrintInHandIsNeverReadAsHavingIgnoredUs(PrinterStatus status)
     {
         PrintStartVerdict verdict = Decide(Seen(status, JobAnswer.NotAsked));

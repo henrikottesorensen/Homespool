@@ -950,6 +950,56 @@ public sealed class QueueAdvancerTests : IDisposable
         await actor.DidNotReceive().SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// A mid-print <c>Busy</c> excursion does not end the print - the row stays open and is
+    /// promoted back to its ordinary life when the printer reports printing again.
+    /// </summary>
+    /// <remarks>
+    /// <b>Hardware evidence, observed live 2026-08-28.</b> A filament runout on an MK3.5 opened
+    /// with ~8 seconds of <c>BUSY</c> carrying no job id before settling into <c>ATTENTION</c>,
+    /// and the close rule read that as "stopped printing without saying how": the row closed
+    /// <c>Unknown</c> mid-print while the printer went on to finish the file - a running print
+    /// with no open row, which is the printer page's "printing with no filename" symptom.
+    /// </remarks>
+    [Fact]
+    public async Task AMidPrintBusyExcursionDoesNotEndThePrint()
+    {
+        // Arrange - an open print, and the printer momentarily reporting BUSY with no job id
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Printing);
+
+        context.QueuedPrints.RemoveRange(context.QueuedPrints);
+        context.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = PrinterId,
+            FileName = "runout.bgcode",
+            QueuedByUserId = 1,
+            StartedAt = _clock.GetUtcNow(),
+            CommandedAt = _clock.GetUtcNow(),
+            FirmwareJobId = 5,
+            State = PrintState.Printing,
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await ReportAsync(context, PrinterStatus.Busy, jobId: null);
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert - still the active print
+        context.ChangeTracker.Clear();
+        PrintJob active = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        active.EndedAt.Should().BeNull("a busy machine is not a machine that stopped printing");
+        active.State.Should().Be(PrintState.Printing);
+
+        // And when the excursion passes, life continues as if nothing happened.
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 5);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        context.ChangeTracker.Clear();
+        (await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken)).EndedAt.Should().BeNull();
+    }
+
     /// <summary>Overwrites what the printer is last known to have said.</summary>
     /// <remarks>
     /// <c>LastSeenAt</c> moves with it, deliberately: a live state that has not been refreshed since

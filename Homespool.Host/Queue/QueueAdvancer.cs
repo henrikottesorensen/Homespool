@@ -596,7 +596,11 @@ public sealed class QueueAdvancer : BackgroundService
             return null;
         }
 
-        if (status is PrinterStatus.Printing or PrinterStatus.Paused or PrinterStatus.Attention)
+        // Busy belongs in this stall set on hardware evidence: a filament runout opens with
+        // several seconds of BUSY carrying no job id before it settles into ATTENTION (MK3.5,
+        // observed live 2026-08-28), and reading that excursion as an ending closed a row mid-print
+        // while the printer went on to finish the file.
+        if (status is PrinterStatus.Printing or PrinterStatus.Paused or PrinterStatus.Attention or PrinterStatus.Busy)
         {
             return active;
         }

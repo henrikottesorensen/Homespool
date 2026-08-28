@@ -36,14 +36,22 @@ public static class PrintStartRules
     /// command was ignored.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <c>Paused</c> and <c>Attention</c> are stalls inside a print rather than endings, so they
     /// belong here beside <c>Printing</c>. <c>Finished</c> and <c>Stopped</c> deliberately do not:
     /// they mean a print <i>ended</i>, and one that ended inside this window is either not ours or
     /// something no rule here should be guessing about.
+    /// </para>
+    /// <para>
+    /// <c>Busy</c> is here on hardware evidence: a filament runout opens with several seconds of
+    /// <c>BUSY</c> carrying no job id before it settles into <c>ATTENTION</c>, so a busy machine is
+    /// never evidence that a command was ignored or that a print ended.
+    /// </para>
     /// </remarks>
     public static bool LooksBusy(PrinterStatus status)
     {
-        return status is PrinterStatus.Printing or PrinterStatus.Paused or PrinterStatus.Attention;
+        return status is PrinterStatus.Printing or PrinterStatus.Paused or PrinterStatus.Attention
+            or PrinterStatus.Busy;
     }
 
     /// <summary>Works out what became of a print we commanded and never heard back about.</summary>

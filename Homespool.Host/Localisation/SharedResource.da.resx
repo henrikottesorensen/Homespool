@@ -2331,9 +2331,6 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Settings_Label_PrintFiles_MaxUploadBytes" xml:space="preserve">
     <value>Største upload, i bytes</value>
   </data>
-  <data name="Settings_Label_PrusaConnect_MaxIncomingMessageBytes" xml:space="preserve">
-    <value>Største besked fra en printer, i bytes</value>
-  </data>
   <data name="Settings_Label_PrusaConnect_RegistrationCodeLifetimeMinutes" xml:space="preserve">
     <value>Hvor længe en tilknytningskode varer, i minutter</value>
   </data>

@@ -62,6 +62,13 @@ public class PrusaConnectOptions
     /// is bounded by the protocol, and both are things a user may legitimately make larger.
     /// </para>
     /// <para>
+    /// <b>Not offered on the settings page, and the paragraph below is why</b> (Henrik): the failure
+    /// it produces when set wrong is a dropped connection that reads as bad wifi, so a wrong value
+    /// is not merely wrong but misattributed - and the whole point of the default is that it is
+    /// already clear of anything measured. It stays bindable in the settings file for the case this
+    /// exists for, which is a preview or a drive listing outgrowing the headroom.
+    /// </para>
+    /// <para>
     /// <b>Set it well clear of real traffic.</b> Anything near the measured maximum breaks working
     /// printers, and the symptom - a dropped connection - looks exactly like bad wifi. That is why
     /// tripping it logs the printer and the byte count at warning level rather than closing quietly.

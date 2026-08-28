@@ -2418,9 +2418,6 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Settings_Label_PrintFiles_MaxUploadBytes" xml:space="preserve">
     <value>Largest upload, in bytes</value>
   </data>
-  <data name="Settings_Label_PrusaConnect_MaxIncomingMessageBytes" xml:space="preserve">
-    <value>Largest message from a printer, in bytes</value>
-  </data>
   <data name="Settings_Label_PrusaConnect_RegistrationCodeLifetimeMinutes" xml:space="preserve">
     <value>How long a claim code lasts, in minutes</value>
   </data>

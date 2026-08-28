@@ -60,7 +60,6 @@ public static class EditableSettings
         new(typeof(PrintFileStorageOptions), PrintFileStorageOptions.SectionName, nameof(PrintFileStorageOptions.MaxUploadBytes), SettingGrade.Live),
 
         // Printer protocol.
-        new(typeof(PrusaConnectOptions), PrusaConnectOptions.SectionName, nameof(PrusaConnectOptions.MaxIncomingMessageBytes), SettingGrade.Live),
         new(typeof(PrusaConnectOptions), PrusaConnectOptions.SectionName, nameof(PrusaConnectOptions.RegistrationCodeLifetimeMinutes), SettingGrade.Live),
 
         // Read once per connection actor at PrinterConnectionActorFactory:41, so a printer already

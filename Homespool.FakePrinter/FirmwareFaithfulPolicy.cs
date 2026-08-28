@@ -46,6 +46,24 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
     /// </summary>
     public Func<uint>? FileIdSource { get; init; }
 
+    /// <summary>
+    /// Arms the <c>START_PRINT</c> false negative: the next <c>START_PRINT</c> that would have
+    /// succeeded is executed - the print really begins - but answered
+    /// <c>REJECTED "No job in progress"</c>, carrying the command id and the state the machine was
+    /// in before it accepted. One-shot; a refused command (bad path, wrong state) does not consume
+    /// it.
+    /// </summary>
+    /// <remarks>
+    /// Hardware does this whenever the ack loses a race: the <c>JOB_INFO</c> answering a
+    /// <c>START_PRINT</c> is rendered against the machine's momentary state
+    /// (render.cpp:289-297), and between accepting the print and reporting <c>PRINTING</c> the
+    /// machine passes through <c>PrintInit</c>, which reports <c>READY</c> with no job
+    /// (printer_state.cpp:335-344) - so a successful start is answered as a rejection. A server
+    /// treating that reason as terminal fails a print that is running, which is the phantom this
+    /// exists to reproduce on demand.
+    /// </remarks>
+    public bool NextStartPrintAnswersNoJobInProgress { get; set; }
+
     /// <inheritdoc/>
     public override IReadOnlyList<PlannedReply> Answer(ServerCommandFrame frame, FakeDevice device)
     {
@@ -321,11 +339,14 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
     /// that started as an answer it did not recognise.
     /// </para>
     /// <para>
-    /// <b>Only four reasons are reachable</b> - <c>Forbidden path</c>, <c>File not found</c>,
-    /// <c>Can't print now</c> and <c>Tools mapping not enabled</c>. <c>File is busy</c> and
-    /// <c>File is being transferred</c> belong to <c>delete_file</c> and are deliberately not sent
-    /// here; a server waiting on either as a busy signal would wait for something firmware cannot
-    /// produce.
+    /// <b>Five reasons are reachable</b> - <c>Forbidden path</c>, <c>File not found</c>,
+    /// <c>Can't print now</c>, <c>Tools mapping not enabled</c>, and
+    /// <c>No job in progress</c>, which is not a refusal at all: it is the ack of a print that
+    /// <i>took</i>, rendered inside the start window - see
+    /// <see cref="NextStartPrintAnswersNoJobInProgress"/>, which reproduces it on demand.
+    /// <c>File is busy</c> and <c>File is being transferred</c> belong to <c>delete_file</c> and
+    /// are deliberately not sent here; a server waiting on either as a busy signal would wait for
+    /// something firmware cannot produce.
     /// </para>
     /// <para>
     /// A file still arriving is <b>not</b> refused: <c>is_valid_file_or_transfer</c> accepts a partial
@@ -358,9 +379,23 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
             return [Reject(frame.CommandId, device, "File not found")];
         }
 
+        // Sampled before the transition for the false-negative arm below: firmware renders that
+        // rejection while still in a state that reports READY/IDLE, not the settled PRINTING.
+        string stateBefore = device.WireState;
+
         if (device.TryStartPrint(path) is not { } jobId)
         {
             return [Reject(frame.CommandId, device, "Can't print now")];
+        }
+
+        if (NextStartPrintAnswersNoJobInProgress)
+        {
+            NextStartPrintAnswersNoJobInProgress = false;
+
+            return
+            [
+                Reply(EventMessageBuilder.Build("REJECTED", stateBefore, frame.CommandId, "No job in progress")),
+            ];
         }
 
         return [Reply(EventMessageBuilder.Build("JOB_INFO", device.WireState, frame.CommandId, jobId: jobId))];

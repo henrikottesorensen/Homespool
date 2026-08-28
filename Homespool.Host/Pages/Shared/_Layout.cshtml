@@ -134,7 +134,22 @@
     Not localised: a version and a commit are machine text, and there is no word here to translate. *@
             @if (SignInManager.IsSignedIn(User))
             {
-                <span class="ms-3 small text-nowrap">@BuildInformation.Summary</span>
+@*  One flex item, not two: the parent uses justify-content-between, which would otherwise treat
+    the build stamp and the admin mark below as separate children and spread the leftover width
+    between them the same way it does between the copyright block and this one - the gap that
+    belongs at the edge of the footer, not in the middle of one corner of it. Grouping them keeps
+    the small ms-1 between the two the only gap that shows. *@
+                <span class="ms-3 small text-nowrap d-inline-flex align-items-center">
+                    @BuildInformation.Summary
+@*  Not gated on the admin role here - the destination already enforces
+    [Authorize(Roles = AdminBootstrap.AdminRole)], so a second check on the link would only ever
+    agree with the first. No aria-label or title: the accessible name is the character itself,
+    same as what a sighted reader gets.
+
+    Low contrast at rest, full on hover and keyboard focus - reachable without announcing
+    itself. *@
+                    <a asp-page="/Admin/Invites/Index" class="ms-1 footer-admin-mark">π</a>
+                </span>
             }
         </div>
     </footer>

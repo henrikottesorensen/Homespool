@@ -730,3 +730,19 @@ body.camera-maximised-open {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* The footer's admin shortcut. Faint at rest so it reads as a stray character rather than a
+   control; full contrast on hover and on keyboard focus, so it is still findable rather than a
+   dead pixel. currentColor rather than a named colour: the footer is muted text already, in
+   either theme, and this should not be a second thing to keep in step with it. */
+.footer-admin-mark {
+  color: currentColor;
+  opacity: .25;
+  text-decoration: none;
+  transition: opacity .15s ease-in-out;
+}
+
+.footer-admin-mark:hover,
+.footer-admin-mark:focus-visible {
+  opacity: 1;
+}

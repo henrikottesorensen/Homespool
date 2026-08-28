@@ -2385,9 +2385,6 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Settings_Section_Security" xml:space="preserve">
     <value>Account security</value>
   </data>
-  <data name="Settings_Section_AttemptLimits" xml:space="preserve">
-    <value>Guess limits</value>
-  </data>
   <data name="Settings_Section_Invitations" xml:space="preserve">
     <value>Invitation defaults</value>
   </data>
@@ -2410,7 +2407,7 @@ A stick that already works with your printer is the right stick. If you are form
     <value>Require an authenticator on every account</value>
   </data>
   <data name="Settings_Label_AttemptLimits_MaxFailedAttempts" xml:space="preserve">
-    <value>Failed attempts before a backoff</value>
+    <value>Failed sign-ins before the account is locked</value>
   </data>
   <data name="Settings_Label_Invitations_LifetimeHours" xml:space="preserve">
     <value>How long an invitation stays valid, in hours</value>

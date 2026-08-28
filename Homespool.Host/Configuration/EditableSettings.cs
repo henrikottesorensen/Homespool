@@ -50,7 +50,13 @@ public static class EditableSettings
 
         // Attempt limits - read per check at AttemptLimiter:121,130.
         // Only the count. The two timing knobs are deliberately absent - see AttemptLimitOptions.
-        new(typeof(AttemptLimitOptions), AttemptLimitOptions.SectionName, nameof(AttemptLimitOptions.MaxFailedAttempts), SettingGrade.Live),
+        // Shown under the account heading rather than its own: it is bound from a different class,
+        // which is not a reason to give a reader a second heading for the same subject.
+        new(typeof(AttemptLimitOptions),
+            AttemptLimitOptions.SectionName,
+            nameof(AttemptLimitOptions.MaxFailedAttempts),
+            SettingGrade.Live,
+            DisplayGroup: SecurityOptions.SectionName),
 
         // Invitations - read when an invite is created, at InvitationService:73.
         new(typeof(InvitationOptions), InvitationOptions.SectionName, nameof(InvitationOptions.LifetimeHours), SettingGrade.Live),

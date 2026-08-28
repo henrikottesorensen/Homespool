@@ -20,6 +20,10 @@ namespace Homespool.Host.Configuration;
 /// A localisation key naming the moment a <see cref="SettingGrade.Deferred"/> setting starts being
 /// obeyed. Null for every other grade, whose moment the grade itself already names.
 /// </param>
+/// <param name="DisplayGroup">
+/// The heading this appears under, when that is not its own <paramref name="Section"/>. Null for
+/// almost everything.
+/// </param>
 /// <remarks>
 /// <para>
 /// <b>An allowlist entry, not a description of configuration.</b> The 65 options properties are not
@@ -40,7 +44,8 @@ public sealed record EditableSetting(
     string Key,
     SettingGrade Grade,
     bool IsSecret = false,
-    string? AppliesWhenKey = null)
+    string? AppliesWhenKey = null,
+    string? DisplayGroup = null)
 {
     /// <summary>
     /// The configuration path this setting is read and written at, in <c>Section:Key</c> form.
@@ -57,4 +62,17 @@ public sealed record EditableSetting(
     /// arrived some other way be recognised and adopted rather than mistaken for ciphertext.
     /// </remarks>
     public string StoredPath => IsSecret ? $"{Section}:Protected{Key}" : Path;
+
+    /// <summary>
+    /// The heading this setting is shown under.
+    /// </summary>
+    /// <remarks>
+    /// <b>Separate from <see cref="Section"/> because a configuration section is not a subject.</b>
+    /// Which class a setting is bound from is an implementation fact, and letting it decide the
+    /// headings put two one-setting groups next to each other that were both plainly about accounts.
+    /// This only moves where a setting is <i>rendered</i>; it is stored, validated and read at
+    /// <see cref="Path"/> either way, so grouping can be rearranged without touching a file anybody
+    /// has written.
+    /// </remarks>
+    public string Group => DisplayGroup ?? Section;
 }

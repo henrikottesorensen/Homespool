@@ -118,7 +118,7 @@ public class SettingsModel : PageModel
 
     private static IReadOnlyList<IGrouping<string, EditableSetting>> Grouped()
     {
-        return [.. EditableSettings.All.GroupBy(setting => setting.Section)];
+        return [.. EditableSettings.All.GroupBy(setting => setting.Group)];
     }
 
     private void Load()

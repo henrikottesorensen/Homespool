@@ -2298,9 +2298,6 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Settings_Section_Security" xml:space="preserve">
     <value>Kontosikkerhed</value>
   </data>
-  <data name="Settings_Section_AttemptLimits" xml:space="preserve">
-    <value>Forsøgsgrænser</value>
-  </data>
   <data name="Settings_Section_Invitations" xml:space="preserve">
     <value>Standard for invitationer</value>
   </data>

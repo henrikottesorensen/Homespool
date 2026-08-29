@@ -2266,10 +2266,10 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>Standard for invitationer</value>
   </data>
   <data name="Settings_Section_PrusaConnect" xml:space="preserve">
-    <value>Printerprotokol</value>
+    <value>Kommunikation med Prusa-printere</value>
   </data>
   <data name="Settings_Section_Storage" xml:space="preserve">
-    <value>Telemetrilager</value>
+    <value>Lagringsindstillinger</value>
   </data>
   <data name="Settings_Section_Cameras" xml:space="preserve">
     <value>Kameraindstillinger</value>
@@ -2329,10 +2329,10 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>STUN-server, kontaktes kun når det er tilladt</value>
   </data>
   <data name="Settings_Label_Smtp_Host" xml:space="preserve">
-    <value>Mailserver</value>
+    <value>SMTP-server</value>
   </data>
   <data name="Settings_Label_Smtp_Port" xml:space="preserve">
-    <value>Port til mailserver</value>
+    <value>SMTP-port</value>
   </data>
   <data name="Settings_Label_Smtp_UseImplicitTls" xml:space="preserve">
     <value>Krypteret fra første byte (port 465)</value>
@@ -2341,10 +2341,10 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>Ingen kryptering overhovedet</value>
   </data>
   <data name="Settings_Label_Smtp_UserName" xml:space="preserve">
-    <value>Brugernavn til mailserver</value>
+    <value>Brugernavn til SMTP-server</value>
   </data>
   <data name="Settings_Label_Smtp_Password" xml:space="preserve">
-    <value>Adgangskode til mailserver</value>
+    <value>Adgangskode til SMTP-server</value>
   </data>
   <data name="Settings_Label_Smtp_FromAddress" xml:space="preserve">
     <value>Afsenderadresse</value>
@@ -2356,7 +2356,7 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>Giv op efter, i sekunder</value>
   </data>
   <data name="Settings_Label_Smtp_ProbeOnStartup" xml:space="preserve">
-    <value>Kontrollér mailserveren ved opstart</value>
+    <value>Kontrollér SMTP-serveren ved opstart</value>
   </data>
   <data name="Settings_Subsection_PrintFiles" xml:space="preserve">
     <value>Printfiler</value>

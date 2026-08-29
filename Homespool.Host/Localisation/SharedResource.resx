@@ -2314,7 +2314,7 @@ A stick that already works with your printer is the right stick. If you are form
     <value>Settings</value>
   </data>
   <data name="Settings_Intro" xml:space="preserve">
-    <value>Deployment-wide settings. Everything else - ports, paths and the addresses printers use - is set where the stack is started, because it has to agree with that file.</value>
+    <value>Settings for this whole deployment, stored on the data volume. Ports, directories and the address printers connect to are deliberately not here: they live in .env and compose.yaml, because they have to match what Docker actually publishes and mounts. Changing them here could not make Docker agree.</value>
   </data>
   <data name="Settings_Save" xml:space="preserve">
     <value>Save settings</value>
@@ -2353,13 +2353,13 @@ A stick that already works with your printer is the right stick. If you are form
     <value>Invitation defaults</value>
   </data>
   <data name="Settings_Section_PrusaConnect" xml:space="preserve">
-    <value>Printer protocol</value>
+    <value>Prusa printer communication</value>
   </data>
   <data name="Settings_Section_Storage" xml:space="preserve">
-    <value>Telemetry storage</value>
+    <value>Storage settings</value>
   </data>
   <data name="Settings_Section_Cameras" xml:space="preserve">
-    <value>Camera behaviour</value>
+    <value>Camera settings</value>
   </data>
   <data name="Settings_Section_Smtp" xml:space="preserve">
     <value>Outgoing mail</value>
@@ -2416,10 +2416,10 @@ A stick that already works with your printer is the right stick. If you are form
     <value>STUN server, contacted only when allowed</value>
   </data>
   <data name="Settings_Label_Smtp_Host" xml:space="preserve">
-    <value>Mail server</value>
+    <value>SMTP server</value>
   </data>
   <data name="Settings_Label_Smtp_Port" xml:space="preserve">
-    <value>Mail server port</value>
+    <value>SMTP port</value>
   </data>
   <data name="Settings_Label_Smtp_UseImplicitTls" xml:space="preserve">
     <value>Encrypted from the first byte (port 465)</value>
@@ -2428,10 +2428,10 @@ A stick that already works with your printer is the right stick. If you are form
     <value>No encryption at all</value>
   </data>
   <data name="Settings_Label_Smtp_UserName" xml:space="preserve">
-    <value>Mail server username</value>
+    <value>SMTP username</value>
   </data>
   <data name="Settings_Label_Smtp_Password" xml:space="preserve">
-    <value>Mail server password</value>
+    <value>SMTP password</value>
   </data>
   <data name="Settings_Label_Smtp_FromAddress" xml:space="preserve">
     <value>From address</value>
@@ -2443,7 +2443,7 @@ A stick that already works with your printer is the right stick. If you are form
     <value>Give up after, in seconds</value>
   </data>
   <data name="Settings_Label_Smtp_ProbeOnStartup" xml:space="preserve">
-    <value>Check the mail server at startup</value>
+    <value>Check the SMTP server at startup</value>
   </data>
   <data name="Settings_Subsection_PrintFiles" xml:space="preserve">
     <value>Print files</value>

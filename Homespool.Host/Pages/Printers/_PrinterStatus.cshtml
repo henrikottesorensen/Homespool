@@ -36,13 +36,16 @@
 
         @* Under the badge rather than beside it: the state word answers "what", and a printer
            asking for somebody has a "why" that is worth a line of its own. Absent for every state
-           that is not waiting, and for a dialog the printer declined to explain. *@
+           that is not waiting, and for a dialog the printer declined to explain.
+
+           The sentence and nothing else. It is not attributed to the printer, because only a red
+           screen sends words over the wire - an ordinary attention sends a number, and these are
+           our catalogue's words for it. Nor is the code shown: an attention almost always has one,
+           so it would be permanent furniture on the card for a value that matters when somebody is
+           searching Prusa's site and never otherwise. *@
         @if (Model.AttentionReason(liveState) is { } reason)
         {
-            <p class="printer-attention-reason mb-3">
-                <span class="text-body-secondary">@Localiser["Printers_PrinterSays"]</span>
-                @reason
-            </p>
+            <p class="printer-attention-reason mb-3">@reason</p>
         }
 
         @if (liveState is null)

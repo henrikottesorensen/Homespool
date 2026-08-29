@@ -194,8 +194,10 @@ public sealed class PrinterStatusPollTests : IAsyncLifetime, IDisposable
 
             fragment.Should().Contain("Please replace filament.",
                                       "this is the reason the badge could not give");
-            fragment.Should().Contain("The printer says",
-                                      "and it is attributed to the printer rather than stated as ours");
+            fragment.Should().NotContain("The printer says",
+                                         "for an ordinary attention the words are our catalogue's, not the printer's");
+            fragment.Should().NotContain("23829",
+                                         "the code is not furniture for the card - the sentence is the point");
         }
     }
 

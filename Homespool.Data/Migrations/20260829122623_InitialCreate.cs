@@ -542,6 +542,7 @@ namespace Homespool.Data.Migrations
                     QueuedByUserId = table.Column<long>(type: "INTEGER", nullable: false),
                     PrinterPath = table.Column<string>(type: "TEXT", nullable: true),
                     StartedAt = table.Column<long>(type: "INTEGER", nullable: false),
+                    CommandedAt = table.Column<long>(type: "INTEGER", nullable: true),
                     EndedAt = table.Column<long>(type: "INTEGER", nullable: true),
                     FirmwareJobId = table.Column<int>(type: "INTEGER", nullable: true),
                     State = table.Column<string>(type: "TEXT", nullable: false),

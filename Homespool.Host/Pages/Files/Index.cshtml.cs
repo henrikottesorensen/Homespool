@@ -127,10 +127,18 @@ public class IndexModel : PageModel
     public long MaxUploadBytes => _options.MaxUploadBytes;
 
     /// <summary>
-    /// The printers this user can see, for the per-row send control. Empty means the control is not
-    /// rendered at all - offering a select with nothing in it explains nothing.
+    /// The printers this user can see, for the page-level printer selector. Empty means the selector
+    /// and every row's Send/Queue button are not rendered at all - offering a select with nothing in
+    /// it explains nothing.
     /// </summary>
     public IReadOnlyList<Printer> Printers { get; private set; } = [];
+
+    /// <summary>
+    /// The one printer every row's Send/Queue button acts on. Carried through every link and form on
+    /// the page as a route value, the same way <see cref="Sort"/> is, so choosing one survives a sort,
+    /// a rename or a page reload without becoming session state.
+    /// </summary>
+    public int? SelectedPrinterId { get; private set; }
 
     /// <summary>Bytes as a person reads them. Binary units, because that is what a printer's storage uses.</summary>
     public static string FormatSize(long bytes)
@@ -181,10 +189,11 @@ public class IndexModel : PageModel
         return column != Sort ? string.Empty : Descending ? " ↓" : " ↑";
     }
 
-    public async Task OnGetAsync(string? sort, bool desc, string? rename, CancellationToken cancellationToken)
+    public async Task OnGetAsync(string? sort, bool desc, string? rename, int? printerId, CancellationToken cancellationToken)
     {
         Load(sort, desc);
         await LoadPrintersAsync(cancellationToken);
+        SelectedPrinterId = ResolveSelectedPrinterId(printerId);
 
         // Only offer to rename something that is actually there, so a stale link is an ordinary page
         // rather than an input editing nothing.
@@ -192,6 +201,22 @@ public class IndexModel : PageModel
             rename is not null && Files.Any(file => string.Equals(file.FileName, rename, StringComparison.OrdinalIgnoreCase)) ?
                 rename :
                 null;
+    }
+
+    /// <summary>
+    /// Which printer the selector shows as chosen: the one named in the URL if it is still one of the
+    /// caller's own, otherwise the first in the list - the same default a plain <c>&lt;select&gt;</c>
+    /// with no explicit selection would have shown per row before this page had one selector instead
+    /// of many.
+    /// </summary>
+    private int? ResolveSelectedPrinterId(int? requested)
+    {
+        if (requested is not null && Printers.Any(printer => printer.Id == requested))
+        {
+            return requested;
+        }
+
+        return Printers.Count > 0 ? Printers[0].Id : null;
     }
 
     /// <summary>
@@ -223,6 +248,7 @@ public class IndexModel : PageModel
     public async Task<IActionResult> OnPostUploadAsync(IFormFile? file,
                                                        string? sort,
                                                        bool desc,
+                                                       int? printerId,
                                                        CancellationToken cancellationToken)
     {
         long? userId = UserId();
@@ -236,7 +262,7 @@ public class IndexModel : PageModel
         {
             (StatusMessage, StatusSuccess) = (_localiser["Files_ChooseFile"], false);
 
-            return RedirectToSelf(sort, desc);
+            return RedirectToSelf(sort, desc, printerId);
         }
 
         if (file.Length > _options.MaxUploadBytes)
@@ -246,7 +272,7 @@ public class IndexModel : PageModel
             (StatusMessage, StatusSuccess) =
                 (_localiser["Files_TooLarge", FormatSize(_options.MaxUploadBytes)], false);
 
-            return RedirectToSelf(sort, desc);
+            return RedirectToSelf(sort, desc, printerId);
         }
 
         PendingUpload staged;
@@ -261,7 +287,7 @@ public class IndexModel : PageModel
         {
             (StatusMessage, StatusSuccess) = (_errors.For(e), false);
 
-            return RedirectToSelf(sort, desc);
+            return RedirectToSelf(sort, desc, printerId);
         }
 
         try
@@ -278,13 +304,14 @@ public class IndexModel : PageModel
             PendingName = staged.FileName;
         }
 
-        return RedirectToSelf(sort, desc);
+        return RedirectToSelf(sort, desc, printerId);
     }
 
     /// <summary>Answers the replace question with yes, using bytes already on disk.</summary>
     public async Task<IActionResult> OnPostReplaceAsync(string token,
                                                         string? sort,
                                                         bool desc,
+                                                        int? printerId,
                                                         CancellationToken cancellationToken)
     {
         long? userId = UserId();
@@ -301,11 +328,11 @@ public class IndexModel : PageModel
             (_localiser["Files_UploadGone"], false) :
             (_localiser["Files_Replaced", stored.FileName], true);
 
-        return RedirectToSelf(sort, desc);
+        return RedirectToSelf(sort, desc, printerId);
     }
 
     /// <summary>Answers it with no, and throws the staged bytes away now rather than at the sweep.</summary>
-    public IActionResult OnPostDiscard(string token, string? sort, bool desc)
+    public IActionResult OnPostDiscard(string token, string? sort, bool desc, int? printerId)
     {
         long? userId = UserId();
 
@@ -317,7 +344,7 @@ public class IndexModel : PageModel
         _files.Discard(CallerResolver.For(userId.Value, User), token);
         (StatusMessage, StatusSuccess) = (_localiser["Files_Discarded"], true);
 
-        return RedirectToSelf(sort, desc);
+        return RedirectToSelf(sort, desc, printerId);
     }
 
     /// <summary>
@@ -366,7 +393,7 @@ public class IndexModel : PageModel
         {
             (StatusMessage, StatusSuccess) = (_localiser["Files_PrinterNotYours"], false);
 
-            return RedirectToSelf(sort, desc);
+            return RedirectToSelf(sort, desc, printerId);
         }
 
         try
@@ -390,7 +417,7 @@ public class IndexModel : PageModel
             (StatusMessage, StatusSuccess) = (_localiser["Files_PrinterReadOnly"], false);
         }
 
-        return RedirectToSelf(sort, desc);
+        return RedirectToSelf(sort, desc, printerId);
     }
 
     public async Task<IActionResult> OnPostSendAsync(string name,
@@ -412,7 +439,7 @@ public class IndexModel : PageModel
         {
             (StatusMessage, StatusSuccess) = (_localiser["Files_NoSuchFile", name], false);
 
-            return RedirectToSelf(sort, desc);
+            return RedirectToSelf(sort, desc, printerId);
         }
 
         if (file.Length >= uint.MaxValue)
@@ -420,7 +447,7 @@ public class IndexModel : PageModel
             // orig_size is uint32 on the wire; a file this large cannot be described at all.
             (StatusMessage, StatusSuccess) = (_localiser["Files_OverFourGiB"], false);
 
-            return RedirectToSelf(sort, desc);
+            return RedirectToSelf(sort, desc, printerId);
         }
 
         // Looked up in the caller's own list rather than fetched by the id the form supplied. That
@@ -434,7 +461,7 @@ public class IndexModel : PageModel
         {
             (StatusMessage, StatusSuccess) = (_localiser["Files_PrinterNotYours"], false);
 
-            return RedirectToSelf(sort, desc);
+            return RedirectToSelf(sort, desc, printerId);
         }
 
         try
@@ -476,13 +503,14 @@ public class IndexModel : PageModel
             (StatusMessage, StatusSuccess) = (_localiser["Files_SendFailed"], false);
         }
 
-        return RedirectToSelf(sort, desc);
+        return RedirectToSelf(sort, desc, printerId);
     }
 
     public async Task<IActionResult> OnPostRenameAsync(string name,
                                                        string newName,
                                                        string? sort,
                                                        bool desc,
+                                                       int? printerId,
                                                        CancellationToken cancellationToken)
     {
         long? userId = UserId();
@@ -511,7 +539,7 @@ public class IndexModel : PageModel
             (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
 
-        return RedirectToSelf(sort, desc);
+        return RedirectToSelf(sort, desc, printerId);
     }
 
     /// <summary>
@@ -525,6 +553,7 @@ public class IndexModel : PageModel
     public async Task<IActionResult> OnPostDeleteAsync(string name,
                                                        string? sort,
                                                        bool desc,
+                                                       int? printerId,
                                                        CancellationToken cancellationToken)
     {
         long? userId = UserId();
@@ -541,7 +570,7 @@ public class IndexModel : PageModel
             _ => (_localiser["Files_NoSuchFile", name], false),
         };
 
-        return RedirectToSelf(sort, desc);
+        return RedirectToSelf(sort, desc, printerId);
     }
 
     /// <summary>
@@ -562,9 +591,9 @@ public class IndexModel : PageModel
         return printer.Name ?? printer.Model ?? printer.Uuid.ToString();
     }
 
-    private IActionResult RedirectToSelf(string? sort, bool desc)
+    private IActionResult RedirectToSelf(string? sort, bool desc, int? printerId)
     {
-        return RedirectToPage(new { sort, desc });
+        return RedirectToPage(new { sort, desc, printerId });
     }
 
     private async Task LoadPrintersAsync(CancellationToken cancellationToken)

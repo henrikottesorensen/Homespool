@@ -223,6 +223,16 @@ body {
   overflow-wrap: anywhere;
 }
 
+/* Lets one table column take all the space the others don't need. A bare width, however small, is
+   what matters here - it opts a column out of auto layout's rule that leftover table width is split
+   among every column with no width specified at all, not just the one meant to grow. Put this on
+   every column except the one that should expand; white-space keeps a same-line heading or an empty
+   header from wrapping once its column is squeezed to content width. */
+.col-shrink {
+  width: 1%;
+  white-space: nowrap;
+}
+
 /* The upload area, and what it looks like with a file held over it. Dashed because that is the
    conventional shape of "you may drop here"; without scripting it is simply a border, and the
    picker inside it behaves the same either way. */
@@ -719,4 +729,20 @@ body.camera-maximised-open {
   .printer-tools {
     grid-template-columns: 1fr 1fr;
   }
+}
+
+/* The footer's admin shortcut. Faint at rest so it reads as a stray character rather than a
+   control; full contrast on hover and on keyboard focus, so it is still findable rather than a
+   dead pixel. currentColor rather than a named colour: the footer is muted text already, in
+   either theme, and this should not be a second thing to keep in step with it. */
+.footer-admin-mark {
+  color: currentColor;
+  opacity: .25;
+  text-decoration: none;
+  transition: opacity .15s ease-in-out;
+}
+
+.footer-admin-mark:hover,
+.footer-admin-mark:focus-visible {
+  opacity: 1;
 }

@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -178,9 +180,9 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
     /// </summary>
     /// <remarks>
     /// A test host runs no JavaScript, so this asserts what it can: that the drop zone's hook is
-    /// present for <c>site.js</c> to find, and - more importantly - that the plain picker and its
-    /// form are inside it. The drop only fills that input; if this test passes, uploading works
-    /// whether or not the script ever runs.
+    /// present for <c>site.js</c> to find, and - more importantly - that the plain picker, its button
+    /// and its form are inside it. With scripting off this is just a bordered box around a working
+    /// file picker; with it, a picked file posts itself and the button goes unused.
     /// </remarks>
     [Fact]
     public async Task TheUploadFormWorksWithoutScriptAndCarriesTheDropHook()
@@ -196,6 +198,7 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         page.Should().Contain("""type="file" name="file" """.TrimEnd(),
                               "and the drop only fills this input, so it has to be the thing that posts");
         page.Should().Contain("enctype=\"multipart/form-data\"");
+        page.Should().Contain("btn-primary text-nowrap", "the fallback for when the script never runs");
 
         client.Dispose();
     }
@@ -219,6 +222,68 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         page.Should().NotContain("handler=Send", "a select with no options is worse than no select");
 
         client.Dispose();
+    }
+
+    /// <summary>
+    /// The rework this class exists to pin: one printer selector for the whole page, not one per row.
+    /// </summary>
+    [Fact]
+    public async Task ThereIsOnePrinterSelectorForTheWholePageNotOnePerRow()
+    {
+        // Arrange
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "pagepicker@example.com");
+        await ClaimAPrinterAsync(client);
+
+        await UploadAsync(client, "one.gcode", 128);
+        await UploadAsync(client, "two.gcode", 128);
+
+        // Act
+        string page =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
+
+        // Assert
+        Regex.Matches(page, "<select").Count.Should().Be(
+            1, "two rows sharing one printer choice means one <select>, not one each");
+
+        // The DB id in the selector's <option> is what every row's Send/Queue form has to carry -
+        // as a route value, the same way sort and rename already are, rather than a select of its own.
+        string printerId = Regex.Match(page, """<option value="(\d+)"[^>]*selected""").Groups[1].Value;
+        printerId.Should().NotBeEmpty("the claimed printer has to be the one the selector shows chosen");
+
+        Regex.Matches(page, $"printerId={printerId}").Count.Should().BeGreaterThanOrEqualTo(
+            4, "the top selector plus both rows' Send and Queue buttons all carry the same id");
+
+        client.Dispose();
+    }
+
+    /// <summary>
+    /// Registers and claims a fake printer as the given, already-authenticated client - the same
+    /// two calls <c>EndToEndEnrolmentTests</c> drives, kept minimal because this suite only needs a
+    /// printer to exist for the caller, not the enrolment contract itself.
+    /// </summary>
+    private async Task ClaimAPrinterAsync(HttpClient client)
+    {
+        using HttpClient anonymous = PrinterListener.CreateClient(_factory);
+
+        using HttpResponseMessage registerResponse = await EnrolmentFlowHelper.SendPrinterRegisterAsync(anonymous, new
+        {
+            sn = Guid.NewGuid().ToString("N"),
+            fingerprint = Guid.NewGuid().ToString("N"),
+            printer_type = "1.3.5",
+            firmware = "6.4.0+11974",
+        });
+
+        registerResponse.EnsureSuccessStatusCode();
+        string code = registerResponse.Headers.GetValues("Code").Single();
+
+        using HttpResponseMessage claimResponse = await client.PostAsJsonAsync(
+            "/api/v1/printers/register",
+            new { name = "Picker printer", location = "Test bench", code },
+            TestContext.Current.CancellationToken);
+
+        claimResponse.EnsureSuccessStatusCode();
     }
 
     /// <summary>

@@ -18,7 +18,8 @@ public class MessageDispatcherTests
 {
     private static MessageDispatcher NewDispatcher()
     {
-        return new(NullLogger<MessageDispatcher>.Instance, NewTracker(), TimeProvider.System);
+        return new(NullLogger<MessageDispatcher>.Instance, NewTracker(), TimeProvider.System,
+                   PrinterTrafficLogTests.Off);
     }
 
     private static UnknownFieldTracker NewTracker()

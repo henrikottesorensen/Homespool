@@ -42,9 +42,11 @@ public enum JobAnswer
     /// The printer says it has no job at all - firmware's <c>"No job in progress"</c>.
     /// </summary>
     /// <remarks>
-    /// <b>The only definite negative on the wire.</b> A status can be stale by a telemetry interval
-    /// and a timeout says nothing; this is the machine stating in an answer of its own that there is
-    /// nothing running.
+    /// <b>A negative, but not an instant one.</b> Firmware renders this answer against its momentary
+    /// state, and a print it has accepted passes through a state with no job before it reports
+    /// <c>PRINTING</c> - so inside the start window this is what a print that is starting sounds
+    /// like. The rules weigh it like a fresh not-printing report: conclusive only once the grace
+    /// period has passed with the printer not looking busy.
     /// </remarks>
     NoJob = 4,
 

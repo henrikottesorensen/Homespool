@@ -6,6 +6,24 @@
 
 <h1>@ViewData["Title"]</h1>
 
+@if (Model.Printers.Count > 0)
+{
+    @* One printer for every row's Send/Queue button, chosen here rather than per row - a plain GET
+       so the choice is bookmarkable and survives the back button, same as the sort headers below. *@
+    <form method="get" asp-page="./Index" class="d-flex align-items-center gap-2 mb-3">
+        <label class="form-label mb-0" for="printer-select">@Localiser["Common_Printer"]</label>
+        <select id="printer-select" name="printerId" class="form-select form-select-sm w-auto">
+            @foreach (var printer in Model.Printers)
+            {
+                <option value="@printer.Id" selected="@(printer.Id == Model.SelectedPrinterId)">@(printer.Name ?? printer.Model ?? printer.Uuid.ToString())</option>
+            }
+        </select>
+        <input type="hidden" name="sort" value="@Model.Sort" />
+        <input type="hidden" name="desc" value="@Model.Descending" />
+        <button type="submit" class="btn btn-sm btn-outline-primary">@Localiser["Common_Save"]</button>
+    </form>
+}
+
 @if (!string.IsNullOrEmpty(Model.StatusMessage))
 {
     <div class="alert @(Model.StatusSuccess ? "alert-success" : "alert-warning")" role="alert">@Model.StatusMessage</div>
@@ -21,6 +39,7 @@
               asp-route-token="@Model.PendingToken"
               asp-route-sort="@Model.Sort"
               asp-route-desc="@Model.Descending"
+              asp-route-printerId="@Model.SelectedPrinterId"
               class="d-inline">
             <button type="submit" class="btn btn-sm btn-warning">@Localiser["Files_Replace"]</button>
         </form>
@@ -28,18 +47,24 @@
               asp-route-token="@Model.PendingToken"
               asp-route-sort="@Model.Sort"
               asp-route-desc="@Model.Descending"
+              asp-route-printerId="@Model.SelectedPrinterId"
               class="d-inline">
             <button type="submit" class="btn btn-sm btn-outline-secondary">@Localiser["Files_KeepExisting"]</button>
         </form>
     </div>
 }
 
-@* data-upload-dropzone is what site.js looks for. Dropping a file fills the input below rather than
-   uploading by itself, so the form, its antiforgery token and the handler are the one path in or
-   out - and with scripting off this is just a bordered box around a working file picker. *@
-<div class="upload-dropzone mb-2" data-upload-dropzone>
+@* data-upload-dropzone is what site.js looks for. It submits this form itself, on a drop or on a
+   file picked through the input - the button is the fallback for when that script never runs.
+   The three data-upload-* attributes carry the sentences a multi-file drop needs, unformatted -
+   site.js substitutes the placeholders itself once it knows how many files were dropped, which
+   the localiser cannot know at render time. *@
+<div class="upload-dropzone mb-2" data-upload-dropzone
+     data-upload-confirm-batch="@Localiser["Files_ConfirmBatchUpload"]"
+     data-upload-too-many="@Localiser["Files_TooManyDropped"]"
+     data-upload-progress="@Localiser["Files_UploadingProgress"]">
     <form method="post" asp-page-handler="Upload" enctype="multipart/form-data"
-          asp-route-sort="@Model.Sort" asp-route-desc="@Model.Descending"
+          asp-route-sort="@Model.Sort" asp-route-desc="@Model.Descending" asp-route-printerId="@Model.SelectedPrinterId"
           class="d-flex align-items-center gap-2">
         <input type="file" name="file" accept=".gcode,.bgcode,.gco,.bgc" class="form-control" aria-label="@Localiser["Files_UploadLabel"]" required />
         <button type="submit" class="btn btn-primary text-nowrap">@Localiser["Files_Upload"]</button>
@@ -60,28 +85,33 @@ else
             <tr>
                 @* Headings are links rather than script: the sorted view is then linkable, bookmarkable
                    and survives the back button, none of which a JavaScript toggle would give. *@
+                @* Name is the only column with no col-shrink: everything else is pinned to its content
+                   width, so Name is left holding all the space nothing else asked for. *@
                 <th>
                     <a asp-page="./Index"
                        asp-route-sort="@IndexModel.Columns.Name"
                        asp-route-desc="@Model.NextDescendingFor(IndexModel.Columns.Name)"
+                       asp-route-printerId="@Model.SelectedPrinterId"
                        aria-sort="@(Model.Sort == IndexModel.Columns.Name ? (Model.Descending ? "descending" : "ascending") : "none")"
                        class="link-body-emphasis text-decoration-none">@Localiser["Common_Name"]@(Model.IndicatorFor(IndexModel.Columns.Name))</a>
                 </th>
-                <th class="text-end">
+                <th class="text-end col-shrink">
                     <a asp-page="./Index"
                        asp-route-sort="@IndexModel.Columns.Size"
                        asp-route-desc="@Model.NextDescendingFor(IndexModel.Columns.Size)"
+                       asp-route-printerId="@Model.SelectedPrinterId"
                        aria-sort="@(Model.Sort == IndexModel.Columns.Size ? (Model.Descending ? "descending" : "ascending") : "none")"
                        class="link-body-emphasis text-decoration-none">@Localiser["Files_Size"]@(Model.IndicatorFor(IndexModel.Columns.Size))</a>
                 </th>
-                <th>
+                <th class="col-shrink">
                     <a asp-page="./Index"
                        asp-route-sort="@IndexModel.Columns.Uploaded"
                        asp-route-desc="@Model.NextDescendingFor(IndexModel.Columns.Uploaded)"
+                       asp-route-printerId="@Model.SelectedPrinterId"
                        aria-sort="@(Model.Sort == IndexModel.Columns.Uploaded ? (Model.Descending ? "descending" : "ascending") : "none")"
                        class="link-body-emphasis text-decoration-none">@Localiser["Files_Uploaded"]@(Model.IndicatorFor(IndexModel.Columns.Uploaded))</a>
                 </th>
-                <th></th>
+                <th class="col-shrink"></th>
             </tr>
         </thead>
         <tbody>
@@ -95,11 +125,12 @@ else
                               asp-route-name="@file.FileName"
                               asp-route-sort="@Model.Sort"
                               asp-route-desc="@Model.Descending"
+                              asp-route-printerId="@Model.SelectedPrinterId"
                               class="d-flex gap-2">
                             <input type="text" name="newName" value="@file.FileName" class="form-control form-control-sm"
                                    aria-label="@Localiser["Files_NewNameLabel"]" required />
                             <button type="submit" class="btn btn-sm btn-primary">@Localiser["Common_Save"]</button>
-                            <a asp-page="./Index" asp-route-sort="@Model.Sort" asp-route-desc="@Model.Descending"
+                            <a asp-page="./Index" asp-route-sort="@Model.Sort" asp-route-desc="@Model.Descending" asp-route-printerId="@Model.SelectedPrinterId"
                                class="btn btn-sm btn-outline-secondary">@Localiser["Common_Cancel"]</a>
                         </form>
                     </td>
@@ -117,32 +148,27 @@ else
                     <td>@file.UploadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
                 }
                 <td class="text-end text-nowrap">
-                    @* Only when there is something to send to: a select with no options explains
-                       nothing, and an empty one next to every row is worse than its absence. *@
-                    @if (Model.Printers.Count > 0)
+                    @* Only when a printer is selected up top: a Send/Queue button with nothing to
+                       send to would only produce a "not yours" refusal. *@
+                    @if (Model.SelectedPrinterId is not null)
                     {
                         <form method="post" asp-page-handler="Send"
                               asp-route-name="@file.FileName"
                               asp-route-sort="@Model.Sort"
                               asp-route-desc="@Model.Descending"
-                              class="d-inline-flex align-items-center gap-1 me-2">
-                            <select name="printerId" class="form-select form-select-sm w-auto"
-                                    aria-label="@Localiser["Files_SendToPrinterLabel", file.FileName]">
-                                @foreach (var printer in Model.Printers)
-                                {
-                                    <option value="@printer.Id">@(printer.Name ?? printer.Model ?? printer.Uuid.ToString())</option>
-                                }
-                            </select>
+                              asp-route-printerId="@Model.SelectedPrinterId"
+                              class="d-inline">
                             <button type="submit" class="btn btn-sm btn-outline-primary"
                                     title="@Localiser["Files_SendTitle"]">@Localiser["Files_Send"]</button>
-                            @* Second submit on the same form so the two verbs share one printer
-                               picker. asp-page-handler on a button emits formaction, which overrides
-                               the form's - so the route values have to be repeated here. *@
+                            @* Second submit on the same form. asp-page-handler on a button emits
+                               formaction, which overrides the form's - so the route values have to be
+                               repeated here. *@
                             <button type="submit" class="btn btn-sm btn-outline-primary"
                                     asp-page-handler="Queue"
                                     asp-route-name="@file.FileName"
                                     asp-route-sort="@Model.Sort"
                                     asp-route-desc="@Model.Descending"
+                                    asp-route-printerId="@Model.SelectedPrinterId"
                                     title="@Localiser["Files_QueueTitle"]">@Localiser["Files_Queue"]</button>
                         </form>
                     }
@@ -150,6 +176,7 @@ else
                        asp-route-sort="@Model.Sort"
                        asp-route-desc="@Model.Descending"
                        asp-route-rename="@file.FileName"
+                       asp-route-printerId="@Model.SelectedPrinterId"
                        class="btn btn-sm btn-outline-secondary">@Localiser["Files_Rename"]</a>
                     @* Straight to the API, which already answers a cookie-authenticated GET - a second
                        copy of the same download here would be one more place to get ownership wrong. *@
@@ -159,6 +186,7 @@ else
                           asp-route-name="@file.FileName"
                           asp-route-sort="@Model.Sort"
                           asp-route-desc="@Model.Descending"
+                          asp-route-printerId="@Model.SelectedPrinterId"
                           class="d-inline"
                           onsubmit="return confirm('Delete @file.FileName?');">
                         <button type="submit" class="btn btn-sm btn-outline-danger">@Localiser["Common_Delete"]</button>

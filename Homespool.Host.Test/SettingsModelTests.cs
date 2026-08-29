@@ -233,6 +233,63 @@ public class SettingsModelTests : IDisposable
         _store.Current()["Smtp:Host"].Should().BeEmpty("testing is not saving");
     }
 
+    /// <summary>
+    /// Mail is turned on by naming a server rather than by a flag, and what that changes - new
+    /// accounts having to confirm before they can sign in - lands at the next restart, where nobody
+    /// is watching.
+    /// </summary>
+    [Fact]
+    public async Task NamingAMailServerIsAskedAbout()
+    {
+        (SettingsModel page, _) = await PageAsync(twoFactor: false);
+
+        page.Values = new Dictionary<string, string?> { ["Smtp:Host"] = "mail.example.com" };
+
+        await page.OnPost();
+
+        page.AwaitingConfirmation.Should().ContainSingle()
+            .Which.Path.Should().Be("Smtp:Host");
+        _store.Current()["Smtp:Host"].Should().BeEmpty("being asked is not agreeing");
+    }
+
+    [Fact]
+    public async Task ChangingAnotherMailFieldIsNotAskedAbout()
+    {
+        _store.Save(new Dictionary<string, string?> { ["Smtp:Host"] = "mail.example.com" }).Saved.Should().BeTrue();
+
+        (SettingsModel page, _) = await PageAsync(twoFactor: false);
+
+        page.Values = new Dictionary<string, string?>
+        {
+            ["Smtp:Host"] = "mail.example.com",
+            ["Smtp:Port"] = "2525",
+        };
+
+        await page.OnPost();
+
+        page.AwaitingConfirmation.Should().BeEmpty("mail was already on; the port is not that decision");
+        _store.Current()["Smtp:Port"].Should().Be("2525");
+    }
+
+    /// <summary>
+    /// Clearing it is the safe direction - it makes account creation more permissive rather than
+    /// less - so it is applied without a question, like every other off switch here.
+    /// </summary>
+    [Fact]
+    public async Task TurningMailOffIsNotAskedAbout()
+    {
+        _store.Save(new Dictionary<string, string?> { ["Smtp:Host"] = "mail.example.com" });
+
+        (SettingsModel page, _) = await PageAsync(twoFactor: false);
+
+        page.Values = new Dictionary<string, string?> { ["Smtp:Host"] = string.Empty };
+
+        await page.OnPost();
+
+        page.AwaitingConfirmation.Should().BeEmpty();
+        _store.Current()["Smtp:Host"].Should().BeEmpty();
+    }
+
     protected virtual void Dispose(bool disposing)
     {
         if (!disposing)

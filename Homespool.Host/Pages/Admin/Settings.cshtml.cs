@@ -259,9 +259,18 @@ public class SettingsModel : PageModel
         ];
     }
 
+    /// <summary>
+    /// Whether a value counts as switched on.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not every switch is a boolean.</b> Mail is turned on by naming a server, so "on" has to mean
+    /// "carries an answer" rather than "is true" - empty is off for a host exactly as false is off for
+    /// a flag, and both are the state a deployment has without anybody choosing it.
+    /// </remarks>
     private static bool IsOn(string? value)
     {
-        return string.Equals(value, "true", System.StringComparison.OrdinalIgnoreCase);
+        return !string.IsNullOrWhiteSpace(value)
+               && !string.Equals(value, "false", System.StringComparison.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyList<IGrouping<string, EditableSetting>> Grouped()

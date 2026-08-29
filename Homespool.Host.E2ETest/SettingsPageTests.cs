@@ -159,10 +159,13 @@ public sealed class SettingsPageTests : IAsyncLifetime, IDisposable
     {
         HttpClient admin = await AdminAsync("settings-secret@example.com");
 
+        // Naming a mail server is asked about, so this agrees on the way past; what the test is
+        // about is the password surviving the edit that follows.
         using (HttpResponseMessage first = await PostAsync(admin, new Dictionary<string, string>
         {
             ["Values[Smtp:Host]"] = "mail.example.com",
             ["Values[Smtp:Password]"] = "hunter2",
+            ["Confirmed"] = "Smtp:Host",
         }))
         {
             first.IsSuccessStatusCode.Should().BeTrue();

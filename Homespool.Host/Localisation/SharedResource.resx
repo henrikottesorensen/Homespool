@@ -2511,4 +2511,7 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Settings_MailTestFailed" xml:space="preserve">
     <value>Could not use the mail server: {0}</value>
   </data>
+  <data name="Settings_Confirm_Smtp_Host" xml:space="preserve">
+    <value>Nothing changes until this deployment restarts. After it does, a new account must confirm its address before it can sign in, where today one is created already confirmed - so a mail server that does not actually work leaves new people unable to get in. Test it with the button below first. Password reset starts working, and administrators begin receiving health alerts by mail. Accounts that already exist are not affected.</value>
+  </data>
 </root>

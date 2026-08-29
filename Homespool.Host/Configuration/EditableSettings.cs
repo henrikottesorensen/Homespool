@@ -134,7 +134,13 @@ public static class EditableSettings
         // has AccountConfirmationPolicy capture the confirm-at-creation rule once. That last one is
         // deliberate and documented where it is built - whether a new account is auto-confirmed must
         // not change under a running deployment.
-        new(typeof(SmtpOptions), SmtpOptions.SectionName, nameof(SmtpOptions.Host), SettingGrade.Restart),
+        // Naming a server here is what turns mail on, and what that changes lands at the next
+        // restart rather than now - so it is asked about, and the answer says when it takes effect.
+        new(typeof(SmtpOptions),
+            SmtpOptions.SectionName,
+            nameof(SmtpOptions.Host),
+            SettingGrade.Restart,
+            ConfirmOnEnableKey: "Settings_Confirm_Smtp_Host"),
         new(typeof(SmtpOptions), SmtpOptions.SectionName, nameof(SmtpOptions.Port), SettingGrade.Restart),
         new(typeof(SmtpOptions), SmtpOptions.SectionName, nameof(SmtpOptions.UseImplicitTls), SettingGrade.Restart),
         new(typeof(SmtpOptions), SmtpOptions.SectionName, nameof(SmtpOptions.DisableTls), SettingGrade.Restart),

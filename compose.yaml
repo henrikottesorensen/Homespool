@@ -163,11 +163,28 @@ services:
       - homespool-printer-leaf:/app/data/proxy-certificates
 
       # Camera *names*, deliberately not camera access: udev's stable symlinks are listable in
-      # here, but the devices they point at are passed only to the camera service below, so the
-      # targets do not resolve. Safe when the host has no cameras at all - unlike `devices:`, a
-      # bind mount of a missing path is created empty rather than failing the container.
-      - /dev/v4l/by-id:/dev/v4l/by-id:ro
-      - /dev/v4l/by-path:/dev/v4l/by-path:ro
+      # here, but opening any of them is refused, because this service is granted no
+      # `device_cgroup_rules` - the camera service below is. Measured 2026-08-29: with /dev mounted
+      # and no rule, opening /dev/video0 fails "Operation not permitted"; add `c 81:* rmw` and it
+      # succeeds. The mount carries names; the cgroup carries capability; only the sidecar has it.
+      #
+      # THE WHOLE OF /dev, not /dev/v4l/by-id and by-path, and that is the fix for a real defect
+      # rather than a convenience (2026-08-29). udev rmdir's and mkdir's those subdirectories
+      # whenever the device set changes, and a bind mount pins the inode it found at container
+      # start - so after any USB change this service was reading a stale, orphaned, empty directory
+      # while the camera sat working in the sidecar. No error, no log line: just a blank camera
+      # picker, and a camera that cannot be re-added until someone restarts the container. Mounting
+      # the filesystem root instead is immune, because /dev is the root of a devtmpfs and cannot be
+      # unlinked, so lookups beneath it always resolve live.
+      #
+      # Mounted at /hostdev, NOT over /dev, and that is the point: this container keeps the
+      # private /dev Docker builds it - the curated handful of entries, its own /dev/shm and
+      # /dev/pts - and gets the host's device tree beside it rather than instead of it. Mounting
+      # over /dev would replace all of that and then need /dev/shm handing back as a tmpfs, which
+      # is three moving parts to solve a problem that has one.
+      #
+      # Read-only, because reading symlink names is the whole of what this service does with it.
+      - /dev:/hostdev:ro
 
     networks:
       - homespool

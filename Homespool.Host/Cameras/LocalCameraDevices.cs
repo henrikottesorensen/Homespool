@@ -34,10 +34,31 @@ namespace Homespool.Host.Cameras;
 public sealed class LocalCameraDevices
 {
     /// <summary>
-    /// Where udev keeps the stable names. Not configurable: this is the path passed through from the
-    /// host, and it is the same on every Linux the appliance runs on.
+    /// Where <b>this</b> container reads udev's stable names: the host's <c>/dev</c> bind-mounted
+    /// read-only beside our own, not over it.
     /// </summary>
-    private const string ByIdDirectory = "/dev/v4l/by-id";
+    /// <remarks>
+    /// <b>The host's <c>/dev</c> root, at a path of our own, and both halves of that are load-bearing
+    /// (2026-08-29).</b> The root, because <c>udev</c> removes and recreates <c>/dev/v4l/by-id</c>
+    /// whenever the device set changes while a bind mount pins the inode it found at container start
+    /// - so mounting that subdirectory left this service reading a stale, orphaned, empty directory
+    /// after any USB change, with no error and a blank camera picker. A filesystem root cannot be
+    /// unlinked, so lookups beneath it always resolve live. At a path of our own, because mounting
+    /// over <c>/dev</c> would replace the private one Docker builds for this container, taking
+    /// <c>/dev/shm</c> and <c>/dev/pts</c> with it.
+    /// </remarks>
+    private const string ByIdDirectory = "/hostdev/v4l/by-id";
+
+    /// <summary>
+    /// The same directory <b>as the sidecar sees it</b>, which is where a source string has to point.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not <see cref="ByIdDirectory"/>, and the two must not be merged back.</b> A source string is
+    /// resolved by go2rtc inside its own container, which has the host's <c>/dev</c> at <c>/dev</c>,
+    /// so it names the path that container can open - never the one we happen to read through. Every
+    /// camera already stored carries this form, so it is also what keeps them working.
+    /// </remarks>
+    private const string SidecarByIdDirectory = "/dev/v4l/by-id";
 
     /// <summary>
     /// Only capture nodes. UVC exposes a metadata node beside every camera - index1 alongside
@@ -75,7 +96,7 @@ public sealed class LocalCameraDevices
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(deviceName);
 
-        string source = $"ffmpeg:device?video={ByIdDirectory}/{deviceName}&input_format=mjpeg";
+        string source = $"ffmpeg:device?video={SidecarByIdDirectory}/{deviceName}&input_format=mjpeg";
 
         return string.IsNullOrWhiteSpace(resolution) ? source : $"{source}&video_size={resolution}";
     }

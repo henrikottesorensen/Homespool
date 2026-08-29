@@ -3,13 +3,9 @@
 
 #nullable disable
 
-using System.Threading.Tasks;
-
 using Homespool.Host.Mail;
-using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Options;
@@ -19,20 +15,12 @@ namespace Homespool.Host.Pages.Account;
 [AllowAnonymous]
 public class RegisterConfirmationModel : PageModel
 {
-    private readonly UserManager<HSUser> _userManager;
     private readonly SmtpOptions _smtpOptions;
 
-    public RegisterConfirmationModel(UserManager<HSUser> userManager, IOptions<SmtpOptions> smtpOptions)
+    public RegisterConfirmationModel(IOptions<SmtpOptions> smtpOptions)
     {
-        _userManager = userManager;
         _smtpOptions = smtpOptions.Value;
     }
-
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
-    public string Email { get; set; }
 
     /// <summary>
     /// Whether outgoing mail is configured. When it is not, the account was created already confirmed and
@@ -45,22 +33,17 @@ public class RegisterConfirmationModel : PageModel
     /// </summary>
     public bool EmailFailed { get; set; }
 
-    public async Task<IActionResult> OnGetAsync(string email, string returnUrl = null, bool emailFailed = false)
+    public IActionResult OnGet(string email, bool emailFailed = false)
     {
         if (email == null)
         {
             return RedirectToPage("/Index");
         }
 
-        returnUrl = returnUrl ?? Url.Content("~/");
-
-        HSUser user = await _userManager.FindByEmailAsync(email);
-        if (user == null)
-        {
-            return NotFound($"Unable to load user with email '{email}'.");
-        }
-
-        Email = email;
+        // The address is deliberately never looked up. This page is anonymous, and answering an unknown
+        // address differently from a registered one would be an account-existence oracle - the leak the
+        // login and forgot-password flows go out of their way to avoid. Nothing rendered here needs the
+        // account: the page only relays how registration left things, via its query parameters.
         EmailFailed = emailFailed;
         SmtpConfigured = _smtpOptions.IsConfigured;
 

@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20260827181845_InitialCreate")]
+    [Migration("20260829093658_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -545,6 +545,12 @@ namespace Homespool.Data.Migrations
 
                     b.Property<float?>("AmbientTemperature")
                         .HasColumnType("REAL");
+
+                    b.Property<int?>("AttentionCode")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AttentionText")
+                        .HasColumnType("TEXT");
 
                     b.Property<float?>("BedTemperature")
                         .HasColumnType("REAL");

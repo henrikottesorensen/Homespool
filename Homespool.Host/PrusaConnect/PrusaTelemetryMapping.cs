@@ -203,7 +203,61 @@ public static class PrusaTelemetryMapping
             Payload = FormatPayload(eventDto),
             Identity = identity,
             DriveListing = ToDriveListing(eventDto),
+            Attention = ToAttention(eventDto),
         };
+    }
+
+    /// <summary>
+    /// The reason a <c>STATE_CHANGED</c> gives for the printer waiting - the code it reported, and
+    /// its own words where it volunteered any.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Only for state changes, and for every state change.</b> Returning null on a state change
+    /// that carries no dialog is what clears a stored reason: firmware re-sends this event
+    /// throughout an attention and again when it ends, so "the latest state change" is a reliable
+    /// account of whether the printer is still waiting and why.
+    /// </para>
+    /// <para>
+    /// <b>The code is parsed rather than kept as text</b>, because it is a number that firmware
+    /// zero-pads to five digits. A code that will not parse is dropped rather than stored as
+    /// something unreadable - the event's payload keeps the original either way.
+    /// </para>
+    /// </remarks>
+    private static PrinterAttentionUpdate? ToAttention(EventDTO dto)
+    {
+        if (dto.EventType != Model.PrinterEventType.StateChanged
+            || dto.Data is not { ValueKind: JsonValueKind.Object } element)
+        {
+            return null;
+        }
+
+        int? code = null;
+
+        if (element.TryGetProperty("code", out JsonElement codeElement)
+            && codeElement.ValueKind == JsonValueKind.String
+            && int.TryParse(codeElement.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture,
+                            out int parsed))
+        {
+            code = parsed;
+        }
+
+        string? text = Trimmed(element, "text") ?? Trimmed(element, "title");
+
+        return code is null && text is null ? null : new PrinterAttentionUpdate(code, text);
+    }
+
+    /// <summary>A string property with whitespace treated as absence, this wire's usual rule.</summary>
+    private static string? Trimmed(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out JsonElement value) || value.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        string? text = value.GetString()?.Trim();
+
+        return string.IsNullOrEmpty(text) ? null : text;
     }
 
     /// <summary>

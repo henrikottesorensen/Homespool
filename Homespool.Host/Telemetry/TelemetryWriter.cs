@@ -680,7 +680,8 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                     break;
 
                 case TelemetryWriteItem.EventItem eventItem:
-                    ProcessEvent(eventItem, pendingEvents, pendingPrinterInfo, pendingDriveListings);
+                    await ProcessEventAsync(eventItem, cache, pendingEvents, pendingPrinterInfo,
+                                            pendingDriveListings, dirtyPrinterIds, cancellationToken);
                     break;
             }
         }
@@ -1077,10 +1078,13 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// </summary>
     private sealed record PendingDriveListing(PrinterDriveListingUpdate Listing, DateTimeOffset TakenAt);
 
-    private void ProcessEvent(TelemetryWriteItem.EventItem item,
-                              List<PrinterEvent> pendingEvents,
-                              Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo,
-                              Dictionary<int, PendingDriveListing> pendingDriveListings)
+    private async Task ProcessEventAsync(TelemetryWriteItem.EventItem item,
+                                         Dictionary<int, LiveStateCacheEntry> cache,
+                                         List<PrinterEvent> pendingEvents,
+                                         Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo,
+                                         Dictionary<int, PendingDriveListing> pendingDriveListings,
+                                         HashSet<int> dirtyPrinterIds,
+                                         CancellationToken cancellationToken)
     {
         PrinterEventRecord record = item.Data;
 
@@ -1097,6 +1101,22 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             // superseded by the next, so a batch carrying three of them means only the third
             // describes the drive. Overwriting here is what keeps a flush from writing history.
             pendingDriveListings[item.PrinterId] = new PendingDriveListing(listing, item.ReceivedAt);
+        }
+
+        if (record.EventType == Model.PrinterEventType.StateChanged)
+        {
+            // Assigned on every state change, not only on the ones carrying a code: a change that
+            // says nothing about a dialog is the printer reporting it is no longer in one, and a
+            // reason that outlived its dialog would explain the wrong thing on the next screen.
+            if (!cache.TryGetValue(item.PrinterId, out LiveStateCacheEntry? entry))
+            {
+                entry = await HydrateAsync(item.PrinterId, cancellationToken);
+                cache[item.PrinterId] = entry;
+            }
+
+            entry.State.AttentionCode = record.Attention?.Code;
+            entry.State.AttentionText = record.Attention?.Text;
+            dirtyPrinterIds.Add(item.PrinterId);
         }
 
         pendingEvents.Add(new PrinterEvent

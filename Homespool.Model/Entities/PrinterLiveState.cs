@@ -41,6 +41,36 @@ public class PrinterLiveState
     // -- Core, present on both message shapes ------------------------------------------------
     public PrinterStatus Status { get; set; }
 
+    /// <summary>
+    /// Why the printer is waiting, as the error code it reported - or null when it is not waiting,
+    /// or is waiting for something it did not put a code on.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Lifted from <c>STATE_CHANGED</c>, because telemetry cannot carry it.</b> A status sample
+    /// says <c>ATTENTION</c> and no more; the code rides the event's <c>data</c> object. Without it
+    /// the page can only say that a printer wants somebody, which is the state it was in when this
+    /// column was added: a red banner with no reason under it.
+    /// </para>
+    /// <para>
+    /// <b>Cleared when the printer stops waiting</b>, so a stale code cannot outlive the dialog it
+    /// describes and explain the wrong thing later. Kept as the number it is - the wire's five-digit
+    /// spelling has a per-model prefix, which <see cref="PrinterErrorText"/> strips.
+    /// </para>
+    /// </remarks>
+    public int? AttentionCode { get; set; }
+
+    /// <summary>
+    /// The printer's own sentence about why it is waiting, when it volunteers one - null for an
+    /// ordinary attention, where only <see cref="AttentionCode"/> is sent.
+    /// </summary>
+    /// <remarks>
+    /// Firmware fills this only on a red screen (its <c>ErrorPrinter</c>), so the usual reading is
+    /// "decode the code". Stored anyway because when the printer does say something, its own words
+    /// beat our catalogue: the catalogue can be out of date about a machine, and the machine cannot.
+    /// </remarks>
+    public string? AttentionText { get; set; }
+
     public int? JobId { get; set; }
 
     /// <summary>Percent complete, 0-100.</summary>

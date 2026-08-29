@@ -52,4 +52,12 @@ public sealed record PrinterEventRecord
     /// listing arrived, and its <c>file_count</c>.
     /// </remarks>
     public PrinterDriveListingUpdate? DriveListing { get; init; }
+
+    /// <summary>
+    /// Why the printer is waiting, when this event is a state change. <b>Null means the event says
+    /// nothing about a dialog</b> - which, for a state change, is itself the news: the printer is
+    /// no longer waiting for anything, and a stored reason should be cleared rather than left to
+    /// explain a dialog that has gone.
+    /// </summary>
+    public PrinterAttentionUpdate? Attention { get; init; }
 }

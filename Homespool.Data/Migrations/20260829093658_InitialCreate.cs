@@ -440,6 +440,8 @@ namespace Homespool.Data.Migrations
                     PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
                     LastSeenAt = table.Column<long>(type: "INTEGER", nullable: false),
                     Status = table.Column<string>(type: "TEXT", nullable: false),
+                    AttentionCode = table.Column<int>(type: "INTEGER", nullable: true),
+                    AttentionText = table.Column<string>(type: "TEXT", nullable: true),
                     JobId = table.Column<int>(type: "INTEGER", nullable: true),
                     Progress = table.Column<int>(type: "INTEGER", nullable: true),
                     TimePrinting = table.Column<int>(type: "INTEGER", nullable: true),

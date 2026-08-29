@@ -543,6 +543,12 @@ namespace Homespool.Data.Migrations
                     b.Property<float?>("AmbientTemperature")
                         .HasColumnType("REAL");
 
+                    b.Property<int?>("AttentionCode")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AttentionText")
+                        .HasColumnType("TEXT");
+
                     b.Property<float?>("BedTemperature")
                         .HasColumnType("REAL");
 

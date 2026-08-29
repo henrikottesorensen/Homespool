@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -277,8 +278,9 @@ public class DetailModel : PageModel
     /// <para>
     /// <b>The printer's own words where it gives any, and Prusa's catalogue where it gives only a
     /// code</b> - which is the ordinary case, since an attention carries a code and nothing else.
-    /// Both are firmware's English rather than ours, the boundary <c>PrintJob.Reason</c> already
-    /// sits on; the chrome around the sentence is what gets translated.
+    /// The catalogue is translated, from firmware's own <c>.po</c> files, so a reader sees what
+    /// their printer's screen would show them; only the rare sentence the printer sends itself is
+    /// passed through in whatever language it arrived in.
     /// </para>
     /// <para>
     /// The gate and the preference between the two sources are
@@ -288,7 +290,8 @@ public class DetailModel : PageModel
     /// </remarks>
     public string? AttentionReason(PrinterLiveState? liveState)
     {
-        return AttentionRules.Reason(liveState?.Status, liveState?.AttentionCode, liveState?.AttentionText);
+        return AttentionRules.Reason(liveState?.Status, liveState?.AttentionCode, liveState?.AttentionText,
+                                     CultureInfo.CurrentUICulture.TwoLetterISOLanguageName);
     }
 
     /// <summary>

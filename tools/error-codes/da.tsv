@@ -1,0 +1,65 @@
+# Danish for Prusa's CONNECT error catalogue - the one language Prusa do not ship.
+#
+# Hand-written and hand-maintained: tools/error-codes/generate.py reads this file and merges it
+# with the translations lifted from firmware's own .po catalogues, so regenerating never overwrites
+# it. A code with no row here falls back to English, the same as any language Prusa has not
+# translated.
+#
+# Terminology follows the app's own Danish rather than a literal rendering: dyse, byggeplade,
+# filament, varmelegeme. Firmware's line breaks are dropped by the generator - these are one-line
+# sentences on a web card, not text for a 4-inch LCD.
+#
+# code<TAB>Danish
+801	Gennemfør Kalibreringer og tests, før du bruger printeren.
+802	Ny firmware tilgængelig
+803	G-koden er ikke fuldt kompatibel
+804	Intet filament registreret. Vil du isætte filament nu? Vælg NEJ for at annullere printet. Vælg DEAKTIVÉR FS for at slå filamentsensoren fra og printe videre.
+805	Et filament, som G-koden kræver, er enten ikke isat eller af forkert type.
+806	Filament registreret. Vil du tage filamentet ud nu? Vælg NEJ for at printe med det filament, der sidder i.
+807	Filfejl
+808	Byggepladen kølede af under strømafbrydelsen, så emnet kan have løsnet sig. Se det efter, før du fortsætter.
+809	En akse er for lang. Motorstrømmen er sandsynligvis for lav. Prøv kontrollen igen, sæt printet på pause, eller genoptag det?
+810	En akse er for kort. Der er en forhindring eller et problem med et leje. Prøv kontrollen igen, sæt printet på pause, eller genoptag det?
+811	Gentagne kollisioner er registreret. Vil du genoptage printet eller sætte det på pause?
+812	Printeren kan ikke finde nulpunkt. Vil du prøve igen?
+813	Der er registreret et problem med værktøjsskifteren. Parkér alle værktøjer i deres dokke, og lad vognen være fri.
+814	Tildelingen kan kun ændres på printerens egen skærm. Vælg Print for at starte printet med standardindstillingerne.
+815	Venter på input fra brugeren
+816	Printblæseren kører ikke. Se efter snavs, og kontrollér derefter ledningerne.
+817	Opvarmningen er slået fra efter 30 minutters inaktivitet.
+818	Den målte temperatur svarer ikke til den forventede. Kontrollér, at termistoren har kontakt med hotenden. Udskift den, hvis den er beskadiget.
+819	Opvarmningen er slået fra efter 30 minutters inaktivitet.
+820	Steppermotorerne er slået fra på grund af inaktivitet.
+821	Fejl på USB-nøglen eller filen, og printet er sat på pause. Tilslut nøglen igen.
+822	Heatbreak-termistoren er ikke tilsluttet. Kontrollér ledningerne.
+823	Dysen ser ikke ud til at have et rundt tværsnit. Sørg for, at den er ren og vinkelret på byggepladen.
+824	Overførslen af G-koden er for langsom. Tjek dit netværk, eller brug en anden USB-nøgle. Tryk Fortsæt for at printe videre.
+825	MCU'en i Buddy er overophedet, sandsynligvis fordi printerens driftstemperatur er overskredet. Undgå overophedning for at få den bedste ydeevne.
+826	MCU'en i Dwarf er overophedet, sandsynligvis fordi printerens driftstemperatur er overskredet. Undgå overophedning for at få den bedste ydeevne.
+827	MCU'en i Modular Bed er overophedet, sandsynligvis fordi printerens driftstemperatur er overskredet. Undgå overophedning for at få den bedste ydeevne.
+828	Hotend-blæseren kører ikke. Se efter snavs, og kontrollér derefter ledningerne.
+829	Udskift filamentet.
+830	Kabinetblæseren kører ikke. Se efter snavs, og kontrollér derefter ledningerne.
+831	HEPA-filteret nærmer sig slutningen af sin levetid. Vi anbefaler, at du køber et nyt.
+832	HEPA-filteret er udløbet. Skift det inden dit næste print.
+833	Nivelleringen af byggepladen mislykkedes. Vil du prøve igen?
+834	Rensningen af dysen mislykkedes.
+835	Hurtig pause
+836	Tidsgrænsen for isætning af filament blev overskredet.
+837	Sørg for, at den øverste ventilationsrist er åben, så luften kan cirkulere.
+838	Sørg for, at den øverste ventilationsrist er lukket, så kammertemperaturen er den bedst mulige.
+839	Kammerets køleblæser kører ikke. Se efter snavs, og kontrollér derefter ledningerne.
+840	Kammerets filterblæser kører ikke. Se efter snavs, og kontrollér derefter ledningerne.
+841	Vil du rense filamentet ud? Derefter trækkes det tilbage for at undgå siven. Pas på - dysen er varm!
+842	Venter på, at dysen når temperaturen...
+843	Renser filamentet ud. Vent, til udrensningen er færdig.
+844	Filamentet er renset ud. Dysen trækker det nu tilbage for at undgå siven.
+845	Fjern det udrensede filament, og sørg for, at dysen er ren og klar. Pas på - dysen er varm!
+846	Automatisk tilbagetrækning er slået fra, og det kan være årsagen til fejlen. Vil du slå automatisk tilbagetrækning til?
+847	Er du sikker på, at du vil afbryde printet? Det aktuelle print annulleres, og du skal starte forfra.
+848	G-koden er signeret af en identitet, som denne printer ikke har tillid til. Vil du gemme identiteten som betroet? Identitetens navn: %s Hash af identitetens nøgle: %s
+849	Blæseren i dokken kører ikke. Se efter snavs, og kontrollér ledningerne.
+850	Dyserenseren er fuld. Tøm den for at undgå overløb. Pas på: dysen og byggepladen kan være varme.
+851	Dyserenseren kan løbe over under dette print.
+852	Tøm dyserenseren, og tryk derefter på Færdig.
+854	Filamentet er ikke kompatibelt med printerens nuværende hardwareopsætning.

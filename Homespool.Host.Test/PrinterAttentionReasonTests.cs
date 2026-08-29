@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Text.Json;
 
 using AwesomeAssertions;
@@ -120,6 +121,61 @@ public class PrinterAttentionReasonTests
     public void TheModelPrefixDoesNotChangeTheSentence(int code)
     {
         PrinterErrorText.For(code).Should().Be("Please replace filament.");
+    }
+
+    /// <summary>
+    /// <b>A reader is told in their own language</b>, from firmware's own catalogue - so the page
+    /// and the machine's screen say the same thing in the same words.
+    /// </summary>
+    [Theory]
+    [InlineData("da", "Udskift filamentet.")]
+    [InlineData("de", "Bitte Filament ersetzen.")]
+    [InlineData("cs", "Prosím vyměňte filament.")]
+    [InlineData("en", "Please replace filament.")]
+    public void TheSentenceIsTranslated(string language, string expected)
+    {
+        PrinterErrorText.For(23829, language).Should().Be(expected);
+    }
+
+    /// <summary>
+    /// A language nobody has translated falls back to English - which is what the printer's own
+    /// screen does too, so the two still agree.
+    /// </summary>
+    [Theory]
+    [InlineData("nb")]
+    [InlineData("zz")]
+    [InlineData(null)]
+    public void AnUntranslatedLanguageFallsBackToEnglish(string? language)
+    {
+        PrinterErrorText.For(23829, language).Should().Be("Please replace filament.");
+    }
+
+    /// <summary>
+    /// <b>Danish is ours and has to be complete</b>, because Prusa ship none: an untranslated code
+    /// would silently show English to the one audience this table exists for.
+    /// </summary>
+    [Fact]
+    public void DanishCoversEveryCodeEnglishHas()
+    {
+        foreach (int code in Enumerable.Range(800, 60))
+        {
+            string? english = PrinterErrorText.For(code, "en");
+
+            if (english is not null)
+            {
+                PrinterErrorText.For(code, "da").Should().NotBe(english,
+                    $"code {code} is in the catalogue and should have Danish of its own");
+            }
+        }
+    }
+
+    /// <summary>The printer's own words are passed through, not translated over.</summary>
+    [Fact]
+    public void WordsFromThePrinterAreNotReplacedByTheCatalogue()
+    {
+        AttentionRules.Reason(PrinterStatus.Error, 23829, "Heatbed tile no. 3", "da")
+                      .Should().Be("Heatbed tile no. 3",
+                                   "there is no field saying what language it arrived in, so it is passed as sent");
     }
 
     /// <summary>An unknown code yields no sentence rather than an invented one.</summary>

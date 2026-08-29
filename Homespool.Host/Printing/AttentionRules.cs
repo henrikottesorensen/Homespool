@@ -32,13 +32,18 @@ public static class AttentionRules
     /// <paramref name="code"/>: a catalogue can be out of date about a machine, and the machine
     /// cannot.
     /// </param>
-    public static string? Reason(PrinterStatus? status, int? code, string? text)
+    /// <param name="language">
+    /// The reader's two-letter language. Only reaches the decoded sentence - <paramref name="text"/>
+    /// arrives in whatever language the printer rendered it in, and there is no field on the wire
+    /// saying which, so it is passed through as sent.
+    /// </param>
+    public static string? Reason(PrinterStatus? status, int? code, string? text, string? language = null)
     {
         if (status is not (PrinterStatus.Attention or PrinterStatus.Error))
         {
             return null;
         }
 
-        return string.IsNullOrWhiteSpace(text) ? PrinterErrorText.For(code) : text;
+        return string.IsNullOrWhiteSpace(text) ? PrinterErrorText.For(code, language) : text;
     }
 }

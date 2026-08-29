@@ -223,15 +223,6 @@ public sealed class WebRtcConfigurer : IHostedService
         // A scope, because the setting lives in the database and this is a singleton. Read here
         // rather than inside the writer so that the writer stays something the settings page can
         // call with a value it already has.
-        bool stunEnabled;
-
-        using (IServiceScope scope = _scopeFactory.CreateScope())
-        {
-            DeploymentSettingStore settings = scope.ServiceProvider.GetRequiredService<DeploymentSettingStore>();
-
-            stunEnabled = (await settings.GetAsync(cancellationToken).ConfigureAwait(false)).WebRtcStunEnabled;
-        }
-
-        await _writer.EnsureAsync(candidate, stunEnabled, cancellationToken).ConfigureAwait(false);
+        await _writer.EnsureAsync(candidate, _cameras.CurrentValue.WebRtcStunEnabled, cancellationToken).ConfigureAwait(false);
     }
 }

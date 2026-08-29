@@ -128,6 +128,14 @@ public static class EditableSettings
         new(typeof(CameraOptions), CameraOptions.SectionName, nameof(CameraOptions.MaxFrameBytes), SettingGrade.Live),
         new(typeof(CameraOptions), CameraOptions.SectionName, nameof(CameraOptions.WebRtcStunServer), SettingGrade.Live),
 
+        // Asked about before it is turned on: it is the one setting here that makes this deployment
+        // contact somebody else, and neither consequence is visible from the outcome.
+        new(typeof(CameraOptions),
+            CameraOptions.SectionName,
+            nameof(CameraOptions.WebRtcStunEnabled),
+            SettingGrade.Live,
+            ConfirmOnEnableKey: "Settings_Confirm_Cameras_WebRtcStunEnabled"),
+
         // Mail. Every one of these is Restart, and the reason is three startup decisions rather than
         // any one property: Program picks SmtpEmailSender or LoggingEmailSender from
         // SmtpOptions.IsConfigured, registers TelemetryAlertService only when mail is configured, and

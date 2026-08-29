@@ -251,13 +251,37 @@ public class CameraOptions
     public int WebRtcPort { get; set; } = 8555;
 
     /// <summary>
+    /// Whether the stream server may contact a public STUN server to discover this deployment's own
+    /// public address. Default <see langword="false"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Off is the decision, not the absence of one.</b> Left to itself go2rtc contacts a
+    /// third-party STUN server unprompted and puts the resulting public address into every WebRTC
+    /// offer it makes. For a project whose premise is that nothing about what you print leaves your
+    /// network, reaching out to somebody else's server should be something a person chose.
+    /// </para>
+    /// <para>
+    /// <b>What turning it on buys is watching from outside your own network</b> without naming a
+    /// forwarded address by hand. LAN viewing does not need it and is unaffected either way, which is
+    /// why the default costs nothing.
+    /// </para>
+    /// <para>
+    /// <b>It was a database column until 2026-08-29</b>, because the choice has to be explained before
+    /// it is made and a file cannot ask a question. The settings page can, so the column and the table
+    /// holding it are gone and this is an ordinary option like the rest.
+    /// </para>
+    /// </remarks>
+    public bool WebRtcStunEnabled { get; set; }
+
+    /// <summary>
     /// The STUN server contacted when an administrator turns that on. Default Google's public one.
     /// </summary>
     /// <remarks>
     /// <para>
     /// <b>Nothing contacts this unless somebody switched it on</b>, in the live-view settings, having
     /// been told what it does. Off is the default and the decision:
-    /// <c>DeploymentSetting.WebRtcStunEnabled</c> has the argument.
+    /// <see cref="WebRtcStunEnabled"/> has the argument.
     /// </para>
     /// <para>
     /// <b>One address rather than a list</b>, and that is a real constraint accepted for a real

@@ -290,6 +290,56 @@ public class SettingsModelTests : IDisposable
         _store.Current()["Smtp:Host"].Should().BeEmpty();
     }
 
+    /// <summary>
+    /// The one setting here that makes this deployment contact somebody else. It was a database
+    /// column with a page of its own precisely so the question could be asked; the question survived
+    /// the move and the column did not.
+    /// </summary>
+    [Fact]
+    public async Task AllowingStunIsAskedAbout()
+    {
+        (SettingsModel page, _) = await PageAsync(twoFactor: false);
+
+        page.Values = new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "true" };
+
+        await page.OnPost();
+
+        page.AwaitingConfirmation.Should().ContainSingle()
+            .Which.Path.Should().Be("Cameras:WebRtcStunEnabled");
+        _store.Current()["Cameras:WebRtcStunEnabled"].Should().NotBe("true");
+    }
+
+    [Fact]
+    public async Task AgreeingAllowsStun()
+    {
+        (SettingsModel page, _) = await PageAsync(twoFactor: false);
+
+        page.Values = new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "true" };
+        page.Confirmed = ["Cameras:WebRtcStunEnabled"];
+
+        await page.OnPost();
+
+        _store.Current()["Cameras:WebRtcStunEnabled"].Should().Be("true");
+    }
+
+    /// <summary>
+    /// Off is where a deployment sits without anybody choosing it, so going back needs no question.
+    /// </summary>
+    [Fact]
+    public async Task DisallowingStunIsNotAskedAbout()
+    {
+        _store.Save(new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "true" });
+
+        (SettingsModel page, _) = await PageAsync(twoFactor: false);
+
+        page.Values = new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "false" };
+
+        await page.OnPost();
+
+        page.AwaitingConfirmation.Should().BeEmpty();
+        _store.Current()["Cameras:WebRtcStunEnabled"].Should().Be("false");
+    }
+
     protected virtual void Dispose(bool disposing)
     {
         if (!disposing)

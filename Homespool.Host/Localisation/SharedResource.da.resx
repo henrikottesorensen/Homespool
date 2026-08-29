@@ -1248,42 +1248,6 @@
   <data name="LiveView_StunExplained" xml:space="preserve">
     <value>At se med fra dit eget netværk kræver intet her. For at se med udefra kan strømserveren spørge en offentlig STUN-server om denne installations offentlige adresse — det er slået fra, indtil du slår det til, fordi det betyder at kontakte en andens server.</value>
   </data>
-  <data name="LiveView_TurnStunOn" xml:space="preserve">
-    <value>Tillad STUN…</value>
-  </data>
-  <data name="LiveView_TurnStunOff" xml:space="preserve">
-    <value>Tillad ikke længere STUN</value>
-  </data>
-  <data name="LiveView_StunConfirmHeading" xml:space="preserve">
-    <value>Tillad en offentlig STUN-server?</value>
-  </data>
-  <data name="LiveView_StunConfirmLead" xml:space="preserve">
-    <value>To ting bliver sande, hvis du gør det:</value>
-  </data>
-  <data name="LiveView_StunConfirmPublicAddress" xml:space="preserve">
-    <value>Din offentlige adresse lægges i hvert eneste tilbud, denne server sender til en browser.</value>
-  </data>
-  <data name="LiveView_StunConfirmThirdParty" xml:space="preserve">
-    <value>{0} kontaktes for at finde den, så denne installation er ikke længere selvstændig.</value>
-  </data>
-  <data name="LiveView_StunConfirmConsequence" xml:space="preserve">
-    <value>Ingen af delene kan ses på resultatet, og derfor bliver du spurgt frem for at få det at vide bagefter. Intet om det, du printer, sendes nogen steder hen uanset hvad.</value>
-  </data>
-  <data name="LiveView_StunConfirm" xml:space="preserve">
-    <value>Tillad STUN-serveren</value>
-  </data>
-  <data name="LiveView_StunOnApplied" xml:space="preserve">
-    <value>STUN er tilladt, og strømserveren er genstartet for at anvende det.</value>
-  </data>
-  <data name="LiveView_StunOffApplied" xml:space="preserve">
-    <value>STUN er ikke længere tilladt, og strømserveren er genstartet for at anvende det.</value>
-  </data>
-  <data name="LiveView_NotApplied" xml:space="preserve">
-    <value>Dit valg er gemt, men kamerastrømserveren kunne ikke få besked om det. Det anvendes, næste gang Homespool starter.</value>
-  </data>
-  <data name="LiveView_RestartWarning" xml:space="preserve">
-    <value>Ændringen genstarter kamerastrømserveren, hvilket afbryder dem, der ser med, et øjeblik. Kameraer og stillbilleder er upåvirkede.</value>
-  </data>
   <data name="Account_AccessDeniedTitle" xml:space="preserve">
     <value>Adgang nægtet</value>
   </data>
@@ -2426,5 +2390,14 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   </data>
   <data name="Settings_Confirm_Smtp_Host" xml:space="preserve">
     <value>Intet ændrer sig, før denne installation genstartes. Derefter skal en ny konto bekræfte sin adresse, før den kan logge ind, hvor den i dag oprettes som allerede bekræftet - så en mailserver, der ikke virker, efterlader nye brugere uden adgang. Test den med knappen nedenfor først. Nulstilling af adgangskode begynder at virke, og administratorer begynder at modtage helbredsvarsler pr. mail. Konti, der allerede findes, påvirkes ikke.</value>
+  </data>
+  <data name="LiveView_StunElsewhere" xml:space="preserve">
+    <value>Dette ændres på indstillingssiden under kameraindstillinger.</value>
+  </data>
+  <data name="Settings_Label_Cameras_WebRtcStunEnabled" xml:space="preserve">
+    <value>Tillad at der kontaktes en STUN-server</value>
+  </data>
+  <data name="Settings_Confirm_Cameras_WebRtcStunEnabled" xml:space="preserve">
+    <value>Denne installation holder op med at være selvstændig. Din offentlige adresse findes ved at spørge den STUN-server, der er nævnt ovenfor - en tredjepart - og placeres derefter i hvert eneste tilbud, streamserveren laver, til alle der har lov til at se med. Intet om hvad du printer sendes nogen steder hen i nogen af tilfældene, og for at se med fra dit eget netværk kræves intet af dette.</value>
   </data>
 </root>

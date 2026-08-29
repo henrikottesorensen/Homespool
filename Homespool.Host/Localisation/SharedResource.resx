@@ -1279,42 +1279,6 @@
   <data name="LiveView_StunExplained" xml:space="preserve">
     <value>Watching from your own network needs nothing here. To watch from outside it, the stream server can ask a public STUN server what this deployment's public address is — which is off unless you turn it on, because it means contacting somebody else's server.</value>
   </data>
-  <data name="LiveView_TurnStunOn" xml:space="preserve">
-    <value>Allow STUN…</value>
-  </data>
-  <data name="LiveView_TurnStunOff" xml:space="preserve">
-    <value>Stop allowing STUN</value>
-  </data>
-  <data name="LiveView_StunConfirmHeading" xml:space="preserve">
-    <value>Allow a public STUN server?</value>
-  </data>
-  <data name="LiveView_StunConfirmLead" xml:space="preserve">
-    <value>Two things become true if you do:</value>
-  </data>
-  <data name="LiveView_StunConfirmPublicAddress" xml:space="preserve">
-    <value>Your public address is placed in every offer this server makes to a browser.</value>
-  </data>
-  <data name="LiveView_StunConfirmThirdParty" xml:space="preserve">
-    <value>{0} is contacted to discover it, so this deployment stops being self-contained.</value>
-  </data>
-  <data name="LiveView_StunConfirmConsequence" xml:space="preserve">
-    <value>Neither is visible from the result, which is why you are being asked rather than told afterwards. Nothing about what you print is sent anywhere either way.</value>
-  </data>
-  <data name="LiveView_StunConfirm" xml:space="preserve">
-    <value>Allow the STUN server</value>
-  </data>
-  <data name="LiveView_StunOnApplied" xml:space="preserve">
-    <value>STUN is allowed, and the stream server has been restarted to apply it.</value>
-  </data>
-  <data name="LiveView_StunOffApplied" xml:space="preserve">
-    <value>STUN is no longer allowed, and the stream server has been restarted to apply it.</value>
-  </data>
-  <data name="LiveView_NotApplied" xml:space="preserve">
-    <value>Your choice is saved, but the camera stream server could not be told about it. It will be applied the next time Homespool starts.</value>
-  </data>
-  <data name="LiveView_RestartWarning" xml:space="preserve">
-    <value>Changing this restarts the camera stream server, which interrupts anyone watching for a moment. Cameras and still pictures are unaffected.</value>
-  </data>
   <data name="Account_AccessDeniedTitle" xml:space="preserve">
     <value>Access denied</value>
   </data>
@@ -2513,5 +2477,14 @@ A stick that already works with your printer is the right stick. If you are form
   </data>
   <data name="Settings_Confirm_Smtp_Host" xml:space="preserve">
     <value>Nothing changes until this deployment restarts. After it does, a new account must confirm its address before it can sign in, where today one is created already confirmed - so a mail server that does not actually work leaves new people unable to get in. Test it with the button below first. Password reset starts working, and administrators begin receiving health alerts by mail. Accounts that already exist are not affected.</value>
+  </data>
+  <data name="LiveView_StunElsewhere" xml:space="preserve">
+    <value>This is changed on the settings page, under camera settings.</value>
+  </data>
+  <data name="Settings_Label_Cameras_WebRtcStunEnabled" xml:space="preserve">
+    <value>Allow a STUN server to be contacted</value>
+  </data>
+  <data name="Settings_Confirm_Cameras_WebRtcStunEnabled" xml:space="preserve">
+    <value>This deployment stops being self-contained. Your public address is discovered by asking the STUN server named above - a third party - and is then placed in every offer the stream server makes, to anyone permitted to watch. Nothing about what you print is sent anywhere either way, and watching from your own network needs none of this.</value>
   </data>
 </root>

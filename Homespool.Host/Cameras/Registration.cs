@@ -78,7 +78,6 @@ public static class Registration
         services.AddSingleton<WebRtcSidecarWriter>();
 
         // Scoped: holds a DbContext.
-        services.AddScoped<DeploymentSettingStore>();
 
         // Scoped: both hold a DbContext, and the access gate memoises within a request.
         services.AddScoped<Authorisation.CameraAccessService>();

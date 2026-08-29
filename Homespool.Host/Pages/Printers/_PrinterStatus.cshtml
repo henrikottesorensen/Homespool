@@ -38,21 +38,14 @@
            asking for somebody has a "why" that is worth a line of its own. Absent for every state
            that is not waiting, and for a dialog the printer declined to explain.
 
-           No attribution on the sentence. Only a red screen sends words over the wire; for an
-           ordinary attention the printer sends a number and these are our catalogue's words, so
-           "the printer says" would be claiming something this cannot know. The code carries that
-           weight instead - it is the printer's, verbatim, and firmware points at the same page. *@
+           The sentence and nothing else. It is not attributed to the printer, because only a red
+           screen sends words over the wire - an ordinary attention sends a number, and these are
+           our catalogue's words for it. Nor is the code shown: an attention almost always has one,
+           so it would be permanent furniture on the card for a value that matters when somebody is
+           searching Prusa's site and never otherwise. *@
         @if (Model.AttentionReason(liveState) is { } reason)
         {
-            <p class="printer-attention-reason mb-3">
-                @reason
-                @if (liveState?.AttentionCode is { } code)
-                {
-                    <a class="text-body-secondary small ms-1" target="_blank" rel="noopener"
-                       href="https://prusa.io/@code.ToString("D5", CultureInfo.InvariantCulture)"
-                       title="@Localiser["Printers_ErrorCodeHelp"]">@code.ToString("D5", CultureInfo.InvariantCulture)</a>
-                }
-            </p>
+            <p class="printer-attention-reason mb-3">@reason</p>
         }
 
         @if (liveState is null)

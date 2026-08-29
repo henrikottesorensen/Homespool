@@ -409,8 +409,8 @@
   <data name="Printers_NoEvents" xml:space="preserve">
     <value>Ingen hændelser endnu.</value>
   </data>
-  <data name="Printers_PrinterSays" xml:space="preserve">
-    <value>Printeren siger:</value>
+  <data name="Printers_ErrorCodeHelp" xml:space="preserve">
+    <value>Prusas side om denne fejlkode</value>
   </data>
   <data name="Printers_NoTelemetry" xml:space="preserve">
     <value>Ingen telemetri endnu.</value>

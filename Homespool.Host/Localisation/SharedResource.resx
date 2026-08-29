@@ -423,8 +423,8 @@
   <data name="Printers_NoEvents" xml:space="preserve">
     <value>No events yet.</value>
   </data>
-  <data name="Printers_PrinterSays" xml:space="preserve">
-    <value>The printer says:</value>
+  <data name="Printers_ErrorCodeHelp" xml:space="preserve">
+    <value>Prusa's page for this error code</value>
   </data>
   <data name="Printers_NoTelemetry" xml:space="preserve">
     <value>No telemetry yet.</value>

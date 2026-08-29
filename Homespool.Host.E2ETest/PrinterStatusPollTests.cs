@@ -194,8 +194,10 @@ public sealed class PrinterStatusPollTests : IAsyncLifetime, IDisposable
 
             fragment.Should().Contain("Please replace filament.",
                                       "this is the reason the badge could not give");
-            fragment.Should().Contain("The printer says",
-                                      "and it is attributed to the printer rather than stated as ours");
+            fragment.Should().Contain("prusa.io/23829",
+                                      "the code is the printer's own, and firmware points at the same page");
+            fragment.Should().NotContain("The printer says",
+                                         "for an ordinary attention the words are our catalogue's, not the printer's");
         }
     }
 
@@ -224,6 +226,7 @@ public sealed class PrinterStatusPollTests : IAsyncLifetime, IDisposable
 
             fragment.Should().NotContain("Please replace filament.",
                                          "the dialog is gone even if the code has not been cleared yet");
+            fragment.Should().NotContain("prusa.io/23829", "and the code goes with the sentence");
         }
     }
 

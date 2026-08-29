@@ -193,7 +193,7 @@ public sealed class ProvisioningBundleUnreachableNameTests : IDisposable
     private static ProvisioningBundleBuilder NewBuilder(PrinterCertificateAuthority authority, IHostAddressResolver resolver)
     {
         return new(
-            Options.Create(new PrusaConnectOptions { PrinterHost = "192.168.13.238", PrinterPort = 15443, PrinterTls = true }),
+            TestOptions.Monitor(new PrusaConnectOptions { PrinterHost = "192.168.13.238", PrinterPort = 15443, PrinterTls = true }),
             Options.Create(new CertificateOptions { ContainerNetworks = ["172.16.0.0/12"] }),
             authority,
             resolver,

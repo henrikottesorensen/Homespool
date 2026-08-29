@@ -105,7 +105,7 @@ public sealed class BoundedUploadAttribute : Attribute, IFilterFactory, IOrdered
     {
         ArgumentNullException.ThrowIfNull(serviceProvider);
 
-        return new BoundedUploadFilter(serviceProvider.GetRequiredService<IOptions<PrintFileStorageOptions>>(),
+        return new BoundedUploadFilter(serviceProvider.GetRequiredService<IOptionsMonitor<PrintFileStorageOptions>>(),
                                        MaxBytes);
     }
 }
@@ -124,11 +124,11 @@ internal sealed class BoundedUploadFilter : IAuthorizationFilter
 
     private readonly long? _maxBytes;
 
-    public BoundedUploadFilter(IOptions<PrintFileStorageOptions> options, long? maxBytes)
+    public BoundedUploadFilter(IOptionsMonitor<PrintFileStorageOptions> options, long? maxBytes)
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        _options = options.Value;
+        _options = options.CurrentValue;
         _maxBytes = maxBytes;
     }
 

@@ -11,7 +11,6 @@ using AwesomeAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
-using Microsoft.Extensions.Options;
 
 using NSubstitute;
 
@@ -257,7 +256,7 @@ public class PrinterConnectionSessionTests
     private sealed class StubActorFactory(IPrinterConnectionActor actor)
         : PrinterConnectionActorFactory(Substitute.For<ITelemetrySink>(),
                                         NullLogger<PrinterConnectionActor>.Instance,
-                                        Options.Create(new PrusaConnectOptions()),
+                                        TestOptions.Monitor(new PrusaConnectOptions()),
                                         Substitute.For<ITransferContentStore>(),
                                         PrinterTrafficLogTests.Off)
     {
@@ -274,7 +273,7 @@ public class PrinterConnectionSessionTests
                                                  new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
                                                  TimeProvider.System,
                                                  PrinterTrafficLogTests.Off),
-                           Options.Create(new PrusaConnectOptions()))
+                           TestOptions.Monitor(new PrusaConnectOptions()))
     {
         public override Task HandlePrusaWebsocket(PipeReader input,
                                                   int printerId,

@@ -9,7 +9,6 @@ using AwesomeAssertions;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.Exceptions;
@@ -275,7 +274,7 @@ public sealed class PrintFileCatalogTests : IDisposable
 
     private UserFileStore NewStore()
     {
-        return new(Options.Create(new PrintFileStorageOptions { Directory = _root }),
+        return new(TestOptions.Monitor(new PrintFileStorageOptions { Directory = _root }),
                    new HostEnvironmentAccessor(_root),
                    TimeProvider.System,
                    NullLogger<UserFileStore>.Instance);

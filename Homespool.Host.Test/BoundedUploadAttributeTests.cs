@@ -120,8 +120,8 @@ public sealed class BoundedUploadAttributeTests
     private static IAuthorizationFilter FilterFor(BoundedUploadAttribute attribute)
     {
         ServiceCollection services = new();
-        services.AddSingleton<IOptions<PrintFileStorageOptions>>(
-            Options.Create(new PrintFileStorageOptions { MaxUploadBytes = ConfiguredCap }));
+        services.AddSingleton<IOptionsMonitor<PrintFileStorageOptions>>(
+            TestOptions.Monitor(new PrintFileStorageOptions { MaxUploadBytes = ConfiguredCap }));
 
         // Not disposed: the filter holds only the options value, and the provider owns nothing else.
         ServiceProvider provider = services.BuildServiceProvider();

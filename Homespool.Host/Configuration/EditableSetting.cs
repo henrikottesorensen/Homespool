@@ -20,6 +20,18 @@ namespace Homespool.Host.Configuration;
 /// A localisation key naming the moment a <see cref="SettingGrade.Deferred"/> setting starts being
 /// obeyed. Null for every other grade, whose moment the grade itself already names.
 /// </param>
+/// <param name="DisplayGroup">
+/// The heading this appears under, when that is not its own <paramref name="Section"/>. Null for
+/// almost everything.
+/// </param>
+/// <param name="ConfirmOnEnableKey">
+/// A localisation key naming what turning this on does, when that is not visible from the outcome.
+/// Set only for the settings where somebody should be asked; null everywhere else.
+/// </param>
+/// <param name="DisplaySubgroup">
+/// A subheading within the group, for a group large enough that one list of fields stops being
+/// readable. Null for a group that needs none.
+/// </param>
 /// <remarks>
 /// <para>
 /// <b>An allowlist entry, not a description of configuration.</b> The 65 options properties are not
@@ -40,10 +52,47 @@ public sealed record EditableSetting(
     string Key,
     SettingGrade Grade,
     bool IsSecret = false,
-    string? AppliesWhenKey = null)
+    string? AppliesWhenKey = null,
+    string? DisplayGroup = null,
+    string? DisplaySubgroup = null,
+    string? ConfirmOnEnableKey = null)
 {
     /// <summary>
     /// The configuration path this setting is read and written at, in <c>Section:Key</c> form.
     /// </summary>
     public string Path => $"{Section}:{Key}";
+
+    /// <summary>
+    /// The path the value is actually stored under in the settings file.
+    /// </summary>
+    /// <remarks>
+    /// The same as <see cref="Path"/> for everything except a secret, which is stored beside its
+    /// property as ciphertext under a <c>Protected</c>-prefixed name — <c>Smtp:Password</c> is read
+    /// from <c>Smtp:ProtectedPassword</c>. Keeping the two apart is what lets a plaintext value that
+    /// arrived some other way be recognised and adopted rather than mistaken for ciphertext.
+    /// </remarks>
+    public string StoredPath => IsSecret ? $"{Section}:Protected{Key}" : Path;
+
+    /// <summary>
+    /// The heading this setting is shown under.
+    /// </summary>
+    /// <remarks>
+    /// <b>Separate from <see cref="Section"/> because a configuration section is not a subject.</b>
+    /// Which class a setting is bound from is an implementation fact, and letting it decide the
+    /// headings put two one-setting groups next to each other that were both plainly about accounts.
+    /// This only moves where a setting is <i>rendered</i>; it is stored, validated and read at
+    /// <see cref="Path"/> either way, so grouping can be rearranged without touching a file anybody
+    /// has written.
+    /// </remarks>
+    public string Group => DisplayGroup ?? Section;
+
+    /// <summary>
+    /// Whether turning this on has to be agreed to first.
+    /// </summary>
+    /// <remarks>
+    /// <b>On the dangerous direction only</b>, following the live-view prompt: turning something off
+    /// is undoable and asking about it is how people learn to click through the question that
+    /// matters. So this asks when a value goes from off to on, and never when it goes back.
+    /// </remarks>
+    public bool NeedsConfirmingToEnable => ConfirmOnEnableKey is not null;
 }

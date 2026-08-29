@@ -5,8 +5,10 @@ using System.Reflection;
 
 using AwesomeAssertions;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Configuration;
 using Homespool.Host.Mail;
+using Homespool.Host.Middleware;
 
 namespace Homespool.Host.Test;
 
@@ -147,6 +149,31 @@ public class EditableSettingsTests
                         .Where(setting => setting.Section == SmtpOptions.SectionName)
                         .Should()
                         .OnlyContain(setting => setting.Grade == SettingGrade.Restart);
+    }
+
+    /// <summary>
+    /// Grouping is presentation. A setting shown under somebody else's heading must still be stored,
+    /// validated and read where its own section says, or rearranging a page would silently orphan
+    /// values in files people have already written.
+    /// </summary>
+    [Fact]
+    public void ADisplayGroupDoesNotMoveWhereAValueIsStored()
+    {
+        EditableSetting grouped = EditableSettings.All.Single(
+            setting => setting.Path == $"{AttemptLimitOptions.SectionName}:{nameof(AttemptLimitOptions.MaxFailedAttempts)}");
+
+        grouped.Group.Should().Be(SecurityOptions.SectionName, "it is shown with the account settings");
+        grouped.Section.Should().Be(AttemptLimitOptions.SectionName, "but it is stored under its own");
+        grouped.Path.Should().StartWith(AttemptLimitOptions.SectionName + ":");
+    }
+
+    [Fact]
+    public void ASettingWithNoDisplayGroupIsShownUnderItsOwnSection()
+    {
+        EditableSettings.All
+                        .Where(setting => setting.DisplayGroup is null)
+                        .Should()
+                        .OnlyContain(setting => setting.Group == setting.Section);
     }
 
     [Fact]

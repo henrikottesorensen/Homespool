@@ -53,7 +53,7 @@ public class IndexModel : PageModel
                       ProvisioningBundleBuilder bundles,
                       TeamService teamService,
                       UserManager<HSUser> userManager,
-                      IOptions<PrusaConnectOptions> options,
+                      IOptionsSnapshot<PrusaConnectOptions> options,
                       PrinterConnectionRegistry connectionRegistry,
                       PrinterCommandService printerCommandService,
                       PrintStopService printStopService,

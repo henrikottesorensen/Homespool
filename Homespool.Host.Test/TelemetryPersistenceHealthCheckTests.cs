@@ -6,7 +6,6 @@ using AwesomeAssertions;
 
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.PrusaConnect;
@@ -46,7 +45,7 @@ public class TelemetryPersistenceHealthCheckTests
         return await new TelemetryPersistenceHealthCheck(
                 source,
                 new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
-                Options.Create(new StorageOptions { WriteFlushIntervalSeconds = flushIntervalSeconds }),
+                TestOptions.Monitor(new StorageOptions { WriteFlushIntervalSeconds = flushIntervalSeconds }),
                 TimeProvider.System)
             .CheckHealthAsync(new HealthCheckContext(), CancellationToken.None);
     }

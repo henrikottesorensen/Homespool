@@ -16,7 +16,6 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 using NSubstitute;
 
@@ -115,7 +114,7 @@ public sealed class DetailModelTests : IDisposable
         // store. Rooted in a temp directory that no test here ever writes to: these cases are about
         // the 404 rule and connection state, and an empty queue is the right backdrop for both.
         string storeRoot = Path.Combine(Path.GetTempPath(), "homespool-detail-" + Guid.NewGuid().ToString("N"));
-        UserFileStore store = new(Options.Create(new PrintFileStorageOptions { Directory = storeRoot }),
+        UserFileStore store = new(TestOptions.Monitor(new PrintFileStorageOptions { Directory = storeRoot }),
                                   new HostEnvironmentAccessor(storeRoot),
                                   TimeProvider.System,
                                   NullLogger<UserFileStore>.Instance);
@@ -136,7 +135,7 @@ public sealed class DetailModelTests : IDisposable
                                 new PrinterRemovalService(context, access, snapshots, connectionRegistry,
                                                           Substitute.For<ITelemetryEviction>(),
                                                           NullLogger<PrinterRemovalService>.Instance),
-                                new AttemptLimiter(context, Options.Create(new AttemptLimitOptions()),
+                                new AttemptLimiter(context, TestOptions.Snapshot(new AttemptLimitOptions()),
                                                    NullLogger<AttemptLimiter>.Instance),
                                 queueService,
 

@@ -39,12 +39,12 @@ public sealed class CameraFrameCache
 {
     private readonly ConcurrentDictionary<int, Entry> _entries = new();
     private readonly ICameraSnapshotFetcher _fetcher;
-    private readonly IOptions<CameraOptions> _options;
+    private readonly IOptionsMonitor<CameraOptions> _options;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<CameraFrameCache> _logger;
 
     public CameraFrameCache(ICameraSnapshotFetcher fetcher,
-                            IOptions<CameraOptions> options,
+                            IOptionsMonitor<CameraOptions> options,
                             TimeProvider timeProvider,
                             ILogger<CameraFrameCache> logger)
     {
@@ -74,7 +74,7 @@ public sealed class CameraFrameCache
             return null;
         }
 
-        TimeSpan maxAge = TimeSpan.FromSeconds(_options.Value.MaxAgeSeconds);
+        TimeSpan maxAge = TimeSpan.FromSeconds(_options.CurrentValue.MaxAgeSeconds);
         if (frame.AgeAt(_timeProvider.GetUtcNow()) > maxAge)
         {
             entry.Frame = null;
@@ -100,7 +100,7 @@ public sealed class CameraFrameCache
         Entry entry = _entries.GetOrAdd(cameraId, static _ => new Entry());
 
         DateTimeOffset now = _timeProvider.GetUtcNow();
-        TimeSpan floor = TimeSpan.FromSeconds(_options.Value.RefreshFloorSeconds);
+        TimeSpan floor = TimeSpan.FromSeconds(_options.CurrentValue.RefreshFloorSeconds);
 
         lock (entry.Gate)
         {

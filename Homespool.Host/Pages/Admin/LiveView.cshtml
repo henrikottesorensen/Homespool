@@ -6,11 +6,6 @@
 
 <h1>@ViewData["Title"]</h1>
 
-@if (!string.IsNullOrEmpty(Model.StatusMessage))
-{
-    <div class="alert @(Model.StatusSuccess ? "alert-success" : "alert-warning")" role="alert">@Model.StatusMessage</div>
-}
-
 <p>@Localiser["LiveView_Intro"]</p>
 
 @* Said before the switch rather than after it: whether live view works at all is the question
@@ -45,58 +40,4 @@ else
 
 <p>@Localiser["LiveView_StunExplained"]</p>
 
-@if (Model.StunEnabled)
-{
-    @* Turning it off needs no prompt. Nothing about stopping is hard to undo, and a confirmation on
-       the safe direction is how people learn to click through the one that is not. *@
-    <form method="post">
-        <input type="hidden" name="enabled" value="false" />
-        <button type="submit" class="btn btn-outline-secondary">@Localiser["LiveView_TurnStunOff"]</button>
-    </form>
-}
-else
-{
-    <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#enable-stun">
-        @Localiser["LiveView_TurnStunOn"]
-    </button>
-
-    <div class="modal fade" id="enable-stun" tabindex="-1" aria-labelledby="enable-stun-heading" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="enable-stun-heading">@Localiser["LiveView_StunConfirmHeading"]</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"
-                            aria-label="@Localiser["Common_Cancel"]"></button>
-                </div>
-
-                @* Two named conditions rather than "are you sure", following the Set Ready prompt.
-                   Both are true, both are weighable, and neither is visible from the outcome if this
-                   is simply switched on - which is the whole reason it is asked at all. *@
-                <div class="modal-body">
-                    <p class="fw-semibold mb-2">@Localiser["LiveView_StunConfirmLead"]</p>
-                    <ul>
-                        <li>@Localiser["LiveView_StunConfirmPublicAddress"]</li>
-                        <li>@Localiser["LiveView_StunConfirmThirdParty", Model.StunServer]</li>
-                    </ul>
-                    <p class="text-body-secondary mb-0">@Localiser["LiveView_StunConfirmConsequence"]</p>
-                </div>
-
-                @* The confirm carries the assertion rather than agreement, as Set Ready's does: a
-                   button saying "OK" can be pressed while telling yourself you are dismissing a
-                   dialog. *@
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                        @Localiser["Common_Cancel"]
-                    </button>
-
-                    <form method="post">
-                        <input type="hidden" name="enabled" value="true" />
-                        <button type="submit" class="btn btn-warning">@Localiser["LiveView_StunConfirm"]</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-}
-
-<p class="mt-3 text-body-secondary">@Localiser["LiveView_RestartWarning"]</p>
+<p class="text-body-secondary">@Localiser["LiveView_StunElsewhere"]</p>

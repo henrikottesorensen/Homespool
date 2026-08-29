@@ -58,8 +58,8 @@ public class WebSocketHandlerParsingTests
         """{"event":"FILE_INFO","command_id":42,"state":"PRINTING","data":{"path":"/usb/målestok-90°.bgcode","display_name":"Målestok 90° — udkast"}}""";
 
     /// <summary>The shipped defaults - a 1 MiB message cap, which nothing here approaches.</summary>
-    private static readonly IOptions<PrusaConnectOptions> DefaultOptions =
-        Options.Create(new PrusaConnectOptions());
+    private static readonly IOptionsMonitor<PrusaConnectOptions> DefaultOptions =
+        TestOptions.Monitor(new PrusaConnectOptions());
 
     /// <summary>
     /// One JSON message split across reads at 1, 2, 7, 64 and 4096 bytes arrives as one message.
@@ -214,7 +214,7 @@ public class WebSocketHandlerParsingTests
 
         WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance,
                                        new RecordingMessageDispatcher(),
-                                       Options.Create(new PrusaConnectOptions { MaxIncomingMessageBytes = 4096 }));
+                                       TestOptions.Monitor(new PrusaConnectOptions { MaxIncomingMessageBytes = 4096 }));
 
         // Act
         Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 7,
@@ -250,7 +250,7 @@ public class WebSocketHandlerParsingTests
         RecordingMessageDispatcher dispatcher = new();
 
         WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, dispatcher,
-                                       Options.Create(new PrusaConnectOptions { MaxIncomingMessageBytes = 4096 }));
+                                       TestOptions.Monitor(new PrusaConnectOptions { MaxIncomingMessageBytes = 4096 }));
 
         // Act
         Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 7,

@@ -47,7 +47,7 @@ public class AddModel : PageModel
                     TeamService teamService,
                     UserManager<HSUser> userManager,
                     UnitOfWork unitOfWork,
-                    IOptions<PrusaConnectOptions> options,
+                    IOptionsSnapshot<PrusaConnectOptions> options,
                     IStringLocalizer<SharedResource> localiser,
                     ILogger<AddModel> logger)
     {

@@ -68,7 +68,7 @@ public sealed class RegisterModelTests : IDisposable
 
     private static InvitationService NewInvitationService(HomespoolDbContext context)
     {
-        return new(context, new TokenService(), Options.Create(new InvitationOptions()));
+        return new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()));
     }
 
     /// <summary>

@@ -1,8 +1,5 @@
-using System;
 using System.Threading;
 using System.Threading.Tasks;
-
-using MailKit.Security;
 
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -28,15 +25,15 @@ namespace Homespool.Host.Mail;
 public class SmtpConnectivityProbe : BackgroundService
 {
     private readonly SmtpOptions _options;
-    private readonly ISmtpTransportFactory _transportFactory;
+    private readonly SmtpConnectivityCheck _check;
     private readonly ILogger<SmtpConnectivityProbe> _logger;
 
     public SmtpConnectivityProbe(IOptions<SmtpOptions> options,
-                                 ISmtpTransportFactory transportFactory,
+                                 SmtpConnectivityCheck check,
                                  ILogger<SmtpConnectivityProbe> logger)
     {
         _options = options.Value;
-        _transportFactory = transportFactory;
+        _check = check;
         _logger = logger;
     }
 
@@ -55,47 +52,20 @@ public class SmtpConnectivityProbe : BackgroundService
             return;
         }
 
-        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-        timeout.CancelAfter(_options.Timeout);
+        SmtpCheckResult result = await _check.RunAsync(_options, stoppingToken).ConfigureAwait(false);
 
-        try
+        if (result.Succeeded)
         {
-            using ISmtpTransport client = _transportFactory.Create();
-
-            SecureSocketOptions socketOptions = _options.DisableTls ? SecureSocketOptions.None
-                : _options.UseImplicitTls ? SecureSocketOptions.SslOnConnect
-                : SecureSocketOptions.StartTls;
-
-            await client.ConnectAsync(_options.Host, _options.Port, socketOptions, timeout.Token);
-
-            if (!string.IsNullOrWhiteSpace(_options.UserName))
-            {
-                // Authenticating is the point of the probe: a reachable port proves very little, and bad credentials
-                // are the failure an operator is most likely to have and least likely to notice until a user needs
-                // a password reset.
-                await client.AuthenticateAsync(_options.UserName, _options.Password, timeout.Token);
-            }
-            else
-            {
-                _logger.LogInformation("SMTP has no username configured; connecting without authentication.");
-            }
-
-            await client.DisconnectAsync(true, timeout.Token);
-
             _logger.LogInformation("SMTP check succeeded for {Host}:{Port}.", _options.Host, _options.Port);
+
+            return;
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            // Shutting down mid-probe. Not interesting.
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex,
-                               "SMTP check failed for {Host}:{Port}. Mail will be attempted anyway; this is a " +
-                               "diagnostic only. If the mail server starts after this one, set Smtp:ProbeOnStartup " +
-                               "to false.",
-                               _options.Host,
-                               _options.Port);
-        }
+
+        _logger.LogWarning("SMTP check failed for {Host}:{Port}: {Error}. Mail will be attempted anyway; this is a " +
+                           "diagnostic only. If the mail server starts after this one, set Smtp:ProbeOnStartup " +
+                           "to false.",
+                           _options.Host,
+                           _options.Port,
+                           result.Error);
     }
 }

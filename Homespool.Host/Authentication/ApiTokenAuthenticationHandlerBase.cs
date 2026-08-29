@@ -53,12 +53,12 @@ public abstract class ApiTokenAuthenticationHandlerBase : AuthenticationHandler<
     private readonly ApiTokenService _tokens;
     private readonly UserManager<HSUser> _userManager;
     private readonly IUserClaimsPrincipalFactory<HSUser> _claimsFactory;
-    private readonly IOptions<Middleware.SecurityOptions> _security;
+    private readonly IOptionsMonitor<Middleware.SecurityOptions> _security;
 
     protected ApiTokenAuthenticationHandlerBase(ApiTokenService tokens,
                                                 UserManager<HSUser> userManager,
                                                 IUserClaimsPrincipalFactory<HSUser> claimsFactory,
-                                                IOptions<Middleware.SecurityOptions> security,
+                                                IOptionsMonitor<Middleware.SecurityOptions> security,
                                                 IOptionsMonitor<ApiTokenAuthenticationSchemeOptions> options,
                                                 ILoggerFactory loggerFactory,
                                                 UrlEncoder encoder)
@@ -154,7 +154,7 @@ public abstract class ApiTokenAuthenticationHandlerBase : AuthenticationHandler<
         // a header on a machine-to-machine request, with no page to redirect to and nobody reading
         // prose. The log line is where the real reason lives, and an operator who turns the setting on
         // should expect to need it.
-        if (_security.Value.RequireTwoFactor && !await _userManager.GetTwoFactorEnabledAsync(user))
+        if (_security.CurrentValue.RequireTwoFactor && !await _userManager.GetTwoFactorEnabledAsync(user))
         {
             Logger.LogWarning(
                 "API token {TokenId} refused: Security:RequireTwoFactor is on and user {UserId} has no authenticator.",

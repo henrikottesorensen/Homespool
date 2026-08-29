@@ -36,11 +36,11 @@ namespace Homespool.Host.Cameras;
 public sealed class WebRtcSidecarWriter
 {
     private readonly Go2RtcClient _streamServer;
-    private readonly IOptions<CameraOptions> _options;
+    private readonly IOptionsMonitor<CameraOptions> _options;
     private readonly ILogger<WebRtcSidecarWriter> _logger;
 
     public WebRtcSidecarWriter(Go2RtcClient streamServer,
-                               IOptions<CameraOptions> options,
+                               IOptionsMonitor<CameraOptions> options,
                                ILogger<WebRtcSidecarWriter> logger)
     {
         _streamServer = streamServer;
@@ -68,7 +68,7 @@ public sealed class WebRtcSidecarWriter
             return false;
         }
 
-        string stunServer = _options.Value.WebRtcStunServer.Trim();
+        string stunServer = _options.CurrentValue.WebRtcStunServer.Trim();
 
         string? existing = await _streamServer.ReadConfigAsync(cancellationToken).ConfigureAwait(false);
 

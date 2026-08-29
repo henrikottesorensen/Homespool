@@ -7,7 +7,6 @@ using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.PrintFiles;
@@ -237,14 +236,14 @@ public sealed class PrintFileReconcilerTests : IDisposable
         ServiceCollection services = new();
         services.AddDbContext<HomespoolDbContext>(options => options.UseSqlite($"Data Source={_databasePath}"));
 
-        UserFileStore store = new(Options.Create(new PrintFileStorageOptions { Directory = _root }),
+        UserFileStore store = new(TestOptions.Monitor(new PrintFileStorageOptions { Directory = _root }),
                                   new HostEnvironmentAccessor(_root),
                                   TimeProvider.System,
                                   NullLogger<UserFileStore>.Instance);
 
         return new PrintFileReconciler(services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
                                        store,
-                                       Options.Create(new PrintFileStorageOptions { Directory = _root }),
+                                       TestOptions.Monitor(new PrintFileStorageOptions { Directory = _root }),
                                        new HostEnvironmentAccessor(_root),
                                        NullLogger<PrintFileReconciler>.Instance);
     }

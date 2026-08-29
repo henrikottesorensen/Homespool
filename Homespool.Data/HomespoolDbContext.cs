@@ -97,10 +97,6 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
     /// only - no image is ever stored, here or anywhere.</summary>
     public DbSet<Camera> Cameras { get; set; }
 
-    /// <summary>The single row of deployment settings chosen in the application rather than in
-    /// <c>.env</c> - see <see cref="DeploymentSetting"/> for what earns a place there.</summary>
-    public DbSet<DeploymentSetting> DeploymentSettings { get; set; }
-
     public HomespoolDbContext(DbContextOptions<HomespoolDbContext> options)
         : base(options)
     {
@@ -229,15 +225,6 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
                   .WithMany()
                   .HasForeignKey(e => e.PrinterId)
                   .OnDelete(DeleteBehavior.Cascade);
-        });
-
-        builder.Entity<DeploymentSetting>(entity =>
-        {
-            // Never generated. There is one row and its key is a known constant, so reading the
-            // settings is a lookup rather than a query that has to decide what a second row means -
-            // and an insert that did not choose the constant would be refused by the key itself.
-            entity.Property(e => e.Id)
-                  .ValueGeneratedNever();
         });
 
         builder.Entity<PrusaConnectAuthenticationData>(entity =>

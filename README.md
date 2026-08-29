@@ -85,10 +85,11 @@ docker compose up --build
 
 `setup-env.sh` exists because one setting — the address printers use to reach this machine — has no
 sensible default and is expensive to get wrong. It detects the addresses this machine can be reached
-on, excludes the ones no printer can route to, and writes `.env`, asking about ports and mail only if
-you want them and generating the camera sidecar's credential without asking.
+on, excludes the ones no printer can route to, and writes `.env`, asking about ports only if you want
+them and generating the camera sidecar's credential without asking. Mail is not among its questions:
+that is configured in the application, not in `.env`.
 
-It **patches** `.env` rather than regenerating it, so it is safe to re-run later to add SMTP or
+It **patches** `.env` rather than regenerating it, so it is safe to re-run later to
 repoint an address: comments, blank lines and any setting it did not ask about are left as they were.
 `--dry-run` shows what it would change; `--help` lists the rest.
 
@@ -452,8 +453,8 @@ no outside help at all. Watching from *outside* it needs the stream server to le
 public address, which means asking a public STUN server — so **Live view** in the navigation has a
 switch for that, off by default, and turning it on names both consequences first: your public address
 goes into every offer the server makes, and a third party is contacted to discover it. Nothing about
-what you print is sent anywhere either way. `WEBRTC_STUN_SERVER` chooses who is asked, and takes your
-own `coturn` if you have one.
+what you print is sent anywhere either way. Which STUN server is asked is a setting on that same page, and
+takes your own `coturn` if you have one.
 
 ---
 
@@ -600,8 +601,12 @@ already confirmed, invitations must be passed on by hand, and password reset is 
 | `TimeoutSeconds` | `30` | |
 | `ProbeOnStartup` | `true` | Connects and authenticates once at boot to report a broken configuration early. Diagnostic only. |
 
-**Never put the SMTP password in `appsettings.json` or `compose.yaml`** — both are committed. Use
-`.env` (gitignored), an environment variable, or user secrets.
+**Mail is configured in the application, by an administrator, and kept in `data/settings.json` on the
+mounted volume** — not in `.env` and not in `compose.yaml`, both of which are committed or shared. The
+table above names the settings as the application knows them; nothing here needs an environment
+variable. A deployment upgrading from the version that did use `.env` runs
+`docker compose run --rm homespool --write-settings` once, against the old `compose.yaml`, to carry
+its existing values across.
 
 ### `Storage` and `Invitations`
 

@@ -56,7 +56,7 @@ public sealed class ProvisioningBundleBuilder
     /// </remarks>
     private readonly IStringLocalizer<SharedResource> _localiser;
 
-    public ProvisioningBundleBuilder(IOptions<PrusaConnectOptions> options,
+    public ProvisioningBundleBuilder(IOptionsMonitor<PrusaConnectOptions> options,
                                      IOptions<CertificateOptions> certificates,
                                      PrinterCertificateAuthority authority,
                                      IHostAddressResolver resolver,
@@ -66,7 +66,7 @@ public sealed class ProvisioningBundleBuilder
         ArgumentNullException.ThrowIfNull(certificates);
 
         _localiser = localiser;
-        _options = options.Value;
+        _options = options.CurrentValue;
         _certificates = certificates.Value;
         _authority = authority;
         _resolver = resolver;

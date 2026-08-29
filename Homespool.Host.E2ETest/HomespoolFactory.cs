@@ -100,6 +100,15 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
         _connectionString = connectionString;
         _messageDispatcher = messageDispatcher;
         _extraSinks = extraSinks;
+
+        // The settings file is the one path resolved before the container exists, so it cannot go
+        // through IHostEnvironmentAccessor like every other configurable directory - Program reads
+        // builder.Environment.ContentRootPath, which under WebApplicationFactory is the real
+        // Homespool.Host project folder. Left alone, one test that saves a setting writes
+        // Homespool.Host/data/settings.json and every other host in the run then reads it: measured,
+        // 15 end-to-end tests failed that way, and a developer's own server would have picked it up
+        // too. This is the narrow hole the content-root remarks above describe, and this closes it.
+        ConfigurationOverrides["Settings:File"] = Path.Combine(_contentRoot, "data", "settings.json");
     }
 
     /// <summary>

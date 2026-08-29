@@ -9,7 +9,6 @@ using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 using Serilog;
 using Serilog.Core;
@@ -50,7 +49,7 @@ public sealed class PrinterRegistrationTests : IDisposable
                    new TeamService(context),
                    TimeProvider.System,
                    logger ?? NullLogger<PrusaConnectService>.Instance,
-                   Options.Create(new PrusaConnectOptions { RegistrationCodeLifetimeMinutes = lifetimeMinutes }));
+                   TestOptions.Monitor(new PrusaConnectOptions { RegistrationCodeLifetimeMinutes = lifetimeMinutes }));
     }
 
     private static RegisterPrinterRequestDTO Request(string serial = "15715-4842441651816441",

@@ -10,7 +10,6 @@ using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 using NSubstitute;
 
@@ -144,7 +143,7 @@ public sealed class CameraCredentialTests : IDisposable
         await AddCameraAsync(context);
 
         CameraCredentialHealthCheck check = new(
-            Options.Create(new CameraOptions { ApiUsername = "homespool", ApiPassword = "has\\back" }),
+            TestOptions.Monitor(new CameraOptions { ApiUsername = "homespool", ApiPassword = "has\\back" }),
             context);
 
         HealthCheckResult result = await check.CheckHealthAsync(
@@ -194,7 +193,7 @@ public sealed class CameraCredentialTests : IDisposable
 
     private static async Task<HealthCheckResult> CheckAsync(HomespoolDbContext context, bool credentialed)
     {
-        CameraCredentialHealthCheck check = new(Options.Create(OptionsFor(credentialed)), context);
+        CameraCredentialHealthCheck check = new(TestOptions.Monitor(OptionsFor(credentialed)), context);
 
         return await check.CheckHealthAsync(
             new HealthCheckContext(), TestContext.Current.CancellationToken);
@@ -233,7 +232,7 @@ public sealed class CameraCredentialTests : IDisposable
         IHttpClientFactory factory = Substitute.For<IHttpClientFactory>();
 
         Go2RtcClient client = new(factory,
-                                  Options.Create(OptionsFor(credentialed)),
+                                  TestOptions.Monitor(OptionsFor(credentialed)),
                                   NullLogger<Go2RtcClient>.Instance);
 
         return (client, factory);

@@ -135,14 +135,14 @@ public sealed class UserFileStore
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<UserFileStore> _logger;
 
-    public UserFileStore(IOptions<PrintFileStorageOptions> options,
+    public UserFileStore(IOptionsMonitor<PrintFileStorageOptions> options,
                          IHostEnvironmentAccessor environment,
                          TimeProvider timeProvider,
                          ILogger<UserFileStore> logger)
     {
-        _root = Path.IsPathRooted(options.Value.Directory) ?
-            options.Value.Directory :
-            Path.Combine(environment.ContentRootPath, options.Value.Directory);
+        _root = Path.IsPathRooted(options.CurrentValue.Directory) ?
+            options.CurrentValue.Directory :
+            Path.Combine(environment.ContentRootPath, options.CurrentValue.Directory);
         _timeProvider = timeProvider;
         _logger = logger;
     }

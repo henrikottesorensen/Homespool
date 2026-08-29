@@ -49,7 +49,7 @@ public sealed class PrintFileReconciler : BackgroundService
 
     public PrintFileReconciler(IServiceScopeFactory scopeFactory,
                                UserFileStore store,
-                               IOptions<PrintFileStorageOptions> options,
+                               IOptionsMonitor<PrintFileStorageOptions> options,
                                IHostEnvironmentAccessor environment,
                                ILogger<PrintFileReconciler> logger)
     {
@@ -58,9 +58,9 @@ public sealed class PrintFileReconciler : BackgroundService
 
         _scopeFactory = scopeFactory;
         _store = store;
-        _root = Path.IsPathRooted(options.Value.Directory) ?
-            options.Value.Directory :
-            Path.Combine(environment.ContentRootPath, options.Value.Directory);
+        _root = Path.IsPathRooted(options.CurrentValue.Directory) ?
+            options.CurrentValue.Directory :
+            Path.Combine(environment.ContentRootPath, options.CurrentValue.Directory);
         _logger = logger;
     }
 

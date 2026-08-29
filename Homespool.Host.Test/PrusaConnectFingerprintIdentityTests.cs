@@ -67,7 +67,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
                    new TokenService(),
                    new TeamService(context),
                    TimeProvider.System, NullLogger<PrusaConnectService>.Instance,
-                   Options.Create(new PrusaConnectOptions()));
+                   TestOptions.Monitor(new PrusaConnectOptions()));
     }
 
     private HomespoolDbContext NewContext()

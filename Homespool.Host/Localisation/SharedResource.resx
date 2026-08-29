@@ -1282,42 +1282,6 @@
   <data name="LiveView_StunExplained" xml:space="preserve">
     <value>Watching from your own network needs nothing here. To watch from outside it, the stream server can ask a public STUN server what this deployment's public address is — which is off unless you turn it on, because it means contacting somebody else's server.</value>
   </data>
-  <data name="LiveView_TurnStunOn" xml:space="preserve">
-    <value>Allow STUN…</value>
-  </data>
-  <data name="LiveView_TurnStunOff" xml:space="preserve">
-    <value>Stop allowing STUN</value>
-  </data>
-  <data name="LiveView_StunConfirmHeading" xml:space="preserve">
-    <value>Allow a public STUN server?</value>
-  </data>
-  <data name="LiveView_StunConfirmLead" xml:space="preserve">
-    <value>Two things become true if you do:</value>
-  </data>
-  <data name="LiveView_StunConfirmPublicAddress" xml:space="preserve">
-    <value>Your public address is placed in every offer this server makes to a browser.</value>
-  </data>
-  <data name="LiveView_StunConfirmThirdParty" xml:space="preserve">
-    <value>{0} is contacted to discover it, so this deployment stops being self-contained.</value>
-  </data>
-  <data name="LiveView_StunConfirmConsequence" xml:space="preserve">
-    <value>Neither is visible from the result, which is why you are being asked rather than told afterwards. Nothing about what you print is sent anywhere either way.</value>
-  </data>
-  <data name="LiveView_StunConfirm" xml:space="preserve">
-    <value>Allow the STUN server</value>
-  </data>
-  <data name="LiveView_StunOnApplied" xml:space="preserve">
-    <value>STUN is allowed, and the stream server has been restarted to apply it.</value>
-  </data>
-  <data name="LiveView_StunOffApplied" xml:space="preserve">
-    <value>STUN is no longer allowed, and the stream server has been restarted to apply it.</value>
-  </data>
-  <data name="LiveView_NotApplied" xml:space="preserve">
-    <value>Your choice is saved, but the camera stream server could not be told about it. It will be applied the next time Homespool starts.</value>
-  </data>
-  <data name="LiveView_RestartWarning" xml:space="preserve">
-    <value>Changing this restarts the camera stream server, which interrupts anyone watching for a moment. Cameras and still pictures are unaffected.</value>
-  </data>
   <data name="Account_AccessDeniedTitle" xml:space="preserve">
     <value>Access denied</value>
   </data>
@@ -2356,5 +2320,182 @@ A stick that already works with your printer is the right stick. If you are form
   </data>
   <data name="Printers_RemoveCodeInvalid" xml:space="preserve">
     <value>That code is not right. Open your authenticator app and try the current one.</value>
+  </data>
+  <data name="Settings_Title" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="Settings_Intro" xml:space="preserve">
+    <value>Settings for this whole deployment, stored on the data volume. Ports, directories and the address printers connect to are deliberately not here: they live in .env and compose.yaml, because they have to match what Docker actually publishes and mounts. Changing them here could not make Docker agree.</value>
+  </data>
+  <data name="Settings_Save" xml:space="preserve">
+    <value>Save settings</value>
+  </data>
+  <data name="Settings_Saved" xml:space="preserve">
+    <value>Settings saved.</value>
+  </data>
+  <data name="Settings_NotSaved" xml:space="preserve">
+    <value>Nothing was saved. Correct the values marked below.</value>
+  </data>
+  <data name="Settings_On" xml:space="preserve">
+    <value>On</value>
+  </data>
+  <data name="Settings_Off" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="Settings_AppliesImmediately" xml:space="preserve">
+    <value>Applies immediately</value>
+  </data>
+  <data name="Settings_AppliesOnRestart" xml:space="preserve">
+    <value>Applies after a restart</value>
+  </data>
+  <data name="Settings_AppliesOnNextSweep" xml:space="preserve">
+    <value>Applies on the next sweep, within an hour</value>
+  </data>
+  <data name="Settings_AppliesOnNextPrinterConnection" xml:space="preserve">
+    <value>Applies when each printer next connects</value>
+  </data>
+  <data name="Nav_SettingsTitle" xml:space="preserve">
+    <value>Change what this deployment does</value>
+  </data>
+  <data name="Settings_Section_Security" xml:space="preserve">
+    <value>Account security</value>
+  </data>
+  <data name="Settings_Section_Invitations" xml:space="preserve">
+    <value>Invitation defaults</value>
+  </data>
+  <data name="Settings_Section_PrusaConnect" xml:space="preserve">
+    <value>Prusa printer communication</value>
+  </data>
+  <data name="Settings_Section_Storage" xml:space="preserve">
+    <value>Storage settings</value>
+  </data>
+  <data name="Settings_Section_Cameras" xml:space="preserve">
+    <value>Camera settings</value>
+  </data>
+  <data name="Settings_Section_Smtp" xml:space="preserve">
+    <value>Outgoing mail</value>
+  </data>
+  <data name="Settings_Label_Security_RequireTwoFactor" xml:space="preserve">
+    <value>Require an authenticator on every account</value>
+  </data>
+  <data name="Settings_Label_AttemptLimits_MaxFailedAttempts" xml:space="preserve">
+    <value>Failed sign-ins before the account is locked</value>
+  </data>
+  <data name="Settings_Label_Invitations_LifetimeHours" xml:space="preserve">
+    <value>How long an invitation stays valid, in hours</value>
+  </data>
+  <data name="Settings_Label_PrintFiles_MaxUploadBytes" xml:space="preserve">
+    <value>Largest upload, in bytes</value>
+  </data>
+  <data name="Settings_Label_PrusaConnect_RegistrationCodeLifetimeMinutes" xml:space="preserve">
+    <value>How long a claim code lasts, in minutes</value>
+  </data>
+  <data name="Settings_Label_PrusaConnect_CommandResponseTimeoutSeconds" xml:space="preserve">
+    <value>Wait for a printer to answer a command, in seconds</value>
+  </data>
+  <data name="Settings_Label_Storage_MinimumSampleIntervalSeconds" xml:space="preserve">
+    <value>Shortest gap between stored samples, in seconds</value>
+  </data>
+  <data name="Settings_Label_Storage_TelemetryRetentionDays" xml:space="preserve">
+    <value>Keep telemetry for, in days</value>
+  </data>
+  <data name="Settings_Label_Storage_EventRetentionDays" xml:space="preserve">
+    <value>Keep events for, in days</value>
+  </data>
+  <data name="Settings_Label_Storage_MaxEventsPerPrinter" xml:space="preserve">
+    <value>Most events kept per printer</value>
+  </data>
+  <data name="Settings_Label_Storage_WriteBatchSize" xml:space="preserve">
+    <value>Rows buffered before writing</value>
+  </data>
+  <data name="Settings_Label_Storage_WriteFlushIntervalSeconds" xml:space="preserve">
+    <value>Longest a buffered row waits, in seconds</value>
+  </data>
+  <data name="Settings_Label_Cameras_RefreshFloorSeconds" xml:space="preserve">
+    <value>Shortest gap between camera fetches, in seconds</value>
+  </data>
+  <data name="Settings_Label_Cameras_MaxAgeSeconds" xml:space="preserve">
+    <value>Oldest picture still shown, in seconds</value>
+  </data>
+  <data name="Settings_Label_Cameras_TimeoutSeconds" xml:space="preserve">
+    <value>Wait for a camera to answer, in seconds</value>
+  </data>
+  <data name="Settings_Label_Cameras_MaxFrameBytes" xml:space="preserve">
+    <value>Largest picture accepted, in bytes</value>
+  </data>
+  <data name="Settings_Label_Cameras_WebRtcStunServer" xml:space="preserve">
+    <value>STUN server, contacted only when allowed</value>
+  </data>
+  <data name="Settings_Label_Smtp_Host" xml:space="preserve">
+    <value>SMTP server</value>
+  </data>
+  <data name="Settings_Label_Smtp_Port" xml:space="preserve">
+    <value>SMTP port</value>
+  </data>
+  <data name="Settings_Label_Smtp_UseImplicitTls" xml:space="preserve">
+    <value>Encrypted from the first byte (port 465)</value>
+  </data>
+  <data name="Settings_Label_Smtp_DisableTls" xml:space="preserve">
+    <value>No encryption at all</value>
+  </data>
+  <data name="Settings_Label_Smtp_UserName" xml:space="preserve">
+    <value>SMTP username</value>
+  </data>
+  <data name="Settings_Label_Smtp_Password" xml:space="preserve">
+    <value>SMTP password</value>
+  </data>
+  <data name="Settings_Label_Smtp_FromAddress" xml:space="preserve">
+    <value>From address</value>
+  </data>
+  <data name="Settings_Label_Smtp_FromName" xml:space="preserve">
+    <value>From name</value>
+  </data>
+  <data name="Settings_Label_Smtp_TimeoutSeconds" xml:space="preserve">
+    <value>Give up after, in seconds</value>
+  </data>
+  <data name="Settings_Label_Smtp_ProbeOnStartup" xml:space="preserve">
+    <value>Check the SMTP server at startup</value>
+  </data>
+  <data name="Settings_Subsection_PrintFiles" xml:space="preserve">
+    <value>Print files</value>
+  </data>
+  <data name="Settings_Subsection_Telemetry" xml:space="preserve">
+    <value>Telemetry</value>
+  </data>
+  <data name="Settings_ConfirmHeading" xml:space="preserve">
+    <value>Read this before it takes effect</value>
+  </data>
+  <data name="Settings_ConfirmButton" xml:space="preserve">
+    <value>I understand, apply it</value>
+  </data>
+  <data name="Settings_ConfirmCancel" xml:space="preserve">
+    <value>Leave it as it is</value>
+  </data>
+  <data name="Settings_Confirm_Security_RequireTwoFactor" xml:space="preserve">
+    <value>Every account without an authenticator is sent to enrol before it can do anything else. Any personal access token belonging to such an account stops working immediately, and fails as a 401 that explains nothing - so integrations break before their owners know why.</value>
+  </data>
+  <data name="Settings_Refuse_Security_RequireTwoFactor" xml:space="preserve">
+    <value>Set up an authenticator on your own account first. The requirement applies to accounts rather than sessions, so turning it on without one would send you to enrol and leave you unable to reach this page - or to undo it.</value>
+  </data>
+  <data name="Settings_TestMail" xml:space="preserve">
+    <value>Test the mail server</value>
+  </data>
+  <data name="Settings_MailTestWorked" xml:space="preserve">
+    <value>Connected to the mail server, and signed in where a username was given. Nothing was sent, and nothing was saved.</value>
+  </data>
+  <data name="Settings_MailTestFailed" xml:space="preserve">
+    <value>Could not use the mail server: {0}</value>
+  </data>
+  <data name="Settings_Confirm_Smtp_Host" xml:space="preserve">
+    <value>Nothing changes until this deployment restarts. After it does, a new account must confirm its address before it can sign in, where today one is created already confirmed - so a mail server that does not actually work leaves new people unable to get in. Test it with the button below first. Password reset starts working, and administrators begin receiving health alerts by mail. Accounts that already exist are not affected.</value>
+  </data>
+  <data name="LiveView_StunElsewhere" xml:space="preserve">
+    <value>This is changed on the settings page, under camera settings.</value>
+  </data>
+  <data name="Settings_Label_Cameras_WebRtcStunEnabled" xml:space="preserve">
+    <value>Allow a STUN server to be contacted</value>
+  </data>
+  <data name="Settings_Confirm_Cameras_WebRtcStunEnabled" xml:space="preserve">
+    <value>This deployment stops being self-contained. Your public address is discovered by asking the STUN server named above - a third party - and is then placed in every offer the stream server makes, to anyone permitted to watch. Nothing about what you print is sent anywhere either way, and watching from your own network needs none of this.</value>
   </data>
 </root>

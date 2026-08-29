@@ -7,7 +7,6 @@ using AwesomeAssertions;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
@@ -38,7 +37,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
                    new TokenService(),
                    new TeamService(context),
                    TimeProvider.System, NullLogger<PrusaConnectService>.Instance,
-                   Options.Create(new PrusaConnectOptions()));
+                   TestOptions.Monitor(new PrusaConnectOptions()));
     }
 
     private HomespoolDbContext NewContext()

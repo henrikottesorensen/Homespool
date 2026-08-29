@@ -21,12 +21,12 @@ public class PrinterConnectionActorFactory
     private readonly ITelemetrySink _sink;
     private readonly ITransferContentStore _contentStore;
     private readonly ILogger<PrinterConnectionActor> _logger;
-    private readonly IOptions<PrusaConnectOptions> _options;
+    private readonly IOptionsMonitor<PrusaConnectOptions> _options;
     private readonly PrinterTrafficLog _trafficLog;
 
     public PrinterConnectionActorFactory(ITelemetrySink sink,
                                          ILogger<PrinterConnectionActor> logger,
-                                         IOptions<PrusaConnectOptions> options,
+                                         IOptionsMonitor<PrusaConnectOptions> options,
                                          ITransferContentStore contentStore,
                                          PrinterTrafficLog trafficLog)
     {
@@ -41,7 +41,7 @@ public class PrinterConnectionActorFactory
     /// <see cref="Printing.IPrinterLink.Complete"/>.</summary>
     public virtual IPrinterConnectionActor Create(int printerId, IPrinterConnection connection)
     {
-        return new PrinterConnectionActor(printerId, connection, _sink, _logger, _options.Value.CommandResponseTimeout,
+        return new PrinterConnectionActor(printerId, connection, _sink, _logger, _options.CurrentValue.CommandResponseTimeout,
                                           _contentStore)
         {
             TrafficLog = _trafficLog,

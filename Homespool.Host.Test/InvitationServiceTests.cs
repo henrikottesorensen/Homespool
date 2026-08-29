@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using AwesomeAssertions;
 
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
@@ -31,7 +30,7 @@ public sealed class InvitationServiceTests : IDisposable
 
     private static InvitationService NewService(HomespoolDbContext context, int lifetimeHours = 48)
     {
-        return new(context, new TokenService(), Options.Create(new InvitationOptions { LifetimeHours = lifetimeHours }));
+        return new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions { LifetimeHours = lifetimeHours }));
     }
 
     private HomespoolDbContext NewContext()

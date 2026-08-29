@@ -33,7 +33,7 @@ public class PrusaConnectService
                                TeamService teamService,
                                TimeProvider timeProvider,
                                ILogger<PrusaConnectService> logger,
-                               IOptions<PrusaConnectOptions> options)
+                               IOptionsMonitor<PrusaConnectOptions> options)
     {
         _dbContext = dbContext;
         _codeGenerator = codeGenerator;
@@ -41,7 +41,7 @@ public class PrusaConnectService
         _teamService = teamService;
         _timeProvider = timeProvider;
         _logger = logger;
-        _options = options.Value;
+        _options = options.CurrentValue;
     }
 
     /// <summary>

@@ -11,7 +11,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
@@ -66,7 +65,7 @@ public sealed class ClaimModelTests : IDisposable
                    new TokenService(),
                    new TeamService(context),
                    TimeProvider.System, NullLogger<PrusaConnectService>.Instance,
-                   Options.Create(new PrusaConnectOptions()));
+                   TestOptions.Monitor(new PrusaConnectOptions()));
     }
 
     private static RegisterPrinterRequestDTO PrinterRequest(string fingerprint)
@@ -95,7 +94,7 @@ public sealed class ClaimModelTests : IDisposable
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
         ClaimModel model = new(NewService(context), new TeamService(context), users, new UnitOfWork(context),
-                               new AttemptLimiter(context, Options.Create(new AttemptLimitOptions()),
+                               new AttemptLimiter(context, TestOptions.Snapshot(new AttemptLimitOptions()),
                                                   NullLogger<AttemptLimiter>.Instance),
                                NullLogger<ClaimModel>.Instance,
                                TestLocaliser.Shared())

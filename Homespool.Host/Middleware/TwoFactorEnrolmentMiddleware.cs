@@ -71,7 +71,7 @@ public sealed class TwoFactorEnrolmentMiddleware
 
     public async Task InvokeAsync(HttpContext context,
                                   UserManager<HSUser> userManager,
-                                  IOptions<SecurityOptions> security)
+                                  IOptionsSnapshot<SecurityOptions> security)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(security);

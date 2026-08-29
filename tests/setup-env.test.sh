@@ -649,7 +649,7 @@ fi
 # ------------------------------------------------------------------------------------------------
 # The dollar that eats passwords
 #
-# SMTP_PASSWORD=p@ss$word reaches the container as "p@ss". Regression test for a live defect.
+# GO2RTC_PASSWORD=p@ss$word reaches the container as "p@ss". Regression test for a live defect.
 # ------------------------------------------------------------------------------------------------
 
 if test_case "compose escaping round-trips a dollar"; then
@@ -673,10 +673,10 @@ TZ=UTC" "PRINTER_HOST=set.lan" > /dev/null
 fi
 
 if test_case "env_get treats an emptied key as chosen, not absent"; then
-    # SMTP_HOST= means "no outgoing mail" and is a supported configuration. Falling back to the
+    # An empty value in .env is an answer somebody gave, not a gap. Falling back to the
     # example's default here would re-offer a mail server to somebody who deliberately cleared it.
-    use_temp_env "SMTP_HOST=mail.example.com" "SMTP_HOST=" > /dev/null
-    assert_eq "" "$(env_get SMTP_HOST)" "the empty value in .env wins"
+    use_temp_env "REGISTRY=registry.example.com" "REGISTRY=" > /dev/null
+    assert_eq "" "$(env_get REGISTRY)" "the empty value in .env wins"
 fi
 
 if test_case "plan_set drops a no-op but keeps a default made explicit"; then
@@ -737,13 +737,13 @@ PRINTER_HOST=third.lan" "$(cat "$env_file")" "writing takes the last too"
 fi
 
 if test_case "apply writes a password exactly as typed"; then
-    use_temp_env "SMTP_PASSWORD=" "SMTP_PASSWORD=old" > /dev/null
-    plan_set SMTP_PASSWORD 'p@ss\w/o&rd"$x'
+    use_temp_env "GO2RTC_PASSWORD=" "GO2RTC_PASSWORD=old" > /dev/null
+    plan_set GO2RTC_PASSWORD 'p@ss\w/o&rd"$x'
     apply >/dev/null 2>&1
     # Stored escaped, because a bare $ would be eaten by compose...
-    assert_eq 'SMTP_PASSWORD=p@ss\w/o&rd"$$x' "$(cat "$env_file")" "backslash, slash and ampersand survive awk"
+    assert_eq 'GO2RTC_PASSWORD=p@ss\w/o&rd"$$x' "$(cat "$env_file")" "backslash, slash and ampersand survive awk"
     # ...and read back as what was typed.
-    assert_eq 'p@ss\w/o&rd"$x' "$(env_get SMTP_PASSWORD)" "round trips through the file"
+    assert_eq 'p@ss\w/o&rd"$x' "$(env_get GO2RTC_PASSWORD)" "round trips through the file"
 fi
 
 if test_case "apply seeds from .env.example when there is no .env"; then
@@ -757,8 +757,8 @@ TZ=UTC" > /dev/null
 fi
 
 if test_case "apply tightens the mode on a file holding a password"; then
-    use_temp_env "SMTP_PASSWORD=" > /dev/null
-    plan_set SMTP_PASSWORD hunter2
+    use_temp_env "GO2RTC_PASSWORD=" > /dev/null
+    plan_set GO2RTC_PASSWORD hunter2
     apply >/dev/null 2>&1
     # GNU stat first: this repo's developer machine has GNU coreutils ahead of BSD on PATH, so
     # `stat -f` there means "describe the filesystem" and prints a block report rather than a mode.
@@ -774,22 +774,22 @@ fi
 
 if test_case "no-overwrite treats empty as a blank and a value as an answer"; then
     # PRINTER_HOST= is present and empty, and filling it in is the entire point on a board setting
-    # itself up. SMTP_HOST= is empty *deliberately* - it means "no outgoing mail". Both are empty;
-    # only one is an answer. Getting this backwards would either refuse to configure the Pi at all or
-    # silently re-enable mail somebody turned off.
+    # itself up. REGISTRY= is empty *deliberately* - it means "build the images here". Both are
+    # empty; only one is an answer. Getting this backwards would either refuse to configure the Pi
+    # at all or silently overwrite a choice somebody made.
     use_temp_env "PRINTER_HOST=
-SMTP_HOST=
+REGISTRY=
 USER_HOSTS=localhost" "PRINTER_HOST=
-SMTP_HOST=
+REGISTRY=
 USER_HOSTS=already.chosen"
     no_overwrite=true
 
     plan_set PRINTER_HOST 192.168.13.238
-    plan_set SMTP_HOST mail.example.com
+    plan_set REGISTRY registry.example.com
     plan_set USER_HOSTS detected.local
 
     assert_contains "$pending" "PRINTER_HOST=192.168.13.238" "an empty key is a blank to fill"
-    assert_contains "$pending" "SMTP_HOST=mail.example.com" "so is a deliberately empty one"
+    assert_contains "$pending" "REGISTRY=registry.example.com" "so is a deliberately empty one"
     case "$pending" in
         *USER_HOSTS*) fail "overwrote a key that already carried a value" ;;
         *) passed=$((passed + 1)) ;;
@@ -1083,88 +1083,6 @@ if test_case "USER_HOSTS may be .local, because browsers do mDNS"; then
     machine_name() { echo ""; }
     reverse_name() { echo ""; }
     assert_eq "localhost" "$(suggested_user_host)" "falls back rather than inventing a name"
-fi
-
-if test_case "smtp offers host.docker.internal instead of localhost"; then
-    # localhost is the container, so a mail server on the machine is refused from in there - the
-    # same mistake PRINTER_HOST is checked for, which SMTP_HOST was not.
-    use_temp_env "SMTP_HOST=
-SMTP_PORT=587"
-    ask_smtp >/dev/null 2>&1 <<'ANSWERS'
-y
-localhost
-y
-587
-
-ANSWERS
-    assert_contains "$pending" "SMTP_HOST=host.docker.internal" "swapped for something reachable"
-fi
-
-if test_case "smtp keeps localhost if you insist"; then
-    use_temp_env "SMTP_HOST=
-SMTP_PORT=587"
-    ask_smtp >/dev/null 2>&1 <<'ANSWERS'
-y
-localhost
-n
-587
-
-ANSWERS
-    assert_contains "$pending" "SMTP_HOST=localhost" "a warning, not a veto"
-fi
-
-if test_case "port 25 really means no encryption"; then
-    # It was advertised as "25 for unencrypted" in .env.example and here, and set nothing - the
-    # sender demands STARTTLS whenever implicit TLS is off, so port 25 failed at send time.
-    use_temp_env "SMTP_HOST=
-SMTP_PORT=587
-SMTP_USE_IMPLICIT_TLS=false
-SMTP_DISABLE_TLS=false"
-    ask_smtp >/dev/null 2>&1 <<'ANSWERS'
-y
-mail.example.com
-25
-
-ANSWERS
-    assert_contains "$pending" "SMTP_DISABLE_TLS=true" "encryption actually turned off"
-    assert_contains "$pending" "SMTP_USE_IMPLICIT_TLS=false" "and not implicit TLS"
-fi
-
-if test_case "465 and 587 still settle both halves from one answer"; then
-    use_temp_env "SMTP_HOST=
-SMTP_PORT=587
-SMTP_USE_IMPLICIT_TLS=false
-SMTP_DISABLE_TLS=false"
-    ask_smtp >/dev/null 2>&1 <<'ANSWERS'
-y
-mail.example.com
-465
-
-ANSWERS
-    assert_contains "$pending" "SMTP_USE_IMPLICIT_TLS=true" "465 is implicit TLS"
-    assert_contains "$pending" "SMTP_DISABLE_TLS=false" "and still encrypted"
-fi
-
-if test_case "an unusual port asks rather than assuming STARTTLS"; then
-    # Mailpit on 1025 offers no encryption at all. Guessing STARTTLS is how that fails at send
-    # time, with "does not support the STARTTLS extension", long after this question.
-    use_temp_env "SMTP_HOST=
-SMTP_PORT=587
-SMTP_USE_IMPLICIT_TLS=false
-SMTP_DISABLE_TLS=false"
-    # Redirected to a file rather than captured with $( ), which would run ask_smtp in a subshell
-    # and discard everything it planned - the same trap use_temp_env carries a warning about.
-    ask_smtp > "$temp_env_dir/out" 2>&1 <<'ANSWERS'
-y
-host.docker.internal
-1025
-3
-
-ANSWERS
-    out="$(cat "$temp_env_dir/out")"
-    assert_says "$out" "does not say how the" "said why it has to ask"
-    assert_contains "$pending" "SMTP_PORT=1025" "kept the port"
-    assert_contains "$pending" "SMTP_DISABLE_TLS=true" "and took the answer given"
 fi
 
 if test_case "no command is missing from the sandbox"; then

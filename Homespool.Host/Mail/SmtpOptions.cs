@@ -17,9 +17,22 @@ public class SmtpOptions
     /// <summary>
     /// Mail server hostname. Empty (the default) means no SMTP, which is a supported configuration.
     /// </summary>
+    /// <remarks>
+    /// <b>Not <c>localhost</c>.</b> This runs in a container, so <c>localhost</c> is the container
+    /// itself and a mail server on the host is refused from inside it. The name that reaches the host
+    /// is <c>host.docker.internal</c>, which <c>compose.yaml</c> maps on Linux as well as on Docker
+    /// Desktop. It is the first thing to check when a server that plainly works refuses every
+    /// connection.
+    /// </remarks>
     public string Host { get; set; } = string.Empty;
 
     /// <summary>Mail server port. 587 (submission, STARTTLS) by default; 465 for implicit TLS, 25 for unencrypted.</summary>
+    /// <remarks>
+    /// <b>A port number on its own decides nothing here.</b> The encryption is chosen by
+    /// <see cref="UseImplicitTls"/> and <see cref="DisableTls"/>, and those have to match what the
+    /// server actually offers - naming 465 without <see cref="UseImplicitTls"/> produces a connection
+    /// that hangs rather than an error explaining itself.
+    /// </remarks>
     [Range(1, 65_535)]
     public int Port { get; set; } = 587;
 
@@ -48,6 +61,25 @@ public class SmtpOptions
 
     /// <summary>Username for SMTP AUTH. Empty means connect without authenticating.</summary>
     public string UserName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The password as Data Protection ciphertext, which is how the settings file stores it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Nothing reads this but the post-configure step that decrypts it</b> into
+    /// <see cref="Password"/>; every consumer keeps using that one and never learns protection
+    /// exists. Set both and this wins, because it is the one an administrator saved through the
+    /// application.
+    /// </para>
+    /// <para>
+    /// <b>Empty is the ordinary state for a password that arrived any other way</b> - written by the
+    /// migration one-shot, typed into the file by hand, or still coming from the environment. Such a
+    /// value is used as it stands and protected on its next save, which is the whole of the upgrade
+    /// path and the same adopt-on-save rule a camera credential follows.
+    /// </para>
+    /// </remarks>
+    public string ProtectedPassword { get; set; } = string.Empty;
 
     /// <summary>Password for SMTP AUTH.</summary>
     /// <remarks>

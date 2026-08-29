@@ -128,6 +128,16 @@ public static class Program
             return;
         }
 
+        // The editable settings this deployment currently carries in its environment, written to the
+        // file that now owns them. A one-shot for the upgrade that moved them out of compose.yaml,
+        // and the fourth variant of the same not-a-server-run shape - including the older-image trap
+        // the three above describe.
+        if (args.Length > 0 && args[0] == SettingsWriter.Argument)
+        {
+            Environment.ExitCode = SettingsWriter.Write(args.Length > 1 ? args[1] : null);
+            return;
+        }
+
         Log.Logger = new LoggerConfiguration()
                      .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
                      .Enrich.FromLogContext()
@@ -324,6 +334,14 @@ public static class Program
                    .ValidateDataAnnotations()
                    .ValidateOnStart();
 
+            // The settings file holds one credential, and it is stored encrypted. The post-configure
+            // decrypts it into SmtpOptions.Password after binding, so every consumer keeps reading
+            // the plain property and none of them knows protection exists.
+            builder.Services.AddSingleton<SettingsSecretProtector>();
+            builder.Services.AddScoped<SettingsStore>();
+            builder.Services
+                   .AddSingleton<IPostConfigureOptions<Mail.SmtpOptions>, Mail.SmtpPasswordUnprotector>();
+
             builder.Services.AddOptions<Accounts.InvitationOptions>()
                    .Bind(builder.Configuration.GetSection(Accounts.InvitationOptions.SectionName))
                    .ValidateDataAnnotations()
@@ -337,6 +355,7 @@ public static class Program
 
             // Stateless, so a singleton is fine; it exists purely so tests can substitute a fake transport.
             builder.Services.AddSingleton<Mail.ISmtpTransportFactory, Mail.MailKitSmtpTransportFactory>();
+            builder.Services.AddSingleton<Mail.SmtpConnectivityCheck>();
 
             // Which sender is registered is decided by configuration alone, never by probing the network, so that a
             // mail server being down cannot quietly change how accounts are created. See SmtpOptions.IsConfigured.
@@ -1011,8 +1030,8 @@ public static class Program
     /// </remarks>
     private static bool PrinterTransportIsSecure(IServiceProvider services)
     {
-        return services.GetRequiredService<Microsoft.Extensions.Options.IOptions<PrusaConnect.PrusaConnectOptions>>()
-                       .Value.PrinterTls;
+        return services.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<PrusaConnect.PrusaConnectOptions>>()
+                       .CurrentValue.PrinterTls;
     }
 
     /// <summary>

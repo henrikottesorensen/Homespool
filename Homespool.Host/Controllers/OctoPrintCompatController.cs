@@ -81,7 +81,7 @@ public class OctoPrintCompatController : ControllerBase
                                      PrintQueueService queue,
                                      PrinterQueryService printers,
                                      UserManager<HSUser> userManager,
-                                     IOptions<PrintFileStorageOptions> options)
+                                     IOptionsSnapshot<PrintFileStorageOptions> options)
     {
         _files = files;
         _queue = queue;

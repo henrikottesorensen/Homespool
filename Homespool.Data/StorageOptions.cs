@@ -85,18 +85,54 @@ public class StorageOptions
     /// Minimum seconds between stored samples per printer. Zero (default) stores every message.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Present as an escape hatch, not because it is expected to be needed: at one-to-tens of
     /// printers a 1 Hz stream is roughly 86k rows/printer/day, which SQLite handles without
-    /// complaint. Raise it if a large fleet or a slow disk changes that.
+    /// complaint. Raise it if a large fleet or a slow disk changes that. <b>Current firmware reports
+    /// every five seconds</b> (Henrik), so that figure is the old ceiling rather than today's rate -
+    /// nearer 17k - and the headroom is correspondingly larger.
+    /// </para>
+    /// <para>
+    /// <b>The case that makes it worth having is an SD card</b>, which wears out by being written to
+    /// rather than by age, and on which telemetry is the largest single source of writes. A value of
+    /// 10 removes about 90% of them and still leaves a graph somebody can read; what it costs is
+    /// resolution, so a spike shorter than the interval may never be recorded. <b>Shortening
+    /// retention instead is not a substitute — a delete is a write too.</b>
+    /// </para>
     /// </remarks>
     [Range(0, 86_400)]
     public double MinimumSampleIntervalSeconds { get; set; }
 
     /// <summary>Rows buffered before the writer flushes a batch.</summary>
+    /// <remarks>
+    /// <b>A flush happens on whichever comes first, this or
+    /// <see cref="WriteFlushIntervalSeconds"/></b>, and that decides which of the two is worth
+    /// touching. Current firmware reports every five seconds (Henrik), so one printer produces a
+    /// sample every five seconds and the timer always wins - this count is never approached, and on
+    /// a small board it is the interval that changes anything. It begins to matter only when enough
+    /// printers report to reach the count first. It also sizes the writer's channel, which is why
+    /// changing it needs a restart.
+    /// </remarks>
     [Range(1, 100_000)]
     public int WriteBatchSize { get; set; } = 500;
 
     /// <summary>Maximum seconds a buffered row waits before being flushed.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the write-reduction knob on an SD card</b> (Henrik), and the reason both timings
+    /// stayed on the settings page when the backoff ones did not: a card wears out by being written
+    /// to, telemetry is the largest source of writes, and at low sample rates every flush is one
+    /// write. Raising it from two seconds to sixty bounds writes at one a minute however often
+    /// samples arrive - about a twelvefold reduction for a single printer on firmware that reports
+    /// every five seconds, and more against older firmware that reported every second.
+    /// </para>
+    /// <para>
+    /// <b>What it costs is what is in memory when the power goes.</b> A longer interval is a longer
+    /// window of telemetry lost to an unclean stop - and a Pi on a bench is exactly the machine that
+    /// gets unplugged. Shutdown drains the buffers, so this is about power loss rather than a
+    /// restart.
+    /// </para>
+    /// </remarks>
     [Range(0, 3_600)]
     public double WriteFlushIntervalSeconds { get; set; } = 2;
 

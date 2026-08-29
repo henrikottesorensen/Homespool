@@ -106,7 +106,7 @@ public class IndexModel : PageModel
                       PrinterAccessService access,
                       PrintFileCatalog files,
                       CameraAccessService cameras,
-                      IOptions<PrintFileStorageOptions> storage,
+                      IOptionsSnapshot<PrintFileStorageOptions> storage,
                       PrinterCommandService commands,
                       PrinterConnectionRegistry connections,
                       PrinterStatusText statusText,

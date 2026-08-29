@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -7,30 +6,21 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
-using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.E2ETest;
 
 /// <summary>
-/// The live-view settings page: who may reach it, and what turning STUN on says before it does it.
+/// The live-view page after the STUN switch moved to the settings page: who may read it, and that it
+/// still says what live viewing is doing.
 /// </summary>
 /// <remarks>
-/// <para>
-/// <b>The prompt is the feature.</b> Switching a boolean is trivial; what this page exists for is
-/// that the two consequences are named before somebody chooses — your public address goes into every
-/// offer, and a third party is contacted to discover it. Neither is visible from the outcome, so a
-/// page that simply flipped it would be doing something on the operator's behalf that they never
-/// agreed to. The assertions below are therefore about the words as much as the state.
-/// </para>
-/// <para>
-/// No stream server runs here, so the choice is recorded and cannot be applied — which is itself one
-/// of the cases, and the one that must not lose the choice.
-/// </para>
+/// <b>The prompt this file used to assert on moved with the switch.</b> What it said - that your
+/// public address goes into every offer, and that a third party is contacted to discover it - is now
+/// the settings page's confirmation, and is asserted there. This page reports.
 /// </remarks>
 [Collection("WebApplicationFactory")]
 public sealed class LiveViewSettingsPageTests : IAsyncLifetime, IDisposable
@@ -88,120 +78,28 @@ public sealed class LiveViewSettingsPageTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
-    /// Off is the state a deployment has without anyone choosing it, and the page has to say so
-    /// rather than leave it to be inferred from an unticked box.
+    /// It reports the STUN state rather than setting it, so somebody reading the page is not left
+    /// wondering where the switch went.
     /// </summary>
     [Fact]
-    public async Task StunIsOffUntilSomebodyTurnsItOn()
+    public async Task ItShowsWhetherStunIsAllowedAndSaysWhereToChangeIt()
     {
-        HttpClient admin = await AdminAsync("stun-off@example.com");
+        HttpClient admin = await AdminAsync("stun-shown@example.com");
 
         string page = await admin.GetStringAsync("/Admin/LiveView", TestContext.Current.CancellationToken);
 
-        page.Should().Contain("STUN off");
-        page.Should().Contain("Allow STUN");
+        page.Should().Contain("STUN off", "off is the state a deployment has without anyone choosing it");
+        page.Should().Contain("settings page", "the switch lives there now");
+        page.Should().NotContain("Allow STUN", "and no longer here");
 
         admin.Dispose();
     }
 
-    /// <summary>
-    /// The two conditions, named, before anything happens. This is the whole reason the setting is a
-    /// page rather than a line in <c>.env</c>.
-    /// </summary>
-    [Fact]
-    public async Task TheConfirmationNamesBothConsequencesAndTheServer()
-    {
-        HttpClient admin = await AdminAsync("stun-prompt@example.com");
-
-        string page = await admin.GetStringAsync("/Admin/LiveView", TestContext.Current.CancellationToken);
-
-        page.Should().Contain("Your public address is placed in every offer",
-                              "a reflexive candidate carries it, and that is inherent rather than a quirk");
-        page.Should().Contain("stops being self-contained");
-        page.Should().Contain("stun.l.google.com",
-                              "naming the server is the difference between a warning and a shrug");
-
-        admin.Dispose();
-    }
-
-    /// <summary>
-    /// The stream server cannot be reached here, and the choice must survive that: the startup path
-    /// reads the database rather than asking the sidecar what was wanted, so a change made while it
-    /// was down is applied at the next start instead of being lost.
-    /// </summary>
-    [Fact]
-    public async Task AChoiceIsRecordedEvenWhenItCannotBeApplied()
-    {
-        HttpClient admin = await AdminAsync("stun-on@example.com");
-
-        using HttpResponseMessage response = await PostStunAsync(admin, enabled: true);
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        using IServiceScope scope = _factory.Services.CreateScope();
-        HomespoolDbContext database = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
-
-        DeploymentSetting? settings = await database.DeploymentSettings.FirstOrDefaultAsync(
-            TestContext.Current.CancellationToken);
-
-        settings.Should().NotBeNull();
-        settings!.WebRtcStunEnabled.Should().BeTrue();
-
-        admin.Dispose();
-    }
-
-    /// <summary>
-    /// Turning it back off has no prompt of its own, and nothing about it may be harder than turning
-    /// it on: a confirmation on the safe direction is how people learn to click through the other.
-    /// </summary>
-    [Fact]
-    public async Task ItCanBeTurnedBackOff()
-    {
-        HttpClient admin = await AdminAsync("stun-off-again@example.com");
-
-        using (HttpResponseMessage on = await PostStunAsync(admin, enabled: true))
-        {
-            on.StatusCode.Should().Be(HttpStatusCode.OK);
-        }
-
-        using (HttpResponseMessage off = await PostStunAsync(admin, enabled: false))
-        {
-            off.StatusCode.Should().Be(HttpStatusCode.OK);
-        }
-
-        using IServiceScope scope = _factory.Services.CreateScope();
-        HomespoolDbContext database = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
-
-        DeploymentSetting settings = await database.DeploymentSettings.FirstAsync(
-            TestContext.Current.CancellationToken);
-
-        settings.WebRtcStunEnabled.Should().BeFalse();
-
-        admin.Dispose();
-    }
-
-    /// <summary>
-    /// The role has to be granted before the cookie is minted, or the ticket carries an ordinary
-    /// user and the page refuses with no explanation.
-    /// </summary>
     private async Task<HttpClient> AdminAsync(string email)
     {
         (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, email, AdminBootstrap.AdminRole);
 
         return client;
-    }
-
-    private async Task<HttpResponseMessage> PostStunAsync(HttpClient client, bool enabled)
-    {
-        string page = await client.GetStringAsync("/Admin/LiveView", TestContext.Current.CancellationToken);
-
-        using FormUrlEncodedContent form = new(new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["enabled"] = enabled ? "true" : "false",
-            ["__RequestVerificationToken"] = AntiforgeryTestHelper.ExtractToken(page),
-        });
-
-        return await client.PostAsync("/Admin/LiveView", form, TestContext.Current.CancellationToken);
     }
 }

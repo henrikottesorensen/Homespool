@@ -170,6 +170,63 @@ public sealed class PrinterStatusPollTests : IAsyncLifetime, IDisposable
         }
     }
 
+    /// <summary>
+    /// A printer waiting for somebody says what for, in the fragment the page refreshes.
+    /// </summary>
+    /// <remarks>
+    /// <b>The gap that prompted the feature</b> (Henrik, 2026-08-29): a red "Waiting for you" with
+    /// nothing under it. The state word was never the missing part - the reason was, and it was
+    /// already arriving and already stored where nothing rendered it.
+    /// </remarks>
+    [Fact]
+    public async Task AWaitingPrinterSaysWhatItIsWaitingFor()
+    {
+        (Guid uuid, HttpClient client) = await SeedAsync("status-attention@example.com", state: new PrinterLiveState
+        {
+            Status = PrinterStatus.Attention,
+            AttentionCode = 23829,
+            LastSeenAt = DateTimeOffset.UtcNow,
+        });
+
+        using (client)
+        {
+            string fragment = await GetAsync(client, $"/Printers/Detail/{uuid}?handler=Status");
+
+            fragment.Should().Contain("Please replace filament.",
+                                      "this is the reason the badge could not give");
+            fragment.Should().Contain("The printer says",
+                                      "and it is attributed to the printer rather than stated as ours");
+        }
+    }
+
+    /// <summary>
+    /// <b>And a printer that is no longer waiting explains nothing</b>, however recently it was.
+    /// </summary>
+    /// <remarks>
+    /// The stored code outlives its dialog by design - it is cleared by the next state change, which
+    /// arrives as an event while the status word can arrive by telemetry. For the moment the two
+    /// disagree, the sentence must not be shown: a runout explained under a "Printing" badge reads
+    /// as a printer that is both fine and not.
+    /// </remarks>
+    [Fact]
+    public async Task APrinterThatIsPrintingAgainExplainsNothing()
+    {
+        (Guid uuid, HttpClient client) = await SeedAsync("status-attention-stale@example.com", state: new PrinterLiveState
+        {
+            Status = PrinterStatus.Printing,
+            AttentionCode = 23829,
+            LastSeenAt = DateTimeOffset.UtcNow,
+        });
+
+        using (client)
+        {
+            string fragment = await GetAsync(client, $"/Printers/Detail/{uuid}?handler=Status");
+
+            fragment.Should().NotContain("Please replace filament.",
+                                         "the dialog is gone even if the code has not been cleared yet");
+        }
+    }
+
     /// <summary>The graph handler answers a fragment too, and the fragment is the drawing.</summary>
     [Fact]
     public async Task TheGraphHandlerAnswersAnSvg()

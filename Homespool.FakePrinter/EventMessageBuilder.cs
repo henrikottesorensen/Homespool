@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text.Json;
 
 namespace Homespool.FakePrinter;
@@ -68,6 +69,62 @@ public static class EventMessageBuilder
             }
 
             writer.WriteString("event", eventType);
+            writer.WriteEndObject();
+        }
+
+        return buffer.WrittenSpan.ToArray();
+    }
+
+    /// <summary>
+    /// A <c>STATE_CHANGED</c> that carries a dialog: the code, the printer's own words where it has
+    /// any, and the dialog id telemetry then repeats.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Shape is render.cpp's event <c>data</c> block: <c>code</c> as a <b>five-digit string</b>
+    /// rather than a number, then <c>title</c> and <c>text</c> only where the dialog supplies them -
+    /// which for an ordinary attention is never, and for an error screen is always.
+    /// </para>
+    /// <para>
+    /// <c>buttons</c> is not emitted. Firmware sends it and nothing on the server reads it, so
+    /// including it here would suggest a fidelity that has never been exercised.
+    /// </para>
+    /// </remarks>
+    /// <param name="state">The wire device state, e.g. <c>ATTENTION</c>.</param>
+    /// <param name="code">The five-digit code, model prefix included.</param>
+    /// <param name="text">The dialog's own sentence, when it has one.</param>
+    /// <param name="dialogId">The dialog identifier.</param>
+    /// <param name="jobId">The job the dialog interrupted, when a print is running.</param>
+    public static byte[] BuildStateChanged(string state,
+                                           int code,
+                                           string? text,
+                                           uint dialogId,
+                                           int? jobId)
+    {
+        ArrayBufferWriter<byte> buffer = new();
+
+        using (Utf8JsonWriter writer = new(buffer))
+        {
+            writer.WriteStartObject();
+
+            if (jobId.HasValue)
+            {
+                writer.WriteNumber("job_id", jobId.Value);
+            }
+
+            writer.WriteStartObject("data");
+            writer.WriteString("code", code.ToString("D5", CultureInfo.InvariantCulture));
+
+            if (text is not null)
+            {
+                writer.WriteString("text", text);
+            }
+
+            writer.WriteEndObject();
+
+            writer.WriteNumber("dialog_id", dialogId);
+            writer.WriteString("state", state);
+            writer.WriteString("event", "STATE_CHANGED");
             writer.WriteEndObject();
         }
 

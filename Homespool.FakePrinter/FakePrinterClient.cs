@@ -257,7 +257,12 @@ public sealed class FakePrinterClient : IAsyncDisposable
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                byte[]? next = _options.TelemetrySource.NextMessage(Device);
+                // A device event the printer decided to send - an attention it just raised -
+                // goes ahead of the timed telemetry, which is the order a real one produces: the
+                // state change is reported when it happens, not at the next tick.
+                byte[]? next = Device.PendingEvents.Count > 0
+                    ? Device.PendingEvents.Dequeue()
+                    : _options.TelemetrySource.NextMessage(Device);
 
                 if (next is null)
                 {
@@ -608,7 +613,10 @@ public sealed class FakePrinterClient : IAsyncDisposable
         {
             while (socket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
             {
-                byte[]? next = _options.TelemetrySource.NextMessage(Device);
+                // See the HTTP loop: a raised attention is sent when it is raised.
+                byte[]? next = Device.PendingEvents.Count > 0
+                    ? Device.PendingEvents.Dequeue()
+                    : _options.TelemetrySource.NextMessage(Device);
 
                 if (next is null)
                 {

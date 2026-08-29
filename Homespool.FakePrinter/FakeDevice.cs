@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Homespool.FakePrinter;
 
@@ -213,6 +214,47 @@ public sealed class FakeDevice
     {
         State = state;
     }
+
+    /// <summary>
+    /// Events the device wants to send of its own accord, ahead of the next telemetry message.
+    /// </summary>
+    /// <remarks>
+    /// <b>A printer talks without being asked.</b> Everything the fake sent until now was either
+    /// telemetry on a timer or an answer to a command, so a state change it decided on itself - the
+    /// shape of every attention - had nowhere to come from. Drained by
+    /// <see cref="FakePrinterClient"/> before each telemetry message, on both transports.
+    /// </remarks>
+    public Queue<byte[]> PendingEvents { get; } = new();
+
+    /// <summary>
+    /// Reports an attention with a code, the way a runout or a preview question does: the state
+    /// changes and a <c>STATE_CHANGED</c> carrying the code goes out.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The code is where the reason lives, and the only place.</b> Telemetry repeats
+    /// <c>dialog_id</c> for the duration but carries no code, so a fake that only changed
+    /// <see cref="State"/> would reproduce a printer asking for help and refusing to say why -
+    /// which is exactly the thing a server cannot then be tested against.
+    /// </para>
+    /// <para>
+    /// <paramref name="text"/> is the red-screen shape (firmware's <c>ErrorPrinter</c> fills words
+    /// in; an ordinary attention leaves them out), so it defaults to absent.
+    /// </para>
+    /// </remarks>
+    /// <param name="code">The five-digit code, model prefix included, as firmware spells it.</param>
+    /// <param name="text">The printer's own sentence, on the dialogs that carry one.</param>
+    /// <param name="state">The state to enter; <c>Attention</c> unless an error is being modelled.</param>
+    public void ReportAttention(int code, string? text = null, DeviceState state = DeviceState.Attention)
+    {
+        State = state;
+        DialogId = unchecked(DialogId + 1);
+
+        PendingEvents.Enqueue(EventMessageBuilder.BuildStateChanged(WireState, code, text, DialogId, JobId));
+    }
+
+    /// <summary>The dialog identifier reported alongside an attention; increments per dialog.</summary>
+    public uint DialogId { get; private set; }
 
     /// <summary>Pause: legal only while <see cref="DeviceState.Printing"/> (job_control, Pause arm).</summary>
     public bool TryPause()

@@ -318,6 +318,66 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
+    /// A printer that raises an attention says <b>why</b>, and the reason reaches the row the page
+    /// reads - not only the event log.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The whole chain, because the reason crosses every part of it</b>: firmware puts the code
+    /// in a <c>STATE_CHANGED</c>'s data object, the mapping lifts it, and the writer stores it
+    /// beside the status. It was already surviving as far as the event payload before this - stored
+    /// verbatim, where only a SQL query could reach it, which is why a printer could show a red
+    /// "Waiting for you" that the page was unable to explain.
+    /// </para>
+    /// <para>
+    /// Telemetry is deliberately not the carrier and cannot be: a status sample says
+    /// <c>ATTENTION</c> and no more, so a test that only set the fake's state would pass against a
+    /// server that had learned nothing.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AnAttentionCarriesItsReasonAsFarAsTheLiveState()
+    {
+        // Fast telemetry because two facts have to land and they travel differently: the code rides
+        // the state change and arrives at once, while the status word waits for the next telemetry
+        // message - which a real printer idles at 15 s.
+        SyntheticTelemetrySource source = new()
+        {
+            IdleInterval = TimeSpan.FromMilliseconds(50),
+            PrintingInterval = TimeSpan.FromMilliseconds(50),
+        };
+
+        (FakePrinterClient fake, Task run, int printerId, _) =
+            await StartConnectedFakeAsync(new FakePrinterOptions { TelemetrySource = source });
+
+        await using (fake)
+        {
+            // 23829: an MK3.5 filament runout, the code this printer really sends.
+            fake.Device.ReportAttention(23829);
+
+            bool explained = await WaitUntilAsync(async () =>
+            {
+                using IServiceScope inner = _factory.Services.CreateScope();
+                HomespoolDbContext context = inner.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+                PrinterLiveState? live = await context.PrinterLiveStates
+                                                      .SingleOrDefaultAsync(state => state.PrinterId == printerId,
+                                                                            TestContext.Current.CancellationToken);
+
+                return live is { Status: PrinterStatus.Attention, AttentionCode: 23829 };
+            }, TimeSpan.FromSeconds(5));
+
+            explained.Should().BeTrue("the code rides the state change, and is what the page explains from");
+
+            AttentionRules.Reason(PrinterStatus.Attention, 23829, text: null)
+                          .Should().Be("Please replace filament.",
+                                       "and it decodes to the sentence Prusa write for that code");
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
     /// A printer reporting firmware's no-filament sentinel is refused, and <b>nothing reaches the
     /// socket</b>.
     /// </summary>

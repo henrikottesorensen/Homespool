@@ -1,7 +1,9 @@
 using System;
 using System.Buffers.Binary;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Text;
 
 using AwesomeAssertions;
@@ -242,6 +244,81 @@ public class GCodeMetadataReaderTests
         Read(file).Should().BeNull();
     }
 
+    /// <summary>
+    /// No slicer writes this block compressed today, so the deflate path exists only for a future
+    /// writer - and only a hand-built file can prove it reads.
+    /// </summary>
+    [Fact]
+    public void ReadsADeflateCompressedMetadataBlock()
+    {
+        byte[] ini = Encoding.UTF8.GetBytes("printer_model = MK4S\nnozzle_diameter = 0.4\n");
+        byte[] file = DeflateMetadataFile(ZLibCompress(ini), declaredUncompressedSize: (uint)ini.Length);
+
+        GCodeMetadata? metadata = Read(file);
+
+        metadata.Should().NotBeNull();
+        metadata!.PrinterModel.Should().Be("MK4S");
+        metadata.NozzleDiameters.Should().Equal(0.4f);
+    }
+
+    /// <summary>
+    /// The decompression bomb: a small declared size that passes the cap, wrapping a payload that
+    /// inflates far past it. The declared size must bound the read, or a kilobyte of upload becomes
+    /// a gigabyte of allocation.
+    /// </summary>
+    [Fact]
+    public void RefusesADeflateBlockThatExpandsPastItsDeclaredSize()
+    {
+        byte[] bomb = ZLibCompress(new byte[256 * 1024]);
+        byte[] file = DeflateMetadataFile(bomb, declaredUncompressedSize: 100);
+
+        Read(file).Should().BeNull();
+    }
+
+    /// <summary>
+    /// A zlib header demanding a preset dictionary: the inflater refuses it with
+    /// <c>ZLibException</c> rather than <c>InvalidDataException</c>, a second exception type on the
+    /// same corrupt-payload path. Found by fuzzing.
+    /// </summary>
+    [Fact]
+    public void RefusesADeflatePayloadDemandingAPresetDictionary()
+    {
+        byte[] payload = [0x78, 0x20, 0x01, 0x02, 0x03, 0x04, 0x00, 0x00];
+        byte[] file = DeflateMetadataFile(payload, declaredUncompressedSize: 16);
+
+        Read(file).Should().BeNull();
+    }
+
+    /// <summary>The other direction of the same lie: a payload that stops short of its declaration.</summary>
+    [Fact]
+    public void RefusesADeflateBlockShorterThanItDeclares()
+    {
+        byte[] ini = Encoding.UTF8.GetBytes("printer_model = MK4S\n");
+        byte[] file = DeflateMetadataFile(ZLibCompress(ini), declaredUncompressedSize: (uint)ini.Length + 10);
+
+        Read(file).Should().BeNull();
+    }
+
+    /// <summary>
+    /// A <em>skipped</em> block lying about its size, not the one being read: the walk seeks over
+    /// it, and a seek target past 2^31 throws on an array-backed stream where a file tolerates it.
+    /// Found by fuzzing - the declared size must be refused before the stream type gets a say.
+    /// </summary>
+    [Fact]
+    public void RefusesASkippedBlockLongerThanTheFile()
+    {
+        byte[] header = BinaryHeader(version: 1, checksumType: 0);
+        byte[] file =
+        [
+            .. header,
+
+            // A thumbnail block declaring ~3.3 GB of compressed payload, with nothing behind it.
+            0x05, 0x00, 0x01, 0x00, 0x10, 0x00, 0x00, 0x00, 0xB1, 0xC1, 0x2A, 0xC6,
+        ];
+
+        Read(file).Should().BeNull();
+    }
+
     /// <summary>Truncated part-way through a real file, which is what a failed upload leaves.</summary>
     [Fact]
     public void RefusesATruncatedRealFile()
@@ -249,6 +326,63 @@ public class GCodeMetadataReaderTests
         byte[] whole = File.ReadAllBytes(FixturePath("metadata-coreone-hf04-pla.bgcode"));
 
         Read(whole[..40]).Should().BeNull();
+    }
+
+    /// <summary>
+    /// The exception contract under mutation: whatever the bytes, <c>Read</c> answers with
+    /// metadata or null and never throws. Distilled from a fuzzing pass that found a seek throwing
+    /// on an array-backed stream; the seed is fixed so a failure reproduces exactly.
+    /// </summary>
+    [Fact]
+    [SuppressMessage("Security", "CA5394:Do not use insecure randomness",
+                     Justification = "The randomness generates hostile test inputs; a fixed seed making failures reproducible is the point.")]
+    public void NoMutationOfARealFileEscapesTheContract()
+    {
+        Random rng = new(20260830);
+        byte[] deflateIni = Encoding.UTF8.GetBytes("printer_model = MK4S\n");
+        byte[][] seeds =
+        [
+            File.ReadAllBytes(FixturePath("metadata-coreone-hf04-pla.bgcode")),
+            File.ReadAllBytes(FixturePath("metadata-mk35-04-pla.gcode")),
+            File.ReadAllBytes(FixturePath("metadata-mk35-binary-named-gcode.gcode")),
+            DeflateMetadataFile(ZLibCompress(deflateIni), (uint)deflateIni.Length),
+        ];
+        uint[] interestingSizes = [0, 1, (1024 * 1024) - 1, 1024 * 1024, (1024 * 1024) + 1, int.MaxValue, uint.MaxValue];
+
+        foreach (byte[] seed in seeds)
+        {
+            for (int variant = 0; variant < 500; variant++)
+            {
+                byte[] mutated = (byte[])seed.Clone();
+
+                for (int edits = 1 + rng.Next(16); edits > 0 && mutated.Length > 0; edits--)
+                {
+                    switch (rng.Next(4))
+                    {
+                        case 0:
+                            mutated[rng.Next(mutated.Length)] = (byte)rng.Next(256);
+                            break;
+
+                        case 1:
+                            mutated[rng.Next(mutated.Length)] ^= (byte)(1 << rng.Next(8));
+                            break;
+
+                        case 2 when mutated.Length >= 4:
+                            BinaryPrimitives.WriteUInt32LittleEndian(
+                                mutated.AsSpan(rng.Next(mutated.Length - 3), 4),
+                                interestingSizes[rng.Next(interestingSizes.Length)]);
+                            break;
+
+                        default:
+                            mutated = mutated[..rng.Next(mutated.Length + 1)];
+                            break;
+                    }
+                }
+
+                // The assertion is that this line returns at all: any escape fails the test.
+                Read(mutated);
+            }
+        }
     }
 
     private static string Config(params string[] lines)
@@ -287,6 +421,35 @@ public class GCodeMetadataReaderTests
     private static string FixturePath(string name)
     {
         return Path.Combine(AppContext.BaseDirectory, name);
+    }
+
+    /// <summary>
+    /// A whole file holding one deflate-compressed Printer Metadata block: header, block header
+    /// with the declared sizes, INI encoding parameter, payload. No checksum, so nothing follows.
+    /// </summary>
+    private static byte[] DeflateMetadataFile(byte[] compressed, uint declaredUncompressedSize)
+    {
+        byte[] block = new byte[14];
+
+        BinaryPrimitives.WriteUInt16LittleEndian(block.AsSpan(0, 2), 3);
+        BinaryPrimitives.WriteUInt16LittleEndian(block.AsSpan(2, 2), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(block.AsSpan(4, 4), declaredUncompressedSize);
+        BinaryPrimitives.WriteUInt32LittleEndian(block.AsSpan(8, 4), (uint)compressed.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(block.AsSpan(12, 2), 0);
+
+        return [.. BinaryHeader(version: 1, checksumType: 0), .. block, .. compressed];
+    }
+
+    private static byte[] ZLibCompress(byte[] plain)
+    {
+        using MemoryStream output = new();
+
+        using (ZLibStream compressor = new(output, CompressionMode.Compress))
+        {
+            compressor.Write(plain);
+        }
+
+        return output.ToArray();
     }
 
     /// <summary>The ten-byte file header: magic, version, checksum type. Little-endian throughout.</summary>

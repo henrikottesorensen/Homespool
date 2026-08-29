@@ -114,6 +114,15 @@ internal static class BinaryGCodeMetadataReader
             // Deflate refusing a payload that claimed to be one.
             return null;
         }
+        catch (IOException)
+        {
+            // The inflater's other refusal: zlib error codes .NET maps to an internal
+            // ZLibException rather than InvalidDataException - a header demanding a preset
+            // dictionary, for one. Found by fuzzing. Its only public ancestor is IOException,
+            // which fits the contract regardless of what threw it: a file this cannot read
+            // answers null, never an exception.
+            return null;
+        }
     }
 
     private static GCodeMetadata? ReadCore(Stream stream)
@@ -187,6 +196,15 @@ internal static class BinaryGCodeMetadataReader
                 return GCodeMetadata.Empty;
             }
 
+            // A skipped block's declared size is as attacker-influenced as any other, and a seek
+            // target past 2^31 throws on an array-backed stream where a FileStream would tolerate
+            // it. A block extending past the end of the file is truncation either way: refuse it
+            // here rather than let the stream type decide between null and an exception.
+            if (parametersSize + dataSize + checksumSize > stream.Length - stream.Position)
+            {
+                return null;
+            }
+
             stream.Seek(parametersSize + dataSize + checksumSize, SeekOrigin.Current);
         }
 
@@ -230,10 +248,20 @@ internal static class BinaryGCodeMetadataReader
                 // deflateInit2, so the payload carries the two-byte zlib header.
                 using (MemoryStream compressed = new(data))
                 using (ZLibStream decompressor = new(compressed, CompressionMode.Decompress))
-                using (MemoryStream plain = new((int)uncompressedSize))
                 {
-                    decompressor.CopyTo(plain);
-                    text = Encoding.UTF8.GetString(plain.GetBuffer(), 0, (int)plain.Length);
+                    // The declared size is the bound on the output, not a hint: deflate expands
+                    // up to ~1000:1, so a stream read to its natural end would let a small upload
+                    // allocate a gigabyte. A payload that stops short of its declaration or keeps
+                    // going past it has lied about a size, and a lie about a size is malformed.
+                    byte[] plain = new byte[uncompressedSize];
+                    int read = decompressor.ReadAtLeast(plain, plain.Length, throwOnEndOfStream: false);
+
+                    if (read < plain.Length || decompressor.ReadByte() != -1)
+                    {
+                        return null;
+                    }
+
+                    text = Encoding.UTF8.GetString(plain);
                 }
 
                 break;

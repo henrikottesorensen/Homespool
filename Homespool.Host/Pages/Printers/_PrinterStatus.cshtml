@@ -34,6 +34,17 @@
             }
         </div>
 
+        @* Under the badge rather than beside it: the state word answers "what", and a printer
+           asking for somebody has a "why" that is worth a line of its own. Absent for every state
+           that is not waiting, and for a dialog the printer declined to explain. *@
+        @if (Model.AttentionReason(liveState) is { } reason)
+        {
+            <p class="printer-attention-reason mb-3">
+                <span class="text-body-secondary">@Localiser["Printers_PrinterSays"]</span>
+                @reason
+            </p>
+        }
+
         @if (liveState is null)
         {
             <p class="text-body-secondary mb-0">@Localiser["Printers_NoTelemetry"]</p>

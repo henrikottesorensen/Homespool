@@ -270,6 +270,28 @@ public class DetailModel : PageModel
     }
 
     /// <summary>
+    /// Why the printer is waiting, in one sentence - or null when it is not waiting, or is waiting
+    /// for something it did not explain.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The printer's own words where it gives any, and Prusa's catalogue where it gives only a
+    /// code</b> - which is the ordinary case, since an attention carries a code and nothing else.
+    /// Both are firmware's English rather than ours, the boundary <c>PrintJob.Reason</c> already
+    /// sits on; the chrome around the sentence is what gets translated.
+    /// </para>
+    /// <para>
+    /// The gate and the preference between the two sources are
+    /// <see cref="AttentionRules.Reason"/>'s, where they can be tested against every state the wire
+    /// reports rather than only through this page.
+    /// </para>
+    /// </remarks>
+    public string? AttentionReason(PrinterLiveState? liveState)
+    {
+        return AttentionRules.Reason(liveState?.Status, liveState?.AttentionCode, liveState?.AttentionText);
+    }
+
+    /// <summary>
     /// How long ago the last telemetry landed, in words.
     /// </summary>
     /// <remarks>

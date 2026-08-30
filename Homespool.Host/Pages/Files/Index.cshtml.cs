@@ -170,17 +170,26 @@ public class IndexModel : PageModel
     }
 
     /// <summary>
-    /// Where a column heading links to: the same column flips direction, a different one starts at
-    /// whichever direction is useful for it.
+    /// Which direction a column starts in when nobody has chosen one.
     /// </summary>
     /// <remarks>
     /// Names read forwards and the other two read backwards - the newest upload and the biggest file
     /// are what someone is looking for, while <c>a.gcode</c> is where an alphabetical list should
-    /// start. Always-ascending would make two of the three headings need a second click to be useful.
+    /// start. Always-ascending would make two of the three headings need a second click to be useful,
+    /// and would open the page on the file the user is least likely to want.
     /// </remarks>
+    public static bool DefaultDescendingFor(string column)
+    {
+        return column != Columns.Name;
+    }
+
+    /// <summary>
+    /// Where a column heading links to: the same column flips direction, a different one starts at
+    /// whichever direction is useful for it.
+    /// </summary>
     public bool NextDescendingFor(string column)
     {
-        return column == Sort ? !Descending : column != Columns.Name;
+        return column == Sort ? !Descending : DefaultDescendingFor(column);
     }
 
     /// <summary>The arrow for a heading: direction when it is the sorted column, nothing when it is not.</summary>
@@ -189,7 +198,13 @@ public class IndexModel : PageModel
         return column != Sort ? string.Empty : Descending ? " ↓" : " ↑";
     }
 
-    public async Task OnGetAsync(string? sort, bool desc, string? rename, int? printerId, CancellationToken cancellationToken)
+    /// <summary>The list, in whatever order the query string asks for.</summary>
+    /// <remarks>
+    /// <paramref name="desc"/> is nullable so that "no direction in the URL" is distinguishable from
+    /// "ascending". A plain <c>bool</c> made the two the same thing, which opened the page on the
+    /// oldest upload however loudly the defaults below said otherwise.
+    /// </remarks>
+    public async Task OnGetAsync(string? sort, bool? desc, string? rename, int? printerId, CancellationToken cancellationToken)
     {
         Load(sort, desc);
         await LoadPrintersAsync(cancellationToken);
@@ -247,7 +262,7 @@ public class IndexModel : PageModel
     /// </remarks>
     public async Task<IActionResult> OnPostUploadAsync(IFormFile? file,
                                                        string? sort,
-                                                       bool desc,
+                                                       bool? desc,
                                                        int? printerId,
                                                        CancellationToken cancellationToken)
     {
@@ -310,7 +325,7 @@ public class IndexModel : PageModel
     /// <summary>Answers the replace question with yes, using bytes already on disk.</summary>
     public async Task<IActionResult> OnPostReplaceAsync(string token,
                                                         string? sort,
-                                                        bool desc,
+                                                        bool? desc,
                                                         int? printerId,
                                                         CancellationToken cancellationToken)
     {
@@ -332,7 +347,7 @@ public class IndexModel : PageModel
     }
 
     /// <summary>Answers it with no, and throws the staged bytes away now rather than at the sweep.</summary>
-    public IActionResult OnPostDiscard(string token, string? sort, bool desc, int? printerId)
+    public IActionResult OnPostDiscard(string token, string? sort, bool? desc, int? printerId)
     {
         long? userId = UserId();
 
@@ -375,7 +390,7 @@ public class IndexModel : PageModel
     public async Task<IActionResult> OnPostQueueAsync(string name,
                                                       int printerId,
                                                       string? sort,
-                                                      bool desc,
+                                                      bool? desc,
                                                       CancellationToken cancellationToken)
     {
         long? userId = UserId();
@@ -423,7 +438,7 @@ public class IndexModel : PageModel
     public async Task<IActionResult> OnPostSendAsync(string name,
                                                      int printerId,
                                                      string? sort,
-                                                     bool desc,
+                                                     bool? desc,
                                                      CancellationToken cancellationToken)
     {
         long? userId = UserId();
@@ -509,7 +524,7 @@ public class IndexModel : PageModel
     public async Task<IActionResult> OnPostRenameAsync(string name,
                                                        string newName,
                                                        string? sort,
-                                                       bool desc,
+                                                       bool? desc,
                                                        int? printerId,
                                                        CancellationToken cancellationToken)
     {
@@ -552,7 +567,7 @@ public class IndexModel : PageModel
     /// </remarks>
     public async Task<IActionResult> OnPostDeleteAsync(string name,
                                                        string? sort,
-                                                       bool desc,
+                                                       bool? desc,
                                                        int? printerId,
                                                        CancellationToken cancellationToken)
     {
@@ -591,7 +606,7 @@ public class IndexModel : PageModel
         return printer.Name ?? printer.Model ?? printer.Uuid.ToString();
     }
 
-    private IActionResult RedirectToSelf(string? sort, bool desc, int? printerId)
+    private IActionResult RedirectToSelf(string? sort, bool? desc, int? printerId)
     {
         return RedirectToPage(new { sort, desc, printerId });
     }
@@ -618,7 +633,7 @@ public class IndexModel : PageModel
         return _userManager.GetUserName(User);
     }
 
-    private void Load(string? sort, bool desc)
+    private void Load(string? sort, bool? desc)
     {
         long? userId = UserId();
 
@@ -638,15 +653,15 @@ public class IndexModel : PageModel
             _ => Columns.Uploaded,
         };
 
-        Descending = desc;
+        Descending = desc ?? DefaultDescendingFor(Sort);
 
         IReadOnlyList<StoredFile> files = _files.List(CallerResolver.For(userId.Value, User));
 
         IOrderedEnumerable<StoredFile> ordered = Sort switch
         {
-            Columns.Size => desc ? files.OrderByDescending(file => file.Length) : files.OrderBy(file => file.Length),
-            Columns.Uploaded => desc ? files.OrderByDescending(file => file.UploadedAt) : files.OrderBy(file => file.UploadedAt),
-            _ => desc ?
+            Columns.Size => Descending ? files.OrderByDescending(file => file.Length) : files.OrderBy(file => file.Length),
+            Columns.Uploaded => Descending ? files.OrderByDescending(file => file.UploadedAt) : files.OrderBy(file => file.UploadedAt),
+            _ => Descending ?
                 files.OrderByDescending(file => file.FileName, StringComparer.OrdinalIgnoreCase) :
                 files.OrderBy(file => file.FileName, StringComparer.OrdinalIgnoreCase),
         };

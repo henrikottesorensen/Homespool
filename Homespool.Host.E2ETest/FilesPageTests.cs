@@ -147,6 +147,90 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
+    /// Arriving at the page with nothing in the query string puts the newest upload at the top.
+    /// </summary>
+    /// <remarks>
+    /// <b>The page said this was its default and did the opposite.</b> The direction bound as a plain
+    /// <c>bool</c>, so an absent <c>desc</c> and <c>desc=false</c> were the same value and the page
+    /// opened on the oldest file - which is the one nobody navigates to Files to look for. Asserting
+    /// the heading's <c>aria-sort</c> as well as the row order is deliberate: the order alone would
+    /// still pass if the arrow and the links disagreed with it.
+    /// </remarks>
+    [Fact]
+    public async Task TheListStartsNewestFirstWithNoSortInTheQueryString()
+    {
+        // Arrange - alphabetical order is the reverse of upload order, so newest-first and A-Z are
+        // distinguishable. Named the other way round, either rule would produce the same page.
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "pagedefaultsort@example.com");
+
+        await UploadAsync(client, "alpha.gcode", 4096);
+
+        // The store reads the file's own write time, so two uploads have to be separably apart.
+        await Task.Delay(TimeSpan.FromMilliseconds(20), TestContext.Current.CancellationToken);
+
+        await UploadAsync(client, "zeta.gcode", 128);
+
+        // Act
+        string page =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
+
+        // Assert
+        page.IndexOf("zeta.gcode", StringComparison.Ordinal)
+            .Should().BeLessThan(page.IndexOf("alpha.gcode", StringComparison.Ordinal),
+                                 "the most recent upload is what someone opening this page is looking for");
+
+        page.Should().Contain("aria-sort=\"descending\"",
+                              "and the heading has to say so, or the arrow and the order disagree");
+
+        client.Dispose();
+    }
+
+    /// <summary>
+    /// A column named with no direction beside it starts whichever way round is useful for it -
+    /// and for names that is forwards.
+    /// </summary>
+    /// <remarks>
+    /// The same absent-versus-false binding hole as above, reached through the other two columns. Name
+    /// is the one that must <i>not</i> come back descending: an alphabetical list nobody gave a
+    /// direction to starts at <c>a.gcode</c>, where size and uploaded start at the largest and newest.
+    /// </remarks>
+    [Fact]
+    public async Task AColumnWithNoDirectionStartsInItsUsefulDirection()
+    {
+        // Arrange - alpha is the older and the larger, so name and size disagree with each other and
+        // with upload order. Any one rule leaking into another column shows up as a wrong first row.
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "pagecolumndefault@example.com");
+
+        await UploadAsync(client, "alpha.gcode", 4096);
+        await Task.Delay(TimeSpan.FromMilliseconds(20), TestContext.Current.CancellationToken);
+        await UploadAsync(client, "zeta.gcode", 128);
+
+        // Act
+        string byName =
+            await (await client.GetAsync("/Files?sort=name", TestContext.Current.CancellationToken)).Content
+                .ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string bySize =
+            await (await client.GetAsync("/Files?sort=size", TestContext.Current.CancellationToken)).Content
+                .ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        byName.IndexOf("alpha.gcode", StringComparison.Ordinal)
+              .Should().BeLessThan(byName.IndexOf("zeta.gcode", StringComparison.Ordinal),
+                                   "names read forwards - descending is not a useful place to open an alphabetical list");
+
+        byName.Should().Contain("aria-sort=\"ascending\"", "and the arrow has to agree with the order");
+
+        bySize.IndexOf("alpha.gcode", StringComparison.Ordinal)
+              .Should().BeLessThan(bySize.IndexOf("zeta.gcode", StringComparison.Ordinal),
+                                   "while size opens at the largest, which is what someone sorting by it wants");
+
+        client.Dispose();
+    }
+
+    /// <summary>
     /// The headings have to actually render, which is not the same as the sort working.
     /// </summary>
     /// <remarks>

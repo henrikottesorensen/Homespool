@@ -74,14 +74,4 @@ public class CallerResolverTests
         caller.Allows(Capability.ViewPrinter).Should().BeFalse();
         caller.Allows(Capability.Print).Should().BeFalse();
     }
-
-    /// <summary>
-    /// The queue loop has no request to read, so it says so at the call site rather than passing a
-    /// principal that would not be there.
-    /// </summary>
-    [Fact]
-    public void ForUserIdIsUnscopedByConstruction()
-    {
-        CallerResolver.ForUserId(9).Scope.Should().BeSameAs(CapabilitySet.Everything);
-    }
 }

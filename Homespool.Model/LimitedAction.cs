@@ -5,11 +5,14 @@ namespace Homespool.Model;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Each member names a guess somebody could grind at.</b> The two here are the ones where a
-/// short secret is checked against something an authenticated caller can retry: a registration code
-/// on the claim page, and an authenticator code confirming a printer's removal. Neither sits behind
-/// the anonymous global limiter, so without a per-account bound an account could try at request
-/// rate.
+/// <b>Each member names something one account can be ground at.</b> Most are a short secret an
+/// authenticated caller could retry - a registration code on the claim page, an authenticator code
+/// confirming a printer's removal or the disabling of two-factor. None of those sits behind the
+/// anonymous global limiter, so without a per-account bound an account could try at request rate.
+/// The two email members bound a <em>spend</em> rather than a guess: the anonymous forms that mail a
+/// known address are counted per target account, because the address is the only stable handle an
+/// anonymous caller offers and the cost lands on that account's inbox and the deployment's SMTP
+/// quota either way.
 /// </para>
 /// <para>
 /// <b>Members are pinned and zero is reserved.</b> This one is persisted as text in
@@ -38,4 +41,32 @@ public enum LimitedAction
     /// off a claim they are standing at a printer to complete, and neither should the reverse.
     /// </remarks>
     RemovePrinter = 2,
+
+    /// <summary>
+    /// Confirming that two-factor is turned off with an authenticator code, on
+    /// <c>Account/Manage/Disable2fa</c>.
+    /// </summary>
+    DisableTwoFactor = 3,
+
+    /// <summary>
+    /// A password-reset email sent by the anonymous forgot-password form, counted against the
+    /// account it is addressed to.
+    /// </summary>
+    /// <remarks>
+    /// The failure being counted is a send, not a wrong answer - each one costs the target an inbox
+    /// entry and the deployment SMTP quota, and nothing else bounds an anonymous caller who knows an
+    /// address. Completing the reset clears the count, so the backoff only ever stands between an
+    /// address and mail nobody is acting on.
+    /// </remarks>
+    SendPasswordResetEmail = 4,
+
+    /// <summary>
+    /// A confirmation email sent by the anonymous resend-confirmation form, counted against the
+    /// account it is addressed to.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="SendPasswordResetEmail"/> for the same reason every member is
+    /// separate: a flood of one kind of mail must not stop the other kind reaching its owner.
+    /// </remarks>
+    SendConfirmationEmail = 5,
 }

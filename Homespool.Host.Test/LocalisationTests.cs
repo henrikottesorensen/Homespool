@@ -440,6 +440,13 @@ public sealed class LocalisationTests
             // what is being removed is never in question at the point of pressing.
             "Remove",
 
+            // The two authenticator-code gates - printer removal and disabling two-factor - refuse a
+            // wrong code and announce a backoff in the same words today. Separate keys because the
+            // pages may want to diverge (the disable page could reasonably say what is being
+            // protected); the Danish was translated once and copied, so it starts in step.
+            "That code is not right. Open your authenticator app and try the current one.",
+            "Too many wrong two-factor attempts. Try again in {0}.",
+
         ];
 
         IReadOnlyDictionary<string, string> english = ReadResources("SharedResource.resx");

@@ -8,8 +8,10 @@ using AwesomeAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
 using Homespool.Host.Pages.Account;
 using Homespool.Model.Entities;
 
@@ -114,14 +116,18 @@ public sealed class PasswordResetLanguageTests : IDisposable
         (await users.CreateAsync(user, "Correct-Horse-Battery-Staple-1!")).Succeeded.Should().BeTrue(); // betterleaks:allow
 
         CapturingEmailSender sender = new();
-        ForgotPasswordModel model = new(users, sender, TestLocaliser.Shared())
+        ForgotPasswordModel model = new(users, sender,
+                                        new AttemptLimiter(context, TestOptions.Snapshot(new AttemptLimitOptions()),
+                                                           NullLogger<AttemptLimiter>.Instance),
+                                        TimeProvider.System,
+                                        TestLocaliser.Shared())
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
             Url = IdentityTestHarness.NewUrlHelper(httpContext),
             Input = new ForgotPasswordModel.InputModel { Email = email },
         };
 
-        await model.OnPostAsync();
+        await model.OnPostAsync(TestContext.Current.CancellationToken);
 
         return sender;
     }

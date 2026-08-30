@@ -87,7 +87,7 @@ public class SetupModel : PageModel
         public string Username { get; set; }
 
         [Required]
-        [StringLength(100, ErrorMessage = "Validation_Length", MinimumLength = 6)]
+        [StringLength(100, ErrorMessage = "Validation_Length", MinimumLength = IdentityConfiguration.MinimumPasswordLength)]
         [DataType(DataType.Password)]
         [Display(Name = "Account_Password")]
         public string Password { get; set; }

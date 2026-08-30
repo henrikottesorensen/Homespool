@@ -102,6 +102,63 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
     }
 
     /// <summary>
+    /// The key nginx reads is group-readable and nothing more; the certificate beside it is public
+    /// material and stays world-readable.
+    /// </summary>
+    /// <remarks>
+    /// The group grant is the proxy's whole access - compose adds the app's group to the nginx
+    /// container - so widening past it hands the key to any other uid that ever shares the volume,
+    /// and narrowing to owner-only takes the printer listener down with a certificate error that has
+    /// nothing to do with the certificate.
+    /// </remarks>
+    [Fact]
+    public void TheProxyKeyIsGroupReadableAndNoWider()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // Act
+        PrinterCertificateAuthority authority = NewAuthority();
+        authority.IssueLeaf(["192.168.13.238"]).Dispose();
+
+        // Assert
+        File.GetUnixFileMode(authority.LeafKeyPemPath)
+            .Should().Be(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead);
+        File.GetUnixFileMode(authority.LeafCertificatePemPath)
+            .Should().HaveFlag(UnixFileMode.OtherRead, "the certificate is public material");
+    }
+
+    /// <summary>
+    /// A key an earlier version wrote world-readable is tightened on the next start, because the leaf
+    /// is deliberately never reissued and so the write path never touches it again.
+    /// </summary>
+    [Fact]
+    public void AWorldReadableKeyFromAnEarlierVersionIsTightenedOnStartup()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // Arrange
+        PrinterCertificateAuthority authority = NewAuthority();
+        authority.EnsureLeaf(["192.168.13.238"]).Dispose();
+
+        File.SetUnixFileMode(authority.LeafKeyPemPath,
+                             UnixFileMode.UserRead | UnixFileMode.UserWrite
+                                                   | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+
+        // Act - a "restart" on a deployment whose leaf and PEMs already exist.
+        NewAuthority().EnsureLeaf(["192.168.13.238"]).Dispose();
+
+        // Assert
+        File.GetUnixFileMode(authority.LeafKeyPemPath)
+            .Should().Be(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead);
+    }
+
+    /// <summary>
     /// A bare IP address is carried as a <c>dNSName</c> SAN, not as the RFC-correct <c>iPAddress</c>.
     /// </summary>
     /// <remarks>

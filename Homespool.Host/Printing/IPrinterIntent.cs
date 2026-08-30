@@ -40,4 +40,26 @@ public interface IPrinterIntent
     /// </para>
     /// </remarks>
     Capability RequiredCapability => Capability.ControlPrinter;
+
+    /// <summary>
+    /// Whether this intent may only be sent to a printer whose
+    /// <see cref="Homespool.Model.Entities.Printer.RemoteReadyAllowed"/> is set. The default is
+    /// false, so an intent is gated only if it says so.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Declared by the intent for the same reason <see cref="RequiredCapability"/> is</b>, and it
+    /// buys the same thing: the check then happens once, where every caller already funnels through,
+    /// and a new call site inherits it rather than restating it. It was restated until now - two page
+    /// handlers read the flag and the API controller did not, which is exactly the shape this
+    /// replaces.
+    /// </para>
+    /// <para>
+    /// <b>Not a capability, because it is not a question about the caller.</b> A capability asks who
+    /// may press the button; this asks whether this machine has been set up to be told remotely at
+    /// all - a standing judgement its manager makes once, about a printer rather than about a person.
+    /// The two are checked together and neither substitutes for the other.
+    /// </para>
+    /// </remarks>
+    bool RequiresRemoteReadyAllowed => false;
 }

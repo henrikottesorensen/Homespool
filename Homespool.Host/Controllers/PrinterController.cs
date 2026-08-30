@@ -420,8 +420,27 @@ public class PrinterController : ControllerBase
     /// <summary>
     /// Marks the printer ready for a queued job. <c>PUT /api/v1/printers/{uuid}/command/ready</c>.
     /// </summary>
-    /// <remarks>Answered <c>StateChanged</c> rather than <c>Finished</c> on hardware - both are
-    /// success as far as this endpoint is concerned, since only Rejected and Failed are refusals.</remarks>
+    /// <remarks>
+    /// <para>
+    /// Answered <c>StateChanged</c> rather than <c>Finished</c> on hardware - both are success as far
+    /// as this endpoint is concerned, since only Rejected and Failed are refusals.
+    /// </para>
+    /// <para>
+    /// <b>Switched off (2026-08-30), and left whole rather than deleted.</b> Readying is a person's
+    /// assertion that the print sheet is clear, and this is the one route to it with no person on the
+    /// other end. <see cref="NonActionAttribute"/> rather than a body that refuses: the route then
+    /// does not exist at all - no entry in the OpenAPI document, nothing advertised that answers only
+    /// to say no - while the method, its route template and its wiring stay exactly as they were.
+    /// </para>
+    /// <para>
+    /// <b>To put it back, delete the one attribute below.</b> It returns gated rather than open:
+    /// <see cref="SetPrinterReady"/> declares
+    /// <see cref="Printing.IPrinterIntent.RequiresRemoteReadyAllowed"/>, so the printer's own toggle
+    /// is enforced beneath this whatever route reaches it - which is what makes restoring it a
+    /// one-line decision instead of a re-audit.
+    /// </para>
+    /// </remarks>
+    [NonAction]
     [HttpPut]
     [Route("printers/{uuid:guid}/command/ready")]
     public Task<JobControlResult> Ready(Guid uuid, CancellationToken cancellationToken)
@@ -552,7 +571,12 @@ public class PrinterController : ControllerBase
 
             return this.CommandRefused(command.Name, e.Message);
         }
-        catch (TeamAccessDeniedException e)
+
+        // Both are "no, and no permission you could be granted changes that" - one because the caller
+        // may not use this printer, one because the printer may not be readied remotely at all. The
+        // second is unreachable while Ready is [NonAction] and is here so that undoing that cannot
+        // turn a refusal into a 500.
+        catch (Exception e) when (e is TeamAccessDeniedException or RemoteReadyNotAllowedException)
         {
             onFailure?.Invoke();
 

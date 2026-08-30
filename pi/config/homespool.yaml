@@ -31,9 +31,16 @@ layer:
 # be racing the package that owns it - the mistake this layer already made twice, with /etc/hostname
 # and /etc/fstab. The spelling is confusing and worth stating: keyboard_keymap is the XKB *layout*
 # (us), keyboard_layout is the *variant* (English (US)).
+#
+# timezone is the same layer's other unexamined default - Europe/London, which put the appliance an
+# hour off UTC (more, across BST) for the same reason the keyboard was gb: nobody had named it. A
+# distributed appliance has no home timezone to default to, and the containers already log in UTC, so
+# a host clock anywhere else is a standing offset against every cross-log correlation. Etc/UTC rather
+# than plain UTC because it is the IANA zoneinfo path this layer's variable expects.
 locale:
   keyboard_keymap: us
   keyboard_layout: English (US)
+  timezone: Etc/UTC
 
 # Lets the device user drive the stack - docker compose logs, ps, restart - without sudo in front of
 # every command. It is effectively root on this box (the docker group always is), which is a real

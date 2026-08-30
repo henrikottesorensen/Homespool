@@ -363,6 +363,10 @@ public class PrinterCertificateAuthority
                 File.Delete(LegacyLeafPath);
             }
 
+            // Earlier versions wrote the key world-readable; the leaf is not reissued on upgrade, so
+            // this is the one place an existing deployment's key gets its mode corrected.
+            SetProxyKeyMode(LeafKeyPemPath);
+
             // At Information because it is the answer to "what must a printer connect to?", and the operator
             // needs it whenever provisioning does not work. It is also what step 6 will compare against.
             _logger.LogInformation("Serving the existing printer certificate for {Names}, valid until {NotAfter:o}. "
@@ -489,7 +493,7 @@ public class PrinterCertificateAuthority
         System.IO.Directory.CreateDirectory(_proxyDirectory);
 
         WriteProxyFile(LeafCertificatePemPath, Encoding.ASCII.GetBytes(issued.ExportCertificatePem()));
-        WriteProxyFile(LeafKeyPemPath, Encoding.ASCII.GetBytes(key.ExportPkcs8PrivateKeyPem()));
+        WriteProxyKeyFile(LeafKeyPemPath, Encoding.ASCII.GetBytes(key.ExportPkcs8PrivateKeyPem()));
 
         if (File.Exists(LegacyLeafPath))
         {
@@ -690,7 +694,7 @@ public class PrinterCertificateAuthority
         System.IO.Directory.CreateDirectory(_proxyDirectory);
 
         WriteProxyFile(LeafCertificatePemPath, Encoding.ASCII.GetBytes(legacy.ExportCertificatePem()));
-        WriteProxyFile(LeafKeyPemPath, Encoding.ASCII.GetBytes(key.ExportPkcs8PrivateKeyPem()));
+        WriteProxyKeyFile(LeafKeyPemPath, Encoding.ASCII.GetBytes(key.ExportPkcs8PrivateKeyPem()));
 
         File.Delete(LegacyLeafPath);
 
@@ -754,11 +758,13 @@ public class PrinterCertificateAuthority
     /// Writes a file the proxy container has to be able to read.
     /// </summary>
     /// <remarks>
-    /// <b>Readable by everyone, which <see cref="WriteFile"/> deliberately is not.</b> nginx runs as
-    /// its own uid in its own container and cannot read a file this process wrote owner-only, so the
-    /// alternative to widening these two is a proxy that starts, finds a key it may not open, and
-    /// reports a certificate problem that has nothing to do with the certificate. What is widened is
-    /// bounded twice over: to a volume that only these two containers mount, and to the leaf, which is
+    /// <b>Wider than <see cref="WriteFile"/>, deliberately.</b> nginx runs as its own uid in its own
+    /// container and cannot read a file this process wrote owner-only, so the alternative to widening
+    /// these is a proxy that starts, finds a key it may not open, and reports a certificate problem
+    /// that has nothing to do with the certificate. The certificate is public material and stays
+    /// world-readable; the key is group-readable only - compose adds this process's group to the
+    /// proxy container, which is the whole of what the group grant is for. What is widened is bounded
+    /// twice over: to a volume that only these two containers mount, and to the leaf, which is
     /// replaceable without visiting a printer. <see cref="CertificateOptions.ProxyDirectory"/> carries
     /// the full argument, including why the authority's key is not in the same directory.
     /// </remarks>
@@ -772,6 +778,29 @@ public class PrinterCertificateAuthority
                                  UnixFileMode.UserRead | UnixFileMode.UserWrite
                                                        | UnixFileMode.GroupRead
                                                        | UnixFileMode.OtherRead);
+        }
+    }
+
+    /// <summary>
+    /// Writes the leaf's private key so this process and the proxy's group can read it, and nobody
+    /// else. See <see cref="WriteProxyFile"/> for why the proxy reads it at all.
+    /// </summary>
+    private static void WriteProxyKeyFile(string path, byte[] contents)
+    {
+        File.WriteAllBytes(path, contents);
+
+        SetProxyKeyMode(path);
+    }
+
+    /// <summary>
+    /// Owner read-write, group read - the mode <see cref="WriteProxyKeyFile"/> writes, re-assertable
+    /// on a key an earlier version left world-readable.
+    /// </summary>
+    private static void SetProxyKeyMode(string path)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead);
         }
     }
 }

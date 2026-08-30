@@ -15,7 +15,9 @@ using Microsoft.Extensions.DependencyInjection;
 
 using OtpNet;
 
+using Homespool.Data;
 using Homespool.Host.Accounts;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.E2ETest;
@@ -167,6 +169,106 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime, IDisposable
         html.Should().NotContain("id=\"reset-authenticator\" class=\"btn btn-primary\" href=\"\"",
                                  "an empty href is what an unresolvable asp-page produces, and it is indistinguishable "
                                  + "from a working button until it is clicked");
+    }
+
+    /// <summary>
+    /// Turning two-factor off demands the current authenticator code, not just a live session - a
+    /// walk-up on an unlocked browser must not be able to switch the second factor off first.
+    /// </summary>
+    [Fact]
+    public async Task DisablingTwoFactorWithoutTheCurrentCodeIsRefused()
+    {
+        (HSUser user, CookieJar jar) = await SeedAsync("keeps2fa@example.com", withTwoFactor: true);
+
+        using HttpClient client = CreateClient();
+
+        string token = await GetAntiforgeryTokenAsync(client, jar, "/Account/Manage/Disable2fa");
+
+        using HttpResponseMessage post = await PostAsync(client, jar, "/Account/Manage/Disable2fa", new()
+        {
+            ["__RequestVerificationToken"] = token,
+        });
+
+        post.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        post.Headers.Location!.OriginalString.Should().Contain("Disable2fa",
+                                                               "a refusal comes back to the form, not to the page that says it worked");
+
+        (await TwoFactorEnabledAsync(user.Id))
+            .Should().BeTrue("without the code, the second factor stays on");
+    }
+
+    /// <summary>
+    /// The counterweight: the gate can be passed. A bug that refused every code, correct ones
+    /// included, would leave the suite green while making two-factor impossible to turn off.
+    /// </summary>
+    [Fact]
+    public async Task DisablingTwoFactorWithTheCurrentCodeSucceeds()
+    {
+        (HSUser user, CookieJar jar) = await SeedAsync("drops2fa@example.com", withTwoFactor: true);
+
+        using HttpClient client = CreateClient();
+
+        string token = await GetAntiforgeryTokenAsync(client, jar, "/Account/Manage/Disable2fa");
+
+        using HttpResponseMessage post = await PostAsync(client, jar, "/Account/Manage/Disable2fa", new()
+        {
+            ["code"] = await CurrentCodeAsync(user.Id),
+            ["__RequestVerificationToken"] = token,
+        });
+
+        post.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        post.Headers.Location!.OriginalString.Should().Contain("/Account/Manage/TwoFactorAuthentication");
+
+        (await TwoFactorEnabledAsync(user.Id)).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The backoff is checked before the code, so a ground account is refused even with a correct
+    /// one - which is what makes six digits with a per-account limiter a control at all.
+    /// </summary>
+    [Fact]
+    public async Task ABackedOffAccountCannotDisableTwoFactorEvenWithTheRightCode()
+    {
+        (HSUser user, CookieJar jar) = await SeedAsync("lockedout2fa@example.com", withTwoFactor: true);
+
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            HomespoolDbContext db = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+            db.UserActionAttempts.Add(new UserActionAttempt
+            {
+                UserId = user.Id,
+                Action = LimitedAction.DisableTwoFactor,
+                FailedCount = 6,
+                LockoutEnd = DateTimeOffset.UtcNow.AddMinutes(10),
+            });
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        using HttpClient client = CreateClient();
+
+        string token = await GetAntiforgeryTokenAsync(client, jar, "/Account/Manage/Disable2fa");
+
+        using HttpResponseMessage post = await PostAsync(client, jar, "/Account/Manage/Disable2fa", new()
+        {
+            ["code"] = await CurrentCodeAsync(user.Id),
+            ["__RequestVerificationToken"] = token,
+        });
+
+        post.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        (await TwoFactorEnabledAsync(user.Id))
+            .Should().BeTrue("a backed-off account is refused before its code is even compared");
+    }
+
+    private async Task<bool> TwoFactorEnabledAsync(long userId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+
+        HSUser user = await userManager.FindByIdAsync(userId.ToString(CultureInfo.InvariantCulture))
+                      ?? throw new InvalidOperationException("the account should exist");
+
+        return await userManager.GetTwoFactorEnabledAsync(user);
     }
 
     /// <summary>

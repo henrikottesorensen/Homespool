@@ -393,6 +393,13 @@ services:
       # printers a certificate the app knows nothing about.
       - homespool-printer-leaf:/etc/nginx/printer-certs:ro
 
+    # The app writes the leaf's private key readable by its own group and nobody else, so nginx
+    # (uid 101, no root in this image) reads it through this supplementary group. 1654 is the app
+    # user the .NET base image creates and Homespool's Dockerfile runs as; if you build with a
+    # different APP_UID, put that user's group here or the printer listener cannot start.
+    group_add:
+      - "1654"
+
     networks:
       - homespool
 

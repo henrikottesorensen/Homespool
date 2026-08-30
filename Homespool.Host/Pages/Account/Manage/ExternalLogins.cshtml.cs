@@ -19,6 +19,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
@@ -110,7 +111,7 @@ public class ExternalLoginsModel : PageModel
     public class InputModel
     {
         [DataType(DataType.Password)]
-        [StringLength(100, ErrorMessage = "Validation_Length", MinimumLength = 6)]
+        [StringLength(100, ErrorMessage = "Validation_Length", MinimumLength = IdentityConfiguration.MinimumPasswordLength)]
         [Display(Name = "Account_Password")]
         public string NewPassword { get; set; }
 

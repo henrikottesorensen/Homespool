@@ -17,11 +17,27 @@ namespace Homespool.Host.Accounts;
 /// </remarks>
 public static class IdentityConfiguration
 {
+    /// <summary>
+    /// The shortest password an account may choose. Identity's default is 6, which predates current
+    /// guidance; NIST SP 800-63B's floor for a user-chosen password is 8.
+    /// </summary>
+    /// <remarks>
+    /// A constant rather than an option because the password forms cite it in their
+    /// <c>[StringLength]</c> attributes, and an attribute argument must be a compile-time constant -
+    /// which is also what keeps the browser refusing exactly what the server would.
+    /// </remarks>
+    public const int MinimumPasswordLength = 8;
+
     public static void Configure(IdentityOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
 
         options.SignIn.RequireConfirmedAccount = true;
+
+        // Length is the only password knob raised above Identity's defaults - the complexity toggles
+        // stay where they are, because composition rules push people toward Password1! rather than
+        // toward anything longer.
+        options.Password.RequiredLength = MinimumPasswordLength;
 
         // A username is a name someone picks, so it may not be shaped like an address - see
         // HSUser.AllowedUsernameCharacters.

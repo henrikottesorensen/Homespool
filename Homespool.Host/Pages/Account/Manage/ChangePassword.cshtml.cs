@@ -102,7 +102,7 @@ public class ChangePasswordModel : PageModel
         ///     directly from your code. This API may change or be removed in future releases.
         /// </summary>
         [Required]
-        [StringLength(100, ErrorMessage = "Validation_Length", MinimumLength = 6)]
+        [StringLength(100, ErrorMessage = "Validation_Length", MinimumLength = IdentityConfiguration.MinimumPasswordLength)]
         [DataType(DataType.Password)]
         [Display(Name = "Manage_NewPassword")]
         public string NewPassword { get; set; }

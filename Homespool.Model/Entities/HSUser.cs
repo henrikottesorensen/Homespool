@@ -73,6 +73,33 @@ public class HSUser : IdentityUser<long>
     [MaxLength(LanguageMaxLength)]
     public string? Language { get; set; }
 
+    /// <summary>
+    /// The <see cref="Printer"/> this account reaches for when a page has to pick one, or null when
+    /// nobody has chosen.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Null is not "the first printer".</b> It means no choice has been made, and the pages that
+    /// read this leave their selection empty rather than aiming at whichever machine sorts first - a
+    /// guess presented as a choice is how a print reaches a printer nobody meant, with every layer
+    /// below reporting success because both destinations were legal.
+    /// </para>
+    /// <para>
+    /// <b>Per account rather than per printer.</b> A printer belongs to a team and several people
+    /// share it; which one you reach for first is a fact about you, exactly as
+    /// <see cref="Language"/> is.
+    /// </para>
+    /// <para>
+    /// <b>A plain id, not a foreign key</b>, on the same reasoning as <see cref="Team.CreatedBy"/>:
+    /// it keeps a preference from entangling itself with printer lifetime, so removing a printer or
+    /// dropping somebody from a team needs no step here. Whoever reads this resolves it against the
+    /// printers the account can actually see, and an id that no longer answers means no default.
+    /// <b>That is only safe because the key is <c>AUTOINCREMENT</c></b> and a removed printer's id
+    /// is never handed to a new machine; over a reusing key this column would silently retarget.
+    /// </para>
+    /// </remarks>
+    public int? DefaultPrinterId { get; set; }
+
     public HSUser(string userName)
         : this()
     {

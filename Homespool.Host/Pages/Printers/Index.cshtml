@@ -36,6 +36,7 @@ else
                 <th>@Localiser["Common_Status"]</th>
                 <th></th>
                 <th></th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -44,7 +45,15 @@ else
             <tr>
                 @* Shared with the front page's tiles, so the two cannot call one printer two things.
                    It also treats a whitespace name as unnamed, which the ?? chain here did not. *@
-                <td class="typed-name"><a asp-page="Detail" asp-route-uuid="@row.Printer.Uuid">@PrinterDisplayName.For(row.Printer)</a></td>
+                <td class="typed-name">
+                    <a asp-page="Detail" asp-route-uuid="@row.Printer.Uuid">@PrinterDisplayName.For(row.Printer)</a>
+                    @* Filled and grey: this is a resting fact about the reader, not a severity, and a
+                       rack where one row glows would compete with the status column beside it. *@
+                    @if (row.Printer.Id == Model.DefaultPrinterId)
+                    {
+                        <span class="badge text-bg-secondary">@Localiser["Printers_Default"]</span>
+                    }
+                </td>
                 <td class="typed-name">@row.Printer.Location</td>
                 <td class="typed-name">@row.TeamName</td>
                 @* What the printer is doing beats how it was set up, whenever we can know it. A
@@ -71,6 +80,17 @@ else
                     else
                     {
                         <span class="badge @PrinterStatusBadge.Absent">@Localiser["Printers_AwaitingAny"]</span>
+                    }
+                </td>
+                <td>
+                    @* Only on the rows that are not already it, so the listing's verb is always "make
+                       it this one instead". Clearing the idea altogether lives on the printer's page,
+                       which has room to say what having no default means. *@
+                    @if (row.Printer.Id != Model.DefaultPrinterId)
+                    {
+                        <form method="post" asp-page-handler="Default" asp-route-printerId="@row.Printer.Id">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">@Localiser["Printers_MakeDefault"]</button>
+                        </form>
                     }
                 </td>
                 <td>

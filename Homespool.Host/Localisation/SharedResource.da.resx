@@ -539,6 +539,30 @@
   <data name="Printers_ReadySent" xml:space="preserve">
     <value>Markeret klargjort. Næste print i køen kan starte.</value>
   </data>
+  <data name="Files_NoPrinterChosen" xml:space="preserve">
+    <value>Vælg en printer</value>
+  </data>
+  <data name="Files_ChooseAPrinter" xml:space="preserve">
+    <value>Vælg en printer ovenfor for at sende eller sætte en fil i kø til den.</value>
+  </data>
+  <data name="Printers_Default" xml:space="preserve">
+    <value>Standard</value>
+  </data>
+  <data name="Printers_MakeDefault" xml:space="preserve">
+    <value>Gør til standard</value>
+  </data>
+  <data name="Printers_DefaultLabel" xml:space="preserve">
+    <value>Min standardprinter</value>
+  </data>
+  <data name="Printers_DefaultSaved" xml:space="preserve">
+    <value>Denne printer er nu din standardprinter.</value>
+  </data>
+  <data name="Printers_DefaultCleared" xml:space="preserve">
+    <value>Du har ikke længere en standardprinter.</value>
+  </data>
+  <data name="Printers_DefaultNotSaved" xml:space="preserve">
+    <value>Din standardprinter kunne ikke gemmes.</value>
+  </data>
   <data name="Printers_RemoteReadyLabel" xml:space="preserve">
     <value>Tillad at markere klargjort fra Homespool</value>
   </data>

@@ -58,6 +58,7 @@ public class DetailModel : PageModel
 {
     private readonly PrinterQueryService _printerQueryService;
     private readonly PrinterRemovalService _removalService;
+    private readonly DefaultPrinterService _defaults;
     private readonly AttemptLimiter _attemptLimiter;
     private readonly PrintQueueService _queueService;
     private readonly PrinterPreheatService _preheat;
@@ -82,6 +83,7 @@ public class DetailModel : PageModel
 
     public DetailModel(PrinterQueryService printerQueryService,
                        PrinterRemovalService removalService,
+                       DefaultPrinterService defaults,
                        AttemptLimiter attemptLimiter,
                        PrintQueueService queueService,
                        PrinterPreheatService preheat,
@@ -106,6 +108,7 @@ public class DetailModel : PageModel
     {
         _printerQueryService = printerQueryService;
         _removalService = removalService;
+        _defaults = defaults;
         _attemptLimiter = attemptLimiter;
         _queueService = queueService;
         _preheat = preheat;
@@ -382,6 +385,17 @@ public class DetailModel : PageModel
     public bool CanManage { get; private set; }
 
     /// <summary>
+    /// Whether this is the reader's default printer - the one pages pick when they have to pick one.
+    /// </summary>
+    /// <remarks>
+    /// <b>A fact about the reader, not about the printer</b>, so it is not behind
+    /// <see cref="CanManage"/> and two people looking at the same page can honestly disagree. Being
+    /// able to see the printer at all is the whole permission it needs, which
+    /// <c>[Authorize]</c> plus the 404 above have already established by the time this is read.
+    /// </remarks>
+    public bool IsDefaultPrinter { get; private set; }
+
+    /// <summary>
     /// Whether this account has an authenticator, and so must confirm a removal with a code as well
     /// as the typed name.
     /// </summary>
@@ -583,6 +597,10 @@ public class DetailModel : PageModel
         // printer never sees the removal disclosure, so its authenticator state is nobody's business
         // here.
         RemovalNeedsCode = CanManage && await _userManager.GetTwoFactorEnabledAsync(user);
+
+        // Compared against what is stored, not resolved: the printer in front of us is one the caller
+        // can see, so if the stored id names it the switch is on.
+        IsDefaultPrinter = user.DefaultPrinterId == Statistics.Printer.Id;
 
         SlicerUrl = $"{Request.Scheme}://{Request.Host}/compat/octoprint/{Statistics.Printer.Uuid}/";
 
@@ -987,6 +1005,56 @@ public class DetailModel : PageModel
 
             return (_localiser[allowed ? "Printers_RemoteReadySaved" : "Printers_RemoteReadyCleared"].Value, true);
         }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Makes this the reader's default printer, or stops it being one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Not through <see cref="ActAsync"/>, because it needs the account and not the printer.</b>
+    /// Every refusal that helper catches is a printer answering back, and nothing here reaches a
+    /// printer at all - this writes one column on the reader's own row.
+    /// </para>
+    /// <para>
+    /// <b>Clearing is conditional on this printer being the one stored.</b> Unchecking the switch on
+    /// a printer that is not the default would otherwise throw away a default pointing somewhere
+    /// else, which no rendered control can ask for but a posted form can.
+    /// </para>
+    /// </remarks>
+    public async Task<IActionResult> OnPostDefaultAsync(Guid uuid, bool isDefault, CancellationToken cancellationToken)
+    {
+        HSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return Forbid();
+        }
+
+        Caller caller = CallerResolver.For(user, User);
+        Printer? printer = await _printerQueryService.GetPrinterForUserAsync(uuid, caller, cancellationToken);
+
+        if (printer is null)
+        {
+            return NotFound();
+        }
+
+        if (isDefault)
+        {
+            (StatusMessage, StatusSuccess) =
+                await _defaults.SetAsync(user, caller, printer.Id, cancellationToken) ?
+                    (_localiser["Printers_DefaultSaved"].Value, true) :
+                    (_localiser["Printers_DefaultNotSaved"].Value, false);
+        }
+        else if (user.DefaultPrinterId == printer.Id)
+        {
+            (StatusMessage, StatusSuccess) =
+                await _defaults.ClearAsync(user) ?
+                    (_localiser["Printers_DefaultCleared"].Value, true) :
+                    (_localiser["Printers_DefaultNotSaved"].Value, false);
+        }
+
+        return RedirectToPage(new { uuid });
     }
 
     /// <summary>Turns both heaters off.</summary>

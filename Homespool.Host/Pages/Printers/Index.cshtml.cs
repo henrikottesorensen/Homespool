@@ -33,6 +33,7 @@ public class IndexModel : PageModel
 {
     private readonly PrinterQueryService _printerQueryService;
     private readonly PrusaConnectService _prusaConnectService;
+    private readonly DefaultPrinterService _defaults;
     private readonly ProvisioningBundleBuilder _bundles;
     private readonly TeamService _teamService;
     private readonly UserManager<HSUser> _userManager;
@@ -50,6 +51,7 @@ public class IndexModel : PageModel
 
     public IndexModel(PrinterQueryService printerQueryService,
                       PrusaConnectService prusaConnectService,
+                      DefaultPrinterService defaults,
                       ProvisioningBundleBuilder bundles,
                       TeamService teamService,
                       UserManager<HSUser> userManager,
@@ -63,6 +65,7 @@ public class IndexModel : PageModel
     {
         _printerQueryService = printerQueryService;
         _prusaConnectService = prusaConnectService;
+        _defaults = defaults;
         _bundles = bundles;
         _teamService = teamService;
         _userManager = userManager;
@@ -90,6 +93,15 @@ public class IndexModel : PageModel
 
     /// <summary>The printer a regenerate just succeeded for, so the view can show its snippet once.</summary>
     public int? RegeneratedPrinterId { get; private set; }
+
+    /// <summary>
+    /// The reader's default printer, so exactly one row can say so.
+    /// </summary>
+    /// <remarks>
+    /// Taken as stored rather than resolved against permissions: this list is already only printers
+    /// the reader may see, so an id naming anything else simply matches no row.
+    /// </remarks>
+    public int? DefaultPrinterId { get; private set; }
 
     /// <summary>The bundle a reissue just made available, shown once and then gone.</summary>
     public BundleOffer? Offer { get; private set; }
@@ -181,6 +193,32 @@ public class IndexModel : PageModel
         }
 
         return Page();
+    }
+
+    /// <summary>
+    /// Makes one row's printer the reader's default.
+    /// </summary>
+    /// <remarks>
+    /// <b>Only ever sets, never clears</b> - the button renders on the rows that are not the default,
+    /// so the listing's whole vocabulary is "make it this one instead". Turning the idea off entirely
+    /// is on the printer's own page, where there is room to say what it means.
+    /// </remarks>
+    public async Task<IActionResult> OnPostDefaultAsync(int printerId, CancellationToken cancellationToken)
+    {
+        HSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return Forbid();
+        }
+
+        Caller caller = CallerResolver.For(user, User);
+
+        (StatusMessage, StatusSuccess) = await _defaults.SetAsync(user, caller, printerId, cancellationToken) ?
+            (_localiser["Printers_DefaultSaved"].Value, true) :
+            (_localiser["Printers_DefaultNotSaved"].Value, false);
+
+        return RedirectToPage();
     }
 
     public Task<IActionResult> OnPostPauseAsync(int printerId, CancellationToken cancellationToken)
@@ -295,6 +333,8 @@ public class IndexModel : PageModel
             Printers = [];
             return;
         }
+
+        DefaultPrinterId = user.DefaultPrinterId;
 
         // With state, because the Status column reports what a connected printer is doing rather than
         // only that it is enrolled. Same query shape, one join.

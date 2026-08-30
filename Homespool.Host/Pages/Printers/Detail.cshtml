@@ -164,6 +164,25 @@
     }
 }
 
+@* A preference belonging to the reader rather than a setting on the printer, so it is behind no
+   capability: everyone who can see this page can name it as theirs, and two people can disagree.
+   Outside the polled region deliberately - a switch replaced under somebody every two seconds would
+   reset mid-press, which is the same reason the control strip sits out here. *@
+<form method="post" asp-page-handler="Default" asp-route-uuid="@uuid" class="mb-4">
+    <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" role="switch" id="default-printer"
+               name="isDefault" value="true" data-submit-on-change
+               @(Model.IsDefaultPrinter ? "checked" : null) />
+        <label class="form-check-label" for="default-printer">@Localiser["Printers_DefaultLabel"]</label>
+    </div>
+
+    @* No help text: the label says what it is, and its neighbour below earns its paragraph by
+       carrying a judgement about the machine that a person has to make. This one does not. *@
+    <button type="submit" class="btn btn-outline-secondary btn-sm" data-submit-fallback>
+        @Localiser["Common_Save"]
+    </button>
+</form>
+
 @* Whether the ready prompt can be answered honestly for this printer is a standing judgement about
    the machine, so it sits behind CanManage rather than CanUse: decided once by somebody who has seen
    it, inherited by everyone who has not. *@

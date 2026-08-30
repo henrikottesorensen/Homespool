@@ -565,6 +565,30 @@
   <data name="Printers_ReadySent" xml:space="preserve">
     <value>Marked ready. The next queued print can start.</value>
   </data>
+  <data name="Files_NoPrinterChosen" xml:space="preserve">
+    <value>Choose a printer</value>
+  </data>
+  <data name="Files_ChooseAPrinter" xml:space="preserve">
+    <value>Choose a printer above to send or queue a file to it.</value>
+  </data>
+  <data name="Printers_Default" xml:space="preserve">
+    <value>Default</value>
+  </data>
+  <data name="Printers_MakeDefault" xml:space="preserve">
+    <value>Make default</value>
+  </data>
+  <data name="Printers_DefaultLabel" xml:space="preserve">
+    <value>My default printer</value>
+  </data>
+  <data name="Printers_DefaultSaved" xml:space="preserve">
+    <value>This is now your default printer.</value>
+  </data>
+  <data name="Printers_DefaultCleared" xml:space="preserve">
+    <value>You no longer have a default printer.</value>
+  </data>
+  <data name="Printers_DefaultNotSaved" xml:space="preserve">
+    <value>Your default printer could not be saved.</value>
+  </data>
   <data name="Printers_RemoteReadyLabel" xml:space="preserve">
     <value>Allow setting ready from Homespool</value>
   </data>

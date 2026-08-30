@@ -322,6 +322,11 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         await UploadAsync(client, "one.gcode", 128);
         await UploadAsync(client, "two.gcode", 128);
 
+        // The page opens on nothing until an account names a default, so this test has to make one
+        // to have a selected option to assert about. That the page opens empty otherwise is its own
+        // test below.
+        await MakeDefaultAsync(client, await OnlyPrinterIdAsync(client));
+
         // Act
         string page =
             await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
@@ -345,6 +350,139 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
             4, "the top selector plus both rows' Send and Queue buttons all carry the same id");
 
         client.Dispose();
+    }
+
+    /// <summary>
+    /// With nobody having chosen, the page picks nobody - no row can be sent anywhere, and the
+    /// selector says so rather than showing a machine as though it had been selected.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is the defect the default printer exists to remove.</b> The page used to open on
+    /// whichever printer sorted first, which is enrolment order wearing the clothes of a choice: a
+    /// send then went somewhere nobody named, and every layer below reported success because the
+    /// destination was perfectly legal.
+    /// </remarks>
+    [Fact]
+    public async Task WithNoDefaultThePageSelectsNothingAndOffersNoSendButtons()
+    {
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "pagenodefault@example.com");
+        await ClaimAPrinterAsync(client);
+
+        await UploadAsync(client, "unaimed.gcode", 128);
+
+        string page =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
+
+        page.Should().Contain("unaimed.gcode");
+        page.Should().NotContain("handler=Send", "there is no printer to send to until somebody says which");
+        Regex.IsMatch(page, """<option value="(\d+)"[^>]*selected""").Should().BeFalse(
+            "a printer shown as selected is a printer the buttons would be aimed at");
+
+        client.Dispose();
+    }
+
+    /// <summary>The stored default is what a bare visit opens on.</summary>
+    [Fact]
+    public async Task TheDefaultPrinterIsWhatTheSelectorOpensOn()
+    {
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "pagedefault@example.com");
+        await ClaimAPrinterAsync(client);
+
+        await UploadAsync(client, "aimed.gcode", 128);
+
+        string chosen = await OnlyPrinterIdAsync(client);
+        await MakeDefaultAsync(client, chosen);
+
+        string page =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
+
+        Regex.Match(page, """<option value="(\d+)"[^>]*selected""").Groups[1].Value.Should().Be(
+            chosen, "the account said which printer it reaches for");
+
+        page.Should().Contain($"printerId={chosen}", "and every row's buttons carry it");
+
+        client.Dispose();
+    }
+
+    /// <summary>
+    /// A printer named in the URL wins over the stored default, and does not become the new one.
+    /// </summary>
+    /// <remarks>
+    /// <b>The two are different statements.</b> Choosing here is for this visit; sending one file to
+    /// the other machine must not silently retarget everything afterwards, which is the failure this
+    /// whole concept was built to end.
+    /// </remarks>
+    [Fact]
+    public async Task APrinterNamedInTheUrlBeatsTheDefaultWithoutReplacingIt()
+    {
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "pageoverride@example.com");
+        await ClaimAPrinterAsync(client);
+        await ClaimAPrinterAsync(client);
+
+        IReadOnlyList<string> ids = await PrinterIdsAsync(client);
+        ids.Count.Should().Be(2, "the override case needs somewhere else to aim");
+
+        await MakeDefaultAsync(client, ids[0]);
+
+        string overridden =
+            await (await client.GetAsync($"/Files?printerId={ids[1]}", TestContext.Current.CancellationToken))
+                .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        Regex.Match(overridden, """<option value="(\d+)"[^>]*selected""").Groups[1].Value.Should().Be(
+            ids[1], "the URL is the more recent statement");
+
+        string after =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
+
+        Regex.Match(after, """<option value="(\d+)"[^>]*selected""").Groups[1].Value.Should().Be(
+            ids[0], "a one-off choice is not a new default");
+
+        client.Dispose();
+    }
+
+    /// <summary>
+    /// Names a printer as this account's default by driving the listing's own button.
+    /// </summary>
+    private async Task MakeDefaultAsync(HttpClient client, string printerId)
+    {
+        string listing =
+            await (await client.GetAsync("/Printers", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
+
+        using FormUrlEncodedContent form = new(new List<KeyValuePair<string, string>>
+        {
+            new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(listing)),
+        });
+
+        using HttpResponseMessage response = await client.PostAsync(
+            $"/Printers?handler=Default&printerId={printerId}", form, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+    }
+
+    /// <summary>The ids the selector offers, in the order it offers them.</summary>
+    private async Task<IReadOnlyList<string>> PrinterIdsAsync(HttpClient client)
+    {
+        string page =
+            await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
+
+        return Regex.Matches(page, """<option value="(\d+)""")
+                    .Select(match => match.Groups[1].Value)
+                    .ToList();
+    }
+
+    private async Task<string> OnlyPrinterIdAsync(HttpClient client)
+    {
+        IReadOnlyList<string> ids = await PrinterIdsAsync(client);
+
+        return ids.Should().ContainSingle("this caller claimed exactly one printer").Subject;
     }
 
     /// <summary>

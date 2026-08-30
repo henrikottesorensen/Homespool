@@ -52,6 +52,7 @@ public class IndexModel : PageModel
     private readonly UserManager<HSUser> _userManager;
     private readonly PrintFileStorageOptions _options;
     private readonly PrinterQueryService _printers;
+    private readonly DefaultPrinterService _defaults;
     private readonly PrintFileSender _sender;
     private readonly PrintQueueService _queue;
     private readonly IStringLocalizer<SharedResource> _localiser;
@@ -62,6 +63,7 @@ public class IndexModel : PageModel
                       UserManager<HSUser> userManager,
                       IOptionsSnapshot<PrintFileStorageOptions> options,
                       PrinterQueryService printers,
+                      DefaultPrinterService defaults,
                       PrintFileSender sender,
                       PrintQueueService queue,
                       IStringLocalizer<SharedResource> localiser,
@@ -72,6 +74,7 @@ public class IndexModel : PageModel
         _userManager = userManager;
         _options = options.Value;
         _printers = printers;
+        _defaults = defaults;
         _sender = sender;
         _queue = queue;
         _localiser = localiser;
@@ -134,10 +137,16 @@ public class IndexModel : PageModel
     public IReadOnlyList<Printer> Printers { get; private set; } = [];
 
     /// <summary>
-    /// The one printer every row's Send/Queue button acts on. Carried through every link and form on
-    /// the page as a route value, the same way <see cref="Sort"/> is, so choosing one survives a sort,
-    /// a rename or a page reload without becoming session state.
+    /// The one printer every row's Send/Queue button acts on, or null when nobody has said which.
+    /// Carried through every link and form on the page as a route value, the same way
+    /// <see cref="Sort"/> is, so choosing one survives a sort, a rename or a page reload without
+    /// becoming session state.
     /// </summary>
+    /// <remarks>
+    /// <b>Null renders no Send and no Queue button at all</b>, which is the intended state for
+    /// somebody who has neither chosen a printer for this visit nor set a default: there is nothing
+    /// to aim at, so there is nothing to press.
+    /// </remarks>
     public int? SelectedPrinterId { get; private set; }
 
     /// <summary>Bytes as a person reads them. Binary units, because that is what a printer's storage uses.</summary>
@@ -208,7 +217,7 @@ public class IndexModel : PageModel
     {
         Load(sort, desc);
         await LoadPrintersAsync(cancellationToken);
-        SelectedPrinterId = ResolveSelectedPrinterId(printerId);
+        SelectedPrinterId = await ResolveSelectedPrinterIdAsync(printerId, cancellationToken);
 
         // Only offer to rename something that is actually there, so a stale link is an ordinary page
         // rather than an input editing nothing.
@@ -219,19 +228,46 @@ public class IndexModel : PageModel
     }
 
     /// <summary>
-    /// Which printer the selector shows as chosen: the one named in the URL if it is still one of the
-    /// caller's own, otherwise the first in the list - the same default a plain <c>&lt;select&gt;</c>
-    /// with no explicit selection would have shown per row before this page had one selector instead
-    /// of many.
+    /// Which printer the selector shows as chosen: the one named in the URL, else the account's
+    /// default printer, else none.
     /// </summary>
-    private int? ResolveSelectedPrinterId(int? requested)
+    /// <remarks>
+    /// <para>
+    /// <b>No fallback to the first printer, and that is the change worth keeping.</b> Opening the
+    /// page used to aim every Send and Queue button at whichever machine sorted first, which is an
+    /// accident of enrolment order wearing the clothes of a choice. Nothing downstream can catch a
+    /// send that goes to the wrong printer - both destinations are legal, the queue accepts the
+    /// entry, and the whole cost arrives later as a printer that never started - so the selection has
+    /// to be something somebody said rather than something we picked.
+    /// </para>
+    /// <para>
+    /// <b>The URL still wins over the stored default</b>, because it is the more recent statement and
+    /// because sending one file to the other printer must not silently retarget everything
+    /// afterwards. Choosing here is for this visit; the default is set on the printer's own page.
+    /// </para>
+    /// <para>
+    /// <b>Whatever comes back is intersected with the rendered list.</b> The selector can only show
+    /// what it has an option for, so an id that is not in it would leave the buttons aimed at a
+    /// printer the page is not naming - which is the failure this method exists to remove.
+    /// </para>
+    /// </remarks>
+    private async Task<int?> ResolveSelectedPrinterIdAsync(int? requested, CancellationToken cancellationToken)
     {
         if (requested is not null && Printers.Any(printer => printer.Id == requested))
         {
             return requested;
         }
 
-        return Printers.Count > 0 ? Printers[0].Id : null;
+        HSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return null;
+        }
+
+        int? stored = await _defaults.ResolveAsync(user, CallerResolver.For(user, User), cancellationToken);
+
+        return stored is not null && Printers.Any(printer => printer.Id == stored) ? stored : null;
     }
 
     /// <summary>

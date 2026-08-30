@@ -556,6 +556,7 @@ public static class Program
             builder.Services.AddScoped<Accounts.InvitationService>();
             builder.Services.AddScoped<Services.PrinterQueryService>();
             builder.Services.AddScoped<Services.PrinterRemovalService>();
+            builder.Services.AddScoped<Services.DefaultPrinterService>();
             builder.Services.AddScoped<Accounts.UserNameLookup>();
             builder.Services.AddScoped<PrintQueueService>();
             builder.Services.AddScoped<Printing.PrintHistoryService>();

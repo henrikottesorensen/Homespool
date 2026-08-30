@@ -16,15 +16,27 @@
     <form method="get" asp-page="./Index" class="d-flex align-items-center gap-2 mb-3" data-printer-select>
         <label class="form-label mb-0" for="printer-select">@Localiser["Common_Printer"]</label>
         <select id="printer-select" name="printerId" class="form-select form-select-sm w-auto">
+            @* An empty option, rendered only while nothing is chosen. Without it the browser shows the
+               first printer as though it were selected, which is the whole defect: a machine nobody
+               picked, presented as the one that will receive the file. *@
+            @if (Model.SelectedPrinterId is null)
+            {
+                <option value="" selected>@Localiser["Files_NoPrinterChosen"]</option>
+            }
             @foreach (var printer in Model.Printers)
             {
-                <option value="@printer.Id" selected="@(printer.Id == Model.SelectedPrinterId)">@(printer.Name ?? printer.Model ?? printer.Uuid.ToString())</option>
+                <option value="@printer.Id" selected="@(printer.Id == Model.SelectedPrinterId)">@PrinterDisplayName.For(printer)</option>
             }
         </select>
         <input type="hidden" name="sort" value="@Model.Sort" />
         <input type="hidden" name="desc" value="@Model.Descending" />
         <button type="submit" class="btn btn-sm btn-outline-primary">@Localiser["Common_Save"]</button>
     </form>
+
+    @if (Model.SelectedPrinterId is null)
+    {
+        <p class="text-body-secondary small">@Localiser["Files_ChooseAPrinter"]</p>
+    }
 }
 
 @if (!string.IsNullOrEmpty(Model.StatusMessage))

@@ -135,6 +135,7 @@ public sealed class DetailModelTests : IDisposable
                                 new PrinterRemovalService(context, access, snapshots, connectionRegistry,
                                                           Substitute.For<ITelemetryEviction>(),
                                                           NullLogger<PrinterRemovalService>.Instance),
+                                new DefaultPrinterService(access, users),
                                 new AttemptLimiter(context, TestOptions.Snapshot(new AttemptLimitOptions()),
                                                    NullLogger<AttemptLimiter>.Instance),
                                 queueService,

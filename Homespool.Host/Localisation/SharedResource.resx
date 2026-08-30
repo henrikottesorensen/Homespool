@@ -1809,6 +1809,10 @@
     <value>The printer is {0} - this can only be done when the printer is not busy.</value>
     <comment>{0} is the printer status, put through PrinterStatusText so it reads in the same language as the sentence around it.</comment>
   </data>
+  <data name="Error_RemoteReadyNotAllowed" xml:space="preserve">
+    <value>This printer isn’t set up to be marked ready remotely. A manager can allow it on the printer’s own page.</value>
+    <comment>Says who can change it, because the reader of this sentence often cannot: the toggle is ManagePrinter and the person refused may only hold Print.</comment>
+  </data>
    <data name="Error_NoToolPicked" xml:space="preserve">
     <value>No tool is picked, so this would not reach a hotend. Pick a tool at the printer first.</value>
     <comment>Multi-tool printers only. A gcode command without a tool argument acts on whichever tool is picked, and firmware declines silently when none is.</comment>

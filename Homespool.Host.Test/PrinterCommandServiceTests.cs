@@ -91,7 +91,18 @@ public sealed class PrinterCommandServiceTests : IDisposable
         return team.Members.Single();
     }
 
-    private static async Task<Printer> AddPrinterAsync(HomespoolDbContext context, int teamId)
+    /// <summary>
+    /// A printer on <paramref name="teamId"/>, defaulting to the column's own default of
+    /// <c>RemoteReadyAllowed</c> off.
+    /// </summary>
+    /// <remarks>
+    /// The flag is a parameter rather than always-off because <see cref="Printing.SetPrinterReady"/>
+    /// is gated on it, so a test about anything else that happens to ready a printer has to turn it
+    /// on to keep asking its own question.
+    /// </remarks>
+    private static async Task<Printer> AddPrinterAsync(HomespoolDbContext context,
+                                                       int teamId,
+                                                       bool remoteReadyAllowed = false)
     {
         Printer printer = new()
         {
@@ -99,6 +110,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
             Type = PrinterType.PrusaConnect,
             TeamId = teamId,
             Status = PrinterStatus.Unknown,
+            RemoteReadyAllowed = remoteReadyAllowed,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };
@@ -348,10 +360,18 @@ public sealed class PrinterCommandServiceTests : IDisposable
     /// sheet is the best-informed person to assert it is clear.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Mutation check: remove the <c>RequiredCapability</c> override from either intent and it falls
     /// back to <c>ControlPrinter</c>, which this membership does not hold, and this test fails.
     /// <see cref="Printing.SetPrinterIdle"/> is asserted alongside precisely because it did
     /// <i>not</i> move - it is a machine-state act rather than a job-shaped one.
+    /// </para>
+    /// <para>
+    /// <b>The printer is seeded with the remote-ready toggle on</b>, which is not this test's subject
+    /// but is now its precondition: readying is gated on that flag as well as on the capability, and
+    /// leaving it off would fail this test for the other reason and stop it asking about capabilities
+    /// at all.
+    /// </para>
     /// </remarks>
     [Fact]
     public async Task ReadyingAPrinterNeedsPrintRatherThanControlPrinter()
@@ -367,7 +387,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         context.TeamMembers.Add(TestMemberships.With(team.Id, 1, [.. CapabilityPresets.Contributor]));
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        Printer printer = await AddPrinterAsync(context, team.Id);
+        Printer printer = await AddPrinterAsync(context, team.Id, remoteReadyAllowed: true);
 
         (PrinterConnectionRegistry registry, IPrinterConnectionActor _) =
             RegistryWithActor(
@@ -393,6 +413,95 @@ public sealed class PrinterCommandServiceTests : IDisposable
         await idling.Should()
                     .ThrowAsync<TeamAccessDeniedException>(
                         "SetPrinterIdle is a machine-state act and stayed at ControlPrinter");
+    }
+
+    /// <summary>
+    /// <b>The printer's own toggle refuses readying on every route, not only the two page handlers
+    /// that used to check it.</b> This is the gate that <c>PUT /api/v1/…/command/ready</c> did not
+    /// have, asserted at the service every route funnels through rather than at any one of them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The caller here holds <c>Print</c>, so the capability half passes and the refusal can only be
+    /// coming from the flag. Asserting a distinct exception type rather than "it threw" is the point:
+    /// <see cref="TeamAccessDeniedException"/> here would mean the flag was being enforced as though
+    /// it were a permission, which it is not.
+    /// </para>
+    /// <para>
+    /// Mutation check: drop the <c>RequiresRemoteReadyAllowed</c> override on
+    /// <see cref="Printing.SetPrinterReady"/>, or the check in <c>SendCommandAsync</c>, and this
+    /// fails with the printer's ordinary success instead.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ReadyingIsRefusedWhenThePrinterDoesNotAllowItRemotely()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        Team team = new() { CreatedBy = 1, CreatedAt = DateTimeOffset.UtcNow };
+        context.Teams.Add(team);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        context.TeamMembers.Add(TestMemberships.With(team.Id, 1, [.. CapabilityPresets.Contributor]));
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // The column's own default, which is the state nearly every printer is actually in.
+        Printer printer = await AddPrinterAsync(context, team.Id);
+
+        (PrinterConnectionRegistry registry, IPrinterConnectionActor _) =
+            RegistryWithActor(
+                printer.Id,
+                new CommandSendResult(CommandSendOutcome.Completed, new CommandOutcome(PrinterEventType.Finished, null)));
+        PrinterCommandService service = new(new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
+                                            registry);
+
+        // Act
+        Func<Task> readying = () =>
+            service.SendCommandAsync(printer.Id, new Printing.SetPrinterReady(), Caller.Unscoped(1), CancellationToken.None);
+
+        // Withdrawing an assertion nobody made is harmless, so it is deliberately not gated.
+        CommandOutcome? unreadying = await service.SendCommandAsync(
+            printer.Id, new Printing.CancelPrinterReady(), Caller.Unscoped(1), CancellationToken.None);
+
+        // Assert
+        await readying.Should()
+                      .ThrowAsync<RemoteReadyNotAllowedException>(
+                          "the toggle is off, and no capability the caller could hold changes that");
+
+        unreadying.Should().NotBeNull("CancelPrinterReady declares no remote-ready requirement");
+    }
+
+    /// <summary>
+    /// <b>The capability is answered before the printer's configuration is.</b> Somebody who may not
+    /// use the printer at all is told that, and learns nothing about how it is set up.
+    /// </summary>
+    /// <remarks>
+    /// Ordering matters here for the same reason it does in the file listings: a refusal that varied
+    /// with the toggle would answer a question the caller was not entitled to ask. Both refusals are
+    /// present in the arrangement - no capability <i>and</i> the flag off - so only the order decides
+    /// which one comes back.
+    /// </remarks>
+    [Fact]
+    public async Task ACallerWhoMayNotUseThePrinterIsToldThatRatherThanAboutItsToggle()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        TeamMember membership = await AddTeamAsync(context, userId: 1, canRead: true, canUse: false, canManage: false);
+        Printer printer = await AddPrinterAsync(context, membership.TeamId);
+
+        PrinterCommandService service = new(new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
+                                            new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance));
+
+        // Act
+        Func<Task> readying = () =>
+            service.SendCommandAsync(printer.Id, new Printing.SetPrinterReady(), Caller.Unscoped(1), CancellationToken.None);
+
+        // Assert
+        await readying.Should()
+                      .ThrowAsync<TeamAccessDeniedException>(
+                          "the capability check runs first, so the toggle never enters the answer");
     }
 
     [Fact]

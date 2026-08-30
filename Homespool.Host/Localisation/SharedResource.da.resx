@@ -1755,6 +1755,9 @@
   <data name="Error_PrinterBusy" xml:space="preserve">
     <value>Printeren er {0} - dette kan kun gøres, når printeren ikke er optaget.</value>
   </data>
+  <data name="Error_RemoteReadyNotAllowed" xml:space="preserve">
+    <value>Fjern klargøring er ikke tilladt på denne printer. En printer administrator kan tillade det på printerens egen side.</value>
+  </data>
   <data name="Error_PrinterStateUnknown" xml:space="preserve">
     <value>Printerens tilstand kendes ikke endnu - den melder ind kort efter, den forbinder.</value>
   </data>

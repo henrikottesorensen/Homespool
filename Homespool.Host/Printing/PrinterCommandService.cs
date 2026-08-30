@@ -7,6 +7,7 @@ using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Model;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Printing;
 
@@ -95,12 +96,27 @@ public class PrinterCommandService
     /// <param name="intent">What the caller wants done, translated by the printer's own link.</param>
     /// <param name="caller">Who is asking, checked for the intent's own capability on the printer's team and against the credential's scope.</param>
     /// <param name="cancellationToken">The caller's own cancellation.</param>
+    /// <exception cref="RemoteReadyNotAllowedException">
+    /// The intent declares <see cref="IPrinterIntent.RequiresRemoteReadyAllowed"/> and the printer's
+    /// toggle is off.
+    /// </exception>
     public async Task<CommandOutcome?> SendCommandAsync(int printerId,
                                                         IPrinterIntent intent,
                                                         Caller caller,
                                                         CancellationToken cancellationToken)
     {
-        IPrinterLink link = await RequireLinkAsync(printerId, caller, intent.RequiredCapability, cancellationToken);
+        Printer printer = await _access.RequireAsync(printerId, caller, intent.RequiredCapability, cancellationToken);
+
+        // After the capability check and not before it, deliberately: a caller who may not use this
+        // printer at all learns that and nothing else, rather than being told how the machine happens
+        // to be configured. The printer comes back from the check already loaded, so the standing
+        // policy costs no second read.
+        if (intent.RequiresRemoteReadyAllowed && !printer.RemoteReadyAllowed)
+        {
+            throw new RemoteReadyNotAllowedException(printerId);
+        }
+
+        IPrinterLink link = RequireLink(printerId);
         CommandSendResult result = Check(printerId, await link.SendAsync(intent, cancellationToken));
 
         return result.Outcome == CommandSendOutcome.Dispatched ? null : result.Response!;
@@ -260,6 +276,20 @@ public class PrinterCommandService
     {
         await _access.RequireAsync(printerId, caller, capability, cancellationToken);
 
+        return RequireLink(printerId);
+    }
+
+    /// <summary>
+    /// The registry half of <see cref="RequireLinkAsync"/>, split out for the one caller that has to
+    /// do something between the permission check and the lookup.
+    /// </summary>
+    /// <remarks>
+    /// Not a permission check and deliberately not named like one: everything reaching this has
+    /// already been through <see cref="PrinterAccessService"/>. Splitting it is what keeps the
+    /// intent overload from restating the registry's failure mode.
+    /// </remarks>
+    private IPrinterLink RequireLink(int printerId)
+    {
         if (!_registry.TryGet(printerId, out IPrinterLink? link) || link is null)
         {
             throw new PrinterNotConnectedException(printerId);

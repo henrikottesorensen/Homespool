@@ -21,11 +21,21 @@ namespace Homespool.Host.Test;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>The flag is a policy on a button, not an enforced boundary</b>, and that is a decision rather
-/// than an omission. The API path answers whatever the column says, because writing a script is
-/// already the deliberate act the walk to the printer stood in for. A test asserts that on purpose
-/// here, so a later session reading the gap as a defect finds a sentence saying it is not - and so
-/// that closing it becomes a decision somebody makes rather than a tidy-up.
+/// <b>The flag is an enforced boundary as of 2026-08-30</b>, having been a policy on a button until
+/// then. It used to be checked by the two page handlers on the way past, while
+/// <c>PUT /api/v1/printers/{uuid}/command/ready</c> reached the same wire command without consulting
+/// it - deliberately, on the argument that writing a script is already the deliberate act the walk to
+/// the printer stood in for, and pinned here so that closing the gap would be a decision somebody
+/// made rather than a tidy-up.
+/// </para>
+/// <para>
+/// <b>That decision was made and went the other way.</b> The argument holds for the owner scripting
+/// their own machine and holds less well for a member handed <see cref="Capability.Print"/> and a
+/// personal access token, which is what the deployment actually permits. The check now lives on
+/// <see cref="Printing.SetPrinterReady"/> as
+/// <see cref="Printing.IPrinterIntent.RequiresRemoteReadyAllowed"/> and is applied by
+/// <c>PrinterCommandService</c>, so it holds on whatever route reaches it; the API endpoint is
+/// switched off besides, and can be switched back on without reopening the gap.
 /// </para>
 /// <para>
 /// The permission split is the other half: <c>ControlPrinter</c> presses Set ready,
@@ -138,14 +148,27 @@ public sealed class RemoteReadyAllowedTests : IDisposable
     }
 
     /// <summary>
-    /// <b>The gate is deliberately not on the command path.</b> Nothing in
-    /// <see cref="Printer.RemoteReadyAllowed"/> reaches <c>SET_PRINTER_READY</c> itself - the page
-    /// handler checks it, and <c>PUT /api/v1/printers/{uuid}/command/ready</c> does not.
+    /// <b>The flag is not a capability.</b> Turning it off takes nothing away from anybody: the same
+    /// members may use the printer, and what changes is what the machine will accept remotely, not
+    /// who may ask.
     /// </summary>
     /// <remarks>
-    /// Asserted by the flag being reachable only through the page and the settings write, which is
-    /// what this test pins: turning it off changes no permission and blocks no service call. If this
-    /// test ever has to change, that decision has been reversed.
+    /// <para>
+    /// <b>This test used to pin the opposite of what it now pins</b>, and the difference is worth
+    /// stating. It read: the gate is deliberately not on the command path, the page handler checks
+    /// the flag and <c>PUT /api/v1/printers/{uuid}/command/ready</c> does not - and it closed by
+    /// saying that if it ever had to change, the decision had been reversed. It has been (2026-08-30):
+    /// <see cref="Printing.SetPrinterReady"/> now declares
+    /// <see cref="Printing.IPrinterIntent.RequiresRemoteReadyAllowed"/> and
+    /// <c>PrinterCommandService</c> enforces it for every route, with the API endpoint switched off
+    /// besides.
+    /// </para>
+    /// <para>
+    /// What survives that reversal is this assertion, which was always the honest half: the flag
+    /// governs the machine, not the membership. <c>ReadyingIsRefusedWhenThePrinterDoesNotAllowIt
+    /// Remotely</c> in <c>PrinterCommandServiceTests</c> pins the other half - that it does now stop
+    /// the command - so neither half can be quietly dropped.
+    /// </para>
     /// </remarks>
     [Fact]
     public async Task TurningItOffChangesNoPermissionOnThePrinterItself()

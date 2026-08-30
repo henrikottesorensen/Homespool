@@ -21,11 +21,10 @@ namespace Homespool.Host.PrusaConnect;
 /// </para>
 /// <para>
 /// <b>Reachable from the web UI only, and that is a security decision rather than a scoping
-/// accident.</b> Personal access tokens are deliberately unscoped - no scopes and no expiry,
-/// because that way lies a badly-implemented JWT - so
-/// any token is full authority over everything <c>/api/v1</c> offers. **The printer's own idle
-/// cutoff is no defence against one**, because reissuing the command before it expires resets it: a
-/// leaked token would mean a nozzle held at maximum indefinitely.
+/// accident.</b> Heating is on no <c>/api/v1</c> endpoint at all, so no token reaches it whatever
+/// its scope says - a scope narrows what the API offers and cannot add to it. **The printer's own
+/// idle cutoff is no defence against a leaked credential**, because reissuing the command before it
+/// expires resets it: a nozzle held at maximum indefinitely.
 /// </para>
 /// <para>
 /// That cutoff is firmware's safety timer, and it is worth knowing exactly rather than
@@ -37,11 +36,11 @@ namespace Homespool.Host.PrusaConnect;
 /// </para>
 /// <para>
 /// That is a different argument from the one that settled token scoping, and worth keeping
-/// separate. Everything an unscoped token can do today is <em>data</em> harm - cancel prints, delete
-/// files, queue rubbish. This would be the first capability with a <b>physical</b> consequence that
-/// persists after the holder stops paying attention. Exposing it on the API needs either scoped
-/// tokens or a heating duration bound a reissue cannot reset; a signed-in session is a different
-/// matter, being the same authority as standing at the machine.
+/// separate. Everything a token can reach today is <em>data</em> harm - cancel prints, delete
+/// files, queue rubbish. This would be the first thing on the API with a <b>physical</b>
+/// consequence that persists after the holder stops paying attention, so putting it there needs a
+/// heating duration bound a reissue cannot reset, not just a capability to scope it under; a
+/// signed-in session is a different matter, being the same authority as standing at the machine.
 /// </para>
 /// <para>
 /// <b>The state check is this application's alone</b>, and it lives in

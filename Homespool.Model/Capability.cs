@@ -2,7 +2,7 @@ namespace Homespool.Model;
 
 /// <summary>
 /// One thing an account may do — the whole permission vocabulary, for printers and cameras alike.
-/// A <c>TeamMember</c> carries a set of these, and a personal access token will eventually carry a
+/// A <c>TeamMember</c> carries a set of these, and a personal access token's scope carries a
 /// subset of its owner's.
 /// </summary>
 /// <remarks>

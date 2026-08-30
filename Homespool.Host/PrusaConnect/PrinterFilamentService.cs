@@ -32,9 +32,9 @@ namespace Homespool.Host.PrusaConnect;
 /// </para>
 /// <para>
 /// <b>Reachable from the web UI only</b>, on the same reasoning
-/// <see cref="PrinterPreheatService"/> records at length: personal access tokens are unscoped, and
-/// this is a physical consequence that persists after the holder stops paying attention. A signed-in
-/// session is the authority of standing at the machine; a token is not.
+/// <see cref="PrinterPreheatService"/> records at length: this is a physical consequence that
+/// persists after the holder stops paying attention, so it stays off the API rather than behind a
+/// token scope. A signed-in session is the authority of standing at the machine; a token is not.
 /// </para>
 /// </remarks>
 public class PrinterFilamentService

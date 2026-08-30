@@ -247,6 +247,11 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         Regex.Matches(page, "<select").Count.Should().Be(
             1, "two rows sharing one printer choice means one <select>, not one each");
 
+        // Without this hook, picking a different printer only changes what the <select> shows -
+        // the row buttons below were rendered against the selection in force when the page loaded,
+        // and site.js's change listener is what makes choosing one actually retarget them.
+        page.Should().Contain("data-printer-select", "site.js submits the selector on change through this hook");
+
         // The DB id in the selector's <option> is what every row's Send/Queue form has to carry -
         // as a route value, the same way sort and rename already are, rather than a select of its own.
         string printerId = Regex.Match(page, """<option value="(\d+)"[^>]*selected""").Groups[1].Value;

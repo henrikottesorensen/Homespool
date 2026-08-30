@@ -3,10 +3,12 @@
 
 #nullable disable
 
+using System.Threading;
 using System.Threading.Tasks;
 
 using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;
@@ -21,18 +23,22 @@ namespace Homespool.Host.Pages.Account;
 public class ConfirmEmailModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
+    private readonly AttemptLimiter _attemptLimiter;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
-    public ConfirmEmailModel(UserManager<HSUser> userManager, IStringLocalizer<SharedResource> localiser)
+    public ConfirmEmailModel(UserManager<HSUser> userManager,
+                             AttemptLimiter attemptLimiter,
+                             IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
+        _attemptLimiter = attemptLimiter;
         _localiser = localiser;
     }
 
     [TempData]
     public string StatusMessage { get; set; }
 
-    public async Task<IActionResult> OnGetAsync(string userId, string code)
+    public async Task<IActionResult> OnGetAsync(string userId, string code, CancellationToken cancellationToken)
     {
         if (userId == null || code == null)
         {
@@ -57,6 +63,14 @@ public class ConfirmEmailModel : PageModel
         }
 
         IdentityResult result = await _userManager.ConfirmEmailAsync(user, token);
+
+        if (result.Succeeded)
+        {
+            // A confirmed address is what the counted confirmation emails were for, so the send
+            // backoff on ResendEmailConfirmation clears with it.
+            await _attemptLimiter.ResetAsync(user.Id, LimitedAction.SendConfirmationEmail, cancellationToken);
+        }
+
         StatusMessage = result.Succeeded ?
             _localiser["Account_EmailConfirmed"] :
             _localiser["Account_EmailConfirmFailed"];

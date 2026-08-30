@@ -3,13 +3,17 @@
 
 #nullable disable
 
+using System;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
 using System.Text.Encodings.Web;
+using System.Threading;
 using System.Threading.Tasks;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
 using Homespool.Host.Mail;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;
@@ -26,15 +30,21 @@ public class ForgotPasswordModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly IEmailSender _emailSender;
+    private readonly AttemptLimiter _attemptLimiter;
+    private readonly TimeProvider _timeProvider;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public ForgotPasswordModel(
         UserManager<HSUser> userManager,
         IEmailSender emailSender,
+        AttemptLimiter attemptLimiter,
+        TimeProvider timeProvider,
         IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
         _emailSender = emailSender;
+        _attemptLimiter = attemptLimiter;
+        _timeProvider = timeProvider;
         _localiser = localiser;
     }
 
@@ -60,7 +70,7 @@ public class ForgotPasswordModel : PageModel
         public string Email { get; set; }
     }
 
-    public async Task<IActionResult> OnPostAsync()
+    public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
     {
         if (ModelState.IsValid)
         {
@@ -83,6 +93,24 @@ public class ForgotPasswordModel : PageModel
                 // Don't reveal that the user does not exist, is not confirmed, or signs in elsewhere
                 return RedirectToPage("./ForgotPasswordConfirmation");
             }
+
+            // Each send is counted against the account the mail is addressed to, and a backed-off
+            // account is answered with the same redirect and no mail. The address is the only handle
+            // an anonymous caller offers, so the target account - not the caller - is the thing that
+            // can be bounded; without this, anyone who knows an address can fill its inbox and drain
+            // the deployment's SMTP quota at request rate. Silently, for the reason the arm above is
+            // silent: a refusal that looked different here would say the address is registered.
+            // Completing the reset clears the count - see ResetPasswordModel.
+            DateTimeOffset now = _timeProvider.GetUtcNow();
+
+            if (await _attemptLimiter.RemainingLockoutAsync(
+                    user.Id, LimitedAction.SendPasswordResetEmail, now, cancellationToken) is not null)
+            {
+                return RedirectToPage("./ForgotPasswordConfirmation");
+            }
+
+            await _attemptLimiter.RecordFailedAttemptAsync(
+                user.Id, LimitedAction.SendPasswordResetEmail, now, cancellationToken);
 
             // For more information on how to enable account confirmation and password reset please
             // visit https://go.microsoft.com/fwlink/?LinkID=532713

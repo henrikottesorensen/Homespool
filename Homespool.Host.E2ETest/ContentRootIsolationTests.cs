@@ -109,7 +109,9 @@ public sealed class ContentRootIsolationTests : IAsyncLifetime, IDisposable
 
         // Assert
         authority.AuthorityDerPath.Should().StartWith(contentRoot);
-        authority.LeafPath.Should().StartWith(contentRoot);
+        authority.AuthorityKeyPemPath.Should().StartWith(contentRoot);
+        authority.LeafCertificatePemPath.Should().StartWith(contentRoot);
+        authority.LeafKeyPemPath.Should().StartWith(contentRoot);
 
         Path.IsPathRooted(files.Directory).Should().BeFalse(
             "the point of this test is that a relative default is safe, so a test that quietly configured "

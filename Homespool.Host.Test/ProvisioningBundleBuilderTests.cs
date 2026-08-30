@@ -58,7 +58,7 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
 
     private PrinterCertificateAuthority NewAuthority()
     {
-        return new(Options.Create(new CertificateOptions { Directory = "certs" }),
+        return new(Options.Create(new CertificateOptions { Directory = "certs", AuthorityPassphrase = "unit test passphrase" }),
                    new HostEnvironmentAccessor(_root),
                    TimeProvider.System,
                    NullLogger<PrinterCertificateAuthority>.Instance);

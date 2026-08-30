@@ -1000,9 +1000,15 @@ public static class Program
             return;
         }
 
-        app.Services.GetRequiredService<Certificates.PrinterCertificateAuthority>()
-           .EnsureLeaf(PrinterCertificateNames(app.Services))
-           .Dispose();
+        Certificates.PrinterCertificateAuthority authority =
+            app.Services.GetRequiredService<Certificates.PrinterCertificateAuthority>();
+
+        // The authority explicitly, not only via the leaf: with an existing leaf nothing below opens
+        // the authority's key, so a wrong or missing passphrase would otherwise surface days later,
+        // when somebody builds a provisioning bundle - instead of here, at the boot right after the
+        // configuration changed.
+        authority.EnsureAuthority().Dispose();
+        authority.EnsureLeaf(PrinterCertificateNames(app.Services)).Dispose();
     }
 
     /// <summary>
@@ -1097,7 +1103,8 @@ public static class Program
             // leaving an unexplained TLS failure at the printer.
             Log.Warning("No printer-facing address could be detected and PrusaConnect:PrinterHost is not set, so the "
                         + "printer certificate covers only localhost. Set PrusaConnect:PrinterHost and delete the "
-                        + "generated printer.pfx to have one issued that printers can actually verify.");
+                        + "generated printer-leaf.pem and printer-leaf.key.pem to have one issued that printers can "
+                        + "actually verify.");
 
             names.Add("localhost");
         }

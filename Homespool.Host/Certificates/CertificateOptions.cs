@@ -44,7 +44,7 @@ public class CertificateOptions
     /// <para>
     /// <b>A separate directory from <see cref="Directory"/> for one reason: the proxy container mounts
     /// this one, and the authority's private key must never be inside anything it mounts.</b> Both
-    /// files could sit beside <c>ca.pfx</c> — they did when nothing consumed them — and sharing that
+    /// files could sit beside the authority — they did when nothing consumed them — and sharing that
     /// directory would hand the internet-facing container the key that mints certificates every
     /// provisioned printer trusts, permanently and undetectably. The leaf is the opposite kind of
     /// secret: losing it costs a reissue and a proxy reload, because the printers trust the authority
@@ -60,6 +60,28 @@ public class CertificateOptions
     /// </para>
     /// </remarks>
     public string ProxyDirectory { get; set; } = "data/proxy-certificates";
+
+    /// <summary>
+    /// Passphrase encrypting the authority's private key at rest. Required: the key is never
+    /// minted, loaded or migrated without one — startup refuses instead — so there is no
+    /// plaintext-at-rest mode to fall into by accident.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>What this defends is a copied <c>data/</c> volume</b> — a backup that wanders, a
+    /// <c>docker cp</c>, a file-read bug — which is the realistic way this key leaks. The passphrase
+    /// lives in the environment (<c>.env</c> on the shipped stack), outside the volume, so a copy of
+    /// the data no longer carries the key that every provisioned printer trusts. It does not defend a
+    /// compromised host, which holds both halves; nothing at this layer can.
+    /// </para>
+    /// <para>
+    /// <b>Losing it is losing the authority.</b> There is no recovery path and deliberately no
+    /// re-mint on a failed decrypt: a fresh authority would strand every provisioned printer until
+    /// someone visits each with a USB stick. Back the value up with the same care as the key file
+    /// itself, and separately from <c>data/</c> — a backup holding both has defended nothing.
+    /// </para>
+    /// </remarks>
+    public string AuthorityPassphrase { get; set; } = string.Empty;
 
     /// <summary>
     /// How long the certificate authority is valid, in days. Default fifteen years.

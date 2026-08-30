@@ -109,6 +109,12 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
         // 15 end-to-end tests failed that way, and a developer's own server would have picked it up
         // too. This is the narrow hole the content-root remarks above describe, and this closes it.
         ConfigurationOverrides["Settings:File"] = Path.Combine(_contentRoot, "data", "settings.json");
+
+        // Mandatory since the CA key became encrypted-only - a host without one refuses to start,
+        // which is the production behaviour and not what a test host should die of. Set here rather
+        // than relied on from appsettings.Development.json so it holds whatever environment a test
+        // chooses.
+        ConfigurationOverrides["Certificates:AuthorityPassphrase"] = "e2e test passphrase";
     }
 
     /// <summary>

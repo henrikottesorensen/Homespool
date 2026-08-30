@@ -95,6 +95,13 @@ services:
       # from the same variable deliberately - one network, one value, no way for them to drift.
       Certificates__ContainerNetworks__0: "${PROXY_NETWORK:-172.28.0.0/16}"
 
+      # Encrypts the printer CA's private key on the data volume. The value living here - in .env,
+      # outside that volume - is the point: a copied data/ backup alone then no longer carries the
+      # key every provisioned printer trusts. Required: with it empty the server refuses to start
+      # rather than store the key in the clear. Never change or drop it once set; the server
+      # likewise refuses rather than mint a replacement CA that would strand the fleet.
+      Certificates__AuthorityPassphrase: "${CA_PASSPHRASE:-}"
+
       # Which Host headers this process answers at all - the proxy refuses an unknown Host, and this
       # is the same rule inside the application, because a proxy is not the only way to reach it.
       # Composed from the addresses this deployment already knows:

@@ -73,8 +73,10 @@ public sealed class PrinterCertificateHealthCheck : IHealthCheck
                               tlsEnabled: false, null, [], [], null, null, _time.GetUtcNow()));
         }
 
+        // The certificate alone, never EnsureAuthority: this only wants the expiry date, which is
+        // public - and a health probe must not be a path that can mint key material.
         using X509Certificate2? leaf = _authority.LoadLeafIfIssued();
-        using X509Certificate2? authority = leaf is null ? null : _authority.EnsureAuthority();
+        using X509Certificate2? authority = leaf is null ? null : _authority.LoadAuthorityCertificate();
 
         IReadOnlyList<string> covered = leaf is null ? [] : PrinterCertificateAuthority.NamesOf(leaf);
         IReadOnlyList<string> current = await PrinterCertificateNames.ForThisMachineAsync(

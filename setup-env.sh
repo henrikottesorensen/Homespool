@@ -99,7 +99,7 @@ pending=""
 # Values never echoed back to the terminal or into the summary. The summary has to be reviewable by
 # the person typing, and a password on screen is not something they asked to publish to whoever is
 # standing behind them.
-secret_keys="GO2RTC_PASSWORD"
+secret_keys="GO2RTC_PASSWORD CA_PASSPHRASE"
 
 # ------------------------------------------------------------------------------------------------
 # Reading what is already there
@@ -1245,6 +1245,26 @@ ensure_go2rtc_credential() {
     say $"Generated a credential for the camera sidecar."
 }
 
+# The passphrase encrypting the printer CA's private key at rest. The point of it living in .env is
+# that .env sits outside the data volume: a copied data/ backup alone then no longer carries the key
+# every provisioned printer trusts. Generate-if-absent and never touch an existing value - the
+# server refuses to start under a changed passphrase rather than mint a CA that strands the fleet,
+# so overwriting one here would be writing an outage.
+ensure_ca_passphrase() {
+    local passphrase
+    passphrase="$(env_get CA_PASSPHRASE)"
+    [ -n "$passphrase" ] && return 0
+
+    passphrase="$(random_password)"
+    if [ -z "$passphrase" ]; then
+        warn $"No source of randomness found, and the server refuses to start without CA_PASSPHRASE. Set it by hand to the output of: openssl rand -base64 24 (run anywhere)."
+        return 0
+    fi
+
+    plan_set CA_PASSPHRASE "$passphrase"
+    say $"Generated a passphrase for the printer CA key; the server encrypts the key with it on its next start. Do not lose it - without it the key cannot be read and every printer would need re-provisioning from a USB stick. Back .env up separately from data/."
+}
+
 random_password() {
     # Base64 of 24 random bytes. Its alphabet has no quote, backslash or dollar, so the result is
     # safe unquoted in .env, through compose's own ${...} interpolation, and inside the JSON the
@@ -1287,6 +1307,7 @@ auto_answer() {
     plan_set USER_HOSTS "$(suggested_user_host)"
     plan_set TZ "$(detect_timezone)"
     ensure_go2rtc_credential
+    ensure_ca_passphrase
 
     # Only while creating the file. Moving the compose network under a stack that is already running
     # is not something to do unattended, and after the first write the answer is somebody's - even if
@@ -1639,6 +1660,7 @@ main() {
         ask_timezone
         ask_ports
         ensure_go2rtc_credential
+        ensure_ca_passphrase
         check_subnet_collision
     fi
 

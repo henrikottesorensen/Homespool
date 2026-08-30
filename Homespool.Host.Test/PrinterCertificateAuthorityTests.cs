@@ -36,9 +36,9 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
                           .ToArray();
     }
 
-    private PrinterCertificateAuthority NewAuthority()
+    private PrinterCertificateAuthority NewAuthority(string passphrase = "unit test passphrase")
     {
-        return new(Options.Create(new CertificateOptions { Directory = "certs" }),
+        return new(Options.Create(new CertificateOptions { Directory = "certs", AuthorityPassphrase = passphrase }),
                    new HostEnvironmentAccessor(_root),
                    TimeProvider.System,
                    NullLogger<PrinterCertificateAuthority>.Instance);
@@ -350,31 +350,43 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
         second.Thumbprint.Should().Be(first.Thumbprint,
                                       "an automatic reissue would drop every live printer connection, and nobody asked for one");
         DnsNames(second).Should().BeEquivalentTo(["192.168.13.238"]);
-        second.HasPrivateKey.Should().BeTrue("Kestrel serves this, so the key has to survive the round trip to disk");
+
+        // The proxy is what serves this, from its own directory - the application itself never
+        // needs the leaf's key again, and holds no second copy of it.
+        second.HasPrivateKey.Should().BeFalse("the key's only copy belongs to the proxy directory");
+        File.Exists(NewAuthority().LeafKeyPemPath).Should().BeTrue("nginx has to find the key beside the certificate");
     }
 
     /// <summary>
-    /// A leaf issued before the proxy needed PEM gets the PEM written on the next start, without
-    /// being reissued.
+    /// A leaf issued by an earlier version as PKCS#12 becomes the proxy's PEM pair on the next start,
+    /// without being reissued.
     /// </summary>
     /// <remarks>
-    /// <b>This is the upgrade path, and it failed on a real stack before this test existed.</b> Every
-    /// deployment issued a certificate by an earlier version has <c>printer.pfx</c> and no PEM at all;
-    /// <see cref="PrinterCertificateAuthority.EnsureLeaf"/> sees the PKCS#12, returns it, and used to
-    /// write nothing further - so nginx found no certificate, declined to serve the printer listener,
-    /// and every printer stopped connecting. The only diagnostic was a proxy log line reading as
-    /// "PrinterTls must be off", which is exactly the wrong thing to conclude.
+    /// <b>This is the upgrade path, and its ancestor failed on a real stack before this test
+    /// existed.</b> A deployment issued a certificate before nginx terminated printer TLS has
+    /// <c>printer.pfx</c> and no PEM at all; returning the PKCS#12 without writing the PEMs leaves
+    /// nginx with no certificate, a proxy log line reading as "PrinterTls must be off", and every
+    /// printer unable to connect.
     /// <para>
-    /// The thumbprint assertion is the other half: exporting the existing leaf rather than issuing a
-    /// new one keeps whatever names the operator deliberately covered.
+    /// The thumbprint assertion is the other half: migrating the existing leaf rather than issuing a
+    /// new one keeps whatever names the operator deliberately covered. And the PKCS#12 must be gone
+    /// afterwards - it holds the private key in the clear with nothing reading it.
     /// </para>
     /// </remarks>
     [Fact]
     public void AnUpgradedDeploymentGetsThePemWithoutReissuingTheLeaf()
     {
-        // Arrange - a deployment from before the proxy terminated printer TLS: PKCS#12, no PEM.
+        // Arrange - a deployment from an earlier version: PKCS#12 beside the authority, no PEM.
         PrinterCertificateAuthority authority = NewAuthority();
         using X509Certificate2 original = authority.IssueLeaf(["192.168.13.238"]);
+
+        string legacyPath = Path.Combine(_root, "certs", "printer.pfx");
+
+        using (X509Certificate2 legacy = X509Certificate2.CreateFromPemFile(
+                   authority.LeafCertificatePemPath, authority.LeafKeyPemPath))
+        {
+            File.WriteAllBytes(legacyPath, legacy.Export(X509ContentType.Pkcs12));
+        }
 
         File.Delete(authority.LeafCertificatePemPath);
         File.Delete(authority.LeafKeyPemPath);
@@ -388,13 +400,288 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
         File.Exists(authority.LeafKeyPemPath).Should().BeTrue();
 
         served.Thumbprint.Should().Be(original.Thumbprint,
-                                      "the existing leaf is exported, not reissued - reissuing would silently drop the names the "
+                                      "the existing leaf is migrated, not reissued - reissuing would silently drop the names the "
                                       + "operator had covered");
 
         using X509Certificate2 fromPem = X509Certificate2.CreateFromPem(
             File.ReadAllText(authority.LeafCertificatePemPath));
 
         fromPem.Thumbprint.Should().Be(original.Thumbprint, "and the PEM has to be that same leaf");
+
+        File.Exists(legacyPath).Should().BeFalse(
+            "the PKCS#12 holds the private key in the clear, and after migration nothing reads it");
+    }
+
+    /// <summary>
+    /// Minting under a configured passphrase writes the authority's key encrypted, and the same
+    /// passphrase opens it on the next start.
+    /// </summary>
+    /// <remarks>
+    /// The header assertion is the honest check: a PKCS#8 PEM announces its own encryption state, and
+    /// "ENCRYPTED PRIVATE KEY" in the file is what a copied <c>data/</c> backup would carry instead of
+    /// the key.
+    /// </remarks>
+    [Fact]
+    public void MintingWithAPassphraseEncryptsTheAuthorityKey()
+    {
+        // Act
+        PrinterCertificateAuthority authority = NewAuthority("correct horse battery staple");
+        using X509Certificate2 minted = authority.EnsureAuthority();
+        using X509Certificate2 reloaded = NewAuthority("correct horse battery staple").EnsureAuthority();
+
+        // Assert
+        File.ReadAllText(authority.AuthorityKeyPemPath).Should().Contain("ENCRYPTED PRIVATE KEY",
+                                                                         "an unencrypted key here is exactly what the passphrase exists to prevent");
+        reloaded.Thumbprint.Should().Be(minted.Thumbprint);
+        reloaded.GetECDsaPrivateKey().Should().NotBeNull("the authority must still be able to sign leaves");
+    }
+
+    /// <summary>
+    /// An empty passphrase is a refusal before anything touches the disk — there is no
+    /// plaintext-at-rest mode to configure into by accident.
+    /// </summary>
+    /// <remarks>
+    /// Both directions of the mistake: a fresh deployment must not mint an unencrypted key it would
+    /// then live with forever, and an existing one must not have its startup interpreted as "no
+    /// passphrase, carry on" when the variable was lost. The no-files assertion is the fresh half —
+    /// a refused start leaves nothing behind to migrate or trip over.
+    /// </remarks>
+    [Fact]
+    public void AnEmptyPassphraseRefusesAndMintsNothing()
+    {
+        // Arrange
+        PrinterCertificateAuthority unconfigured = NewAuthority(string.Empty);
+
+        // Act
+        Assert.Throws<CertificateAuthorityUnreadableException>(() => unconfigured.EnsureAuthority());
+
+        // Assert
+        File.Exists(unconfigured.AuthorityKeyPemPath).Should().BeFalse("a refused start must leave no trace");
+        File.Exists(unconfigured.AuthorityCertificatePemPath).Should().BeFalse();
+
+        // And the same refusal once an authority exists and the variable goes missing.
+        NewAuthority().EnsureAuthority().Dispose();
+
+        Assert.Throws<CertificateAuthorityUnreadableException>(() => NewAuthority(string.Empty).EnsureAuthority());
+    }
+
+    /// <summary>
+    /// A key decrypted by hand is re-encrypted under the configured passphrase on the next start,
+    /// which is the passphrase-rotation path.
+    /// </summary>
+    /// <remarks>
+    /// Rotation has no first-class command on purpose — it is decrypt with <c>openssl pkcs8</c>,
+    /// change the value, restart — and this is the half the application owns: a plaintext key on
+    /// disk plus a configured passphrase means "encrypt under this one now". The empty-passphrase
+    /// refusal is what keeps the rotation from ever quietly ending at "no encryption".
+    /// </remarks>
+    [Fact]
+    public void AHandDecryptedKeyIsReEncryptedUnderTheNewPassphrase()
+    {
+        // Arrange - an authority under the old passphrase, its key then decrypted by hand.
+        PrinterCertificateAuthority oldPassphrase = NewAuthority("the old passphrase");
+        using X509Certificate2 minted = oldPassphrase.EnsureAuthority();
+
+        using (X509Certificate2 opened = X509Certificate2.CreateFromEncryptedPemFile(
+                   oldPassphrase.AuthorityCertificatePemPath, "the old passphrase", oldPassphrase.AuthorityKeyPemPath))
+        using (ECDsa key = opened.GetECDsaPrivateKey()!)
+        {
+            File.WriteAllText(oldPassphrase.AuthorityKeyPemPath, key.ExportPkcs8PrivateKeyPem());
+        }
+
+        // Act - the operator sets the new value and restarts.
+        using X509Certificate2 rotated = NewAuthority("the new passphrase").EnsureAuthority();
+
+        // Assert
+        rotated.Thumbprint.Should().Be(minted.Thumbprint, "rotating the passphrase must not touch the authority itself");
+        File.ReadAllText(oldPassphrase.AuthorityKeyPemPath).Should().Contain("ENCRYPTED PRIVATE KEY",
+                                                                             "the plaintext interlude must end at the first start");
+
+        Assert.Throws<CertificateAuthorityUnreadableException>(() => NewAuthority("the old passphrase").EnsureAuthority());
+    }
+
+    /// <summary>
+    /// A wrong passphrase is a refusal that leaves everything on disk untouched.
+    /// </summary>
+    /// <remarks>
+    /// The recovery this protects: the operator restores the right value in <c>.env</c> and starts
+    /// again. Anything that "handled" the failure by rewriting files - a re-mint most of all - would
+    /// turn a typo into a fleet-wide USB visit.
+    /// </remarks>
+    [Fact]
+    public void AWrongPassphraseRefusesAndLeavesTheAuthorityIntact()
+    {
+        // Arrange
+        using X509Certificate2 minted = NewAuthority("the real passphrase").EnsureAuthority();
+
+        // Act
+        Assert.Throws<CertificateAuthorityUnreadableException>(() => NewAuthority("a typo").EnsureAuthority());
+
+        // Assert - the right passphrase still opens the same authority.
+        using X509Certificate2 recovered = NewAuthority("the real passphrase").EnsureAuthority();
+
+        recovered.Thumbprint.Should().Be(minted.Thumbprint,
+                                         "a failed start must leave the deployment exactly as it found it");
+    }
+
+    /// <summary>
+    /// A key whose certificate and passphrase are both gone refuses; a key that merely lost its
+    /// certificate PEM heals from <c>connect.der</c>.
+    /// </summary>
+    /// <remarks>
+    /// The certificate is public and <c>connect.der</c> is a byte-for-byte copy, so losing the PEM is
+    /// repairable. Losing the <i>key</i> is not - it exists nowhere else - which is why that arm is a
+    /// refusal naming a backup rather than a fresh mint.
+    /// </remarks>
+    [Fact]
+    public void ALostKeyRefusesButALostCertificateHealsFromTheDer()
+    {
+        // Arrange
+        PrinterCertificateAuthority authority = NewAuthority();
+        using X509Certificate2 minted = authority.EnsureAuthority();
+
+        // Act + Assert - certificate PEM gone, DER present: repaired.
+        File.Delete(authority.AuthorityCertificatePemPath);
+
+        using (X509Certificate2 healed = NewAuthority().EnsureAuthority())
+        {
+            healed.Thumbprint.Should().Be(minted.Thumbprint, "connect.der carries the same certificate");
+        }
+
+        File.Exists(authority.AuthorityCertificatePemPath).Should().BeTrue();
+
+        // Key gone: a refusal, never a replacement authority.
+        File.Delete(authority.AuthorityKeyPemPath);
+
+        Assert.Throws<CertificateAuthorityUnreadableException>(() => NewAuthority().EnsureAuthority());
+    }
+
+    /// <summary>
+    /// An authority stored by an earlier version as passwordless PKCS#12 migrates to the PEM pair -
+    /// encrypted, when a passphrase is configured - and the PKCS#12 is deleted.
+    /// </summary>
+    /// <remarks>
+    /// The fixture builds its own <c>ca.pfx</c> the way earlier versions wrote it, because the class
+    /// no longer can. The thumbprint assertion is the fleet-safety half: migration must carry the
+    /// same authority across, or every provisioned printer stops validating.
+    /// </remarks>
+    [Fact]
+    public void ALegacyPkcs12AuthorityMigratesToAnEncryptedPemPair()
+    {
+        // Arrange - ca.pfx and connect.der as an earlier version left them.
+        string directory = Path.Combine(_root, "certs");
+
+        Directory.CreateDirectory(directory);
+
+        string thumbprint;
+
+        using (ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256))
+        {
+            CertificateRequest request = new("CN=Homespool printer CA", key, HashAlgorithmName.SHA256);
+
+            request.CertificateExtensions.Add(new X509BasicConstraintsExtension(
+                                                  certificateAuthority: true, hasPathLengthConstraint: true, pathLengthConstraint: 0,
+                                                  critical: true));
+
+            using X509Certificate2 legacy = request.CreateSelfSigned(
+                DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(10));
+
+            File.WriteAllBytes(Path.Combine(directory, "ca.pfx"), legacy.Export(X509ContentType.Pkcs12));
+            File.WriteAllBytes(Path.Combine(directory, "connect.der"), legacy.Export(X509ContentType.Cert));
+            thumbprint = legacy.Thumbprint;
+        }
+
+        // Act - the first start on the new version, with a passphrase configured.
+        PrinterCertificateAuthority authority = NewAuthority("hunter2");
+        using X509Certificate2 migrated = authority.EnsureAuthority();
+
+        // Assert
+        migrated.Thumbprint.Should().Be(thumbprint,
+                                        "migration must carry the same authority across, or every provisioned printer is stranded");
+        File.Exists(Path.Combine(directory, "ca.pfx")).Should().BeFalse(
+            "the PKCS#12 holds the key in the clear, which is what the migration exists to end");
+        File.ReadAllText(authority.AuthorityKeyPemPath).Should().Contain("ENCRYPTED PRIVATE KEY");
+
+        using X509Certificate2 reloaded = NewAuthority("hunter2").EnsureAuthority();
+
+        reloaded.Thumbprint.Should().Be(thumbprint, "and the migrated pair has to survive a restart");
+    }
+
+    /// <summary>
+    /// The authority's certificate is readable without the passphrase, and reading it never mints.
+    /// </summary>
+    /// <remarks>
+    /// The health check runs on every probe and only wants the expiry date, which is public. Wiring
+    /// it through the key would make every probe pay a key derivation and - far worse - would give a
+    /// probe a path to minting; this is the accessor that makes both impossible.
+    /// </remarks>
+    [Fact]
+    public void TheAuthorityCertificateIsReadableWithoutThePassphrase()
+    {
+        // Arrange - nothing minted yet: reading must not become the reason an authority exists.
+        NewAuthority("sealed").LoadAuthorityCertificate().Should().BeNull("reading never mints");
+
+        using X509Certificate2 minted = NewAuthority("sealed").EnsureAuthority();
+
+        // Act - a caller holding no passphrase at all.
+        using X509Certificate2? certificate = NewAuthority(string.Empty).LoadAuthorityCertificate();
+
+        // Assert
+        certificate.Should().NotBeNull();
+        certificate!.Thumbprint.Should().Be(minted.Thumbprint);
+        certificate.HasPrivateKey.Should().BeFalse("the public half is all this accessor may hand out");
+    }
+
+    /// <summary>
+    /// A deleted <c>connect.der</c> is rewritten from the authority on the next start.
+    /// </summary>
+    /// <remarks>
+    /// The DER is a public copy of the certificate, so it is the one authority file whose loss is
+    /// silently repairable - and it must be, because every provisioning bundle reads it.
+    /// </remarks>
+    [Fact]
+    public void ADeletedDerIsRewrittenOnTheNextStart()
+    {
+        // Arrange
+        PrinterCertificateAuthority authority = NewAuthority();
+        using X509Certificate2 minted = authority.EnsureAuthority();
+
+        File.Delete(authority.AuthorityDerPath);
+
+        // Act
+        NewAuthority().EnsureAuthority().Dispose();
+
+        // Assert
+        using X509Certificate2 rewritten = X509CertificateLoader.LoadCertificate(
+            File.ReadAllBytes(authority.AuthorityDerPath));
+
+        rewritten.Thumbprint.Should().Be(minted.Thumbprint, "a bundle built tomorrow must carry the same anchor");
+    }
+
+    /// <summary>
+    /// Half a leaf pair is repaired by reissuing, because half a pair serves nobody.
+    /// </summary>
+    /// <remarks>
+    /// The contrast with the authority's refusal arms is the point: the leaf is the replaceable kind
+    /// of secret - printers trust the authority, not the leaf - so repair is free, where "repairing"
+    /// the authority would strand the fleet.
+    /// </remarks>
+    [Fact]
+    public void HalfALeafPairIsRepairedByReissuing()
+    {
+        // Arrange
+        PrinterCertificateAuthority authority = NewAuthority();
+        using X509Certificate2 first = authority.EnsureLeaf(["homespool.lan"]);
+
+        File.Delete(authority.LeafKeyPemPath);
+
+        // Act
+        using X509Certificate2 second = NewAuthority().EnsureLeaf(["homespool.lan"]);
+
+        // Assert
+        second.Thumbprint.Should().NotBe(first.Thumbprint, "a leaf whose key is gone cannot be served, only replaced");
+        File.Exists(authority.LeafCertificatePemPath).Should().BeTrue();
+        File.Exists(authority.LeafKeyPemPath).Should().BeTrue();
     }
 
     /// <summary>

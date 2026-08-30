@@ -70,7 +70,7 @@ public sealed class AddModelTests : IDisposable
     private ProvisioningBundleBuilder NewBundleBuilder(PrusaConnectOptions options)
     {
         PrinterCertificateAuthority authority = new(
-            Options.Create(new CertificateOptions { Directory = "certs" }),
+            Options.Create(new CertificateOptions { Directory = "certs", AuthorityPassphrase = "unit test passphrase" }),
             new HostEnvironmentAccessor(_certificateRoot),
             TimeProvider.System,
             NullLogger<PrinterCertificateAuthority>.Instance);

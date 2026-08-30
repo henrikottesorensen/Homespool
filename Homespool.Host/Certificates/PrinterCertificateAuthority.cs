@@ -31,12 +31,23 @@ namespace Homespool.Host.Certificates;
 /// <i>never</i> matched. Confirmed on an MK3.5 on 2026-07-29. Do not "fix" this to use
 /// <c>AddIpAddress</c>; that is the form that fails.
 /// </para>
+/// <para>
+/// <b>Everything is stored as PEM, with exactly one copy of each private key.</b> The authority is a
+/// certificate and a key file beside it, so "which file is the secret" has a one-word answer, and
+/// the key is always encrypted with a passphrase held outside the data volume
+/// (<see cref="CertificateOptions.AuthorityPassphrase"/>). The leaf's only copy lives in the proxy
+/// directory nginx reads — this process never needs the leaf's private key after issuing it, and a
+/// second copy would be one more thing to keep in step. The PKCS#12 files earlier versions wrote
+/// (<c>ca.pfx</c>, <c>printer.pfx</c>) are migrated to this layout on first sight and then deleted.
+/// </para>
 /// </remarks>
 public class PrinterCertificateAuthority
 {
-    private const string AuthorityFileName = "ca.pfx";
+    private const string LegacyAuthorityFileName = "ca.pfx";
+    private const string LegacyLeafFileName = "printer.pfx";
+    private const string AuthorityCertificatePemFileName = "ca.crt.pem";
+    private const string AuthorityKeyPemFileName = "ca.key.pem";
     private const string AuthorityDerFileName = "connect.der";
-    private const string LeafFileName = "printer.pfx";
 
     /// <summary>
     /// The leaf and its key in PEM, for a TLS terminator that cannot read PKCS#12 - nginx, which
@@ -52,6 +63,25 @@ public class PrinterCertificateAuthority
 
     private const string LeafKeyPemFileName = "printer-leaf.key.pem";
     private const string SubjectAlternativeNameOid = "2.5.29.17";
+
+    /// <summary>
+    /// What a PKCS#8 PEM announces itself as when it is passphrase-encrypted, and the whole of how
+    /// this class tells the two states apart — no trial decryption, no probing.
+    /// </summary>
+    private const string EncryptedKeyPemLabel = "ENCRYPTED PRIVATE KEY";
+
+    /// <summary>
+    /// How the authority's key is encrypted when a passphrase is configured.
+    /// </summary>
+    /// <remarks>
+    /// AES-256 under PBKDF2 at OWASP's recommended count. The count defends a passphrase somebody
+    /// typed; the generated one is 24 random bytes and needs no defending. It is affordable because
+    /// nothing hot pays it: the key is decrypted once at startup and again only when a leaf is
+    /// minted, while every routine reader — the health check, the provisioning bundle — takes the
+    /// certificate, which is public and needs no passphrase.
+    /// </remarks>
+    private static readonly PbeParameters KeyEncryption = new(
+        PbeEncryptionAlgorithm.Aes256Cbc, HashAlgorithmName.SHA256, 600_000);
 
     /// <summary>
     /// What both certificates claim as <c>notBefore</c>: 1960, deliberately before the epoch.
@@ -117,18 +147,30 @@ public class PrinterCertificateAuthority
     /// <summary>Path of the DER-encoded authority, which is what goes on the USB stick.</summary>
     public string AuthorityDerPath => Path.Combine(_directory, AuthorityDerFileName);
 
-    /// <summary>Path of the leaf, as a PFX Kestrel can be pointed at.</summary>
-    public string LeafPath => Path.Combine(_directory, LeafFileName);
+    /// <summary>Path of the authority's certificate in PEM. Public, like every certificate.</summary>
+    public string AuthorityCertificatePemPath => Path.Combine(_directory, AuthorityCertificatePemFileName);
+
+    /// <summary>
+    /// Path of the authority's private key in PEM — the one secret in this deployment that cannot be
+    /// replaced without a USB visit to every provisioned printer.
+    /// </summary>
+    public string AuthorityKeyPemPath => Path.Combine(_directory, AuthorityKeyPemFileName);
 
     /// <summary>Where the leaf is written in PEM, for nginx. See <see cref="LeafCertificatePemFileName"/>.</summary>
     /// <remarks>
-    /// In <see cref="CertificateOptions.ProxyDirectory"/> rather than beside the PKCS#12, because the
-    /// proxy container mounts that directory and must not be handed the authority's private key.
+    /// In <see cref="CertificateOptions.ProxyDirectory"/> rather than beside the authority, because
+    /// the proxy container mounts that directory and must not be handed the authority's private key.
     /// </remarks>
     public string LeafCertificatePemPath => Path.Combine(_proxyDirectory, LeafCertificatePemFileName);
 
     /// <summary>Where the leaf's private key is written in PEM, for nginx.</summary>
     public string LeafKeyPemPath => Path.Combine(_proxyDirectory, LeafKeyPemFileName);
+
+    private string LegacyAuthorityPath => Path.Combine(_directory, LegacyAuthorityFileName);
+
+    private string LegacyLeafPath => Path.Combine(_directory, LegacyLeafFileName);
+
+    private string Passphrase => _options.AuthorityPassphrase ?? string.Empty;
 
     /// <summary>
     /// The names a certificate vouches for, as they were written — <c>dNSName</c> entries, including
@@ -156,48 +198,125 @@ public class PrinterCertificateAuthority
     }
 
     /// <summary>
-    /// Returns the authority, creating it on first call and loading it every time after.
+    /// Returns the authority with its private key, creating it on first call and loading it every
+    /// time after.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <b>Idempotence is the property that matters most in this class.</b> Minting a second authority
     /// would not fail, or log, or look wrong — it would silently stop every already-provisioned
-    /// printer from validating, and the only remedy is a USB visit to each one. So the existing file
-    /// wins whenever there is one, and nothing here rotates anything automatically.
+    /// printer from validating, and the only remedy is a USB visit to each one. So the existing key
+    /// wins whenever there is one, nothing here rotates anything automatically, and <b>a key that
+    /// exists but cannot be read is a refusal to start</b>
+    /// (<see cref="CertificateAuthorityUnreadableException"/>), never a fall-through to minting.
+    /// </para>
+    /// <para>
+    /// <b>A passphrase is required, full stop.</b> The key is never minted, loaded or migrated
+    /// without one, so there is no plaintext-at-rest mode to configure into by accident — an empty
+    /// <see cref="CertificateOptions.AuthorityPassphrase"/> is the first refusal below.
+    /// </para>
+    /// <para>
+    /// Callers that only need to know what the authority <i>says</i> — names, dates — should take
+    /// <see cref="LoadAuthorityCertificate"/> instead, which touches no key material and needs no
+    /// passphrase.
+    /// </para>
     /// </remarks>
     public X509Certificate2 EnsureAuthority()
     {
-        System.IO.Directory.CreateDirectory(_directory);
-
-        string path = Path.Combine(_directory, AuthorityFileName);
-
-        if (File.Exists(path))
+        if (Passphrase.Length == 0)
         {
-            return X509CertificateLoader.LoadPkcs12FromFile(path, null, X509KeyStorageFlags.Exportable);
+            // Before anything touches the disk, so a misconfigured start leaves no trace. This is
+            // the only gate on an empty passphrase: everything below may assume one is set.
+            throw new CertificateAuthorityUnreadableException(
+                "No Certificates:AuthorityPassphrase is configured (CA_PASSPHRASE in .env on the shipped stack; " +
+                "setup-env.sh generates one), and the printer authority's private key is never handled without one. " +
+                "If a key encrypted under a previous passphrase exists, only that exact value can open it - nothing " +
+                "here will mint a replacement, because that would strand every provisioned printer.");
         }
 
-        using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        System.IO.Directory.CreateDirectory(_directory);
 
-        CertificateRequest request = new($"CN={_options.AuthorityName}", key, HashAlgorithmName.SHA256);
+        if (File.Exists(AuthorityKeyPemPath))
+        {
+            if (!File.Exists(AuthorityCertificatePemPath))
+            {
+                // The certificate is public and connect.der is a byte-for-byte copy of it, so a
+                // missing PEM beside a surviving key is repairable rather than fatal.
+                if (!File.Exists(AuthorityDerPath))
+                {
+                    throw new CertificateAuthorityUnreadableException(
+                        $"The printer authority's key is in {AuthorityKeyPemPath} but its certificate is gone - neither " +
+                        $"{AuthorityCertificatePemPath} nor {AuthorityDerPath} exists. Restore either file from a backup; " +
+                        "provisioned printers hold the same certificate, so a fresh authority would strand them all.");
+                }
 
-        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(
-                                              certificateAuthority: true, hasPathLengthConstraint: true, pathLengthConstraint: 0,
-                                              critical: true));
-        request.CertificateExtensions.Add(new X509KeyUsageExtension(
-                                              X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, critical: true));
-        request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, critical: false));
+                using X509Certificate2 fromDer = X509CertificateLoader.LoadCertificateFromFile(AuthorityDerPath);
 
-        DateTimeOffset now = _time.GetUtcNow();
-        using X509Certificate2 authority = request.CreateSelfSigned(
-            NotBefore, now.AddDays(_options.AuthorityValidityDays));
+                WriteFile(AuthorityCertificatePemPath, Encoding.ASCII.GetBytes(fromDer.ExportCertificatePem()));
+            }
 
-        WriteFile(path, authority.Export(X509ContentType.Pkcs12));
-        WriteFile(AuthorityDerPath, authority.Export(X509ContentType.Cert));
+            X509Certificate2 authority = LoadAuthorityPair();
 
-        _logger.LogWarning("Minted a new printer certificate authority in {Directory}. Every printer provisioned "
-                           + "from a previous authority will no longer validate this server and must be "
-                           + "re-provisioned from a USB stick.", _directory);
+            if (File.Exists(LegacyAuthorityPath))
+            {
+                // A migration that wrote its PEMs and then died before this line. The pair above is
+                // verified readable, so the plaintext PKCS#12 is the one copy too many.
+                File.Delete(LegacyAuthorityPath);
+            }
 
-        return X509CertificateLoader.LoadPkcs12FromFile(path, null, X509KeyStorageFlags.Exportable);
+            if (!File.Exists(AuthorityDerPath))
+            {
+                WriteFile(AuthorityDerPath, authority.Export(X509ContentType.Cert));
+            }
+
+            return authority;
+        }
+
+        if (File.Exists(AuthorityCertificatePemPath))
+        {
+            throw new CertificateAuthorityUnreadableException(
+                $"{AuthorityCertificatePemPath} exists but the private key beside it ({AuthorityKeyPemPath}) is gone. " +
+                "Restore the key from a backup; it cannot be recreated, and a fresh authority would strand every " +
+                "provisioned printer until each is re-provisioned from a USB stick.");
+        }
+
+        if (File.Exists(LegacyAuthorityPath))
+        {
+            return MigrateAuthorityFromPkcs12();
+        }
+
+        return MintAuthority();
+    }
+
+    /// <summary>
+    /// The authority's certificate — the public half alone — or null if none has been minted yet.
+    /// </summary>
+    /// <remarks>
+    /// For callers that ask what the authority says rather than needing it to sign: the health
+    /// check's expiry question is the one this exists for. It reads no key material, so it works
+    /// without the passphrase and costs no key derivation — and it never mints, because a health
+    /// probe that quietly replaced the authority would be the exact disaster the probe watches for.
+    /// </remarks>
+    public X509Certificate2? LoadAuthorityCertificate()
+    {
+        if (File.Exists(AuthorityCertificatePemPath))
+        {
+            return X509Certificate2.CreateFromPem(File.ReadAllText(AuthorityCertificatePemPath));
+        }
+
+        if (File.Exists(AuthorityDerPath))
+        {
+            return X509CertificateLoader.LoadCertificateFromFile(AuthorityDerPath);
+        }
+
+        if (File.Exists(LegacyAuthorityPath))
+        {
+            // A deployment that has not started on this version yet - readable here, migrated the
+            // next time EnsureAuthority runs.
+            return X509CertificateLoader.LoadPkcs12FromFile(LegacyAuthorityPath, null, X509KeyStorageFlags.DefaultKeySet);
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -220,84 +339,57 @@ public class PrinterCertificateAuthority
     /// So a moved DHCP lease is an operator action, not a self-healing one. That is what leaves drift
     /// detection a real job: notice that this machine's
     /// address is no longer in the certificate and offer the reissue, rather than performing it
-    /// unasked. Deleting <c>printer.pfx</c> is the manual form of the same thing, and costs nothing at
-    /// a printer — they trust the authority, not the leaf.
+    /// unasked. Deleting the leaf's PEM pair is the manual form of the same thing, and costs nothing
+    /// at a printer — they trust the authority, not the leaf.
     /// </para>
     /// </remarks>
     /// <param name="names">Names to cover if this is the first run. Ignored once a leaf exists.</param>
+    /// <returns>The leaf without its private key, which this process has no use for.</returns>
     public X509Certificate2 EnsureLeaf(IEnumerable<string> names)
     {
-        if (!File.Exists(LeafPath))
+        ArgumentNullException.ThrowIfNull(names);
+
+        bool certificateExists = File.Exists(LeafCertificatePemPath);
+        bool keyExists = File.Exists(LeafKeyPemPath);
+
+        if (certificateExists && keyExists)
         {
-            return IssueLeaf(names);
+            X509Certificate2 existing = X509Certificate2.CreateFromPem(File.ReadAllText(LeafCertificatePemPath));
+
+            if (File.Exists(LegacyLeafPath))
+            {
+                // The PEM pair is the leaf now; a PKCS#12 left beside the authority is a second copy
+                // of a private key with nothing reading it.
+                File.Delete(LegacyLeafPath);
+            }
+
+            // At Information because it is the answer to "what must a printer connect to?", and the operator
+            // needs it whenever provisioning does not work. It is also what step 6 will compare against.
+            _logger.LogInformation("Serving the existing printer certificate for {Names}, valid until {NotAfter:o}. "
+                                   + "Delete {CertificatePath} and {KeyPath} to have a new one issued for this "
+                                   + "machine's current addresses.",
+                                   string.Join(", ", NamesOf(existing)), existing.NotAfter,
+                                   LeafCertificatePemPath, LeafKeyPemPath);
+
+            return existing;
         }
 
-        X509Certificate2 existing = X509CertificateLoader.LoadPkcs12FromFile(LeafPath, null, X509KeyStorageFlags.Exportable);
-
-        // The PEM copies, if this leaf predates them. Cheap to check and load-bearing on exactly one
-        // path: upgrading a deployment that was issued a certificate before nginx terminated printer
-        // TLS. Such a deployment has printer.pfx and nothing in the proxy directory, so without this
-        // the method above returns early, no PEM is ever written, and the proxy declines to serve the
-        // printer listener at all - every printer stops connecting, and the only diagnostic is a line
-        // in the proxy's log saying the leaf is missing, which reads as "PrinterTls must be off".
-        //
-        // Exported from the certificate already loaded rather than reissued: printers trust the
-        // authority, so a reissue would work, but it would silently roll the leaf on every upgrade
-        // and lose whatever names the operator had deliberately covered.
-        EnsureProxyPem(existing);
-
-        // At Information because it is the answer to "what must a printer connect to?", and the operator
-        // needs it whenever provisioning does not work. It is also what step 6 will compare against.
-        _logger.LogInformation("Serving the existing printer certificate for {Names}, valid until {NotAfter:o}. "
-                               + "Delete {Path} to have a new one issued for this machine's current addresses.",
-                               string.Join(", ", NamesOf(existing)), existing.NotAfter, LeafPath);
-
-        return existing;
-    }
-
-    /// <summary>
-    /// Writes the PEM pair the proxy reads, if it is not already beside the PKCS#12.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>The upgrade path, and nothing else.</b> A leaf issued by any earlier version of this
-    /// deployment exists only as <c>printer.pfx</c>; nginx cannot read PKCS#12, so a stack upgraded
-    /// without this has a proxy with no certificate to present and printers that cannot connect. It is
-    /// idempotent and costs two <c>File.Exists</c> calls on every other start.
-    /// </para>
-    /// <para>
-    /// The certificate file gets the leaf <i>alone</i>, as everywhere else here — firmware requires
-    /// exactly one certificate presented.
-    /// </para>
-    /// </remarks>
-    private void EnsureProxyPem(X509Certificate2 leaf)
-    {
-        if (File.Exists(LeafCertificatePemPath) && File.Exists(LeafKeyPemPath))
+        if (File.Exists(LegacyLeafPath))
         {
-            return;
+            return MigrateLeafFromPkcs12(names);
         }
 
-        using ECDsa? key = leaf.GetECDsaPrivateKey();
-
-        if (key is null)
+        if (certificateExists || keyExists)
         {
-            // Would mean a PKCS#12 written by something other than this class, since everything here
-            // is ECDSA P-256 by firmware necessity. Report it rather than throwing on the startup
-            // path: the pages still work, and the message names the fix.
-            _logger.LogError("The printer certificate in {Path} carries no ECDSA private key, so the PEM copies the "
-                             + "proxy needs cannot be written and printers will not be able to connect. Delete that "
-                             + "file and restart to have a new certificate issued.", LeafPath);
-
-            return;
+            // Half a pair serves nobody - nginx needs both files - and the leaf is the replaceable
+            // kind of secret, so repair by reissuing rather than refusing to start.
+            _logger.LogWarning("Only half of the printer leaf PEM pair exists ({CertificatePath} / {KeyPath}), so the "
+                               + "proxy could not have served it. Issuing a fresh certificate, which printers accept "
+                               + "because they trust the authority rather than the leaf.",
+                               LeafCertificatePemPath, LeafKeyPemPath);
         }
 
-        System.IO.Directory.CreateDirectory(_proxyDirectory);
-
-        WriteProxyFile(LeafCertificatePemPath, Encoding.ASCII.GetBytes(leaf.ExportCertificatePem()));
-        WriteProxyFile(LeafKeyPemPath, Encoding.ASCII.GetBytes(key.ExportPkcs8PrivateKeyPem()));
-
-        _logger.LogInformation("Wrote the existing printer certificate to {Path} in PEM for the proxy, which reads "
-                               + "that rather than the PKCS#12 beside it.", LeafCertificatePemPath);
+        return IssueLeaf(names);
     }
 
     /// <summary>
@@ -311,9 +403,19 @@ public class PrinterCertificateAuthority
     /// </remarks>
     public X509Certificate2? LoadLeafIfIssued()
     {
-        return File.Exists(LeafPath) ?
-            X509CertificateLoader.LoadPkcs12FromFile(LeafPath, null, X509KeyStorageFlags.Exportable) :
-            null;
+        if (File.Exists(LeafCertificatePemPath))
+        {
+            return X509Certificate2.CreateFromPem(File.ReadAllText(LeafCertificatePemPath));
+        }
+
+        if (File.Exists(LegacyLeafPath))
+        {
+            // A deployment that has not started on this version yet - passive here, migrated by
+            // EnsureLeaf like everything else.
+            return X509CertificateLoader.LoadPkcs12FromFile(LegacyLeafPath, null, X509KeyStorageFlags.DefaultKeySet);
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -329,6 +431,7 @@ public class PrinterCertificateAuthority
     /// Every name or address a printer might be told to use. All are written as <b>dNSName</b>
     /// entries — see this class's remarks before changing that.
     /// </param>
+    /// <returns>The leaf without its private key, which lives only in the proxy directory.</returns>
     public X509Certificate2 IssueLeaf(IEnumerable<string> names)
     {
         ArgumentNullException.ThrowIfNull(names);
@@ -375,27 +478,258 @@ public class PrinterCertificateAuthority
 
         // The authority is backdated identically: chain building checks its dates too, so
         // backdating only the leaf would fix nothing.
-        using X509Certificate2 issued = request.Create(
+        X509Certificate2 issued = request.Create(
             authority, NotBefore, now.AddDays(_options.LeafValidityDays), serial);
 
-        using X509Certificate2 withKey = issued.CopyWithPrivateKey(key);
-
-        WriteFile(LeafPath, withKey.Export(X509ContentType.Pkcs12));
-
-        // PEM as well as PKCS#12, because nginx reads one and not the other, and in their own
-        // directory because that is the one the proxy mounts - see CertificateOptions.ProxyDirectory
-        // for why the authority's key must not be in there with them. Deliberately the leaf on its
-        // own, with no chain appended - see LeafCertificatePemFileName for why appending the
-        // authority breaks verification on the printer.
+        // The pair goes in the proxy's own directory because that is the one it mounts - see
+        // CertificateOptions.ProxyDirectory for why the authority's key must not be in there with
+        // them. Deliberately the leaf on its own, with no chain appended - see
+        // LeafCertificatePemFileName for why appending the authority breaks verification on the
+        // printer.
         System.IO.Directory.CreateDirectory(_proxyDirectory);
 
         WriteProxyFile(LeafCertificatePemPath, Encoding.ASCII.GetBytes(issued.ExportCertificatePem()));
         WriteProxyFile(LeafKeyPemPath, Encoding.ASCII.GetBytes(key.ExportPkcs8PrivateKeyPem()));
 
+        if (File.Exists(LegacyLeafPath))
+        {
+            // A reissue that left the old PKCS#12 behind would leave two files disagreeing about
+            // what the leaf is, which is the confusion the single-copy layout exists to end.
+            File.Delete(LegacyLeafPath);
+        }
+
         _logger.LogInformation("Issued a printer certificate for {Names}, valid until {NotAfter:o}.",
                                string.Join(", ", distinct), issued.NotAfter);
 
-        return X509CertificateLoader.LoadPkcs12FromFile(LeafPath, null, X509KeyStorageFlags.Exportable);
+        return issued;
+    }
+
+    /// <summary>
+    /// Loads the PEM pair, encrypting the key file under the configured passphrase if it is not
+    /// already.
+    /// </summary>
+    /// <remarks>
+    /// The PEM label says which state the key is in, so nothing here decrypts on speculation — an
+    /// encrypted key the passphrase cannot open is a precise refusal naming the fix. A
+    /// <i>plaintext</i> key on disk is not an error but the passphrase-rotation path: decrypt the
+    /// key by hand (<c>openssl pkcs8</c>), change the configured passphrase, restart, and this
+    /// re-encrypts under the new value. The caller has already refused an empty passphrase, so
+    /// rotation can never quietly end at "no encryption".
+    /// </remarks>
+    private X509Certificate2 LoadAuthorityPair()
+    {
+        bool encrypted = File.ReadAllText(AuthorityKeyPemPath).Contains(EncryptedKeyPemLabel, StringComparison.Ordinal);
+
+        if (encrypted)
+        {
+            try
+            {
+                return X509Certificate2.CreateFromEncryptedPemFile(AuthorityCertificatePemPath, Passphrase, AuthorityKeyPemPath);
+            }
+            catch (CryptographicException exception)
+            {
+                throw new CertificateAuthorityUnreadableException(
+                    $"The configured passphrase does not open the printer authority's key ({AuthorityKeyPemPath}). " +
+                    "Restore the Certificates:AuthorityPassphrase value this key was encrypted with (CA_PASSPHRASE in " +
+                    ".env on the shipped stack) - a changed or retyped value cannot open it, and nothing here will " +
+                    "mint a replacement, because that would strand every provisioned printer.", exception);
+            }
+        }
+
+        X509Certificate2? authority = null;
+
+        try
+        {
+            try
+            {
+                authority = X509Certificate2.CreateFromPemFile(AuthorityCertificatePemPath, AuthorityKeyPemPath);
+            }
+            catch (CryptographicException exception)
+            {
+                throw new CertificateAuthorityUnreadableException(
+                    $"The printer authority's PEM pair ({AuthorityCertificatePemPath}, {AuthorityKeyPemPath}) cannot be " +
+                    "read - a file is damaged, or the key does not belong to the certificate. Restore both from the same " +
+                    "backup; nothing here will mint a replacement, because that would strand every provisioned printer.",
+                    exception);
+            }
+
+            using (ECDsa key = authority.GetECDsaPrivateKey()!)
+            {
+                WriteAuthorityKey(key);
+            }
+
+            _logger.LogInformation("Encrypted the printer authority's private key ({Path}) with the configured "
+                                   + "passphrase. From now on that passphrase is required to read the key - keep it "
+                                   + "backed up as carefully as the key itself, and separately from the data "
+                                   + "directory.", AuthorityKeyPemPath);
+
+            X509Certificate2 loaded = authority;
+
+            authority = null;
+
+            return loaded;
+        }
+        finally
+        {
+            authority?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Writes the authority's key in PEM, encrypted under the configured passphrase, and proves the
+    /// result opens before it replaces anything.
+    /// </summary>
+    /// <remarks>
+    /// Written to a sibling temp file, round-tripped against the certificate, then moved over the
+    /// real name. The verification is what makes the callers' deletions safe: nothing that removes an
+    /// older copy of this key runs until a readable replacement is on disk, and the rename means no
+    /// crash leaves a half-written key under the real name.
+    /// </remarks>
+    private void WriteAuthorityKey(ECDsa key)
+    {
+        string pem = key.ExportEncryptedPkcs8PrivateKeyPem(Passphrase, KeyEncryption);
+
+        string temporary = AuthorityKeyPemPath + ".tmp";
+
+        WriteFile(temporary, Encoding.ASCII.GetBytes(pem));
+
+        using (X509Certificate2 verified =
+                   X509Certificate2.CreateFromEncryptedPemFile(AuthorityCertificatePemPath, Passphrase, temporary))
+        using (ECDsa? verifiedKey = verified.GetECDsaPrivateKey())
+        {
+            if (verifiedKey is null)
+            {
+                throw new CertificateAuthorityUnreadableException(
+                    $"The freshly written authority key ({temporary}) failed verification, so nothing was replaced.");
+            }
+        }
+
+        File.Move(temporary, AuthorityKeyPemPath, overwrite: true);
+    }
+
+    /// <summary>
+    /// Moves an authority written by an earlier version — a passwordless PKCS#12 — to the PEM pair,
+    /// then deletes the PKCS#12.
+    /// </summary>
+    /// <remarks>
+    /// The delete is the point of the exercise: the PKCS#12 holds the key in the clear, and it is
+    /// only removed after the PEM pair has been written, verified, and loaded. A crash anywhere in
+    /// between leaves both layouts on disk, and the next start finishes the job from the top of
+    /// <see cref="EnsureAuthority"/>.
+    /// </remarks>
+    private X509Certificate2 MigrateAuthorityFromPkcs12()
+    {
+        X509Certificate2 legacy;
+
+        try
+        {
+            legacy = X509CertificateLoader.LoadPkcs12FromFile(LegacyAuthorityPath, null, X509KeyStorageFlags.Exportable);
+        }
+        catch (CryptographicException exception)
+        {
+            throw new CertificateAuthorityUnreadableException(
+                $"The printer authority ({LegacyAuthorityPath}) cannot be read. Restore it from a backup; nothing " +
+                "here will mint a replacement, because that would strand every provisioned printer.", exception);
+        }
+
+        using (legacy)
+        {
+            using ECDsa key = legacy.GetECDsaPrivateKey() ??
+                throw new CertificateAuthorityUnreadableException(
+                    $"The printer authority ({LegacyAuthorityPath}) carries no ECDSA private key, so it cannot sign " +
+                    "anything and cannot be migrated. Restore it from a backup; nothing here will mint a replacement, " +
+                    "because that would strand every provisioned printer.");
+
+            WriteFile(AuthorityCertificatePemPath, Encoding.ASCII.GetBytes(legacy.ExportCertificatePem()));
+            WriteAuthorityKey(key);
+        }
+
+        X509Certificate2 migrated = LoadAuthorityPair();
+
+        File.Delete(LegacyAuthorityPath);
+
+        _logger.LogInformation("Moved the printer authority from {Legacy} to {CertificatePath} and {KeyPath}. The "
+                               + "authority itself is unchanged - no printer notices - and the key file is now "
+                               + "encrypted with the configured passphrase.",
+                               LegacyAuthorityPath, AuthorityCertificatePemPath, AuthorityKeyPemPath);
+
+        return migrated;
+    }
+
+    /// <summary>
+    /// Moves a leaf written by an earlier version — a passwordless PKCS#12 beside the authority — to
+    /// the proxy directory's PEM pair, then deletes the PKCS#12.
+    /// </summary>
+    /// <remarks>
+    /// This is also the path that upgrades a deployment issued a certificate before nginx terminated
+    /// printer TLS: such a deployment has the PKCS#12 and nothing in the proxy directory, and without
+    /// this the proxy would decline to serve the printer listener at all — every printer stops
+    /// connecting, and the only diagnostic is a line in the proxy's log saying the leaf is missing,
+    /// which reads as "PrinterTls must be off". Migrated rather than reissued so an upgrade never
+    /// silently rolls the leaf or loses names the operator had deliberately covered.
+    /// </remarks>
+    private X509Certificate2 MigrateLeafFromPkcs12(IEnumerable<string> names)
+    {
+        using X509Certificate2 legacy = X509CertificateLoader.LoadPkcs12FromFile(
+            LegacyLeafPath, null, X509KeyStorageFlags.Exportable);
+        using ECDsa? key = legacy.GetECDsaPrivateKey();
+
+        if (key is null)
+        {
+            // Would mean a PKCS#12 written by something other than this class, since everything here
+            // is ECDSA P-256 by firmware necessity. A leaf nobody holds the key to serves nothing, so
+            // repair by reissuing - free at the printers, which trust the authority.
+            _logger.LogWarning("The legacy printer certificate ({Path}) carries no ECDSA private key, so it cannot be "
+                               + "served and cannot be migrated. Issuing a fresh certificate in its place.",
+                               LegacyLeafPath);
+            File.Delete(LegacyLeafPath);
+
+            return IssueLeaf(names);
+        }
+
+        System.IO.Directory.CreateDirectory(_proxyDirectory);
+
+        WriteProxyFile(LeafCertificatePemPath, Encoding.ASCII.GetBytes(legacy.ExportCertificatePem()));
+        WriteProxyFile(LeafKeyPemPath, Encoding.ASCII.GetBytes(key.ExportPkcs8PrivateKeyPem()));
+
+        File.Delete(LegacyLeafPath);
+
+        _logger.LogInformation("Moved the printer certificate from {Legacy} to {CertificatePath} and {KeyPath}, which "
+                               + "are what the proxy serves. The certificate itself is unchanged.",
+                               LegacyLeafPath, LeafCertificatePemPath, LeafKeyPemPath);
+
+        return X509Certificate2.CreateFromPem(File.ReadAllText(LeafCertificatePemPath));
+    }
+
+    /// <summary>
+    /// Mints the authority: the one-time event every provisioned printer's trust descends from.
+    /// </summary>
+    private X509Certificate2 MintAuthority()
+    {
+        using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+
+        CertificateRequest request = new($"CN={_options.AuthorityName}", key, HashAlgorithmName.SHA256);
+
+        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(
+                                              certificateAuthority: true, hasPathLengthConstraint: true, pathLengthConstraint: 0,
+                                              critical: true));
+        request.CertificateExtensions.Add(new X509KeyUsageExtension(
+                                              X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, critical: true));
+        request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, critical: false));
+
+        DateTimeOffset now = _time.GetUtcNow();
+        using X509Certificate2 authority = request.CreateSelfSigned(
+            NotBefore, now.AddDays(_options.AuthorityValidityDays));
+
+        WriteFile(AuthorityCertificatePemPath, Encoding.ASCII.GetBytes(authority.ExportCertificatePem()));
+        WriteAuthorityKey(key);
+        WriteFile(AuthorityDerPath, authority.Export(X509ContentType.Cert));
+
+        _logger.LogWarning("Minted a new printer certificate authority in {Directory}. Every printer provisioned "
+                           + "from a previous authority will no longer validate this server and must be "
+                           + "re-provisioned from a USB stick.", _directory);
+
+        return LoadAuthorityPair();
     }
 
     /// <summary>

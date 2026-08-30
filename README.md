@@ -102,6 +102,14 @@ docker compose up -d
 The database and certificates live on named Docker volumes and survive container replacement. Keep
 the data volume on local disk — SQLite's locking is unreliable on NFS/CIFS shares.
 
+**The most sensitive file on that volume is the printer CA's private key**
+(`certificates/ca.key.pem`): every provisioned printer trusts that CA and nothing else, there is no
+revocation, and replacing it means a USB visit to every printer. The key is always encrypted under
+`CA_PASSPHRASE` (which `setup-env.sh` generates; the server refuses to start without one), so a
+copied backup of the data volume alone cannot yield it — back up `.env` too, and **separately**
+from the data volume: the passphrase cannot be regenerated, and a backup holding both halves has
+defended nothing.
+
 ## Configuration
 
 Configuration lives in two places, deliberately:
@@ -124,6 +132,7 @@ Configuration lives in two places, deliberately:
 | `TRANSFER_PORT` | Port for file downloads on the pre-WebSocket transport. Plain HTTP by design — the file body is already encrypted, but its integrity isn't verified, so don't expose this port beyond your LAN. |
 | `TZ` | The IANA timezone timestamps are rendered in. Containers default to UTC, which is rarely right for a machine in a house. |
 | `GO2RTC_USERNAME` / `GO2RTC_PASSWORD` | Credentials for the camera sidecar's API — required if you want cameras, ignored otherwise. `setup-env.sh` generates them. |
+| `CA_PASSPHRASE` | Encrypts the printer CA's private key at rest. Required — the server refuses to start without one rather than store the key in the clear; `setup-env.sh` generates it. **Never change or lose it once set** — the server refuses to start rather than mint a CA that strands your printers. |
 | `PROXY_SUBNET` / `PROXY_NETWORK` | The stack's internal Docker network and the range whose forwarded headers are trusted. Change both together only if the default collides with your LAN. |
 
 [.env.example](.env.example) documents every setting in full, including the WebRTC overrides for

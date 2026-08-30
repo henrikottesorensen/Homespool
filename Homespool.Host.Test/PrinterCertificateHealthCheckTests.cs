@@ -52,6 +52,7 @@ public sealed class PrinterCertificateHealthCheckTests : IDisposable
         return new(Options.Create(new CertificateOptions
                    {
                        Directory = "certs",
+                       AuthorityPassphrase = "unit test passphrase",
                        AuthorityValidityDays = authorityDays,
                        LeafValidityDays = leafDays,
                    }),

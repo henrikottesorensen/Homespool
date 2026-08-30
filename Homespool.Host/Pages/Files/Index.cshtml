@@ -9,8 +9,11 @@
 @if (Model.Printers.Count > 0)
 {
     @* One printer for every row's Send/Queue button, chosen here rather than per row - a plain GET
-       so the choice is bookmarkable and survives the back button, same as the sort headers below. *@
-    <form method="get" asp-page="./Index" class="d-flex align-items-center gap-2 mb-3">
+       so the choice is bookmarkable and survives the back button, same as the sort headers below.
+       data-printer-select is site.js's hook to submit on change - without it, picking a new option
+       only changes what the <select> shows, not what Send/Queue below actually target, until Save
+       is pressed and the page re-renders with it. *@
+    <form method="get" asp-page="./Index" class="d-flex align-items-center gap-2 mb-3" data-printer-select>
         <label class="form-label mb-0" for="printer-select">@Localiser["Common_Printer"]</label>
         <select id="printer-select" name="printerId" class="form-select form-select-sm w-auto">
             @foreach (var printer in Model.Printers)

@@ -148,6 +148,35 @@
     });
 })();
 
+// The Files page's printer selector submits itself on change. Without this the <select> shows a new
+// choice the moment it is picked - that part is the browser, free - but the row buttons below it
+// were rendered against the *previous* selection and stay pointed at it until something reloads the
+// page, so a file dropped straight after picking a different printer would go to the one you just
+// moved away from. Save stays as the button-only fallback for when this never runs.
+(function () {
+    "use strict";
+
+    var form = document.querySelector("[data-printer-select]");
+
+    if (!form) {
+        return;
+    }
+
+    var select = form.querySelector("select");
+
+    if (!select) {
+        return;
+    }
+
+    select.addEventListener("change", function () {
+        if (form.requestSubmit) {
+            form.requestSubmit();
+        } else {
+            form.submit();
+        }
+    });
+})();
+
 // Start client-side validation, which aspnet-client-validation does not do for itself. Its
 // predecessor, jquery.validate.unobtrusive, started on its own - so this call is the entire
 // behavioural difference between the two libraries as this application uses them.

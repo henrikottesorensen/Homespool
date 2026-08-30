@@ -1116,6 +1116,14 @@
   <data name="TwoFactor_Disabled" xml:space="preserve">
     <value>2fa has been disabled. You can reenable 2fa when you setup an authenticator app</value>
   </data>
+  <data name="TwoFactor_DisableCodeInvalid" xml:space="preserve">
+    <value>That code is not right. Open your authenticator app and try the current one.</value>
+    <comment>Refusing to turn two-factor off without the current code. Same sentence as the printer-removal refusal, under its own key so the two pages can drift apart in translation without touching each other.</comment>
+  </data>
+  <data name="TwoFactor_DisableLockedOut" xml:space="preserve">
+    <value>Too many wrong two-factor attempts. Try again in {0}.</value>
+    <comment>The backoff after failed authenticator codes on the disable page. Says how long, like its claim-page counterpart: the likely reader mistyped.</comment>
+  </data>
   <data name="Cameras_Removed" xml:space="preserve">
     <value>Camera removed.</value>
   </data>

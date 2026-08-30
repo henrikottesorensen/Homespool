@@ -5,11 +5,11 @@ namespace Homespool.Model;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Each member names a guess somebody could grind at.</b> The two here are the ones where a
+/// <b>Each member names a guess somebody could grind at.</b> The three here are the ones where a
 /// short secret is checked against something an authenticated caller can retry: a registration code
-/// on the claim page, and an authenticator code confirming a printer's removal. Neither sits behind
-/// the anonymous global limiter, so without a per-account bound an account could try at request
-/// rate.
+/// on the claim page, and an authenticator code confirming a printer's removal or the disabling of
+/// two-factor. None sits behind the anonymous global limiter, so without a per-account bound an
+/// account could try at request rate.
 /// </para>
 /// <para>
 /// <b>Members are pinned and zero is reserved.</b> This one is persisted as text in
@@ -38,4 +38,10 @@ public enum LimitedAction
     /// off a claim they are standing at a printer to complete, and neither should the reverse.
     /// </remarks>
     RemovePrinter = 2,
+
+    /// <summary>
+    /// Confirming that two-factor is turned off with an authenticator code, on
+    /// <c>Account/Manage/Disable2fa</c>.
+    /// </summary>
+    DisableTwoFactor = 3,
 }

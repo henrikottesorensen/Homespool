@@ -1086,6 +1086,12 @@
   <data name="TwoFactor_Disabled" xml:space="preserve">
     <value>Tofaktorgodkendelse er slået fra. Du kan slå den til igen, når du opsætter en tofaktorapp</value>
   </data>
+  <data name="TwoFactor_DisableCodeInvalid" xml:space="preserve">
+    <value>Koden er ikke rigtig. Åbn din tofaktorapp, og prøv den aktuelle kode.</value>
+  </data>
+  <data name="TwoFactor_DisableLockedOut" xml:space="preserve">
+    <value>For mange forkerte tofaktor forsøg, prøv igen om {0}.</value>
+  </data>
   <data name="Cameras_Removed" xml:space="preserve">
     <value>Kameraet er fjernet.</value>
   </data>

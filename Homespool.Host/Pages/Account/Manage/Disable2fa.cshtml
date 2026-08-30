@@ -18,6 +18,17 @@
 
 <div>
     <form method="post">
+        @* The same shape as the printer-removal confirmation: turning the second factor off is
+           confirmed with the second factor, so a walk-up on an unlocked session cannot weaken the
+           account with one click. The server verifies it again on the post, so a field deleted from
+           the DOM buys nothing. inputmode numeric and one-time-code so a phone offers the keypad and
+           the OS can autofill it. *@
+        <label class="form-label" for="disable-code">
+            @Localiser["Account_AuthenticatorCode"]
+        </label>
+        <input class="form-control mb-3" id="disable-code" name="code"
+               inputmode="numeric" autocomplete="one-time-code" required />
+
         <button class="btn btn-danger" type="submit">@Localiser["TwoFactor_Disable"]</button>
     </form>
 </div>

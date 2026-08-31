@@ -127,10 +127,10 @@ server {
         set $homespool_upstream http://homespool:8080;
         include /etc/nginx/homespool-proxy.conf;
 
-        # A 512 MB upload over a household's wifi takes longer than the 60s default allows. Set here
-        # as well as on the TLS block because the include no longer carries timeouts - see its header.
-        proxy_read_timeout 300s;
-        proxy_send_timeout 300s;
+        # No timeout override, deliberately - nginx's default 60s is what a health endpoint wants.
+        # A probe exists to answer quickly, and a longer timeout turns a wedged application into a
+        # request that hangs rather than a monitor that reports a fault. Upload size is no reason to
+        # raise it: nothing is ever uploaded to /health, whatever `location /` needs.
     }
 
     # Everything else goes to TLS. $host carries no port, so this needs telling which one HTTPS is

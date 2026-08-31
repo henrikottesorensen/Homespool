@@ -14,6 +14,7 @@ using NSubstitute;
 
 using Homespool.Data;
 using Homespool.Host.Authorisation;
+using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
@@ -180,6 +181,55 @@ public sealed class PrintFileSenderTests : IDisposable
 
         _offers.TryOpen(ivHex, out _).Should().BeFalse("the offer was revoked");
         _encrypted.Find(ivHex).Should().BeNull("and so was the key");
+    }
+
+    /// <summary>
+    /// A reply that never arrives leaves the offer standing, because the printer may already be
+    /// fetching from it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The exception to the revoking above, and the reason it is a separate arm.</b> A refusal
+    /// says the printer will not come for these bytes, so holding them open is waste. A timeout says
+    /// only that the answer was not heard - firmware acknowledges a download around ten seconds in
+    /// when it is busy, and begins fetching before it answers either way.
+    /// </para>
+    /// <para>
+    /// <b>Revoking there does not merely waste the transfer, it breaks one that is working.</b>
+    /// Every chunk the printer asked for afterwards was refused as an unknown hash, five retries
+    /// deep, leaving a file on the drive that the panel then rejected as corrupt. Observed against a
+    /// Core One whose reply landed 0.56 s past the limit.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ATimedOutSendLeavesTheOfferStandingForATransferAlreadyRunning()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+        StoredFile file = WriteFile("model.gcode", 4096);
+
+        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+        actor.IsOpen.Returns(true);
+        actor.CanStreamChunks.Returns(false);
+        actor.Client.Returns(PrinterClient.Anonymous(PrinterTransport.Http));
+        actor.Dialect.Returns(PrinterDialect.BuddyHttp);
+        actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
+             .Returns<Task<CommandSendResult>>(_ => throw new CommandResponseTimedOutException(PrinterId));
+        _registry.Register(PrinterId, actor);
+
+        // Act
+        Func<Task> act = async () => await NewSender(context).SendAsync(
+            await context.Printers.SingleAsync(TestContext.Current.CancellationToken),
+            file, Caller.Unscoped(Owner), TestContext.Current.CancellationToken);
+
+        // Assert
+        await act.Should().ThrowAsync<CommandResponseTimedOutException>("the caller still has to know");
+
+        StartEncryptedDownload encrypted = SentCommand(actor).Should().BeOfType<StartEncryptedDownload>().Which;
+        string ivHex = Convert.ToHexStringLower(encrypted.Iv);
+
+        _offers.TryOpen(ivHex, out _).Should().BeTrue("the printer may be fetching from it already");
+        _encrypted.Find(ivHex).Should().NotBeNull("and it needs the key to read what it fetches");
     }
 
     /// <summary>

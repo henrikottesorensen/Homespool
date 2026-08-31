@@ -177,15 +177,25 @@ public class PrusaConnectOptions
     /// <summary>
     /// How long <see cref="PrinterConnectionActor"/> waits for a printer's reply (a
     /// <c>Finished</c>/<c>Rejected</c>/<c>StateChanged</c> event echoing the command's id) before
-    /// giving up. Default 10 seconds.
+    /// giving up. Default 30 seconds.
     /// </summary>
     /// <remarks>
-    /// The firmware answers essentially immediately for the commands this pass sends (see
-    /// <c>planner.cpp:667-790</c> at the pinned ref) - this mostly guards against a printer that
-    /// goes quiet mid-command (e.g. drops off the network) rather than genuine processing latency.
+    /// <para>
+    /// <b>Reply latency is bimodal, and the second mode is the one to size for.</b> An idle printer
+    /// answers in about a second; one that is mid-transfer or holding a print-preview dialog takes
+    /// around ten. Measured on a Core One at 6.8.1: 1.0 s and 2.3 s idle against 10.0 s and 10.6 s
+    /// busy. A ten-second limit therefore sits directly on top of the busy mode and expires on
+    /// commands the printer has already accepted and acted on.
+    /// </para>
+    /// <para>
+    /// <b>This bounds a printer that has gone quiet, not one that is thinking.</b> Being generous
+    /// costs a stalled command slot on a machine that is genuinely unreachable, which the connection
+    /// teardown resolves anyway; being tight costs a command that worked being treated as one that
+    /// did not - and the caller cannot tell those apart from a timeout alone.
+    /// </para>
     /// </remarks>
     [Range(0.1, 600)]
-    public double CommandResponseTimeoutSeconds { get; set; } = 10;
+    public double CommandResponseTimeoutSeconds { get; set; } = 30;
 
     /// <summary><see cref="CommandResponseTimeoutSeconds"/> as a <see cref="TimeSpan"/>.</summary>
     public TimeSpan CommandResponseTimeout => TimeSpan.FromSeconds(CommandResponseTimeoutSeconds);

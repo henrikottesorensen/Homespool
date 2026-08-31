@@ -74,13 +74,25 @@ public sealed class QueueAdvancer : BackgroundService
     /// How long a print may sit commanded-but-not-printing before the loop stops believing in it.
     /// </summary>
     /// <remarks>
-    /// The bound the <see cref="PrintState.Starting"/> phase needs. Ordinarily this is seconds -
-    /// 3.1 s measured on a Core One, and *zero* on an MK3.5, which reports PRINTING in the first
-    /// sample after START_PRINT - but a print that is accepted and then never begins (a heat-up
-    /// that fails, a dialog nobody answers) would otherwise leave the row open forever, and the
-    /// partial unique index would then block every later print on that printer. Generous, because a
-    /// cold chamber and a large bed legitimately take minutes; closing it as
-    /// <see cref="PrintState.Unknown"/> is honest, since nothing here can say what happened.
+    /// <para>
+    /// <b>A backstop for cases nobody enumerated, not the mechanism.</b> The reconciler decides a
+    /// <see cref="PrintState.Starting"/> row on evidence - it promotes on <c>PRINTING</c>, closes on
+    /// a stated <c>FINISHED</c>/<c>STOPPED</c>, and closes on a job id it once held being withdrawn
+    /// by an idle printer. This only catches whatever none of those saw.
+    /// </para>
+    /// <para>
+    /// <b>Being generous is therefore cheap, and being tight is not.</b> The one thing legitimately
+    /// waiting here is a preview dialog still carrying our job id, which the person at the machine
+    /// can answer at any time - and the queue entry is consumed at the ack, so closing that row
+    /// early would let them press Print on a job with no row and no entry left to adopt it against.
+    /// A print running that nothing here has a record of is far worse than a wait.
+    /// </para>
+    /// <para>
+    /// The phase itself is seconds: 1.0-7 s measured across a Core One and an MK3.5, the latter
+    /// reporting <c>PRINTING</c> in the first sample after <c>START_PRINT</c>. Minutes of cold
+    /// chamber and cold bed do not happen here - a print's start gcode runs *inside*
+    /// <c>State::Printing</c>, so all of that heating is on the far side of the promotion.
+    /// </para>
     /// </remarks>
     public static readonly TimeSpan StartingStaleAfter = TimeSpan.FromMinutes(15);
 
@@ -566,10 +578,21 @@ public sealed class QueueAdvancer : BackgroundService
 
         if (active.State == PrintState.Starting)
         {
+            // The job id is the evidence, and it arrives whether or not Printing is ever sampled.
+            // Firmware assigns one the moment it accepts, and keeps reporting it through a preview
+            // dialog - so recording it here is what lets a later withdrawal mean something. Ours by
+            // construction: a printer already running somebody else's job refuses START_PRINT, so
+            // the only job it can be reporting seconds after accepting ours is ours.
+            if (live?.JobId is { } offered && active.FirmwareJobId is null)
+            {
+                active.FirmwareJobId = offered;
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+
             if (status == PrinterStatus.Printing)
             {
                 active.State = PrintState.Printing;
-                active.FirmwareJobId = live?.JobId;
+                active.FirmwareJobId = live?.JobId ?? active.FirmwareJobId;
                 await dbContext.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation("[{PrinterId}] {FileName} is printing (firmware job {JobId})",
@@ -578,17 +601,62 @@ public sealed class QueueAdvancer : BackgroundService
                 return active;
             }
 
+            // Said plainly by the printer, so there is nothing to wait out.
+            if (status is PrinterStatus.Finished or PrinterStatus.Stopped)
+            {
+                PrintState said = status == PrinterStatus.Finished ? PrintState.Finished : PrintState.Stopped;
+
+                Close(active, said, now);
+                await dbContext.SaveChangesAsync(cancellationToken);
+
+                _logger.LogInformation("[{PrinterId}] {FileName} ended before it began: {Outcome}",
+                                       printerId, active.FileName, said);
+
+                return null;
+            }
+
+            // Taken up, and now withdrawn: we hold a job id, the printer reports none, and it is not
+            // in any state that could still be starting. Whatever ended it - a stop of ours, an
+            // Abort at the panel, a refusal we never saw - it is over, and this is the only signal a
+            // panel abort gives us. It sends no event at all, unlike our own STOP_PRINT, which is
+            // why closing on the job id rather than on an event covers both.
+            //
+            // The FirmwareJobId guard is what keeps a legitimate start alive: firmware reports
+            // Idle or Ready through PrintInit while it opens the file, and carries no job id yet -
+            // so a row that has never seen one is still starting, not finished.
+            if (active.FirmwareJobId is not null &&
+                live?.JobId is null &&
+                status is PrinterStatus.Idle or PrinterStatus.Ready or PrinterStatus.Error)
+            {
+                _logger.LogInformation("[{PrinterId}] {FileName} was accepted as firmware job {JobId} and never began; the printer " +
+                                       "is {Status} and reports no job, so it is over.",
+                                       printerId, active.FileName, active.FirmwareJobId, status);
+
+                Close(active, PrintState.Unknown, now);
+                await dbContext.SaveChangesAsync(cancellationToken);
+
+                return null;
+            }
+
+            // Everything reaching here is a wait this pass can name: a dialog or a stall still
+            // carrying our job id, where the person at the machine can yet answer it and the row
+            // must survive to be promoted; or the seconds before the printer reports anything at
+            // all. Nothing falls through by not matching - which is what let Idle and Attention
+            // alike sit here for the whole of StartingStaleAfter.
             if (now - active.StartedAt < StartingStaleAfter)
             {
+                _logger.LogDebug("[{PrinterId}] {FileName} is still starting: printer is {Status}, job {JobId}",
+                                 printerId, active.FileName, status, live?.JobId);
+
                 return active;
             }
 
-            // Accepted and never begun. Closing it as Unknown is honest - nothing here can say why -
-            // and it is what stops the partial unique index blocking this printer forever.
-            _logger.LogWarning(
-                "[{PrinterId}] {FileName} was accepted {Elapsed:F0} minutes ago and never started printing; "
-                + "closing it as Unknown so the queue is not wedged.",
-                printerId, active.FileName, (now - active.StartedAt).TotalMinutes);
+            // The backstop, and only the backstop: a case nobody enumerated above. Closing it as
+            // Unknown is honest - nothing here can say why - and it is what stops the partial unique
+            // index blocking this printer forever.
+            _logger.LogWarning("[{PrinterId}] {FileName} was accepted {Elapsed:F0} minutes ago and never started printing; " +
+                               "closing it as Unknown so the queue is not wedged.",
+                               printerId, active.FileName, (now - active.StartedAt).TotalMinutes);
 
             Close(active, PrintState.Unknown, now);
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -658,9 +726,9 @@ public sealed class QueueAdvancer : BackgroundService
                                                           PrinterLiveState? live,
                                                           CancellationToken cancellationToken)
     {
-        if (live?.JobId is not { } jobId
-            || live.Status is not (PrinterStatus.Printing or PrinterStatus.Paused)
-            || !_registry.IsConnected(printerId))
+        if (live?.JobId is not { } jobId ||
+            live.Status is not (PrinterStatus.Printing or PrinterStatus.Paused) ||
+            !_registry.IsConnected(printerId))
         {
             return null;
         }
@@ -689,7 +757,6 @@ public sealed class QueueAdvancer : BackgroundService
         if (candidates.Count == 0)
         {
             _examinedPanelJobs[printerId] = jobId;
-
             return null;
         }
 
@@ -737,8 +804,8 @@ public sealed class QueueAdvancer : BackgroundService
         }
 
         var claimed = candidates.FirstOrDefault(
-            candidate => (job.Path is { } path && path == candidate.PrinterPath)
-                         || (job.DisplayName is { } displayName && displayName == candidate.Entry.PrintFile!.Name));
+            candidate => (job.Path is { } path && path == candidate.PrinterPath) ||
+                                        (job.DisplayName is { } displayName && displayName == candidate.Entry.PrintFile!.Name));
 
         _examinedPanelJobs[printerId] = jobId;
 
@@ -1480,16 +1547,16 @@ public sealed class QueueAdvancer : BackgroundService
                 // Removing the row here is how a phantom print is minted - the effect exists, the
                 // record does not, and the entry survives to print the file a second time.
                 _logger.LogWarning(
-                    "[{PrinterId}] START_PRINT for {Path} was answered \"No job in progress\", which firmware "
-                    + "also says about a print that is starting; treating it as unanswered and asking the printer.",
+                    "[{PrinterId}] START_PRINT for {Path} was answered \"No job in progress\", which firmware " +
+                    "also says about a print that is starting; treating it as unanswered and asking the printer.",
                     printerId, commanded.PrinterPath);
                 break;
 
             case "Forbidden path":
             case "Tools mapping not enabled":
                 _logger.LogError(
-                    "[{PrinterId}] refused {FileName} with \"{Reason}\", which will not change by retrying; "
-                    + "removing it from the queue.",
+                    "[{PrinterId}] refused {FileName} with \"{Reason}\", which will not change by retrying; " +
+                    "removing it from the queue.",
                     printerId, head.PrintFile?.Name, reason);
 
                 // Recorded as a failed print rather than only logged. Dropping the entry with nothing

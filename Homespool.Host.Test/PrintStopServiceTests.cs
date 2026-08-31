@@ -7,6 +7,7 @@ using AwesomeAssertions;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 
 using NSubstitute;
 
@@ -41,6 +42,8 @@ public sealed class PrintStopServiceTests : IDisposable
     private const long Stopper = 1;
     private const long SomebodyElse = 2;
 
+    private readonly FakeTimeProvider _clock = new(DateTimeOffset.UnixEpoch.AddYears(56));
+
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-stop-{Guid.NewGuid():N}.db");
     private readonly PrinterConnectionRegistry _registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
 
@@ -72,6 +75,69 @@ public sealed class PrintStopServiceTests : IDisposable
         PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
 
         job.StoppedByUserId.Should().Be(Stopper);
+    }
+
+    /// <summary>
+    /// A print stopped before it ever began is closed here, as <c>Stopped</c>, rather than left for
+    /// the loop to characterise.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Nothing about this one is ambiguous, which is why it does not wait.</b> An accepted
+    /// <c>STOP_PRINT</c> on a running print could have raced a natural completion, so its outcome is
+    /// the loop's to read from telemetry - but a <c>Starting</c> row never began, so there is no
+    /// completion to confuse it with. On hardware such a row stayed open for the full fifteen-minute
+    /// bound (901 s and 904 s, measured twice), holding a printer that had been idle within a second.
+    /// </para>
+    /// <para>
+    /// <b><c>Stopped</c> and not <c>Unknown</c> is the point.</b> The loop can only close it as
+    /// <c>Unknown</c>, since telemetry cannot say why a print that never started stopped being
+    /// reported. Here the reason is known, and a history row reading <c>Unknown</c> with a stopper
+    /// beside it describes a well-understood event as a mystery.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task APrintStoppedBeforeItBeganIsClosedAsStopped()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+        await AddPrintAsync(context, PrintState.Starting, ended: false);
+        Connect(PrinterEventType.Finished);
+
+        // Act
+        await NewService(context).StopAsync(PrinterId, Caller.Unscoped(Stopper), TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+
+        job.EndedAt.Should().Be(_clock.GetUtcNow(), "the stop settles it, so nothing is left to observe");
+        job.State.Should().Be(PrintState.Stopped, "a person stopped it, which Unknown would not say");
+        job.StoppedByUserId.Should().Be(Stopper);
+    }
+
+    /// <summary>
+    /// A running print is still left alone: its outcome belongs to the loop, because an accepted stop
+    /// does not say whether it ended or finished.
+    /// </summary>
+    [Fact]
+    public async Task ARunningPrintIsAttributedButNotClosedHere()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+        await AddPrintAsync(context, PrintState.Printing, ended: false);
+        Connect(PrinterEventType.Finished);
+
+        // Act
+        await NewService(context).StopAsync(PrinterId, Caller.Unscoped(Stopper), TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+
+        job.EndedAt.Should().BeNull("an accepted abort is not an outcome for a print that was running");
+        job.State.Should().Be(PrintState.Printing);
+        job.StoppedByUserId.Should().Be(Stopper, "the attribution still lands");
     }
 
     /// <summary>
@@ -194,6 +260,7 @@ public sealed class PrintStopServiceTests : IDisposable
                                         new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
                                         _registry),
                                     new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
+                                    _clock,
                                     NullLogger<PrintStopService>.Instance);
     }
 

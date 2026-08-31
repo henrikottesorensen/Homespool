@@ -148,6 +148,7 @@ public sealed class IndexModelTests : IDisposable
                                      new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
                                      connectionRegistry),
                                  new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
+                                 TimeProvider.System,
                                  NullLogger<PrintStopService>.Instance),
             new PrinterStatusText(localiser),
             new PrinterIntentText(localiser),

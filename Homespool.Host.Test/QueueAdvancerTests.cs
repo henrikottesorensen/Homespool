@@ -154,6 +154,184 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>
+    /// A print taken into the panel's preview and then ended there is closed on the withdrawn job id,
+    /// not on the fifteen-minute bound.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The case the bound used to swallow whole.</b> Firmware reports <c>PRINTING</c> for about a
+    /// second before a preview dialog takes over as <c>ATTENTION</c>, which a five-second poll misses
+    /// almost every time - so the row never promotes, and every later status fell through to the
+    /// bound. Measured four times on hardware at 901 s, 904 s, 15m01s and 15m02s, with the printer
+    /// idle and available within a second of the person acting.
+    /// </para>
+    /// <para>
+    /// <b>Two passes, because that is the shape of the evidence.</b> The first sees the job id while
+    /// the dialog is up and records it; the second sees it withdrawn. Neither alone is enough, which
+    /// is the whole reason the id is stored rather than inspected in the moment.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task APrintEndedAtThePanelIsClosedOnTheWithdrawnJobIdRatherThanTheBound()
+    {
+        // Arrange - commanded, acknowledged, and taken into a preview dialog carrying job 752
+        await using HomespoolDbContext context = await SeedAsync();
+
+        context.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = PrinterId,
+            FileName = "mismatched.bgcode",
+            QueuedByUserId = 1,
+            StartedAt = _clock.GetUtcNow(),
+            State = PrintState.Starting,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        using QueueAdvancer advancer = NewAdvancer();
+
+        await ReportAsync(context, PrinterStatus.Attention, jobId: 752);
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        context.ChangeTracker.Clear();
+        PrintJob held = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+
+        held.EndedAt.Should().BeNull("a dialog the person can still answer keeps its row");
+        held.FirmwareJobId.Should().Be(752, "the offered job id is the evidence a later pass needs");
+
+        // Act - the dialog is answered at the panel: the printer goes idle and reports no job
+        await ReportAsync(context, PrinterStatus.Idle, jobId: null);
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+
+        job.EndedAt.Should().NotBeNull("the printer took the job and now reports none - it is over");
+        job.State.Should().Be(PrintState.Unknown);
+
+        (_clock.GetUtcNow() - job.StartedAt).Should()
+            .BeLessThan(QueueAdvancer.StartingStaleAfter,
+                        "closing must come from the evidence, not from waiting the bound out");
+    }
+
+    /// <summary>
+    /// A dialog still standing keeps its row, because the person at the machine can still answer it.
+    /// </summary>
+    /// <remarks>
+    /// The counterweight to the test above, and the reason the bound is not simply shortened: the
+    /// queue entry is consumed at the ack, so a row closed while <c>Print</c> is still pressable would
+    /// let that print run with no row and no entry left to adopt it against.
+    /// </remarks>
+    [Fact]
+    public async Task ADialogStillCarryingOurJobIdKeepsTheRowOpen()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+
+        context.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = PrinterId,
+            FileName = "waiting.bgcode",
+            QueuedByUserId = 1,
+            StartedAt = _clock.GetUtcNow(),
+            State = PrintState.Starting,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act - five minutes of an unanswered dialog, well past any plausible start window
+        await ReportAsync(context, PrinterStatus.Attention, jobId: 800);
+        _clock.Advance(TimeSpan.FromMinutes(5));
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+
+        job.State.Should().Be(PrintState.Starting);
+        job.EndedAt.Should().BeNull("nobody has answered it yet, and Print is still pressable");
+    }
+
+    /// <summary>
+    /// An idle printer that has never offered a job id is still starting, not finished.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is what the <c>FirmwareJobId</c> guard buys.</b> Firmware maps <c>PrintInit</c> and
+    /// <c>PrintPreviewInit</c> to <c>Idle</c>/<c>Ready</c> while it opens the file, carrying no job id
+    /// - measured at 1.0-7 s. Closing on "idle and no job" without the guard would kill every print in
+    /// its first seconds.
+    /// </remarks>
+    [Fact]
+    public async Task AnIdlePrinterThatHasNeverReportedAJobIsStillStarting()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+
+        context.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = PrinterId,
+            FileName = "opening.bgcode",
+            QueuedByUserId = 1,
+            StartedAt = _clock.GetUtcNow(),
+            State = PrintState.Starting,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act - PrintInit reports Idle with no job id
+        await ReportAsync(context, PrinterStatus.Idle, jobId: null);
+        _clock.Advance(TimeSpan.FromSeconds(4));
+
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+
+        job.State.Should().Be(PrintState.Starting);
+        job.EndedAt.Should().BeNull("a printer opening the file reports no job id yet");
+    }
+
+    /// <summary>A printer that says it stopped is believed, without waiting the bound out.</summary>
+    [Fact]
+    public async Task APrintThatNeverBeganAndIsReportedStoppedIsClosedAsStopped()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+
+        context.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = PrinterId,
+            FileName = "aborted.bgcode",
+            QueuedByUserId = 1,
+            StartedAt = _clock.GetUtcNow(),
+            State = PrintState.Starting,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        await ReportAsync(context, PrinterStatus.Stopped, jobId: null);
+        _clock.Advance(TimeSpan.FromSeconds(5));
+
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+
+        job.State.Should().Be(PrintState.Stopped, "the printer said so - there is nothing to wait for");
+        job.EndedAt.Should().NotBeNull();
+    }
+
+    /// <summary>
     /// <c>Forbidden path</c> will not change by retrying, so the entry is dropped - and recorded, or a
     /// queued print would vanish with nowhere to find out why.
     /// </summary>

@@ -223,6 +223,20 @@ public class PrintFileSender
         {
             outcome = await _commands.SendCommandAsync(printer.Id, command, caller, cancellationToken);
         }
+        catch (CommandResponseTimedOutException)
+        {
+            // The offer stands, and this is the whole point of catching this separately. A timeout
+            // says the answer was not heard, not that the command was not acted on - firmware
+            // acknowledges a download around ten seconds in when it is busy, and starts fetching
+            // immediately either way. Revoking here would pull the bytes out from under a transfer
+            // that is already running, and every chunk the printer then asked for would be refused
+            // as an unknown hash until it exhausted its retries and left an empty file on the drive.
+            //
+            // Nothing leaks by letting it stand: TransferOfferStore closes idle offers past its own
+            // lifetime on the way into the next Offer, which is the case this leaves behind when the
+            // printer really did not take the command.
+            throw;
+        }
         catch
         {
             revoke();

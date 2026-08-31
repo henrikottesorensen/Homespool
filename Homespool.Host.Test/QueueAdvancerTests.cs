@@ -121,6 +121,98 @@ public sealed class QueueAdvancerTests : IDisposable
         job.EndedAt.Should().NotBeNull("an open row would block this printer for good");
     }
 
+    /// <summary>
+    /// At the bound, the row is closed on what the printer says rather than on a guess.
+    /// </summary>
+    /// <remarks>
+    /// <b>The row closes either way</b>, so the only thing in question is whether print history says
+    /// what happened. Firmware keeps the outcome of its last two jobs and answers for them by id -
+    /// including a print aborted before it ever began, which is exactly this row. Asking costs one
+    /// command at a moment the loop was about to guess.
+    /// </remarks>
+    [Fact]
+    public async Task AtTheBoundThePrinterIsAskedHowThePrintEndedRatherThanGuessing()
+    {
+        // Arrange - stranded with a job id the printer still remembers
+        await using HomespoolDbContext context = await SeedAsync();
+
+        context.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = PrinterId,
+            FileName = "stuck.bgcode",
+            QueuedByUserId = 1,
+            QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
+            StartedAt = _clock.GetUtcNow(),
+            State = PrintState.Starting,
+            FirmwareJobId = 752,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        ConnectRememberingJobOutcome("FIN_STOPPED");
+        await ReportAsync(context, PrinterStatus.Attention, jobId: 752);
+        _clock.Advance(QueueAdvancer.StartingStaleAfter + TimeSpan.FromMinutes(1));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+
+        job.EndedAt.Should().NotBeNull();
+        job.State.Should().Be(PrintState.Stopped, "the printer remembered, so Unknown would be a guess it did not have to make");
+    }
+
+    /// <summary>
+    /// A row with no recorded scope is closed as <c>Unknown</c> without asking, rather than asked
+    /// about on invented authority.
+    /// </summary>
+    /// <remarks>
+    /// Rows opened before <see cref="PrintJob.QueuedByScope"/> existed have no credential to borrow,
+    /// and acting as the user without one would run the command with more authority than anybody
+    /// granted. Under-asking costs a guess in the history; the alternative costs more.
+    /// </remarks>
+    [Fact]
+    public async Task ARowWithNoRecordedScopeIsClosedWithoutAsking()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+
+        context.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = PrinterId,
+            FileName = "legacy.bgcode",
+            QueuedByUserId = 1,
+            QueuedByScope = null,
+            StartedAt = _clock.GetUtcNow(),
+            State = PrintState.Starting,
+            FirmwareJobId = 752,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        IPrinterConnectionActor actor = ConnectRememberingJobOutcome("FIN_STOPPED");
+        await ReportAsync(context, PrinterStatus.Attention, jobId: 752);
+        _clock.Advance(QueueAdvancer.StartingStaleAfter + TimeSpan.FromMinutes(1));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert - the printer would have answered; it was never asked, which is the point. Asserting
+        // only the Unknown outcome would pass with the guard removed, because an empty scope is
+        // refused at the send and lands on the same answer by a different road.
+        await actor.DidNotReceive().SendCommandAsync(Arg.Any<SendJobInfo>(), Arg.Any<CancellationToken>());
+
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+
+        job.EndedAt.Should().NotBeNull("the row still has to close, or the printer is wedged");
+        job.State.Should().Be(PrintState.Unknown, "there was no authority to ask with");
+    }
+
     /// <summary>And it is left alone while it is still plausibly starting.</summary>
     [Fact]
     public async Task APrintStillWithinItsStartingWindowIsLeftOpen()
@@ -1215,6 +1307,30 @@ public sealed class QueueAdvancerTests : IDisposable
              .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null)));
 
         _registry.Register(PrinterId, actor);
+    }
+
+    /// <summary>
+    /// A printer that no longer runs the job asked about, but still remembers how it ended -
+    /// <c>FIN_OK</c> or <c>FIN_STOPPED</c>, which is all its two-job history holds.
+    /// </summary>
+    private IPrinterConnectionActor ConnectRememberingJobOutcome(string finState)
+    {
+        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+        actor.IsOpen.Returns(true);
+        actor.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
+             .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null)));
+        actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
+             .Returns(call => call.Arg<ISendableCommand>() is SendJobInfo ?
+                          Task.FromResult(new CommandSendResult(
+                                              CommandSendOutcome.Completed,
+                                              new CommandOutcome(PrinterEventType.JobInfo, null),
+                                              JsonSerializer.Deserialize<JsonElement>(
+                                                  $"{{\"state\":\"{finState}\"}}"))) :
+                          Task.FromResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null)));
+
+        _registry.Register(PrinterId, actor);
+
+        return actor;
     }
 
     /// <summary>

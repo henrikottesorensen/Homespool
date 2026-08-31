@@ -543,6 +543,7 @@ namespace Homespool.Data.Migrations
                     FileName = table.Column<string>(type: "TEXT", nullable: false),
                     Digest = table.Column<string>(type: "TEXT", nullable: true),
                     QueuedByUserId = table.Column<long>(type: "INTEGER", nullable: false),
+                    QueuedByScope = table.Column<string>(type: "TEXT", maxLength: 512, nullable: true),
                     PrinterPath = table.Column<string>(type: "TEXT", nullable: true),
                     StartedAt = table.Column<long>(type: "INTEGER", nullable: false),
                     CommandedAt = table.Column<long>(type: "INTEGER", nullable: true),

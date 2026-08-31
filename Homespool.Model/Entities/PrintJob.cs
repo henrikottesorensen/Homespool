@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace Homespool.Model.Entities;
 
@@ -80,6 +81,35 @@ public class PrintJob
 
     /// <summary>Who queued it. Carried across from the queue entry, which is gone by the time this ends.</summary>
     public long QueuedByUserId { get; set; }
+
+    /// <summary>
+    /// The capability scope the work was accepted under, carried across beside
+    /// <see cref="QueuedByUserId"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Both halves of the authority, or neither.</b> The user id alone is not enough to act with:
+    /// the loop sends commands under the credential the work was accepted with, and reconstructing
+    /// that from the user would grant more authority than anybody issued - the reason
+    /// <see cref="QueuedPrint.QueuedByScope"/> exists at all, which its remarks set out.
+    /// </para>
+    /// <para>
+    /// <b>Here because the queue entry is consumed at the acknowledgement, and the questions worth
+    /// asking about a row come afterwards.</b> A print that stops being reported leaves a row whose
+    /// outcome the printer can still state - it keeps the result of its last two jobs - and until
+    /// this column existed there was no authority left to ask with, so the row was closed as
+    /// <see cref="PrintState.Unknown"/> instead. Under-asking cost a guess in the history; asking
+    /// with an authority nobody granted would have cost more.
+    /// </para>
+    /// <para>
+    /// <b>Nullable, unlike the queue entry's.</b> Rows opened before this column existed have no
+    /// recorded scope and one must not be invented for them; a null means <i>do not act on this
+    /// row's behalf</i>, not <i>unscoped</i>. Rows adopted from the panel carry the entry's scope,
+    /// because the work was still accepted here even though no command of ours started it.
+    /// </para>
+    /// </remarks>
+    [MaxLength(QueuedPrint.ScopeMaxLength)]
+    public string? QueuedByScope { get; set; }
 
     /// <summary>
     /// The path the print was started with - the printer's own 8.3 name, not the one we transferred to.

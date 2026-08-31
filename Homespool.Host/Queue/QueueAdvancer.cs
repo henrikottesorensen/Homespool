@@ -651,14 +651,18 @@ public sealed class QueueAdvancer : BackgroundService
                 return active;
             }
 
-            // The backstop, and only the backstop: a case nobody enumerated above. Closing it as
-            // Unknown is honest - nothing here can say why - and it is what stops the partial unique
-            // index blocking this printer forever.
-            _logger.LogWarning("[{PrinterId}] {FileName} was accepted {Elapsed:F0} minutes ago and never started printing; " +
-                               "closing it as Unknown so the queue is not wedged.",
-                               printerId, active.FileName, (now - active.StartedAt).TotalMinutes);
+            // The backstop, and only the backstop: a case nobody enumerated above. The row closes
+            // either way - that is what stops the partial unique index blocking this printer forever
+            // - so the only question left is whether it closes on a guess. Ask first: the printer
+            // keeps the outcome of its last two jobs and this row is very likely one of them.
+            PrintState settled = await AskPriorOutcomeAsync(scope, printerId, active, cancellationToken)
+                                 ?? PrintState.Unknown;
 
-            Close(active, PrintState.Unknown, now);
+            _logger.LogWarning("[{PrinterId}] {FileName} was accepted {Elapsed:F0} minutes ago and never started " +
+                               "printing; closing it as {Outcome} so the queue is not wedged.",
+                               printerId, active.FileName, (now - active.StartedAt).TotalMinutes, settled);
+
+            Close(active, settled, now);
             await dbContext.SaveChangesAsync(cancellationToken);
 
             return null;
@@ -830,6 +834,7 @@ public sealed class QueueAdvancer : BackgroundService
             FileName = claimed.Entry.PrintFile!.Name,
             Digest = claimed.Entry.PrintFile.Digest,
             QueuedByUserId = claimed.Entry.QueuedByUserId,
+            QueuedByScope = claimed.Entry.QueuedByScope,
             PrinterPath = claimed.PrinterPath,
             StartedAt = _timeProvider.GetUtcNow(),
 
@@ -938,7 +943,7 @@ public sealed class QueueAdvancer : BackgroundService
                 break;
 
             case PrintStartVerdict.Unresolvable:
-                await HoldUnresolvedStartAsync(dbContext, printerId, commanded, entry, now, cancellationToken);
+                await HoldUnresolvedStartAsync(scope, dbContext, printerId, commanded, entry, now, cancellationToken);
                 break;
 
             default:
@@ -1028,6 +1033,93 @@ public sealed class QueueAdvancer : BackgroundService
     }
 
     /// <summary>
+    /// Asks the printer how a print it is no longer running turned out, for a row about to be closed
+    /// on a guess.
+    /// </summary>
+    /// <returns>
+    /// <see cref="PrintState.Finished"/> or <see cref="PrintState.Stopped"/> when the printer still
+    /// remembers, null when it does not or cannot be asked.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// <b>Firmware keeps the outcome of its last two jobs, and answers for them by id.</b> A
+    /// <c>SEND_JOB_INFO</c> naming a job that is not the current one is served from that history and
+    /// comes back <c>FIN_OK</c> or <c>FIN_STOPPED</c> - and the aborting of a print that never began
+    /// is recorded there too, which is exactly the row this loop would otherwise close as
+    /// <see cref="PrintState.Unknown"/>.
+    /// </para>
+    /// <para>
+    /// <b>Only ever called where the alternative is <c>Unknown</c>.</b> It cannot make a close
+    /// happen, only make one truthful: every caller closes with or without an answer, so a printer
+    /// that has gone quiet costs nothing but the attempt. Two jobs is a short memory, and a third
+    /// print since is indistinguishable here from a printer that never knew.
+    /// </para>
+    /// <para>
+    /// <b>Asked under the row's own recorded authority</b>, which is why
+    /// <see cref="PrintJob.QueuedByScope"/> is carried across from the queue entry: acting as the
+    /// user without it would run this with more authority than anybody granted.
+    /// </para>
+    /// <para>
+    /// <b>The null check is an economy, not the safety.</b> A row from before that column has no
+    /// credential to borrow, so asking could only fail - <see cref="PrinterCommandService"/> gates
+    /// every send on <see cref="Authorisation.PrinterAccessService"/> and refuses a scope that
+    /// grants nothing, whatever this method does. Skipping the attempt saves a round trip and an
+    /// exception; it is not what prevents the escalation, and should not be read as if it were.
+    /// </para>
+    /// </remarks>
+    private async Task<PrintState?> AskPriorOutcomeAsync(AsyncServiceScope scope,
+                                                         int printerId,
+                                                         PrintJob job,
+                                                         CancellationToken cancellationToken)
+    {
+        if (job.FirmwareJobId is not { } jobId || job.QueuedByScope is not { } recordedScope)
+        {
+            return null;
+        }
+
+        if (!_registry.IsConnected(printerId))
+        {
+            return null;
+        }
+
+        PrinterCommandService commands = scope.ServiceProvider.GetRequiredService<PrinterCommandService>();
+        CommandOutcome<JobInfoEventDataDTO>? answer;
+
+        try
+        {
+            answer = await commands.AskAsync(printerId,
+                                             new PrusaConnect.Commands.SendJobInfo { JobId = jobId },
+                                             Caller.Scoped(job.QueuedByUserId, CapabilitySet.Parse(recordedScope)),
+                                             cancellationToken);
+        }
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
+                                      or CommandResponseTimedOutException or CommandSendTimedOutException or
+                                      TeamAccessDeniedException or CredentialScopeDeniedException
+                                      or CommandAnswerUnreadableException)
+        {
+            _logger.LogDebug(e, "[{PrinterId}] could not ask how firmware job {JobId} ended", printerId, jobId);
+
+            return null;
+        }
+
+        // "Job ID doesn't match" or "No job in progress" - past the two it keeps, or never known.
+        if (answer?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
+        {
+            return null;
+        }
+
+        return answer?.Answer?.State switch
+        {
+            "FIN_OK" => PrintState.Finished,
+            "FIN_STOPPED" => PrintState.Stopped,
+
+            // Anything else is the printer describing a job it is still running, which is not what
+            // this asks about, or a word nobody here has read. Neither settles an outcome.
+            _ => null,
+        };
+    }
+
+    /// <summary>
     /// Gives up asking, and stops the queue rather than guessing.
     /// </summary>
     /// <remarks>
@@ -1037,7 +1129,8 @@ public sealed class QueueAdvancer : BackgroundService
     /// closing without holding advances the queue onto a print that may already have run, and
     /// holding without closing leaves the printer's one open-print slot occupied for ever.
     /// </remarks>
-    private async Task HoldUnresolvedStartAsync(HomespoolDbContext dbContext,
+    private async Task HoldUnresolvedStartAsync(AsyncServiceScope scope,
+                                                HomespoolDbContext dbContext,
                                                 int printerId,
                                                 PrintJob commanded,
                                                 QueuedPrint? entry,
@@ -1049,8 +1142,17 @@ public sealed class QueueAdvancer : BackgroundService
             + "describe. Holding the queue - printing it again might print it twice.",
             printerId, commanded.FileName);
 
-        commanded.Reason = "The printer never said whether it started this print.";
-        Close(commanded, PrintState.Unknown, now);
+        // Same reasoning as the backstop: this row closes regardless, so ask before recording a
+        // guess. The hold below is unaffected either way - knowing how a print ended does not say
+        // whether the entry beside it is safe to run again.
+        PrintState settled = await AskPriorOutcomeAsync(scope, printerId, commanded, cancellationToken)
+                             ?? PrintState.Unknown;
+
+        commanded.Reason = settled == PrintState.Unknown
+            ? "The printer never said whether it started this print."
+            : "The printer would not describe this print while it ran, and reported afterwards how it ended.";
+
+        Close(commanded, settled, now);
 
         if (entry is not null)
         {
@@ -1376,6 +1478,7 @@ public sealed class QueueAdvancer : BackgroundService
                 FileName = head.PrintFile.Name,
                 Digest = head.PrintFile.Digest,
                 QueuedByUserId = head.QueuedByUserId,
+                QueuedByScope = head.QueuedByScope,
                 StartedAt = now,
                 EndedAt = now,
                 State = PrintState.Failed,
@@ -1431,6 +1534,7 @@ public sealed class QueueAdvancer : BackgroundService
             FileName = head.PrintFile!.Name,
             Digest = head.PrintFile.Digest,
             QueuedByUserId = head.QueuedByUserId,
+            QueuedByScope = head.QueuedByScope,
             PrinterPath = printerPath,
             StartedAt = now,
             CommandedAt = now,

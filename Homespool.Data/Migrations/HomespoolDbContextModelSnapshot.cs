@@ -336,6 +336,10 @@ namespace Homespool.Data.Migrations
                     b.Property<string>("PrinterPath")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("QueuedByScope")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
                     b.Property<long>("QueuedByUserId")
                         .HasColumnType("INTEGER");
 

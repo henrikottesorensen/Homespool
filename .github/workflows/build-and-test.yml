@@ -21,12 +21,19 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          # `global.json` sets a floor - 10.0.302, rolling forward to the newest feature band a
-          # machine has - because Roslyn ships inside the SDK, so an older band silently enforces
-          # fewer analysers than this repo thinks it enforces. Keeping the newest 10.0 here
-          # satisfies that floor. Deliberately *not* `global-json-file`: that installs the floor
-          # version itself, pinning CI to a band the repo only ever meant as a minimum.
-          dotnet-version: '10.0.x'
+          # TEMPORARY, for the Razor-cascade investigation - `notes/housekeeping.md`, "One C# error
+          # can present as a storm of Razor errors". `global.json` no longer states a floor: it pins
+          # 10.0.302 exactly, with rollForward `disable`, so the whole project sits on one band while
+          # the cascade is being counted. `10.0.x` here would install a 10.0.4xx, which that pin then
+          # refuses - CI would fail to select an SDK before building anything. These two move
+          # together; changing one without the other breaks the build.
+          #
+          # What the pin costs, and why it is acceptable for now: Roslyn ships inside the SDK, so an
+          # older band enforces fewer analysers than this repo thinks it enforces. That risk was
+          # measured on 2026-08-27 rather than assumed - the solution builds 0 errors, 0 warnings on
+          # 10.0.302, so the older band hides nothing here. Re-check that if the pin outlives the
+          # investigation, and restore `10.0.x` plus a rolling floor when it ends.
+          dotnet-version: '10.0.302'
 
       # Client-side assets are gitignored rather than committed, and the static-asset pipeline wants
       # them present at build time. The Docker build does this for itself inside the image; this is

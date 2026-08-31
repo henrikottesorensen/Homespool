@@ -44,6 +44,38 @@
         <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     </PropertyGroup>
 
+    <!--
+        Every test run writes a .trx, without anyone asking for one.
+
+        A run reduced to its summary line cannot say which test failed: the summary is the one part
+        of the output with no test name in it. That matters for a failure that appears once in
+        several runs, where the run that catches it is rarely the one somebody was watching. The
+        file survives whatever the caller does with stdout, so attributing a failure does not
+        depend on having expected it.
+
+        Named per project so the pruning below is per project - a long E2E run's evidence should
+        not be deleted by a unit-test run that finishes after it.
+    -->
+    <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('Test'))">
+        <VSTestLogger>trx%3BLogFileName=$(MSBuildProjectName)_$([System.DateTime]::Now.ToString('yyyyMMdd_HHmmss')).trx</VSTestLogger>
+        <VSTestResultsDirectory>$(MSBuildThisFileDirectory)TestResults</VSTestResultsDirectory>
+    </PropertyGroup>
+
+    <!--
+        Keeps the three most recent runs per test project. Enough to compare a failure against the
+        runs either side of it, which is what a flake needs, without accumulating a file per run
+        forever in a directory nobody looks at.
+
+        Not run on Windows: nothing here is developed or built there, and the cost of skipping it is
+        an ignored directory growing. ContinueOnError because losing old results must never fail a
+        test run - the results being pruned are the least valuable thing in the room.
+    -->
+    <Target Name="PruneOldTestResults" AfterTargets="VSTest" Condition="'$(OS)' != 'Windows_NT'">
+        <Exec Command="ls -1t &quot;$(VSTestResultsDirectory)&quot;/$(MSBuildProjectName)_*.trx 2>/dev/null | tail -n +4 | while read -r stale; do rm -f &quot;$stale&quot;; done"
+              ContinueOnError="true"
+              StandardOutputImportance="low" />
+    </Target>
+
     <ItemGroup>
         <!--
             Everywhere, so style is enforced uniformly rather than per-project. The "Unstable" package

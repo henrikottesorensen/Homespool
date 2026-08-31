@@ -1,8 +1,11 @@
-# A Raspberry Pi 3 SD-card image with the Homespool stack baked in.
+# A Raspberry Pi SD-card image with the Homespool stack baked in.
 #
-# Pi 3 rather than 4/5 because that is the board this was first tested on. The device layer is the
-# only thing that ties it there: rpi-image-gen ships pi4, pi5, cm4, cm5 and zero2w beside pi3, so
-# retargeting is a one-word change here. Everything below is board-agnostic.
+# rpi3 here is a fallback for invoking rpi-image-gen directly - the layer name matters only to
+# somebody bypassing pi/build.sh, since that script's default target is "all" and overrides it to
+# layer/homespool-rpi-all.yaml instead, which carries both the v8 and 2712 kernels on one card.
+# Firmware picks between them with no configuration involved: an older 64-bit board gets v8, a Pi 5
+# or CM5 gets 2712's 16K pages - so the one image build.sh actually produces boots every armv8 Pi,
+# verified on hardware, not just the board this line names. Everything below is board-agnostic.
 #
 # Trixie, matching the deployment the compose stack is developed against.
 device:

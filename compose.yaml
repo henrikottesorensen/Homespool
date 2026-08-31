@@ -371,6 +371,15 @@ services:
       - ./nginx/homespool.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./nginx/homespool-proxy.conf:/etc/nginx/homespool-proxy.conf:ro
 
+      # The body of the user-facing TLS listener, included once per name by the blocks
+      # 26-user-tls-servers.sh generates into conf.d at start. NOT into conf.d itself: it is a
+      # fragment of a server block, and nginx would refuse to start on a `location` at top level.
+      #
+      # Mounted rather than baked for the same reason as the template above - this is where the
+      # upload limit, the proxy timeouts and the HSTS header live, so it is the other file an
+      # operator is likely to want to edit.
+      - ./nginx/homespool-user-tls.conf:/etc/nginx/homespool-user-tls.conf:ro
+
       # NOT into conf.d, deliberately: the entrypoint hook copies it there only when this
       # deployment has a printer leaf to serve. Dropped straight into conf.d it would be
       # unconditional, and nginx would refuse to start at all on a stack with printer TLS turned

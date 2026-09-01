@@ -2531,4 +2531,7 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Settings_Confirm_Cameras_WebRtcStunEnabled" xml:space="preserve">
     <value>This deployment stops being self-contained. Your public address is discovered by asking the STUN server named above - a third party - and is then placed in every offer the stream server makes, to anyone permitted to watch. Nothing about what you print is sent anywhere either way, and watching from your own network needs none of this.</value>
   </data>
+  <data name="Settings_AppliesNote" xml:space="preserve">
+    <value>Changes apply immediately unless a field says otherwise.</value>
+  </data>
 </root>

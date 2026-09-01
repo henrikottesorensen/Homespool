@@ -80,19 +80,26 @@ public sealed class SettingsPageTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
-    /// Every setting says when it takes effect, because a page that saves and changes nothing is
-    /// worse than no page.
+    /// A page that saves and changes nothing is worse than no page, so when a change lands is always
+    /// on the page - stated once for the ordinary case, and marked on the exceptions.
     /// </summary>
+    /// <remarks>
+    /// <b>The ordinary case is deliberately not repeated per field.</b> Saying "applies immediately"
+    /// on two dozen rows buried the two that do not, which is the opposite of what the badge was for.
+    /// </remarks>
     [Fact]
-    public async Task EverySettingSaysWhenItApplies()
+    public async Task WhenAChangeLandsIsAlwaysOnThePage()
     {
         HttpClient admin = await AdminAsync("settings-grades@example.com");
 
         string page = await admin.GetStringAsync("/Admin/Settings", TestContext.Current.CancellationToken);
 
-        page.Should().Contain("Applies immediately");
+        page.Should().Contain("apply immediately unless a field says otherwise",
+                              "the ordinary case is stated once rather than on every row");
         page.Should().Contain("Applies after a restart");
         page.Should().Contain("Applies on the next sweep, within an hour");
+        page.Should().NotContain("Applies immediately",
+                                 "repeating it per row is what buried the exceptions");
 
         admin.Dispose();
     }

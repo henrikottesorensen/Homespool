@@ -67,11 +67,36 @@ public sealed class SettingsStore
     {
         Dictionary<string, string> values = [];
 
+        Dictionary<Type, object> bound = [];
+
         foreach (EditableSetting setting in EditableSettings.All)
         {
-            values[setting.Path] = setting.IsSecret ?
-                (HasStoredSecret(setting) ? SecretPlaceholder : string.Empty) :
-                _configuration[setting.Path] ?? string.Empty;
+            if (setting.IsSecret)
+            {
+                values[setting.Path] = HasStoredSecret(setting) ? SecretPlaceholder : string.Empty;
+
+                continue;
+            }
+
+            // Bound, not read raw. Most of these have no entry in appsettings.json at all - their
+            // value is the property initialiser - so asking configuration directly answers null and
+            // the page shows an empty box for a setting that is very much in force. Binding gives
+            // the value the application is actually using, which is the only one worth showing.
+            if (!bound.TryGetValue(setting.OptionsType, out object? instance))
+            {
+                instance = Candidate(setting.OptionsType, setting.Section, new Dictionary<string, string?>());
+                bound[setting.OptionsType] = instance;
+            }
+
+            object? value = setting.OptionsType.GetProperty(setting.Key)?.GetValue(instance);
+
+            values[setting.Path] = value switch
+            {
+                null => string.Empty,
+                bool flag => flag ? "true" : "false",
+                IFormattable number => number.ToString(null, CultureInfo.InvariantCulture),
+                _ => value.ToString() ?? string.Empty,
+            };
         }
 
         return values;

@@ -9,6 +9,8 @@
 
 <p class="text-body-secondary">@Localiser["Settings_Intro"]</p>
 
+<p class="text-body-secondary">@Localiser["Settings_AppliesNote"]</p>
+
 @if (!string.IsNullOrEmpty(Model.StatusMessage))
 {
     <div class="alert @(Model.StatusSuccess ? "alert-success" : "alert-warning")" role="alert">@Model.StatusMessage</div>
@@ -49,53 +51,81 @@
 <form method="post">
     @foreach (var section in Model.Sections)
     {
-        <h2 class="h5 mt-4">@Localiser["Settings_Section_" + section.Key]</h2>
-
-        @foreach (var subsection in section.GroupBy(setting => setting.DisplaySubgroup))
-        {
-            @if (subsection.Key is not null)
-            {
-                <h3 class="h6 mt-3 text-body-secondary">@Localiser["Settings_Subsection_" + subsection.Key]</h3>
-            }
-
-        @foreach (EditableSetting setting in subsection)
-        {
-            var path = setting.Path;
-            var id = path.Replace(':', '-');
-            var error = Model.Errors.TryGetValue(path, out var message) ? message : null;
-            var isFlag = setting.OptionsType.GetProperty(setting.Key)?.PropertyType == typeof(bool);
-
-            <div class="mb-3">
-                <label class="form-label" for="@id">@Localiser["Settings_Label_" + id.Replace('-', '_')]</label>
-
-                @if (isFlag)
-                {
-                    <select class="form-select @(error is null ? "" : "is-invalid")" id="@id" name="Values[@path]">
-                        <option value="false" selected="@(!string.Equals(Model.Values.GetValueOrDefault(path), "true", StringComparison.OrdinalIgnoreCase))">@Localiser["Settings_Off"]</option>
-                        <option value="true" selected="@(string.Equals(Model.Values.GetValueOrDefault(path), "true", StringComparison.OrdinalIgnoreCase))">@Localiser["Settings_On"]</option>
-                    </select>
-                }
-                else
-                {
-                    <input class="form-control @(error is null ? "" : "is-invalid")"
-                           id="@id"
-                           name="Values[@path]"
-                           type="@(setting.IsSecret ? "password" : "text")"
-                           autocomplete="@(setting.IsSecret ? "new-password" : "off")"
-                           value="@Model.Values.GetValueOrDefault(path)" />
-                }
-
-                @if (error is not null)
-                {
-                    <div class="invalid-feedback d-block">@error</div>
-                }
-
-                <div class="form-text">
-                    <span class="badge text-bg-secondary">@Model.AppliesWhen(setting)</span>
-                </div>
+        @* A card per section, because the headings alone did not read as boundaries: everything sat
+           at one weight in a single column and a reader could not see where one group ended. The
+           outline is what says "these belong together". *@
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2 class="h4 mb-0">@Localiser["Settings_Section_" + section.Key]</h2>
             </div>
-        }
-        }
+            <div class="card-body">
+                @{ var firstSubsection = true; }
+
+                @foreach (var subsection in section.GroupBy(setting => setting.DisplaySubgroup))
+                {
+                    @if (subsection.Key is not null)
+                    {
+                        <h3 class="h6 text-body-secondary text-uppercase @(firstSubsection ? "" : "mt-4 pt-3 border-top")">
+                            @Localiser["Settings_Subsection_" + subsection.Key]
+                        </h3>
+                    }
+
+                    firstSubsection = false;
+
+                    @foreach (EditableSetting setting in subsection)
+                    {
+                        var path = setting.Path;
+                        var id = path.Replace(':', '-');
+                        var error = Model.Errors.TryGetValue(path, out var message) ? message : null;
+                        var type = setting.OptionsType.GetProperty(setting.Key)?.PropertyType;
+                        var isFlag = type == typeof(bool);
+                        var isNumber = type is not null && type != typeof(bool) && type != typeof(string);
+
+                        <div class="mb-3">
+                            <label class="form-label" for="@id">@Localiser["Settings_Label_" + id.Replace('-', '_')]</label>
+
+                            @if (isFlag)
+                            {
+                                <select class="form-select @(error is null ? "" : "is-invalid")"
+                                        style="max-width: 12rem"
+                                        id="@id"
+                                        name="Values[@path]">
+                                    <option value="false" selected="@(!string.Equals(Model.Values.GetValueOrDefault(path), "true", StringComparison.OrdinalIgnoreCase))">@Localiser["Settings_Off"]</option>
+                                    <option value="true" selected="@(string.Equals(Model.Values.GetValueOrDefault(path), "true", StringComparison.OrdinalIgnoreCase))">@Localiser["Settings_On"]</option>
+                                </select>
+                            }
+                            else
+                            {
+                                @* Numbers get a field the size of the answer. A full-width box for "2"
+                                   reads as though a paragraph were expected. *@
+                                <input class="form-control @(error is null ? "" : "is-invalid")"
+                                       style="@(isNumber ? "max-width: 12rem" : null)"
+                                       id="@id"
+                                       name="Values[@path]"
+                                       type="@(setting.IsSecret ? "password" : "text")"
+                                       autocomplete="@(setting.IsSecret ? "new-password" : "off")"
+                                       value="@Model.Values.GetValueOrDefault(path)" />
+                            }
+
+                            @if (error is not null)
+                            {
+                                <div class="invalid-feedback d-block">@error</div>
+                            }
+
+                            @* Only the exceptions carry a badge. Saying "applies immediately" on
+                               two dozen fields buried the two that do not, so the ordinary case is
+                               stated once above the form and absence means it. *@
+                            @if (setting.Grade != SettingGrade.Live)
+                            {
+                                <div class="form-text">
+                                    <span class="badge text-bg-warning">@Model.AppliesWhen(setting)</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        </div>
     }
 
     <div class="mt-3">

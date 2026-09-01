@@ -42,6 +42,23 @@
             until this was set, because severity is a filter and this is the switch.
         -->
         <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+        <!--
+            Forensics for the Razor-cascade investigation - notes/housekeeping.md, "One C# error can
+            present as a storm of Razor errors". When the cascade fires, the errors point into
+            generated code that otherwise exists only inside the compiler server's memory; with this
+            on, the generator's actual output is on disk under obj/**/generated/, so a poisoned
+            build's generated source can be read and diffed against a clean build's.
+
+            In the props file rather than the flight recorder's own -p flag deliberately: a property
+            on the command line makes CLI and IDE builds disagree, and every switch between them
+            would recompile the world. Here every build agrees.
+
+            Costs a little IO per build, and note the emitted tree is never cleaned - a deleted page
+            leaves its stale .g.cs behind. That is forensic noise, not a build input; the SDK does
+            not compile from this directory. Remove when the investigation ends.
+        -->
+        <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     </PropertyGroup>
 
     <ItemGroup>

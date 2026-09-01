@@ -168,12 +168,21 @@ table_constraints() {
 # Indexes, views and triggers, as name and definition. Auto-indexes have a NULL sql and are excluded:
 # they are SQLite's own consequence of a UNIQUE or PRIMARY KEY declaration, so they are already being
 # compared as part of the table.
+#
+# LEADING AND TRAILING WHITESPACE IS STRIPPED, and the trailing half is not cosmetic - without it this
+# tool poisoned its own next run. `upgrade` creates an index by copying the reference's `sql` verbatim,
+# and EF's DDL carries a trailing newline; `replace(sql, char(10), ' ')` turns that into a trailing
+# space, which the collapse above preserves because it rewrites runs rather than removing them. So a
+# repaired database rendered one byte longer than the reference it had just been made to match, `comm`
+# reported that index as one addition AND one removal, and the removal blocked - on a database that
+# was correct. Seen twice on the appliance, 2026-08-29 and 2026-08-31, both times telling the operator
+# to discard a good database and `adopt`. Every migration that adds an index reaches it.
 objects() {
     sqlite3 "$1" "SELECT type || ' ' || name || ' ' || replace(sql, char(10), ' ')
                   FROM sqlite_master
                   WHERE type IN ('index','view','trigger') AND sql IS NOT NULL
                   ORDER BY type, name;" \
-        | sed 's/[[:space:]]\{1,\}/ /g' \
+        | sed 's/[[:space:]]\{1,\}/ /g; s/^ //; s/ $//' \
         | sort
 }
 

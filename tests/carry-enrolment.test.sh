@@ -243,6 +243,23 @@ if test_case "upgrade adds an index"; then
         "index created"
 fi
 
+if test_case "an index upgrade survives the next run - the trailing-newline trap"; then
+    # EF writes its DDL with a trailing newline, and `upgrade` copies `sql` verbatim to create the
+    # index. Rendering then turned that newline into a trailing space, so the repaired database
+    # compared one byte longer than the reference it had just been made to match and the same index
+    # came back as one addition AND one removal - blocking, on a database that was correct. Twice on
+    # the appliance before it was found, both times advising `adopt` and the loss of everything a
+    # stamp would have kept. This asserts the SECOND run, which is where it showed.
+    make_pair "" "" "" 'CREATE INDEX "IX_Printers_Name" ON "Printers" ("Name");
+'
+
+    "$script" upgrade "$scratch/old.sqlite" "$scratch/new.sqlite" >/dev/null 2>&1
+    out="$("$script" check "$scratch/old.sqlite" "$scratch/new.sqlite" 2>&1)"
+
+    assert_says "$out" "Identical schema, identical stamp. Nothing to do."
+    refute_says "$out" "the reference does not" "an index it just created is not reported as unexpected"
+fi
+
 if test_case "upgrade backs up first, and the backup still holds the old stamp"; then
     make_pair "" "" '    "Location" TEXT NULL'
 

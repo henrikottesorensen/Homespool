@@ -1,17 +1,70 @@
 #!/bin/sh
-# Derives USER_SERVER_NAMES - the space-separated form of USER_HOSTS that server_name takes - for
-# homespool.conf.template. Sourced by the base image's entrypoint before 20-envsubst-on-templates.sh
-# renders the template, in the same shell, which is what makes the export visible to it.
+# Derives the canonical list of names this deployment answers to, in the two forms its consumers
+# need. Sourced by the base image's entrypoint before 20-envsubst-on-templates.sh renders the
+# template, in the same shell, which is what makes the exports visible to it.
 #
-# WHY A CONVERSION AT ALL: the two lists want different separators and neither is negotiable.
+# WHY A CONVERSION AT ALL: the lists want different separators and neither is negotiable.
 # AllowedHosts is semicolon-separated because that is what the framework splits on, and USER_HOSTS
 # matches it so compose.yaml can splice the value straight in. nginx's server_name takes a
 # space-separated list and treats a semicolon as the end of the directive - so a raw USER_HOSTS
 # substituted into the template makes the second name an unknown directive, and nginx refuses to
 # start. Loud, but only after the file is written; converting here is what keeps it from arising.
 #
-# A DERIVED NAME, not a rewrite of USER_HOSTS in place: 25-self-signed-certificate.sh runs after
-# this and splits the list itself, and the certificate wants the names one at a time rather than
-# joined. Leaving the original alone means each consumer reads the form it needs and neither has to
-# know about the other.
-export USER_SERVER_NAMES="$(echo "${USER_HOSTS:-localhost}" | tr ';' ' ')"
+# DERIVED NAMES, not a rewrite of USER_HOSTS in place: each consumer reads the form it needs and
+# none has to know about the others.
+#
+# COMPUTED IN A COMMAND SUBSTITUTION, deliberately: this file is *sourced* by the entrypoint, so a
+# bare loop would leave its IFS and its scratch variables in the shell that every later hook runs
+# in. The subshell means nothing escapes but the exports.
+
+# The canonical list: every name, deduplicated, with localhost folded in, semicolon-separated like
+# USER_HOSTS itself. Everything else here is derived from this.
+#
+# THREE CONSUMERS MUST AGREE ON IT. 25-self-signed-certificate.sh mints one certificate per name,
+# 26-user-tls-servers.sh writes one TLS server block per name, and the template's plain-HTTP block
+# takes the spaced form below. A name with a block and no certificate stops nginx from starting; a
+# name with a certificate and no block is served by nobody. Deriving the list once is what stops
+# them drifting apart - no consumer splits USER_HOSTS itself.
+#
+# DEDUPLICATED, and that is not tidiness: localhost has to be folded in for the default deployment
+# to work at all, and the default USER_HOSTS is `localhost`. Named twice it produces two identical
+# server blocks, and nginx warns about a conflicting server name at every start - which it has done
+# for as long as localhost was appended by the consumer rather than merged here.
+export USER_TLS_NAMES="$(
+    IFS=';'
+
+    # Appended into the variable rather than onto the `for` word: field splitting applies only to
+    # what an unquoted expansion produced, so a literal spliced onto the word would stay glued to
+    # the last name instead of becoming another entry - and it would skip the duplicate check,
+    # which is the one case that matters, since the default list is `localhost` already.
+    hosts="${USER_HOSTS:-localhost};localhost"
+
+    seen=''
+    names=''
+
+    for host in $hosts; do
+        # A stray space around a semicolon is a typo, not a name. Trimmed rather than refused,
+        # because refusing means no certificate and therefore no listener - a punishing answer to
+        # a space.
+        host="$(echo "$host" | tr -d '[:space:]')"
+        [ -n "$host" ] || continue
+
+        # Whole-entry match, which the delimiters are what make it: without them `home.lan` would
+        # count `myhome.lan` as already present and quietly drop it.
+        case ";$seen" in
+            *";$host;"*) continue ;;
+        esac
+
+        seen="$seen$host;"
+        names="$names$host;"
+    done
+
+    printf '%s' "${names%;}"
+)"
+
+# The same list with spaces, which is the form server_name takes. Used by the plain-HTTP block in
+# homespool.conf.template, and by nothing else - the TLS blocks are generated one name at a time by
+# 26-user-tls-servers.sh and never see a list.
+#
+# It already contains localhost, so the template must NOT append one of its own.
+export USER_SERVER_NAMES="$(echo "$USER_TLS_NAMES" | tr ';' ' ')"

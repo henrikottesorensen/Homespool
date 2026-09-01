@@ -37,6 +37,11 @@ USER 101
 COPY --chown=101:101 --chmod=755 docker-entrypoint.d/20-printer-listener.sh /docker-entrypoint.d/
 COPY --chown=101:101 --chmod=755 docker-entrypoint.d/25-self-signed-certificate.sh /docker-entrypoint.d/
 
+# 26 after 25, and the numbers are load-bearing: 25 mints a certificate for every name that has
+# none, and 26 writes the server block that points at it. Reversed, every block would name a
+# certificate that did not exist yet and nginx would refuse to start.
+COPY --chown=101:101 --chmod=755 docker-entrypoint.d/26-user-tls-servers.sh /docker-entrypoint.d/
+
 # Sourced rather than launched - .envsh is the entrypoint's convention for a hook that has to set
 # environment for the scripts after it, here REDIRECT_PORT_SUFFIX and USER_SERVER_NAMES before
 # envsubst renders the template. The exec bit is still required: the entrypoint checks -x before

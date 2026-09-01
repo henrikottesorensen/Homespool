@@ -1,0 +1,23 @@
+[Unit]
+Description=Warn before Homespool's publicly-trusted certificates expire
+Documentation=file:/usr/local/sbin/homespool-check-cert
+
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+Environment=COMPOSE_DIR=@COMPOSE_DIR@
+ExecStart=/usr/local/sbin/homespool-check-cert
+
+# SEPARATE FROM THE RENEWAL, deliberately, and this is the whole point of having it. The renewal
+# failing is the loud case and systemd already reports it. This one catches the quiet cases: a
+# renewal that reported success but wrote where the proxy does not look, a timer nobody enabled, a
+# credential revoked months ago on a certificate that had not needed renewing yet. Every one of
+# those leaves a deployment that looks healthy until a browser refuses it.
+#
+# Exit 1 (inside the warning window) and exit 2 (expired or unreadable) both fail the unit, so
+# `systemctl --failed` and any monitoring that reads it will say so without anything being parsed.
+
+[Install]
+WantedBy=multi-user.target

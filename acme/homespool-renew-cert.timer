@@ -1,0 +1,19 @@
+[Unit]
+Description=Daily renewal check for Homespool's publicly-trusted certificates
+
+[Timer]
+# Daily, not weekly: lego renews at 30 days remaining on a 90-day certificate, so there is a 30-day
+# window to succeed in and no single miss matters. A weekly timer turns that into four attempts,
+# which is few enough that a transient DNS failure starts to count.
+OnCalendar=daily
+
+# Spread load on the certificate authority, and avoid every host on earth asking at midnight. Also
+# means a renewal is unlikely to coincide with the check timer, which reads the same volume.
+RandomizedDelaySec=6h
+
+# Run on the next boot if the machine was off when it was due. An appliance in a house is not on all
+# the time, and a certificate does not stop expiring while it is off.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

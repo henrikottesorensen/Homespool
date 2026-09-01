@@ -243,7 +243,7 @@ public class IndexModel : PageModel
             caller.Allows(Capability.ManipulateOwnFiles),
             await CameraFrameUrlAsync(row.Printer.Id, caller, cancellationToken),
             string.Join(", ", UserFileStore.AllowedExtensions),
-            Files.IndexModel.FormatSize(_storage.MaxUploadBytes));
+            ByteSize.Format(_storage.MaxUploadBytes, _localiser));
 
         return Partial("_TileDrop", prompt);
     }

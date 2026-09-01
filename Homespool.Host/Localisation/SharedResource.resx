@@ -2534,4 +2534,16 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Settings_AppliesNote" xml:space="preserve">
     <value>Changes apply immediately unless a field says otherwise.</value>
   </data>
+  <data name="ByteUnit_B" xml:space="preserve">
+    <value>B</value>
+  </data>
+  <data name="ByteUnit_KiB" xml:space="preserve">
+    <value>KiB</value>
+  </data>
+  <data name="ByteUnit_MiB" xml:space="preserve">
+    <value>MiB</value>
+  </data>
+  <data name="ByteUnit_GiB" xml:space="preserve">
+    <value>GiB</value>
+  </data>
 </root>

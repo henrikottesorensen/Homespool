@@ -3,7 +3,7 @@ using System.Globalization;
 
 using AwesomeAssertions;
 
-using Homespool.Host.Pages.Files;
+using Homespool.Host.Localisation;
 
 namespace Homespool.Host.Test;
 
@@ -49,16 +49,16 @@ public class ReaderCultureFormattingTests
     }
 
     [Theory]
-    [InlineData("en-GB", "4.1 MB")]
-    [InlineData("en-US", "4.1 MB")]
-    [InlineData("da", "4,1 MB")]
+    [InlineData("en-GB", "4.1 MiB")]
+    [InlineData("en-US", "4.1 MiB")]
+    [InlineData("da", "4,1 MiB")]
     public void AFileSizeUsesTheSeparatorTheReaderWritesNumbersWith(string culture, string expected)
     {
-        InCulture(culture, () => IndexModel.FormatSize(4_300_000).Should().Be(expected));
+        InCulture(culture, () => ByteSize.Format(4_300_000, TestLocaliser.Shared()).Should().Be(expected));
     }
 
     /// <summary>
-    /// Under 1 KB there is no decimal to separate, so every culture agrees - worth pinning, because
+    /// Under 1 KiB there is no decimal to separate, so every culture agrees - worth pinning, because
     /// it is the branch that would go on passing if the other one regressed.
     /// </summary>
     [Theory]
@@ -66,18 +66,48 @@ public class ReaderCultureFormattingTests
     [InlineData("da")]
     public void AWholeNumberOfBytesReadsTheSameEverywhere(string culture)
     {
-        InCulture(culture, () => IndexModel.FormatSize(512).Should().Be("512 B"));
+        InCulture(culture, () => ByteSize.Format(512, TestLocaliser.Shared()).Should().Be("512 B"));
     }
 
     /// <summary>
-    /// The binary units are ours and are not translated, so they must survive the culture switch
-    /// unchanged - a size that read <c>4,1 Mo</c> in one language and <c>4.1 MB</c> in another would
-    /// be two different claims about the same file.
+    /// The unit is a resource string, so it can differ by language - and today does not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This reverses what this file used to assert</b> (Henrik, 2026-09-01), and the reversal is
+    /// worth stating because the old reasoning was not silly. It held that a unit is ours rather than
+    /// the reader's, and that <c>4,1 Mo</c> against <c>4.1 MB</c> would be two different claims about
+    /// one file. What decides it the other way is that in French the unit genuinely is a word in that
+    /// language - <c>Mio</c> for this quantity - so refusing to translate it does not keep the claim
+    /// identical, it just states it in somebody else's language beside a separator in theirs.
+    /// </para>
+    /// <para>
+    /// <b>No shipped language differs</b>, so this pins that English and Danish agree. It is paid
+    /// before the first language that would disagree rather than after, which is the only time such a
+    /// thing is cheap.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData("en-GB")]
+    [InlineData("en-US")]
+    [InlineData("da")]
+    public void EveryShippedLanguageWritesTheSameUnitToday(string culture)
+    {
+        InCulture(culture, () => ByteSize.Format(4_300_000, TestLocaliser.Shared()).Should().EndWith(" MiB"));
+    }
+
+    /// <summary>
+    /// The prefixes are IEC because the arithmetic is binary. Calling 1024-based units MB named a
+    /// quantity this never produced.
     /// </summary>
     [Fact]
-    public void TheUnitIsOursAndDoesNotMoveWithTheReader()
+    public void ThePrefixesMatchTheArithmetic()
     {
-        InCulture("da", () => IndexModel.FormatSize(4_300_000).Should().EndWith(" MB"));
-        InCulture("en-GB", () => IndexModel.FormatSize(4_300_000).Should().EndWith(" MB"));
+        InCulture("en-GB", () =>
+        {
+            ByteSize.Format(1024, TestLocaliser.Shared()).Should().Be("1 KiB");
+            ByteSize.Format(1024L * 1024, TestLocaliser.Shared()).Should().Be("1 MiB");
+            ByteSize.Format(1024L * 1024 * 1024, TestLocaliser.Shared()).Should().Be("1 GiB");
+        });
     }
 }

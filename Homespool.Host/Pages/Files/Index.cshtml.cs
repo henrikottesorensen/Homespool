@@ -149,35 +149,6 @@ public class IndexModel : PageModel
     /// </remarks>
     public int? SelectedPrinterId { get; private set; }
 
-    /// <summary>Bytes as a person reads them. Binary units, because that is what a printer's storage uses.</summary>
-    public static string FormatSize(long bytes)
-    {
-        string[] units = ["B", "KB", "MB", "GB"];
-        double size = bytes;
-        int unit = 0;
-
-        while (size >= 1024 && unit < units.Length - 1)
-        {
-            size /= 1024;
-            unit++;
-        }
-
-        // No decimal on bytes, one everywhere else: "512 B" and "4.1 MB" both read better than the
-        // alternative.
-        //
-        // The reader's culture, not the invariant one. This was invariant "so the separator does not
-        // move with the server's locale", which was the right instinct answered on the wrong axis:
-        // the danger was never that a Danish *server* would render 4,1 MB to an English reader, it
-        // was that the separator would follow the machine rather than the person. Now that a request
-        // carries the reader's culture, following it is what puts the separator where they read it -
-        // and 4,1 MB is simply how a number is written in Danish, so invariant here means being
-        // wrong for them on purpose. The precision hazard on this value is a separate question
-        // from the culture one.
-        return unit == 0 ?
-            string.Create(CultureInfo.CurrentCulture, $"{bytes} B") :
-            string.Create(CultureInfo.CurrentCulture, $"{size:0.#} {units[unit]}");
-    }
-
     /// <summary>
     /// Which direction a column starts in when nobody has chosen one.
     /// </summary>
@@ -321,7 +292,7 @@ public class IndexModel : PageModel
             // Known before a byte is copied, because the request has already been buffered - so this
             // refuses without writing anything, which the streaming version could not have done.
             (StatusMessage, StatusSuccess) =
-                (_localiser["Files_TooLarge", FormatSize(_options.MaxUploadBytes)], false);
+                (_localiser["Files_TooLarge", ByteSize.Format(_options.MaxUploadBytes, _localiser)], false);
 
             return RedirectToSelf(sort, desc, printerId);
         }

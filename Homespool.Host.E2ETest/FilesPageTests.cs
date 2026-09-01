@@ -91,7 +91,7 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         // Assert
         page.Should().Contain("benchy.gcode");
         page.Should().NotContain("secret.gcode", "the listing is scoped to the signed-in user");
-        page.Should().Contain("2 KB", "sizes are rendered for people, not in bytes");
+        page.Should().Contain("2 KiB", "sizes are rendered for people, and in the units the arithmetic actually produces");
 
         alice.Dispose();
         bob.Dispose();

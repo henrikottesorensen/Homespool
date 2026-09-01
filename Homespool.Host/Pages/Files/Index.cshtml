@@ -85,7 +85,7 @@
         <button type="submit" class="btn btn-primary text-nowrap">@Localiser["Files_Upload"]</button>
     </form>
     <p class="text-body-secondary small mb-0 mt-2">
-        @Localiser["Files_DropHere", IndexModel.FormatSize(Model.MaxUploadBytes)]
+        @Localiser["Files_DropHere", ByteSize.Format(Model.MaxUploadBytes, Localiser)]
     </p>
 </div>
 
@@ -153,9 +153,9 @@ else
                 else
                 {
                     <td class="typed-name">@file.FileName</td>
-                    <td class="text-end font-monospace">@IndexModel.FormatSize(file.Length)</td>
+                    <td class="text-end font-monospace">@ByteSize.Format(file.Length, Localiser)</td>
                     @* ISO, deliberately, and not because the reader's culture is unknown - it is known
-                       per request, and FormatSize beside this now follows it. A timestamp is the one
+                       per request, and ByteSize.Format beside this now follows it. A timestamp is the one
                        value where following it would make the column worse: en-GB and en-US are both
                        supported here and disagree silently about 01/02/2026, so a short date is only
                        unambiguous to a reader who knows which of the two they are being shown. This

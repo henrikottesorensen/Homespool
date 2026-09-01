@@ -202,7 +202,7 @@ public class SettingsModel : PageModel
                              System.Globalization.NumberStyles.Integer,
                              System.Globalization.CultureInfo.InvariantCulture,
                              out long bytes) && bytes >= 0 ?
-            Files.IndexModel.FormatSize(bytes) :
+            ByteSize.Format(bytes, _localiser) :
             null;
     }
 

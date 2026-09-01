@@ -2442,4 +2442,16 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Settings_AppliesNote" xml:space="preserve">
     <value>Ændringer træder i kraft med det samme, medmindre et felt siger noget andet.</value>
   </data>
+  <data name="ByteUnit_B" xml:space="preserve">
+    <value>B</value>
+  </data>
+  <data name="ByteUnit_KiB" xml:space="preserve">
+    <value>KiB</value>
+  </data>
+  <data name="ByteUnit_MiB" xml:space="preserve">
+    <value>MiB</value>
+  </data>
+  <data name="ByteUnit_GiB" xml:space="preserve">
+    <value>GiB</value>
+  </data>
 </root>

@@ -179,6 +179,34 @@ public class SettingsModel : PageModel
     }
 
     /// <summary>
+    /// A byte count as a person reads it, or null when the setting is not one.
+    /// </summary>
+    /// <remarks>
+    /// <b>Recognised by the property name rather than a flag on the allowlist</b>, because the
+    /// convention already carries it - a setting measured in bytes is named for it, and its label
+    /// says so too. A presentation detail is not worth another column somebody has to remember to
+    /// fill in.
+    /// </remarks>
+    /// <param name="setting">The setting being rendered.</param>
+    /// <returns>Something like <c>512 MB</c>, or null.</returns>
+    public string? SizeHint(EditableSetting setting)
+    {
+        System.ArgumentNullException.ThrowIfNull(setting);
+
+        if (!setting.Key.EndsWith("Bytes", System.StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        return long.TryParse(Values.GetValueOrDefault(setting.Path),
+                             System.Globalization.NumberStyles.Integer,
+                             System.Globalization.CultureInfo.InvariantCulture,
+                             out long bytes) && bytes >= 0 ?
+            Files.IndexModel.FormatSize(bytes) :
+            null;
+    }
+
+    /// <summary>
     /// The sentence telling somebody when a change will be obeyed.
     /// </summary>
     /// <param name="setting">The setting being rendered.</param>

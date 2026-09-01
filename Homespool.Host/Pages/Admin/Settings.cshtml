@@ -112,6 +112,12 @@
                                 <div class="invalid-feedback d-block">@error</div>
                             }
 
+                            @{ var size = Model.SizeHint(setting); }
+                            @if (size is not null)
+                            {
+                                <div class="form-text">@size</div>
+                            }
+
                             @* Only the exceptions carry a badge. Saying "applies immediately" on
                                two dozen fields buried the two that do not, so the ordinary case is
                                stated once above the form and absence means it. *@

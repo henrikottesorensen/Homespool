@@ -944,7 +944,7 @@ ask_user_host() {
     say
     local suggestion
     suggestion="$(suggested_user_host)"
-    say $"The name people type in a browser. Anything reaching this deployment under a name that is not here is refused, so give every name that should work - separated by semicolons, as in name1.tld;name2.tld. They all go into the self-signed certificate too, though a browser warns about that certificate whatever it carries."
+    say $"The name people type in a browser. Anything reaching this deployment under a name that is not here is refused, so give every name that should work - separated by semicolons, as in name1.tld;name2.tld. Each one gets its own certificate, self-signed unless you ask for a public one later, and a browser warns about a self-signed certificate whatever it carries."
     plan_set USER_HOSTS "$(ask "  Name" "$suggestion")"
 }
 
@@ -1199,6 +1199,157 @@ ask_ports() {
         fi
         plan_set REDIRECT_PORT_SUFFIX "$suffix"
     fi
+}
+
+# A value this run has already decided, falling back to what is on disk. USER_HOSTS is answered
+# earlier in the same run, and reading it from the file would offer suggestions built from the
+# previous deployment's names.
+planned() {
+    local key="$1" value
+    value="$(printf '%s' "$pending" | awk -v k="$key" '
+        index($0, k "=") == 1 { v = substr($0, length(k) + 2) }
+        END { print v }
+    ')"
+
+    if [ -n "$value" ]; then
+        printf '%s' "$value"
+    else
+        env_get "$key"
+    fi
+}
+
+# The names from USER_HOSTS that a public certificate authority could plausibly verify. A guess
+# offered as a default, not a rule: the operator can type anything, and the only real test is
+# whether the authority agrees.
+#
+# Excluded are the names no authority will ever sign, which is what makes the suggestion useful
+# rather than a list of everything: a bare address, and the reserved suffixes for local networks.
+# Getting this wrong in the generous direction costs a failed renewal and a puzzled operator, so it
+# errs the other way - a public name wrongly left out is one the operator adds by hand.
+acme_host_suggestion() {
+    local hosts result host
+    hosts="$(planned USER_HOSTS)"
+    result=""
+
+    local old_ifs="$IFS"
+    IFS=';'
+    for host in $hosts; do
+        IFS="$old_ifs"
+        host="$(echo "$host" | tr -d '[:space:]')"
+        [ -n "$host" ] || { IFS=';'; continue; }
+
+        case "$host" in
+            # An address, by the same crude rule the certificate scripts use: only digits and dots.
+            *[!0-9.]*) ;;
+            *) IFS=';'; continue ;;
+        esac
+
+        case "$host" in
+            localhost|*.lan|*.local|*.home|*.internal|*.localdomain) IFS=';'; continue ;;
+        esac
+
+        # A public name has a dot in it. A single-label name is a LAN name whatever it is called.
+        case "$host" in
+            *.*) result="$result$host;" ;;
+        esac
+
+        IFS=';'
+    done
+    IFS="$old_ifs"
+
+    printf '%s' "${result%;}"
+}
+
+ask_public_tls() {
+    local suggestion current names email provider fmt
+
+    current="$(env_get ACME_HOSTS)"
+    suggestion="$(acme_host_suggestion)"
+    [ -n "$current" ] && suggestion="$current"
+
+    say
+    say $"A certificate browsers already trust, obtained automatically. This is OPTIONAL: without it the site is still served over TLS, with a certificate this deployment signs itself, and browsers warn that nobody vouches for it."
+    say
+    say $"It needs a name on the public internet that you control - a certificate authority has to verify you own it. Nobody can vouch for a .lan name or a bare address, so those keep the self-signed certificate for ever, which is the correct answer for them."
+
+    if ! ask_yes_no $"  Do you have a public domain name pointing at this machine" "$([ -n "$current" ] && echo y || echo n)"; then
+        # Turning it off is a real answer, and leaving the old list behind would mean a renewal
+        # timer going on trying for a name this deployment no longer claims.
+        if [ -n "$current" ]; then
+            say
+            fmt=$"  Stop obtaining certificates for %s"
+            if ask_yes_no "$(printf "$fmt" "$current")" y; then
+                plan_set ACME_HOSTS ""
+            fi
+        fi
+        return 0
+    fi
+
+    say
+    say $"Which names - semicolons between them. Every one must also be in USER_HOSTS, or nothing serves the certificate obtained for it."
+    names="$(ask "  Public name" "$suggestion")"
+
+    if [ -z "$names" ]; then
+        say
+        warn $"No name given; leaving automatic certificates switched off."
+        return 0
+    fi
+
+    # Checked against the answer this run gave, not against the file, so the two are compared as
+    # they will be written. A name here that is missing there produces a certificate nothing serves
+    # and no error anywhere - the exact silent half-configuration this question exists to avoid.
+    local user_hosts host missing
+    user_hosts=";$(planned USER_HOSTS);"
+    missing=""
+
+    local old_ifs="$IFS"
+    IFS=';'
+    for host in $names; do
+        IFS="$old_ifs"
+        host="$(echo "$host" | tr -d '[:space:]')"
+        [ -n "$host" ] || { IFS=';'; continue; }
+        case "$user_hosts" in
+            *";$host;"*) ;;
+            *) missing="$missing$host " ;;
+        esac
+        IFS=';'
+    done
+    IFS="$old_ifs"
+
+    if [ -n "$missing" ]; then
+        # Translated by bash's $"..." and then formatted, rather than through gettext(1): the
+        # command is a package this script otherwise does not need, and the whole point of the
+        # $"..." form is that it falls back to the English written here when nothing is installed.
+        fmt=$"Not in USER_HOSTS: %s"
+        say
+        warn "$(printf "$fmt" "$missing")"
+        say $"  A certificate would be obtained for it and never served. Add it to USER_HOSTS, or correct the name."
+        if ! ask_yes_no $"  Use it anyway" n; then
+            return 0
+        fi
+    fi
+
+    plan_set ACME_HOSTS "$names"
+
+    say
+    say $"Where the authority sends expiry warnings if renewal ever stops working."
+    email="$(ask "  Email" "$(env_get ACME_EMAIL)")"
+    plan_set ACME_EMAIL "$email"
+
+    say
+    say $"Which DNS provider hosts the name. The challenge is answered by writing a DNS record, so nothing here has to be reachable from the internet - no port forwarding, no public address."
+    provider="$(ask "  DNS provider" "$(env_get ACME_DNS_PROVIDER)")"
+    plan_set ACME_DNS_PROVIDER "$provider"
+
+    say
+    say $"Two more steps, which this wizard cannot do for you:"
+    say
+    say_raw "    sudo ./acme/install.sh"
+    say
+    fmt=$"  then put your %s credentials in /etc/lego/dns.env"
+    say "$(printf "$fmt" "$provider")"
+    fmt=$"  (ask what it wants: docker compose --profile certs run --rm certs dnshelp -c %s)"
+    say "$(printf "$fmt" "$provider")"
 }
 
 # ------------------------------------------------------------------------------------------------
@@ -1659,6 +1810,10 @@ main() {
         ask_user_host
         ask_timezone
         ask_ports
+
+        # After ask_user_host, which it validates against, and after ask_ports because it is the
+        # last thing anyone needs and the first thing they can skip.
+        ask_public_tls
         ensure_go2rtc_credential
         ensure_ca_passphrase
         check_subnet_collision

@@ -1,147 +1,183 @@
-#: setup-env.sh:525
+#: setup-env.sh:526
 msgid "  Running inside a container, so Docker's own ranges cannot be listed from here. Excluding 172.16.0.0/12 instead, which covers them. If your LAN genuinely lives there, type the address rather than picking from the list."
 msgstr ""
-#: setup-env.sh:527
+#: setup-env.sh:528
 msgid "Could not ask Docker which ranges it has allocated - is it installed and running? Falling back to excluding 172.16.0.0/12 entirely. If your LAN genuinely lives there, type the address rather than picking from the list."
 msgstr ""
-#: setup-env.sh:760
+#: setup-env.sh:761
 msgid "The address printers use to reach this server."
 msgstr ""
-#: setup-env.sh:762
+#: setup-env.sh:763
 msgid "  This is the one setting with no sensible default, and the one that is expensive to get wrong: it is written into every USB provisioning bundle, and the printer certificate is issued once - on the first start - covering this address and every address the machine can see. Set it now and it is covered by construction."
 msgstr ""
-#: setup-env.sh:776
+#: setup-env.sh:777
 msgid "  Addresses on this machine that a printer could reach:"
 msgstr ""
-#: setup-env.sh:787
+#: setup-env.sh:788
 msgid "    $n) $addr"
 msgstr ""
-#: setup-env.sh:795
+#: setup-env.sh:796
 msgid "  A name keeps working when this machine's address changes - an address does not - but only while your router keeps publishing it, which is not checked here. Test it from another machine before relying on it."
 msgstr ""
-#: setup-env.sh:816
+#: setup-env.sh:817
 msgid "No usable address detected on this machine. Loopback, link-local and Docker's own ranges are excluded - a printer cannot reach any of them, and one baked into the certificate cannot be corrected without a reissue."
 msgstr ""
-#: setup-env.sh:828
+#: setup-env.sh:829
 msgid "Left unset. USB-key provisioning will refuse to produce a snippet until it is."
 msgstr ""
-#: setup-env.sh:834
+#: setup-env.sh:835
 msgid "$host is this machine talking to itself - no printer can reach it."
 msgstr ""
-#: setup-env.sh:835
+#: setup-env.sh:836
 msgid "  Use it anyway"
 msgstr ""
-#: setup-env.sh:854
+#: setup-env.sh:855
 msgid "  $host is served by ordinary DNS, not mDNS - a printer can resolve it."
 msgstr ""
-#: setup-env.sh:857
+#: setup-env.sh:858
 msgid "$host is probably an mDNS name, and Prusa firmware announces itself over mDNS but cannot resolve it - so a printer would never find this server, however well the name works from your own machine. There is no dig, nslookup or host here to check whether your network serves .local from real DNS instead, which some older ones do."
 msgstr ""
-#: setup-env.sh:858
+#: setup-env.sh:859
 msgid "  Use it anyway"
-msgstr ""
-#: setup-env.sh:861
-msgid "$host is an mDNS name - it does not resolve in DNS, only by multicast. Prusa firmware announces itself over mDNS but cannot resolve it, so a printer given this name will never find this server, even though it resolves perfectly from your own machine. Use the address, or a name your router publishes in DNS."
 msgstr ""
 #: setup-env.sh:862
-msgid "  Use it anyway"
+msgid "$host is an mDNS name - it does not resolve in DNS, only by multicast. Prusa firmware announces itself over mDNS but cannot resolve it, so a printer given this name will never find this server, even though it resolves perfectly from your own machine. Use the address, or a name your router publishes in DNS."
 msgstr ""
-#: setup-env.sh:875
-msgid "$host does not resolve from here. The certificate will cover the name, but a printer that cannot resolve it either will have nothing to connect to."
+#: setup-env.sh:863
+msgid "  Use it anyway"
 msgstr ""
 #: setup-env.sh:876
+msgid "$host does not resolve from here. The certificate will cover the name, but a printer that cannot resolve it either will have nothing to connect to."
+msgstr ""
+#: setup-env.sh:877
 msgid "  Use it anyway"
 msgstr ""
-#: setup-env.sh:878
+#: setup-env.sh:879
 msgid "  $host resolves to $resolved - the certificate will cover both."
 msgstr ""
-#: setup-env.sh:887
+#: setup-env.sh:888
 msgid "$host is inside $hit, which printers on your network cannot route to. It would be minted into the certificate and frozen there."
 msgstr ""
-#: setup-env.sh:888
+#: setup-env.sh:889
 msgid "  Use it anyway"
 msgstr ""
-#: setup-env.sh:946
-msgid "The name people type in a browser. Anything reaching this deployment under a name that is not here is refused, so give every name that should work - separated by semicolons, as in name1.tld;name2.tld. They all go into the self-signed certificate too, though a browser warns about that certificate whatever it carries."
+#: setup-env.sh:947
+msgid "The name people type in a browser. Anything reaching this deployment under a name that is not here is refused, so give every name that should work - separated by semicolons, as in name1.tld;name2.tld. Each one gets its own certificate, self-signed unless you ask for a public one later, and a browser warns about a self-signed certificate whatever it carries."
 msgstr ""
-#: setup-env.sh:952
+#: setup-env.sh:953
 msgid "The zone timestamps are shown in. The conversion happens on the server, so this decides what print history reads and what an invitation email says its expiry is."
 msgstr ""
-#: setup-env.sh:1191
+#: setup-env.sh:1192
 msgid "  The redirect has to name the port a BROWSER should ask for - \\\":8443\\\" form, or empty for 443."
 msgstr ""
-#: setup-env.sh:1205
-msgid "Outgoing mail is optional. Without it, new accounts are created already confirmed and password reset is unavailable - invitations still work, you just pass the link on yourself."
+#: setup-env.sh:1271
+msgid "A certificate browsers already trust, obtained automatically. This is OPTIONAL: without it the site is still served over TLS, with a certificate this deployment signs itself, and browsers warn that nobody vouches for it."
 msgstr ""
-#: setup-env.sh:1226
-msgid "Homespool runs in a container, so $host is the container itself - not this machine."
+#: setup-env.sh:1273
+msgid "It needs a name on the public internet that you control - a certificate authority has to verify you own it. Nobody can vouch for a .lan name or a bare address, so those keep the self-signed certificate for ever, which is the correct answer for them."
 msgstr ""
-#: setup-env.sh:1248
-msgid "  Port $port is not one of the three well-known ones, so it does not say how the connection is encrypted. It has to match what the server offers."
+#: setup-env.sh:1275
+msgid "  Do you have a public domain name pointing at this machine"
 msgstr ""
-#: setup-env.sh:1249
-msgid "    1) STARTTLS - upgraded after connecting 2) implicit TLS - encrypted from the first byte 3) none - only for a server on this machine; sends the password in the clear"
+#: setup-env.sh:1280
+msgid "  Stop obtaining certificates for %s"
 msgstr ""
-#: setup-env.sh:1298
+#: setup-env.sh:1289
+msgid "Which names - semicolons between them. Every one must also be in USER_HOSTS, or nothing serves the certificate obtained for it."
+msgstr ""
+#: setup-env.sh:1294
+msgid "No name given; leaving automatic certificates switched off."
+msgstr ""
+#: setup-env.sh:1323
+msgid "Not in USER_HOSTS: %s"
+msgstr ""
+#: setup-env.sh:1326
+msgid "  A certificate would be obtained for it and never served. Add it to USER_HOSTS, or correct the name."
+msgstr ""
+#: setup-env.sh:1327
+msgid "  Use it anyway"
+msgstr ""
+#: setup-env.sh:1335
+msgid "Where the authority sends expiry warnings if renewal ever stops working."
+msgstr ""
+#: setup-env.sh:1340
+msgid "Which DNS provider hosts the name. The challenge is answered by writing a DNS record, so nothing here has to be reachable from the internet - no port forwarding, no public address."
+msgstr ""
+#: setup-env.sh:1345
+msgid "Two more steps, which this wizard cannot do for you:"
+msgstr ""
+#: setup-env.sh:1349
+msgid "  then put your %s credentials in /etc/lego/dns.env"
+msgstr ""
+#: setup-env.sh:1351
+msgid "  (ask what it wants: docker compose --profile certs run --rm certs dnshelp -c %s)"
+msgstr ""
+#: setup-env.sh:1379
 msgid "GO2RTC_PASSWORD contains a double quote or a backslash. Neither can reach the camera sidecar intact, so every camera will answer 401 while the setting looks correct. Replace it with the output of: openssl rand -base64 24"
 msgstr ""
-#: setup-env.sh:1307
+#: setup-env.sh:1388
 msgid "No source of randomness found - leaving the camera sidecar unauthenticated, which is what this deployment already had. Its port is not published."
 msgstr ""
-#: setup-env.sh:1315
+#: setup-env.sh:1396
 msgid "Generated a credential for the camera sidecar."
 msgstr ""
-#: setup-env.sh:1355
+#: setup-env.sh:1411
+msgid "No source of randomness found, and the server refuses to start without CA_PASSPHRASE. Set it by hand to the output of: openssl rand -base64 24 (run anywhere)."
+msgstr ""
+#: setup-env.sh:1416
+msgid "Generated a passphrase for the printer CA key; the server encrypts the key with it on its next start. Do not lose it - without it the key cannot be read and every printer would need re-provisioning from a USB stick. Back .env up separately from data/."
+msgstr ""
+#: setup-env.sh:1456
 msgid "Detected $address as the address printers reach this server on."
 msgstr ""
-#: setup-env.sh:1381
+#: setup-env.sh:1483
 msgid "/16 from 172.16 to 172.31 is taken. Set PROXY_SUBNET and PROXY_NETWORK by hand."
 msgstr ""
-#: setup-env.sh:1386
+#: setup-env.sh:1488
 msgid "$candidate instead."
 msgstr ""
-#: setup-env.sh:1407
+#: setup-env.sh:1509
 msgid "The compose network $subnet collides with:$colliding"
 msgstr ""
-#: setup-env.sh:1409
+#: setup-env.sh:1511
 msgid "A collision with another Docker network fails loudly at startup. A collision with a route this machine already has does not: the stack comes up, and that network stops being reachable from here."
 msgstr ""
-#: setup-env.sh:1413
+#: setup-env.sh:1515
 msgid "Every /16 from 172.16 to 172.31 is in use here - pick a range by hand."
 msgstr ""
-#: setup-env.sh:1457
+#: setup-env.sh:1559
 msgid "This stack has run before, so the printer certificate has already been issued - and it is issued once. Changing PRINTER_HOST in .env does not change what that certificate covers. Reissue it afterwards from Admin -> Printer certificate, or printers will fail to verify."
 msgstr ""
-#: setup-env.sh:1495
+#: setup-env.sh:1597
 msgid "This will change:"
 msgstr ""
-#: setup-env.sh:1528
+#: setup-env.sh:1630
 msgid "Every other line - comments, blank lines, and any key not listed - is left as it is."
 msgstr ""
-#: setup-env.sh:1536
+#: setup-env.sh:1638
 msgid "Created $env_file from .env.example."
 msgstr ""
-#: setup-env.sh:1698
+#: setup-env.sh:1800
 msgid "Homespool - .env setup"
 msgstr ""
-#: setup-env.sh:1701
+#: setup-env.sh:1803
 msgid "Editing the existing file, and only the settings below are touched:"
 msgstr ""
-#: setup-env.sh:1704
+#: setup-env.sh:1806
 msgid "No .env yet. One will be created from .env.example, with these settings filled in."
 msgstr ""
-#: setup-env.sh:1718
+#: setup-env.sh:1824
 msgid "Nothing to change."
 msgstr ""
-#: setup-env.sh:1727
+#: setup-env.sh:1833
 msgid "--dry-run: nothing written."
 msgstr ""
-#: setup-env.sh:1733
+#: setup-env.sh:1839
 msgid "Write these"
 msgstr ""
-#: setup-env.sh:1742
+#: setup-env.sh:1848
 msgid "Written. Bring the stack up with:"
 msgstr ""
-#: setup-env.sh:1744
+#: setup-env.sh:1850
 msgid "    docker compose up -d"
 msgstr ""

@@ -1,0 +1,16 @@
+[Unit]
+Description=Daily expiry check for Homespool's publicly-trusted certificates
+
+[Timer]
+# Early morning, and deliberately not the renewal's schedule: this exists to notice that the
+# renewal did not work, so the two running together would report yesterday's state and call it
+# today's. A fixed hour rather than a wide random window, because a check that has not run is
+# indistinguishable from a check that found nothing wrong - and a predictable time makes "when did
+# it last speak" answerable.
+OnCalendar=*-*-* 07:15:00
+RandomizedDelaySec=30m
+
+Persistent=true
+
+[Install]
+WantedBy=timers.target

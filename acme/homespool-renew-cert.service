@@ -1,0 +1,26 @@
+[Unit]
+Description=Obtain or renew Homespool's publicly-trusted certificates
+Documentation=file:/usr/local/sbin/homespool-renew-cert
+
+# docker, because everything this does is a container. network-online because the DNS-01 challenge
+# talks to a certificate authority and to a DNS provider's API, and a renewal that runs before the
+# link is up fails for a reason that has nothing to do with certificates.
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+
+# Which deployment to renew for. Everything else - the names, the provider, the account - is read
+# from that directory's .env and compose.yaml, so this unit needs no other configuration and does
+# not have to be rewritten when any of it changes.
+Environment=COMPOSE_DIR=@COMPOSE_DIR@
+
+# The provider's credentials are an env_file on the certs service, read from /etc/lego/dns.env by
+# the container. Nothing needs to be in this unit's environment, and deliberately so: a credential
+# here would be readable in `systemctl show` to every user on the machine.
+ExecStart=/usr/local/sbin/homespool-renew-cert
+
+[Install]
+WantedBy=multi-user.target

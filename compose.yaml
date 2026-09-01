@@ -425,6 +425,81 @@ services:
 
     restart: unless-stopped
 
+  # Obtains a publicly-trusted certificate for one name, over the ACME DNS-01 challenge. ENTIRELY
+  # OPTIONAL and off unless asked for: the `certs` profile means an ordinary `docker compose up`
+  # never starts it, never reads the credentials file below, and never needs one to exist. A
+  # deployment that wants TLS and has no domain keeps the self-signed certificates the proxy mints
+  # for itself and is complete without this.
+  #
+  # DNS-01 rather than HTTP-01, and that is what makes it usable at home: the challenge is answered
+  # by writing a DNS record, so nothing here has to be reachable from the internet on port 80. A
+  # machine behind a household router, with no forward and no public address, can hold a certificate
+  # for a name that resolves anywhere.
+  #
+  # ONE NAME PER RUN. lego names the files it writes after the FIRST domain given, so a run naming
+  # several would produce one certificate and one file - and every other name would find nothing
+  # under its own name and fall back to the self-signed one, silently. acme/homespool-renew-cert.sh
+  # runs this service once per name in ACME_HOSTS, overriding LEGO_DOMAINS each time.
+  certs:
+    image: goacme/lego
+    profiles: ["certs"]
+
+    # The same uid the proxy runs as, which is what lets the proxy read what this writes. It is
+    # possible because the credentials arrive as environment rather than as a compose secret: a
+    # secret is bind-mounted carrying the host file's ownership, so a container that is not root
+    # cannot read one, and lego would have had to run as root and hand the files over afterwards.
+    user: "101:101"
+
+    # The provider's credentials, under whatever names that provider uses - CLOUDFLARE_DNS_API_TOKEN,
+    # AWS_ACCESS_KEY_ID, and so on for the hundred-odd providers lego supports. `lego dnshelp -c
+    # <provider>` names them; acme/README.md has the common ones.
+    #
+    # required: false is what keeps this optional. The file is absent on every deployment that never
+    # asked for ACME, and compose must not fail for want of it - which it would, at container
+    # creation, if this were a secret naming a path that does not exist.
+    #
+    # Any other lego setting can go in here too, since every flag has an environment variable.
+    # LEGO_DNS_RESOLVERS is the one worth knowing about: lego defaults to the system nameservers and
+    # falls back to Cloudflare's, which is right almost everywhere, and a split-horizon resolver that
+    # answers differently from the public internet is the case that needs overriding.
+    env_file:
+      - path: /etc/lego/dns.env
+        required: false
+
+    environment:
+      # Every lego flag has an environment variable, which is why there is no argument list here to
+      # build conditionally. A setting left empty is simply not set, and lego uses its own default.
+      LEGO_PATH: /certs
+      LEGO_ACCEPT_TOS: "true"
+
+      # Which DNS provider answers the challenge. `lego dnshelp` lists them.
+      LEGO_DNS: "${ACME_DNS_PROVIDER:-cloudflare}"
+
+      # The registration and recovery address the CA holds. Let's Encrypt sends expiry warnings here
+      # if a renewal ever stops running, which is the last line of defence behind the timer.
+      LEGO_EMAIL: "${ACME_EMAIL:-}"
+
+      # The names this deployment wants certificates for, spelled as .env spells them - semicolons,
+      # like USER_HOSTS.
+      #
+      # DELIBERATELY NOT LEGO_DOMAINS, and the difference matters: lego splits a domain list on
+      # COMMAS, so handing it a semicolon-joined string asks for a single certificate for one
+      # nonsensical name - and it would try, and fail against the authority, saying nothing about
+      # separators. acme/homespool-renew-cert.sh reads this, splits it, and sets LEGO_DOMAINS to one
+      # name for each run.
+      #
+      # Leaving LEGO_DOMAINS unset here is also what makes a bare `docker compose run --rm certs`
+      # fail immediately and legibly, instead of quietly doing the wrong thing.
+      ACME_HOSTS: "${ACME_HOSTS:-}"
+
+    volumes:
+      # The same volume the proxy reads its certificates from. lego's own layout puts them in
+      # certificates/ inside it, which is exactly where 26-user-tls-servers.sh looks first - so a
+      # certificate obtained here is served with nothing to link, copy or rename.
+      - homespool-proxy-certs:/certs
+
+    command: run
+
 networks:
   # Pinned rather than left to Docker's allocator, so XForwarded__KnownNetworks can name it - the
   # trusted range stops being something the operator has to discover and becomes something we

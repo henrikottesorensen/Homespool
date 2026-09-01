@@ -110,7 +110,7 @@ msgstr ""
 msgid "  then put your %s credentials in /etc/lego/dns.env"
 msgstr ""
 #: setup-env.sh:1351
-msgid "  (ask what it wants: docker compose --profile certs run --rm certs dnshelp -c %s)"
+msgid "  (ask what it wants: sudo docker compose --profile certs run --rm certs dnshelp -c %s)"
 msgstr ""
 #: setup-env.sh:1379
 msgid "GO2RTC_PASSWORD contains a double quote or a backslash. Neither can reach the camera sidecar intact, so every camera will answer 401 while the setting looks correct. Replace it with the output of: openssl rand -base64 24"

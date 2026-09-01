@@ -1348,7 +1348,7 @@ ask_public_tls() {
     say
     fmt=$"  then put your %s credentials in /etc/lego/dns.env"
     say "$(printf "$fmt" "$provider")"
-    fmt=$"  (ask what it wants: docker compose --profile certs run --rm certs dnshelp -c %s)"
+    fmt=$"  (ask what it wants: sudo docker compose --profile certs run --rm certs dnshelp -c %s)"
     say "$(printf "$fmt" "$provider")"
 }
 

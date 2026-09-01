@@ -40,14 +40,21 @@ Then three things, in any order:
 this repository is public). Ask lego what your provider wants:
 
 ```bash
-docker compose --profile certs run --rm certs dnshelp -c cloudflare
+sudo docker compose --profile certs run --rm certs dnshelp -c cloudflare
 ```
 
-Cloudflare wants a token scoped to `Zone:DNS:Edit` on the single zone:
+Cloudflare wants a token scoped to `Zone:DNS:Edit` on the single zone. `CF_DNS_API_TOKEN` is the
+canonical name and `CLOUDFLARE_DNS_API_TOKEN` an accepted alias:
 
 ```
-CLOUDFLARE_DNS_API_TOKEN=...
+CF_DNS_API_TOKEN=...
 ```
+
+> **`sudo` on any `--profile certs` command.** Compose reads `env_file` itself, as whoever typed the
+> command — not in the container — so a `0600` root-owned credentials file makes those commands
+> root-only. Without `sudo` they fail with a bare `permission denied` naming the file. Renewal is
+> unaffected, because the timers run as root, and an ordinary `docker compose up` is unaffected too:
+> compose reads an `env_file` only for services in an active profile.
 
 **2. `.env`**, which `setup-env.sh` will ask about:
 

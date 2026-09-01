@@ -462,6 +462,17 @@ services:
     # LEGO_DNS_RESOLVERS is the one worth knowing about: lego defaults to the system nameservers and
     # falls back to Cloudflare's, which is right almost everywhere, and a split-horizon resolver that
     # answers differently from the public internet is the case that needs overriding.
+    #
+    # READ BY THE COMPOSE CLI, NOT BY THE DAEMON OR THE CONTAINER, and that is the one surprising
+    # thing about it: the file is opened by whoever types the command, so a 0600 root-owned
+    # credentials file means every `--profile certs` command needs root. The systemd units run as
+    # root, so renewal is unaffected; a `docker compose --profile certs run ...` typed by hand needs
+    # `sudo`, and without it fails with a bare "permission denied" naming the file and nothing else.
+    #
+    # This is confined to the certs profile. Compose reads an env_file only for services in an
+    # ACTIVE profile, so an ordinary `docker compose up` neither reads this file nor cares that it
+    # cannot - which is what keeps an unreadable credentials file from breaking the whole stack for
+    # a non-root user.
     env_file:
       - path: /etc/lego/dns.env
         required: false

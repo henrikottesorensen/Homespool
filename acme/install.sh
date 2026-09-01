@@ -69,7 +69,7 @@ if [ ! -f "$CREDS" ]; then
 # Which names go here depends entirely on the provider named by ACME_DNS_PROVIDER in .env. Ask lego
 # what it wants, from the deployment directory:
 #
-#   docker compose --profile certs run --rm certs dnshelp -c cloudflare
+#   sudo docker compose --profile certs run --rm certs dnshelp -c cloudflare
 #
 # Cloudflare, with a token scoped to Zone:DNS:Edit on the one zone:
 #

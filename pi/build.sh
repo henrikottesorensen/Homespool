@@ -189,6 +189,21 @@ install -m 0755 "$repo_root/setup-env.sh" "$payload_dir/setup-env.sh"
 # keeps the card's compose project self-consistent. It is 64 KB against ~550 MB of images.
 cp -R "$repo_root/nginx/." "$payload_dir/nginx/"
 
+# Automatic certificates, which the card does NOT use unless somebody asks for it: nothing here runs
+# until `sudo ./acme/install.sh` is typed, and a card with no domain never has cause to. It ships
+# anyway because setup-env.sh ships, and the wizard's answer to "do you have a public domain name"
+# ends by telling the operator to run exactly that path - which is a dead end on a card that does not
+# carry it, and a card owner is the least likely person to have a checkout to fall back on.
+#
+# The whole directory, for the reason the nginx copy above gives: a hand-list drifts.
+mkdir -p "$payload_dir/acme"
+cp -R "$repo_root/acme/." "$payload_dir/acme/"
+
+# Modes carried explicitly, as with setup-env.sh: `cp -R` preserves whatever arrives here, and a
+# checkout that did not keep the executable bit would ship an installer nobody can run - reported as
+# "permission denied" against a script the operator was just told to type.
+chmod 0755 "$payload_dir/acme"/*.sh
+
 # Deliberately NOT into the payload. This tarball never reaches the card: it is loaded into the
 # card's Docker store during the build (step 4), so the Pi boots with the images already unpacked.
 # Shipping it as well would put ~200 MB on the card that exists only to be expanded and deleted.

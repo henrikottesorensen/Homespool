@@ -89,6 +89,13 @@ from the certificate on its own. A board that genuinely moved needs the reissue 
 The same script is how you change anything later — `cd /opt/homespool && ./setup-env.sh` over SSH
 walks through the settings and leaves everything it did not ask about untouched.
 
+**The card serves TLS with certificates it signs itself**, one per name in `USER_HOSTS`, and browsers
+warn about them because nobody vouches for them. That is the honest state of an appliance on a home
+network and needs no action. A board reached at a name you own in public DNS can have a certificate
+browsers trust instead: the wizard asks, and `/opt/homespool/acme/` carries the installer it points
+at. Nothing there runs until `sudo ./acme/install.sh` is typed, so a card with no domain is
+unaffected by its presence — `acme/README.md` on the card has the rest.
+
 **Raspberry Pi Imager's personalisation does not apply to this image.** Its hostname/user/SSH
 settings rely on first-boot machinery that ships in Raspberry Pi OS and not here — verified, not
 assumed: `raspberrypi-sys-mods` contains no reference to `custom.toml` at all, and only provides the

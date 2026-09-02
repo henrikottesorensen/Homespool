@@ -36,6 +36,13 @@ namespace Homespool.Host.Listeners;
 /// no database work — and before the setup gate, so a probe on the wrong listener gets the same 404
 /// before an administrator exists as after.
 /// </para>
+/// <para>
+/// <b>It refuses by path when no endpoint matched, which is what makes it hold for middleware.</b>
+/// Anything mounted with <c>Use…</c> rather than <c>Map…</c> serves a path without publishing a
+/// route, so it is invisible both to the classification convention and to the test that enumerates
+/// endpoints — and would otherwise answer on every listener. Register such middleware <i>after</i>
+/// this one and the boundary covers it with no per-middleware guard to remember.
+/// </para>
 /// </remarks>
 public sealed class ListenerSegregationMiddleware : IMiddleware
 {
@@ -53,20 +60,20 @@ public sealed class ListenerSegregationMiddleware : IMiddleware
     {
         Endpoint? endpoint = context.GetEndpoint();
 
-        if (endpoint is null)
-        {
-            // Nothing matched, so there is nothing to segregate: the 404 arrives on its own.
-            await next(context);
-
-            return;
-        }
-
-        // The classification an endpoint was given, or - for the handful the framework adds outside
-        // any convention builder we can reach, such as MapStaticAssets' file fallback - the one its
-        // path implies. The fallback is not a hole: it is the same prefix rule applied to the request
-        // instead of the route, so an unclassified endpoint under /p is still printer-only, and an
-        // unclassified endpoint anywhere else is still absent from the printer listener.
-        ListenerClass belongsTo = endpoint.Metadata.GetMetadata<ListenerRequirement>()?.Listener
+        // The classification an endpoint was given, or - whenever the endpoint list cannot speak for
+        // the request - the one its path implies. Two different cases share that fallback.
+        //
+        // The first is an endpoint the framework adds outside any convention builder we can reach,
+        // such as MapStaticAssets' file fallback.
+        //
+        // The second is a request that matched NO endpoint, which used to be waved through here on
+        // the reasoning that "the 404 arrives on its own". That is true only while nothing further
+        // down the pipeline answers the path - which is a property of the rest of the pipeline, not
+        // of this boundary. Middleware serves paths without ever publishing a route, so anything
+        // mounted that way would have been reachable on every listener, and invisible to the test
+        // that guards this, which can only enumerate endpoints. Applying the prefix rule to the
+        // request instead makes the boundary hold for whatever is mounted later.
+        ListenerClass belongsTo = endpoint?.Metadata.GetMetadata<ListenerRequirement>()?.Listener
                                   ?? ListenerSegregation.ClassFor(context.Request.Path);
 
         ListenerClass arrivedOn = ClassOf(context.Connection.LocalPort);
@@ -78,29 +85,36 @@ public sealed class ListenerSegregationMiddleware : IMiddleware
             return;
         }
 
-        if (belongsTo == ListenerClass.Printer)
+        // Said out loud only for a request that matched a real route, because that is the one worth
+        // diagnosing: a misconfigured printer reaches a real endpoint on the wrong port. A request
+        // matching nothing is refused just as firmly and silently - it is far likelier to be a probe,
+        // and warning on it would hand an anonymous caller a way to write to the log at will.
+        if (endpoint is not null)
         {
-            // Almost always a real printer pointed at the wrong port, and a bare 404 tells whoever
-            // provisioned it nothing at all. The firmware burns one of three registration retries on
-            // this, so it is worth being findable in the log.
-            _logger.LogWarning("A request for the printer endpoint {Path} arrived on port {Port}, which is not the "
-                               + "printer listener ({PrinterPort}). Printers must use the port published onto "
-                               + "Listeners:PrinterPort; the address in their ini is PrusaConnect:PrinterHost.",
-                               context.Request.Path, context.Connection.LocalPort, _listeners.PrinterPort);
-        }
-        else if (belongsTo == ListenerClass.Transfer)
-        {
-            // A printer fetching a file from the wrong port - most likely a deployment that published
-            // the transfer listener somewhere other than the port written into the command.
-            _logger.LogWarning("A request for the transfer endpoint {Path} arrived on port {Port}, which is not the "
-                               + "transfer listener ({TransferPort}). The printer fetches from the port in "
-                               + "PrusaConnect:TransferPort, which must be published onto Listeners:TransferPort.",
-                               context.Request.Path, context.Connection.LocalPort, _listeners.TransferPort);
-        }
-        else
-        {
-            _logger.LogDebug("Refused {Path} on the {Listener} listener; it belongs to the user listener.",
-                             context.Request.Path, arrivedOn);
+            if (belongsTo == ListenerClass.Printer)
+            {
+                // Almost always a real printer pointed at the wrong port, and a bare 404 tells whoever
+                // provisioned it nothing at all. The firmware burns one of three registration retries on
+                // this, so it is worth being findable in the log.
+                _logger.LogWarning("A request for the printer endpoint {Path} arrived on port {Port}, which is not the "
+                                   + "printer listener ({PrinterPort}). Printers must use the port published onto "
+                                   + "Listeners:PrinterPort; the address in their ini is PrusaConnect:PrinterHost.",
+                                   context.Request.Path, context.Connection.LocalPort, _listeners.PrinterPort);
+            }
+            else if (belongsTo == ListenerClass.Transfer)
+            {
+                // A printer fetching a file from the wrong port - most likely a deployment that published
+                // the transfer listener somewhere other than the port written into the command.
+                _logger.LogWarning("A request for the transfer endpoint {Path} arrived on port {Port}, which is not the "
+                                   + "transfer listener ({TransferPort}). The printer fetches from the port in "
+                                   + "PrusaConnect:TransferPort, which must be published onto Listeners:TransferPort.",
+                                   context.Request.Path, context.Connection.LocalPort, _listeners.TransferPort);
+            }
+            else
+            {
+                _logger.LogDebug("Refused {Path} on the {Listener} listener; it belongs to the user listener.",
+                                 context.Request.Path, arrivedOn);
+            }
         }
 
         context.Response.StatusCode = StatusCodes.Status404NotFound;

@@ -164,14 +164,38 @@ public class ListenerSegregationTests
     }
 
     /// <summary>
-    /// A request that matched no route at all is left alone - the 404 is routing's to write, and
-    /// nothing about it concerns listeners.
+    /// A request that matched no route still belongs to a listener, and is refused when it arrived on
+    /// the wrong one.
+    /// </summary>
+    /// <remarks>
+    /// <b>This reverses what the middleware used to do</b>, which was to wave an unmatched request
+    /// through on the reasoning that routing would write the 404 itself. That holds only while nothing
+    /// downstream answers the path - and middleware answers paths without publishing a route, so
+    /// anything mounted below here was reachable on every listener. The response is a 404 either way;
+    /// what changes is that it is now the boundary's, so it cannot be turned into a 200 by something
+    /// registered later.
+    /// </remarks>
+    [Fact]
+    public async Task AnUnmatchedRequestForAnotherListenersPathIsRefused()
+    {
+        // Act - /p/ws is the harness default, arriving on the user listener with nothing matched.
+        (bool nextCalled, HttpContext context) = await RunAsync(requirement: null, arrivedOnPort: UserPort, matched: false);
+
+        // Assert
+        nextCalled.Should().BeFalse("nothing below this may answer a path belonging to another listener");
+        context.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
+    }
+
+    /// <summary>
+    /// An unmatched request for this listener's own path is still left alone, so routing writes the
+    /// ordinary 404 and every miss has not become a boundary refusal.
     /// </summary>
     [Fact]
-    public async Task ARequestThatMatchedNoEndpointPassesThrough()
+    public async Task AnUnmatchedRequestForThisListenersOwnPathPassesThrough()
     {
         // Act
-        (bool nextCalled, HttpContext context) = await RunAsync(requirement: null, arrivedOnPort: UserPort, matched: false);
+        (bool nextCalled, HttpContext context) = await RunAsync(
+            requirement: null, arrivedOnPort: UserPort, matched: false, path: "/no-such-page");
 
         // Assert
         nextCalled.Should().BeTrue();

@@ -12,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -41,15 +42,25 @@ internal static class IdentityTestHarness
         services.AddSingleton(context);
         services.AddSingleton<IHttpContextAccessor>(new HttpContextAccessor { HttpContext = httpContext });
 
-        // AddIdentity already wires up authentication and the Identity.Application cookie scheme that
-        // SignInManager.SignInAsync writes to - an explicit AddAuthentication().AddCookie() here would
-        // collide with it ("Scheme already exists").
-        //
+        // The Identity.Application cookie scheme is what SignInManager.SignInAsync writes to, and
+        // nothing in AddHomespoolIdentity registers it: in the application it is the head of the
+        // AddAuthentication chain in Program, and this is that head, without the printer, token and
+        // OpenID Connect schemes no page model under test reaches.
+        services.AddAuthentication(options =>
+                {
+                    options.DefaultAuthenticateScheme = IdentityConstants.ApplicationScheme;
+                    options.DefaultChallengeScheme = IdentityConstants.ApplicationScheme;
+                    options.DefaultSignInScheme = IdentityConstants.ExternalScheme;
+                })
+                .AddIdentityCookieSchemes();
+
         // The options come from the application's own configuration rather than being restated here,
         // so a test cannot create an account the real thing would refuse - see IdentityConfiguration.
-        services.AddIdentity<HSUser, IdentityRole<long>>(IdentityConfiguration.Configure)
-                .AddEntityFrameworkStores<HomespoolDbContext>()
-                .AddDefaultTokenProviders();
+        // The registration is the application's own for the same reason: a service the real thing
+        // resolves differently would make this harness describe a different Identity.
+        services.AddHomespoolIdentity(IdentityConfiguration.Configure)
+                .AddHomespoolStores()
+                .AddHomespoolTokenProviders();
 
         ServiceProvider provider = services.BuildServiceProvider();
         httpContext.RequestServices = provider;

@@ -28,6 +28,7 @@ using Serilog.Events;
 using Serilog.Formatting.Compact;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.Cameras;
 using Homespool.Host.Certificates;
@@ -185,16 +186,27 @@ public static class Program
             // one states it where a reader of the registration can see it. Neither alone is the rule.
             JsonWebTokenHandler.DefaultInboundClaimTypeMap.Clear();
 
-            builder.Services.AddAuthentication()
+            builder.Services.AddAuthentication(options =>
+                            {
+                                options.DefaultAuthenticateScheme = IdentityConstants.ApplicationScheme;
+                                options.DefaultChallengeScheme = IdentityConstants.ApplicationScheme;
+                                options.DefaultSignInScheme = IdentityConstants.ExternalScheme;
+                            })
+                            .AddIdentityCookieSchemes()
                             .AddPrusaConnectPrinterAuthentication()
                             .AddApiTokenAuthentication()
                             .AddXApiKeyAuthentication()
                             .AddOidcAuthentication(builder.Configuration);
 
-            builder.Services.AddIdentity<Model.Entities.HSUser, IdentityRole<long>>(Accounts.IdentityConfiguration.Configure)
-                            .AddEntityFrameworkStores<HomespoolDbContext>()
+            // The framework's AddIdentity, AddEntityFrameworkStores and AddDefaultTokenProviders,
+            // written out in IdentityServices so that every service this application authenticates
+            // with is declared in code it owns. Its authentication half - the three defaults and the
+            // four cookie schemes - is the head of the chain above, where the other schemes already
+            // are; SignInManager assumes those schemes exist and does not register them itself.
+            builder.Services.AddHomespoolIdentity(Accounts.IdentityConfiguration.Configure)
+                            .AddHomespoolStores()
                             .AddErrorDescriber<Accounts.HSIdentityErrorDescriber>()
-                            .AddDefaultTokenProviders();
+                            .AddHomespoolTokenProviders();
 
             builder.Services.ConfigureApplicationCookie(options =>
             {

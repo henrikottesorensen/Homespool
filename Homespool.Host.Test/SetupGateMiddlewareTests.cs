@@ -81,15 +81,14 @@ public class SetupGateMiddlewareTests
 
     /// <summary>
     /// The allowlist that keeps the gate usable: the setup page itself, the printer protocol (which
-    /// must never receive an HTML redirect), the dev API docs, and any static asset - identified by a
-    /// file extension - so the setup page's own CSS and JS load.
+    /// must never receive an HTML redirect), the dev OpenAPI document, and any static asset -
+    /// identified by a file extension - so the setup page's own CSS and JS load.
     /// </summary>
     [Theory]
     [InlineData("/setup")]
     [InlineData("/p/register")]
     [InlineData("/p/ws")]
     [InlineData("/f/2a71b2bf1845a4752a033244cd856553/raw")]
-    [InlineData("/scalar/v1")]
     [InlineData("/openapi/v1.json")]
     [InlineData("/css/site.css")]
     [InlineData("/lib/bootstrap/dist/js/bootstrap.bundle.js")]

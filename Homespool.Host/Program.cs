@@ -11,8 +11,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
 
-using Scalar.AspNetCore;
-
 using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
@@ -487,10 +485,12 @@ public static class Program
             app.Services.GetRequiredService<PrusaConnect.PrinterTrafficLog>();
 
             // Configure the HTTP request pipeline.
+            //
+            // The document only - there is no viewer served with it, so this is read by tooling
+            // rather than opened in a browser.
             if (app.Environment.IsDevelopment())
             {
                 app.MapOpenApi().SegregateByListener();
-                app.MapScalarApiReference().SegregateByListener();
             }
 
             // FIRST, and both halves of that matter.

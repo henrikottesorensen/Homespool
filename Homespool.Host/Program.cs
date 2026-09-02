@@ -1,18 +1,12 @@
 using System;
-using System.Linq;
-using System.Net.Mime;
-using System.Text.Json;
-using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -30,6 +24,7 @@ using Homespool.Host.Authentication;
 using Homespool.Host.Cameras;
 using Homespool.Host.Certificates;
 using Homespool.Host.Configuration;
+using Homespool.Host.Health;
 using Homespool.Host.Listeners;
 using Homespool.Host.Localisation;
 using Homespool.Host.Middleware;
@@ -432,32 +427,7 @@ public static class Program
                                                             TimeSpan.FromMilliseconds(shutdownStorageOptions.BusyTimeoutMilliseconds) +
                                                             TimeSpan.FromSeconds(1.5));
 
-            // The process answering requests says nothing about whether it is still recording
-            // anything - a flush bug once made every write fail permanently while the service looked
-            // entirely healthy from outside. This is the hook a monitoring system can watch.
-            // Tagged, because the two endpoints below must not report the same thing. Only checks
-            // tagged "live" answer /health/live, and only a fault a restart would fix may carry that
-            // tag - see TelemetryWriterLivenessHealthCheck.
-            builder.Services.AddHealthChecks()
-                   .AddCheck<Telemetry.TelemetryPersistenceHealthCheck>("telemetry-persistence")
-                   .AddCheck<Telemetry.TelemetryWriterLivenessHealthCheck>("telemetry-writer-alive", tags: [LivenessTag])
-
-                   // Deliberately untagged: a certificate that no longer matches this machine is not a
-                   // fault a restart fixes, and the banner picks it up from the report either way.
-                   .AddCheck<Certificates.PrinterCertificateHealthCheck>("printer-certificate")
-
-                   // Also untagged: a deployment handing tokens to the internet is misconfigured, not
-                   // broken, and a restart would faithfully reproduce it.
-                   .AddCheck<Health.DeploymentExposureHealthCheck>("deployment-exposure")
-
-                   // Untagged for the same reason. Cameras stop working entirely without a sidecar
-                   // credential, and the person who can fix that otherwise sees only blank cameras.
-                   .AddCheck<Cameras.CameraCredentialHealthCheck>("camera-credential")
-
-                   // Untagged again, and the quietest failure of the three: with no address to send
-                   // video to, the live-view button simply never appears, which is indistinguishable
-                   // from a feature that was never built.
-                   .AddCheck<Cameras.WebRtcCandidateHealthCheck>("camera-live-view");
+            builder.Services.AddHomespoolHealthChecks();
 
             // Sweeps TelemetrySample rows past StorageOptions.TelemetryRetentionDays. No interface
             // registration needed, unlike TelemetryWriter above - nothing else ever needs to reach it.
@@ -600,7 +570,8 @@ public static class Program
             if (Listeners.ListenerOptions.ReadFrom(builder.Configuration).UserHttpsPort is not null)
             {
                 app.UseWhen(
-                    context => !context.Request.Path.StartsWithSegments(HealthEndpointPath, StringComparison.OrdinalIgnoreCase),
+                    context => !context.Request.Path.StartsWithSegments(Health.HealthEndpoints.HealthEndpointPath,
+                                                                       StringComparison.OrdinalIgnoreCase),
                     branch => branch.UseHttpsRedirection());
             }
 
@@ -637,31 +608,7 @@ public static class Program
             app.UseRequestLocalization(
                 app.Services.GetRequiredService<IOptions<RequestLocalizationOptions>>().Value);
 
-            // Anonymous by design: a monitoring system holds no credentials, and the response carries
-            // only counters and timestamps about this service's own write path - nothing about
-            // printers, jobs or users.
-            //
-            // Everything, for monitoring and for humans. Alert on this; never restart on it.
-            app.MapHealthChecks(HealthEndpointPath, new HealthCheckOptions
-            {
-                ResponseWriter = WriteHealthResponseAsync,
-            }).SegregateByListener();
-
-            // Liveness, and the safe target for anything that can kill the container: a Kubernetes
-            // livenessProbe, a Swarm healthcheck, an autoheal sidecar. Reports only faults a restart
-            // fixes, so a rejecting database can never trigger a restart loop that discards the
-            // buffered telemetry with every cycle.
-            //
-            // Also the right target for a startupProbe: migrations and admin bootstrap run before
-            // app.Run(), so Kestrel is not accepting connections until they finish - any successful
-            // response already means startup completed, and no separate endpoint is needed. And for a
-            // readinessProbe, since a degraded writer is a reason to alert, not a reason to stop
-            // accepting printer connections.
-            app.MapHealthChecks($"{HealthEndpointPath}/live", new HealthCheckOptions
-            {
-                Predicate = registration => registration.Tags.Contains(LivenessTag),
-                ResponseWriter = WriteHealthResponseAsync,
-            }).SegregateByListener();
+            app.MapHomespoolHealthChecks();
 
             // Every Map... call is segregated, including the ones that look like they could not
             // possibly need it. An endpoint that reaches the pipeline unclassified is refused on every
@@ -695,15 +642,6 @@ public static class Program
             Log.CloseAndFlush();
         }
     }
-
-    /// <summary>Where the health endpoints live. Shared so the HTTPS-redirection exclusion and the
-    /// setup gate's allowance cannot drift away from the routes themselves. <c>/health/live</c> sits
-    /// underneath, so both are covered by one path prefix.</summary>
-    private const string HealthEndpointPath = "/health";
-
-    /// <summary>Marks a check as safe for a liveness probe - that is, one whose failure a restart
-    /// would actually fix.</summary>
-    private const string LivenessTag = "live";
 
     /// <summary>
     /// Rate-limit policy for the two anonymous <c>/p/register</c> actions. Named here so the policy
@@ -806,32 +744,5 @@ public static class Program
                 limiter.QueueLimit = 0;
             });
         });
-    }
-
-    /// <summary>
-    /// Writes the health report as JSON rather than the default bare status word.
-    /// </summary>
-    /// <remarks>
-    /// The status code is what a monitoring system alerts on - Healthy and Degraded are 200,
-    /// Unhealthy is 503 - but the body is what tells whoever gets paged which of the two very
-    /// different problems they have: a database that is briefly stuck, or one that has been stuck
-    /// long enough to lose events for good.
-    /// </remarks>
-    private static Task WriteHealthResponseAsync(HttpContext context, HealthReport report)
-    {
-        context.Response.ContentType = MediaTypeNames.Application.Json;
-
-        return context.Response.WriteAsync(JsonSerializer.Serialize(new
-        {
-            status = report.Status.ToString(),
-            totalDurationMs = report.TotalDuration.TotalMilliseconds,
-            checks = report.Entries.Select(entry => new
-            {
-                name = entry.Key,
-                status = entry.Value.Status.ToString(),
-                description = entry.Value.Description,
-                data = entry.Value.Data,
-            }),
-        }));
     }
 }

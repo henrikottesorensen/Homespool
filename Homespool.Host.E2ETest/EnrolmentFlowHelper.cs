@@ -164,6 +164,31 @@ public static class EnrolmentFlowHelper
             roleResult.Succeeded.Should().BeTrue("the role is setup for this test, not what it verifies");
         }
 
+        return (user, await SignInAsAsync(factory, user));
+    }
+
+    /// <summary>
+    /// Mints a cookie client for an account that already exists, through the same
+    /// <see cref="CookieAuthenticationOptions.TicketDataFormat"/> real sign-in uses.
+    /// </summary>
+    /// <remarks>
+    /// <b>Split out of <see cref="CreateAuthenticatedUserAsync"/>, which always creates its user.</b>
+    /// <see cref="EnrolAndClaimFakePrinterAsync"/> makes the claiming account itself and disposes its
+    /// client, so a test wanting to drive the app <em>as the owner of the printer it just enrolled</em>
+    /// had no way to say so - and creating a second account instead would be a different person, who
+    /// cannot see that printer at all.
+    /// </remarks>
+    /// <param name="factory">The application under test.</param>
+    /// <param name="user">The account to sign in as. Any role must already be granted - see
+    /// <see cref="CreateAuthenticatedUserAsync"/> for why that ordering matters.</param>
+    public static async Task<HttpClient> SignInAsAsync(WebApplicationFactory<PrinterAppController> factory, HSUser user)
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+
+        using IServiceScope scope = factory.Services.CreateScope();
+
+        SignInManager<HSUser> signInManager = scope.ServiceProvider.GetRequiredService<SignInManager<HSUser>>();
+
         ClaimsPrincipal principal = await signInManager.CreateUserPrincipalAsync(user);
         CookieAuthenticationOptions cookieOptions = scope.ServiceProvider
                                                          .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
@@ -180,6 +205,17 @@ public static class EnrolmentFlowHelper
         HttpClient client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
         client.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={protectedTicket}");
 
-        return (user, client);
+        return client;
+    }
+
+    /// <summary>Reads back an account seeded elsewhere, by the address it was created with.</summary>
+    public static async Task<HSUser> FindUserAsync(WebApplicationFactory<PrinterAppController> factory, long userId)
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+
+        using IServiceScope scope = factory.Services.CreateScope();
+
+        return await scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>()
+                          .Users.SingleAsync(candidate => candidate.Id == userId);
     }
 }

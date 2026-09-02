@@ -41,9 +41,16 @@ public enum QueueWaitReason
     IncompatibleWithPrinter = 4,
 
     /// <summary>
-    /// The printer is not <c>Ready</c>. Includes a finished print nobody has cleared, which is the
-    /// case with no backstop under it.
+    /// The printer is idle, or holding a print nobody has cleared, and nobody has offered it up for
+    /// work. Includes a finished print still on the bed, which is the case with no backstop under it.
     /// </summary>
+    /// <remarks>
+    /// <b>Only the states firmware would accept the flag from</b> - a machine that is busy is
+    /// <see cref="PrinterBusy"/>, not this. The distinction is the whole reason this value is loud:
+    /// it is the one wait a person clears by saying the sheet is empty, and
+    /// <c>QueueWaitDescription.NeedsAPerson</c> puts a button beside it on that basis. Offering that
+    /// button where the printer would refuse the press names a remedy that cannot work.
+    /// </remarks>
     PrinterNotAvailable = 5,
 
     /// <summary>
@@ -69,4 +76,31 @@ public enum QueueWaitReason
     /// voices on the page saying the same thing.
     /// </remarks>
     PrintStartUnresolved = 7,
+
+    /// <summary>
+    /// The printer is occupied by something that is not a print of ours - printing, paused, in
+    /// attention, or in error. The queue waits, and there is nothing for anybody to do about it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Split off <see cref="PrinterNotAvailable"/> because the two want opposite treatment.</b>
+    /// Both are the printer being unavailable and both are correct waits; only one of them is
+    /// cleared by a person saying the sheet is empty. This one is cleared by waiting, and firmware
+    /// refuses <c>SET_PRINTER_READY</c> from every state it covers
+    /// (<c>remote_print_ready</c>, printer_state.cpp:561-577), so a button offering it would name a
+    /// remedy the machine declines.
+    /// </para>
+    /// <para>
+    /// <b>Most often a print nobody told us about</b>: a panel start, or one begun from a file this
+    /// loop staged for an earlier job, neither of which leaves a <c>PrintJob</c> row to make
+    /// <see cref="PrintStarting"/> true. Seen on hardware with a queued file sitting behind a print
+    /// at 82%, under a banner asking for the printer to be made ready.
+    /// </para>
+    /// <para>
+    /// <b>No sentence of its own</b>, like the two holds above it: the status card carries the
+    /// progress bar, the attention reason or the error already, and a queue repeating that would be
+    /// a second voice. See <c>QueueWaitDescription</c>.
+    /// </para>
+    /// </remarks>
+    PrinterBusy = 8,
 }

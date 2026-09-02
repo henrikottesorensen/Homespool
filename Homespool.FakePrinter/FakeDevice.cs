@@ -134,6 +134,33 @@ public sealed class FakeDevice
         _ => throw new InvalidOperationException($"Unmapped device state {State}."),
     };
 
+    /// <summary>
+    /// Whether this machine will accept remote work right now - <c>printer_state::remote_print_ready</c>
+    /// (printer_state.cpp:561-577), which answers true for exactly <c>Idle</c>, <c>Ready</c>,
+    /// <c>Stopped</c> and <c>Finished</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>One predicate because firmware has one</b>: <c>start_print</c> (marlin_printer.cpp:526-528)
+    /// and <c>set_printer_ready</c> (marlin_printer.cpp:579-582) both gate on this same call, so a
+    /// fake with two independent state lists could drift into accepting a print where it refused the
+    /// flag - a disagreement no real printer can produce.
+    /// </para>
+    /// <para>
+    /// <b>Two of those four are the interesting ones.</b> <c>Stopped</c> and <c>Finished</c> both
+    /// have a part still on the bed, and firmware takes work in both regardless - which is why the
+    /// queue's own gate is narrower than this and has nothing underneath it. Being faithful here is
+    /// what keeps that gate honestly tested.
+    /// </para>
+    /// <para>
+    /// <b>No counterpart to the preview arm.</b> The real predicate takes a <c>preview_only</c> flag
+    /// and short-circuits true for the two print-preview states, which this device has no notion of.
+    /// Nothing here can reach that arm, so it is absent rather than approximated.
+    /// </para>
+    /// </remarks>
+    private bool RemotePrintReady =>
+        State is DeviceState.Idle or DeviceState.Ready or DeviceState.Stopped or DeviceState.Finished;
+
     /// <summary>Puts the device into a printing state with the given job - test/scenario setup.</summary>
     public void StartPrint(int jobId, string? path = null)
     {
@@ -171,7 +198,7 @@ public sealed class FakeDevice
     /// <param name="path">What it is printing, so the job can be named when asked about.</param>
     public int? TryStartPrint(string? path = null)
     {
-        if (State is not (DeviceState.Idle or DeviceState.Ready or DeviceState.Stopped or DeviceState.Finished))
+        if (!RemotePrintReady)
         {
             return null;
         }
@@ -301,17 +328,40 @@ public sealed class FakeDevice
     }
 
     /// <summary>
-    /// Set ready: <c>set_printer_ready(true)</c> succeeds only from Idle - a busy or printing
-    /// machine can't be marked ready for the next job.
+    /// Set ready: <c>set_printer_ready(true)</c> gates on the same
+    /// <see cref="RemotePrintReady"/> as starting a print does
+    /// (<c>MarlinPrinter::set_printer_ready</c>, marlin_printer.cpp:579-586), so a printing, paused
+    /// or attending machine refuses with <c>"Can't set ready now"</c> and a finished one accepts.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Accepting from <c>Finished</c> and <c>Stopped</c> is the point of the gate, not an
+    /// edge case.</b> Firmware's flag <em>overrides</em> those two screens - it is exactly "a human
+    /// cleared the bed and said carry on", which is how a parked print is released. A fake that took
+    /// the flag only from <c>Idle</c> refused what hardware accepts, so a test covering the ordinary
+    /// way a queue resumes would have failed against the double and passed against a real printer.
+    /// </para>
+    /// <para>
+    /// <b>The job is dropped, as it is when leaving that screen for idle</b> - see
+    /// <see cref="TrySetIdle"/>. Firmware's <c>has_job</c> is false in <c>Ready</c>, so it stops
+    /// sending the job block entirely; keeping a job id here would put a printer on the wire that
+    /// claims to be ready for work and to have work in hand at the same time.
+    /// </para>
+    /// <para>
+    /// <b>Idempotent from <c>Ready</c></b>, because firmware only asks whether the flag <i>may</i> be
+    /// raised and <c>Ready</c> answers yes - re-readying a ready printer is not a refusal.
+    /// </para>
+    /// </remarks>
     public bool TrySetReady()
     {
-        if (State != DeviceState.Idle)
+        if (!RemotePrintReady)
         {
             return false;
         }
 
         State = DeviceState.Ready;
+        JobId = null;
+        JobPath = null;
 
         return true;
     }

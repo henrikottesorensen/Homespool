@@ -73,11 +73,10 @@ public static class Program
             builder.Services.AddSingleton(settingsFile);
 
             // Add services to the container.
-            builder.Services.AddSerilog((services, lc) => lc
-                                                          .ReadFrom.Configuration(builder.Configuration)
-                                                          .ReadFrom.Services(services)
-                                                          .Enrich.FromLogContext()
-                                                          .WriteTo.Console(new RenderedCompactJsonFormatter()));
+            builder.Services.AddSerilog((services, lc) => lc.ReadFrom.Configuration(builder.Configuration)
+                                                                        .ReadFrom.Services(services)
+                                                                        .Enrich.FromLogContext()
+                                                                        .WriteTo.Console(new RenderedCompactJsonFormatter()));
 
             builder.Services.AddHomespoolData(builder.Configuration);
 
@@ -198,17 +197,16 @@ public static class Program
             // exclude what is broken rather than what is unwise, so this cannot become a new reason a
             // working deployment stops starting.
             builder.Services.AddOptions<PrusaConnect.PrusaConnectOptions>()
-                   .Bind(builder.Configuration.GetSection(PrusaConnect.PrusaConnectOptions.SectionName))
-                   .ValidateDataAnnotations()
-                   .ValidateOnStart();
+                            .Bind(builder.Configuration.GetSection(PrusaConnect.PrusaConnectOptions.SectionName))
+                            .ValidateDataAnnotations()
+                            .ValidateOnStart();
 
             builder.Services.AddOptions<Accounts.AttemptLimitOptions>()
-                   .Bind(builder.Configuration.GetSection(Accounts.AttemptLimitOptions.SectionName))
-                   .ValidateDataAnnotations()
-                   .ValidateOnStart();
+                            .Bind(builder.Configuration.GetSection(Accounts.AttemptLimitOptions.SectionName))
+                            .ValidateDataAnnotations()
+                            .ValidateOnStart();
 
-            builder.Services.Configure<PrusaConnect.PrinterTrafficLogOptions>(
-                builder.Configuration.GetSection(PrusaConnect.PrinterTrafficLogOptions.SectionName));
+            builder.Services.Configure<PrusaConnect.PrinterTrafficLogOptions>(builder.Configuration.GetSection(PrusaConnect.PrinterTrafficLogOptions.SectionName));
 
             // Singleton because it owns a file handle, and resolved eagerly below so that turning it
             // on is reported at startup rather than whenever the first printer happens to connect.
@@ -218,11 +216,10 @@ public static class Program
             // options DataAnnotations extension. The attributes live on the class there; the
             // validator is added here, where the shared framework already carries it.
             builder.Services.AddOptions<StorageOptions>()
-                   .ValidateDataAnnotations()
-                   .ValidateOnStart();
+                            .ValidateDataAnnotations()
+                            .ValidateOnStart();
 
-            builder.Services.Configure<Certificates.CertificateOptions>(
-                builder.Configuration.GetSection(Certificates.CertificateOptions.SectionName));
+            builder.Services.Configure<Certificates.CertificateOptions>(builder.Configuration.GetSection(Certificates.CertificateOptions.SectionName));
 
             // Needed by anything that takes a clock from the container rather than reading
             // TimeProvider.System statically. One is resolvable anyway - something in the
@@ -248,25 +245,23 @@ public static class Program
             builder.AddForwardedHeaders();
 
             builder.Services.AddOptions<Mail.SmtpOptions>()
-                   .Bind(builder.Configuration.GetSection(Mail.SmtpOptions.SectionName))
-                   .ValidateDataAnnotations()
-                   .ValidateOnStart();
+                            .Bind(builder.Configuration.GetSection(Mail.SmtpOptions.SectionName))
+                            .ValidateDataAnnotations()
+                            .ValidateOnStart();
 
             // The settings file holds one credential, and it is stored encrypted. The post-configure
             // decrypts it into SmtpOptions.Password after binding, so every consumer keeps reading
             // the plain property and none of them knows protection exists.
             builder.Services.AddSingleton<SettingsSecretProtector>();
             builder.Services.AddScoped<SettingsStore>();
-            builder.Services
-                   .AddSingleton<IPostConfigureOptions<Mail.SmtpOptions>, Mail.SmtpPasswordUnprotector>();
+            builder.Services.AddSingleton<IPostConfigureOptions<Mail.SmtpOptions>, Mail.SmtpPasswordUnprotector>();
 
             builder.Services.AddOptions<Accounts.InvitationOptions>()
-                   .Bind(builder.Configuration.GetSection(Accounts.InvitationOptions.SectionName))
-                   .ValidateDataAnnotations()
-                   .ValidateOnStart();
+                            .Bind(builder.Configuration.GetSection(Accounts.InvitationOptions.SectionName))
+                            .ValidateDataAnnotations()
+                            .ValidateOnStart();
 
-            builder.Services.Configure<Middleware.SecurityOptions>(
-                builder.Configuration.GetSection(Middleware.SecurityOptions.SectionName));
+            builder.Services.Configure<Middleware.SecurityOptions>(builder.Configuration.GetSection(Middleware.SecurityOptions.SectionName));
 
             Mail.SmtpOptions smtpOptions = new();
             builder.Configuration.GetSection(Mail.SmtpOptions.SectionName).Bind(smtpOptions);
@@ -344,12 +339,8 @@ public static class Program
             // handlers register files through ITransferOffers. Singleton because an offer has to
             // outlive the request that made it - the printer collects it on its own schedule.
             builder.Services.AddSingleton<PrusaConnect.Transfers.TransferOfferStore>();
-            builder.Services.AddSingleton<PrusaConnect.Transfers.ITransferContentStore>(sp => sp
-                .GetRequiredService<PrusaConnect.Transfers.TransferOfferStore>());
-            builder.Services.AddSingleton<PrusaConnect.Transfers.ITransferOffers>(sp => sp
-                                                                                      .GetRequiredService<
-                                                                                          PrusaConnect.Transfers.
-                                                                                          TransferOfferStore>());
+            builder.Services.AddSingleton<PrusaConnect.Transfers.ITransferContentStore>(sp => sp.GetRequiredService<PrusaConnect.Transfers.TransferOfferStore>());
+            builder.Services.AddSingleton<PrusaConnect.Transfers.ITransferOffers>(sp => sp.GetRequiredService<PrusaConnect.Transfers.TransferOfferStore>());
 
             // The keys behind encrypted downloads, beside the offers rather than inside them: the
             // store pins bytes and knows nothing of ciphers, which the inline path relies on.
@@ -358,12 +349,11 @@ public static class Program
             // Uploaded gcode: options, the store, and the content-root accessor it needs. Singleton
             // because the store holds no per-request state - it is a path and a couple of rules.
             builder.Services.AddOptions<PrintFiles.PrintFileStorageOptions>()
-                   .Bind(builder.Configuration.GetSection(PrintFiles.PrintFileStorageOptions.SectionName))
-                   .ValidateDataAnnotations()
-                   .ValidateOnStart();
-            builder.Services.AddSingleton<IHostEnvironmentAccessor>(sp => new HostEnvironmentAccessor(
-                                                                        sp.GetRequiredService<IWebHostEnvironment>()
-                                                                          .ContentRootPath));
+                            .Bind(builder.Configuration.GetSection(PrintFiles.PrintFileStorageOptions.SectionName))
+                            .ValidateDataAnnotations()
+                            .ValidateOnStart();
+
+            builder.Services.AddSingleton<IHostEnvironmentAccessor>(sp => new HostEnvironmentAccessor(sp.GetRequiredService<IWebHostEnvironment>().ContentRootPath));
             builder.Services.AddSingleton<PrintFiles.UserFileStore>();
 
             // Scoped, because it holds a DbContext - which is exactly why the index lives here rather
@@ -421,11 +411,11 @@ public static class Program
                                                            .GetSection(StorageOptions.SectionName)
                                                            .Get<StorageOptions>() ?? new StorageOptions();
 
-            builder.Services.Configure<HostOptions>(options =>
-                                                        options.ShutdownTimeout =
-                                                            Telemetry.TelemetryWriter.MaxShutdownFlushDuration +
-                                                            TimeSpan.FromMilliseconds(shutdownStorageOptions.BusyTimeoutMilliseconds) +
-                                                            TimeSpan.FromSeconds(1.5));
+            TimeSpan shutdownTimeout = Telemetry.TelemetryWriter.MaxShutdownFlushDuration +
+                                       TimeSpan.FromMilliseconds(shutdownStorageOptions.BusyTimeoutMilliseconds) +
+                                       TimeSpan.FromSeconds(1.5);
+
+            builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = shutdownTimeout);
 
             builder.Services.AddHomespoolHealthChecks();
 
@@ -605,8 +595,7 @@ public static class Program
             // HttpContext.User populated. Placed before it - which is where most guidance puts
             // request localisation - the provider sees an anonymous request every time and silently
             // never fires, leaving Accept-Language to decide for somebody who had chosen.
-            app.UseRequestLocalization(
-                app.Services.GetRequiredService<IOptions<RequestLocalizationOptions>>().Value);
+            app.UseRequestLocalization(app.Services.GetRequiredService<IOptions<RequestLocalizationOptions>>().Value);
 
             app.MapHomespoolHealthChecks();
 

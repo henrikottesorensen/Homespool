@@ -486,8 +486,8 @@ public static class Program
 
             // Configure the HTTP request pipeline.
             //
-            // The document only - there is no viewer served with it, so this is read by tooling
-            // rather than opened in a browser.
+            // The document only. Its viewer is Swagger UI, which is middleware rather than a route and
+            // so is registered further down, after the listener boundary that has to cover it.
             if (app.Environment.IsDevelopment())
             {
                 app.MapOpenApi().SegregateByListener();
@@ -577,6 +577,30 @@ public static class Program
             // Before an administrator exists, funnel every navigable page to /setup. No-op once setup
             // completes. Placed after routing so static-asset and printer endpoints resolve normally.
             app.UseMiddleware<Middleware.SetupGateMiddleware>();
+
+            // The viewer for the document mapped above, and where it sits is the whole of its
+            // security.
+            //
+            // Swagger UI serves itself from a static-file branch and publishes no endpoint, so
+            // nothing classifies it: not SegregateByListener, which reads route patterns, and not
+            // RouteListenerSegregationTests, which enumerates endpoints. Registered above
+            // ListenerSegregationMiddleware it would answer on the printer and transfer listeners as
+            // well, silently and with the suite still green. Below it, the boundary refuses a
+            // /swagger request on those ports by path before this ever runs - so this needs no port
+            // check of its own, and neither will the next thing mounted this way.
+            //
+            // Before the rate limiter and authentication, where the docs endpoint effectively sat
+            // before: a Development-only page costs no permit and needs no sign-in.
+            if (app.Environment.IsDevelopment())
+            {
+                app.UseSwaggerUI(options =>
+                {
+                    // Absolute, because the document is served by MapOpenApi at its own path and not
+                    // by this package - a relative URL would resolve under /swagger.
+                    options.SwaggerEndpoint("/openapi/v1.json", "Homespool v1");
+                    options.DocumentTitle = "Homespool API";
+                });
+            }
 
             // After UseRouting, so the endpoint's [EnableRateLimiting] metadata is resolved, and
             // before authentication, so a rejected request costs no database work.

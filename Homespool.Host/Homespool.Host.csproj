@@ -25,6 +25,11 @@
         <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0" />
         <PackageReference Include="SerilogAnalyzer" Version="0.15.0" />
         <PackageReference Include="SimpleBase" Version="5.6.4" />
+
+        <!-- The UI only. Document generation stays with Microsoft.AspNetCore.OpenApi; this package
+             carries the swagger-ui assets and nothing else, so it renders whatever document it is
+             pointed at without bringing SwaggerGen's own schema generator into the build. -->
+        <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
     </ItemGroup>
 
     <ItemGroup>

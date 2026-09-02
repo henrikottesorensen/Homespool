@@ -180,6 +180,48 @@ public sealed class RouteListenerSegregationTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
+    /// The API docs viewer is user-only, and it is asserted separately because nothing else in this
+    /// file can see it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Swagger UI is middleware, not a route.</b> It serves itself from a static-file branch and
+    /// publishes no endpoint, so <see cref="EveryRouteBelongsToExactlyTheListenerItsPrefixSays"/>
+    /// cannot report on it - there is nothing to enumerate. That is the shape of blind spot this test
+    /// exists for: a path served on every listener while every other test in the file stays green.
+    /// </para>
+    /// <para>
+    /// What keeps it user-only is <c>ListenerSegregationMiddleware</c> refusing an unmatched request
+    /// by path, rather than any guard on the viewer itself - so this is really a test of the boundary,
+    /// using the one thing in the application that currently exercises it.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task TheApiDocsViewerIsUserOnlyDespiteHavingNoEndpoint()
+    {
+        // Arrange
+        using HttpClient user = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        using HttpClient printer = PrinterListener.CreateClient(_factory);
+        using HttpClient transfer = PrinterListener.CreateTransferClient(_factory);
+
+        // Act
+        using HttpResponseMessage onUser = await user.GetAsync("/swagger/index.html", TestContext.Current.CancellationToken);
+        using HttpResponseMessage onPrinter = await printer.GetAsync("/swagger/index.html", TestContext.Current.CancellationToken);
+        using HttpResponseMessage onTransfer = await transfer.GetAsync("/swagger/index.html", TestContext.Current.CancellationToken);
+
+        // Assert
+        onUser.StatusCode.Should().Be(HttpStatusCode.OK,
+                                      "the viewer is served in Development, and this is the listener a browser reaches");
+
+        onPrinter.StatusCode.Should().Be(HttpStatusCode.NotFound,
+                                         "a printer has no use for the docs viewer, and the boundary makes no exception "
+                                         + "for things that look harmless");
+
+        onTransfer.StatusCode.Should().Be(HttpStatusCode.NotFound,
+                                          "nor does the transfer listener, which serves one encrypted download and nothing else");
+    }
+
+    /// <summary>
     /// The same request on the listener it belongs to is served, so the 404s above are the boundary
     /// working rather than the route being broken.
     /// </summary>

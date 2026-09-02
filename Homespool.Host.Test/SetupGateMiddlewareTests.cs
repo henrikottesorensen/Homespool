@@ -90,6 +90,7 @@ public class SetupGateMiddlewareTests
     [InlineData("/p/ws")]
     [InlineData("/f/2a71b2bf1845a4752a033244cd856553/raw")]
     [InlineData("/openapi/v1.json")]
+    [InlineData("/swagger/index.html")]
     [InlineData("/css/site.css")]
     [InlineData("/lib/bootstrap/dist/js/bootstrap.bundle.js")]
     [InlineData("/favicon.ico")]

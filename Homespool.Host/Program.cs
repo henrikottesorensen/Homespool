@@ -32,6 +32,7 @@ using Homespool.Host.Certificates;
 using Homespool.Host.Configuration;
 using Homespool.Host.Listeners;
 using Homespool.Host.Localisation;
+using Homespool.Host.Middleware;
 using Homespool.Host.Queue;
 
 namespace Homespool.Host;
@@ -249,7 +250,7 @@ public static class Program
 
             builder.AddHomespoolListeners();
 
-            AddForwardedHeaders(builder);
+            builder.AddForwardedHeaders();
 
             builder.Services.AddOptions<Mail.SmtpOptions>()
                    .Bind(builder.Configuration.GetSection(Mail.SmtpOptions.SectionName))
@@ -764,50 +765,6 @@ public static class Program
     /// would instead let one attacker lock out every legitimate user at once.
     /// </para>
     /// </remarks>
-    /// <summary>
-    /// Translates <see cref="Middleware.XForwardedOptions"/> onto the framework's forwarded-headers
-    /// middleware, and says at startup what it ended up trusting.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The framework middleware does the security-relevant part - checking the immediate peer against
-    /// the known proxies before believing anything - so this only supplies it with what to trust and
-    /// which header to read. Hand-rolling the header parsing was considered and rejected: the entry
-    /// selection is exactly where this class of bug lives.
-    /// </para>
-    /// <para>
-    /// <b>An unconfigured deployment is safe but inert</b>, because the framework then trusts loopback
-    /// alone and a container proxy is not on loopback. That failure is silent - mail keeps saying
-    /// <c>http://</c> - so it is logged rather than left to be discovered. This repository has
-    /// declared a rule and never run it four times over; this is the same shape, caught at startup.
-    /// </para>
-    /// </remarks>
-    private static void AddForwardedHeaders(WebApplicationBuilder builder)
-    {
-        Middleware.XForwardedOptions forwarded = new();
-        builder.Configuration.GetSection(Middleware.XForwardedOptions.SectionName).Bind(forwarded);
-
-        builder.Services.Configure<Middleware.XForwardedOptions>(
-            builder.Configuration.GetSection(Middleware.XForwardedOptions.SectionName));
-
-        builder.Services.Configure<ForwardedHeadersOptions>(options =>
-                                                                Middleware.ForwardedHeadersConfigurator.Apply(
-                                                                    forwarded, options, Log.Warning));
-
-        if (forwarded.TrustsAnything)
-        {
-            Log.Information("Trusting {Header} from {ProxyCount} proxy address(es) and {NetworkCount} network(s).",
-                            forwarded.ClientAddressHeader, forwarded.KnownProxies.Length, forwarded.KnownNetworks.Length);
-        }
-        else
-        {
-            Log.Warning("No proxy is trusted (XForwarded:KnownProxies and :KnownNetworks are both empty), so "
-                        + "forwarded headers are ignored except from loopback. If this deployment sits behind a "
-                        + "reverse proxy, links in outgoing mail will say http:// and client addresses in the log "
-                        + "will be the proxy's. Set XForwarded:KnownNetworks to the proxy's network.");
-        }
-    }
-
     private static void AddPrinterEndpointRateLimiting(WebApplicationBuilder builder)
     {
         builder.Services.AddRateLimiter(options =>

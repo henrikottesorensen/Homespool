@@ -22,10 +22,11 @@ namespace Homespool.Host.PrintFiles;
 /// shell, or a reader's eyes.
 /// </para>
 /// <para>
-/// Its one caller passes a username, whose own character set
-/// (<c>HSUser.AllowedUsernameCharacters</c>) is already narrower than anything below rejects. That
-/// makes this a guard rather than a working sanitiser, and it stays because the guarantee belongs to
-/// the path, not to the current caller.
+/// Its one caller passes a username, which may be in any script - <c>UsernameValidator</c> admits
+/// letters and digits of one alphabet and <c>- . _</c>, and refuses whitespace, format characters
+/// and the rest. So the denylist below is reached only by the byte cap and the reserved names for a
+/// name that is valid, and it stays as written because the guarantee belongs to the path, not to
+/// the current caller.
 /// </para>
 /// </remarks>
 public static class UserDirectoryName

@@ -7,6 +7,7 @@ using System;
 using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
@@ -98,7 +99,7 @@ public class IndexModel : PageModel
         }
 
         string userName = await _userManager.GetUserNameAsync(user);
-        string requested = Input.Username.Trim();
+        string requested = Usernames.Normalise(Input.Username.Trim());
 
         // Ordinal rather than case-insensitive: 'henrik' to 'Henrik' normalises to the same name, so
         // Identity would accept it silently, but it changes what every page renders - which makes it

@@ -2,8 +2,6 @@ using System;
 
 using Microsoft.AspNetCore.Identity;
 
-using Homespool.Model.Entities;
-
 namespace Homespool.Host.Accounts;
 
 /// <summary>
@@ -39,9 +37,11 @@ public static class IdentityConfiguration
         // toward anything longer.
         options.Password.RequiredLength = MinimumPasswordLength;
 
-        // A username is a name someone picks, so it may not be shaped like an address - see
-        // HSUser.AllowedUsernameCharacters.
-        options.User.AllowedUserNameCharacters = HSUser.AllowedUsernameCharacters;
+        // Identity's character check stands down: a flat list cannot say "any letter of one alphabet",
+        // and UsernameValidator, registered beside Identity's own validator, says exactly that. An
+        // empty list is how the framework is told not to check, and it is the framework's check only
+        // - the empty-name and duplicate-name checks in the same validator still run.
+        options.User.AllowedUserNameCharacters = string.Empty;
 
         // Required because sign-in resolves an address to an account (Account/Login). Until the
         // username was decoupled this held for free, the address being the username; now nothing else

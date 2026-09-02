@@ -11,11 +11,11 @@ namespace Homespool.Host.Accounts;
 /// <remarks>
 /// <para>
 /// <c>InvalidUserName</c>'s default reads "can only contain letters or digits", which is Identity
-/// describing a rule it does not itself apply - the allowed set is
-/// <c>IdentityOptions.User.AllowedUserNameCharacters</c>, and ours (
-/// <see cref="Model.Entities.HSUser.AllowedUsernameCharacters"/>) includes three punctuation marks
-/// the message denies. Somebody told "letters or digits" after typing <c>henrik.sorensen</c> would
-/// go and remove the dot that was never the problem.
+/// describing a rule it does not itself apply - the rule is <see cref="UsernameValidator"/>'s, and
+/// it allows three punctuation marks the message denies. Somebody told "letters or digits" after
+/// typing <c>henrik.sorensen</c> would go and remove the dot that was never the problem. The
+/// validator raises the same code with the same message itself; this override covers the framework's
+/// own use of it.
 /// </para>
 /// <para>
 /// <b>Registered in <c>Program</c> only, not in the test harness</b> - unlike

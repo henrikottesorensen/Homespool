@@ -39,6 +39,11 @@ internal static class IdentityTestHarness
         ServiceCollection services = new();
         services.AddLogging();
         services.AddDataProtection();
+
+        // UsernameValidator words its refusals through the shared resources, and it runs here because
+        // it decides what is accepted. Bare AddLocalization is enough: the strings resolve from the
+        // Host assembly, and a test asserts on the error code rather than the wording.
+        services.AddLocalization();
         services.AddSingleton(context);
         services.AddSingleton<IHttpContextAccessor>(new HttpContextAccessor { HttpContext = httpContext });
 
@@ -77,9 +82,10 @@ internal static class IdentityTestHarness
     /// </summary>
     /// <remarks>
     /// <b>A test convenience, not a rule the application has.</b> A username is chosen by the person
-    /// and has nothing to do with their address - <see cref="HSUser.AllowedUsernameCharacters"/>
-    /// forbids the <c>@</c> that would let one be the other. This exists so a fixture that wants two
-    /// distinct accounts can go on saying so with one string each.
+    /// and has nothing to do with their address - <c>UsernameValidator</c> forbids the <c>@</c> that
+    /// would let one be the other. This exists so a fixture that wants two distinct accounts can go
+    /// on saying so with one string each. ASCII only, deliberately: a fixture name is not the place
+    /// to exercise the validator.
     /// </remarks>
     public static string UsernameFor(string email)
     {
@@ -88,7 +94,7 @@ internal static class IdentityTestHarness
         int at = email.IndexOf('@', StringComparison.Ordinal);
         string local = at < 0 ? email : email[..at];
 
-        return string.Concat(local.Select(c => HSUser.AllowedUsernameCharacters.Contains(c, StringComparison.Ordinal) ? c : '-'));
+        return string.Concat(local.Select(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '.' or '_' ? c : '-'));
     }
 
     /// <summary>

@@ -145,7 +145,7 @@ public class SetupModel : PageModel
 
         try
         {
-            await _userStore.SetUserNameAsync(user, Input.Username, CancellationToken.None);
+            await _userStore.SetUserNameAsync(user, Usernames.Normalise(Input.Username), CancellationToken.None);
             await _emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None);
 
             _accountConfirmationPolicy.Apply(user);

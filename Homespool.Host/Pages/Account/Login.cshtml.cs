@@ -111,7 +111,7 @@ public class LoginModel : PageModel
             // already live on the 2FA path, which has always counted toward lockout.
             // Resolved by hand because sign-in accepts either identifier, and PasswordSignInAsync's
             // string overload only ever looks at the username. The two namespaces cannot overlap - a
-            // username may not contain '@' (HSUser.AllowedUsernameCharacters) - so this order settles
+            // username may not contain '@' (UsernameValidator) - so this order settles
             // nothing that could be ambiguous; it is just the cheaper lookup first.
             HSUser user = await _userManager.FindByNameAsync(Input.Login)
                           ?? await _userManager.FindByEmailAsync(Input.Login);

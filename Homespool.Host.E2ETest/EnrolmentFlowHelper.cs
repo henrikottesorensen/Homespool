@@ -106,9 +106,9 @@ public static class EnrolmentFlowHelper
     /// </summary>
     /// <remarks>
     /// <b>A test convenience, not a rule the application has.</b> A username is chosen by the person
-    /// and has nothing to do with their address - <see cref="HSUser.AllowedUsernameCharacters"/>
-    /// forbids the <c>@</c> that would let one be the other. This exists so a fixture that wants two
-    /// distinct accounts can go on saying so with one string each.
+    /// and has nothing to do with their address - <c>UsernameValidator</c> forbids the <c>@</c> that
+    /// would let one be the other. This exists so a fixture that wants two distinct accounts can go
+    /// on saying so with one string each. ASCII only, deliberately.
     /// </remarks>
     public static string UsernameFor(string email)
     {
@@ -117,7 +117,7 @@ public static class EnrolmentFlowHelper
         int at = email.IndexOf('@', StringComparison.Ordinal);
         string local = at < 0 ? email : email[..at];
 
-        return string.Concat(local.Select(c => HSUser.AllowedUsernameCharacters.Contains(c, StringComparison.Ordinal) ? c : '-'));
+        return string.Concat(local.Select(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '.' or '_' ? c : '-'));
     }
 
     /// <summary>

@@ -221,8 +221,12 @@
     <value>Could not send the verification email - contact your administrator.</value>
   </data>
   <data name="Account_InvalidUserName" xml:space="preserve">
-    <value>&apos;{0}&apos; is not a usable username. Use letters, digits, and - . _ only; an email address cannot be a username.</value>
-    <comment>Replaces Identity&apos;s own wording, which describes a rule this application does not apply. The three punctuation marks are listed literally and must survive translation.</comment>
+    <value>&apos;{0}&apos; is not a usable username. Use letters and digits, and - . _ only; an email address cannot be a username.</value>
+    <comment>Replaces Identity&apos;s own wording, which describes a rule this application does not apply. The three punctuation marks are listed literally and must survive translation. Letters of any alphabet are accepted; the alphabet rule has its own message, Account_UsernameMixesScripts.</comment>
+  </data>
+  <data name="Account_UsernameMixesScripts" xml:space="preserve">
+    <value>&apos;{0}&apos; mixes letters or digits from more than one alphabet. Use one alphabet for the whole name.</value>
+    <comment>Shown when a username fails UTS #39&apos;s single-script rule - a Cyrillic letter among Latin ones, or digits from two number systems.</comment>
   </data>
   <data name="Printers_Title" xml:space="preserve">
     <value>Printers</value>
@@ -653,7 +657,7 @@
     <value>Confirm Password</value>
   </data>
   <data name="Account_UsernameChars" xml:space="preserve">
-    <value>Letters, digits, and {0} {1} {2}. You sign in with this or your email address.</value>
+    <value>Letters and digits of one alphabet, and {0} {1} {2}. You sign in with this or your email address.</value>
     <comment>{0}, {1} and {2} are the three punctuation marks, each wrapped in &amp;lt;code&amp;gt;. One key rather than a before/after pair: the pair only reassembles in a language that puts the list where English does, and it left the second half starting with a full stop.</comment>
   </data>
   <data name="Nav_Login" xml:space="preserve">

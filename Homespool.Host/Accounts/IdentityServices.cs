@@ -34,10 +34,13 @@ namespace Homespool.Host.Accounts;
 /// if that chain is missing - which is what the unit-test harness has to replicate.
 /// </para>
 /// <para>
-/// <b>Same registrations, same order, same lifetimes.</b> The one thing the framework does that this
-/// cannot is walk the type hierarchy to pick a store: <c>AddEntityFrameworkStores</c> reflects over the
-/// context to find the six framework entity types, where <see cref="AddHomespoolStores"/> simply names
-/// the ones <see cref="HomespoolDbContext"/> inherits. A change to that base class therefore has to be
+/// <b>Same registrations, same order, same lifetimes, with two marked departures</b>: the lookup
+/// normaliser is <see cref="SkeletonLookupNormalizer"/> rather than the framework's upper-invariant
+/// one, and <see cref="UsernameValidator"/> runs beside the framework's user validator. Both are
+/// commented where they are made. The one thing the framework does that this cannot is walk the
+/// type hierarchy to pick a store: <c>AddEntityFrameworkStores</c> reflects over the context to find
+/// the six framework entity types, where <see cref="AddHomespoolStores"/> simply names the ones
+/// <see cref="HomespoolDbContext"/> inherits. A change to that base class therefore has to be
 /// mirrored here by hand, and the compiler will say so - the store's constraints reject a mismatch.
 /// </para>
 /// <para>
@@ -80,7 +83,11 @@ public static class IdentityServices
         services.TryAddScoped<IUserValidator<HSUser>, UserValidator<HSUser>>();
         services.TryAddScoped<IPasswordValidator<HSUser>, PasswordValidator<HSUser>>();
         services.TryAddScoped<IPasswordHasher<HSUser>, PasswordHasher<HSUser>>();
-        services.TryAddScoped<ILookupNormalizer, UpperInvariantLookupNormalizer>();
+
+        // The first of two departures from the transcription: the lookup key is a UTS #39 skeleton,
+        // so two names that look alike are one name. UpperInvariantLookupNormalizer is what the
+        // framework registers here.
+        services.TryAddScoped<ILookupNormalizer, SkeletonLookupNormalizer>();
         services.TryAddScoped<IRoleValidator<IdentityRole<long>>, RoleValidator<IdentityRole<long>>>();
 
         // No interface: the framework adds errors to the describer without revving one, and so
@@ -99,7 +106,12 @@ public static class IdentityServices
 
         services.Configure(configure);
 
-        return new IdentityBuilder(typeof(HSUser), typeof(IdentityRole<long>), services);
+        // The second departure: a validator of this application's own, run after Identity's. It is
+        // registered here rather than in Program because it decides what a username may BE, which
+        // the test harness must agree with - the same reason IdentityConfiguration is shared.
+        IdentityBuilder builder = new(typeof(HSUser), typeof(IdentityRole<long>), services);
+
+        return builder.AddUserValidator<UsernameValidator>();
     }
 
     /// <summary>

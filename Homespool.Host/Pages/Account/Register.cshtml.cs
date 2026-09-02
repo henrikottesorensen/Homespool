@@ -275,7 +275,7 @@ public class RegisterModel : PageModel
             // The address is bound to the invite, never anything the invitee typed. The
             // username is theirs to pick: it is not an identity the invite confers, and it cannot be
             // used to reach anything the invite did not already grant.
-            await _userStore.SetUserNameAsync(user, Input.Username, cancellationToken);
+            await _userStore.SetUserNameAsync(user, Usernames.Normalise(Input.Username), cancellationToken);
             await _emailStore.SetEmailAsync(user, invitation.Email, cancellationToken);
 
             _accountConfirmationPolicy.Apply(user);

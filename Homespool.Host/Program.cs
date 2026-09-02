@@ -605,6 +605,10 @@ public static class Program
             // the one-time /setup token. Runs inline so setup state is settled before the first request.
             Accounts.AdminBootstrap.SeedAdminBootstrap(app.Services);
 
+            // Every account's lookup key recomputed by the current normaliser and Unicode data, so a
+            // name still resolves after either changes. Inline for the same reason as the line above.
+            Accounts.UsernameKeyRefresh.RefreshUsernameKeys(app.Services);
+
             // The certificate nginx presents to printers. Inline, before Run, because the proxy waits
             // on this container's health check and then reads the leaf off the shared volume.
             EnsurePrinterCertificate(app);

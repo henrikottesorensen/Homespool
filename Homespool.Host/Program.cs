@@ -247,7 +247,7 @@ public static class Program
             // how the name looks - which is the only way to tell a container's hostname from a real one.
             builder.Services.AddSingleton<Certificates.IHostAddressResolver, Certificates.DnsHostAddressResolver>();
 
-            ConfigureListeners(builder);
+            builder.AddHomespoolListeners();
 
             AddForwardedHeaders(builder);
 
@@ -565,7 +565,7 @@ public static class Program
             if (app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Middleware.XForwardedOptions>>().Value
                    .TrustsAnything)
             {
-                int printerPort = ReadListenerOptions(builder.Configuration).PrinterPort;
+                int printerPort = Listeners.ListenerOptions.ReadFrom(builder.Configuration).PrinterPort;
                 bool printerListenerIsProxied = PrinterCertificateStartup.PrinterTransportIsSecure(app.Services);
 
                 app.UseWhen(
@@ -590,13 +590,13 @@ public static class Program
 
             // Only when this process serves users over TLS itself. Otherwise there is no port to
             // redirect to that is not the printer's, and sending a browser there is worse than not
-            // redirecting at all - see the pinned HttpsPort in ConfigureListeners.
+            // redirecting at all - see the pinned HttpsPort in Listeners/Registration.cs.
             //
             // Everything except /health. A probe runs inside the container over plain HTTP, and a
             // 307 to https is not a failure to curl - so with redirection applied, a monitoring
             // check would report success without ever reaching the health endpoint. Excluding the
             // path keeps the probe honest wherever TLS is terminated.
-            if (ReadListenerOptions(builder.Configuration).UserHttpsPort is not null)
+            if (Listeners.ListenerOptions.ReadFrom(builder.Configuration).UserHttpsPort is not null)
             {
                 app.UseWhen(
                     context => !context.Request.Path.StartsWithSegments(HealthEndpointPath, StringComparison.OrdinalIgnoreCase),
@@ -806,99 +806,6 @@ public static class Program
                         + "reverse proxy, links in outgoing mail will say http:// and client addresses in the log "
                         + "will be the proxy's. Set XForwarded:KnownNetworks to the proxy's network.");
         }
-    }
-
-    /// <summary>
-    /// Binds the listeners — plain HTTP for people, plain HTTP for printers — and the classification
-    /// middleware that keeps each set of routes on its own.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>Configuring any endpoint here means configuring all of them.</b> Kestrel ignores
-    /// <c>ASPNETCORE_URLS</c> / <c>applicationUrl</c> entirely once endpoints are set in code — it
-    /// logs "Overriding address(es)" and binds these instead — so the user listener is named here too
-    /// rather than left to the environment. <c>Listeners:UserPort</c> defaults to the 8080 the base
-    /// image already used, so a deployment that sets nothing keeps the port it had.
-    /// </para>
-    /// <para>
-    /// <b>Kestrel no longer terminates TLS for printers, and that reverses a recorded decision.</b>
-    /// It used to mint the leaf here and serve it on this very listener; it does neither, because
-    /// <see cref="System.Net.Security.SslStream"/> ignores the RFC 6066 <c>max_fragment_length</c> a
-    /// printer negotiates and OpenSSL honours it. A printer holds 1024 bytes of TLS plaintext at a
-    /// time, so a record larger than that kills every file transfer — which is what shipped, until
-    /// nginx was moved in front of this listener too. The leaf is still ours:
-    /// <see cref="Certificates.PrinterCertificateStartup.EnsurePrinterCertificate"/> mints it
-    /// on the startup path, and nginx presents it.
-    /// </para>
-    /// <para>
-    /// <b>The split outlived the certificate that motivated it, deliberately.</b> With TLS gone from
-    /// both listeners they are two plain HTTP ports, and one would do — except that the boundary is
-    /// the point. <c>/p/*</c> exists on the printer listener alone, enforced by
-    /// <see cref="ConnectionInfo.LocalPort"/>; collapsing them would leave a line of nginx
-    /// configuration as the only thing between a proxied user request and the printer protocol,
-    /// turning a structural guarantee into a configuration one. Two ports cost four lines.
-    /// </para>
-    /// </remarks>
-    private static void ConfigureListeners(WebApplicationBuilder builder)
-    {
-        builder.Services.Configure<Listeners.ListenerOptions>(
-            builder.Configuration.GetSection(Listeners.ListenerOptions.SectionName));
-
-        // Factory-activated (IMiddleware) like the setup gate, so it is resolved from the container.
-        // Singleton: it holds the bound options and nothing per-request.
-        builder.Services.AddSingleton<Listeners.ListenerSegregationMiddleware>();
-
-        // Pinned rather than left to be discovered. It guarded against a measured failure: the printer
-        // listener used to be this process's only HTTPS endpoint, so the redirection middleware found
-        // it and answered plain-HTTP user requests with a 307 to the *printer* port - GET / on the
-        // user listener returned 307 to https://...:15443/ the first time both listeners came up.
-        // That endpoint is gone and discovery would now find the right port on its own, so this is no
-        // longer load-bearing; it is kept because it costs a line and because the next person to add
-        // an HTTPS listener here should find the trap written down rather than measure it again.
-        // Null when no user-facing HTTPS port exists, which is also why the middleware itself is only
-        // registered in that case: when a proxy terminates TLS, redirecting to https is the proxy's
-        // job and it knows the public port - this process does not.
-        builder.Services.AddHttpsRedirection(options =>
-                                                 options.HttpsPort = ReadListenerOptions(builder.Configuration).UserHttpsPort);
-
-        builder.WebHost.ConfigureKestrel(options =>
-        {
-            Listeners.ListenerOptions listeners = options.ApplicationServices
-                                                         .GetRequiredService<Microsoft.Extensions.Options.IOptions<
-                                                             Listeners.ListenerOptions>>().Value;
-
-            listeners.Validate();
-
-            options.ListenAnyIP(listeners.UserPort);
-
-            if (listeners.UserHttpsPort is int userHttpsPort)
-            {
-                options.ListenAnyIP(userHttpsPort, listen => listen.UseHttps());
-            }
-
-            // Plain HTTP, and the same line whichever way the deployment is configured. With
-            // PrusaConnect:PrinterTls on, nginx terminates in front of this port and it is never
-            // published; with it off, this port is published directly and the wire is readable. The
-            // difference is what sits in front, which is compose.yaml's business rather than this
-            // process's - so there is one listener here and no branch.
-            options.ListenAnyIP(listeners.PrinterPort);
-
-            // Plain HTTP and never anything else - see ListenerOptions.TransferPort. The one listener
-            // whose being unencrypted is the design rather than a proxy's business.
-            options.ListenAnyIP(listeners.TransferPort);
-        });
-    }
-
-    /// <summary>
-    /// Binds <see cref="Listeners.ListenerOptions"/> straight from configuration, for the two places
-    /// that need it before the container exists.
-    /// </summary>
-    private static Listeners.ListenerOptions ReadListenerOptions(IConfiguration configuration)
-    {
-        Listeners.ListenerOptions listeners = new();
-        configuration.GetSection(Listeners.ListenerOptions.SectionName).Bind(listeners);
-
-        return listeners;
     }
 
     private static void AddPrinterEndpointRateLimiting(WebApplicationBuilder builder)

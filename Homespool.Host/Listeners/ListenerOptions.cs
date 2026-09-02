@@ -1,5 +1,7 @@
 using System;
 
+using Microsoft.Extensions.Configuration;
+
 namespace Homespool.Host.Listeners;
 
 /// <summary>
@@ -24,6 +26,28 @@ namespace Homespool.Host.Listeners;
 public class ListenerOptions
 {
     public const string SectionName = "Listeners";
+
+    /// <summary>
+    /// Binds these straight from configuration, for the places that need a port before the container
+    /// exists.
+    /// </summary>
+    /// <remarks>
+    /// Kestrel is configured, the HTTPS-redirection port is pinned and the forwarded-header scope is
+    /// decided while the service collection is still being built, so none of them can resolve
+    /// <see cref="Microsoft.Extensions.Options.IOptions{TOptions}"/>. Reading the section twice is
+    /// cheaper than the alternative, which is a second copy of the port numbers.
+    /// </remarks>
+    /// <param name="configuration">The configuration the section is read from.</param>
+    /// <returns>The bound options, with the defaults above for anything unset.</returns>
+    public static ListenerOptions ReadFrom(IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        ListenerOptions listeners = new();
+        configuration.GetSection(SectionName).Bind(listeners);
+
+        return listeners;
+    }
 
     /// <summary>
     /// The listener carrying the printer protocol: <c>/p/*</c> and nothing else.

@@ -157,7 +157,7 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Production mints this on its startup path</b> - Program.EnsurePrinterCertificate, before the
+    /// <b>Production mints this on its startup path</b> - PrinterCertificateStartup.EnsurePrinterCertificate, before the
     /// first request, because the proxy reads the leaf when it starts. A test host without a
     /// certificate was unlike production in ways that kept showing up: the provisioning bundle had no
     /// address to offer, and the certificate health check called a freshly started host degraded.

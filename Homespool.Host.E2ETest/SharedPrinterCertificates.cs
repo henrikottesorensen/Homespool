@@ -34,7 +34,7 @@ namespace Homespool.Host.E2ETest;
 /// </para>
 /// <para>
 /// <b>Planting happens before the host is built, and that is the load-bearing part.</b>
-/// <c>Program.EnsurePrinterCertificate</c> runs on the startup path under
+/// <c>PrinterCertificateStartup.EnsurePrinterCertificate</c> runs on the startup path under
 /// <c>WebApplicationFactory</c> exactly as it does in production, so anything done after
 /// <c>base.CreateHost</c> returns is too late: the host has already minted. Planting late looks like
 /// it works - the files end up correct and every test passes - it just saves nothing.

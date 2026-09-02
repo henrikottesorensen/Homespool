@@ -146,11 +146,11 @@ public class PrusaConnectOptions
     /// <para>
     /// <b>One setting, both ends.</b> It is the <c>tls</c> key written into a printer's ini
     /// (<see cref="ConnectIni"/>) <i>and</i> whether a leaf is minted for nginx to present
-    /// (<c>Program.EnsurePrinterCertificate</c>), so the two cannot disagree about whether the
+    /// (<c>PrinterCertificateStartup.EnsurePrinterCertificate</c>), so the two cannot disagree about whether the
     /// printer path is encrypted.
     /// </para>
     /// <para>
-    /// <b>It does not decide what this process binds.</b> <c>Program.ConfigureListeners</c> listens on
+    /// <b>It does not decide what this process binds.</b> <c>Listeners/Registration.cs</c> listens on
     /// <c>Listeners:PrinterPort</c> as plain HTTP unconditionally, with no branch on this flag: nginx
     /// terminates the printer's TLS in front of it, because the record size the firmware needs is not
     /// something <c>SslStream</c> can be made to emit. What this switches is therefore what sits in

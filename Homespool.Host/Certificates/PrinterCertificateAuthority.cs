@@ -557,9 +557,14 @@ public class PrinterCertificateAuthority
                     exception);
             }
 
+            X509Certificate2 reEncrypted;
+
             using (ECDsa key = authority.GetECDsaPrivateKey()!)
             {
-                WriteAuthorityKey(key);
+                // The encrypted pair, not the plaintext one just loaded: they are the same
+                // certificate, and this one is the copy proved to open under the configured
+                // passphrase - which is the question this arm exists to answer.
+                reEncrypted = WriteAuthorityKey(key);
             }
 
             _logger.LogInformation("Encrypted the printer authority's private key ({Path}) with the configured "
@@ -567,11 +572,7 @@ public class PrinterCertificateAuthority
                                    + "backed up as carefully as the key itself, and separately from the data "
                                    + "directory.", AuthorityKeyPemPath);
 
-            X509Certificate2 loaded = authority;
-
-            authority = null;
-
-            return loaded;
+            return reEncrypted;
         }
         finally
         {
@@ -580,16 +581,26 @@ public class PrinterCertificateAuthority
     }
 
     /// <summary>
-    /// Writes the authority's key in PEM, encrypted under the configured passphrase, and proves the
-    /// result opens before it replaces anything.
+    /// Writes the authority's key in PEM, encrypted under the configured passphrase, proves the
+    /// result opens before it replaces anything, and hands back what opening it produced.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Written to a sibling temp file, round-tripped against the certificate, then moved over the
     /// real name. The verification is what makes the callers' deletions safe: nothing that removes an
     /// older copy of this key runs until a readable replacement is on disk, and the rename means no
     /// crash leaves a half-written key under the real name.
+    /// </para>
+    /// <para>
+    /// <b>Returning the verified pair is what keeps a mint to one key derivation.</b> Opening an
+    /// encrypted key costs a deliberately expensive PBKDF2 pass — the whole point of the work factor —
+    /// and every caller here needs exactly what this verification already built. Each used to throw it
+    /// away and read the file a second time, so a first boot paid the derivation twice for one
+    /// certificate. The pair is the file's, not the caller's in-memory copy, so nothing is taken on
+    /// trust that was not read back from disk.
+    /// </para>
     /// </remarks>
-    private void WriteAuthorityKey(ECDsa key)
+    private X509Certificate2 WriteAuthorityKey(ECDsa key)
     {
         string pem = key.ExportEncryptedPkcs8PrivateKeyPem(Passphrase, KeyEncryption);
 
@@ -597,18 +608,34 @@ public class PrinterCertificateAuthority
 
         WriteFile(temporary, Encoding.ASCII.GetBytes(pem));
 
-        using (X509Certificate2 verified =
-                   X509Certificate2.CreateFromEncryptedPemFile(AuthorityCertificatePemPath, Passphrase, temporary))
-        using (ECDsa? verifiedKey = verified.GetECDsaPrivateKey())
-        {
-            if (verifiedKey is null)
-            {
-                throw new CertificateAuthorityUnreadableException(
-                    $"The freshly written authority key ({temporary}) failed verification, so nothing was replaced.");
-            }
-        }
+        X509Certificate2? verified = null;
 
-        File.Move(temporary, AuthorityKeyPemPath, overwrite: true);
+        try
+        {
+            verified = X509Certificate2.CreateFromEncryptedPemFile(
+                AuthorityCertificatePemPath, Passphrase, temporary);
+
+            using (ECDsa? verifiedKey = verified.GetECDsaPrivateKey())
+            {
+                if (verifiedKey is null)
+                {
+                    throw new CertificateAuthorityUnreadableException(
+                        $"The freshly written authority key ({temporary}) failed verification, so nothing was replaced.");
+                }
+            }
+
+            File.Move(temporary, AuthorityKeyPemPath, overwrite: true);
+
+            X509Certificate2 proven = verified;
+
+            verified = null;
+
+            return proven;
+        }
+        finally
+        {
+            verified?.Dispose();
+        }
     }
 
     /// <summary>
@@ -617,12 +644,15 @@ public class PrinterCertificateAuthority
     /// </summary>
     /// <remarks>
     /// The delete is the point of the exercise: the PKCS#12 holds the key in the clear, and it is
-    /// only removed after the PEM pair has been written, verified, and loaded. A crash anywhere in
-    /// between leaves both layouts on disk, and the next start finishes the job from the top of
+    /// only removed after the PEM pair has been written and read back under the passphrase — which
+    /// <see cref="WriteAuthorityKey"/> does as its verification, and hands back, so the pair returned
+    /// here came off disk rather than out of the PKCS#12. A crash anywhere in between leaves both
+    /// layouts on disk, and the next start finishes the job from the top of
     /// <see cref="EnsureAuthority"/>.
     /// </remarks>
     private X509Certificate2 MigrateAuthorityFromPkcs12()
     {
+        X509Certificate2 migrated;
         X509Certificate2 legacy;
 
         try
@@ -645,10 +675,9 @@ public class PrinterCertificateAuthority
                     "because that would strand every provisioned printer.");
 
             WriteFile(AuthorityCertificatePemPath, Encoding.ASCII.GetBytes(legacy.ExportCertificatePem()));
-            WriteAuthorityKey(key);
-        }
 
-        X509Certificate2 migrated = LoadAuthorityPair();
+            migrated = WriteAuthorityKey(key);
+        }
 
         File.Delete(LegacyAuthorityPath);
 
@@ -726,14 +755,19 @@ public class PrinterCertificateAuthority
             NotBefore, now.AddDays(_options.AuthorityValidityDays));
 
         WriteFile(AuthorityCertificatePemPath, Encoding.ASCII.GetBytes(authority.ExportCertificatePem()));
-        WriteAuthorityKey(key);
         WriteFile(AuthorityDerPath, authority.Export(X509ContentType.Cert));
+
+        // The DER moved above the key deliberately: the pair this returns is the one the write
+        // verified, so there is no re-read afterwards to hang the remaining writes off. A crash
+        // between the certificate and the key lands on the same refusal it always did - the
+        // certificate exists and its key does not - and the DER being there too does not change which.
+        X509Certificate2 minted = WriteAuthorityKey(key);
 
         _logger.LogWarning("Minted a new printer certificate authority in {Directory}. Every printer provisioned "
                            + "from a previous authority will no longer validate this server and must be "
                            + "re-provisioned from a USB stick.", _directory);
 
-        return LoadAuthorityPair();
+        return minted;
     }
 
     /// <summary>

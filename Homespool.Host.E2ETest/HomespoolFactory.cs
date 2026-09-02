@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using System.Threading;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -17,6 +18,7 @@ using Microsoft.Extensions.Options;
 using Serilog.Core;
 
 using Homespool.Data;
+using Homespool.Host.Certificates;
 using Homespool.Host.Controllers;
 using Homespool.Host.Listeners;
 using Homespool.Host.PrusaConnect;
@@ -154,31 +156,58 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
     /// Issues the printer certificate the way startup would, because nothing here binds a listener.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <b>Production mints this on its startup path</b> - Program.EnsurePrinterCertificate, before the
-    /// first request, because the proxy reads the leaf when it starts - so a test host that skipped it
-    /// was unlike production in a way that kept showing up: the provisioning bundle had no address to
-    /// offer, and the certificate health check called a freshly started host degraded. Doing it here
-    /// makes a test host resemble a started server, which is what these tests are for.
+    /// first request, because the proxy reads the leaf when it starts. A test host without a
+    /// certificate was unlike production in ways that kept showing up: the provisioning bundle had no
+    /// address to offer, and the certificate health check called a freshly started host degraded.
+    /// </para>
+    /// <para>
+    /// <b>Corrected 2026-09-01 - the startup path is not skipped here, and this text used to say it
+    /// was.</b> <c>WebApplicationFactory</c> intercepts at <c>app.Run()</c>, which is why Program has
+    /// its <c>catch (HostAbortedException)</c>, so everything before that line runs in a test host
+    /// too - the mint included. The <see cref="PrinterCertificateAuthority.EnsureLeaf"/> call below
+    /// therefore always finds a leaf and short-circuits; it is kept because it costs a header read
+    /// and states what this host requires rather than inheriting it by luck.
+    /// </para>
+    /// <para>
+    /// <b>Which is why the certificates are planted before the host is built</b>, via
+    /// <see cref="SharedPrinterCertificates"/>: a mint costs about 1.2 seconds of key derivation, this
+    /// runs per test, and it was 39% of the suite. Planting after <c>base.CreateHost</c> returns is
+    /// too late to save any of it - the host has already minted - and looks like it works, because the
+    /// files are then correct either way.
+    /// </para>
     /// </remarks>
     [SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits",
                      Justification =
                          "CreateHost is a synchronous override of the test host factory; there is no asynchronous form to call.")]
     protected override IHost CreateHost(IHostBuilder builder)
     {
+        // Before the host is built, not after: Program mints on its own startup path, so a copy
+        // planted afterwards would be correct and worthless. The content root is created here for the
+        // same reason - ConfigureServices does it too, but that runs inside the call below.
+        Directory.CreateDirectory(_contentRoot);
+
+        SharedPrinterCertificates.Plant(_contentRoot);
+
         IHost host = base.CreateHost(builder);
 
         PrusaConnectOptions connect = host.Services.GetRequiredService<IOptions<PrusaConnectOptions>>().Value;
 
         if (connect.PrinterTls)
         {
-            host.Services.GetRequiredService<Homespool.Host.Certificates.PrinterCertificateAuthority>()
-                .EnsureLeaf(Homespool.Host.Certificates.PrinterCertificateNames.ForThisMachineAsync(
-                                connect,
-                                host.Services.GetRequiredService<IOptions<Homespool.Host.Certificates.CertificateOptions>>()
-                                    .Value.ParsedContainerNetworks,
-                                host.Services.GetRequiredService<Homespool.Host.Certificates.IHostAddressResolver>(),
-                                System.Threading.CancellationToken.None).GetAwaiter().GetResult())
-                .Dispose();
+            PrinterCertificateAuthority authority =
+                host.Services.GetRequiredService<PrinterCertificateAuthority>();
+
+            authority.EnsureLeaf(PrinterCertificateNames.ForThisMachineAsync(
+                                     connect,
+                                     host.Services.GetRequiredService<IOptions<CertificateOptions>>()
+                                         .Value.ParsedContainerNetworks,
+                                     host.Services.GetRequiredService<IHostAddressResolver>(),
+                                     CancellationToken.None).GetAwaiter().GetResult())
+                     .Dispose();
+
+            SharedPrinterCertificates.Capture(authority, _contentRoot);
         }
 
         return host;

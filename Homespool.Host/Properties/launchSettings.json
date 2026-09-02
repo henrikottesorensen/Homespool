@@ -5,7 +5,6 @@
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": true,
-      "launchUrl": "http://localhost:5052/scalar/v1",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "Listeners__UserPort": "5052"
@@ -15,7 +14,6 @@
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": true,
-      "launchUrl": "https://localhost:7023/scalar/v1",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "Listeners__UserPort": "5052",

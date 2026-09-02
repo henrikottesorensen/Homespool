@@ -76,7 +76,7 @@ public class PrusaConnectPrinterController : ControllerBase
     // protocol actually uses (Henrik, 2026-08-01, after the change was flagged as touching /p/*).
     [HttpGet]
     [Route("/p/ws")]
-    [EnableRateLimiting(Program.PrinterSocketRateLimitPolicy)]
+    [EnableRateLimiting(PrinterRateLimits.SocketPolicy)]
 
     // The 101 is said here because nothing in the union can: the response starts inside the action.
     [ProducesResponseType(typeof(void), StatusCodes.Status101SwitchingProtocols)]
@@ -157,7 +157,7 @@ public class PrusaConnectPrinterController : ControllerBase
     }
 
     [AllowAnonymous]
-    [EnableRateLimiting(Program.PrinterRegistrationRateLimitPolicy)]
+    [EnableRateLimiting(PrinterRateLimits.RegistrationPolicy)]
     [HttpPost]
     [Route("/p/register")]
 
@@ -200,7 +200,7 @@ public class PrusaConnectPrinterController : ControllerBase
     }
 
     [AllowAnonymous]
-    [EnableRateLimiting(Program.PrinterRegistrationRateLimitPolicy)]
+    [EnableRateLimiting(PrinterRateLimits.RegistrationPolicy)]
     [HttpGet]
     [Route("/p/register")]
     [RequestSizeLimit(8 * 1024)]
@@ -272,7 +272,7 @@ public class PrusaConnectPrinterController : ControllerBase
     /// </remarks>
     [HttpPost]
     [Route("/p/telemetry")]
-    [EnableRateLimiting(Program.PrinterHttpTransportRateLimitPolicy)]
+    [EnableRateLimiting(PrinterRateLimits.HttpTransportPolicy)]
     [ProducesResponseType(typeof(void), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(void), StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(void), StatusCodes.Status400BadRequest)]
@@ -333,7 +333,7 @@ public class PrusaConnectPrinterController : ControllerBase
     /// </summary>
     [HttpPost]
     [Route("/p/events")]
-    [EnableRateLimiting(Program.PrinterHttpTransportRateLimitPolicy)]
+    [EnableRateLimiting(PrinterRateLimits.HttpTransportPolicy)]
     [ProducesResponseType(typeof(void), StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(void), StatusCodes.Status400BadRequest)]
     public Task<IngestResult> PostEvent(CancellationToken cancellationToken)

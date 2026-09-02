@@ -12,7 +12,7 @@ namespace Homespool.Host.PrusaConnect.DTO;
 /// anonymous — it has to be, since a printer asking for its first credential has none — and each new
 /// fingerprint mints a row. Uncapped, one request could store as much text as the listener accepts,
 /// which is the thirty-odd megabytes nginx and Kestrel allow between them. The rate limiter
-/// (<c>Program.PrinterRegistrationRateLimitPolicy</c>) bounds how many requests arrive and says
+/// (<c>PrinterRateLimits.RegistrationPolicy</c>) bounds how many requests arrive and says
 /// nothing about how large each one is, and the deployment that fills up first is an SD card.
 /// </para>
 /// <para>

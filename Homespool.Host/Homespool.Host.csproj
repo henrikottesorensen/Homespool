@@ -18,7 +18,6 @@
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <PackageReference Include="QRCoder" Version="1.8.0" />
-        <PackageReference Include="Scalar.AspNetCore" Version="2.16.18" />
         <PackageReference Include="Serilog" Version="4.4.0" />
         <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
         <PackageReference Include="Serilog.Enrichers.ClientInfo" Version="2.9.0" />
@@ -27,6 +26,10 @@
         <PackageReference Include="SerilogAnalyzer" Version="0.15.0" />
         <PackageReference Include="SimpleBase" Version="5.6.4" />
         <PackageReference Include="Squint" Version="0.1.1" />
+        <!-- The UI only. Document generation stays with Microsoft.AspNetCore.OpenApi; this package
+             carries the swagger-ui assets and nothing else, so it renders whatever document it is
+             pointed at without bringing SwaggerGen's own schema generator into the build. -->
+        <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
     </ItemGroup>
 
     <ItemGroup>

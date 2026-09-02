@@ -25,7 +25,7 @@ namespace Homespool.Host.Middleware;
 /// and the encrypted download under <c>/f</c> (a firmware client must get its documented status
 /// codes, never a 302 to an HTML page - and neither path is navigable or reveals anything, since
 /// both answer only to a credential or a capability minted by this deployment); the
-/// dev-only API docs (<c>/scalar</c>, <c>/openapi</c>); and any request for a static asset,
+/// dev-only API docs (<c>/openapi</c> and its <c>/swagger</c> viewer); and any request for a static asset,
 /// identified by a file extension - which covers the setup page's own CSS and JS regardless of
 /// whether they are served from <c>wwwroot</c> or an <c>/Identity</c> path.
 /// </para>
@@ -66,8 +66,8 @@ public sealed class SetupGateMiddleware : IMiddleware
             // transfer needs a printer, which needs an administrator to claim it - but "in practice"
             // is not what a gate should rest on, and the failure it would cause is silent.
             || path.StartsWithSegments("/f", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWithSegments("/scalar", StringComparison.OrdinalIgnoreCase)
             || path.StartsWithSegments("/openapi", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWithSegments("/swagger", StringComparison.OrdinalIgnoreCase)
 
             // Not navigable, and a container is never "not started yet" from a monitor's point of
             // view just because nobody has created the first administrator. Redirecting this to

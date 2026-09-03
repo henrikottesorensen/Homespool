@@ -148,6 +148,39 @@
     });
 })();
 
+// A form that asks before it posts, with the question already written out in a data- attribute.
+//
+// It lives here rather than in an inline onsubmit because the question names a file, and a file name
+// is somebody's input. An onsubmit attribute is JavaScript source: Razor encodes what it renders for
+// HTML, which is the only thing it can do, and an apostrophe survives that encoding intact - so a
+// file called x');alert(document.cookie).gcode closed the confirm's string literal and ran the rest
+// with the reader's session. The name need not have come from the reader: an API token scoped to
+// nothing but
+// uploading is enough to put a file in their store, which turns a slicer's credential into a way to
+// reach the account that issued it. Read out of dataset the same name is a string and stays one.
+//
+// A browser that never runs this deletes without asking, which is the right way for it to fail.
+// Withholding the submit until the script has run would break Delete outright for anyone it never
+// reached - a worse outcome than losing a confirmation for an action the page's own button asked
+// for, and one they cannot diagnose.
+(function () {
+    "use strict";
+
+    var forms = document.querySelectorAll("[data-confirm]");
+
+    if (!forms.length) {
+        return;
+    }
+
+    Array.prototype.forEach.call(forms, function (form) {
+        form.addEventListener("submit", function (event) {
+            if (!window.confirm(form.dataset.confirm)) {
+                event.preventDefault();
+            }
+        });
+    });
+})();
+
 // The Files page's printer selector submits itself on change. Without this the <select> shows a new
 // choice the moment it is picked - that part is the browser, free - but the row buttons below it
 // were rendered against the *previous* selection and stay pointed at it until something reloads the

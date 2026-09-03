@@ -220,6 +220,64 @@ public sealed class UserFileStoreTests : IDisposable
         await act.Should().ThrowAsync<ArgumentException>();
     }
 
+    /// <summary>
+    /// A name is going to be quoted somewhere, so the characters that end a quotation are refused.
+    /// </summary>
+    /// <remarks>
+    /// <b>The second layer, not the first.</b> Every page that shows a name encodes it, and that is
+    /// what makes those pages safe. This is for the place that forgets - the Files page's delete
+    /// confirmation was an inline <c>onsubmit</c>, where an apostrophe closed the JavaScript string
+    /// literal and the rest of the name ran. That mattered because such a name need not be the
+    /// reader's own: a token scoped to nothing but uploading can put one in their store, so this is
+    /// what stops an upload-only credential reaching the session of whoever issued it.
+    /// </remarks>
+    [Theory]
+    [InlineData("x');alert(document.cookie).gcode")]
+    [InlineData("say \"cheese\".gcode")]
+    [InlineData("<script>.gcode")]
+    [InlineData("new\nline.gcode")]
+    public async Task ANameThatCannotBeQuotedSafelyIsRefused(string given)
+    {
+        // Arrange
+        UserFileStore store = NewStore();
+
+        // Act
+        Func<Task> act = () => SaveAsync(store, Alice, given, [1]);
+
+        // Assert
+        await act.Should().ThrowAsync<PrintFileNameRejectedException>(
+            "a name reaches places that do no escaping, and one of them was a confirm() dialog");
+        store.List(Alice).Should().BeEmpty("and nothing of the refused upload is left behind");
+    }
+
+    /// <summary>
+    /// A name that got in before the refusal above can still be found, and so can still be removed.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is why the check is on the way in rather than in <c>SafeName</c>.</b> Refusing these
+    /// characters on lookup too would leave a file already carrying one unfindable - listed on the
+    /// page, and answering neither Delete nor Rename. The owner would have to reach for a shell to
+    /// clear up something this application let in.
+    /// </remarks>
+    [Fact]
+    public async Task ANameAlreadyOnDiskStaysDeletable()
+    {
+        // Arrange - renamed on disk rather than put there through the store, which is now the only
+        // way such a name can exist: it is what an earlier version of this class would have taken.
+        UserFileStore store = NewStore();
+        StoredFile legal = await SaveAsync(store, Alice, "legal.gcode", [1]);
+        string planted = Path.Combine(Path.GetDirectoryName(legal.Path)!, "x');alert(1).gcode");
+
+        File.Move(legal.Path, planted);
+
+        // Act
+        bool deleted = store.Delete(Alice, "x');alert(1).gcode");
+
+        // Assert
+        deleted.Should().BeTrue("a lookup answers for the name that is there, whatever it spells");
+        store.List(Alice).Should().BeEmpty();
+    }
+
     [Fact]
     public async Task AnExtensionNoPrinterAcceptsIsRefusedByTheStoreItself()
     {

@@ -197,13 +197,21 @@ else
                        copy of the same download here would be one more place to get ownership wrong. *@
                     <a href="/api/v1/files/@Uri.EscapeDataString(file.FileName)"
                        class="btn btn-sm btn-outline-secondary">@Localiser["Files_Download"]</a>
+                    @* The question is a data- attribute and site.js asks it; it was an inline
+                       onsubmit, which is source code, and a file name is not. Razor encodes this
+                       value for HTML - which is all it can do - so in an onsubmit a name carrying an
+                       apostrophe closed the string literal and the rest of the name ran as script.
+                       That name need not be one the owner typed: an API token scoped to nothing but
+                       uploading can put a file in their store, and this row is where they would meet
+                       it. Formatted here, where the name is already known - unlike the upload
+                       strings above, which site.js has to fill in itself. *@
                     <form method="post" asp-page-handler="Delete"
                           asp-route-name="@file.FileName"
                           asp-route-sort="@Model.Sort"
                           asp-route-desc="@Model.Descending"
                           asp-route-printerId="@Model.SelectedPrinterId"
                           class="d-inline"
-                          onsubmit="return confirm('Delete @file.FileName?');">
+                          data-confirm="@Localiser["Files_ConfirmDelete", file.FileName]">
                         <button type="submit" class="btn btn-sm btn-outline-danger">@Localiser["Common_Delete"]</button>
                     </form>
                 </td>

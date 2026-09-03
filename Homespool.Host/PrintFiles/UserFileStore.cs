@@ -536,9 +536,43 @@ public sealed class UserFileStore
         return name;
     }
 
+    /// <summary>
+    /// <see cref="SafeName"/> for a name on its way <i>into</i> the store, refusing rather than
+    /// returning null - and refusing a second class of name that lookups still tolerate.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Quotes, angle brackets and control characters are refused here</b> and nowhere else,
+    /// because a name is not only a path: it is echoed onto every page that lists it, into log lines,
+    /// into JSON bodies and onto the printer's own display. Those consumers escape their own output
+    /// and remain the thing that makes them safe - this is the second layer, and the one that holds
+    /// where a name reaches somewhere that does no escaping at all. The Files page's delete
+    /// confirmation was exactly that place: an apostrophe in a name closed a JavaScript string
+    /// literal, so an upload-scoped API token could plant a row that ran script in the owner's
+    /// session. That page no longer builds script from a name, and this stops the next one being
+    /// written.
+    /// </para>
+    /// <para>
+    /// <b>Deliberately not in <see cref="SafeName"/>, which lookups use.</b> Tightening the read path
+    /// too would make a file already carrying such a name unfindable, and therefore impossible to
+    /// rename or delete through this application - locking in whatever got past an earlier version
+    /// rather than letting the owner clear it up. Refuse on the way in; keep answering on the way
+    /// out.
+    /// </para>
+    /// </remarks>
     private static string RequireSafeName(string fileName)
     {
-        return SafeName(fileName) ?? throw new PrintFileNameRejectedException(nameof(fileName));
+        string name = SafeName(fileName) ?? throw new PrintFileNameRejectedException(nameof(fileName));
+
+        foreach (char character in name)
+        {
+            if (char.IsControl(character) || character is '"' or '\'' or '<' or '>')
+            {
+                throw PrintFileNameRejectedException.ForForbiddenCharacters(name, nameof(fileName));
+            }
+        }
+
+        return name;
     }
 
     /// <summary>Deletes a path if it is there, and never throws for a path that is not.</summary>

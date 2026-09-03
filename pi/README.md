@@ -236,18 +236,24 @@ would run the openssl and openssh it was written with for as long as it stays pl
 years, not months. Expecting somebody to remember `apt` is the same mistake as expecting them to
 change a default password.
 
-It takes Debian's `trixie` stable archive and `trixie-security` — point releases included — plus
-Raspberry Pi's own archive. What it deliberately does not touch:
+It takes all three archives the card actually has — Debian's `trixie` and `trixie-security`, point
+releases included; Raspberry Pi's; and Docker's. Each of the latter two ships packages that no Debian
+suite can supersede, so excluding either would freeze it for the life of the board. What it does not
+take:
 
 | | why not |
 |---|---|
-| `download.docker.com` | a `docker-ce` upgrade restarts the daemon, which stops every container — mid-print, that is the print gone |
 | `trixie-updates` | Debian ships it commented out; it is not security, and stable is conservative enough |
 | kernel, bootloader, EEPROM | blacklisted by name — see below |
 
-Docker's repo is `origin=Docker`, which Debian's patterns cannot match, so nothing extra is needed to
-keep it out. Raspberry Pi's is allowed but its boot-critical packages are blacklisted: anything
-matching `linux-image-`, `linux-headers-`, `rpi-eeprom`, `raspi-firmware`, `raspberrypi-bootloader`
+Docker is included because `docker-ce` and `containerd.io` are the most privileged userspace on the
+card, run as root, and their CVEs are the container-escape kind — and Debian's `docker.io` is not an
+alternative, because `rpi-image-gen` installs from `download.docker.com`, so that repo is the only
+place a fix exists. The cost is that a daemon upgrade restarts containers. That is a few seconds and
+an interrupted file transfer, not a lost print: a Prusa printer prints from its own storage, and this
+board only ever transfers the file to it.
+
+Raspberry Pi's boot-critical packages are blacklisted: anything matching `linux-image-`, `linux-headers-`, `rpi-eeprom`, `raspi-firmware`, `raspberrypi-bootloader`
 or `raspberrypi-kernel`. Those rewrite the FAT boot partition or reflash the bootloader EEPROM, where
 an upgrade interrupted by a power cut is a board that does not come back — and since nothing here
 reboots unattended, a kernel installed that way would sit unused until a person acted anyway. All the

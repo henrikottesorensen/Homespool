@@ -244,10 +244,26 @@ mmdebstrap:
       # So it is stable and its security updates - point releases included, which is conservative
       # and right for an appliance - and NOT trixie-updates, which Debian ships commented out.
       #
-      # download.docker.com stays out, and it is the exclusion that matters most: it is
-      # origin=Docker, so Debian's patterns cannot reach it. A docker-ce upgrade restarts the
-      # daemon, which stops every container on the board, and doing that unasked to a machine
-      # mid-print is exactly the harm this must not do.
+      # download.docker.com is allowed too, and the argument for excluding it turned out not to
+      # survive checking. It was that a docker-ce upgrade restarts the daemon, stopping every
+      # container, and that doing so mid-print destroys the print. The second half is false: a
+      # Prusa printer prints from its own storage, and this board only ever *transferred* the file
+      # to it (PrusaConnect.Transfers.FileTransferContent). A daemon restart costs an in-flight
+      # transfer, which is retryable, and a monitoring gap of seconds - not somebody's eight hours.
+      #
+      # Against that: docker-ce and containerd.io are the most privileged userspace on this card,
+      # they run as root, and their CVEs are the container-escape kind. Excluded, they would be
+      # frozen at whatever the card shipped with for the life of the board - the same trap as the
+      # Raspberry Pi archive, on a component where it matters more. Debian's docker.io is not an
+      # option here either: rpi-image-gen's docker layer installs from download.docker.com, so this
+      # origin is the only source of a fix that exists.
+      #
+      # Not paired with live-restore in /etc/docker/daemon.json, which is the documented way to keep
+      # containers running across a daemon upgrade and was considered. It covers patch releases only
+      # - Docker's own documentation says "not for major (YY.MM) daemon upgrades" - and it changes
+      # what happens to containers at shutdown, which is a thing to verify on hardware rather than
+      # assume. Buying a few seconds a handful of times a year with an untested change to daemon
+      # shutdown semantics is the wrong way round. Worth revisiting with a board to test on.
       #
       # archive.raspberrypi.com is added below, and the reason is not the obvious one. It does NOT
       # make Debian's updates reachable for the packages Raspberry Pi rebuilds: their versions carry
@@ -277,12 +293,14 @@ mmdebstrap:
         > $1/etc/apt/apt.conf.d/20auto-upgrades
 
       printf '%s\n' \
-        '// Raspberry Pi'"'"'s own archive, added to Debian'"'"'s three. Without it the 38 packages that' \
-        '// come from here - libc6 and libc-bin among them - can never be updated at all, because a' \
-        '// +rpt version outranks Debian'"'"'s equivalent forever. See the layer for why this does not' \
-        '// make Debian'"'"'s glibc reachable, only Raspberry Pi'"'"'s next rebuild of it.' \
+        '// Raspberry Pi'"'"'s archive and Docker'"'"'s, added to Debian'"'"'s three. Both ship packages that' \
+        '// no Debian suite can supersede - a +rpt version outranks Debian'"'"'s forever, and docker-ce' \
+        '// exists in no Debian suite at all - so excluding either freezes it for the life of the' \
+        '// board. Origin and Codename are each archive'"'"'s own Release fields, read rather than' \
+        '// guessed. See the layer for why this does not make Debian'"'"'s glibc reachable.' \
         'Unattended-Upgrade::Origins-Pattern {' \
         '        "origin=Raspberry Pi Foundation,codename=${distro_codename}";' \
+        '        "origin=Docker,codename=${distro_codename}";' \
         '};' \
         '' \
         '// The exceptions, and the reason the blacklist exists at all: everything here either' \

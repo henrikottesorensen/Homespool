@@ -284,8 +284,19 @@ mmdebstrap:
       # the trap for anyone trying to *narrow* them. Restating Debian's patterns here to trim one
       # would add a fourth, not replace three.
       #
-      # Origin and Codename below are the RPi archive's own Release fields, read from
-      # archive.raspberrypi.com/debian/dists/trixie/Release rather than guessed.
+      # The two patterns below key on DIFFERENT fields, and that is not an inconsistency to tidy up.
+      # apt takes them from each archive's own Release file - Suite becomes archive=, Codename
+      # becomes codename= - and the two archives fill those fields the opposite way round:
+      #
+      #   archive.raspberrypi.com   Suite: stable    Codename: trixie
+      #   download.docker.com       Suite: trixie    (no Codename field at all)
+      #
+      # So codename= is right for Raspberry Pi and can never match Docker, whose codename is the
+      # empty string. This was written codename= on both lines first, and the Docker half then
+      # matched nothing at all: the config parses, --debug echoes the pattern back, and an
+      # up-to-date card reports nothing to do - which is what a working configuration also reports.
+      # It took a card with a deliberately downgraded docker-ce-cli to see that the candidate was
+      # being pushed back. Copying a pattern from the line above is exactly how this happens.
       set -eu
       printf '%s\n' \
         'APT::Periodic::Update-Package-Lists "1";' \
@@ -296,11 +307,17 @@ mmdebstrap:
         '// Raspberry Pi'"'"'s archive and Docker'"'"'s, added to Debian'"'"'s three. Both ship packages that' \
         '// no Debian suite can supersede - a +rpt version outranks Debian'"'"'s forever, and docker-ce' \
         '// exists in no Debian suite at all - so excluding either freezes it for the life of the' \
-        '// board. Origin and Codename are each archive'"'"'s own Release fields, read rather than' \
-        '// guessed. See the layer for why this does not make Debian'"'"'s glibc reachable.' \
+        '// board. See the layer for why this does not make Debian'"'"'s glibc reachable.' \
+        '//' \
+        '// The two lines key on different fields on purpose. apt takes these from each archive'"'"'s' \
+        '// own Release file, and the two fill them the opposite way round: Raspberry Pi publishes' \
+        '// Suite: stable with Codename: trixie, while Docker publishes Suite: trixie and no' \
+        '// Codename at all. So codename= is the only one that matches Raspberry Pi, and archive= is' \
+        '// the only one that matches Docker. Written codename= on both first, which silently' \
+        '// matched no Docker package whatsoever - see the layer.' \
         'Unattended-Upgrade::Origins-Pattern {' \
         '        "origin=Raspberry Pi Foundation,codename=${distro_codename}";' \
-        '        "origin=Docker,codename=${distro_codename}";' \
+        '        "origin=Docker,archive=${distro_codename}";' \
         '};' \
         '' \
         '// Nothing is blacklisted. An earlier version excluded the kernel, the bootloader and the' \

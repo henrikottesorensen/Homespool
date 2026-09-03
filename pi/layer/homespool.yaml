@@ -303,31 +303,39 @@ mmdebstrap:
         '        "origin=Docker,codename=${distro_codename}";' \
         '};' \
         '' \
-        '// The exceptions, and the reason the blacklist exists at all: everything here either' \
-        '// rewrites the FAT boot partition or reflashes the bootloader EEPROM, where an upgrade' \
-        '// interrupted by a power cut is a board that does not come back. A appliance that stops' \
-        '// booting is worse than one running a month-old kernel, and nothing on this card reboots' \
-        '// unattended anyway, so a kernel installed here would sit unused until a person acted -' \
-        '// paying the whole risk for none of the benefit.' \
+        '// Nothing is blacklisted. An earlier version excluded the kernel, the bootloader and the' \
+        '// EEPROM packages, and the trade was the wrong way round: it accepted a board running a' \
+        '// kernel with known holes for its whole life to avoid a rare, unlucky write. The security' \
+        '// cost is certain and permanent; the availability risk it bought is neither.' \
         '//' \
-        '// initramfs-tools is here because its postinst runs update-initramfs -u, which rewrites' \
-        '// the initramfs on the FAT partition - the same boot media, for a package whose CVEs are' \
-        '// rare and not network-facing. It only removes the most direct cause: other packages can' \
-        '// activate the same trigger, and update-initramfs builds a .new and renames, so this is' \
-        '// narrowing the exposure rather than closing it.' \
+        '// The risk was not imaginary. The boot partition is FAT with no journal, so a write torn by' \
+        '// a power cut is a board that does not come back, where the same accident on the journalled' \
+        '// root is a dpkg --configure -a over SSH. That distinction is real. What is not real is a' \
+        '// blacklist delivering it.' \
         '//' \
-        '// Regexes, matched against the package name. Wi-Fi and Bluetooth firmware is deliberately' \
-        '// NOT here: it is replaced on disk and read at the next boot, so it carries the ordinary' \
-        '// risk rather than the bricking one.' \
-        'Unattended-Upgrade::Package-Blacklist {' \
-        '        "^linux-image-";' \
-        '        "^linux-headers-";' \
-        '        "^rpi-eeprom";' \
-        '        "^raspi-firmware$";' \
-        '        "^raspberrypi-bootloader$";' \
-        '        "^raspberrypi-kernel";' \
-        '        "^initramfs-tools";' \
-        '};' \
+        '// Traced on a built card rather than reasoned: /boot is on the ext4 root, and the only' \
+        '// thing that writes the FAT partition is raspi-firmware'"'"'s hooks, which rsync the kernel,' \
+        '// DTBs, overlays and initramfs across. Those hooks are files on disk. They run whenever' \
+        '// anything activates the update-initramfs trigger - udev, kmod, busybox, dmsetup,' \
+        '// klibc-utils and e2fsprogs all do, and every one is a Debian package in an origin that' \
+        '// was always allowed. So a routine udev security update rewrites that partition with or' \
+        '// without a blacklist; blacklisting a package stops it being upgraded and does nothing to' \
+        '// a dpkg trigger fired by something else.' \
+        '//' \
+        '// rpi-eeprom was in the list for the same reason and was never the thing that flashes. Its' \
+        '// postinst installs blobs under /lib/firmware and enables rpi-eeprom-update.service, which' \
+        '// this card already runs at every boot as -s -a: it stages pieeprom.upd onto the FAT' \
+        '// partition and the ROM flashes at the next boot. That path never went through apt.' \
+        '//' \
+        '// And the exclusion contradicted the premise. This whole file exists because nobody logs' \
+        '// into an appliance - so "a kernel would sit unused until a person acted" does not describe' \
+        '// a deferral, it describes a kernel that is never installed for the life of the board.' \
+        '// That is the trap the origins above were opened to escape, and it is worst on the one' \
+        '// package where frozen-forever is hardest to defend.' \
+        '//' \
+        '// What is paid for this: a kernel upgrade rsyncs two images, the DTB set and the overlays' \
+        '// across FAT, which is a bigger write than an initramfs refresh and happens per kernel' \
+        '// release. It is a wider window on a risk the card already carries, not a new one.' \
         '' \
         '// It never reboots by itself, and that is the decision this file exists to make. A print' \
         '// runs for hours and dies with the machine, so a board that reboots when it judges the' \
@@ -335,17 +343,17 @@ mmdebstrap:
         '// nobody was waiting for. Updates that need a reboot wait for a person instead.' \
         '//' \
         '// The cost is real and stated rather than hidden: a kernel or an openssl whose services' \
-        '// were not restarted sits installed and unused until that reboot. /var/run/reboot-required' \
-        '// is where the board says so, and pi/README.md tells its owner to look.' \
+        '// were not restarted sits installed and unused until that reboot. A kernel says so in' \
+        '// /var/run/reboot-required, written by unattended-upgrades'"'"' own kernel postinst hook -' \
+        '// which is a thing that happens now that kernels are not excluded. An openssl does not:' \
+        '// nothing on this card writes that file for a library, so pi/README.md recommends a reboot' \
+        '// on a cadence rather than a check for one.' \
         'Unattended-Upgrade::Automatic-Reboot "false";' \
         '' \
-        '// The card is finite and nothing prunes it otherwise. The autoclean is the one that earns' \
-        '// its place here: downloaded .debs are what this path actually accumulates.' \
-        '//' \
-        '// Remove-Unused-Kernel-Packages is close to inert and kept anyway. Kernels come from the' \
-        '// Pi archive and are blacklisted above, so nothing here installs one - on this card that' \
-        '// accumulation has no automatic source at all. It still earns its line after somebody runs' \
-        '// apt full-upgrade by hand, which is the only way a kernel arrives.' \
+        '// The card is finite and nothing prunes it otherwise, and with nothing blacklisted both of' \
+        '// these are load-bearing. Downloaded .debs are what this path accumulates day to day; old' \
+        '// kernels are what accumulates in hundreds of megabytes, and this card installs them' \
+        '// unattended now, so the pruning is what keeps a 30 GB card from filling with them.' \
         'Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";' \
         'Unattended-Upgrade::Remove-New-Unused-Dependencies "true";' \
         'APT::Periodic::AutocleanInterval "7";' \

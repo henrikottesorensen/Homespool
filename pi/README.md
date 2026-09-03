@@ -244,7 +244,6 @@ take:
 | | why not |
 |---|---|
 | `trixie-updates` | Debian ships it commented out; it is not security, and stable is conservative enough |
-| kernel, bootloader, EEPROM | blacklisted by name — see below |
 
 Docker is included because `docker-ce` and `containerd.io` are the most privileged userspace on the
 card, run as root, and their CVEs are the container-escape kind — and Debian's `docker.io` is not an
@@ -253,12 +252,26 @@ place a fix exists. The cost is that a daemon upgrade restarts containers. That 
 an interrupted file transfer, not a lost print: a Prusa printer prints from its own storage, and this
 board only ever transfers the file to it.
 
-Raspberry Pi's boot-critical packages are blacklisted: anything matching `linux-image-`, `linux-headers-`, `rpi-eeprom`, `raspi-firmware`, `raspberrypi-bootloader`,
-`raspberrypi-kernel` or `initramfs-tools`. Those rewrite the FAT boot partition or reflash the bootloader EEPROM, where
-an upgrade interrupted by a power cut is a board that does not come back — and since nothing here
-reboots unattended, a kernel installed that way would sit unused until a person acted anyway. All the
-risk, none of the benefit. Wi-Fi and Bluetooth firmware is *not* blacklisted: it is replaced on disk
-and read at the next boot, which is ordinary risk rather than bricking risk.
+**Nothing is blacklisted, including the kernel**, and that is a deliberate reversal. An earlier
+version excluded the kernel, bootloader and EEPROM packages, and the trade was the wrong way round:
+it accepted a board running a kernel with known holes for its entire life in order to avoid a rare,
+unlucky write. The security cost is certain and permanent; the availability risk it bought is
+neither.
+
+The risk was not imaginary. The boot partition is FAT with no journal, so a write torn by a power cut
+is a board that does not come back, where the same accident on the journalled root is a
+`dpkg --configure -a` over SSH. The distinction is real; a blacklist does not deliver it. `/boot` is
+on the root filesystem, and what copies the kernel and initramfs onto the FAT partition is
+`raspi-firmware`'s hooks, which run whenever anything fires the `update-initramfs` trigger — `udev`,
+`kmod`, `busybox` and `e2fsprogs` among them, all ordinary Debian packages that were always allowed.
+So that partition gets rewritten by a routine `udev` update either way. `rpi-eeprom` was excluded for
+the same reason and is not what flashes: `rpi-eeprom-update.service` runs at every boot, stages the
+new image, and the ROM applies it at the following one, with no involvement from `apt` at all.
+
+What excluding the kernel would really have meant is that this board never gets one. Nobody logs into
+an appliance — that is the reason this page exists — so "a person will run `apt` eventually" is not a
+deferral, it is the same freeze the origins above were opened to end, on the package where it is
+hardest to defend.
 
 **Why Raspberry Pi's archive is allowed at all** is worth stating, because the obvious reason is
 wrong. It does not make Debian's updates reachable for the packages Raspberry Pi rebuilds — their
@@ -274,11 +287,11 @@ picked its own moment would eventually throw away someone's eight-hour job to in
 was waiting for. `sudo reboot` when nothing is printing is the whole procedure.
 
 The cost, stated plainly: a library upgraded underneath a running service stays the old one in memory
-until that service restarts or the board reboots. **Nothing on the card tells you when that has
-happened.** `/var/run/reboot-required` exists but is narrower than it looks — only a kernel install
-or a `dbus` upgrade ever writes it, and kernels are blacklisted here, so the openssl case that
-matters most leaves no trace at all. `needrestart` is not installed, because in unattended mode it
-restarts services, and on this board that includes the container engine.
+until that service restarts or the board reboots. `/var/run/reboot-required` catches half of that. A
+kernel install writes it, which is a real signal now that kernels are not excluded — but **a library
+does not**, so the `openssl` case that matters most leaves no trace at all. `needrestart` would
+detect it properly and is not installed on purpose: in unattended mode it restarts services, and on
+this board that includes the container engine.
 
 So the practical answer is a reboot on a schedule that suits you rather than a check for one:
 

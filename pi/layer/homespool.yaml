@@ -310,6 +310,12 @@ mmdebstrap:
         '// unattended anyway, so a kernel installed here would sit unused until a person acted -' \
         '// paying the whole risk for none of the benefit.' \
         '//' \
+        '// initramfs-tools is here because its postinst runs update-initramfs -u, which rewrites' \
+        '// the initramfs on the FAT partition - the same boot media, for a package whose CVEs are' \
+        '// rare and not network-facing. It only removes the most direct cause: other packages can' \
+        '// activate the same trigger, and update-initramfs builds a .new and renames, so this is' \
+        '// narrowing the exposure rather than closing it.' \
+        '//' \
         '// Regexes, matched against the package name. Wi-Fi and Bluetooth firmware is deliberately' \
         '// NOT here: it is replaced on disk and read at the next boot, so it carries the ordinary' \
         '// risk rather than the bricking one.' \
@@ -320,6 +326,7 @@ mmdebstrap:
         '        "^raspi-firmware$";' \
         '        "^raspberrypi-bootloader$";' \
         '        "^raspberrypi-kernel";' \
+        '        "^initramfs-tools";' \
         '};' \
         '' \
         '// It never reboots by itself, and that is the decision this file exists to make. A print' \

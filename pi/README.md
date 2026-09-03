@@ -253,8 +253,8 @@ place a fix exists. The cost is that a daemon upgrade restarts containers. That 
 an interrupted file transfer, not a lost print: a Prusa printer prints from its own storage, and this
 board only ever transfers the file to it.
 
-Raspberry Pi's boot-critical packages are blacklisted: anything matching `linux-image-`, `linux-headers-`, `rpi-eeprom`, `raspi-firmware`, `raspberrypi-bootloader`
-or `raspberrypi-kernel`. Those rewrite the FAT boot partition or reflash the bootloader EEPROM, where
+Raspberry Pi's boot-critical packages are blacklisted: anything matching `linux-image-`, `linux-headers-`, `rpi-eeprom`, `raspi-firmware`, `raspberrypi-bootloader`,
+`raspberrypi-kernel` or `initramfs-tools`. Those rewrite the FAT boot partition or reflash the bootloader EEPROM, where
 an upgrade interrupted by a power cut is a board that does not come back — and since nothing here
 reboots unattended, a kernel installed that way would sit unused until a person acted anyway. All the
 risk, none of the benefit. Wi-Fi and Bluetooth firmware is *not* blacklisted: it is replaced on disk

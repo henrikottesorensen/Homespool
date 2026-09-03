@@ -35,7 +35,6 @@ namespace Homespool.Host.E2ETest;
 /// offer, a key, a GET.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class EncryptedTransferEndpointTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-e2e-enc-{Guid.NewGuid():N}.db");

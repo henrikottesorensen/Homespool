@@ -25,7 +25,6 @@ namespace Homespool.Host.E2ETest;
 /// (contrast <c>RegisterModelTests</c> in <c>Homespool.Host.Test</c>, which calls
 /// <c>RegisterModel.OnPostAsync</c> directly).
 /// </summary>
-[Collection("WebApplicationFactory")]
 public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
 {
     private const string Password = "Correct-Horse-Battery-Staple-1!";

@@ -26,7 +26,6 @@ namespace Homespool.Host.E2ETest;
 /// change however far a user got. Almost certainly missed when the Identity.UI package was removed
 /// and its pages were reimplemented locally.
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class EmailChangeFlowTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-emailchange-{Guid.NewGuid():N}.db");

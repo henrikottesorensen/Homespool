@@ -25,7 +25,6 @@ namespace Homespool.Host.E2ETest;
 /// <c>curl --fail</c> treats as success, so the container would report healthy without the health
 /// check ever running.
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class HealthEndpointTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-health-{Guid.NewGuid():N}.db");

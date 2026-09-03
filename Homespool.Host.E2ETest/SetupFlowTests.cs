@@ -34,7 +34,6 @@ namespace Homespool.Host.E2ETest;
 // See EndToEndEnrolmentTests' [Collection] remarks: every WebApplicationFactory-hosted test class
 // needs the same collection name so xUnit never races their concurrent Program.Main startups against
 // Serilog's shared static Log.Logger.
-[Collection("WebApplicationFactory")]
 public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-setup-{Guid.NewGuid():N}.db");

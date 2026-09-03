@@ -34,7 +34,6 @@ namespace Homespool.Host.E2ETest;
 /// posting the right field name is half of what is being asserted.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class ReprintFromHistoryTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-reprint-{Guid.NewGuid():N}.db");

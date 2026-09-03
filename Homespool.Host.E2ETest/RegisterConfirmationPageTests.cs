@@ -24,7 +24,6 @@ namespace Homespool.Host.E2ETest;
 /// account-existence oracle, defeating the enumeration defences on the login and forgot-password
 /// flows.
 /// </summary>
-[Collection("WebApplicationFactory")]
 public sealed class RegisterConfirmationPageTests : IAsyncLifetime, IDisposable
 {
     private const string Password = "Correct-Horse-Battery-Staple-1!";

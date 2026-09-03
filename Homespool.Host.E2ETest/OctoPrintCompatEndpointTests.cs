@@ -46,7 +46,6 @@ namespace Homespool.Host.E2ETest;
 /// real slicer against a real listener.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-octo-e2e-{Guid.NewGuid():N}.db");

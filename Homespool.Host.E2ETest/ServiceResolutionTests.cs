@@ -36,7 +36,6 @@ namespace Homespool.Host.E2ETest;
 /// registration whose dependencies are not yet in the graph.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class ServiceResolutionTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-resolve-{Guid.NewGuid():N}.db");

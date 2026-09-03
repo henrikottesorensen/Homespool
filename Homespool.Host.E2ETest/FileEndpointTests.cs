@@ -40,7 +40,6 @@ namespace Homespool.Host.E2ETest;
 /// shapes rather than being rewritten.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class FileEndpointTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-upload-{Guid.NewGuid():N}.db");

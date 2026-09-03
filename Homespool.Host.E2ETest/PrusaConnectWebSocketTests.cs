@@ -28,7 +28,6 @@ namespace Homespool.Host.E2ETest;
 /// the gate itself rejects a bad handshake or that a good one actually resolves the claimed printer's
 /// id and threads it through to the handler.
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-e2e-ws-{Guid.NewGuid():N}.db");

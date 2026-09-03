@@ -36,7 +36,6 @@ namespace Homespool.Host.E2ETest;
 /// queueing writes a row, and the producer loop is what would later turn it into a transfer.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class PrintQueueEndpointTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-queue-e2e-{Guid.NewGuid():N}.db");

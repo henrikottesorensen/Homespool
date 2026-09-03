@@ -37,7 +37,6 @@ namespace Homespool.Host.E2ETest;
 /// has no part in.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class ExternalLoginsPageTests : IAsyncLifetime, IDisposable
 {
     /// <summary>Spelled as the sibling suites spell it; see <c>ExternalAccountPasswordTests</c>.</summary>

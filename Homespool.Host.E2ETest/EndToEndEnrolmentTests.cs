@@ -34,7 +34,6 @@ namespace Homespool.Host.E2ETest;
 // configuration can silently clobber another's mid-startup. [Collection] groups every such class
 // under one name so xUnit runs them sequentially against each other rather than in parallel; other
 // collections are unaffected.
-[Collection("WebApplicationFactory")]
 public sealed class EndToEndEnrolmentTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-e2e-{Guid.NewGuid():N}.db");

@@ -41,7 +41,6 @@ namespace Homespool.Host.E2ETest;
 /// not use it.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class RemoteReadyTogglePageTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-remote-ready-page-{Guid.NewGuid():N}.db");

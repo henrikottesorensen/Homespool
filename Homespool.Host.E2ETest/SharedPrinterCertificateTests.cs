@@ -31,12 +31,20 @@ namespace Homespool.Host.E2ETest;
 /// disk either way - which is why this asserts on the mint itself.
 /// </para>
 /// <para>
-/// The first host in a run legitimately mints and donates; the second must not, so this drives two
-/// and watches the second. <c>Directory</c> is the mint warning's own property, read structurally
-/// rather than by message text like every other assertion here.
+/// The first host in a run legitimately mints and donates, so this drives one to guarantee a donation
+/// has happened and then watches two started afterwards. <c>Directory</c> is the mint warning's own
+/// property, read structurally rather than by message text like every other assertion here.
+/// </para>
+/// <para>
+/// <b>It compares the two heirs with each other rather than with the first host, and that is not
+/// fussiness.</b> The suite runs classes in parallel, so which host wins the race to donate is
+/// undecided - another class may capture the template first, leaving the host started here with a
+/// perfectly correct authority that nobody inherits. Asserting the heirs match <i>it</i> failed
+/// exactly that way. The template never changes once captured, so any two hosts started after a
+/// donation must agree with each other however the race went, and that is the invariant worth
+/// holding.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class SharedPrinterCertificateTests
 {
     [Fact]
@@ -45,28 +53,28 @@ public sealed class SharedPrinterCertificateTests
         // Arrange - the donor, which may or may not be the run's first host and may therefore mint.
         string donorDatabase = Path.Combine(Path.GetTempPath(), $"hs-shared-donor-{Guid.NewGuid():N}.db");
         string heirDatabase = Path.Combine(Path.GetTempPath(), $"hs-shared-heir-{Guid.NewGuid():N}.db");
+        string siblingDatabase = Path.Combine(Path.GetTempPath(), $"hs-shared-sibling-{Guid.NewGuid():N}.db");
 
         try
         {
-            string donorThumbprint;
-
-            await using (HomespoolFactory donor = new($"Data Source={donorDatabase}"))
+            // A host, only to guarantee that some host has donated by the time the two below start.
+            // Deliberately not asserted against: whether *this* one is the donor is a race the suite
+            // runs in parallel, and another class may have captured the template first - in which case
+            // this host holds an authority nobody inherits, which is correct and uninteresting.
+            await using (HomespoolFactory first = new($"Data Source={donorDatabase}"))
             {
-                _ = donor.Server;
-
-                using X509Certificate2 authority = donor.Services
-                                                        .GetRequiredService<PrinterCertificateAuthority>()
-                                                        .LoadAuthorityCertificate()!;
-
-                donorThumbprint = authority.Thumbprint;
+                _ = first.Server;
             }
 
-            // Act - a host started after some host has donated.
+            // Act - two hosts started once a template certainly exists. The template never changes
+            // after the first capture, so these two must agree with each other however the race went.
             CapturingSink logs = new();
 
             await using HomespoolFactory heir = new($"Data Source={heirDatabase}", extraSinks: [logs]);
+            await using HomespoolFactory sibling = new($"Data Source={siblingDatabase}");
 
             _ = heir.Server;
+            _ = sibling.Server;
 
             // Assert
             logs.FindPropertyValue("Directory").Should()
@@ -76,12 +84,16 @@ public sealed class SharedPrinterCertificateTests
             using X509Certificate2 inherited = heir.Services
                                                    .GetRequiredService<PrinterCertificateAuthority>()
                                                    .LoadAuthorityCertificate()!;
+            using X509Certificate2 alsoInherited = sibling.Services
+                                                          .GetRequiredService<PrinterCertificateAuthority>()
+                                                          .LoadAuthorityCertificate()!;
 
-            inherited.Thumbprint.Should().Be(donorThumbprint, "it is the donated authority, not a fresh one");
+            inherited.Thumbprint.Should().Be(alsoInherited.Thumbprint,
+                                             "both were handed the one donated authority, not one minted each");
         }
         finally
         {
-            foreach (string database in new[] { donorDatabase, heirDatabase })
+            foreach (string database in new[] { donorDatabase, heirDatabase, siblingDatabase })
             {
                 foreach (string path in new[] { database, database + "-wal", database + "-shm" })
                 {

@@ -45,7 +45,6 @@ namespace Homespool.Host.E2ETest;
 /// <c>SecurityStampValidator</c> revalidates on an interval rather than per request.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class ExternalAccountPasswordTests : IAsyncLifetime, IDisposable
 {
     /// <summary>

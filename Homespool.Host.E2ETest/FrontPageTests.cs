@@ -32,7 +32,6 @@ namespace Homespool.Host.E2ETest;
 /// exactly the asymmetry that let a control strip vanish on refresh once.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class FrontPageTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-frontpage-{Guid.NewGuid():N}.db");

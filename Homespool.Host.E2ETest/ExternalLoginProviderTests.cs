@@ -27,7 +27,6 @@ namespace Homespool.Host.E2ETest;
 /// and what it used to get was a 500 from <c>ChallengeResult</c> on an unregistered scheme.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class ExternalLoginProviderTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-extlogin-{Guid.NewGuid():N}.db");

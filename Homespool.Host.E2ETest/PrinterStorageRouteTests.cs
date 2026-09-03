@@ -30,7 +30,6 @@ namespace Homespool.Host.E2ETest;
 /// job and is not tested here.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class PrinterStorageRouteTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-storageroute-{Guid.NewGuid():N}.db");

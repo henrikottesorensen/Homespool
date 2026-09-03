@@ -24,7 +24,6 @@ namespace Homespool.Host.E2ETest;
 /// live connections up and the certificate predictable; this is what stops that being a trap when the
 /// machine's addresses move.
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class CertificateReissueTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-reissue-{Guid.NewGuid():N}.db");

@@ -32,7 +32,6 @@ namespace Homespool.Host.E2ETest;
 /// page every two seconds.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class PrinterStatusPollTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-status-poll-{Guid.NewGuid():N}.db");

@@ -45,7 +45,6 @@ namespace Homespool.Host.E2ETest;
 /// JSON from firmware source, not our DTOs), so every green assertion here is a genuine
 /// cross-check of two independent readings of the protocol.
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-e2e-fake-{Guid.NewGuid():N}.db");

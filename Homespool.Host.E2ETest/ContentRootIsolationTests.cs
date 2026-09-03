@@ -31,7 +31,6 @@ namespace Homespool.Host.E2ETest;
 /// rather than in the working tree of whoever runs the suite next.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class ContentRootIsolationTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-contentroot-{Guid.NewGuid():N}.db");

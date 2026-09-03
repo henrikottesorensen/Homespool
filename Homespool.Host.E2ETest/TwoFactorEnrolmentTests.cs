@@ -41,7 +41,6 @@ namespace Homespool.Host.E2ETest;
 /// token and all, rather than the manager underneath them.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class TwoFactorEnrolmentTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-2fa-enrol-{Guid.NewGuid():N}.db");

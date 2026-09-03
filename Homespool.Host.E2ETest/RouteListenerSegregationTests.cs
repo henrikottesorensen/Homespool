@@ -43,7 +43,6 @@ namespace Homespool.Host.E2ETest;
 /// mistake while the runtime is quietly covering for it.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class RouteListenerSegregationTests : IAsyncLifetime, IDisposable
 {
     /// <summary>

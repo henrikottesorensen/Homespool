@@ -29,7 +29,6 @@ namespace Homespool.Host.E2ETest;
 /// binding included.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class PasswordHasherOptionsGuardTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-hashopt-{Guid.NewGuid():N}.db");

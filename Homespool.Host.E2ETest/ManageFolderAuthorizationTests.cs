@@ -33,7 +33,6 @@ namespace Homespool.Host.E2ETest;
 /// behaviour; they change what a future edit can quietly undo.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class ManageFolderAuthorizationTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-manageauth-{Guid.NewGuid():N}.db");

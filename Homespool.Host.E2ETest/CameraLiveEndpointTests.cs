@@ -34,7 +34,6 @@ namespace Homespool.Host.E2ETest;
 /// are settled before the sidecar would be reached.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class CameraLiveEndpointTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-camlive-{Guid.NewGuid():N}.db");

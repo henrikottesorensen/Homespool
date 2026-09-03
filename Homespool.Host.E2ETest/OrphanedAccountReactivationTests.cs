@@ -47,7 +47,6 @@ namespace Homespool.Host.E2ETest;
 /// to its wording on purpose for want of anything else that separates them.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class OrphanedAccountReactivationTests : IAsyncLifetime, IDisposable
 {
     private const string Password = "Correct-Horse-Battery-Staple-1!"; // betterleaks:allow

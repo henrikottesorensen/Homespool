@@ -38,7 +38,6 @@ namespace Homespool.Host.E2ETest;
 /// already live, and the unit test for the scheme check is in <c>Homespool.Host.Test</c>.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class RequiredTwoFactorTests : IAsyncLifetime, IDisposable
 {
     private const string Password = "Correct-Horse-Battery-Staple-1!"; // betterleaks:allow

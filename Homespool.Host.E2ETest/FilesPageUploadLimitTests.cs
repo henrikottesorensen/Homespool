@@ -32,7 +32,6 @@ namespace Homespool.Host.E2ETest;
 /// kilobytes instead of the 512 MiB the shipped default would need.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class FilesPageUploadLimitTests : IAsyncLifetime, IDisposable
 {
     private const int CapBytes = 4096;

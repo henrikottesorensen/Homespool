@@ -117,6 +117,15 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
         // than relied on from appsettings.Development.json so it holds whatever environment a test
         // chooses.
         ConfigurationOverrides["Certificates:AuthorityPassphrase"] = "e2e test passphrase";
+
+        // Serilog's Log.Logger is process-wide, and this process builds a host per test. A deployment
+        // owns that static and points it at its own logger; hundreds of hosts cannot, because each
+        // would overwrite the last and the losers would log into a stranger's sinks. So the test host
+        // declares that it does not own it, and every host logs through its own DI logger instead.
+        //
+        // This is what lets the suite run test classes in parallel. It ran them one at a time for
+        // months because of exactly this race, at a cost of about four minutes a run.
+        ConfigurationOverrides["Diagnostics:OwnsTheStaticLogger"] = "false";
     }
 
     /// <summary>

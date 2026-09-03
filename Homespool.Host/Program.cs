@@ -71,10 +71,21 @@ public static class Program
             builder.Services.AddSingleton(settingsFile);
 
             // Add services to the container.
+            // preserveStaticLogger keeps this host's logger out of Serilog's process-wide Log.Logger,
+            // and it is not a preference. AddSerilog defaults to replacing that static, and then routes
+            // every ILogger<T> through it rather than through the instance it just built - so two hosts
+            // in one process do not have a logger each. The second to start wins, the first goes on
+            // logging into the second's sinks, and nothing anywhere reports a problem.
+            //
+            // One process runs one host in production, so this was invisible there. It is the test
+            // suite that runs hundreds, where the symptom was a host failing to build at all and
+            // assertions about log output finding an empty sink - and the workaround was to forbid the
+            // suite from starting two hosts at once, which cost it about four minutes a run.
             builder.Services.AddSerilog((services, lc) => lc.ReadFrom.Configuration(builder.Configuration)
                                                                         .ReadFrom.Services(services)
                                                                         .Enrich.FromLogContext()
-                                                                        .WriteTo.Console(new RenderedCompactJsonFormatter()));
+                                                                        .WriteTo.Console(new RenderedCompactJsonFormatter()),
+                                        preserveStaticLogger: true);
 
             builder.Services.AddHomespoolData(builder.Configuration);
 
@@ -456,6 +467,22 @@ public static class Program
             builder.Services.AddScoped<Accounts.ApiTokenService>();
 
             WebApplication app = builder.Build();
+
+            // Point Serilog's process-wide static at the application's own logger, so that anyone who
+            // reaches for Log.Error() gets the configured sinks and levels rather than the bootstrap
+            // logger, which writes to the console and nowhere else. Without this the static would keep
+            // its startup value for the life of the process, and the failure would be silent - the
+            // call compiles, logs, and simply never reaches the sink the operator configured.
+            //
+            // Guarded because a static is only ever right for one owner, and the condition is
+            // literally that: one host in this process. Every deployment satisfies it. The test suite
+            // does not - it builds hundreds of hosts in one process - and there the static is left
+            // alone, because the alternative is hosts overwriting each other's logger, which is the
+            // race this guard and preserveStaticLogger above exist to end.
+            if (builder.Configuration.GetValue("Diagnostics:OwnsTheStaticLogger", true))
+            {
+                Log.Logger = app.Services.GetRequiredService<Serilog.ILogger>();
+            }
 
             // Ctrl-C/SIGTERM is otherwise silent: the framework's own "Application is shutting
             // down..." comes from Microsoft.Hosting.Lifetime, and Serilog's Microsoft override

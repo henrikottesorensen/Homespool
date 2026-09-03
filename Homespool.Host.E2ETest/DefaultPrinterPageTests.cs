@@ -32,7 +32,6 @@ namespace Homespool.Host.E2ETest;
 /// would throw away a default pointing at a different machine.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class DefaultPrinterPageTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-default-printer-page-{Guid.NewGuid():N}.db");

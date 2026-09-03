@@ -28,7 +28,6 @@ namespace Homespool.Host.E2ETest;
 /// afterwards sees the new value. Every link of that is somebody else's code, and the whole grading
 /// scheme rests on it holding.
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class SettingsPageTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-settings-{Guid.NewGuid():N}.db");

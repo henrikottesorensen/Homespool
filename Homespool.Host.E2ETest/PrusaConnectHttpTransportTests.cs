@@ -41,7 +41,6 @@ namespace Homespool.Host.E2ETest;
 /// endpoints add beyond the actor's own - actually executes.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime, IDisposable
 {
     private const string TelemetryBody = """{"state":"IDLE","temp_nozzle":27.1,"temp_bed":27.1}""";

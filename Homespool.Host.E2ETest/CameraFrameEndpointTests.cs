@@ -31,7 +31,6 @@ namespace Homespool.Host.E2ETest;
 /// like, and a camera whose source points nowhere answers exactly as one that is switched off.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class CameraFrameEndpointTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-camera-{Guid.NewGuid():N}.db");

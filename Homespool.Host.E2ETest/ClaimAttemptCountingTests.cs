@@ -37,7 +37,6 @@ namespace Homespool.Host.E2ETest;
 /// <c>FailedClaimAttempts</c> at 0.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class ClaimAttemptCountingTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-claimcount-{Guid.NewGuid():N}.db");

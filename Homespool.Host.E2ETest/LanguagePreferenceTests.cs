@@ -33,7 +33,6 @@ namespace Homespool.Host.E2ETest;
 /// render and not just the one view under test.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class LanguagePreferenceTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-language-{Guid.NewGuid():N}.db");

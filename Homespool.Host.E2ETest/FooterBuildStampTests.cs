@@ -30,7 +30,6 @@ namespace Homespool.Host.E2ETest;
 /// which is the half that cannot be checked without rendering a page as two different callers.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class FooterBuildStampTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-footer-{Guid.NewGuid():N}.db");

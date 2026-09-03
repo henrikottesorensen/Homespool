@@ -26,7 +26,6 @@ namespace Homespool.Host.E2ETest;
 /// of those leaves the page-model tests green - a mistake made twice here already, by audits that
 /// could not see what they were looking for.
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class ApiTokenScopeFormTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-scopeform-{Guid.NewGuid():N}.db");

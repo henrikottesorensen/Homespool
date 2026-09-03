@@ -28,7 +28,6 @@ namespace Homespool.Host.E2ETest;
 /// generator's interpretation of them was the surprise. Only reading the document found it, so
 /// reading the document is now a test.
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class OpenApiDocumentTests : IAsyncLifetime, IDisposable
 {
     private const string StoragePath = "/api/v1/printers/{uuid}/storage/usb/{path}";

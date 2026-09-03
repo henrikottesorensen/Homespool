@@ -22,7 +22,6 @@ namespace Homespool.Host.E2ETest;
 /// public address goes into every offer, and that a third party is contacted to discover it - is now
 /// the settings page's confirmation, and is asserted there. This page reports.
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class LiveViewSettingsPageTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-liveview-{Guid.NewGuid():N}.db");

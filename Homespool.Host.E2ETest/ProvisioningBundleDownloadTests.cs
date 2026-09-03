@@ -36,7 +36,6 @@ namespace Homespool.Host.E2ETest;
 /// carried over to a file the operator never reads.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime, IDisposable
 {
     private const string PrinterHost = HomespoolFactory.PrinterHost;

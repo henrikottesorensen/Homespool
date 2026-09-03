@@ -32,7 +32,6 @@ namespace Homespool.Host.E2ETest;
 /// perfectly green while giving up the thing the header was added for.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class SecurityHeaderTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-secheaders-{Guid.NewGuid():N}.db");

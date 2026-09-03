@@ -54,7 +54,6 @@ namespace Homespool.Host.E2ETest;
 /// loop itself reads.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-queueloop-{Guid.NewGuid():N}.db");

@@ -29,7 +29,6 @@ namespace Homespool.Host.E2ETest;
 /// the exception rather than the status somebody actually receives.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class MalformedEmailedCodeTests : IAsyncLifetime, IDisposable
 {
     /// <summary>Not valid base64url - '!' is outside the alphabet, so the decoder throws on it.</summary>

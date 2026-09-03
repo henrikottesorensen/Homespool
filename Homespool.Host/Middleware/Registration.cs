@@ -52,6 +52,11 @@ public static class Registration
         builder.Services.Configure<XForwardedOptions>(
             builder.Configuration.GetSection(XForwardedOptions.SectionName));
 
+        // Serilog's static, deliberately, here and in the two branches below: this runs while the
+        // container is still being described, so there is no host logger to ask for yet. A host no
+        // longer replaces that static with its own logger, so what these reach is the bootstrap logger
+        // - console only, which is the honest ceiling for anything logged before the application's own
+        // logging configuration has been read.
         builder.Services.Configure<ForwardedHeadersOptions>(
             options => ForwardedHeadersConfigurator.Apply(forwarded, options, Log.Warning));
 

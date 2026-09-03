@@ -6,8 +6,14 @@
 #
 # On the first boot after editing, the Pi copies these details into its own
 # configuration and then BLANKS the psk line here, because this partition has no
-# file permissions - anyone who later reads the card could otherwise read your
-# Wi-Fi password. The ssid line is left alone so you can see what it joined.
+# file permissions - anyone who later reads the card would otherwise find your
+# Wi-Fi password just by opening this file. The ssid line is left alone so you
+# can see what it joined.
+#
+# That rewrites the file rather than scrubbing the card, though: the old bytes
+# may still be in free space, and on an SD card no software can reliably
+# overwrite them, because the controller decides which flash cells a write lands
+# on. Anyone holding the card may still be able to recover it.
 #
 # Leave both blank to use a wired connection instead; nothing here is required.
 

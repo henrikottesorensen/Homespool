@@ -565,6 +565,47 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         client.Dispose();
     }
 
+    /// <summary>
+    /// The delete confirmation is data on the form, and no part of the page is script built from a
+    /// file name.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This row used to carry <c>onsubmit="return confirm('Delete {name}?')"</c>.</b> Razor
+    /// encodes an attribute for HTML, which is the only thing it can do, and an <c>onsubmit</c> is
+    /// JavaScript source - so an apostrophe in a name closed the string literal and everything after
+    /// it ran with the reader's session, antiforgery token and all.
+    /// </para>
+    /// <para>
+    /// Self-XSS only if a name could come from nowhere but the reader's own browser, and it can: a
+    /// token scoped to uploading and nothing else - what a slicer is given - puts files in its
+    /// owner's store, and this row is where the owner meets them. The store now refuses such a name
+    /// as well (<c>UserFileStoreTests</c>), which is why what is asserted here is the shape of the
+    /// markup rather than a payload round-tripped through an upload.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task TheDeleteConfirmationIsDataRatherThanScript()
+    {
+        // Arrange
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "confirmshape@example.com");
+
+        await UploadAsync(client, "benchy.gcode", 64);
+
+        // Act
+        string page = await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content
+            .ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        page.Should().Contain("data-confirm=\"Delete benchy.gcode?\"",
+                              "the question is an attribute site.js reads, and is localised with the rest of the page");
+        page.Should().NotContain("onsubmit",
+                                 "a file name must not reach anywhere that is parsed as JavaScript");
+
+        client.Dispose();
+    }
+
     [Fact]
     public async Task DeletingFromThePageRemovesTheFileAndKeepsTheSortOrder()
     {

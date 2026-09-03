@@ -1612,6 +1612,10 @@
   <data name="Files_Renamed" xml:space="preserve">
     <value>Renamed to {0}.</value>
   </data>
+  <data name="Files_ConfirmDelete" xml:space="preserve">
+    <value>Delete {0}?</value>
+    <comment>{0} is the file name. Asked by site.js before the row's Delete form posts; formatted here, since the name is known when the row is rendered.</comment>
+  </data>
   <data name="Files_Deleted" xml:space="preserve">
     <value>Deleted {0}.</value>
   </data>
@@ -1804,6 +1808,9 @@
   </data>
   <data name="Error_FileNameRejected" xml:space="preserve">
     <value>‘{0}’ is not a file a printer would accept.</value>
+  </data>
+  <data name="Error_FileNameCharacters" xml:space="preserve">
+    <value>‘{0}’ has characters a file name may not carry: quotes, angle brackets or control characters. Rename it and upload it again.</value>
   </data>
   <data name="Error_FileNameUnusable" xml:space="preserve">
     <value>File name is empty, or is a directory reference, once its directory part is removed.</value>

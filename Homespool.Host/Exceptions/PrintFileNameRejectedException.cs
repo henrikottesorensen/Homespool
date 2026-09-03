@@ -3,8 +3,8 @@ using System;
 namespace Homespool.Host.Exceptions;
 
 /// <summary>
-/// A file name the store will not take — the wrong extension, or nothing usable left once the
-/// directory part is stripped.
+/// A file name the store will not take — the wrong extension, nothing usable left once the
+/// directory part is stripped, or characters no name of ours may carry.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -22,6 +22,9 @@ namespace Homespool.Host.Exceptions;
 /// </remarks>
 public class PrintFileNameRejectedException : ArgumentException, ILocalisableError
 {
+    /// <summary>Set only by a refusal that has its own sentence; null leaves the two below.</summary>
+    private readonly string? _resourceKey;
+
     /// <summary>A name whose extension is not one a printer would take.</summary>
     public PrintFileNameRejectedException(string fileName, string parameterName)
         : base($"'{fileName}' is not a file a printer would accept.", parameterName)
@@ -46,12 +49,35 @@ public class PrintFileNameRejectedException : ArgumentException, ILocalisableErr
     {
     }
 
+    private PrintFileNameRejectedException(string message, string fileName, string parameterName, string resourceKey)
+        : base(message, parameterName)
+    {
+        FileName = fileName;
+        _resourceKey = resourceKey;
+    }
+
     /// <summary>The name that was refused, when the refusal was about a specific one.</summary>
     public string? FileName { get; }
 
     /// <inheritdoc />
-    public string ResourceKey => FileName is null ? "Error_FileNameUnusable" : "Error_FileNameRejected";
+    public string ResourceKey =>
+        _resourceKey ?? (FileName is null ? "Error_FileNameUnusable" : "Error_FileNameRejected");
 
     /// <inheritdoc />
     public object[] ResourceArguments => FileName is null ? [] : [FileName];
+
+    /// <summary>
+    /// The refusal that is about the characters rather than the extension, so it can say so.
+    /// </summary>
+    /// <remarks>
+    /// A factory rather than a fourth constructor because the shape it wants —
+    /// <c>(fileName, parameterName)</c> — is already taken by the extension refusal above, and two
+    /// refusals distinguishable only by argument order is the kind of seam that gets called wrongly.
+    /// </remarks>
+    public static PrintFileNameRejectedException ForForbiddenCharacters(string fileName, string parameterName)
+    {
+        return new PrintFileNameRejectedException(
+            $"'{fileName}' contains characters a file name may not have: quotes, angle brackets or control characters.",
+            fileName, parameterName, "Error_FileNameCharacters");
+    }
 }

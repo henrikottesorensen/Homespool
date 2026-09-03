@@ -1566,6 +1566,9 @@
   <data name="Files_Renamed" xml:space="preserve">
     <value>Omdøbt til {0}.</value>
   </data>
+  <data name="Files_ConfirmDelete" xml:space="preserve">
+    <value>Slet {0}?</value>
+  </data>
   <data name="Files_Deleted" xml:space="preserve">
     <value>{0} er slettet.</value>
   </data>
@@ -1754,6 +1757,9 @@
   </data>
   <data name="Error_FileNameRejected" xml:space="preserve">
     <value>‘{0}’ er ikke en fil, en printer vil tage imod.</value>
+  </data>
+  <data name="Error_FileNameCharacters" xml:space="preserve">
+    <value>‘{0}’ indeholder tegn, som et filnavn ikke må have: anførselstegn, vinkelparenteser eller styretegn. Omdøb filen, og upload den igen.</value>
   </data>
   <data name="Error_FileNameUnusable" xml:space="preserve">
     <value>Filnavnet er tomt eller peger på en mappe, når mappedelen er fjernet.</value>

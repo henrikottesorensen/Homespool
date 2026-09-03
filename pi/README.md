@@ -228,6 +228,45 @@ Done with the Raspberry Pi package rather than a `growpart` unit of our own for 
 repeating: it resizes **offline, in the initramfs**. A hand-rolled version would be rewriting the
 partition table of a mounted root filesystem on someone else's SD card.
 
+## It updates itself
+
+**Debian security updates install themselves**, through `unattended-upgrades` on the stock
+`apt-daily` timers. An appliance in a cupboard is never logged into, so left to a person this card
+would run the openssl and openssh it was written with for as long as it stays plugged in — which is
+years, not months. Expecting somebody to remember `apt` is the same mistake as expecting them to
+change a default password.
+
+What it takes is Debian's own default set: the `trixie` stable archive and `trixie-security`, point
+releases included. What it deliberately does not touch:
+
+| origin | why not |
+|---|---|
+| `download.docker.com` | a `docker-ce` upgrade restarts the daemon, which stops every container — mid-print, that is the print gone |
+| `archive.raspberrypi.com` | kernel, bootloader and firmware, where an interrupted write is a board that does not come back |
+| `trixie-updates` | Debian ships it commented out; it is not security, and stable is conservative enough |
+
+Neither of the first two is reachable by Debian's origin patterns anyway — they are
+`origin=Docker` and `origin=Raspberry Pi Foundation`. Nothing is blacklisted, because a package from
+an origin that was never allowed is already out of reach.
+
+**It never reboots by itself.** A print runs for hours and dies with the machine, so a board that
+picked its own moment would eventually throw away someone's eight-hour job to install a libc nobody
+was waiting for. The cost is on the table rather than hidden: an update that needs a reboot — a
+kernel, or a library whose services were not restarted — sits installed and inert until somebody
+does it. The board says so in `/var/run/reboot-required`, and `sudo reboot` when nothing is printing
+is the whole procedure.
+
+```bash
+cat /var/run/reboot-required
+```
+
+`journalctl -u unattended-upgrades` and `/var/log/unattended-upgrades/` are where it says what it
+did. There is no MTA on the card, so nothing is mailed anywhere.
+
+**This does not update Homespool itself.** The application's container images are baked into the
+card's Docker store, and `unattended-upgrades` only ever touches Debian packages. Moving the stack
+to a new version is a separate job and, until there is a tagged release to pull, means a new card.
+
 ## Getting a shell on the board
 
 **There is no way to log in.** The `pi` account on a downloaded card is locked and has no authorised

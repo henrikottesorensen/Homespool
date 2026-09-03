@@ -69,6 +69,24 @@ mmdebstrap:
     # localhost` from the operator's own shell reports command not found.
     - curl
 
+    # Debian security updates, applied by the board itself.
+    #
+    # Without it this card runs whatever openssl, openssh and glibc shipped the day it was written,
+    # for as long as it is plugged in - which for an appliance in a cupboard is years. Nobody logs
+    # into one of these to run apt, and expecting them to is the same mistake as expecting them to
+    # change a default password.
+    #
+    # It costs a python3 nothing else here needs - python3, python3-apt, python3-dbus,
+    # python3-distro-info, plus ucf and lsb-release - which is tens of megabytes on a card whose
+    # baked-in container images are most of a gigabyte. The alternative is a timer running apt-get
+    # ourselves, which is the version of this that goes wrong: dpkg conffile prompts, held packages,
+    # a partial upgrade interrupted by a power cut. That handling is the whole substance of the
+    # package and none of it is worth reimplementing.
+    #
+    # What it does NOT update is the Homespool stack: those images are baked into the card's Docker
+    # store and this only ever touches Debian packages. See pi/README.md.
+    - unattended-upgrades
+
     # Grows the root partition to fill whatever card the image was flashed onto. A distributed image
     # cannot know that size, which is the one case rpi-image-gen deliberately does not cover: its
     # answer is to build the image at the size of a known target and rely on sparseness, because its
@@ -195,6 +213,77 @@ mmdebstrap:
     #
     # Same shape as the hostname mistake below: the chroot is not the finished filesystem, so
     # "nothing does X" observed in there is not evidence that nothing does X. Check the built image.
+
+    - |-
+      #
+      # Turn the periodic apt machinery on, and say what "unattended" means on a machine that runs
+      # prints for hours at a time.
+      #
+      # 20auto-upgrades is the switch, and it is written here BYTE FOR BYTE as the package ships it
+      # (usr/share/unattended-upgrades/20auto-upgrades - checked, not guessed). The package does
+      # install it on its own: the debconf question defaults to true and is asked at priority low,
+      # so a noninteractive chroot keeps the default and the postinst writes the file. This is
+      # belt and braces against that default ever flipping, which would leave the package installed,
+      # the timers running and nothing ever upgraded - a failure indistinguishable from success
+      # without going and looking, which is the worst shape a security feature can have.
+      #
+      # Identical content matters, because the postinst registers that file with ucf. Anything of
+      # ours in it would show up as a local modification at the next upgrade of the package, so our
+      # own preferences go in the 52- file below instead, which nothing else owns.
+      #
+      # A 52- drop-in rather than editing 50unattended-upgrades, which the package owns and replaces
+      # on its own upgrade. It sets scalars only, and inherits Debian's shipped Origins-Pattern:
+      #
+      #   origin=Debian,codename=trixie,label=Debian            <- the stable archive
+      #   origin=Debian,codename=trixie,label=Debian-Security
+      #   origin=Debian,codename=trixie-security,label=Debian-Security
+      #
+      # So it is stable and its security updates - point releases included, which is conservative
+      # and right for an appliance - and NOT trixie-updates, which Debian ships commented out. What
+      # matters most is what those patterns cannot match: archive.raspberrypi.com is
+      # origin=Raspberry Pi Foundation and download.docker.com is origin=Docker, so neither the
+      # board's firmware and kernel nor the container engine are touched. That last one is the one
+      # to keep: a docker-ce upgrade restarts the daemon, which stops every container on the board,
+      # and doing that unasked to a machine mid-print is exactly the harm this must not do.
+      #
+      # Note for anyone tempted to "narrow" the origins by restating them here: apt list values
+      # APPEND. Writing an Origins-Pattern block in this file would widen what is allowed, not
+      # replace it. There is nothing to blacklist either, for the same reason - a package from an
+      # origin that was never allowed is already out of reach.
+      set -eu
+      printf '%s\n' \
+        'APT::Periodic::Update-Package-Lists "1";' \
+        'APT::Periodic::Unattended-Upgrade "1";' \
+        > $1/etc/apt/apt.conf.d/20auto-upgrades
+
+      printf '%s\n' \
+        '// It never reboots by itself, and that is the decision this file exists to make. A print' \
+        '// runs for hours and dies with the machine, so a board that reboots when it judges the' \
+        '// moment right will eventually throw away somebody'"'"'s eight-hour job to install a libc' \
+        '// nobody was waiting for. Updates that need a reboot wait for a person instead.' \
+        '//' \
+        '// The cost is real and stated rather than hidden: a kernel or an openssl whose services' \
+        '// were not restarted sits installed and unused until that reboot. /var/run/reboot-required' \
+        '// is where the board says so, and pi/README.md tells its owner to look.' \
+        'Unattended-Upgrade::Automatic-Reboot "false";' \
+        '' \
+        '// The card is finite and nothing prunes it otherwise. Old kernels are the one thing here' \
+        '// that accumulates in hundreds of megabytes; the .debs are the other, hence the autoclean.' \
+        'Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";' \
+        'Unattended-Upgrade::Remove-New-Unused-Dependencies "true";' \
+        'APT::Periodic::AutocleanInterval "7";' \
+        '' \
+        '// Smaller dpkg transactions, so a power cut during an upgrade leaves less half-done. An' \
+        '// appliance loses power the way a laptop does not: at the wall, without warning.' \
+        'Unattended-Upgrade::MinimalSteps "true";' \
+        '' \
+        '// Into the journal, which is where everything else on this board is debugged from. There' \
+        '// is no MTA here, so the mail unattended-upgrades would otherwise send goes nowhere.' \
+        'Unattended-Upgrade::SyslogEnable "true";' \
+        > $1/etc/apt/apt.conf.d/52homespool-unattended-upgrades
+
+      chmod 0644 $1/etc/apt/apt.conf.d/20auto-upgrades \
+                 $1/etc/apt/apt.conf.d/52homespool-unattended-upgrades
 
     - |-
       #
@@ -354,6 +443,14 @@ mmdebstrap:
     - chroot $1 systemctl enable homespool-firstboot.service
     - chroot $1 systemctl enable homespool-wifi.service
     - chroot $1 systemctl enable homespool-login.service
+
+    # Both halves of the update cycle, and neither is assumed. apt ships these enabled by preset,
+    # but presets are exactly what this layer has been caught by before - rpi-resize shipped a unit
+    # nobody had enabled - and enabling an already-enabled unit costs nothing. apt-daily refreshes
+    # the package lists; apt-daily-upgrade is the one that runs unattended-upgrade. Without the
+    # first the second has nothing to act on.
+    - chroot $1 systemctl enable apt-daily.timer
+    - chroot $1 systemctl enable apt-daily-upgrade.timer
 
     # The filesystem half of the resize, and it does NOT come enabled with the package - checked in
     # a built image, where the initramfs had grown the partition and nothing then grew the ext4

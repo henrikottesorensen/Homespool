@@ -339,8 +339,13 @@ mmdebstrap:
         '// is where the board says so, and pi/README.md tells its owner to look.' \
         'Unattended-Upgrade::Automatic-Reboot "false";' \
         '' \
-        '// The card is finite and nothing prunes it otherwise. Old kernels are the one thing here' \
-        '// that accumulates in hundreds of megabytes; the .debs are the other, hence the autoclean.' \
+        '// The card is finite and nothing prunes it otherwise. The autoclean is the one that earns' \
+        '// its place here: downloaded .debs are what this path actually accumulates.' \
+        '//' \
+        '// Remove-Unused-Kernel-Packages is close to inert and kept anyway. Kernels come from the' \
+        '// Pi archive and are blacklisted above, so nothing here installs one - on this card that' \
+        '// accumulation has no automatic source at all. It still earns its line after somebody runs' \
+        '// apt full-upgrade by hand, which is the only way a kernel arrives.' \
         'Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";' \
         'Unattended-Upgrade::Remove-New-Unused-Dependencies "true";' \
         'APT::Periodic::AutocleanInterval "7";' \

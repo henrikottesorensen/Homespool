@@ -101,17 +101,22 @@ settings rely on first-boot machinery that ships in Raspberry Pi OS and not here
 assumed: `raspberrypi-sys-mods` contains no reference to `custom.toml` at all, and only provides the
 `imager_custom` helper that a Raspberry-Pi-OS-generated `firstrun.sh` calls. Set in Imager, those
 settings are written and then **silently ignored**, which looks exactly like a wrong password. Use
-`--ssh-key` or `--password` here instead.
+`--ssh-key` or `--password` here instead, or set them on the card itself — see
+[Getting a shell on the board](#getting-a-shell-on-the-board).
 
-With neither, the account is locked: the stack still comes up and serves pages, but there is no way
-in. That is `rpi-image-gen`'s default and `build.sh` warns about it.
+With neither, the account is locked: the stack still comes up and serves pages, but there is no shell
+on the board. That is `rpi-image-gen`'s default, it is what a downloaded image ships as, and
+`build.sh` warns when a build you run yourself would produce one. It is not a dead end — the card's
+own `homespool-login.txt` is how a locked account gets a password or a key, before first boot or
+long afterwards. See [Getting a shell on the board](#getting-a-shell-on-the-board).
 
 ## Wi-Fi, and which networks work
 
 Put your SSID and passphrase in `homespool-wifi.txt` on the card's FAT32 partition — the only
 partition a desktop machine can read — and the Pi joins on first boot. The passphrase line is blanked
 once applied, because FAT32 has no file permissions and anyone who later reads the card would
-otherwise have your wi-fi password.
+otherwise find it by opening the file. That is a rewrite rather than an erase — see the note under
+[Getting a shell on the board](#getting-a-shell-on-the-board), which applies here too.
 
 **WPA3-only networks do not work on any Raspberry Pi with this image**, and WPA3 has been unreliable
 on Raspberry Pi built-in wi-fi for years. **Mixed mode is the dividing line, and which side you land
@@ -223,15 +228,71 @@ Done with the Raspberry Pi package rather than a `growpart` unit of our own for 
 repeating: it resizes **offline, in the initramfs**. A hand-rolled version would be rewriting the
 partition table of a mounted root filesystem on someone else's SD card.
 
-## First login
+## Getting a shell on the board
 
-`pi` / `homespool`, and the password is expired — so the first login asks for it again and then for a
-new one twice. **Over SSH, changing it ends the session**; that is sshd completing the PAM exchange
-and closing, not a failure. Reconnect with the new password.
+**There is no way to log in.** The `pi` account on a downloaded card is locked and has no authorised
+key — you cannot log in, and neither can anyone who finds the board on your network. The stack runs,
+the pages serve and the printers work regardless; this is only about a command line on the Pi itself.
 
-Worth knowing before you do anything clever: a session that drops at exactly that moment leaves you
-typing into your *own* machine. `sudo iwctl` on a Mac reports `command not found`, which reads
-disturbingly like a corrupted card.
+Put a password, an SSH key, or both in **`homespool-login.txt`** on the card's FAT32 partition,
+beside `homespool-wifi.txt`, and boot it. That is the whole procedure, and there is no hurry — it
+works before the first boot or months later, for as long as the account still has nothing. A board
+you cannot get into is always a board you can put in a laptop and give a way in.
+
+```
+password=swordfish
+sshkey=ssh-ed25519 AAAAC3Nza... you@laptop
+```
+
+**Usually set both.** A key is the better credential, but it does nothing at a monitor and keyboard —
+and the console is all there is on a board whose networking has broken, which is exactly when you
+need to get in. A key alone can leave you at a login prompt you cannot answer.
+
+Both lines are blanked once applied. For the password that is the point, exactly as with the wi-fi
+passphrase: FAT32 has no permissions, so anyone who later reads the card would otherwise find it by
+opening the file. A public key is not a secret, and is blanked only so a provisioned card settles to
+an empty file — what went in is in `~/.ssh/authorized_keys` on the board.
+
+**Blanking is a rewrite, not an erase**, and this is the limit of what it buys. The old bytes may
+survive in the partition's free space, and on an SD card no software can reliably overwrite them —
+the controller's wear levelling decides which flash cells a write actually lands on, so even an
+in-place overwrite would be theatre. What blanking removes is the credential from the file; it does
+not scrub the card. Treat a card that has ever held a password as still holding it, and if that
+matters, use the file only to get in and change the password with `passwd` afterwards. The wi-fi
+passphrase has exactly the same property.
+
+**Each sets the first one and only the first.** Once the account has a password the password line
+stops working; once it has an authorised key the sshkey line does. Either typed in afterwards is
+refused and cleared, with the reason in `journalctl -u homespool-login`. So the file can give the
+board a first way in and can never override one. Afterwards it is `passwd` and
+`~/.ssh/authorized_keys` on the board.
+
+The two gates are independent, which shows up in one case: **a card set up with only a key keeps its
+password line working**, because the account still has no password. That is deliberate — it is the
+console recourse if the network ever goes — and filling in both lines closes both. The same is true
+of a card built with `--ssh-key` and no `--password`, where one `passwd` on the board closes it.
+
+Nothing checks how good the password is, unlike `--password` at build time, which `rpi-image-gen`
+validates against a regex wanting upper, lower, digit and punctuation. This account can be reached
+over SSH from your network, so that is yours to get right.
+
+### Why there is no stock password
+
+There was one — `pi` / `homespool`, published right here, expired so the first login had to change
+it. That is the OctoPi arrangement and it does not survive contact with a network.
+
+Nothing in this image configures sshd, so it runs Debian's defaults: `PasswordAuthentication yes`,
+`UsePAM yes`. Under PAM an expired password still **authenticates** over SSH and then prompts for a
+new one — which is the same exchange this section used to describe from the owner's side, ending
+their session mid-change. So between a card reaching a LAN and its owner's first login, anybody who
+could reach port 22 could log in with the credential from this file and choose the new password
+themselves. Expiry was the entire mitigation and it was never one: it did not gate the login, it
+handed over the account and locked the owner out.
+
+The recovery argument that put it there — a board that will not join the network is also a board you
+cannot log into to find out why, and the only way in was editing `cmdline.txt` for an `init=/bin/sh`
+shell — is answered better by the file above. Same partition, same physical operation as setting the
+wi-fi, and it stays available for exactly as long as the board is unreachable.
 
 ## First boot
 

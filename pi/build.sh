@@ -143,15 +143,25 @@ if [ "$(uname -m)" != "arm64" ] && [ "$(uname -m)" != "aarch64" ]; then
     exit 1
 fi
 
-# The stock password, when none is given. The OctoPi arrangement, and adopted for the reason OctoPi
-# has it: rpi-image-gen's own default is to *lock* the account, which is correct for a fleet and
-# useless for an appliance - a board that will not join the network is then also a board you cannot
-# log into to find out why, and the only way in is editing cmdline.txt to get an init=/bin/sh shell.
-# That happened here, which is what settled it.
+# There is no stock password any more, and this is where one used to be.
 #
-# The mitigation for a password everybody knows is that the layer expires it: the first login has to
-# change it before it does anything else.
-DEFAULT_PASSWORD="homespool"
+# It was "homespool", the OctoPi arrangement, adopted because rpi-image-gen's own default is to
+# *lock* the account - correct for a fleet, and useless for an appliance whose board would not join
+# the network, since that is then also a board you cannot log into to find out why. The only way in
+# was editing cmdline.txt for an init=/bin/sh shell, which happened here, and settled it.
+#
+# What settled it the other way is that a published password is a remote one. Nothing in this image
+# configures sshd, so it runs Debian's PasswordAuthentication yes with UsePAM yes - and under PAM an
+# expired password still authenticates over SSH and then prompts for a new one. Expiry was the whole
+# mitigation, and it was not one: between a card reaching a LAN and its owner's first login, anybody
+# who could reach port 22 could log in with the credential from the README and set a password of
+# their own, locking the owner out of their own board.
+#
+# The recovery case that argued for it is answered better by /boot/firmware/homespool-login.txt,
+# which supplies the first password and only the first. It is the same physical operation as setting
+# the wi-fi, on the same partition, and it stays available for as long as the account has no
+# password - so a board nobody can get into can always be given a way in, which is more than the
+# init=/bin/sh hack ever offered.
 
 # ------------------------------------------------------------------------------------------------
 # 1. The application images, native arm64.
@@ -257,16 +267,34 @@ overrides=(
 if [ "$board" = "all" ]; then
     overrides+=("IGconf_fs_ext4_mkfs_args=-F -b 4096")
 fi
-# A hash rather than the plain variable, because rpi-image-gen validates plain passwords against a
-# regex demanding upper, lower, digit and punctuation - which "homespool" is not, and which is the
-# wrong trade for a credential whose whole job is to be typed once and replaced. The hash path has
-# no such check. Generated in the builder because macOS ships LibreSSL, whose passwd has no -6.
+# Neither variable set means rpi-image-gen locks the account, and that is now the default this image
+# ships: no password, nobody logs in, and the card carries no credential for anyone to look up.
+#
+# --password is for a card you are building for yourself and want to reach immediately. Note that
+# rpi-image-gen validates it against a regex demanding upper, lower, digit and punctuation - the
+# check the old stock password had to route around with a pre-computed hash, and a reasonable one to
+# submit to for a password chosen deliberately at build time.
 if [ -n "$password" ]; then
     overrides+=("IGconf_device_user1pass=$password")
+elif [ -n "$ssh_key" ]; then
+    # The one case where the boot file's gate stays open on a board somebody can already reach: a
+    # key is a way in, an empty password field is not, and the gate reads the password field. That
+    # is the right default - this is exactly the board that needs a way back if the key is lost -
+    # but it is theirs to close, so say how rather than leaving it to be discovered.
+    echo "==> No --password given; the $device_user account is locked and the key is the way in."
+    echo "    homespool-login.txt on the card's boot partition can still give it a password, and"
+    echo "    stays able to for as long as the account has none - which is the way back if the key"
+    echo "    is ever lost, and the only thing that works at the console. To close it off, run"
+    echo "    passwd once on the board."
 else
-    echo "==> No --password given; using the stock default, expired on first login"
-    default_hash=$(docker run --rm homespool-imagegen openssl passwd -6 "$DEFAULT_PASSWORD")
-    overrides+=("IGconf_device_user1passhash=$default_hash")
+    # Stated rather than warned about: no key and no password is what a card built for other people
+    # is *meant* to be, and it is what a downloaded image ships as. Somebody building one for
+    # themselves still wants to know before they flash it rather than after.
+    echo "==> No --password and no --ssh-key: the $device_user account will ship LOCKED."
+    echo "    The stack runs and serves its pages either way; what is missing is a shell on the"
+    echo "    board. To get one, put a password and/or an SSH key in homespool-login.txt on the"
+    echo "    card's boot partition - before first boot, or at any point afterwards, for as long as"
+    echo "    the account still has neither."
 fi
 if [ -n "$ssh_key" ]; then
     cp "$ssh_key" "$work_dir/authorized_key.pub"

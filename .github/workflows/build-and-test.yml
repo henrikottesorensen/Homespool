@@ -63,6 +63,13 @@ jobs:
       - name: Test setup-env.sh
         run: ./tests/setup-env.test.sh
 
+      # The card's boot-partition credential file. Half of what it does is refuse - a credential that
+      # arrives once the account already has one, a carriage return a FAT32 editor added invisibly,
+      # a private key pasted where a public one goes. None of that shows up on a board where it
+      # worked. Linux only: it is a /bin/sh script that runs on the appliance, not on a laptop.
+      - name: Test the Pi login provisioning script
+        run: ./tests/pi-login.test.sh
+
       # Both images: the application and the proxy that terminates TLS in front of it.
       #
       # Through ./build.sh rather than `docker compose build` directly, for the same reason this job

@@ -1,0 +1,80 @@
+# Homespool login - how to get a command line on this Pi
+#
+# This card ships with NO way to log in. The "@USER@" account is locked and has
+# no authorised key, so you cannot log in, and neither can anyone who finds the
+# board on your network. This file is how that changes.
+#
+# Fill in one or both of the lines at the bottom, save this file, eject the card
+# and boot the Pi. This partition is FAT32, so you can edit it on Windows, macOS
+# or Linux - it is the only partition that appears when you plug the card into a
+# desktop machine.
+#
+# The user name is "@USER@", and this file cannot change it.
+#
+# You do not have to do any of this. The Pi runs, prints and serves its pages
+# with the account locked; this is only about getting a shell on the board
+# itself. Leave both lines blank and nothing happens.
+#
+# ---------------------------------------------------------------------------
+# WHICH ONE - and the answer is usually both
+# ---------------------------------------------------------------------------
+#
+#   password=   works over SSH and at a monitor and keyboard.
+#   sshkey=     works over SSH only.
+#
+# An SSH key is the better credential, but it does nothing at the console - and
+# the console is all there is on a board whose networking has broken, which is
+# exactly when you need to get in. So a key alone can leave you looking at a
+# login prompt you cannot answer.
+#
+# Set both, and each covers what the other cannot.
+#
+# ---------------------------------------------------------------------------
+# EACH SETS THE FIRST ONE, AND ONLY THE FIRST
+# ---------------------------------------------------------------------------
+#
+# Once the account has a password, the password line stops working. Once it has
+# an authorised key, the sshkey line stops working. Either typed in afterwards
+# is refused and cleared, and the journal says so:
+#
+#     journalctl -u homespool-login
+#
+# So this file can give the board a first way in, and can never override one.
+# Afterwards, use passwd to change the password and edit
+# ~/.ssh/authorized_keys on the board to change the keys.
+#
+# The two are independent, which matters in one case: a card set up with only a
+# key keeps its password line working, because the account still has no
+# password. That is on purpose - it is your way to the console if the network
+# ever goes - and filling in both lines closes both.
+#
+# Until then there is no hurry. A card you boot today can be given a way in next
+# week by putting it back in your computer.
+#
+# ---------------------------------------------------------------------------
+#
+# On the boot that applies them, the Pi installs these and then BLANKS the lines
+# below. For the password that is the point: this partition has no file
+# permissions, so anyone who later reads the card would otherwise find it just
+# by opening this file. The key is blanked only so a provisioned card ends up
+# with an empty file; it is public, and what got installed is in
+# ~/.ssh/authorized_keys on the board.
+#
+# Blanking rewrites this file - it does not scrub the card. The old bytes may
+# still be in free space, and on an SD card no software can reliably overwrite
+# them, because the controller decides which flash cells a write lands on. So
+# treat a card that has ever held a password as holding it still. If that
+# matters, use a password here only to get in, and change it with passwd once
+# you are on the board.
+#
+# The password is used exactly as written, spaces included. Do not put it in
+# quotes unless you want the quotes to be part of it. Nothing here checks how
+# good it is; that is your call, and this account can be reached over SSH from
+# your network.
+#
+# The key is the ONE LINE contents of a .pub file - id_ed25519.pub, not
+# id_ed25519 - and it must be on a single line, starting with "ssh-". Repeat the
+# sshkey= line for a second machine.
+
+password=
+sshkey=

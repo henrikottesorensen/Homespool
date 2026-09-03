@@ -1,0 +1,23 @@
+# Reads a login password and/or an SSH key off the boot partition, before anyone can log in.
+[Unit]
+Description=Apply the Homespool login credentials from the boot partition
+# local-fs.target, because it reads /boot/firmware, which the fstab entry mounts.
+After=local-fs.target
+# The barrier systemd provides for exactly this: nothing may log in - a getty or an sshd session -
+# until what is ordered before it has finished. Without it a client that reconnects the moment the
+# port opens can race the credentials being installed and be refused by an account that is about to
+# accept it, which reads as the file not having worked.
+Before=systemd-user-sessions.service
+
+# No ConditionPathExists, though it looks right: the script has something to say about a credential
+# typed into the file after the account already has one, on a card whose boot file somebody deleted
+# it has nothing to do and exits quietly, and the once-only decision is the account's own state -
+# which the script reads, and no unit condition could express.
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/homespool-login
+
+[Install]
+WantedBy=multi-user.target

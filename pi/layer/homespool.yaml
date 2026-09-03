@@ -28,8 +28,10 @@
 # X-Env-Var-assetdir-Set: y
 #
 # X-Env-Var-sshkey:
-# X-Env-Var-sshkey-Desc: Path to a public key authorised for the device user. Optional, but with no
-#  key and no password the account is locked and the only way in is a keyboard and monitor.
+# X-Env-Var-sshkey-Desc: Path to a public key authorised for the device user. Optional, and normally
+#  unset - a card built for other people cannot carry anybody's key, so a distributed image ships
+#  with the account locked and homespool-login.txt on the boot partition is how it gets a credential.
+#  This is for a card you are building for yourself.
 #  .
 #  Set is n rather than y deliberately. With y the empty default is *set*, as an empty string, which
 #  then fails this variable's own "string cannot be empty" validation - so declaring an optional
@@ -148,6 +150,42 @@ mmdebstrap:
     # Onto the boot partition, which is the one a desktop machine can see. Everything under
     # /boot/firmware here is what genimage copies into the FAT32 partition.
     - install -m 0644 ${IGconf_homespool_assetdir}/homespool-wifi.txt $1/boot/firmware/homespool-wifi.txt
+
+    # The other credentials a headless board needs before anyone has logged into it, by the same
+    # route and for the same reason. This image ships the account locked with no authorised key, so
+    # this file is how it gets either - and it supplies the first of each only. A password and a key
+    # answer different failures (a key is no use at the console), so it takes both. The script says
+    # why at length.
+    - install -m 0755 ${IGconf_homespool_assetdir}/homespool-login.sh $1/usr/local/sbin/homespool-login
+    - install -m 0644 ${IGconf_homespool_assetdir}/homespool-login.service $1/etc/systemd/system/homespool-login.service
+    - install -m 0644 ${IGconf_homespool_assetdir}/homespool-login.txt $1/boot/firmware/homespool-login.txt
+
+    - |-
+      #
+      # Two things the account's name has to reach, and this layer is the only place that knows it:
+      # build.sh takes --user, so "pi" is a default rather than a fact.
+      #
+      # /etc/default/homespool-login is what the script reads. Its alternatives were hardcoding
+      # the name or guessing at uid 1000 - both assertions about somebody else's configuration, made
+      # in the one script whose mistakes lock people out of the board.
+      #
+      # The @USER@ in the boot-partition file is the same name for a person to read: that file tells
+      # somebody which account they are setting a password for, and a card built with --user would
+      # otherwise name the wrong one. A placeholder rather than prose hedging both ways; the grep
+      # makes one that survived a build failure here rather than something a stranger reads on the
+      # card and cannot act on.
+      set -eu
+      printf 'HOMESPOOL_USER=%s\n' "$IGconf_device_user1" > $1/etc/default/homespool-login
+      chmod 0644 $1/etc/default/homespool-login
+
+      # Escaped before it goes into a replacement, because sed reads three characters there that no
+      # sane user name contains and --user will nonetheless accept: '&' means the whole match, '/'
+      # ends the expression, and '\' escapes whatever follows. Unescaped, "a&b" substitutes to
+      # "a@USER@b" and "a/b" is a syntax error. The grep below already turned both into a failed
+      # build rather than a bad card, which is the property worth keeping; this makes them work.
+      user=$(printf '%s' "$IGconf_device_user1" | sed 's/[&/\]/\\&/g')
+      sed -i "s/@USER@/$user/g" $1/boot/firmware/homespool-login.txt
+      grep -q '@USER@' $1/boot/firmware/homespool-login.txt && exit 1 || true
 
     # No fstab hook here, and the reason is worth keeping. /etc/fstab inside the chroot reads
     # "UNCONFIGURED FSTAB FOR BASE SYSTEM", which looks exactly like nothing mounts /boot/firmware -
@@ -284,18 +322,12 @@ mmdebstrap:
       set -eu
       chroot $1 update-initramfs -u -k all
 
-    - |-
-      #
-      # Expire the password so the first login has to change it - the OctoPi arrangement. A shipped
-      # image has, by definition, a password that everybody knows; the mitigation is that it stops
-      # working the moment somebody uses it.
-      #
-      # Only when a password was actually set. Expiring the password of a *locked* account would
-      # leave a board reachable by neither key nor password.
-      set -eu
-      if [ -n "${IGconf_device_user1pass:-}" ] || [ -n "${IGconf_device_user1passhash:-}" ] ; then
-         chroot $1 chage -d 0 "$IGconf_device_user1"
-      fi
+    # No password-expiry hook here any more, and its absence is the point rather than an omission.
+    # It ran `chage -d 0` so the first login had to choose a new password, which was the entire
+    # mitigation for a stock password baked into every card. There is no stock password now - see
+    # pi/build.sh, which explains why expiry was never the mitigation it looked like - so every
+    # password this account can have was chosen by its owner, and demanding they choose a second one
+    # at first login would ask for nothing and cost an SSH session.
 
     # No hostname hook here on purpose. device-base already owns /etc/hostname, defaulting it to
     # "${device_class}-<six random letters>" - so a hook that writes the name we want runs *before*
@@ -321,6 +353,7 @@ mmdebstrap:
     # Enabled, not started - there is no running systemd in a chroot. They run on the real board.
     - chroot $1 systemctl enable homespool-firstboot.service
     - chroot $1 systemctl enable homespool-wifi.service
+    - chroot $1 systemctl enable homespool-login.service
 
     # The filesystem half of the resize, and it does NOT come enabled with the package - checked in
     # a built image, where the initramfs had grown the partition and nothing then grew the ext4

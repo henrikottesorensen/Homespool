@@ -290,8 +290,8 @@ The cost, stated plainly: a library upgraded underneath a running service stays 
 until that service restarts or the board reboots. `/var/run/reboot-required` catches half of that. A
 kernel install writes it, which is a real signal now that kernels are not excluded — but **a library
 does not**, so the `openssl` case that matters most leaves no trace at all. `needrestart` would
-detect it properly and is not installed on purpose: in unattended mode it restarts services, and on
-this board that includes the container engine.
+detect it properly and is simply not installed yet — it is the missing piece of a restart decision
+this card does not make yet, not a package that was refused.
 
 So the practical answer is a reboot on a schedule that suits you rather than a check for one:
 

@@ -33,7 +33,6 @@ namespace Homespool.Host.E2ETest;
 /// path a user does and cannot invent a layout the store would not have produced.
 /// </para>
 /// </remarks>
-[Collection("WebApplicationFactory")]
 public sealed class FilesPageTests : IAsyncLifetime, IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-filespage-{Guid.NewGuid():N}.db");
@@ -167,6 +166,15 @@ public sealed class FilesPageTests : IAsyncLifetime, IDisposable
         await UploadAsync(client, "alpha.gcode", 4096);
 
         // The store reads the file's own write time, so two uploads have to be separably apart.
+        //
+        // 20 ms is sized against the clock that stamps a file, not the filesystem's timestamp field.
+        // The fields hold nanoseconds almost everywhere and it never matters: the clocks filling them
+        // are millisecond-grained - roughly 1-4 ms on Linux, ~15.6 ms on Windows, sub-millisecond on
+        // APFS - so the useful question is never "does this filesystem support nanoseconds".
+        //
+        // Which is why, if you move TMPDIR onto a RAM disk to make this suite faster, format it APFS.
+        // The recipe everybody copies formats HFS+, whose timestamps are whole seconds; both uploads
+        // then land on the same one, the order becomes arbitrary, and this fails looking like a flake.
         await Task.Delay(TimeSpan.FromMilliseconds(20), TestContext.Current.CancellationToken);
 
         await UploadAsync(client, "zeta.gcode", 128);

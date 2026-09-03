@@ -236,28 +236,48 @@ would run the openssl and openssh it was written with for as long as it stays pl
 years, not months. Expecting somebody to remember `apt` is the same mistake as expecting them to
 change a default password.
 
-What it takes is Debian's own default set: the `trixie` stable archive and `trixie-security`, point
-releases included. What it deliberately does not touch:
+It takes Debian's `trixie` stable archive and `trixie-security` — point releases included — plus
+Raspberry Pi's own archive. What it deliberately does not touch:
 
-| origin | why not |
+| | why not |
 |---|---|
 | `download.docker.com` | a `docker-ce` upgrade restarts the daemon, which stops every container — mid-print, that is the print gone |
-| `archive.raspberrypi.com` | kernel, bootloader and firmware, where an interrupted write is a board that does not come back |
 | `trixie-updates` | Debian ships it commented out; it is not security, and stable is conservative enough |
+| kernel, bootloader, EEPROM | blacklisted by name — see below |
 
-Neither of the first two is reachable by Debian's origin patterns anyway — they are
-`origin=Docker` and `origin=Raspberry Pi Foundation`. Nothing is blacklisted, because a package from
-an origin that was never allowed is already out of reach.
+Docker's repo is `origin=Docker`, which Debian's patterns cannot match, so nothing extra is needed to
+keep it out. Raspberry Pi's is allowed but its boot-critical packages are blacklisted: anything
+matching `linux-image-`, `linux-headers-`, `rpi-eeprom`, `raspi-firmware`, `raspberrypi-bootloader`
+or `raspberrypi-kernel`. Those rewrite the FAT boot partition or reflash the bootloader EEPROM, where
+an upgrade interrupted by a power cut is a board that does not come back — and since nothing here
+reboots unattended, a kernel installed that way would sit unused until a person acted anyway. All the
+risk, none of the benefit. Wi-Fi and Bluetooth firmware is *not* blacklisted: it is replaced on disk
+and read at the next boot, which is ordinary risk rather than bricking risk.
+
+**Why Raspberry Pi's archive is allowed at all** is worth stating, because the obvious reason is
+wrong. It does not make Debian's updates reachable for the packages Raspberry Pi rebuilds — their
+`+rpt` versions outrank Debian's own by `dpkg` ordering, permanently, so Debian's next `glibc`
+revision will not be taken whatever is allowed here. That is a shadowing problem no origin list can
+solve. What allowing it does fix is that those packages otherwise have *no* update path at all: 38 of
+the ~300 installed come from that archive, 15 of them shadowing a Debian package, and excluded they
+would be frozen at whatever the card was written with for the life of the board. So `glibc` tracks
+Raspberry Pi's rebuild cadence rather than Debian's. That is the honest state of running a Pi.
 
 **It never reboots by itself.** A print runs for hours and dies with the machine, so a board that
 picked its own moment would eventually throw away someone's eight-hour job to install a libc nobody
-was waiting for. The cost is on the table rather than hidden: an update that needs a reboot — a
-kernel, or a library whose services were not restarted — sits installed and inert until somebody
-does it. The board says so in `/var/run/reboot-required`, and `sudo reboot` when nothing is printing
-is the whole procedure.
+was waiting for. `sudo reboot` when nothing is printing is the whole procedure.
+
+The cost, stated plainly: a library upgraded underneath a running service stays the old one in memory
+until that service restarts or the board reboots. **Nothing on the card tells you when that has
+happened.** `/var/run/reboot-required` exists but is narrower than it looks — only a kernel install
+or a `dbus` upgrade ever writes it, and kernels are blacklisted here, so the openssl case that
+matters most leaves no trace at all. `needrestart` is not installed, because in unattended mode it
+restarts services, and on this board that includes the container engine.
+
+So the practical answer is a reboot on a schedule that suits you rather than a check for one:
 
 ```bash
-cat /var/run/reboot-required
+sudo reboot
 ```
 
 `journalctl -u unattended-upgrades` and `/var/log/unattended-upgrades/` are where it says what it

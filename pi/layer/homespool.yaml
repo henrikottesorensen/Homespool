@@ -76,12 +76,15 @@ mmdebstrap:
     # into one of these to run apt, and expecting them to is the same mistake as expecting them to
     # change a default password.
     #
-    # It costs a python3 nothing else here needs - python3, python3-apt, python3-dbus,
-    # python3-distro-info, plus ucf and lsb-release - which is tens of megabytes on a card whose
-    # baked-in container images are most of a gigabyte. The alternative is a timer running apt-get
-    # ourselves, which is the version of this that goes wrong: dpkg conffile prompts, held packages,
-    # a partial upgrade interrupted by a power cut. That handling is the whole substance of the
-    # package and none of it is worth reimplementing.
+    # It costs 3.6 MB, measured on a built card rather than estimated: eight packages, and the
+    # rootfs goes 975 MB to 978 MB. An earlier version of this comment guessed "tens of megabytes"
+    # by counting the dependency list, which over-counted six-fold and named two packages that were
+    # already installed - python3 arrives with rpi-eeprom, and ucf with openssh-server. The largest
+    # single item is xz-utils at 1.5 MB.
+    #
+    # The alternative is a timer running apt-get ourselves, which is the version of this that goes
+    # wrong: dpkg conffile prompts, held packages, a partial upgrade interrupted by a power cut.
+    # That handling is the whole substance of the package and none of it is worth reimplementing.
     #
     # What it does NOT update is the Homespool stack: those images are baked into the card's Docker
     # store and this only ever touches Debian packages. See pi/README.md.
@@ -239,17 +242,34 @@ mmdebstrap:
       #   origin=Debian,codename=trixie-security,label=Debian-Security
       #
       # So it is stable and its security updates - point releases included, which is conservative
-      # and right for an appliance - and NOT trixie-updates, which Debian ships commented out. What
-      # matters most is what those patterns cannot match: archive.raspberrypi.com is
-      # origin=Raspberry Pi Foundation and download.docker.com is origin=Docker, so neither the
-      # board's firmware and kernel nor the container engine are touched. That last one is the one
-      # to keep: a docker-ce upgrade restarts the daemon, which stops every container on the board,
-      # and doing that unasked to a machine mid-print is exactly the harm this must not do.
+      # and right for an appliance - and NOT trixie-updates, which Debian ships commented out.
       #
-      # Note for anyone tempted to "narrow" the origins by restating them here: apt list values
-      # APPEND. Writing an Origins-Pattern block in this file would widen what is allowed, not
-      # replace it. There is nothing to blacklist either, for the same reason - a package from an
-      # origin that was never allowed is already out of reach.
+      # download.docker.com stays out, and it is the exclusion that matters most: it is
+      # origin=Docker, so Debian's patterns cannot reach it. A docker-ce upgrade restarts the
+      # daemon, which stops every container on the board, and doing that unasked to a machine
+      # mid-print is exactly the harm this must not do.
+      #
+      # archive.raspberrypi.com is added below, and the reason is not the obvious one. It does NOT
+      # make Debian's updates reachable for the packages Raspberry Pi rebuilds: their versions carry
+      # a +rpt suffix that outranks Debian's own by dpkg ordering, permanently. Checked rather than
+      # reasoned - `dpkg --compare-versions 2.41-12+rpt1+deb13u3 gt 2.41-12+deb13u4` is true - so
+      # when Debian issues the next glibc revision, this card will not take it whatever is allowed
+      # here. That is a shadowing problem and no origin list can solve it.
+      #
+      # What allowing this origin does solve is that those packages have otherwise NO update path at
+      # all. 38 of the ~300 installed come from here, 15 of them shadowing a Debian package, and
+      # with the origin excluded they are frozen at whatever the card was written with, for the life
+      # of the board - libc6, libc-bin, libasound2t64, libdrm2 among them. Allowed, they move when
+      # Raspberry Pi rebuilds. The residual gap is honest and unfixable from here: glibc tracks
+      # Raspberry Pi's cadence rather than Debian's, and pinning Debian's above theirs would fight
+      # the vendor whose patches this board runs on.
+      #
+      # apt list values APPEND, which is what makes adding an origin a two-line change - and is also
+      # the trap for anyone trying to *narrow* them. Restating Debian's patterns here to trim one
+      # would add a fourth, not replace three.
+      #
+      # Origin and Codename below are the RPi archive's own Release fields, read from
+      # archive.raspberrypi.com/debian/dists/trixie/Release rather than guessed.
       set -eu
       printf '%s\n' \
         'APT::Periodic::Update-Package-Lists "1";' \
@@ -257,6 +277,33 @@ mmdebstrap:
         > $1/etc/apt/apt.conf.d/20auto-upgrades
 
       printf '%s\n' \
+        '// Raspberry Pi'"'"'s own archive, added to Debian'"'"'s three. Without it the 38 packages that' \
+        '// come from here - libc6 and libc-bin among them - can never be updated at all, because a' \
+        '// +rpt version outranks Debian'"'"'s equivalent forever. See the layer for why this does not' \
+        '// make Debian'"'"'s glibc reachable, only Raspberry Pi'"'"'s next rebuild of it.' \
+        'Unattended-Upgrade::Origins-Pattern {' \
+        '        "origin=Raspberry Pi Foundation,codename=${distro_codename}";' \
+        '};' \
+        '' \
+        '// The exceptions, and the reason the blacklist exists at all: everything here either' \
+        '// rewrites the FAT boot partition or reflashes the bootloader EEPROM, where an upgrade' \
+        '// interrupted by a power cut is a board that does not come back. A appliance that stops' \
+        '// booting is worse than one running a month-old kernel, and nothing on this card reboots' \
+        '// unattended anyway, so a kernel installed here would sit unused until a person acted -' \
+        '// paying the whole risk for none of the benefit.' \
+        '//' \
+        '// Regexes, matched against the package name. Wi-Fi and Bluetooth firmware is deliberately' \
+        '// NOT here: it is replaced on disk and read at the next boot, so it carries the ordinary' \
+        '// risk rather than the bricking one.' \
+        'Unattended-Upgrade::Package-Blacklist {' \
+        '        "^linux-image-";' \
+        '        "^linux-headers-";' \
+        '        "^rpi-eeprom";' \
+        '        "^raspi-firmware$";' \
+        '        "^raspberrypi-bootloader$";' \
+        '        "^raspberrypi-kernel";' \
+        '};' \
+        '' \
         '// It never reboots by itself, and that is the decision this file exists to make. A print' \
         '// runs for hours and dies with the machine, so a board that reboots when it judges the' \
         '// moment right will eventually throw away somebody'"'"'s eight-hour job to install a libc' \

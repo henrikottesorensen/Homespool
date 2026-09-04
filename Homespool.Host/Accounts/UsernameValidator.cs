@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Identity;
@@ -14,7 +15,7 @@ namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// What a username may be: any letters and digits, from one script, plus <c>- . _</c>, and never
-/// an address. UTS #39's identifier check, with this application's one rule on top.
+/// an address. Squint's name inspection, with this application's one rule on top.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -25,25 +26,34 @@ namespace Homespool.Host.Accounts;
 /// <see cref="IdentityServices.AddHomespoolIdentity"/>, so the test harness applies it too.
 /// </para>
 /// <para>
-/// <b>The profile decides which characters exist for this purpose.</b> UTS #39's General Security
-/// Profile allows the letters of living alphabets - <c>þ ð æ ı ș ẞ</c> included - and the three
-/// punctuation marks, and refuses archaic letters, compatibility digraphs, format characters such
-/// as a zero-width joiner, whitespace, and both <c>@</c> and <c>+</c>. The <c>@</c> refusal is
-/// also stated here in its own right, because it is load-bearing: sign-in takes a username or an
+/// <b>The inspection decides which characters exist for this purpose.</b> Its profile allows the
+/// letters of living alphabets - <c>þ ð æ ı ș ẞ</c> included - and the three punctuation marks,
+/// and refuses archaic letters, format characters such as a zero-width joiner, whitespace, and
+/// both <c>@</c> and <c>+</c>. It also refuses a compatibility form - a ligature, a fullwidth
+/// letter, a letter from a mathematical alphabet - rather than folding it to the letters it looks
+/// like, which for a username is the right answer: nobody types one. The <c>@</c> refusal is also
+/// stated here in its own right, because it is load-bearing: sign-in takes a username or an
 /// address in one field, and the two namespaces stay disjoint only while no username can be shaped
 /// like an address. That must hold even if the profile ever changed.
 /// </para>
 /// <para>
-/// <b>One script per name</b> is UTS #39's "highly restrictive" level: Latin, Cyrillic, Greek or
+/// <b>One script per name</b> is <see cref="NamePolicy.OneScript"/>: Latin, Cyrillic, Greek or
 /// Japanese, but not two of them in one name, which is the cheap closure of the cross-script
 /// homoglyph. Digits from two number systems are refused on the same ground. Within a script,
 /// lookalikes are not refused at all - they are the <em>same</em> name, by
 /// <see cref="SkeletonLookupNormalizer"/>, and the second is refused as a duplicate.
 /// </para>
 /// <para>
-/// <b>An un-normalised name is refused rather than fixed.</b> A validator may not rewrite the value
-/// it is checking; <see cref="Usernames.Normalise"/> is applied at each entry point instead, and this
-/// check is what makes a forgotten entry point fail on its first accented name.
+/// <b>Two messages, not one per finding.</b> The inspection words each finding with a position and
+/// a character name, in English; the person sees the application's own two sentences in their own
+/// language instead - one for a name that mixes alphabets, one for everything else - and the
+/// findings' detail goes nowhere, because a username field is not the place for Unicode names.
+/// </para>
+/// <para>
+/// <b>A name that is acceptable but not in its clean form is refused rather than fixed.</b> A
+/// validator may not rewrite the value it is checking; <see cref="Usernames.Prepare"/> is applied at
+/// each entry point instead, and this check is what makes a forgotten entry point fail on its first
+/// accented name.
 /// </para>
 /// </remarks>
 public sealed class UsernameValidator : IUserValidator<HSUser>
@@ -69,15 +79,16 @@ public sealed class UsernameValidator : IUserValidator<HSUser>
             return IdentityResult.Success;
         }
 
+        Inspection inspection = Names.Inspect(name, NamePolicy.OneScript);
+
+        bool mixesScripts = inspection.Findings.Any(f => f.Kind is FindingKind.MixedScripts or FindingKind.MixedDigits);
+        bool otherwiseUnusable = inspection.Findings.Any(f => f.Kind is not (FindingKind.MixedScripts or FindingKind.MixedDigits));
+        bool addressShaped = name.Contains('@', StringComparison.Ordinal) || name.Contains('+', StringComparison.Ordinal);
+        bool notClean = inspection.IsAcceptable && !string.Equals(inspection.CleanForm, name, StringComparison.Ordinal);
+
         List<IdentityError> errors = [];
 
-        IdentifierCheck check = Identifiers.Check(name, RestrictionLevel.HighlyRestrictive);
-
-        bool addressShaped = name.Contains('@', StringComparison.Ordinal) || name.Contains('+', StringComparison.Ordinal);
-        bool outsideProfile = (check.Problems & IdentifierProblems.OutsideProfile) != 0;
-        bool notNormalised = !string.Equals(check.Normalized, name, StringComparison.Ordinal);
-
-        if (addressShaped || outsideProfile || notNormalised)
+        if (otherwiseUnusable || addressShaped || notClean)
         {
             errors.Add(new IdentityError
             {
@@ -86,7 +97,7 @@ public sealed class UsernameValidator : IUserValidator<HSUser>
             });
         }
 
-        if ((check.Problems & (IdentifierProblems.ExceedsRestrictionLevel | IdentifierProblems.MixedNumbers)) != 0)
+        if (mixesScripts)
         {
             errors.Add(new IdentityError
             {

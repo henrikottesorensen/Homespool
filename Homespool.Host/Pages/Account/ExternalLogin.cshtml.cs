@@ -396,7 +396,7 @@ public class ExternalLoginModel : PageModel
         {
             // The address is the invite's, never the provider's - they agree by construction on the
             // matched-by-address door, and on the token door the provider's address was never consulted.
-            await _userStore.SetUserNameAsync(user, Usernames.Normalise(Input.Username), cancellationToken);
+            await _userStore.SetUserNameAsync(user, Usernames.Prepare(Input.Username), cancellationToken);
             await _emailStore.SetEmailAsync(user, invitation.Email, cancellationToken);
 
             _accountConfirmationPolicy.Apply(user);

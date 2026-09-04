@@ -92,6 +92,7 @@ public sealed class UsernameTests : IDisposable
     [InlineData("hen rik", "whitespace")]
     [InlineData("hen\u200Drik", "a zero-width joiner")]
     [InlineData("ǆeto", "a compatibility digraph")]
+    [InlineData("ﬁle", "a ligature is refused, not folded to the letters it looks like")]
     [InlineData("e\u0301mile", "a decomposed accent - not the form the entry points store")]
     public async Task AUsernameMayNotBeShapedLikeAnAddressOrCarryWhatTheProfileRefuses(string name, string because)
     {
@@ -164,6 +165,18 @@ public sealed class UsernameTests : IDisposable
 
         found.Should().NotBeNull();
         found!.Id.Should().Be(created.Id);
+    }
+
+    /// <summary>
+    /// What the entry points hand to Identity: an acceptable name in its clean form, so a decomposed
+    /// accent is composed - and an unacceptable one exactly as typed, so the validator can say why.
+    /// </summary>
+    [Fact]
+    public void AnEntryPointStoresTheCleanFormOfAnAcceptableNameAndLeavesTheRestAlone()
+    {
+        Usernames.Prepare("e\u0301mile").Should().Be("émile", "the decomposed accent is composed");
+        Usernames.Prepare("ﬁle").Should().Be("ﬁle", "a ligature is a finding, not something to fold away");
+        Usernames.Prepare("hеnrik").Should().Be("hеnrik", "a mixed-script name is left for the validator to refuse");
     }
 
     /// <summary>The key is the skeleton of the NFKC form, upper-cased; an address keeps Identity's key.</summary>

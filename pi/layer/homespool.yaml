@@ -112,10 +112,15 @@ mmdebstrap:
 
     # Compressed swap in RAM, and the alternative it rules out is the point: a swapfile on the card
     # would be the worst possible place for it. Measured on the cards this project actually uses -
-    # ~500 random write IOPS with 51-107 ms stalls at p99.9, and over a second on one of them
-    # - and swap is the most latency-sensitive random I/O a system
-    # does. That buys "does not OOM" at the price of "unusable", while grinding write cycles into an
-    # SD card. zram never touches the card.
+    # ~500 random write IOPS with 51-107 ms stalls at p99.9, and over a second on one of them - and
+    # swap is the most latency-sensitive random I/O a system does. That buys "does not OOM" at the
+    # price of "unusable", while grinding write cycles into an SD card.
+    #
+    # Those figures are from 2018-era cards and a current one is far better - an A2 card measures
+    # 2485 random write IOPS at 1.07 ms p99.9. That improves the *latency* half of the argument and
+    # does nothing at all to the other half: swap is a continuous write load, microSD has a finite
+    # program/erase budget, and a faster card is not a more durable one. Paging onto the card would
+    # still be the wrong place for it if it were instant. zram never touches the card.
     #
     # Proven rather than proposed: on a 2 GB Pi 5 it holds 172.5 MB of data in 87.9 MB of RAM, a 3.8x
     # compression ratio on .NET heaps and container metadata, and it is what makes `dotnet build` fit
@@ -130,8 +135,19 @@ mmdebstrap:
     #
     # It matters most where the failure is ugliest, which is the small board rather than the big one:
     # a build that OOMs annoys somebody at a keyboard, while an appliance that OOMs goes quiet in a
-    # cupboard - and with no memory cgroup controller here the kernel picks its victim by badness
-    # score, so it may take sshd and leave a board nobody can reach to find out why.
+    # cupboard.
+    #
+    # But zram changes the *shape* of exhaustion rather than preventing it, and the new shape is
+    # worse than an OOM kill. Every anonymous page stays reclaimable by recompressing it, so the
+    # kernel keeps reclaiming instead of ever satisfying the condition for a kill; past the point
+    # where the working set no longer fits even compressed, it enters a fault-in/compress-out loop
+    # and makes no forward progress. A board in that state answers ping and nothing else - ICMP echo
+    # is handled kernel-side in softirq from buffers already allocated, while sshd has to fork and
+    # exec - until somebody power-cycles it. An appliance that OOMs comes back; one that livelocks
+    # needs a walk to the cupboard.
+    #
+    # earlyoom below is what answers that, and it names sshd rather than leaving the choice to a
+    # badness score.
     - systemd-zram-generator
 
     # The other half of the memory story, and the entry above is why it is needed rather than merely

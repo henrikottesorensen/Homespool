@@ -788,6 +788,7 @@ public sealed class TelemetryWriterTests : IDisposable
         using JsonDocument payload = JsonDocument.Parse(
             """
             {"firmware":"6.5.7+12836","api_key":"vC7x4aZfohmcbzH","nozzle_diameter":0.4,
+             "fingerprint":"FPRNT7Q2M4K9X3ZC8VB6N1H5J0LWTDRE4YSA2P","sn":"CZPX0000X000XC00000",
              "network_info":{"wifi_ssid":"example-network","wifi_mac":"00:00:5E:00:53:2A","wifi_ipv4":"192.168.13.110","hostname":"prusa-mk35"},
              "storages":[{"mountpoint":"/usb","read_only":false}]}
             """);
@@ -816,10 +817,20 @@ public sealed class TelemetryWriterTests : IDisposable
         stored.Payload.Should().NotContain("example-network", "an SSID names where someone lives");
         stored.Payload.Should().NotContain("00:00:5E:00:53:2A");
 
+        // The server's own lookup key: the one value POST /p/register takes anonymously to hand
+        // back an enrolled printer's pending code, and not derivable from anything off the printer
+        // - so a row anyone with ViewPrinter could read was the only place to learn it.
+        stored.Payload.Should().NotContain("FPRNT7Q2M4K9X3ZC8VB6N1H5J0LWTDRE4YSA2P", "the fingerprint is what an anonymous re-registration is keyed on");
+
         using JsonDocument kept = JsonDocument.Parse(stored.Payload!);
 
         // Masked rather than dropped: a silently absent key reads as "firmware stopped sending it".
         kept.RootElement.GetProperty("api_key").GetString().Should().Be("[redacted]");
+        kept.RootElement.GetProperty("fingerprint").GetString().Should().Be("[redacted]");
+
+        // The serial stays: it is printed on the machine, and it is what a support conversation
+        // quotes - the traffic log redacts it, this table deliberately does not.
+        kept.RootElement.GetProperty("sn").GetString().Should().Be("CZPX0000X000XC00000");
 
         JsonElement network = kept.RootElement.GetProperty("network_info");
 
@@ -827,7 +838,7 @@ public sealed class TelemetryWriterTests : IDisposable
         network.GetProperty("wifi_ssid").GetString().Should().Be("[redacted]");
         network.GetProperty("wifi_mac").GetString().Should().Be("[redacted]");
 
-        // Everything else survives - a blacklist of three paths, not the FILE_INFO allowlist.
+        // Everything else survives - a blacklist of four paths, not the FILE_INFO allowlist.
         kept.RootElement.GetProperty("firmware").GetString().Should().Be("6.5.7+12836");
         kept.RootElement.GetProperty("nozzle_diameter").GetDouble().Should().Be(0.4);
         network.GetProperty("wifi_ipv4").GetString().Should().Be("192.168.13.110");

@@ -320,17 +320,17 @@ mmdebstrap:
       #
       # The MemoryMax note goes in the shipped file rather than only here, because `systemctl cat
       # earlyoom` prints the vendor unit and then this drop-in - so it lands directly beneath the
-      # line it is about, for somebody reading it on the board. earlyoom.service sets MemoryMax=50M
-      # and it is inert: /proc/cgroups has no memory row, and the service's own cgroup carries
-      # pids.* files and no memory.* at all. `systemctl show` nonetheless reports
-      # MemoryMax=52428800 with MemoryAccounting=yes, so the introspection command confirms a limit
-      # that cannot exist - which is the same trap as mem_limit and MemoryMin, wearing a badge that
-      # says verified. TasksMax=10 and OOMScoreAdjust=-100 in that unit are real; the pids
-      # controller is present.
+      # line it is about, for somebody reading it on the board. earlyoom.service sets MemoryMax=50M,
+      # and on this image it is ENFORCED: the cmdline hook below turns the memory cgroup controller
+      # on. 50M is ample for a daemon that needs a couple of megabytes, but it is a real ceiling
+      # now rather than decoration, which is why it is not reset with an empty MemoryMax=.
       #
-      # Deliberately NOT reset with an empty MemoryMax= here. It costs nothing while the controller
-      # is off, and it becomes a real limit the moment anyone puts cgroup_enable=memory on the
-      # kernel command line - removing it would quietly remove that.
+      # Worth stating because it is not true everywhere, and the failure is quiet. Without the
+      # controller - the firmware prepends cgroup_disable=memory, so that is the state of any board
+      # that does not undo it - the same directive is inert, and `systemctl show` still reports
+      # MemoryMax=52428800 with MemoryAccounting=yes. The introspection command echoes the unit file
+      # rather than checking anything, so it will confirm a limit that does not exist. TasksMax=10
+      # and OOMScoreAdjust=-100 are real either way; the pids controller is always present.
       set -eu
       mkdir -p $1/etc/systemd/system/earlyoom.service.d
       printf '%s\n' \
@@ -338,10 +338,11 @@ mmdebstrap:
         "# a drop-in using Environment= would lose to the package's own file and do nothing. Read" \
         '# second - of two files the later one wins - because drop-ins are parsed after the unit.' \
         '#' \
-        '# The MemoryMax=50M above is NOT enforced: this kernel has no memory cgroup controller, so' \
-        '# this service cgroup has pids.* files and no memory.* at all. systemd still reports' \
-        '# MemoryMax=52428800, so systemctl show confirms a limit that cannot exist. TasksMax and' \
-        '# OOMScoreAdjust in that unit are real - the pids controller is present.' \
+        '# The MemoryMax=50M above IS enforced here: cmdline.txt carries cgroup_enable=memory, so' \
+        '# the memory controller is on. Ample for earlyoom, but a real ceiling, not decoration.' \
+        '#' \
+        '# On a board without the controller the same line is inert, and systemctl show still' \
+        '# reports MemoryMax=52428800 - it echoes the unit file rather than checking anything.' \
         '[Service]' \
         'EnvironmentFile=/etc/default/homespool-earlyoom' \
         > $1/etc/systemd/system/earlyoom.service.d/10-homespool.conf
@@ -410,6 +411,44 @@ mmdebstrap:
       CMDLINE=$1/boot/firmware/cmdline.txt
       if ! grep -qw resize "$CMDLINE" ; then
          sed -i '1 s/$/ resize/' "$CMDLINE"
+      fi
+
+    - |-
+      #
+      # Turn the memory cgroup controller on. This buys measurement, not limits, and that is the
+      # whole case for it.
+      #
+      # Without it there is no per-container memory accounting at all: `docker stats` reports 0B
+      # permanently, and sizing anything means summing RSS and VmSwap across each container's
+      # processes by hand - which undercounts, because RSS omits pages evicted to zram, and this
+      # image runs zram sized to the whole of RAM. With it, a cgroup's memory.stat separates anon,
+      # file and slab, which is what actually answers whether the stack fits a smaller board.
+      # Measured within an hour of first enabling it: two cameras streaming cost go2rtc 18% of a
+      # core and 23 MiB, and a wedged decoder was found burning a full core - neither figure was
+      # obtainable before.
+      #
+      # It costs nothing, measured rather than assumed. MemTotal on a Pi 3 is 926828 kB both with
+      # and without. The "roughly 1% of RAM" figure attached to this controller is a cgroup v1
+      # number and v1 is not built here (CONFIG_MEMCG_V1 unset); v2 keeps one pointer-width field
+      # per folio, and under CONFIG_MEMCG=y that field is in struct page at compile time - so
+      # disabling the controller at boot never reclaimed the memory it is supposed to save.
+      #
+      # Both words because that pair is what was tested. This has to beat the firmware's own
+      # cgroup_disable=memory, which is prepended ahead of this file's contents and appears nowhere
+      # in it - so grepping these sources for it finds nothing and proves nothing. Later winning is
+      # the widely used Kubernetes-on-a-Pi remedy, and it was confirmed on the board rather than
+      # assumed: cgroup.controllers then reads "cpuset cpu io memory pids".
+      #
+      # This adds no container memory limit. Whether to set one stays its own decision - it is
+      # merely no longer inert if anybody does. It does make earlyoom.service's MemoryMax=50M real;
+      # the drop-in above says so where somebody reading the unit will see it.
+      #
+      # sed on line 1 rather than >>, for the reason the resize hook above gives: cmdline.txt is a
+      # single line and an appended second line is ignored in silence.
+      set -eu
+      CMDLINE=$1/boot/firmware/cmdline.txt
+      if ! grep -q cgroup_enable=memory "$CMDLINE" ; then
+         sed -i '1 s/$/ cgroup_enable=memory cgroup_memory=1/' "$CMDLINE"
       fi
 
     - |-

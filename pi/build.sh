@@ -248,6 +248,25 @@ overrides=(
     "IGconf_device_layer=$device_layer"
     "IGconf_image_name=$image_name"
     "IGconf_layer_custom=$custom_layer"
+
+    # Sudo for the device user, stated rather than inherited - and the inheritance is what went
+    # wrong. rpi-image-gen defaults user1sudo to "none" and then *lazily* rewrites it to "passwd"
+    # when a build-time password is set. So while this image shipped a stock password the account
+    # quietly gained sudo as a side effect, and dropping that password quietly took it away: every
+    # card built since has an empty sudo group, no sudoers.d grant and a locked root. Nothing said
+    # so, and nobody noticed, because the docker group is root-equivalent and covers the same ground.
+    #
+    # The knob is not the problem - none|passwd|nopasswd is the documented interface. Being written
+    # by a trigger on an unrelated variable is. Setting it here is the same move as spelling out
+    # fs_ext4_mkfs_args rather than letting page_size derive it.
+    #
+    # passwd rather than nopasswd: nopasswd hands root to whoever holds the SSH key with nothing
+    # further asked. passwd wants the owner's own password, which does not exist until they choose
+    # one - and a locked account cannot sudo at all. Verified rather than assumed: locked, sudo
+    # answers "1 incorrect password attempt"; after chpasswd sets a password the same command
+    # returns uid=0. So the grant lies dormant until somebody sets a credential through
+    # homespool-login.txt, which is the first-boot story this image is built around.
+    "IGconf_device_user1sudo=passwd"
 )
 
 # The combined card must be built at a 4K ext4 block size, and getting this wrong produces a card
@@ -448,6 +467,53 @@ docker run --rm --privileged \
 # Compressed *from the edited image*, which is the whole reason the raw one was taken out of the
 # volume above: the .zst here is an archive of what we actually ship, not of what genimage produced
 # before the fstab edit. -T0 for every core, since this is now the last slow step.
+# ------------------------------------------------------------------------------------------------
+# 7. Assert the owner can still become root.
+#
+# Checked against the finished image, because the layer cannot check itself: rpi-image-gen runs our
+# customize-hooks before device-user-admin's `dpkg --purge sudo`, so anything asserted inside the
+# layer would be asserted too early to see the thing that removes it.
+#
+# Not hypothetical, and that is why it is worth a build step. Sudo was absent from every card built
+# between dropping the stock password and adding the override above, and nothing reported it. The
+# purge that would remove it fails today for two reasons, both accidents from here: raspinfo happens
+# to depend on sudo, and sudo's own prerm refuses to remove itself while root has no password - which
+# is one SUDO_FORCE_REMOVE=yes away from not being true.
+#
+# Env vars rather than interpolating into the script body: this needs the user name and the image
+# name inside a shell that also uses $1, $2 and awk fields, and the escaping in the noatime step
+# above is already at the limit of what is readable.
+echo "==> Checking the device user can become root"
+docker run --rm --privileged \
+    -e DEVICE_USER="$device_user" \
+    -e IMAGE_NAME="$image_name" \
+    -v "$work_dir/out:/out" \
+    homespool-imagegen \
+    bash -euc '
+        img=/out/$IMAGE_NAME.img
+        start=$(fdisk -l -o Device,Start "$img" | awk "\$1 ~ /img2\$/ {print \$2}")
+        [ -n "$start" ] || { echo "could not find partition 2 in the image" >&2; exit 1; }
+        dev=$(losetup -o $((start * 512)) -f --show "$img")
+        trap "umount /mnt 2>/dev/null || true; losetup -d $dev 2>/dev/null || true" EXIT
+        mount -t ext4 "$dev" /mnt
+
+        [ -x /mnt/usr/bin/sudo ] \
+            || { echo "sudo is not installed in the image - the purge hook succeeded" >&2; exit 1; }
+
+        # The member list, matched whole: a substring test would accept "pi" inside "pixel".
+        members=$(awk -F: "\$1 == \"sudo\" { print \$4 }" /mnt/etc/group)
+        case ",$members," in
+            *",$DEVICE_USER,"*) ;;
+            *) echo "$DEVICE_USER is not in the sudo group (members: ${members:-none})" >&2; exit 1 ;;
+        esac
+
+        grep -rqs "^$DEVICE_USER[[:space:]]" /mnt/etc/sudoers.d/ \
+            || { echo "no sudoers.d grant for $DEVICE_USER" >&2; exit 1; }
+
+        echo "    sudo present, group members: $members"
+        grep -rhs "^$DEVICE_USER[[:space:]]" /mnt/etc/sudoers.d/ | sed "s/^/    /"
+    '
+
 echo "==> Compressing an archive copy (the .img is the artefact to flash - see the comment above)"
 docker run --rm -v "$work_dir/out:/out" homespool-imagegen \
     sh -c "zstd -q -f -T0 /out/${image_name}.img -o /out/${image_name}.img.zst"

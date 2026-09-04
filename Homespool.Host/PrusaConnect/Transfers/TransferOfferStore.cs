@@ -81,7 +81,7 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
                      Justification =
                          "The handle is deliberately long-lived: PinnedOffer owns it, and closes it when the offer is revoked or swept and nothing is reading it. Disposing here would defeat the pinning this method exists for.")]
-    public bool Offer(string token, string path)
+    public bool Offer(string token, string path, int printerId)
     {
         SweepIdle();
 
@@ -100,7 +100,7 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
             return false;
         }
 
-        PinnedOffer offer = new(content, _timeProvider.GetUtcNow());
+        PinnedOffer offer = new(content, _timeProvider.GetUtcNow(), printerId);
 
         // Re-offering a token replaces it. Tokens are random and minted per send, so this is the
         // theoretical case rather than the expected one - but leaking the old handle would be real.
@@ -125,9 +125,13 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
     }
 
     /// <inheritdoc />
-    public bool TryOpen(string hash, [NotNullWhen(true)] out ITransferContent? content)
+    public bool TryOpen(string hash, int printerId, [NotNullWhen(true)] out ITransferContent? content)
     {
-        content = _offers.TryGetValue(hash, out PinnedOffer? offer) ? offer.Borrow() : null;
+        // One answer for "unknown" and "not yours", as the interface promises. A printer that
+        // presents a token it was never given learns nothing from the refusal.
+        content = _offers.TryGetValue(hash, out PinnedOffer? offer) && offer.PrinterId == printerId
+            ? offer.Borrow()
+            : null;
 
         return content is not null;
     }
@@ -170,13 +174,17 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
         private int _readers;
         private bool _retired;
 
-        public PinnedOffer(ITransferContent content, DateTimeOffset offeredAt)
+        public PinnedOffer(ITransferContent content, DateTimeOffset offeredAt, int printerId)
         {
             _content = content;
             OfferedAt = offeredAt;
+            PrinterId = printerId;
         }
 
         public DateTimeOffset OfferedAt { get; }
+
+        /// <summary>The printer the offer was made to, and the only one it opens for.</summary>
+        public int PrinterId { get; }
 
         /// <summary>Whether nothing is currently reading this, and so it can be closed.</summary>
         public bool IsIdle

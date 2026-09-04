@@ -210,9 +210,9 @@ public class TransferRequestHandlingTests
         RecordingConnection connection = new();
         ITransferContentStore store = Substitute.For<ITransferContentStore>();
 
-        store.TryOpen(Hash, out Arg.Any<ITransferContent?>()).Returns(call =>
+        store.TryOpen(Hash, 1, out Arg.Any<ITransferContent?>()).Returns(call =>
         {
-            call[1] = new NeverReturningContent();
+            call[2] = new NeverReturningContent();
 
             return true;
         });
@@ -242,9 +242,9 @@ public class TransferRequestHandlingTests
     {
         ITransferContentStore store = Substitute.For<ITransferContentStore>();
 
-        store.TryOpen(Hash, out Arg.Any<ITransferContent?>()).Returns(call =>
+        store.TryOpen(Hash, 1, out Arg.Any<ITransferContent?>()).Returns(call =>
         {
-            call[1] = content;
+            call[2] = content;
 
             return content is not null;
         });

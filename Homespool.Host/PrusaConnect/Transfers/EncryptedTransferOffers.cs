@@ -35,10 +35,15 @@ public sealed class EncryptedTransferOffers
 
     /// <summary>
     /// Registers a transfer: the printer will ask for <paramref name="ivHex"/>, the bytes are pinned
-    /// under <paramref name="offerToken"/>, and <paramref name="key"/> is what it was told.
+    /// under <paramref name="offerToken"/> for <paramref name="printerId"/>, and <paramref name="key"/>
+    /// is what it was told.
     /// </summary>
-    /// <remarks>The key is copied; the caller may zero its own afterwards.</remarks>
-    public void Register(string ivHex, ReadOnlySpan<byte> key, string offerToken)
+    /// <remarks>
+    /// The key is copied; the caller may zero its own afterwards. The printer id is carried so that
+    /// the fetch - which presents no credential of its own - can open the offer under the binding
+    /// <see cref="ITransferContentStore.TryOpen"/> requires; it is not a check this class makes.
+    /// </remarks>
+    public void Register(string ivHex, ReadOnlySpan<byte> key, string offerToken, int printerId)
     {
         ArgumentException.ThrowIfNullOrEmpty(ivHex);
         ArgumentException.ThrowIfNullOrEmpty(offerToken);
@@ -48,7 +53,7 @@ public sealed class EncryptedTransferOffers
             throw new ArgumentException($"The key must be exactly {TransferCipher.KeyLength} bytes.", nameof(key));
         }
 
-        Entry entry = new(key.ToArray(), offerToken);
+        Entry entry = new(key.ToArray(), offerToken, printerId);
 
         if (_entries.TryRemove(ivHex, out Entry? replaced))
         {
@@ -68,7 +73,9 @@ public sealed class EncryptedTransferOffers
     /// </summary>
     public EncryptedTransfer? Find(string ivHex)
     {
-        return _entries.TryGetValue(ivHex, out Entry? entry) ? new EncryptedTransfer(entry.Key, entry.OfferToken) : null;
+        return _entries.TryGetValue(ivHex, out Entry? entry)
+            ? new EncryptedTransfer(entry.Key, entry.OfferToken, entry.PrinterId)
+            : null;
     }
 
     /// <summary>Forgets an IV and zeroes its key. Idempotent.</summary>
@@ -82,15 +89,18 @@ public sealed class EncryptedTransferOffers
 
     private sealed class Entry
     {
-        public Entry(byte[] key, string offerToken)
+        public Entry(byte[] key, string offerToken, int printerId)
         {
             Key = key;
             OfferToken = offerToken;
+            PrinterId = printerId;
         }
 
         public byte[] Key { get; }
 
         public string OfferToken { get; }
+
+        public int PrinterId { get; }
 
         public void Zero()
         {
@@ -103,4 +113,5 @@ public sealed class EncryptedTransferOffers
 /// the offer holding the bytes.</summary>
 /// <param name="Key">The AES-128 key. Not a copy - do not retain it past the request.</param>
 /// <param name="OfferToken">The <see cref="ITransferContentStore"/> token to open the bytes under.</param>
-public sealed record EncryptedTransfer(byte[] Key, string OfferToken);
+/// <param name="PrinterId">The printer the offer was made to, which the open has to name.</param>
+public sealed record EncryptedTransfer(byte[] Key, string OfferToken, int PrinterId);

@@ -251,8 +251,12 @@ public sealed class EncryptedTransferEndpointTests : IAsyncLifetime, IDisposable
         string path = Path.Combine(_offerDirectory, $"{ivHex}.gcode");
         File.WriteAllBytes(path, plaintext);
 
-        _factory.Services.GetRequiredService<ITransferOffers>().Offer(ivHex, path).Should().BeTrue();
-        _factory.Services.GetRequiredService<EncryptedTransferOffers>().Register(ivHex, key, ivHex);
+        // Any printer id, as long as the two agree: the fetch opens the offer under the id the
+        // registration carries, and no printer exists in this suite's database to match it against.
+        const int offeredTo = 1;
+
+        _factory.Services.GetRequiredService<ITransferOffers>().Offer(ivHex, path, offeredTo).Should().BeTrue();
+        _factory.Services.GetRequiredService<EncryptedTransferOffers>().Register(ivHex, key, ivHex, offeredTo);
 
         return (ivHex, key, iv);
     }

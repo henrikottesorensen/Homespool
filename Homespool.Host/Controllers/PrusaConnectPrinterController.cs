@@ -301,10 +301,18 @@ public class PrusaConnectPrinterController : ControllerBase
     /// </para>
     /// <para>
     /// <b><c>teamId</c> is carried and not trusted.</b> It is in the path because the SDK puts it
-    /// there; what decides whether these bytes may be served is <c>hash</c>, which is the per-send
-    /// random token the offer was made under - unguessable, revoked when the send finishes or fails,
-    /// and never derived from the content. A digest would have been a stable URL for the life of the
-    /// file, which was the rejected design's one privacy leak.
+    /// there; what decides whether these bytes may be served is <c>hash</c> together with <b>who is
+    /// asking</b>. The hash is the per-send random token the offer was made under - never derived
+    /// from the content, so a digest's stable-URL privacy leak does not arise - and the offer opens
+    /// only for the printer the command went to, read from the authenticated principal. That second
+    /// half is what makes the first safe to keep: the encrypted path uses the same token as the IV
+    /// in a plain-HTTP URL, so a token is unguessable but not secret, and before the binding any
+    /// enrolled printer that had seen one could fetch the bytes here in plaintext.
+    /// </para>
+    /// <para>
+    /// The offer is revoked when the send is refused or fails; a send that succeeds leaves it
+    /// standing until <see cref="PrusaConnect.Transfers.TransferOfferStore"/> sweeps it as idle, so
+    /// the binding, not revocation, is what bounds who can read it.
     /// </para>
     /// <para>
     /// <b>Plaintext, deliberately, and only to a client that cannot do better.</b> Firmware gets the
@@ -318,9 +326,12 @@ public class PrusaConnectPrinterController : ControllerBase
     [ProducesResponseType(typeof(void), StatusCodes.Status404NotFound)]
     public Results<OfferedFileResult, NotFound> FetchOffered(long teamId, string hash)
     {
-        if (!_content.TryOpen(hash, out PrusaConnect.Transfers.ITransferContent? content))
+        int printerId = int.Parse(User.FindFirstValue(HSClaimTypes.PrinterId)!);
+
+        if (!_content.TryOpen(hash, printerId, out PrusaConnect.Transfers.ITransferContent? content))
         {
-            // Unknown, revoked, or the bytes are gone - one answer, as the encrypted route gives.
+            // Unknown, revoked, offered to another printer, or the bytes are gone - one answer, as
+            // the encrypted route gives.
             return TypedResults.NotFound();
         }
 

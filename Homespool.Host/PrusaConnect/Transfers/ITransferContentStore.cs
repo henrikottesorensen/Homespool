@@ -14,11 +14,18 @@ namespace Homespool.Host.PrusaConnect.Transfers;
 public interface ITransferContentStore
 {
     /// <summary>
-    /// Opens the content offered under <paramref name="hash"/>, or returns false if nothing is
-    /// offered under it - an unknown hash is an ordinary occurrence (a stale retry after a restart),
-    /// not an error.
+    /// Opens the content offered under <paramref name="hash"/> to <paramref name="printerId"/>, or
+    /// returns false if nothing is offered under it - an unknown hash is an ordinary occurrence (a
+    /// stale retry after a restart), not an error.
     /// </summary>
-    /// <remarks>The caller owns the returned <see cref="ITransferContent"/> and disposes it when the
-    /// transfer ends.</remarks>
-    bool TryOpen(string hash, [NotNullWhen(true)] out ITransferContent? content);
+    /// <remarks>
+    /// <para>
+    /// An offer made for another printer is "nothing offered" too, and deliberately not a distinct
+    /// answer: the caller learns that these bytes are not for it, and nothing about whether they
+    /// exist for somebody else. See <see cref="ITransferOffers.Offer"/> for why the binding exists.
+    /// </para>
+    /// <para>The caller owns the returned <see cref="ITransferContent"/> and disposes it when the
+    /// transfer ends.</para>
+    /// </remarks>
+    bool TryOpen(string hash, int printerId, [NotNullWhen(true)] out ITransferContent? content);
 }

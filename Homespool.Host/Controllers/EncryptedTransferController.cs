@@ -87,7 +87,10 @@ public sealed class EncryptedTransferController : ControllerBase
 
         EncryptedTransfer? transfer = ivHex.Length == TransferCipher.IvLength * 2 ? _keys.Find(ivHex) : null;
 
-        if (transfer is null || !_content.TryOpen(transfer.OfferToken, out ITransferContent? content))
+        // The printer id comes from the registration, not the request: this fetch carries no
+        // credential, and the IV that found the registration is the whole of its authority. What
+        // the binding buys here is that the offer cannot have been re-pointed at another printer.
+        if (transfer is null || !_content.TryOpen(transfer.OfferToken, transfer.PrinterId, out ITransferContent? content))
         {
             // Unknown, revoked, or the bytes are gone. All one answer to the printer, which will
             // report the transfer failed - the same thing it does for any 4xx.

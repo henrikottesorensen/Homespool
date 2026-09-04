@@ -670,7 +670,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                 // Same content, renegotiated. Keep the open handle and adopt the new id.
                 _transfer = _transfer with { FileId = request.FileId };
             }
-            else if (_contentStore.TryOpen(request.Hash, out ITransferContent? content))
+            else if (_contentStore.TryOpen(request.Hash, _printerId, out ITransferContent? content))
             {
                 _transfer?.Content.Dispose();
 

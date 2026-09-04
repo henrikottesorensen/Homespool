@@ -24,8 +24,16 @@ public interface ITransferOffers
     /// command it is about to send. It is minted per send and means nothing afterwards - it is
     /// correlation, not identity, which is what lets the file it stands for be named anything at all.
     /// </para>
+    /// <para>
+    /// <b><paramref name="printerId"/> is who the offer is for, and the only credential that can
+    /// open it.</b> The token alone used to be enough, on the reasoning that it is unguessable - but
+    /// the encrypted path deliberately puts it on the wire in the clear as the IV, so "unguessable"
+    /// and "secret" had quietly parted ways: any enrolled printer that saw an IV could open the
+    /// offer as plaintext through the SDK's raw route. Binding the offer to the printer the command
+    /// went to closes that without changing what any printer sends.
+    /// </para>
     /// </remarks>
-    bool Offer(string token, string path);
+    bool Offer(string token, string path, int printerId);
 
     /// <summary>
     /// Withdraws an offer and closes what it held. Idempotent - an already-withdrawn or never-known

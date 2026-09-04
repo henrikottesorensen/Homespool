@@ -117,7 +117,7 @@ public class PrintFileSender
         string token = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(TransferTokenBytes));
 
         // Opening the file is what pins these bytes for the whole transfer - see ITransferOffers.
-        if (!_offers.Offer(token, file.Path))
+        if (!_offers.Offer(token, file.Path, printer.Id))
         {
             throw new PrintFileUnreadableException(file.FileName);
         }
@@ -169,12 +169,12 @@ public class PrintFileSender
 
         try
         {
-            if (!_offers.Offer(ivHex, file.Path))
+            if (!_offers.Offer(ivHex, file.Path, printer.Id))
             {
                 throw new PrintFileUnreadableException(file.FileName);
             }
 
-            _encrypted.Register(ivHex, key, ivHex);
+            _encrypted.Register(ivHex, key, ivHex, printer.Id);
 
             // The command takes its own copies. It may be rendered long after this method returns -
             // on the HTTP transport it is parked and encoded when the printer next polls - so it must
@@ -188,15 +188,9 @@ public class PrintFileSender
                 Port = checked((ushort)_options.CurrentValue.TransferPort),
             };
 
-            return await SendAndCleanUpAsync(printer,
-                                             command,
-                                             caller,
-                                             () =>
-                                             {
-                                                 _encrypted.Revoke(ivHex);
-                                                 _offers.Revoke(ivHex);
-                                             },
-                                             cancellationToken);
+            // One revoke, not two: the key store follows the offer store out, so revoking the offer
+            // is what zeroes the key - here and on every other path that retires it.
+            return await SendAndCleanUpAsync(printer, command, caller, () => _offers.Revoke(ivHex), cancellationToken);
         }
         finally
         {

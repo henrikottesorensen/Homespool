@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Mime;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,6 +18,7 @@ using Homespool.Host.Accounts;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
+using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Model;
 
 namespace Homespool.Host.E2ETest;
@@ -567,6 +569,71 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime, IDisposable
             timeout.Token.ThrowIfCancellationRequested();
             await Task.Delay(10, timeout.Token);
         }
+    }
+
+    /// <summary>
+    /// The SDK's raw fetch serves an offer only to the printer it was made for. Two printers in two
+    /// teams, one offer: the other printer's valid credential gets the same 404 an unknown token
+    /// gets, and the intended printer gets the bytes. Without the binding, any enrolled printer that
+    /// had seen an offer token - which the encrypted path puts in a plain-HTTP URL as the IV - could
+    /// read the file here in the clear.
+    /// </summary>
+    [Fact]
+    public async Task ARawFetchServesAnOfferOnlyToThePrinterItWasMadeFor()
+    {
+        // Arrange
+        StartWithCapturingDispatcher();
+
+        (PrinterIdentity intended, string intendedToken, int intendedId, long _) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+        (PrinterIdentity other, string otherToken, int _, long _) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        string directory = Path.Combine(Path.GetTempPath(), $"hs-e2e-raw-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+
+        try
+        {
+            byte[] bytes = RandomNumberGenerator.GetBytes(4096);
+
+            string path = Path.Combine(directory, "model.gcode");
+            await File.WriteAllBytesAsync(path, bytes, TestContext.Current.CancellationToken);
+
+            string hash = Guid.NewGuid().ToString("N")[..27];
+            _factory.Services.GetRequiredService<ITransferOffers>().Offer(hash, path, intendedId).Should().BeTrue();
+
+            using HttpClient printer = PrinterListener.CreateClient(_factory);
+
+            // Act
+            using HttpRequestMessage strangerRequest = Get($"/p/teams/1/files/{hash}/raw", other, otherToken);
+            using HttpResponseMessage strangerResponse = await printer.SendAsync(strangerRequest, TestContext.Current.CancellationToken);
+
+            using HttpRequestMessage ownRequest = Get($"/p/teams/1/files/{hash}/raw", intended, intendedToken);
+            using HttpResponseMessage ownResponse = await printer.SendAsync(ownRequest, TestContext.Current.CancellationToken);
+
+            // Assert
+            strangerResponse.StatusCode.Should().Be(HttpStatusCode.NotFound,
+                                                    "a valid credential for another printer must look exactly like an unknown token");
+
+            ownResponse.StatusCode.Should().Be(HttpStatusCode.OK, "the refusal must not have consumed the offer");
+            (await ownResponse.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken)).Should().Equal(bytes);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static HttpRequestMessage Get(string route, PrinterIdentity identity, string token)
+    {
+        HttpRequestMessage request = new(HttpMethod.Get, route);
+
+        request.Headers.Add(Headers.Fingerprint, identity.HeaderFingerprint);
+        request.Headers.Add(Headers.Token, token);
+        request.Headers.Add(Headers.UserAgentPrinter, "Buddy");
+        request.Headers.Add(Headers.UserAgentVersion, "6.2.6");
+
+        return request;
     }
 
     private static HttpRequestMessage Post(string route, PrinterIdentity identity, string token, string body)

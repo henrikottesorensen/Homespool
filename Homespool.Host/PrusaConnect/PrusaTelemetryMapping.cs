@@ -78,11 +78,19 @@ public static class PrusaTelemetryMapping
     /// <para>
     /// <b><c>api_key</c> is the credential</b>: the printer's PrusaLink password, which with the
     /// address beside it grants full authenticated access to its HTTP API. That one is the security
-    /// fix. The other two are privacy: <b>an SSID can leak where someone lives</b> (Henrik,
-    /// 2026-07-31) - user-authored free text naming a home, searchable in public wardriving
-    /// databases in a way a printer serial is not. <c>sn</c> and <c>fingerprint</c> were weighed and
-    /// deliberately kept: neither is a bearer credential, and both are what anyone quotes in a
-    /// support conversation.
+    /// fix. Two are privacy: <b>an SSID can leak where someone lives</b> - user-authored free text
+    /// naming a home, searchable in public wardriving databases in a way a printer serial is not.
+    /// </para>
+    /// <para>
+    /// <b><c>fingerprint</c> is this server's own key</b> - corrected 2026-09-03, having been kept
+    /// until then on the reasoning that it is not a bearer credential. It is not, but it is the one
+    /// value <c>POST /p/register</c> accepts anonymously to hand back an enrolled printer's pending
+    /// code, and it cannot be derived from anything visible off the printer: firmware hashes the
+    /// SoC's unique id into it along with the MAC and the serial. So the only way anyone but the
+    /// printer learns it is from somewhere it was written down, and this row was that place, readable
+    /// by anyone who could view the printer's events. Nothing renders it; the auth handler reads its
+    /// own column. <c>sn</c> stays: it is printed on the machine, and it is what a support
+    /// conversation quotes.
     /// </para>
     /// <para>
     /// <b>Limit worth knowing:</b> matching descends into nested <i>objects</i> but not into arrays,
@@ -91,7 +99,7 @@ public static class PrusaTelemetryMapping
     /// </para>
     /// </remarks>
     private static readonly string[] RedactedInfoFields =
-        ["api_key", "network_info.wifi_ssid", "network_info.wifi_mac"];
+        ["api_key", "fingerprint", "network_info.wifi_ssid", "network_info.wifi_mac"];
 
     /// <summary>
     /// The neutral update one wire telemetry message amounts to - every presence decision this

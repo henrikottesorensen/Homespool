@@ -661,7 +661,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     {
         (FakePrinterClient fake, Task run, int printerId, long userId) = await StartConnectedFakeAsync();
         byte[] content = Content(400 * 1024);
-        string hash = Offer(content, "model.bgcode");
+        string hash = Offer(content, "model.bgcode", printerId);
 
         CommandOutcome outcome = await SendCommandAsync(printerId, userId, new StartConnectDownload
         {
@@ -695,7 +695,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     {
         (FakePrinterClient fake, Task run, int printerId, long userId) = await StartConnectedFakeAsync();
         byte[] content = Content(600 * 1024);
-        string hash = Offer(content, "model.gcode");
+        string hash = Offer(content, "model.gcode", printerId);
 
         await SendCommandAsync(printerId, userId, new StartConnectDownload
         {
@@ -754,7 +754,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         (FakePrinterClient fake, Task run, int printerId, long userId) = await StartConnectedFakeAsync(
             configure: client => client.Device.StartPrint(jobId: 77));
         byte[] content = Content(600 * 1024);
-        string hash = Offer(content, "while-printing.gcode");
+        string hash = Offer(content, "while-printing.gcode", printerId);
 
         await SendCommandAsync(printerId, userId, new StartConnectDownload
         {
@@ -783,7 +783,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     {
         (PrinterIdentity identity, string token, int printerId, long userId) = await EnrolNewPrinterAsync();
         byte[] content = Content(600 * 1024);
-        string hash = Offer(content, "resumed.gcode");
+        string hash = Offer(content, "resumed.gcode", printerId);
 
         StartConnectDownload command = new()
         {
@@ -847,7 +847,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
     /// Writes the bytes to a temp file and offers them under a fresh hash, the way
     /// <c>PrinterController</c> does after an upload.
     /// </summary>
-    private string Offer(byte[] content, string fileName)
+    private string Offer(byte[] content, string fileName, int printerId)
     {
         string directory = Path.Combine(Path.GetTempPath(), $"ps-e2e-offer-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
@@ -857,7 +857,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         File.WriteAllBytes(path, content);
 
         string hash = Guid.NewGuid().ToString("N")[..27];
-        _factory.Services.GetRequiredService<ITransferOffers>().Offer(hash, path);
+        _factory.Services.GetRequiredService<ITransferOffers>().Offer(hash, path, printerId);
 
         return hash;
     }

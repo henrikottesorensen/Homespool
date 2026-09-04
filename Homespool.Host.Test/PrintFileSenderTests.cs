@@ -45,7 +45,12 @@ public sealed class PrintFileSenderTests : IDisposable
     private readonly string _fileDirectory = Path.Combine(Path.GetTempPath(), $"hs-sender-files-{Guid.NewGuid():N}");
     private readonly PrinterConnectionRegistry _registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
     private readonly TransferOfferStore _offers = new(TimeProvider.System, NullLogger<TransferOfferStore>.Instance);
-    private readonly EncryptedTransferOffers _encrypted = new();
+    private readonly EncryptedTransferOffers _encrypted;
+
+    public PrintFileSenderTests()
+    {
+        _encrypted = new EncryptedTransferOffers(_offers);
+    }
 
     public void Dispose()
     {
@@ -85,8 +90,41 @@ public sealed class PrintFileSenderTests : IDisposable
 
         StartConnectDownload inline = sent.Should().BeOfType<StartConnectDownload>().Which;
         result.WireName.Should().Be(sent.WireName, "a refusal names the command the caller reports");
-        _offers.TryOpen(inline.Hash, out ITransferContent? content).Should().BeTrue("the bytes are offered under the token the command carries");
+        _offers.TryOpen(inline.Hash, PrinterId, out ITransferContent? content).Should().BeTrue("the bytes are offered under the token the command carries");
         content!.Dispose();
+    }
+
+    /// <summary>
+    /// An offer opens only for the printer the command went to. The token is unguessable but not
+    /// secret - the encrypted path puts it in a plain-HTTP URL as the IV - so without this any
+    /// enrolled printer that had seen one could open the bytes through the raw route. The refusal
+    /// is indistinguishable from an unknown token, so a wrong printer learns nothing either way.
+    /// </summary>
+    [Fact]
+    public async Task AnOfferOpensOnlyForThePrinterItWasMadeTo()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+        StoredFile file = WriteFile("model.gcode", 4096);
+        IPrinterConnectionActor actor = Connect(canStreamChunks: false, PrinterEventType.Finished);
+
+        // Act
+        await NewSender(context).SendAsync(
+            await context.Printers.SingleAsync(TestContext.Current.CancellationToken),
+            file, Caller.Unscoped(Owner), TestContext.Current.CancellationToken);
+
+        // Assert
+        StartEncryptedDownload encrypted = SentCommand(actor).Should().BeOfType<StartEncryptedDownload>().Which;
+        string ivHex = Convert.ToHexStringLower(encrypted.Iv);
+
+        _offers.TryOpen(ivHex, PrinterId + 1, out _)
+               .Should().BeFalse("another printer presenting the IV is refused like an unknown token");
+
+        _offers.TryOpen(ivHex, PrinterId, out ITransferContent? own)
+               .Should().BeTrue("the refusal must not have consumed or closed the offer");
+        own!.Dispose();
+
+        _encrypted.Find(ivHex)!.PrinterId.Should().Be(PrinterId, "the fetch route opens under the id the registration carries");
     }
 
     /// <summary>
@@ -122,7 +160,7 @@ public sealed class PrintFileSenderTests : IDisposable
 
         string ivHex = Convert.ToHexStringLower(encrypted.Iv);
 
-        _offers.TryOpen(ivHex, out ITransferContent? content).Should().BeTrue("the bytes are offered under the IV the printer will ask for");
+        _offers.TryOpen(ivHex, PrinterId, out ITransferContent? content).Should().BeTrue("the bytes are offered under the IV the printer will ask for");
         content!.Dispose();
 
         EncryptedTransfer? registered = _encrypted.Find(ivHex);
@@ -179,7 +217,7 @@ public sealed class PrintFileSenderTests : IDisposable
         StartEncryptedDownload encrypted = SentCommand(actor).Should().BeOfType<StartEncryptedDownload>().Which;
         string ivHex = Convert.ToHexStringLower(encrypted.Iv);
 
-        _offers.TryOpen(ivHex, out _).Should().BeFalse("the offer was revoked");
+        _offers.TryOpen(ivHex, PrinterId, out _).Should().BeFalse("the offer was revoked");
         _encrypted.Find(ivHex).Should().BeNull("and so was the key");
     }
 
@@ -228,7 +266,7 @@ public sealed class PrintFileSenderTests : IDisposable
         StartEncryptedDownload encrypted = SentCommand(actor).Should().BeOfType<StartEncryptedDownload>().Which;
         string ivHex = Convert.ToHexStringLower(encrypted.Iv);
 
-        _offers.TryOpen(ivHex, out _).Should().BeTrue("the printer may be fetching from it already");
+        _offers.TryOpen(ivHex, PrinterId, out _).Should().BeTrue("the printer may be fetching from it already");
         _encrypted.Find(ivHex).Should().NotBeNull("and it needs the key to read what it fetches");
     }
 
@@ -265,7 +303,7 @@ public sealed class PrintFileSenderTests : IDisposable
         StartEncryptedDownload encrypted = SentCommand(actor).Should().BeOfType<StartEncryptedDownload>().Which;
         string ivHex = Convert.ToHexStringLower(encrypted.Iv);
 
-        _offers.TryOpen(ivHex, out _).Should().BeFalse();
+        _offers.TryOpen(ivHex, PrinterId, out _).Should().BeFalse();
         _encrypted.Find(ivHex).Should().BeNull();
     }
 
@@ -310,7 +348,7 @@ public sealed class PrintFileSenderTests : IDisposable
         result.WireName.Should().Be(StartConnectDownload.Wire);
         plain.Hash.Should().NotBeNullOrEmpty("the hash is the offer token the printer fetches under");
 
-        _offers.TryOpen(plain.Hash, out ITransferContent? content)
+        _offers.TryOpen(plain.Hash, PrinterId, out ITransferContent? content)
                .Should().BeTrue("the bytes must be fetchable at the offer URL the SDK composes");
         content!.Dispose();
     }

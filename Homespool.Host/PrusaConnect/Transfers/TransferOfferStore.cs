@@ -77,11 +77,23 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
         _logger = logger;
     }
 
+    /// <summary>
+    /// Raised with the token of every offer taken out of service, whatever took it out - a revoke,
+    /// a release, a sweep, or a re-offer under the same token.
+    /// </summary>
+    /// <remarks>
+    /// This is how anything kept beside an offer follows it out. The store knows nothing of what
+    /// that might be, which is the point: <see cref="EncryptedTransferOffers"/> holds a key per
+    /// offer and must not outlive the bytes, and subscribing here is what makes that true by
+    /// construction rather than by every caller remembering two revokes.
+    /// </remarks>
+    public event Action<string>? Retired;
+
     /// <inheritdoc />
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
                      Justification =
                          "The handle is deliberately long-lived: PinnedOffer owns it, and closes it when the offer is revoked or swept and nothing is reading it. Disposing here would defeat the pinning this method exists for.")]
-    public bool Offer(string token, string path)
+    public bool Offer(string token, string path, int printerId)
     {
         SweepIdle();
 
@@ -100,13 +112,13 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
             return false;
         }
 
-        PinnedOffer offer = new(content, _timeProvider.GetUtcNow());
+        PinnedOffer offer = new(content, _timeProvider.GetUtcNow(), printerId);
 
         // Re-offering a token replaces it. Tokens are random and minted per send, so this is the
         // theoretical case rather than the expected one - but leaking the old handle would be real.
         if (_offers.TryRemove(token, out PinnedOffer? replaced))
         {
-            replaced.Retire();
+            Retire(token, replaced);
         }
 
         _offers[token] = offer;
@@ -120,14 +132,56 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
     {
         if (_offers.TryRemove(token, out PinnedOffer? offer))
         {
-            offer.Retire();
+            Retire(token, offer);
         }
     }
 
     /// <inheritdoc />
-    public bool TryOpen(string hash, [NotNullWhen(true)] out ITransferContent? content)
+    public void Release(int printerId, string? hash)
     {
-        content = _offers.TryGetValue(hash, out PinnedOffer? offer) ? offer.Borrow() : null;
+        if (hash is not null)
+        {
+            if (_offers.TryGetValue(hash, out PinnedOffer? offer)
+                && offer.PrinterId == printerId
+                && _offers.TryRemove(new KeyValuePair<string, PinnedOffer>(hash, offer)))
+            {
+                Retire(hash, offer);
+            }
+
+            return;
+        }
+
+        foreach (KeyValuePair<string, PinnedOffer> entry in _offers)
+        {
+            if (entry.Value.PrinterId != printerId || !entry.Value.IsIdle)
+            {
+                continue;
+            }
+
+            if (_offers.TryRemove(entry))
+            {
+                Retire(entry.Key, entry.Value);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The one way an offer leaves service, so that whatever follows it out is told every time.
+    /// </summary>
+    private void Retire(string token, PinnedOffer offer)
+    {
+        offer.Retire();
+        Retired?.Invoke(token);
+    }
+
+    /// <inheritdoc />
+    public bool TryOpen(string hash, int printerId, [NotNullWhen(true)] out ITransferContent? content)
+    {
+        // One answer for "unknown" and "not yours", as the interface promises. A printer that
+        // presents a token it was never given learns nothing from the refusal.
+        content = _offers.TryGetValue(hash, out PinnedOffer? offer) && offer.PrinterId == printerId
+            ? offer.Borrow()
+            : null;
 
         return content is not null;
     }
@@ -149,7 +203,7 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
 
             if (_offers.TryRemove(entry))
             {
-                entry.Value.Retire();
+                Retire(entry.Key, entry.Value);
                 _logger.LogInformation("Closed a transfer offer nobody collected");
             }
         }
@@ -170,13 +224,17 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
         private int _readers;
         private bool _retired;
 
-        public PinnedOffer(ITransferContent content, DateTimeOffset offeredAt)
+        public PinnedOffer(ITransferContent content, DateTimeOffset offeredAt, int printerId)
         {
             _content = content;
             OfferedAt = offeredAt;
+            PrinterId = printerId;
         }
 
         public DateTimeOffset OfferedAt { get; }
+
+        /// <summary>The printer the offer was made to, and the only one it opens for.</summary>
+        public int PrinterId { get; }
 
         /// <summary>Whether nothing is currently reading this, and so it can be closed.</summary>
         public bool IsIdle

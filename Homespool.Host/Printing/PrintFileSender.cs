@@ -188,15 +188,9 @@ public class PrintFileSender
                 Port = checked((ushort)_options.CurrentValue.TransferPort),
             };
 
-            return await SendAndCleanUpAsync(printer,
-                                             command,
-                                             caller,
-                                             () =>
-                                             {
-                                                 _encrypted.Revoke(ivHex);
-                                                 _offers.Revoke(ivHex);
-                                             },
-                                             cancellationToken);
+            // One revoke, not two: the key store follows the offer store out, so revoking the offer
+            // is what zeroes the key - here and on every other path that retires it.
+            return await SendAndCleanUpAsync(printer, command, caller, () => _offers.Revoke(ivHex), cancellationToken);
         }
         finally
         {

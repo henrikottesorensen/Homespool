@@ -77,6 +77,18 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
         _logger = logger;
     }
 
+    /// <summary>
+    /// Raised with the token of every offer taken out of service, whatever took it out - a revoke,
+    /// a release, a sweep, or a re-offer under the same token.
+    /// </summary>
+    /// <remarks>
+    /// This is how anything kept beside an offer follows it out. The store knows nothing of what
+    /// that might be, which is the point: <see cref="EncryptedTransferOffers"/> holds a key per
+    /// offer and must not outlive the bytes, and subscribing here is what makes that true by
+    /// construction rather than by every caller remembering two revokes.
+    /// </remarks>
+    public event Action<string>? Retired;
+
     /// <inheritdoc />
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
                      Justification =
@@ -106,7 +118,7 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
         // theoretical case rather than the expected one - but leaking the old handle would be real.
         if (_offers.TryRemove(token, out PinnedOffer? replaced))
         {
-            replaced.Retire();
+            Retire(token, replaced);
         }
 
         _offers[token] = offer;
@@ -120,8 +132,46 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
     {
         if (_offers.TryRemove(token, out PinnedOffer? offer))
         {
-            offer.Retire();
+            Retire(token, offer);
         }
+    }
+
+    /// <inheritdoc />
+    public void Release(int printerId, string? hash)
+    {
+        if (hash is not null)
+        {
+            if (_offers.TryGetValue(hash, out PinnedOffer? offer)
+                && offer.PrinterId == printerId
+                && _offers.TryRemove(new KeyValuePair<string, PinnedOffer>(hash, offer)))
+            {
+                Retire(hash, offer);
+            }
+
+            return;
+        }
+
+        foreach (KeyValuePair<string, PinnedOffer> entry in _offers)
+        {
+            if (entry.Value.PrinterId != printerId || !entry.Value.IsIdle)
+            {
+                continue;
+            }
+
+            if (_offers.TryRemove(entry))
+            {
+                Retire(entry.Key, entry.Value);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The one way an offer leaves service, so that whatever follows it out is told every time.
+    /// </summary>
+    private void Retire(string token, PinnedOffer offer)
+    {
+        offer.Retire();
+        Retired?.Invoke(token);
     }
 
     /// <inheritdoc />
@@ -153,7 +203,7 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
 
             if (_offers.TryRemove(entry))
             {
-                entry.Value.Retire();
+                Retire(entry.Key, entry.Value);
                 _logger.LogInformation("Closed a transfer offer nobody collected");
             }
         }

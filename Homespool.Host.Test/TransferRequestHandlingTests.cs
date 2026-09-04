@@ -194,6 +194,113 @@ public class TransferRequestHandlingTests
     }
 
     /// <summary>
+    /// A finished transfer gives its offer back to the store under this printer's id and the hash
+    /// the transfer ran under, so the offer leaves service when the printer says it is over rather
+    /// than an hour later when the sweep finds it.
+    /// </summary>
+    [Fact]
+    public async Task ATerminalTransferEventReleasesTheOfferForThisPrinter()
+    {
+        // Arrange
+        RecordingConnection connection = new();
+        (ITransferContentStore store, TaskCompletionSource<(int printerId, string? hash)> released) = ReleasingStore(new ArrayContent(new byte[512]));
+        PrinterConnectionActor actor = NewActor(connection, store);
+
+        await Post(actor, new InlineRequestDTO { FileId = 5, Start = 0, End = 511, Hash = Hash, TransferId = 4242 });
+        await WaitUntilAsync(() => connection.Chunks.Count == 1);
+
+        // Act
+        await PostTerminal(actor, PrinterEventType.TransferFinished, transferId: 4242);
+
+        // Assert
+        (int printerId, string? hash) = await released.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        printerId.Should().Be(1);
+        hash.Should().Be(Hash);
+    }
+
+    /// <summary>
+    /// The same id check that keeps someone else's terminal event from disposing our content keeps
+    /// it from releasing our offer: nothing is given back for a transfer that was not ours.
+    /// </summary>
+    [Fact]
+    public async Task ATerminalEventForADifferentTransferReleasesNothing()
+    {
+        // Arrange
+        RecordingConnection connection = new();
+        (ITransferContentStore store, TaskCompletionSource<(int printerId, string? hash)> released) = ReleasingStore(new ArrayContent(new byte[512]));
+        PrinterConnectionActor actor = NewActor(connection, store);
+
+        await Post(actor, new InlineRequestDTO { FileId = 5, Start = 0, End = 511, Hash = Hash, TransferId = 4242 });
+        await WaitUntilAsync(() => connection.Chunks.Count == 1);
+
+        // Act
+        await PostTerminal(actor, PrinterEventType.TransferAborted, transferId: 9999);
+
+        // A second request, so the assertion waits on something that happened after the event.
+        await Post(actor, new InlineRequestDTO { FileId = 5, Start = 0, End = 511 });
+        await WaitUntilAsync(() => connection.Chunks.Count == 2);
+
+        // Assert
+        released.Task.IsCompleted.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// A terminal event with no inline transfer open is the encrypted download or the SDK's raw
+    /// fetch ending - separate HTTP requests the actor never saw a token for. It releases whatever
+    /// idle offers are this printer's, which is asked for by passing no hash.
+    /// </summary>
+    [Fact]
+    public async Task ATerminalEventWithNoInlineTransferReleasesThisPrintersIdleOffers()
+    {
+        // Arrange
+        RecordingConnection connection = new();
+        (ITransferContentStore store, TaskCompletionSource<(int printerId, string? hash)> released) = ReleasingStore(content: null);
+        PrinterConnectionActor actor = NewActor(connection, store);
+
+        // Act
+        await PostTerminal(actor, PrinterEventType.TransferFinished, transferId: 4242);
+
+        // Assert
+        (int printerId, string? hash) = await released.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        printerId.Should().Be(1);
+        hash.Should().BeNull("the actor has no token to name, so the store decides by printer");
+    }
+
+    private static async Task PostTerminal(PrinterConnectionActor actor, PrinterEventType eventType, int transferId)
+    {
+        await actor.PostAsync(
+            new InboundEventMessage(DateTimeOffset.UtcNow, new EventDTO
+            {
+                Status = "IDLE",
+                EventType = eventType,
+                TransferId = transferId,
+            }),
+            CancellationToken.None);
+    }
+
+    /// <summary>
+    /// A store that serves <paramref name="content"/> under <see cref="Hash"/> and completes the
+    /// returned source with the first release it is asked for.
+    /// </summary>
+    private static (ITransferContentStore store, TaskCompletionSource<(int printerId, string? hash)> released) ReleasingStore(ITransferContent? content)
+    {
+        ITransferContentStore store = Substitute.For<ITransferContentStore>();
+        TaskCompletionSource<(int printerId, string? hash)> released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        store.TryOpen(Hash, 1, out Arg.Any<ITransferContent?>()).Returns(call =>
+        {
+            call[2] = content;
+
+            return content is not null;
+        });
+
+        store.When(s => s.Release(Arg.Any<int>(), Arg.Any<string?>()))
+             .Do(call => released.TrySetResult((call.ArgAt<int>(0), call.ArgAt<string?>(1))));
+
+        return (store, released);
+    }
+
+    /// <summary>
     /// A read that never returns must not wedge the actor. This is the hazard of file I/O on the
     /// loop, and the reason the read
     /// goes through an awaitable API at all: the wait can be bounded, and on expiry the actor gives up
@@ -249,6 +356,11 @@ public class TransferRequestHandlingTests
             return content is not null;
         });
 
+        return NewActor(connection, store);
+    }
+
+    private static PrinterConnectionActor NewActor(IPrinterConnection connection, ITransferContentStore store)
+    {
         return new PrinterConnectionActor(1, connection, Substitute.For<ITelemetrySink>(),
                                           NullLogger<PrinterConnectionActor>.Instance, TimeSpan.FromSeconds(10), store);
     }

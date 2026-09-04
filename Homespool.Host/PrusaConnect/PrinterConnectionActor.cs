@@ -772,14 +772,22 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// </remarks>
     private void EndTransferIfTerminal(DTO.EventMessages.EventDTO eventDto)
     {
-        if (_transfer is null)
+        if (eventDto.EventType is not (Model.PrinterEventType.TransferFinished or Model.PrinterEventType.TransferAborted
+            or Model.PrinterEventType.TransferStopped))
         {
             return;
         }
 
-        if (eventDto.EventType is not (Model.PrinterEventType.TransferFinished or Model.PrinterEventType.TransferAborted
-            or Model.PrinterEventType.TransferStopped))
+        if (_transfer is null)
         {
+            // No inline transfer, so this ended a download the actor never saw the token for - an
+            // encrypted fetch or the SDK's raw one, both separate HTTP requests. The store knows
+            // which offers were this printer's; it releases the idle ones, which are that transfer
+            // and anything a timed-out send left behind.
+            _logger.LogDebug("{EventType} with no inline transfer open - releasing this printer's idle offers",
+                             eventDto.EventType);
+            _contentStore.Release(_printerId, hash: null);
+
             return;
         }
 
@@ -792,8 +800,13 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         }
 
         _logger.LogDebug("transfer ended with {EventType}", eventDto.EventType);
+
+        // The view first, so the offer is idle when it is released and the handle closes now rather
+        // than when this borrowed view is finally disposed.
+        string hash = _transfer.Hash;
         _transfer.Content.Dispose();
         _transfer = null;
+        _contentStore.Release(_printerId, hash);
     }
 
     /// <summary>

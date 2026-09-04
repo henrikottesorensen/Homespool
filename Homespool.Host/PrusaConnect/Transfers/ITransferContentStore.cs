@@ -28,4 +28,26 @@ public interface ITransferContentStore
     /// transfer ends.</para>
     /// </remarks>
     bool TryOpen(string hash, int printerId, [NotNullWhen(true)] out ITransferContent? content);
+
+    /// <summary>
+    /// Retires what <paramref name="printerId"/> was offered, because the printer has reported the
+    /// transfer over: the offer under <paramref name="hash"/> when the caller knows it, or - when it
+    /// does not - every offer made to that printer that nothing is currently reading.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>On the read side deliberately.</b> This is not <see cref="ITransferOffers.Revoke"/>: a
+    /// connection actor may only give back what its own printer was given, never withdraw an offer
+    /// made to another, and the printer id is what enforces that. An offer under the hash that is
+    /// bound to a different printer is left exactly as it was.
+    /// </para>
+    /// <para>
+    /// <b>The hash is null on the paths where the actor never learns it.</b> An encrypted download
+    /// and the SDK's raw fetch are separate HTTP requests, so the actor sees the printer's
+    /// <c>TRANSFER_FINISHED</c> without ever having seen the offer token. Firmware runs one transfer
+    /// at a time, so "everything idle for this printer" is that one transfer plus whatever a
+    /// timed-out send left standing - and idle is what keeps a fetch in flight from being cut.
+    /// </para>
+    /// </remarks>
+    void Release(int printerId, string? hash);
 }

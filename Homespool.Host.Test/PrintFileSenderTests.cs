@@ -45,7 +45,12 @@ public sealed class PrintFileSenderTests : IDisposable
     private readonly string _fileDirectory = Path.Combine(Path.GetTempPath(), $"hs-sender-files-{Guid.NewGuid():N}");
     private readonly PrinterConnectionRegistry _registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
     private readonly TransferOfferStore _offers = new(TimeProvider.System, NullLogger<TransferOfferStore>.Instance);
-    private readonly EncryptedTransferOffers _encrypted = new();
+    private readonly EncryptedTransferOffers _encrypted;
+
+    public PrintFileSenderTests()
+    {
+        _encrypted = new EncryptedTransferOffers(_offers);
+    }
 
     public void Dispose()
     {

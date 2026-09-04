@@ -24,14 +24,24 @@ namespace Homespool.Host.PrusaConnect.Transfers;
 /// see <see cref="TransferCipher"/>'s remarks for the one that is, which is malleability.
 /// </para>
 /// <para>
-/// <b>Lives exactly as long as the offer.</b> Registered when the offer is made and the command sent,
-/// removed - and the key zeroed - when the offer is revoked or the transfer ends. A key that outlived
-/// its bytes would be a secret kept for nothing.
+/// <b>Lives exactly as long as the offer, by construction.</b> Registered when the offer is made and
+/// the command sent; removed - and the key zeroed - the moment the offer leaves the store, whether
+/// that was a revoke, the printer reporting the transfer over, or the idle sweep. This class
+/// subscribes to <see cref="TransferOfferStore.Retired"/> for that rather than relying on every
+/// caller to remember a second revoke, because a key that outlived its bytes would be a secret kept
+/// for nothing - and the sweep, which no caller sees, used to leave exactly that behind.
 /// </para>
 /// </remarks>
 public sealed class EncryptedTransferOffers
 {
     private readonly ConcurrentDictionary<string, Entry> _entries = new(StringComparer.Ordinal);
+
+    public EncryptedTransferOffers(TransferOfferStore offers)
+    {
+        ArgumentNullException.ThrowIfNull(offers);
+
+        offers.Retired += Revoke;
+    }
 
     /// <summary>
     /// Registers a transfer: the printer will ask for <paramref name="ivHex"/>, the bytes are pinned

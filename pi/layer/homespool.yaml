@@ -134,6 +134,29 @@ mmdebstrap:
     # score, so it may take sshd and leave a board nobody can reach to find out why.
     - systemd-zram-generator
 
+    # The other half of the memory story, and the entry above is why it is needed rather than merely
+    # nice: zram does not prevent exhaustion, it changes its shape, and the new shape is worse than
+    # an OOM kill. Every anonymous page is reclaimable by recompressing it, so the kernel keeps
+    # reclaiming instead of declaring OOM; past the point where the working set no longer fits even
+    # compressed it enters a fault-in/compress-out loop, makes no forward progress, and still never
+    # satisfies the condition for a kill. A Pi 3 in that state answers ping and nothing else - once
+    # for seventeen minutes - and a power cycle has been the only way out of it every time. Ping
+    # survives because ICMP echo is answered kernel-side in softirq from buffers already allocated,
+    # while sshd has to fork and exec, so "pingable but dead" is this failure's signature rather
+    # than a puzzle. An appliance that OOMs comes back; one that livelocks needs a walk to the
+    # cupboard.
+    #
+    # Neither systemd remedy can help here, and both look like they would. systemd-oomd needs the
+    # memory cgroup controller *and* PSI, and /proc/pressure/memory does not exist on this kernel.
+    # MemoryMin/MemoryLow on ssh.service need the controller, which the firmware disables by
+    # prepending cgroup_disable=memory to the kernel command line - so they are accepted and
+    # silently ignored, the same way mem_limit in compose.yaml would be.
+    #
+    # earlyoom needs neither: it reads /proc/meminfo and acts on a free-memory threshold. It
+    # restores what the zram reasoning assumed the kernel still had - something dies, the board
+    # lives - and it can spare sshd by name rather than by hoping the badness score agrees.
+    - earlyoom
+
   customize-hooks:
     # The stack itself: compose file, the nginx configuration it bind-mounts, and the saved images.
     # /opt rather than /home, because this is not the device user's to lose.
@@ -250,6 +273,82 @@ mmdebstrap:
 
     - |-
       #
+      # earlyoom's arguments, in a file of our own rather than in the package's /etc/default/earlyoom
+      # - which is left exactly as it shipped. That file is a dpkg conffile, and a locally modified
+      # one turns a future earlyoom upgrade into a conffile prompt, which unattended-upgrades answers
+      # by skipping the package. Silently, and on every card.
+      #
+      # The only argument actually added is --avoid. `-r 3600` is repeated because it is the
+      # package's own default and dropping it here would remove the hourly memory report, which is
+      # the baseline a later incident gets read back against.
+      #
+      # --avoid names the way back in and the supervisors that would restart a victim. sshd is the
+      # lifeline twice over on a remote board: losing it loses the way in *and* any agent session
+      # tunnelled through it. The bare ^systemd prefix also covers systemd-journald and
+      # systemd-udevd, which is intended. Anchored at the start only.
+      #
+      # The regex is unquoted, and that is load-bearing rather than untidy: the unit runs
+      # `earlyoom $EARLYOOM_ARGS`, and systemd splits an unbraced variable on whitespace WITHOUT
+      # honouring quotes - so a quoted regex arrives with the quotes still in it and matches nothing,
+      # while earlyoom logs it either way and looks configured. The package's own commented example
+      # in /etc/default/earlyoom carries inner quotes and would arrive with them. Confirmed on a
+      # board by reading back the regex earlyoom reports at start.
+      set -eu
+      printf '%s\n' \
+        '# Read second, via /etc/systemd/system/earlyoom.service.d/10-homespool.conf, so this wins' \
+        "# over the package's own /etc/default/earlyoom - which is left exactly as shipped." \
+        '#' \
+        '# The regex is deliberately unquoted. systemd splits $EARLYOOM_ARGS on whitespace WITHOUT' \
+        '# honouring quotes, so a quoted one arrives with the quotes still in it and matches' \
+        "# nothing - silently. The package's own commented example gets this wrong." \
+        'EARLYOOM_ARGS="-r 3600 --avoid ^(sshd|systemd|dockerd|containerd)"' \
+        > $1/etc/default/homespool-earlyoom
+      chmod 0644 $1/etc/default/homespool-earlyoom
+
+    - |-
+      #
+      # The drop-in that reaches the file above, and EnvironmentFile= rather than Environment= is the
+      # whole reason this works. systemd.exec(5): "Settings from these files override settings made
+      # with Environment=" - so a drop-in setting Environment=EARLYOOM_ARGS would lose to the
+      # package's own EnvironmentFile and do nothing at all, leaving sshd killable while
+      # `systemctl cat` showed exactly what you meant. Two environment files are read in the order
+      # given and the later wins, and drop-ins are parsed after the unit file, so ours is second.
+      #
+      # No leading "-" on the path. A missing file should fail the unit loudly rather than fall back
+      # to the package's defaults, which have no --avoid at all - the quiet-wrong outcome this layer
+      # has been caught by more than once.
+      #
+      # The MemoryMax note goes in the shipped file rather than only here, because `systemctl cat
+      # earlyoom` prints the vendor unit and then this drop-in - so it lands directly beneath the
+      # line it is about, for somebody reading it on the board. earlyoom.service sets MemoryMax=50M
+      # and it is inert: /proc/cgroups has no memory row, and the service's own cgroup carries
+      # pids.* files and no memory.* at all. `systemctl show` nonetheless reports
+      # MemoryMax=52428800 with MemoryAccounting=yes, so the introspection command confirms a limit
+      # that cannot exist - which is the same trap as mem_limit and MemoryMin, wearing a badge that
+      # says verified. TasksMax=10 and OOMScoreAdjust=-100 in that unit are real; the pids
+      # controller is present.
+      #
+      # Deliberately NOT reset with an empty MemoryMax= here. It costs nothing while the controller
+      # is off, and it becomes a real limit the moment anyone puts cgroup_enable=memory on the
+      # kernel command line - removing it would quietly remove that.
+      set -eu
+      mkdir -p $1/etc/systemd/system/earlyoom.service.d
+      printf '%s\n' \
+        '# EnvironmentFile= rather than Environment=: environment files override Environment=, so' \
+        "# a drop-in using Environment= would lose to the package's own file and do nothing. Read" \
+        '# second - of two files the later one wins - because drop-ins are parsed after the unit.' \
+        '#' \
+        '# The MemoryMax=50M above is NOT enforced: this kernel has no memory cgroup controller, so' \
+        '# this service cgroup has pids.* files and no memory.* at all. systemd still reports' \
+        '# MemoryMax=52428800, so systemctl show confirms a limit that cannot exist. TasksMax and' \
+        '# OOMScoreAdjust in that unit are real - the pids controller is present.' \
+        '[Service]' \
+        'EnvironmentFile=/etc/default/homespool-earlyoom' \
+        > $1/etc/systemd/system/earlyoom.service.d/10-homespool.conf
+      chmod 0644 $1/etc/systemd/system/earlyoom.service.d/10-homespool.conf
+
+    - |-
+      #
       # A console font you can actually read. The default is Fixed 8x16, which on a 4K panel is 480
       # columns of ants - and the console is exactly the thing you are looking at when something has
       # gone wrong badly enough that SSH is not an option, so it being unreadable costs most when it
@@ -354,6 +453,12 @@ mmdebstrap:
     - chroot $1 systemctl enable homespool-firstboot.service
     - chroot $1 systemctl enable homespool-wifi.service
     - chroot $1 systemctl enable homespool-login.service
+
+    # The package's own postinst should already have done this - earlyoom.service carries an
+    # [Install] section and dh_installsystemd enables it. Repeated anyway because it is idempotent
+    # and because rpi-resize below taught this layer that shipping a unit and enabling it are
+    # different things, and that the difference is invisible until a board misbehaves.
+    - chroot $1 systemctl enable earlyoom.service
 
     # The filesystem half of the resize, and it does NOT come enabled with the package - checked in
     # a built image, where the initramfs had grown the partition and nothing then grew the ext4

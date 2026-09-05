@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
@@ -98,14 +97,14 @@ public sealed class PasskeyProviderProofDexTests
     /// <summary>A host configured against dex with passkeys bound to localhost, and a dex client to walk its hops.</summary>
     private sealed class Fixture : IDisposable
     {
-        private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-pkproof-{Guid.NewGuid():N}.db");
+        private readonly ScratchDirectory _scratch = ScratchDirectory.Create("passkey-proof");
         private readonly HomespoolFactory _factory;
         private readonly HttpClientHandler _dexHandler;
         private readonly HttpClient _dex;
 
         public Fixture()
         {
-            _factory = new HomespoolFactory($"Data Source={_databasePath}");
+            _factory = new HomespoolFactory(_scratch);
 
             _factory.ConfigurationOverrides["Oidc:Authority"] = DexFixture.Issuer;
             _factory.ConfigurationOverrides["Oidc:ClientId"] = DexFixture.ClientId;
@@ -227,14 +226,7 @@ public sealed class PasskeyProviderProofDexTests
             _dex.Dispose();
             _dexHandler.Dispose();
             _factory.Dispose();
-
-            foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-            {
-                if (File.Exists(path))
-                {
-                    File.Delete(path);
-                }
-            }
+            _scratch.Dispose();
         }
     }
 }

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
@@ -28,19 +27,19 @@ namespace Homespool.Host.E2ETest;
 /// The client half of each ceremony is <see cref="FakeAuthenticator"/>; everything server-side is the
 /// real pipeline. The relying-party id is <c>localhost</c>, which the test client arrives as.
 /// </remarks>
-public sealed class PasskeyManageTests : IAsyncLifetime, IDisposable
+public sealed class PasskeyManageTests : IAsyncLifetime
 {
     private const string RelyingPartyId = "localhost";
     private const string Origin = "http://localhost";
     private const string ManagePath = "/Account/Manage/Passkeys";
     private const string AdminPath = "/Admin/Passkeys";
 
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-passkey-manage-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("passkey-manage");
     private HomespoolFactory _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}");
+        _factory = new HomespoolFactory(_scratch);
         _factory.ConfigurationOverrides["Security:PasskeyServerDomain"] = RelyingPartyId;
         _ = _factory.Server;
 
@@ -50,24 +49,11 @@ public sealed class PasskeyManageTests : IAsyncLifetime, IDisposable
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
-        _factory.Dispose();
-
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
+        _scratch.Dispose();
     }
 
     [Fact]

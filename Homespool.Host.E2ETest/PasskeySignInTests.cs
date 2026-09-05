@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
@@ -32,19 +31,19 @@ namespace Homespool.Host.E2ETest;
 /// <c>localhost</c>, which is what the test client arrives as and its own relying-party id in a
 /// browser too.
 /// </remarks>
-public sealed class PasskeySignInTests : IAsyncLifetime, IDisposable
+public sealed class PasskeySignInTests : IAsyncLifetime
 {
     private const string Password = "Correct-Horse-Battery-Staple-1!";
     private const string Email = "passkey@example.com";
     private const string RelyingPartyId = "localhost";
     private const string Origin = "http://localhost";
 
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-passkey-e2e-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("passkey-signin");
     private HomespoolFactory _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}");
+        _factory = new HomespoolFactory(_scratch);
         _factory.ConfigurationOverrides["Security:PasskeyServerDomain"] = RelyingPartyId;
         _ = _factory.Server;
 
@@ -54,24 +53,11 @@ public sealed class PasskeySignInTests : IAsyncLifetime, IDisposable
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
-        _factory.Dispose();
-
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
+        _scratch.Dispose();
     }
 
     [Fact]

@@ -55,8 +55,11 @@ public static class Registration
             options.Directory :
             Path.Combine(environment.ContentRootPath, options.Directory);
 
+        // Under the authority's passphrase, deliberately - the two keys share every case in which a
+        // passphrase helps, so a second secret would be one more thing to lose for no change in what
+        // a copied volume yields. DataProtectionCertificate's remarks carry the argument.
         X509Certificate2 keyProtection = DataProtectionCertificate.Ensure(
-            directory, options.KeyProtectionValidityDays, TimeProvider.System);
+            directory, options.KeyProtectionValidityDays, options.AuthorityPassphrase, TimeProvider.System);
 
         services.AddDataProtection()
                 .PersistKeysToDbContext<HomespoolDbContext>()

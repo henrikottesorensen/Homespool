@@ -23,7 +23,15 @@ namespace Homespool.Host.Test;
 /// </remarks>
 public sealed class DataProtectionCertificateTests : IDisposable
 {
+    private const string Passphrase = "unit test passphrase";
+
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"hs-dpcert-{Guid.NewGuid():N}");
+
+    private string CertificatePath => Path.Combine(_root, "dataprotection.crt.pem");
+
+    private string KeyPath => Path.Combine(_root, "dataprotection.key.pem");
+
+    private string LegacyPath => Path.Combine(_root, "dataprotection.pfx");
 
     public void Dispose()
     {
@@ -45,8 +53,8 @@ public sealed class DataProtectionCertificateTests : IDisposable
     public void TheCertificateIsMintedOnceAndThenReused()
     {
         // Act
-        using X509Certificate2 first = DataProtectionCertificate.Ensure(_root, 5475, TimeProvider.System);
-        using X509Certificate2 second = DataProtectionCertificate.Ensure(_root, 5475, TimeProvider.System);
+        using X509Certificate2 first = DataProtectionCertificate.Ensure(_root, 5475, Passphrase, TimeProvider.System);
+        using X509Certificate2 second = DataProtectionCertificate.Ensure(_root, 5475, Passphrase, TimeProvider.System);
 
         // Assert
         second.Thumbprint.Should().Be(first.Thumbprint);
@@ -64,7 +72,7 @@ public sealed class DataProtectionCertificateTests : IDisposable
     public void TheKeyIsRsa()
     {
         // Act
-        using X509Certificate2 certificate = DataProtectionCertificate.Ensure(_root, 5475, TimeProvider.System);
+        using X509Certificate2 certificate = DataProtectionCertificate.Ensure(_root, 5475, Passphrase, TimeProvider.System);
 
         // Assert
         using (RSA? rsa = certificate.GetRSAPublicKey())
@@ -79,7 +87,7 @@ public sealed class DataProtectionCertificateTests : IDisposable
     }
 
     /// <summary>
-    /// The private key survives the round trip through the file, so the ring can be decrypted on a
+    /// The private key survives the round trip through the files, so the ring can be decrypted on a
     /// later run.
     /// </summary>
     /// <remarks>
@@ -90,13 +98,13 @@ public sealed class DataProtectionCertificateTests : IDisposable
     public void TheLoadedCertificateHasItsPrivateKey()
     {
         // Arrange
-        using (X509Certificate2 minted = DataProtectionCertificate.Ensure(_root, 5475, TimeProvider.System))
+        using (X509Certificate2 minted = DataProtectionCertificate.Ensure(_root, 5475, Passphrase, TimeProvider.System))
         {
             minted.HasPrivateKey.Should().BeTrue();
         }
 
         // Act
-        using X509Certificate2 loaded = DataProtectionCertificate.Ensure(_root, 5475, TimeProvider.System);
+        using X509Certificate2 loaded = DataProtectionCertificate.Ensure(_root, 5475, Passphrase, TimeProvider.System);
 
         // Assert
         loaded.HasPrivateKey.Should().BeTrue();
@@ -116,7 +124,7 @@ public sealed class DataProtectionCertificateTests : IDisposable
     public void AProtectedPayloadSurvivesARestartAndTheRingIsNotPlaintext()
     {
         // Arrange
-        using X509Certificate2 certificate = DataProtectionCertificate.Ensure(_root, 5475, TimeProvider.System);
+        using X509Certificate2 certificate = DataProtectionCertificate.Ensure(_root, 5475, Passphrase, TimeProvider.System);
 
         string ringDirectory = Path.Combine(_root, "ring");
 
@@ -140,6 +148,168 @@ public sealed class DataProtectionCertificateTests : IDisposable
         ring.Should().NotContain("<value>", "that element carries the raw master key");
     }
 
+    /// <summary>
+    /// Both files are unreadable by other accounts on the host.
+    /// </summary>
+    /// <remarks>
+    /// They sit under <c>data/</c>, which is a mounted volume and what an operator is told to back up,
+    /// so the permissions are one of the two things separating the key from the database it protects.
+    /// </remarks>
+    [Fact]
+    public void TheFilesAreOwnerReadableOnly()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // Act
+        using X509Certificate2 certificate = DataProtectionCertificate.Ensure(_root, 5475, Passphrase, TimeProvider.System);
+
+        // Assert
+        File.GetUnixFileMode(KeyPath).Should().Be(UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        File.GetUnixFileMode(CertificatePath).Should().Be(UnixFileMode.UserRead | UnixFileMode.UserWrite);
+    }
+
+    /// <summary>
+    /// No passphrase is a refusal, before anything touches the disk - the same gate the printer
+    /// authority keeps. Minting an unprotected key "for now" would be the state this arrangement
+    /// exists to remove, and minting under an empty passphrase would be no protection at all.
+    /// </summary>
+    [Fact]
+    public void AnEmptyPassphraseIsRefusedBeforeAnythingIsWritten()
+    {
+        // Act
+        Action act = () => DataProtectionCertificate.Ensure(_root, 5475, string.Empty, TimeProvider.System);
+
+        // Assert
+        act.Should().Throw<DataProtectionCertificateUnreadableException>();
+        File.Exists(KeyPath).Should().BeFalse("a misconfigured start must leave no trace");
+        File.Exists(CertificatePath).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The key on disk is useless without the passphrase, which is the whole of what this buys: a
+    /// copied <c>data/</c> holds the database and these files, and can open neither key on the
+    /// volume. And it is the authority's own layout - an encrypted PKCS#8 beside a certificate PEM -
+    /// so the two read the same way.
+    /// </summary>
+    [Fact]
+    public void TheKeyCannotBeOpenedWithoutThePassphrase()
+    {
+        // Arrange
+        using X509Certificate2 certificate = DataProtectionCertificate.Ensure(_root, 5475, Passphrase, TimeProvider.System);
+
+        // Act
+        Action asPlaintext = () => X509Certificate2.CreateFromPemFile(CertificatePath, KeyPath).Dispose();
+        Action wrongPassphrase = () => X509Certificate2.CreateFromEncryptedPemFile(CertificatePath, "not it", KeyPath).Dispose();
+
+        // Assert
+        File.ReadAllText(KeyPath).Should().StartWith("-----BEGIN ENCRYPTED PRIVATE KEY-----");
+        asPlaintext.Should().Throw<CryptographicException>();
+        wrongPassphrase.Should().Throw<CryptographicException>();
+    }
+
+    /// <summary>
+    /// A key the configured passphrase does not open is a refusal to start, never a re-mint - the
+    /// re-mint would not fail, it would silently orphan every key in the ring. The files are left
+    /// exactly as they were, so the right passphrase still opens them afterwards.
+    /// </summary>
+    [Fact]
+    public void AWrongPassphraseRefusesToStartAndReMintsNothing()
+    {
+        // Arrange
+        string thumbprint;
+
+        using (X509Certificate2 minted = DataProtectionCertificate.Ensure(_root, 5475, Passphrase, TimeProvider.System))
+        {
+            thumbprint = minted.Thumbprint;
+        }
+
+        // Act
+        Action act = () => DataProtectionCertificate.Ensure(_root, 5475, "a different passphrase", TimeProvider.System);
+
+        // Assert
+        act.Should().Throw<DataProtectionCertificateUnreadableException>()
+           .WithInnerException<CryptographicException>("the loader's own failure is what the operator will want to see");
+
+        using X509Certificate2 stillThere = DataProtectionCertificate.Ensure(_root, 5475, Passphrase, TimeProvider.System);
+        stillThere.Thumbprint.Should().Be(thumbprint, "the refusal must not have touched the files");
+    }
+
+    /// <summary>
+    /// A certificate whose key beside it is gone is a refusal, not a fresh mint: the certificate on
+    /// its own says which key the ring needs, and a new one would orphan every key in it.
+    /// </summary>
+    [Fact]
+    public void ACertificateWithoutItsKeyRefusesToStartAndReMintsNothing()
+    {
+        // Arrange
+        DataProtectionCertificate.Ensure(_root, 5475, Passphrase, TimeProvider.System).Dispose();
+        File.Delete(KeyPath);
+
+        // Act
+        Action act = () => DataProtectionCertificate.Ensure(_root, 5475, Passphrase, TimeProvider.System);
+
+        // Assert
+        act.Should().Throw<DataProtectionCertificateUnreadableException>();
+        File.Exists(KeyPath).Should().BeFalse("nothing may be minted in the gap");
+    }
+
+    /// <summary>
+    /// A passwordless PKCS#12 from before the passphrase existed - what every deployment before
+    /// this change has on its volume - is moved to the encrypted pair on the first start and then
+    /// deleted, and is the same certificate afterwards, so nothing in the ring becomes unreadable.
+    /// A migration that wrote the pair and died before deleting the PKCS#12 is finished on the
+    /// next start.
+    /// </summary>
+    [Fact]
+    public void APkcs12WrittenWithoutAPassphraseIsMovedToTheEncryptedPairAndDeleted()
+    {
+        // Arrange - what an existing deployment has: minted by an earlier version, exported with no
+        // password. Deliberately not through the class, which can no longer produce one.
+        Directory.CreateDirectory(_root);
+
+        string thumbprint;
+        byte[] legacyBytes;
+
+        using (RSA key = RSA.Create(2048))
+        {
+            CertificateRequest request = new("CN=legacy", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+
+            using X509Certificate2 legacy = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
+
+            legacyBytes = legacy.Export(X509ContentType.Pkcs12);
+            thumbprint = legacy.Thumbprint;
+        }
+
+        File.WriteAllBytes(LegacyPath, legacyBytes);
+
+        // Act
+        using X509Certificate2 migrated = DataProtectionCertificate.Ensure(_root, 5475, Passphrase, TimeProvider.System);
+
+        // Assert
+        migrated.Thumbprint.Should().Be(thumbprint, "the certificate must be the one the ring was encrypted with");
+        migrated.HasPrivateKey.Should().BeTrue();
+
+        File.Exists(LegacyPath).Should().BeFalse("the plaintext copy is deleted once the pair is proven readable");
+        File.Exists(KeyPath + ".tmp").Should().BeFalse("the write is atomic and leaves nothing beside the key");
+        File.ReadAllText(KeyPath).Should().StartWith("-----BEGIN ENCRYPTED PRIVATE KEY-----");
+
+        using (X509Certificate2 again = DataProtectionCertificate.Ensure(_root, 5475, Passphrase, TimeProvider.System))
+        {
+            again.Thumbprint.Should().Be(thumbprint, "and the next start simply opens the pair");
+        }
+
+        // A migration that died between writing the pair and deleting the PKCS#12.
+        File.WriteAllBytes(LegacyPath, legacyBytes);
+
+        using X509Certificate2 finished = DataProtectionCertificate.Ensure(_root, 5475, Passphrase, TimeProvider.System);
+
+        finished.Thumbprint.Should().Be(thumbprint, "the pair wins over the leftover");
+        File.Exists(LegacyPath).Should().BeFalse("and the leftover is removed");
+    }
+
     private static IDataProtectionProvider NewProvider(X509Certificate2 certificate, string ringDirectory)
     {
         ServiceCollection services = new();
@@ -150,29 +320,5 @@ public sealed class DataProtectionCertificateTests : IDisposable
                 .UnprotectKeysWithAnyCertificate(certificate);
 
         return services.BuildServiceProvider().GetRequiredService<IDataProtectionProvider>();
-    }
-
-    /// <summary>
-    /// The file is not readable by other accounts on the host.
-    /// </summary>
-    /// <remarks>
-    /// It sits under <c>data/</c>, which is a mounted volume and what an operator is told to back up,
-    /// so the permissions are the only thing separating it from the database it protects.
-    /// </remarks>
-    [Fact]
-    public void TheFileIsOwnerReadableOnly()
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
-        // Act
-        using X509Certificate2 certificate = DataProtectionCertificate.Ensure(_root, 5475, TimeProvider.System);
-
-        // Assert
-        UnixFileMode mode = File.GetUnixFileMode(Path.Combine(_root, "dataprotection.pfx"));
-
-        mode.Should().Be(UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
 }

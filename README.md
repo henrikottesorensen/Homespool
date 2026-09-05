@@ -108,7 +108,9 @@ revocation, and replacing it means a USB visit to every printer. The key is alwa
 `CA_PASSPHRASE` (which `setup-env.sh` generates; the server refuses to start without one), so a
 copied backup of the data volume alone cannot yield it — back up `.env` too, and **separately**
 from the data volume: the passphrase cannot be regenerated, and a backup holding both halves has
-defended nothing.
+defended nothing. The same passphrase encrypts `certificates/dataprotection.key.pem`, the key
+behind the certificate that protects the key ring for sign-in cookies and password-reset links, so
+a copied volume cannot mint a session for anyone either.
 
 ## Configuration
 
@@ -132,7 +134,7 @@ Configuration lives in two places, deliberately:
 | `TRANSFER_PORT` | Port for file downloads on the pre-WebSocket transport. Plain HTTP by design — the file body is already encrypted, but its integrity isn't verified, so don't expose this port beyond your LAN. |
 | `TZ` | The IANA timezone timestamps are rendered in. Containers default to UTC, which is rarely right for a machine in a house. |
 | `GO2RTC_USERNAME` / `GO2RTC_PASSWORD` | Credentials for the camera sidecar's API — required if you want cameras, ignored otherwise. `setup-env.sh` generates them. |
-| `CA_PASSPHRASE` | Encrypts the printer CA's private key at rest. Required — the server refuses to start without one rather than store the key in the clear; `setup-env.sh` generates it. **Never change or lose it once set** — the server refuses to start rather than mint a CA that strands your printers. |
+| `CA_PASSPHRASE` | Encrypts the printer CA's private key at rest, and the certificate that encrypts the sign-in key ring. Required — the server refuses to start without one rather than store either key in the clear; `setup-env.sh` generates it. **Never change or lose it once set** — the server refuses to start rather than mint a CA that strands your printers, or a key-ring certificate that signs everyone out. |
 | `PROXY_SUBNET` / `PROXY_NETWORK` | The stack's internal Docker network and the range whose forwarded headers are trusted. Change both together only if the default collides with your LAN. |
 
 [.env.example](.env.example) documents every setting in full, including the WebRTC overrides for

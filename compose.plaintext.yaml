@@ -21,8 +21,10 @@ services:
   homespool:
     ports:
       # The app's own printer listener, published directly. It is the same port either way - what
-      # changes is which container answers on it, and whether there is TLS in front.
-      - "${PRINTER_PORT:-15443}:15443"
+      # changes is which container answers on it, and whether there is TLS in front. IPv4 only, as
+      # in compose.yaml and for the same reason - here it is Kestrel that would otherwise see every
+      # v6 printer as the bridge gateway.
+      - "0.0.0.0:${PRINTER_PORT:-15443}:15443"
 
   proxy:
     # !override rather than a shorter list, because Compose MERGES `ports` instead of replacing it:
@@ -37,6 +39,6 @@ services:
     # opens it with a raw socket and cannot do otherwise - so it is the one printer-facing port whose
     # placement does not move with this switch. Only 15443 changes hands.
     ports: !override
-      - "${PORT:-80}:8080"
-      - "${HTTPS_PORT:-443}:8443"
-      - "${TRANSFER_PORT:-15080}:15080"
+      - "0.0.0.0:${PORT:-80}:8080"
+      - "0.0.0.0:${HTTPS_PORT:-443}:8443"
+      - "0.0.0.0:${TRANSFER_PORT:-15080}:15080"

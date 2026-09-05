@@ -267,9 +267,13 @@ services:
     # gives a browser that needs the other the same silent black screen the candidate does. The
     # host side is what a browser connects to, so it is the number in the candidate Homespool
     # writes; the container side stays 8555 because that is where go2rtc listens.
+    #
+    # IPv4 only, like the proxy's ports and for the same reason: this network carries no IPv6, and
+    # the candidate Homespool writes is a v4 address, so a v6 listener here would only ever be
+    # reached by mistake.
     ports:
-      - "${WEBRTC_PORT:-8555}:8555/tcp"
-      - "${WEBRTC_PORT:-8555}:8555/udp"
+      - "0.0.0.0:${WEBRTC_PORT:-8555}:8555/tcp"
+      - "0.0.0.0:${WEBRTC_PORT:-8555}:8555/udp"
 
     # Cameras plugged into this machine, granted as a class: major 81 is video4linux, covering USB
     # webcams and the Pi's codec nodes both. Not `devices:` naming each camera, because an entry
@@ -314,21 +318,34 @@ services:
     build:
       context: ./nginx
 
+    # IPv4 ONLY, on every port here, and the 0.0.0.0 is what says so. Published without an address,
+    # Docker also listens on [::] - but this network has no IPv6, so a v6 connection is relayed by
+    # docker-proxy and reaches nginx from the bridge gateway, 172.28.0.1. Measured on the appliance
+    # 2026-09-05: the same /health request logged as the client's own address over v4 and as
+    # 172.28.0.1 over v6. That address is inside the private ranges /health answers to, so a v6
+    # client anywhere on the internet would pass the filter meant to keep it out - and every v6
+    # client shares one X-Real-IP, so attempt limiting and the logs cannot tell them apart.
+    #
+    # Serving IPv6 properly is a piece of work, not a flag: enable_ipv6 on the network below with a
+    # subnet, that subnet in XForwarded__KnownNetworks and Certificates__ContainerNetworks, Kestrel
+    # listening on v6, and the health allow-list revisited. Until that is done, not offering v6 is
+    # the only configuration in which the addresses this stack reasons about are real. A browser
+    # that tries v6 first gets a refusal and falls back to v4 on its own.
     ports:
-      - "${PORT:-80}:8080"
-      - "${HTTPS_PORT:-443}:8443"
+      - "0.0.0.0:${PORT:-80}:8080"
+      - "0.0.0.0:${HTTPS_PORT:-443}:8443"
 
       # What a printer connects to; it must match PrusaConnect__PrinterPort above - that is the
       # number written into every provisioning bundle. 15443 rather than 443 on both sides:
       # containers here run as non-root and cannot bind 443, and 443 on the host belongs to the
       # browser.
-      - "${PRINTER_PORT:-15443}:15443"
+      - "0.0.0.0:${PRINTER_PORT:-15443}:15443"
 
       # What a printer fetches an encrypted download from; it must match PrusaConnect__TransferPort
       # above. Plain HTTP, deliberately and permanently: the printer cannot open a TLS socket for
       # this, and the body is ciphertext. See nginx/homespool-transfer.conf before publishing it
       # any further than the LAN.
-      - "${TRANSFER_PORT:-15080}:15080"
+      - "0.0.0.0:${TRANSFER_PORT:-15080}:15080"
 
     environment:
       # The same zone the application uses, so the two logs can be read side by side without

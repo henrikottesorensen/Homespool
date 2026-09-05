@@ -210,8 +210,11 @@
   <data name="Account_InvalidUserName" xml:space="preserve">
     <value>&apos;{0}&apos; kan ikke bruges som brugernavn. Brug kun bogstaver, tal og - . _ ; en e-mailadresse kan ikke være et brugernavn.</value>
   </data>
+  <data name="Account_UsernameLooksLikeAnother" xml:space="preserve">
+    <value>&apos;{0}&apos; ligner for meget et brugernavn nogen allerede har.</value>
+  </data>
   <data name="Account_UsernameMixesScripts" xml:space="preserve">
-    <value>&apos;{0}&apos; blander bogstaver eller tal fra mere end ét alfabet. Brug ét alfabet til hele navnet.</value>
+    <value>&apos;{0}&apos; blander bogstaver eller tal fra mere end et alfabet. Brug et enkelt alfabet til hele navnet.</value>
   </data>
   <data name="Printers_Title" xml:space="preserve">
     <value>Printere</value>

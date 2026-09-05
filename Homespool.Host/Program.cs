@@ -499,11 +499,12 @@ public static class Program
 
             // Ensure the admin role exists and, if no administrator has been created yet, mint and log
             // the one-time /setup token. Runs inline so setup state is settled before the first request.
+            //
+            // The lookup here goes through Identity's normaliser, and the stored key was written by
+            // whichever normaliser created the row - so the normaliser must never change: a role looked
+            // up against a stale key reads as missing, gets created again, and this reopens first-time
+            // setup on a running deployment.
             Accounts.AdminBootstrap.SeedAdminBootstrap(app.Services);
-
-            // Every account's lookup key recomputed by the current normaliser and Unicode data, so a
-            // name still resolves after either changes. Inline for the same reason as the line above.
-            Accounts.UsernameKeyRefresh.RefreshUsernameKeys(app.Services);
 
             // The certificate nginx presents to printers. Inline, before Run, because the proxy waits
             // on this container's health check and then reads the leaf off the shared volume.

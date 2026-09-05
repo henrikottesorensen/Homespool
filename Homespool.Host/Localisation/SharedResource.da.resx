@@ -602,9 +602,6 @@
   <data name="Manage_Passkeys" xml:space="preserve">
     <value>Adgangsnøgler</value>
   </data>
-  <data name="Nav_AdminPasskeys" xml:space="preserve">
-    <value>Alles adgangsnøgler</value>
-  </data>
   <data name="Passkeys_Explanation" xml:space="preserve">
     <value>En adgangsnøgle logger dig ind med dit ansigt, dit fingeraftryk eller din enheds kode i stedet for en adgangskode. En, der synkroniserer, følger din Apple- eller Google-konto til alle enheder, der er logget ind på den; en, der ikke gør, bliver på den enhed, du lavede den på.</value>
   </data>

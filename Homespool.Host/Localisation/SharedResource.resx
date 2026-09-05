@@ -630,9 +630,6 @@
   <data name="Manage_Passkeys" xml:space="preserve">
     <value>Passkeys</value>
   </data>
-  <data name="Nav_AdminPasskeys" xml:space="preserve">
-    <value>Everyone's passkeys</value>
-  </data>
   <data name="Passkeys_Explanation" xml:space="preserve">
     <value>A passkey signs you in with your face, fingerprint or device passcode instead of a password. One that syncs follows your Apple or Google account to every device signed into it; one that does not stays on the device you made it on.</value>
   </data>

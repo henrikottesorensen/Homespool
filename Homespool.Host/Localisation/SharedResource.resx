@@ -224,6 +224,10 @@
     <value>&apos;{0}&apos; is not a usable username. Use letters and digits, and - . _ only; an email address cannot be a username.</value>
     <comment>Replaces Identity&apos;s own wording, which describes a rule this application does not apply. The three punctuation marks are listed literally and must survive translation. Letters of any alphabet are accepted; the alphabet rule has its own message, Account_UsernameMixesScripts.</comment>
   </data>
+  <data name="Account_UsernameLooksLikeAnother" xml:space="preserve">
+    <value>&apos;{0}&apos; looks too much like a username somebody already has.</value>
+    <comment>Shown when a new or renamed username is a cross-script lookalike of an existing one - Cyrillic letters spelling a Latin name. Same-script lookalikes are allowed and never see this.</comment>
+  </data>
   <data name="Account_UsernameMixesScripts" xml:space="preserve">
     <value>&apos;{0}&apos; mixes letters or digits from more than one alphabet. Use one alphabet for the whole name.</value>
     <comment>Shown when a username fails UTS #39&apos;s single-script rule - a Cyrillic letter among Latin ones, or digits from two number systems.</comment>

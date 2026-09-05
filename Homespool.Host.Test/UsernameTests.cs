@@ -7,9 +7,6 @@ using AwesomeAssertions;
 
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Testing;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
@@ -29,9 +26,8 @@ namespace Homespool.Host.Test;
 /// </para>
 /// <para>
 /// The rules are asserted through a real <see cref="UserManager{TUser}"/> over a migrated database,
-/// because they live in two places that only meet there: <see cref="UsernameValidator"/> decides
-/// what is accepted, and <see cref="SkeletonLookupNormalizer"/> decides what is the same name - and
-/// the second is enforced by the unique index, not by any code of ours.
+/// because <see cref="UsernameValidator"/> judges a new name against every existing one, and only
+/// the real thing has existing ones.
 /// </para>
 /// </remarks>
 public sealed class UsernameTests : IDisposable
@@ -83,8 +79,8 @@ public sealed class UsernameTests : IDisposable
     /// No <c>@</c>, so a username can never be shaped like an address - which is what makes
     /// <c>LoginModel</c>'s username-then-email resolution unambiguous rather than merely ordered.
     /// The rest is the identifier profile: no whitespace, no invisible characters, no compatibility
-    /// digraphs - and no decomposed accents, because the entry points normalise and a validator
-    /// that met one would mean an entry point had not.
+    /// forms - and no decomposed accents, because the entry points store the clean form and a
+    /// validator that met one would mean an entry point had not.
     /// </summary>
     [Theory]
     [InlineData("henrik@example.com", "an address")]
@@ -125,17 +121,36 @@ public sealed class UsernameTests : IDisposable
     }
 
     /// <summary>
-    /// Two names that look alike are one name: the second registration is a duplicate, refused by
-    /// the unique index on the skeleton key rather than by any letter being forbidden. The pairs are
-    /// the ones the flat character set used to have to exclude - or could not, in ASCII's case.
+    /// A name in another alphabet that reads as an existing one is the impersonation shape, and is
+    /// refused as looking like a name somebody already has - whichever case it is typed in.
     /// </summary>
     [Theory]
-    [InlineData("modern", "rnodern", "rn reads as m, in plain ASCII")]
+    [InlineData("scope", "ѕсоре", "five Cyrillic letters spelling a Latin name")]
+    [InlineData("Scope", "ѕсоре", "case does not hide it, since sign-in ignores case")]
+    public async Task ACrossScriptLookalikeOfAnExistingNameIsRefused(string existing, string lookalike, string because)
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        UserManager<HSUser> users = Users(context);
+
+        (await users.CreateAsync(NewUser(existing))).Succeeded.Should().BeTrue();
+
+        IdentityResult result = await users.CreateAsync(NewUser(lookalike));
+
+        result.Succeeded.Should().BeFalse(because);
+        result.Errors.Should().Contain(e => e.Code == "UserNameLooksLikeAnother", because);
+    }
+
+    /// <summary>
+    /// A same-alphabet lookalike is what ASCII has always allowed, and it stays allowed: two real
+    /// people can be Ian and Lan, or Erna and Ema. Merging these was tried once and taken out.
+    /// </summary>
+    [Theory]
+    [InlineData("modern", "rnodern", "rn reads as m")]
     [InlineData("por", "þor", "thorn reads as p")]
     [InlineData("AEgir", "Ægir", "the ligature reads as AE")]
-    [InlineData("henrik", "Henrik", "case")]
-    [InlineData("Ivan", "lvan", "capital I reads as l")]
-    public async Task ALookalikeIsTheSameNameAndSoADuplicate(string first, string second, string because)
+    [InlineData("Ian", "Lan", "capital I reads as l")]
+    [InlineData("Erna", "Ema", "rn reads as m, in real names")]
+    public async Task ASameScriptLookalikeIsADifferentName(string first, string second, string because)
     {
         await using HomespoolDbContext context = await MigratedContextAsync();
         UserManager<HSUser> users = Users(context);
@@ -144,27 +159,37 @@ public sealed class UsernameTests : IDisposable
 
         IdentityResult result = await users.CreateAsync(NewUser(second));
 
-        result.Succeeded.Should().BeFalse(because);
-        result.Errors.Should().Contain(e => e.Code == "DuplicateUserName", because);
+        result.Succeeded.Should().BeTrue(because + ": " + string.Join("; ", result.Errors.Select(e => e.Description)));
     }
 
-    /// <summary>
-    /// The other half of "the same name": whichever lookalike is typed at sign-in resolves to the one
-    /// account, so a name that looks like yours is yours.
-    /// </summary>
+    /// <summary>The exact duplicate, case aside, is still Identity's own refusal.</summary>
     [Fact]
-    public async Task ALookalikeResolvesToTheOneAccount()
+    public async Task TheSameNameInAnotherCaseIsADuplicate()
     {
         await using HomespoolDbContext context = await MigratedContextAsync();
         UserManager<HSUser> users = Users(context);
 
-        HSUser created = NewUser("por");
-        (await users.CreateAsync(created)).Succeeded.Should().BeTrue();
+        (await users.CreateAsync(NewUser("henrik"))).Succeeded.Should().BeTrue();
 
-        HSUser? found = await users.FindByNameAsync("þor");
+        IdentityResult result = await users.CreateAsync(NewUser("Henrik"));
 
-        found.Should().NotBeNull();
-        found!.Id.Should().Be(created.Id);
+        result.Succeeded.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Code == "DuplicateUserName");
+    }
+
+    /// <summary>A rename to a lookalike of one's own name is not a collision with oneself.</summary>
+    [Fact]
+    public async Task RenamingToALookalikeOfYourOwnNameIsAllowed()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        UserManager<HSUser> users = Users(context);
+
+        HSUser user = NewUser("scope");
+        (await users.CreateAsync(user)).Succeeded.Should().BeTrue();
+
+        IdentityResult result = await users.SetUserNameAsync(user, "ѕсоре");
+
+        result.Succeeded.Should().BeTrue("an all-Cyrillic name is one alphabet, and the only name it resembles is this account's own");
     }
 
     /// <summary>
@@ -177,76 +202,6 @@ public sealed class UsernameTests : IDisposable
         Usernames.Prepare("e\u0301mile").Should().Be("émile", "the decomposed accent is composed");
         Usernames.Prepare("ﬁle").Should().Be("ﬁle", "a ligature is a finding, not something to fold away");
         Usernames.Prepare("hеnrik").Should().Be("hеnrik", "a mixed-script name is left for the validator to refuse");
-    }
-
-    /// <summary>The key is the skeleton of the NFKC form, upper-cased; an address keeps Identity's key.</summary>
-    [Fact]
-    public void TheLookupKeyIsTheUpperCasedSkeleton()
-    {
-        SkeletonLookupNormalizer normaliser = new();
-
-        normaliser.NormalizeName("hеnrik").Should().Be(normaliser.NormalizeName("henrik"), "a Cyrillic е is the lookalike");
-        normaliser.NormalizeName("ﬁle").Should().Be("FILE", "NFKC folds the ligature first");
-        normaliser.NormalizeName("Ivan").Should().Be(normaliser.NormalizeName("lvan"));
-        normaliser.NormalizeName(null).Should().BeNull();
-        normaliser.NormalizeEmail("Rig@Example.com").Should().Be("RIG@EXAMPLE.COM");
-    }
-
-    /// <summary>
-    /// A row written before the skeleton became the key, or by an older Unicode table, gets the
-    /// current key at start-up - otherwise the account can no longer be found by name.
-    /// </summary>
-    [Fact]
-    public async Task StartUpRefreshesAStaleLookupKey()
-    {
-        await using HomespoolDbContext context = await MigratedContextAsync();
-        HSUser ivan = NewUser("Ivan");
-        ivan.NormalizedUserName = "IVAN";
-        ivan.NormalizedEmail = ivan.Email!.ToUpperInvariant();
-        context.Users.Add(ivan);
-        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
-
-        (IServiceProvider provider, FakeLogCollector _) = RefreshServices(context);
-
-        int rewritten = await UsernameKeyRefresh.RefreshAsync(provider, TestContext.Current.CancellationToken);
-
-        rewritten.Should().Be(1);
-        ivan.NormalizedUserName.Should().Be(new SkeletonLookupNormalizer().NormalizeName("Ivan"));
-    }
-
-    /// <summary>
-    /// Two existing accounts that would share a key are left as they are and named in an error,
-    /// rather than the service refusing to start on the unique index. Every other row is still done.
-    /// </summary>
-    [Fact]
-    public async Task StartUpReportsACollisionAndRefreshesTheRest()
-    {
-        await using HomespoolDbContext context = await MigratedContextAsync();
-        HSUser modern = NewUser("modern");
-        modern.NormalizedUserName = "MODERN";
-        HSUser lookalike = NewUser("rnodern");
-        lookalike.NormalizedUserName = "RNODERN";
-        HSUser ivan = NewUser("Ivan");
-        ivan.NormalizedUserName = "IVAN";
-
-        foreach (HSUser user in new[] { modern, lookalike, ivan })
-        {
-            user.NormalizedEmail = user.Email!.ToUpperInvariant();
-            context.Users.Add(user);
-        }
-
-        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
-
-        (IServiceProvider provider, FakeLogCollector logs) = RefreshServices(context);
-
-        int rewritten = await UsernameKeyRefresh.RefreshAsync(provider, TestContext.Current.CancellationToken);
-
-        rewritten.Should().Be(1, "only Ivan's key was stale and safe to rewrite");
-        modern.NormalizedUserName.Should().Be("MODERN");
-        lookalike.NormalizedUserName.Should().Be("RNODERN");
-
-        FakeLogRecord error = logs.GetSnapshot().Should().ContainSingle(r => r.Level == LogLevel.Error).Subject;
-        error.Message.Should().Contain("'modern'").And.Contain("'rnodern'");
     }
 
     /// <summary>
@@ -277,18 +232,6 @@ public sealed class UsernameTests : IDisposable
     private static UserManager<HSUser> Users(HomespoolDbContext context)
     {
         return IdentityTestHarness.BuildIdentityServices(context).users;
-    }
-
-    private static (IServiceProvider provider, FakeLogCollector logs) RefreshServices(HomespoolDbContext context)
-    {
-        ServiceCollection services = new();
-        services.AddFakeLogging();
-        services.AddSingleton(context);
-        services.AddScoped<ILookupNormalizer, SkeletonLookupNormalizer>();
-
-        ServiceProvider provider = services.BuildServiceProvider();
-
-        return (provider, provider.GetRequiredService<FakeLogCollector>());
     }
 
     private HSUser NewUser(string name)

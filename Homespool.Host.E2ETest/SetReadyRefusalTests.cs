@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.WebSockets;
@@ -47,16 +46,16 @@ namespace Homespool.Host.E2ETest;
 /// </para>
 /// </remarks>
 [Collection("WebApplicationFactory")]
-public sealed class SetReadyRefusalTests : IAsyncLifetime, IDisposable
+public sealed class SetReadyRefusalTests : IAsyncLifetime
 {
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-setready-refusal-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("setready-refusal");
 
     private HomespoolFactory _root = null!;
     private WebApplicationFactory<PrinterAppController> _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _root = new HomespoolFactory($"Data Source={_databasePath}");
+        _root = new HomespoolFactory(_scratch);
         _factory = _root.WithWebHostBuilder(_ => { });
 
         _ = _factory.Server;
@@ -67,25 +66,11 @@ public sealed class SetReadyRefusalTests : IAsyncLifetime, IDisposable
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
-
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
-        _factory.Dispose();
-        _root.Dispose();
-
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
+        await _factory.DisposeAsync();
+        await _root.DisposeAsync();
+        _scratch.Dispose();
     }
 
     /// <summary>

@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -577,39 +578,30 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
         (PrinterIdentity other, string otherToken, int _, long _) =
             await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
 
-        string directory = Path.Combine(Path.GetTempPath(), $"hs-e2e-raw-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(directory);
+        // The offered file lives in the test's own scratch directory, whose teardown removes it.
+        byte[] bytes = RandomNumberGenerator.GetBytes(4096);
+        string path = Path.Combine(_scratch.Path, "model.gcode");
 
-        try
-        {
-            byte[] bytes = RandomNumberGenerator.GetBytes(4096);
+        await File.WriteAllBytesAsync(path, bytes, TestContext.Current.CancellationToken);
 
-            string path = Path.Combine(directory, "model.gcode");
-            await File.WriteAllBytesAsync(path, bytes, TestContext.Current.CancellationToken);
+        string hash = Guid.NewGuid().ToString("N")[..27];
+        _factory.Services.GetRequiredService<ITransferOffers>().Offer(hash, path, intendedId).Should().BeTrue();
 
-            string hash = Guid.NewGuid().ToString("N")[..27];
-            _factory.Services.GetRequiredService<ITransferOffers>().Offer(hash, path, intendedId).Should().BeTrue();
+        using HttpClient printer = PrinterListener.CreateClient(_factory);
 
-            using HttpClient printer = PrinterListener.CreateClient(_factory);
+        // Act
+        using HttpRequestMessage strangerRequest = Get($"/p/teams/1/files/{hash}/raw", other, otherToken);
+        using HttpResponseMessage strangerResponse = await printer.SendAsync(strangerRequest, TestContext.Current.CancellationToken);
 
-            // Act
-            using HttpRequestMessage strangerRequest = Get($"/p/teams/1/files/{hash}/raw", other, otherToken);
-            using HttpResponseMessage strangerResponse = await printer.SendAsync(strangerRequest, TestContext.Current.CancellationToken);
+        using HttpRequestMessage ownRequest = Get($"/p/teams/1/files/{hash}/raw", intended, intendedToken);
+        using HttpResponseMessage ownResponse = await printer.SendAsync(ownRequest, TestContext.Current.CancellationToken);
 
-            using HttpRequestMessage ownRequest = Get($"/p/teams/1/files/{hash}/raw", intended, intendedToken);
-            using HttpResponseMessage ownResponse = await printer.SendAsync(ownRequest, TestContext.Current.CancellationToken);
+        // Assert
+        strangerResponse.StatusCode.Should().Be(HttpStatusCode.NotFound,
+                                                "a valid credential for another printer must look exactly like an unknown token");
 
-            // Assert
-            strangerResponse.StatusCode.Should().Be(HttpStatusCode.NotFound,
-                                                    "a valid credential for another printer must look exactly like an unknown token");
-
-            ownResponse.StatusCode.Should().Be(HttpStatusCode.OK, "the refusal must not have consumed the offer");
-            (await ownResponse.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken)).Should().Equal(bytes);
-        }
-        finally
-        {
-            Directory.Delete(directory, recursive: true);
-        }
+        ownResponse.StatusCode.Should().Be(HttpStatusCode.OK, "the refusal must not have consumed the offer");
+        (await ownResponse.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken)).Should().Equal(bytes);
     }
 
     private static HttpRequestMessage Get(string route, PrinterIdentity identity, string token)

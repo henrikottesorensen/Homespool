@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 
 using Duende.IdentityModel;
 
@@ -61,6 +62,11 @@ public static class AuthenticationBuilderExtensions
 
                    engine.ServerDomain = scheme.IsConfigured ? scheme.ServerDomain!.Trim() : null;
                    engine.AuthenticatorTimeout = scheme.CeremonyLifetime;
+
+                   // The framework's default compares two client-supplied values with each other; this
+                   // compares the claimed origin with the one name the deployment binds credentials to.
+                   engine.ValidateOrigin = context =>
+                       ValueTask.FromResult(!context.CrossOrigin && scheme.AllowsOrigin(context.Origin));
                });
 
         builder.AddScheme<PasskeyAuthenticationOptions, PasskeyAuthenticationHandler>(Schemes.Passkey,

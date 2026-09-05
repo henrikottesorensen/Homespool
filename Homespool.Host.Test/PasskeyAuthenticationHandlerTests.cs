@@ -305,6 +305,34 @@ public sealed class PasskeyAuthenticationHandlerTests : IDisposable
         result.Succeeded.Should().BeFalse("phishing resistance is origin binding, and this is where it lives");
     }
 
+    /// <summary>
+    /// The claimed origin is pinned to the relying-party id, not merely compared with the request's
+    /// own <c>Origin</c> header: an assertion whose client data names a host the id does not cover
+    /// is refused even when the header agrees with it.
+    /// </summary>
+    [Fact]
+    public async Task AnAssertionClaimingAnUncoveredOriginFailsEvenWhenTheHeaderAgrees()
+    {
+        // Arrange
+        await using Rig rig = await Rig.CreateAsync(this);
+        using FakeAuthenticator authenticator = new();
+        HSUser user = await rig.EnrolAsync(authenticator);
+
+        (PasskeyAuthenticationHandler challengeHandler, DefaultHttpContext challenge) = await rig.NewRequestAsync();
+        await challengeHandler.ChallengeAsync(new AuthenticationProperties());
+
+        authenticator.Origin = "https://evil.test";
+        string credential = authenticator.Assert(await rig.BodyOf(challenge), user.Id.ToString());
+        (PasskeyAuthenticationHandler handler, DefaultHttpContext request) = await rig.NewRequestAsync(credential: credential, cookie: Rig.CookieOf(challenge));
+        request.Request.Headers.Origin = "https://evil.test";
+
+        // Act
+        AuthenticateResult result = await handler.AuthenticateAsync();
+
+        // Assert
+        result.Succeeded.Should().BeFalse("the origin check is against the relying-party id, not against a header the same client sent");
+    }
+
     [Fact]
     public async Task AnAssertionWithoutUserVerificationFails()
     {

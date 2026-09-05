@@ -98,6 +98,31 @@ public class PasskeyAuthenticationOptions : AuthenticationSchemeOptions
                 name[name.Length - domain.Length - 1] == '.');
     }
 
+    /// <summary>
+    /// Whether an assertion or attestation claiming to come from <paramref name="origin"/> may be
+    /// accepted: a secure origin whose host <see cref="Covers"/> - or plain <c>http</c> on
+    /// <c>localhost</c>, which browsers treat as secure for a developer's sake.
+    /// </summary>
+    /// <remarks>
+    /// The framework's own check compares the origin the client data claims with the request's
+    /// <c>Origin</c> header, two values the same client supplied. The relying-party id hash in the
+    /// authenticator data is what binds the credential in the end, but there is no reason to accept
+    /// a claimed origin the deployment does not serve, so this pins it to the one name that matters.
+    /// </remarks>
+    public bool AllowsOrigin(string? origin)
+    {
+        if (string.IsNullOrEmpty(origin) || !Uri.TryCreate(origin, UriKind.Absolute, out Uri? uri))
+        {
+            return false;
+        }
+
+        bool secure = string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+                      || (string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+                          && string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase));
+
+        return secure && Covers(new HostString(uri.Host));
+    }
+
     /// <inheritdoc/>
     public override void Validate()
     {

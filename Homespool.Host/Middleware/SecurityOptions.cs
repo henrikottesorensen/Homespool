@@ -31,6 +31,14 @@ public class SecurityOptions
     /// password and no authenticator, so with this on, first run lands on the enrolment page before
     /// anything else. That is the intended reading of "all accounts" rather than an oversight.
     /// </para>
+    /// <para>
+    /// <b>What it does not reach either: a passkey sign-in.</b> A passkey with user verification is
+    /// possession plus a face, a finger or a device passcode, a multi-factor authenticator in its own
+    /// right, so signing in with one never asks for the code, floor or no floor. This setting says
+    /// what an account must <i>hold</i>, and a passkey account under the floor still holds an
+    /// authenticator; it does not say how a session was made. The residual an operator accepts with
+    /// it: a synced passkey is as strong as the Apple or Google account it syncs through.
+    /// </para>
     /// </remarks>
     public bool RequireTwoFactor { get; set; }
 

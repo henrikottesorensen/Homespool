@@ -89,9 +89,10 @@ public sealed class PasskeyCeremonies
     /// <summary>
     /// Starts a ceremony: records it in the ledger and writes the cookie carrying
     /// <paramref name="engineState"/> for <paramref name="operation"/>, to be answered within the
-    /// ceremony lifetime.
+    /// ceremony lifetime. <see langword="false"/> when the ledger is full and no ceremony could be
+    /// started, in which case no cookie is written and the caller answers 503.
     /// </summary>
-    public void Begin(HttpContext context, string operation, string engineState)
+    public bool Begin(HttpContext context, string operation, string engineState)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(operation);
@@ -109,12 +110,21 @@ public sealed class PasskeyCeremonies
             },
         };
 
-        state.Items[CeremonyIdItem] = _ledger.Begin(now, state.ExpiresUtc.Value);
+        string? ceremonyId = _ledger.Begin(now, state.ExpiresUtc.Value);
+
+        if (ceremonyId is null)
+        {
+            return false;
+        }
+
+        state.Items[CeremonyIdItem] = ceremonyId;
 
         CookieOptions cookie = CookieOptionsFor(context);
         cookie.Expires = state.ExpiresUtc;
 
         context.Response.Cookies.Append(Options.CeremonyCookie.Name!, _format.Protect(state), cookie);
+
+        return true;
     }
 
     /// <summary>

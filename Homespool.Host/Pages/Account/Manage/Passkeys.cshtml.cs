@@ -184,7 +184,12 @@ public class PasskeysModel : PageModel
             },
             HttpContext);
 
-        _ceremonies.Begin(HttpContext, PasskeyCeremonies.Attestation, creation.AttestationState!);
+        if (!_ceremonies.Begin(HttpContext, PasskeyCeremonies.Attestation, creation.AttestationState!))
+        {
+            _logger.LogWarning("Passkey registration refused for user {UserId}: the ceremony ledger is full.", user.Id);
+
+            return StatusCode(StatusCodes.Status503ServiceUnavailable);
+        }
 
         Response.Headers.CacheControl = "no-store";
 

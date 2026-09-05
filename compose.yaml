@@ -95,6 +95,13 @@ services:
       # from the same variable deliberately - one network, one value, no way for them to drift.
       Certificates__ContainerNetworks__0: "${PROXY_NETWORK:-172.28.0.0/16}"
 
+      # docker0 is on every Docker host whether or not anything uses it, and its gateway address is
+      # one this machine's name can resolve to - so without this it passes as an address a printer
+      # could reach, and lands in the printer certificate and on the bundle page. Docker's stock
+      # range; a daemon.json that moves it needs this moved too. Other projects' bridges are not
+      # known here and are not guessed at.
+      Certificates__ContainerNetworks__1: "172.17.0.0/16"
+
       # Encrypts the printer CA's private key on the data volume. The value living here - in .env,
       # outside that volume - is the point: a copied data/ backup alone then no longer carries the
       # key every provisioned printer trusts. Required: with it empty the server refuses to start
@@ -449,6 +456,14 @@ services:
   certs:
     image: goacme/lego
     profiles: ["certs"]
+
+    # On the project's own network like every other service, although it only needs outbound
+    # internet. A service with no networks: line makes compose create <project>_default - a bridge
+    # nothing is ever on, whose gateway address this machine's name then resolves to alongside the
+    # real one. After the next `up`, `docker network rm homespool_default` removes the one already
+    # created.
+    networks:
+      - homespool
 
     # The same uid the proxy runs as, which is what lets the proxy read what this writes. It is
     # possible because the credentials arrive as environment rather than as a compose secret: a

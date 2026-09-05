@@ -3,9 +3,13 @@ using System.Buffers.Text;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
+using System.Linq;
+using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -42,8 +46,14 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// that a later password change does not touch. So the challenge is issued only after the password
 /// is proved, under a backoff of its own (<see cref="LimitedAction.AddPasskey"/>) because a password
 /// check on an authenticated path is otherwise unlimited guesses. The five-minute ceremony is what the
-/// password unlocks; the answer needs no second proof. An account created through an external
-/// provider has no password to prove and adds without one.
+/// password unlocks; the answer needs no second proof. <b>An account created through an external
+/// provider has no password to prove, and re-authenticates at the provider instead</b>: a challenge
+/// to the provider's scheme with <c>max_age=0</c> and <c>prompt=login</c>, a callback that checks the
+/// subject is the one this account already signs in with and that any <c>auth_time</c> the provider
+/// reports is recent, and a five-minute proof kept the way a ceremony is, spent by the registration.
+/// A provider that ignores <c>max_age</c> and reports no <c>auth_time</c> - dex's mock connector is
+/// one - still has to complete the round trip in the caller's own browser, which a stolen cookie
+/// cannot; what it does not defend is an unlocked browser at a provider that never asks again.
 /// </para>
 /// <para>
 /// <b>Removing the last one is allowed.</b> A passkey is a complete sign-in beside whatever else the
@@ -66,7 +76,15 @@ public class PasskeysModel : PageModel
     /// <summary>The longest name a passkey may be given. It is rendered in a table row and nowhere else.</summary>
     public const int NameMaxLength = 64;
 
+    /// <summary>
+    /// How old a provider's <c>auth_time</c> may be for the round trip to count as a re-authentication.
+    /// Generous next to the ceremony's five minutes, because the person spent some of it at the
+    /// provider's own screens.
+    /// </summary>
+    public static readonly TimeSpan MaxProviderProofAge = TimeSpan.FromMinutes(2);
+
     private readonly UserManager<HSUser> _users;
+    private readonly SignInManager<HSUser> _signInManager;
     private readonly IPasskeyHandler<HSUser> _engine;
     private readonly PasskeyCeremonies _ceremonies;
     private readonly IOptionsMonitor<PasskeyAuthenticationOptions> _options;
@@ -76,6 +94,7 @@ public class PasskeysModel : PageModel
     private readonly ILogger<PasskeysModel> _logger;
 
     public PasskeysModel(UserManager<HSUser> users,
+                         SignInManager<HSUser> signInManager,
                          IPasskeyHandler<HSUser> engine,
                          PasskeyCeremonies ceremonies,
                          IOptionsMonitor<PasskeyAuthenticationOptions> options,
@@ -85,6 +104,7 @@ public class PasskeysModel : PageModel
                          ILogger<PasskeysModel> logger)
     {
         _users = users;
+        _signInManager = signInManager;
         _engine = engine;
         _ceremonies = ceremonies;
         _options = options;
@@ -105,6 +125,9 @@ public class PasskeysModel : PageModel
     /// <summary>Whether the account has a password to prove before adding; a provider account has none.</summary>
     public bool HasPassword { get; private set; }
 
+    /// <summary>The external providers this account signs in through, for an account without a password to prove.</summary>
+    public IReadOnlyList<AuthenticationScheme> Providers { get; private set; } = [];
+
     /// <summary>The relying-party id, for saying which address to come back by; null when none is configured.</summary>
     public string? ServerDomain { get; private set; }
 
@@ -120,6 +143,34 @@ public class PasskeysModel : PageModel
         [DataType(DataType.Password)]
         [Display(Name = "Passkeys_PasswordLabel")]
         public string? Password { get; set; }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="name"/> may be a passkey's name: something to show, within the length,
+    /// with no control characters and none of the invisible marks that would let a name render
+    /// deceptively in the table - the rule the file store's directory name already applies.
+    /// </summary>
+    public static bool IsAcceptableName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.Length > NameMaxLength)
+        {
+            return false;
+        }
+
+        foreach (char character in name)
+        {
+            // Written as escapes on purpose: these are invisible characters, and a source file holding
+            // them literally is unreadable in a diff and carries the very hazard this rejects.
+            if (char.IsControl(character)
+                || character is '\u200B' or '\u200C' or '\u200D' or '\uFEFF'
+                || character is >= '\u202A' and <= '\u202E'
+                || character is >= '\u2066' and <= '\u2069')
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>The credential id as the page and the forms spell it: base64url.</summary>
@@ -150,7 +201,20 @@ public class PasskeysModel : PageModel
             return NotFound();
         }
 
-        if (await _users.HasPasswordAsync(user))
+        if (!await _users.HasPasswordAsync(user))
+        {
+            // No password to prove: the proof is the provider round trip, kept as a ceremony and
+            // spent here, so one confirmation adds one passkey.
+            PasskeyCeremonies.Outcome proof = _ceremonies.Take(HttpContext, PasskeyCeremonies.ProviderProof);
+
+            if (!proof.Succeeded)
+            {
+                _logger.LogInformation("Passkey registration refused for user {UserId}: {Reason}.", user.Id, proof.Reason);
+
+                return Refusal(StatusCodes.Status401Unauthorized, _localiser["Passkeys_ProviderNotConfirmed"]);
+            }
+        }
+        else
         {
             // The backoff is checked before the password is compared, so a backed-off session cannot
             // learn whether its guesses were close by watching which refusal comes back.
@@ -184,11 +248,144 @@ public class PasskeysModel : PageModel
             },
             HttpContext);
 
-        _ceremonies.Begin(HttpContext, PasskeyCeremonies.Attestation, creation.AttestationState!);
+        if (!_ceremonies.Begin(HttpContext, PasskeyCeremonies.Attestation, creation.AttestationState!))
+        {
+            _logger.LogWarning("Passkey registration refused for user {UserId}: the ceremony ledger is full.", user.Id);
+
+            return StatusCode(StatusCodes.Status503ServiceUnavailable);
+        }
 
         Response.Headers.CacheControl = "no-store";
 
         return Content(creation.CreationOptionsJson, "application/json; charset=utf-8");
+    }
+
+    /// <summary>
+    /// For an account without a password: sends the person to re-authenticate at the provider this
+    /// account signs in through, asking the provider to make them sign in afresh.
+    /// </summary>
+    /// <remarks>
+    /// <c>max_age=0</c> is the standard's way of saying "now", and makes a conforming provider return
+    /// <c>auth_time</c>; <c>prompt=login</c> says the same thing to providers that read that instead.
+    /// The external cookie is cleared first so that a stale provider identity cannot be what the
+    /// callback finds.
+    /// </remarks>
+    public async Task<IActionResult> OnPostReauthenticateAsync(string? provider)
+    {
+        HSUser? user = await _users.GetUserAsync(User);
+
+        if (user is null || string.IsNullOrEmpty(provider))
+        {
+            return NotFound();
+        }
+
+        // A password account proves its password; the provider round trip is for the accounts that
+        // have nothing else, and only against a provider the account actually holds a login for.
+        if (await _users.HasPasswordAsync(user)
+            || (await _users.GetLoginsAsync(user)).All(login => !string.Equals(login.LoginProvider, provider, StringComparison.Ordinal)))
+        {
+            return NotFound();
+        }
+
+        await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
+
+        string redirectUrl = Url.Page("/Account/Manage/Passkeys", pageHandler: "Reauthenticated")!;
+        AuthenticationProperties external = _signInManager.ConfigureExternalAuthenticationProperties(
+            provider, redirectUrl, user.Id.ToString(CultureInfo.InvariantCulture));
+
+        OpenIdConnectChallengeProperties challenge = new(external.Items, external.Parameters)
+        {
+            MaxAge = TimeSpan.Zero,
+            Prompt = "login",
+        };
+
+        return new ChallengeResult(provider, challenge);
+    }
+
+    /// <summary>
+    /// The provider's answer: the subject it vouches for must be the one this account signs in with,
+    /// and any sign-in time it reports must be recent. Then a proof is started for the registration
+    /// to spend.
+    /// </summary>
+    public async Task<IActionResult> OnGetReauthenticatedAsync()
+    {
+        HSUser? user = await _users.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return NotFound();
+        }
+
+        // Keyed on the signed-in account, as the account-linking callback is, so a callback carrying
+        // somebody else's external cookie is not read as this account's.
+        ExternalLoginInfo? info = await _signInManager.GetExternalLoginInfoAsync(user.Id.ToString(CultureInfo.InvariantCulture));
+
+        // Consumed either way: a provider identity is not left lying around for another page to find.
+        await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
+
+        if (info is null)
+        {
+            StatusMessage = _localiser["Passkeys_ProviderFailed"];
+
+            return RedirectToPage();
+        }
+
+        IList<UserLoginInfo> logins = await _users.GetLoginsAsync(user);
+        string? refusal = ProviderProofRefusal(info, logins, _timeProvider.GetUtcNow());
+
+        if (refusal is not null)
+        {
+            _logger.LogWarning("Provider re-authentication refused for user {UserId} via {LoginProvider}: {Reason}.",
+                               user.Id,
+                               info.LoginProvider,
+                               refusal);
+
+            StatusMessage = _localiser[refusal == "mismatch" ? "Passkeys_ProviderMismatch" : "Passkeys_ProviderStale", info.ProviderDisplayName ?? info.LoginProvider];
+
+            return RedirectToPage();
+        }
+
+        if (!_ceremonies.Begin(HttpContext, PasskeyCeremonies.ProviderProof, info.ProviderKey))
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable);
+        }
+
+        _logger.LogInformation("User {UserId} re-authenticated at {LoginProvider} to add a passkey.", user.Id, info.LoginProvider);
+
+        StatusMessage = _localiser["Passkeys_ProviderConfirmed", info.ProviderDisplayName ?? info.LoginProvider];
+
+        return RedirectToPage();
+    }
+
+    /// <summary>
+    /// Why a provider's answer does not count as this account re-authenticating, or
+    /// <see langword="null"/> when it does: <c>"mismatch"</c> when the subject is not one this account
+    /// signs in with, <c>"stale"</c> when the provider reports a sign-in older than
+    /// <see cref="MaxProviderProofAge"/>. A provider that reports no sign-in time is taken at its word.
+    /// </summary>
+    public static string? ProviderProofRefusal(ExternalLoginInfo info, IEnumerable<UserLoginInfo> logins, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        ArgumentNullException.ThrowIfNull(logins);
+
+        bool held = logins.Any(login => string.Equals(login.LoginProvider, info.LoginProvider, StringComparison.Ordinal)
+                                        && string.Equals(login.ProviderKey, info.ProviderKey, StringComparison.Ordinal));
+
+        if (!held)
+        {
+            return "mismatch";
+        }
+
+        string? authTime = info.Principal.FindFirstValue("auth_time");
+
+        if (authTime is not null
+            && long.TryParse(authTime, NumberStyles.Integer, CultureInfo.InvariantCulture, out long seconds)
+            && now - DateTimeOffset.FromUnixTimeSeconds(seconds) > MaxProviderProofAge)
+        {
+            return "stale";
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -206,6 +403,13 @@ public class PasskeysModel : PageModel
         }
 
         await LoadAsync();
+
+        // The length attribute is the browser's half; this is the character rule, which no attribute
+        // states. An empty name is fine here and gets the dated default below.
+        if (!string.IsNullOrWhiteSpace(Input.Name) && !IsAcceptableName(Input.Name))
+        {
+            ModelState.AddModelError("Input.Name", _localiser["Passkeys_NameInvalid"]);
+        }
 
         if (!ModelState.IsValid)
         {
@@ -285,7 +489,7 @@ public class PasskeysModel : PageModel
 
         string trimmed = name?.Trim() ?? string.Empty;
 
-        if (trimmed.Length is 0 or > NameMaxLength)
+        if (!IsAcceptableName(trimmed))
         {
             await LoadAsync();
             ModelState.AddModelError(string.Empty, _localiser["Passkeys_NameInvalid"]);
@@ -389,6 +593,15 @@ public class PasskeysModel : PageModel
         PasskeysAvailable = Scheme.Covers(Request.Host);
         HasPassword = await _users.HasPasswordAsync(user);
         ServerDomain = Scheme.IsConfigured ? Scheme.ServerDomain!.Trim() : null;
+
+        if (!HasPassword)
+        {
+            IList<UserLoginInfo> logins = await _users.GetLoginsAsync(user);
+
+            Providers = (await _signInManager.GetExternalAuthenticationSchemesAsync())
+                        .Where(scheme => logins.Any(login => string.Equals(login.LoginProvider, scheme.Name, StringComparison.Ordinal)))
+                        .ToList();
+        }
 
         return true;
     }

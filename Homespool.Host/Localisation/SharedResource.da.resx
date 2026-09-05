@@ -602,9 +602,6 @@
   <data name="Manage_Passkeys" xml:space="preserve">
     <value>Adgangsnøgler</value>
   </data>
-  <data name="Nav_AdminPasskeys" xml:space="preserve">
-    <value>Alles adgangsnøgler</value>
-  </data>
   <data name="Passkeys_Explanation" xml:space="preserve">
     <value>En adgangsnøgle logger dig ind med dit ansigt, dit fingeraftryk eller din enheds kode i stedet for en adgangskode. En, der synkroniserer, følger din Apple- eller Google-konto til alle enheder, der er logget ind på den; en, der ikke gør, bliver på den enhed, du lavede den på.</value>
   </data>
@@ -637,6 +634,30 @@
   </data>
   <data name="Account_ReviewPasskeysAfterReset" xml:space="preserve">
     <value>Adgangsnøgler påvirkes ikke af en nulstilling. Hvis en anden havde din adgangskode, så se efter en adgangsnøgle, du ikke selv har tilføjet, under {0}.</value>
+  </data>
+  <data name="Passkeys_ProviderWhy" xml:space="preserve">
+    <value>Denne konto logger ind gennem {0}, så {0} skal bekræfte, at det er dig, før en adgangsnøgle kan tilføjes. Bekræftelsen gælder i fem minutter.</value>
+  </data>
+  <data name="Passkeys_YourProvider" xml:space="preserve">
+    <value>din udbyder</value>
+  </data>
+  <data name="Passkeys_ProviderConfirm" xml:space="preserve">
+    <value>Bekræft med {0}</value>
+  </data>
+  <data name="Passkeys_ProviderConfirmed" xml:space="preserve">
+    <value>{0} har bekræftet dig. Tilføj din adgangsnøgle inden for fem minutter.</value>
+  </data>
+  <data name="Passkeys_ProviderNotConfirmed" xml:space="preserve">
+    <value>Bekræft med din udbyder først.</value>
+  </data>
+  <data name="Passkeys_ProviderFailed" xml:space="preserve">
+    <value>Bekræftelsen blev ikke gennemført. Prøv igen.</value>
+  </data>
+  <data name="Passkeys_ProviderMismatch" xml:space="preserve">
+    <value>Det var en anden {0}-konto end den, denne konto logger ind med.</value>
+  </data>
+  <data name="Passkeys_ProviderStale" xml:space="preserve">
+    <value>{0} bad dig ikke om at logge ind igen lige nu. Prøv igen.</value>
   </data>
   <data name="Passkeys_NameInvalid" xml:space="preserve">
     <value>Et navn på en adgangsnøgle må højst være 64 tegn.</value>

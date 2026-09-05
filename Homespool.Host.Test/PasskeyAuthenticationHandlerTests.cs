@@ -124,6 +124,32 @@ public sealed class PasskeyAuthenticationHandlerTests : IDisposable
         request.Response.StatusCode.Should().Be((int)HttpStatusCode.NotFound);
     }
 
+    /// <summary>
+    /// When the ledger cannot remember another ceremony the challenge answers 503, the one status
+    /// that means "shortly", and starts nothing.
+    /// </summary>
+    [Fact]
+    public async Task AChallengeAnswers503WhenTheLedgerIsFull()
+    {
+        // Arrange
+        await using Rig rig = await Rig.CreateAsync(this);
+        PasskeyCeremonyLedger ledger = rig.Ledger;
+
+        for (int i = 0; i < PasskeyCeremonyLedger.MaxOutstanding; i += 1)
+        {
+            ledger.Begin(_clock.GetUtcNow(), _clock.GetUtcNow().AddMinutes(5));
+        }
+
+        (PasskeyAuthenticationHandler handler, DefaultHttpContext request) = await rig.NewRequestAsync();
+
+        // Act
+        await handler.ChallengeAsync(new AuthenticationProperties());
+
+        // Assert
+        request.Response.StatusCode.Should().Be((int)HttpStatusCode.ServiceUnavailable);
+        request.Response.Headers.SetCookie.ToString().Should().BeEmpty("no ceremony was started");
+    }
+
     /// <summary>A subdomain of the relying-party id is covered, which is the one way one name serves two hosts.</summary>
     [Fact]
     public async Task AChallengeIsIssuedOnASubdomainOfTheRelyingPartyId()
@@ -277,6 +303,34 @@ public sealed class PasskeyAuthenticationHandlerTests : IDisposable
 
         // Assert
         result.Succeeded.Should().BeFalse("phishing resistance is origin binding, and this is where it lives");
+    }
+
+    /// <summary>
+    /// The claimed origin is pinned to the relying-party id, not merely compared with the request's
+    /// own <c>Origin</c> header: an assertion whose client data names a host the id does not cover
+    /// is refused even when the header agrees with it.
+    /// </summary>
+    [Fact]
+    public async Task AnAssertionClaimingAnUncoveredOriginFailsEvenWhenTheHeaderAgrees()
+    {
+        // Arrange
+        await using Rig rig = await Rig.CreateAsync(this);
+        using FakeAuthenticator authenticator = new();
+        HSUser user = await rig.EnrolAsync(authenticator);
+
+        (PasskeyAuthenticationHandler challengeHandler, DefaultHttpContext challenge) = await rig.NewRequestAsync();
+        await challengeHandler.ChallengeAsync(new AuthenticationProperties());
+
+        authenticator.Origin = "https://evil.test";
+        string credential = authenticator.Assert(await rig.BodyOf(challenge), user.Id.ToString());
+        (PasskeyAuthenticationHandler handler, DefaultHttpContext request) = await rig.NewRequestAsync(credential: credential, cookie: Rig.CookieOf(challenge));
+        request.Request.Headers.Origin = "https://evil.test";
+
+        // Act
+        AuthenticateResult result = await handler.AuthenticateAsync();
+
+        // Assert
+        result.Succeeded.Should().BeFalse("the origin check is against the relying-party id, not against a header the same client sent");
     }
 
     [Fact]
@@ -449,6 +503,8 @@ public sealed class PasskeyAuthenticationHandlerTests : IDisposable
         }
 
         public UserManager<HSUser> Users { get; }
+
+        public PasskeyCeremonyLedger Ledger => _provider.GetRequiredService<PasskeyCeremonyLedger>();
 
         public static async Task<Rig> CreateAsync(PasskeyAuthenticationHandlerTests owner, string? relyingPartyId = RelyingPartyId)
         {

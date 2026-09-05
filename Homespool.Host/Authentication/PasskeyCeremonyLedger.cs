@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace Homespool.Host.Authentication;
 
@@ -22,26 +23,47 @@ namespace Homespool.Host.Authentication;
 /// <b>Issued, not spent.</b> Remembering the answered ones would let a replay through after a restart
 /// emptied the list; remembering the outstanding ones means a restart refuses every ceremony in
 /// flight instead, and somebody presses the button again. On a single-process appliance an in-memory
-/// set is the honest shape, and its size is the number of challenges issued within one ceremony's
-/// lifetime.
+/// set is the honest shape.
+/// </para>
+/// <para>
+/// <b>Bounded, because the challenge is anonymous.</b> The login page hands one out to anybody with
+/// an antiforgery pair, and a page load supplies that, so the list would otherwise grow at whatever
+/// rate somebody cared to ask for five minutes at a time. Expired entries are swept every
+/// <see cref="SweepInterval"/> begins rather than on each one, and above <see cref="MaxOutstanding"/>
+/// live entries a new ceremony is refused - the caller answers 503, and a person presses the button
+/// again a minute later, which is the right failure for a box with a fixed amount of memory.
 /// </para>
 /// </remarks>
 public sealed class PasskeyCeremonyLedger
 {
+    /// <summary>
+    /// The most ceremonies that may be outstanding at once. Tens of people on a household appliance
+    /// start a handful an hour; this is a ceiling on abuse, not on use.
+    /// </summary>
+    public const int MaxOutstanding = 4096;
+
+    /// <summary>How many begins pass between sweeps of expired entries.</summary>
+    public const int SweepInterval = 64;
+
     private readonly ConcurrentDictionary<string, DateTimeOffset> _outstanding = new(StringComparer.Ordinal);
+
+    private int _beginsSinceSweep;
 
     /// <summary>
     /// Records a new ceremony that may be answered until <paramref name="expires"/>, and returns its
-    /// id. Ceremonies already past their time at <paramref name="now"/> are forgotten on the way.
+    /// id - or <see langword="null"/> when the ledger is full of ceremonies that have not yet expired
+    /// at <paramref name="now"/>.
     /// </summary>
-    public string Begin(DateTimeOffset now, DateTimeOffset expires)
+    public string? Begin(DateTimeOffset now, DateTimeOffset expires)
     {
-        foreach (KeyValuePair<string, DateTimeOffset> entry in _outstanding)
+        if (Interlocked.Increment(ref _beginsSinceSweep) >= SweepInterval || _outstanding.Count >= MaxOutstanding)
         {
-            if (entry.Value <= now)
-            {
-                _outstanding.TryRemove(entry.Key, out _);
-            }
+            Sweep(now);
+        }
+
+        if (_outstanding.Count >= MaxOutstanding)
+        {
+            return null;
         }
 
         string id = Guid.NewGuid().ToString("N");
@@ -63,4 +85,17 @@ public sealed class PasskeyCeremonyLedger
 
     /// <summary>How many ceremonies are outstanding, for a test to watch the list stay small.</summary>
     public int Outstanding => _outstanding.Count;
+
+    private void Sweep(DateTimeOffset now)
+    {
+        Interlocked.Exchange(ref _beginsSinceSweep, 0);
+
+        foreach (KeyValuePair<string, DateTimeOffset> entry in _outstanding)
+        {
+            if (entry.Value <= now)
+            {
+                _outstanding.TryRemove(entry.Key, out _);
+            }
+        }
+    }
 }

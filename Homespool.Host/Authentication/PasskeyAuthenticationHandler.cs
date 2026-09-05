@@ -106,6 +106,7 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
     /// not a 401: the caller is a script on a page of ours, asking for a challenge, and there is
     /// nowhere to send it. 404 when passkeys are withheld here - no relying-party id, or a host it does
     /// not cover - because the browser would refuse the ceremony anyway and a refusal now says why.
+    /// 503 when the ceremony ledger is full, which is the one answer that means "try again shortly".
     /// </remarks>
     protected override async Task HandleChallengeAsync(AuthenticationProperties properties)
     {
@@ -140,7 +141,16 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
 
         PasskeyRequestOptionsResult requestOptions = await _engine.MakeRequestOptionsAsync(user, Context);
 
-        _ceremonies.Begin(Context, PasskeyCeremonies.Assertion, requestOptions.AssertionState!);
+        if (!_ceremonies.Begin(Context, PasskeyCeremonies.Assertion, requestOptions.AssertionState!))
+        {
+            // Too many ceremonies in flight to remember another. Not a refusal of this person, so
+            // not a 4xx: the box is busy, and a minute later it will not be.
+            Logger.LogWarning("Passkey challenge refused: the ceremony ledger is full.");
+
+            Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+
+            return;
+        }
 
         Response.StatusCode = StatusCodes.Status200OK;
         Response.ContentType = "application/json; charset=utf-8";

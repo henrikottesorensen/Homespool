@@ -69,6 +69,27 @@ mmdebstrap:
     # localhost` from the operator's own shell reports command not found.
     - curl
 
+    # Debian security updates, applied by the board itself.
+    #
+    # Without it this card runs whatever openssl, openssh and glibc shipped the day it was written,
+    # for as long as it is plugged in - which for an appliance in a cupboard is years. Nobody logs
+    # into one of these to run apt, and expecting them to is the same mistake as expecting them to
+    # change a default password.
+    #
+    # It costs 3.6 MB, measured on a built card rather than estimated: eight packages, and the
+    # rootfs goes 975 MB to 978 MB. An earlier version of this comment guessed "tens of megabytes"
+    # by counting the dependency list, which over-counted six-fold and named two packages that were
+    # already installed - python3 arrives with rpi-eeprom, and ucf with openssh-server. The largest
+    # single item is xz-utils at 1.5 MB.
+    #
+    # The alternative is a timer running apt-get ourselves, which is the version of this that goes
+    # wrong: dpkg conffile prompts, held packages, a partial upgrade interrupted by a power cut.
+    # That handling is the whole substance of the package and none of it is worth reimplementing.
+    #
+    # What it does NOT update is the Homespool stack: those images are baked into the card's Docker
+    # store and this only ever touches Debian packages. See pi/README.md.
+    - unattended-upgrades
+
     # Grows the root partition to fill whatever card the image was flashed onto. A distributed image
     # cannot know that size, which is the one case rpi-image-gen deliberately does not cover: its
     # answer is to build the image at the size of a known target and rely on sparseness, because its
@@ -234,6 +255,176 @@ mmdebstrap:
     #
     # Same shape as the hostname mistake below: the chroot is not the finished filesystem, so
     # "nothing does X" observed in there is not evidence that nothing does X. Check the built image.
+
+    - |-
+      #
+      # Turn the periodic apt machinery on, and say what "unattended" means on a machine that runs
+      # prints for hours at a time.
+      #
+      # 20auto-upgrades is the switch, and it is written here BYTE FOR BYTE as the package ships it
+      # (usr/share/unattended-upgrades/20auto-upgrades - checked, not guessed). The package does
+      # install it on its own: the debconf question defaults to true and is asked at priority low,
+      # so a noninteractive chroot keeps the default and the postinst writes the file. This is
+      # belt and braces against that default ever flipping, which would leave the package installed,
+      # the timers running and nothing ever upgraded - a failure indistinguishable from success
+      # without going and looking, which is the worst shape a security feature can have.
+      #
+      # Identical content matters, because the postinst registers that file with ucf. Anything of
+      # ours in it would show up as a local modification at the next upgrade of the package, so our
+      # own preferences go in the 52- file below instead, which nothing else owns.
+      #
+      # A 52- drop-in rather than editing 50unattended-upgrades, which the package owns and replaces
+      # on its own upgrade. It sets scalars only, and inherits Debian's shipped Origins-Pattern:
+      #
+      #   origin=Debian,codename=trixie,label=Debian            <- the stable archive
+      #   origin=Debian,codename=trixie,label=Debian-Security
+      #   origin=Debian,codename=trixie-security,label=Debian-Security
+      #
+      # So it is stable and its security updates - point releases included, which is conservative
+      # and right for an appliance - and NOT trixie-updates, which Debian ships commented out.
+      #
+      # download.docker.com is allowed too, and the argument for excluding it turned out not to
+      # survive checking. It was that a docker-ce upgrade restarts the daemon, stopping every
+      # container, and that doing so mid-print destroys the print. The second half is false: a
+      # Prusa printer prints from its own storage, and this board only ever *transferred* the file
+      # to it (PrusaConnect.Transfers.FileTransferContent). A daemon restart costs an in-flight
+      # transfer, which is retryable, and a monitoring gap of seconds - not somebody's eight hours.
+      #
+      # Against that: docker-ce and containerd.io are the most privileged userspace on this card,
+      # they run as root, and their CVEs are the container-escape kind. Excluded, they would be
+      # frozen at whatever the card shipped with for the life of the board - the same trap as the
+      # Raspberry Pi archive, on a component where it matters more. Debian's docker.io is not an
+      # option here either: rpi-image-gen's docker layer installs from download.docker.com, so this
+      # origin is the only source of a fix that exists.
+      #
+      # Not paired with live-restore in /etc/docker/daemon.json, which is the documented way to keep
+      # containers running across a daemon upgrade and was considered. It covers patch releases only
+      # - Docker's own documentation says "not for major (YY.MM) daemon upgrades" - and it changes
+      # what happens to containers at shutdown, which is a thing to verify on hardware rather than
+      # assume. Buying a few seconds a handful of times a year with an untested change to daemon
+      # shutdown semantics is the wrong way round. Worth revisiting with a board to test on.
+      #
+      # archive.raspberrypi.com is added below, and the reason is not the obvious one. It does NOT
+      # make Debian's updates reachable for the packages Raspberry Pi rebuilds: their versions carry
+      # a +rpt suffix that outranks Debian's own by dpkg ordering, permanently. Checked rather than
+      # reasoned - `dpkg --compare-versions 2.41-12+rpt1+deb13u3 gt 2.41-12+deb13u4` is true - so
+      # when Debian issues the next glibc revision, this card will not take it whatever is allowed
+      # here. That is a shadowing problem and no origin list can solve it.
+      #
+      # What allowing this origin does solve is that those packages have otherwise NO update path at
+      # all. 38 of the ~300 installed come from here, 15 of them shadowing a Debian package, and
+      # with the origin excluded they are frozen at whatever the card was written with, for the life
+      # of the board - libc6, libc-bin, libasound2t64, libdrm2 among them. Allowed, they move when
+      # Raspberry Pi rebuilds. The residual gap is honest and unfixable from here: glibc tracks
+      # Raspberry Pi's cadence rather than Debian's, and pinning Debian's above theirs would fight
+      # the vendor whose patches this board runs on.
+      #
+      # apt list values APPEND, which is what makes adding an origin a two-line change - and is also
+      # the trap for anyone trying to *narrow* them. Restating Debian's patterns here to trim one
+      # would add a fourth, not replace three.
+      #
+      # The two patterns below key on DIFFERENT fields, and that is not an inconsistency to tidy up.
+      # apt takes them from each archive's own Release file - Suite becomes archive=, Codename
+      # becomes codename= - and the two archives fill those fields the opposite way round:
+      #
+      #   archive.raspberrypi.com   Suite: stable    Codename: trixie
+      #   download.docker.com       Suite: trixie    (no Codename field at all)
+      #
+      # So codename= is right for Raspberry Pi and can never match Docker, whose codename is the
+      # empty string. This was written codename= on both lines first, and the Docker half then
+      # matched nothing at all: the config parses, --debug echoes the pattern back, and an
+      # up-to-date card reports nothing to do - which is what a working configuration also reports.
+      # It took a card with a deliberately downgraded docker-ce-cli to see that the candidate was
+      # being pushed back. Copying a pattern from the line above is exactly how this happens.
+      set -eu
+      printf '%s\n' \
+        'APT::Periodic::Update-Package-Lists "1";' \
+        'APT::Periodic::Unattended-Upgrade "1";' \
+        > $1/etc/apt/apt.conf.d/20auto-upgrades
+
+      printf '%s\n' \
+        '// Raspberry Pi'"'"'s archive and Docker'"'"'s, added to Debian'"'"'s three. Both ship packages that' \
+        '// no Debian suite can supersede - a +rpt version outranks Debian'"'"'s forever, and docker-ce' \
+        '// exists in no Debian suite at all - so excluding either freezes it for the life of the' \
+        '// board. See the layer for why this does not make Debian'"'"'s glibc reachable.' \
+        '//' \
+        '// The two lines key on different fields on purpose. apt takes these from each archive'"'"'s' \
+        '// own Release file, and the two fill them the opposite way round: Raspberry Pi publishes' \
+        '// Suite: stable with Codename: trixie, while Docker publishes Suite: trixie and no' \
+        '// Codename at all. So codename= is the only one that matches Raspberry Pi, and archive= is' \
+        '// the only one that matches Docker. Written codename= on both first, which silently' \
+        '// matched no Docker package whatsoever - see the layer.' \
+        'Unattended-Upgrade::Origins-Pattern {' \
+        '        "origin=Raspberry Pi Foundation,codename=${distro_codename}";' \
+        '        "origin=Docker,archive=${distro_codename}";' \
+        '};' \
+        '' \
+        '// Nothing is blacklisted. An earlier version excluded the kernel, the bootloader and the' \
+        '// EEPROM packages, and the trade was the wrong way round: it accepted a board running a' \
+        '// kernel with known holes for its whole life to avoid a rare, unlucky write. The security' \
+        '// cost is certain and permanent; the availability risk it bought is neither.' \
+        '//' \
+        '// The risk was not imaginary. The boot partition is FAT with no journal, so a write torn by' \
+        '// a power cut is a board that does not come back, where the same accident on the journalled' \
+        '// root is a dpkg --configure -a over SSH. That distinction is real. What is not real is a' \
+        '// blacklist delivering it.' \
+        '//' \
+        '// Traced on a built card rather than reasoned: /boot is on the ext4 root, and the only' \
+        '// thing that writes the FAT partition is raspi-firmware'"'"'s hooks, which rsync the kernel,' \
+        '// DTBs, overlays and initramfs across. Those hooks are files on disk. They run whenever' \
+        '// anything activates the update-initramfs trigger - udev, kmod, busybox, dmsetup,' \
+        '// klibc-utils and e2fsprogs all do, and every one is a Debian package in an origin that' \
+        '// was always allowed. So a routine udev security update rewrites that partition with or' \
+        '// without a blacklist; blacklisting a package stops it being upgraded and does nothing to' \
+        '// a dpkg trigger fired by something else.' \
+        '//' \
+        '// rpi-eeprom was in the list for the same reason and was never the thing that flashes. Its' \
+        '// postinst installs blobs under /lib/firmware and enables rpi-eeprom-update.service, which' \
+        '// this card already runs at every boot as -s -a: it stages pieeprom.upd onto the FAT' \
+        '// partition and the ROM flashes at the next boot. That path never went through apt.' \
+        '//' \
+        '// And the exclusion contradicted the premise. This whole file exists because nobody logs' \
+        '// into an appliance - so "a kernel would sit unused until a person acted" does not describe' \
+        '// a deferral, it describes a kernel that is never installed for the life of the board.' \
+        '// That is the trap the origins above were opened to escape, and it is worst on the one' \
+        '// package where frozen-forever is hardest to defend.' \
+        '//' \
+        '// What is paid for this: a kernel upgrade rsyncs two images, the DTB set and the overlays' \
+        '// across FAT, which is a bigger write than an initramfs refresh and happens per kernel' \
+        '// release. It is a wider window on a risk the card already carries, not a new one.' \
+        '' \
+        '// It never reboots by itself, and that is the decision this file exists to make. A print' \
+        '// runs for hours and dies with the machine, so a board that reboots when it judges the' \
+        '// moment right will eventually throw away somebody'"'"'s eight-hour job to install a libc' \
+        '// nobody was waiting for. Updates that need a reboot wait for a person instead.' \
+        '//' \
+        '// The cost is real and stated rather than hidden: a kernel or an openssl whose services' \
+        '// were not restarted sits installed and unused until that reboot. A kernel says so in' \
+        '// /var/run/reboot-required, written by unattended-upgrades'"'"' own kernel postinst hook -' \
+        '// which is a thing that happens now that kernels are not excluded. An openssl does not:' \
+        '// nothing on this card writes that file for a library, so pi/README.md recommends a reboot' \
+        '// on a cadence rather than a check for one.' \
+        'Unattended-Upgrade::Automatic-Reboot "false";' \
+        '' \
+        '// The card is finite and nothing prunes it otherwise, and with nothing blacklisted both of' \
+        '// these are load-bearing. Downloaded .debs are what this path accumulates day to day; old' \
+        '// kernels are what accumulates in hundreds of megabytes, and this card installs them' \
+        '// unattended now, so the pruning is what keeps a 30 GB card from filling with them.' \
+        'Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";' \
+        'Unattended-Upgrade::Remove-New-Unused-Dependencies "true";' \
+        'APT::Periodic::AutocleanInterval "7";' \
+        '' \
+        '// Smaller dpkg transactions, so a power cut during an upgrade leaves less half-done. An' \
+        '// appliance loses power the way a laptop does not: at the wall, without warning.' \
+        'Unattended-Upgrade::MinimalSteps "true";' \
+        '' \
+        '// Into the journal, which is where everything else on this board is debugged from. There' \
+        '// is no MTA here, so the mail unattended-upgrades would otherwise send goes nowhere.' \
+        'Unattended-Upgrade::SyslogEnable "true";' \
+        > $1/etc/apt/apt.conf.d/52homespool-unattended-upgrades
+
+      chmod 0644 $1/etc/apt/apt.conf.d/20auto-upgrades \
+                 $1/etc/apt/apt.conf.d/52homespool-unattended-upgrades
 
     - |-
       #
@@ -514,6 +705,14 @@ mmdebstrap:
     # and because rpi-resize below taught this layer that shipping a unit and enabling it are
     # different things, and that the difference is invisible until a board misbehaves.
     - chroot $1 systemctl enable earlyoom.service
+
+    # Both halves of the update cycle, and neither is assumed. apt ships these enabled by preset,
+    # but presets are exactly what this layer has been caught by before - rpi-resize shipped a unit
+    # nobody had enabled - and enabling an already-enabled unit costs nothing. apt-daily refreshes
+    # the package lists; apt-daily-upgrade is the one that runs unattended-upgrade. Without the
+    # first the second has nothing to act on.
+    - chroot $1 systemctl enable apt-daily.timer
+    - chroot $1 systemctl enable apt-daily-upgrade.timer
 
     # The filesystem half of the resize, and it does NOT come enabled with the package - checked in
     # a built image, where the initramfs had grown the partition and nothing then grew the ext4

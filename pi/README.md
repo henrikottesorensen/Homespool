@@ -228,6 +228,84 @@ Done with the Raspberry Pi package rather than a `growpart` unit of our own for 
 repeating: it resizes **offline, in the initramfs**. A hand-rolled version would be rewriting the
 partition table of a mounted root filesystem on someone else's SD card.
 
+## It updates itself
+
+**Debian security updates install themselves**, through `unattended-upgrades` on the stock
+`apt-daily` timers. An appliance in a cupboard is never logged into, so left to a person this card
+would run the openssl and openssh it was written with for as long as it stays plugged in — which is
+years, not months. Expecting somebody to remember `apt` is the same mistake as expecting them to
+change a default password.
+
+It takes all three archives the card actually has — Debian's `trixie` and `trixie-security`, point
+releases included; Raspberry Pi's; and Docker's. Each of the latter two ships packages that no Debian
+suite can supersede, so excluding either would freeze it for the life of the board. What it does not
+take:
+
+| | why not |
+|---|---|
+| `trixie-updates` | Debian ships it commented out; it is not security, and stable is conservative enough |
+
+Docker is included because `docker-ce` and `containerd.io` are the most privileged userspace on the
+card, run as root, and their CVEs are the container-escape kind — and Debian's `docker.io` is not an
+alternative, because `rpi-image-gen` installs from `download.docker.com`, so that repo is the only
+place a fix exists. The cost is that a daemon upgrade restarts containers. That is a few seconds and
+an interrupted file transfer, not a lost print: a Prusa printer prints from its own storage, and this
+board only ever transfers the file to it.
+
+**Nothing is blacklisted, including the kernel**, and that is a deliberate reversal. An earlier
+version excluded the kernel, bootloader and EEPROM packages, and the trade was the wrong way round:
+it accepted a board running a kernel with known holes for its entire life in order to avoid a rare,
+unlucky write. The security cost is certain and permanent; the availability risk it bought is
+neither.
+
+The risk was not imaginary. The boot partition is FAT with no journal, so a write torn by a power cut
+is a board that does not come back, where the same accident on the journalled root is a
+`dpkg --configure -a` over SSH. The distinction is real; a blacklist does not deliver it. `/boot` is
+on the root filesystem, and what copies the kernel and initramfs onto the FAT partition is
+`raspi-firmware`'s hooks, which run whenever anything fires the `update-initramfs` trigger — `udev`,
+`kmod`, `busybox` and `e2fsprogs` among them, all ordinary Debian packages that were always allowed.
+So that partition gets rewritten by a routine `udev` update either way. `rpi-eeprom` was excluded for
+the same reason and is not what flashes: `rpi-eeprom-update.service` runs at every boot, stages the
+new image, and the ROM applies it at the following one, with no involvement from `apt` at all.
+
+What excluding the kernel would really have meant is that this board never gets one. Nobody logs into
+an appliance — that is the reason this page exists — so "a person will run `apt` eventually" is not a
+deferral, it is the same freeze the origins above were opened to end, on the package where it is
+hardest to defend.
+
+**Why Raspberry Pi's archive is allowed at all** is worth stating, because the obvious reason is
+wrong. It does not make Debian's updates reachable for the packages Raspberry Pi rebuilds — their
+`+rpt` versions outrank Debian's own by `dpkg` ordering, permanently, so Debian's next `glibc`
+revision will not be taken whatever is allowed here. That is a shadowing problem no origin list can
+solve. What allowing it does fix is that those packages otherwise have *no* update path at all: 38 of
+the ~300 installed come from that archive, 15 of them shadowing a Debian package, and excluded they
+would be frozen at whatever the card was written with for the life of the board. So `glibc` tracks
+Raspberry Pi's rebuild cadence rather than Debian's. That is the honest state of running a Pi.
+
+**It never reboots by itself.** A print runs for hours and dies with the machine, so a board that
+picked its own moment would eventually throw away someone's eight-hour job to install a libc nobody
+was waiting for. `sudo reboot` when nothing is printing is the whole procedure.
+
+The cost, stated plainly: a library upgraded underneath a running service stays the old one in memory
+until that service restarts or the board reboots. `/var/run/reboot-required` catches half of that. A
+kernel install writes it, which is a real signal now that kernels are not excluded — but **a library
+does not**, so the `openssl` case that matters most leaves no trace at all. `needrestart` would
+detect it properly and is not installed on purpose: in unattended mode it restarts services, and on
+this board that includes the container engine.
+
+So the practical answer is a reboot on a schedule that suits you rather than a check for one:
+
+```bash
+sudo reboot
+```
+
+`journalctl -u unattended-upgrades` and `/var/log/unattended-upgrades/` are where it says what it
+did. There is no MTA on the card, so nothing is mailed anywhere.
+
+**This does not update Homespool itself.** The application's container images are baked into the
+card's Docker store, and `unattended-upgrades` only ever touches Debian packages. Moving the stack
+to a new version is a separate job and, until there is a tagged release to pull, means a new card.
+
 ## Getting a shell on the board
 
 **There is no way to log in.** The `pi` account on a downloaded card is locked and has no authorised

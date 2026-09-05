@@ -30,7 +30,7 @@ namespace Homespool.Host.Authentication;
 public class PasskeyAuthenticationOptions : AuthenticationSchemeOptions
 {
     /// <summary>The cookie name used unless <see cref="CeremonyCookie"/> sets another.</summary>
-    public const string DefaultCeremonyCookieName = "Homespool.PasskeyCeremony";
+    public const string DefaultCeremonyCookieName = $"{PasskeyAuthenticationHandler.PasskeyPrefix}.Ceremony";
 
     /// <summary>
     /// The form field an assertion is posted in: the <c>PublicKeyCredential</c> the browser returned,

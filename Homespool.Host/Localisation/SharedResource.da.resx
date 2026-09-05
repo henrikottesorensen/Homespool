@@ -599,6 +599,90 @@
   <data name="Account_PasskeyCancelled" xml:space="preserve">
     <value>Login med adgangsnøgle blev afbrudt eller udløb. Prøv igen, eller brug din adgangskode.</value>
   </data>
+  <data name="Manage_Passkeys" xml:space="preserve">
+    <value>Adgangsnøgler</value>
+  </data>
+  <data name="Nav_AdminPasskeys" xml:space="preserve">
+    <value>Alles adgangsnøgler</value>
+  </data>
+  <data name="Passkeys_Explanation" xml:space="preserve">
+    <value>En adgangsnøgle logger dig ind med dit ansigt, dit fingeraftryk eller din enheds kode i stedet for en adgangskode. En, der synkroniserer, følger din Apple- eller Google-konto til alle enheder, der er logget ind på den; en, der ikke gør, bliver på den enhed, du lavede den på.</value>
+  </data>
+  <data name="Passkeys_NotConfigured" xml:space="preserve">
+    <value>Homespool har ikke fået angivet et værtsnavn til adgangsnøgler, så adgangsnøgler er ikke tilgængelige.</value>
+  </data>
+  <data name="Passkeys_Unavailable" xml:space="preserve">
+    <value>Adgangsnøgler er bundet til {0}. Åbn denne side på den adresse for at tilføje en.</value>
+  </data>
+  <data name="Passkeys_NameLabel" xml:space="preserve">
+    <value>Navn på adgangsnøgle</value>
+  </data>
+  <data name="Passkeys_NamePlaceholder" xml:space="preserve">
+    <value>Denne enhed</value>
+  </data>
+  <data name="Passkeys_NameInvalid" xml:space="preserve">
+    <value>Et navn på en adgangsnøgle må højst være 64 tegn.</value>
+  </data>
+  <data name="Passkeys_DefaultName" xml:space="preserve">
+    <value>Adgangsnøgle tilføjet {0}</value>
+  </data>
+  <data name="Passkeys_Add" xml:space="preserve">
+    <value>Tilføj en adgangsnøgle</value>
+  </data>
+  <data name="Passkeys_Cancelled" xml:space="preserve">
+    <value>Tilføjelsen af adgangsnøglen blev afbrudt eller udløb. Prøv igen.</value>
+  </data>
+  <data name="Passkeys_RegistrationFailed" xml:space="preserve">
+    <value>Adgangsnøglen kunne ikke tilføjes. Prøv igen.</value>
+  </data>
+  <data name="Passkeys_Yours" xml:space="preserve">
+    <value>Dine adgangsnøgler</value>
+  </data>
+  <data name="Passkeys_None" xml:space="preserve">
+    <value>Du har ingen adgangsnøgler endnu.</value>
+  </data>
+  <data name="Passkeys_KindColumn" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="Passkeys_Synced" xml:space="preserve">
+    <value>Synkroniseret mellem dine enheder</value>
+  </data>
+  <data name="Passkeys_DeviceBound" xml:space="preserve">
+    <value>Kun på én enhed</value>
+  </data>
+  <data name="Passkeys_Rename" xml:space="preserve">
+    <value>Omdøb</value>
+  </data>
+  <data name="Passkeys_Remove" xml:space="preserve">
+    <value>Fjern</value>
+  </data>
+  <data name="Passkeys_Added" xml:space="preserve">
+    <value>Adgangsnøgle tilføjet.</value>
+  </data>
+  <data name="Passkeys_Renamed" xml:space="preserve">
+    <value>Adgangsnøgle omdøbt.</value>
+  </data>
+  <data name="Passkeys_Removed" xml:space="preserve">
+    <value>Adgangsnøgle fjernet.</value>
+  </data>
+  <data name="Passkeys_Gone" xml:space="preserve">
+    <value>Den adgangsnøgle var allerede væk.</value>
+  </data>
+  <data name="AdminPasskeys_Explanation" xml:space="preserve">
+    <value>Alle adgangsnøgler tilmeldt i Homespool. Tilbagekald en, hvis ejeren har mistet den enhed, den ligger på; de kan stadig logge ind med deres adgangskode og tilføje en ny.</value>
+  </data>
+  <data name="AdminPasskeys_None" xml:space="preserve">
+    <value>Der er ikke tilmeldt nogen adgangsnøgler.</value>
+  </data>
+  <data name="AdminPasskeys_Owner" xml:space="preserve">
+    <value>Konto</value>
+  </data>
+  <data name="AdminPasskeys_Revoke" xml:space="preserve">
+    <value>Tilbagekald adgangsnøgle</value>
+  </data>
+  <data name="AdminPasskeys_Revoked" xml:space="preserve">
+    <value>Adgangsnøgle tilbagekaldt.</value>
+  </data>
   <data name="Account_SignInWithProviderTitle" xml:space="preserve">
     <value>Log ind med {0}</value>
   </data>

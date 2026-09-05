@@ -33,6 +33,9 @@
                     <a id="invites" class="dropdown-item" asp-page="/Admin/Invites/Index">@Localiser["Nav_Invites"]</a>
                 </li>
                 <li>
+                    <a id="admin-passkeys" class="dropdown-item" asp-page="/Admin/Passkeys">@Localiser["Nav_AdminPasskeys"]</a>
+                </li>
+                <li>
                     <a id="certificate" class="dropdown-item" asp-page="/Admin/Certificate" title="@Localiser["Nav_CertificateTitle"]">@Localiser["Nav_Certificate"]</a>
                 </li>
                 <li>
@@ -82,6 +85,9 @@
             }
             <li>
                 <a id="two-factor" class="dropdown-item" asp-page="/Account/Manage/TwoFactorAuthentication">@Localiser["Manage_TwoFactor"]</a>
+            </li>
+            <li>
+                <a id="passkeys" class="dropdown-item" asp-page="/Account/Manage/Passkeys">@Localiser["Manage_Passkeys"]</a>
             </li>
             <li>
                 <a id="api-tokens" class="dropdown-item" asp-page="/Account/Manage/ApiTokens">@Localiser["Manage_ApiTokens"]</a>

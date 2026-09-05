@@ -5,7 +5,6 @@ using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
@@ -25,14 +24,12 @@ namespace Homespool.Host.Authentication;
 /// <para>
 /// <b>A ceremony is two requests, and this handler is both ends of it.</b> A challenge
 /// (<see cref="HandleChallengeAsync"/>) answers with the request options the browser passes to
-/// <c>navigator.credentials.get</c>, and stores what the server must remember - the challenge bytes
-/// and, for a challenge bound to an account, which account - in a data-protected cookie this handler
-/// owns. An authenticate (<see cref="HandleAuthenticateAsync"/>) reads the assertion the browser
-/// posted back, reads that cookie, verifies the one against the other, and spends the ceremony in
-/// <see cref="PasskeyCeremonyLedger"/> and deletes the cookie whatever the outcome, so a ceremony is
-/// answered once. <b>The state never reaches the client in the clear</b>:
-/// it is plaintext JSON naming the challenge and the account, and in a hidden field it would let a
-/// caller choose its own challenge and claim to be anybody.
+/// <c>navigator.credentials.get</c>, and hands what the server must remember - the challenge bytes
+/// and, for a challenge bound to an account, which account - to <see cref="PasskeyCeremonies"/>,
+/// which keeps it in a data-protected cookie and spends it once. An authenticate
+/// (<see cref="HandleAuthenticateAsync"/>) reads the assertion the browser posted back, takes that
+/// state back, and verifies the one against the other. The registration ceremony the Manage page runs
+/// goes through the same class, so the two cannot drift in what they protect or how long they last.
 /// </para>
 /// <para>
 /// <b>The verification is the framework's, driven directly.</b> <see cref="IPasskeyHandler{TUser}"/>
@@ -64,37 +61,34 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
     public const string AuthenticationMethod = "passkey";
 
     /// <summary>
+    /// The prefix on every item this scheme and <see cref="PasskeyCeremonies"/> write into
+    /// <see cref="AuthenticationProperties"/>, so they read as one family and never collide with
+    /// another handler's.
+    /// </summary>
+    public const string PasskeyPrefix = "Homespool.Passkey";
+
+    /// <summary>
     /// An <see cref="AuthenticationProperties"/> item a challenge may carry to bind the ceremony to one
     /// account: the account's id. Absent, the challenge names no account and the assertion identifies
     /// the account through the credential's user handle - a discoverable credential's sign-in.
     /// </summary>
-    public const string UserIdProperty = "Homespool.Passkey.UserId";
+    public const string UserIdProperty = $"{PasskeyPrefix}.UserId";
 
     /// <summary>
     /// The ticket property naming the credential that signed, base64url-encoded, for a caller that
     /// wants to say which passkey it was.
     /// </summary>
-    public const string CredentialIdProperty = "Homespool.Passkey.CredentialId";
-
-    // The ceremony state, opaque to this handler: the engine's own JSON, handed back to it verbatim.
-    private const string StateProperty = "Homespool.Passkey.State";
-
-    // The ledger's id for the ceremony, which is what makes it answerable once.
-    private const string CeremonyIdProperty = "Homespool.Passkey.CeremonyId";
+    public const string CredentialIdProperty = $"{PasskeyPrefix}.CredentialId";
 
     private readonly IPasskeyHandler<HSUser> _engine;
     private readonly UserManager<HSUser> _users;
     private readonly IUserClaimsPrincipalFactory<HSUser> _claimsFactory;
-    private readonly IDataProtectionProvider _dataProtection;
-    private readonly PasskeyCeremonyLedger _ledger;
-
-    private ISecureDataFormat<AuthenticationProperties>? _stateFormat;
+    private readonly PasskeyCeremonies _ceremonies;
 
     public PasskeyAuthenticationHandler(IPasskeyHandler<HSUser> engine,
                                         UserManager<HSUser> users,
                                         IUserClaimsPrincipalFactory<HSUser> claimsFactory,
-                                        IDataProtectionProvider dataProtection,
-                                        PasskeyCeremonyLedger ledger,
+                                        PasskeyCeremonies ceremonies,
                                         IOptionsMonitor<PasskeyAuthenticationOptions> options,
                                         ILoggerFactory loggerFactory,
                                         UrlEncoder encoder)
@@ -103,22 +97,12 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
         _engine = engine;
         _users = users;
         _claimsFactory = claimsFactory;
-        _dataProtection = dataProtection;
-        _ledger = ledger;
+        _ceremonies = ceremonies;
     }
-
-    /// <summary>
-    /// The ceremony state's protector, keyed to this handler and this scheme so that nothing else in
-    /// the deployment can mint a ceremony cookie - the same purposes shape the framework's remote
-    /// handlers use for their correlation state.
-    /// </summary>
-    private ISecureDataFormat<AuthenticationProperties> StateFormat =>
-        _stateFormat ??= new PropertiesDataFormat(
-            _dataProtection.CreateProtector(typeof(PasskeyAuthenticationHandler).FullName!, Scheme.Name, "Ceremony"));
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Answers 200 with the request options as JSON and sets the ceremony cookie. Not a redirect and
+    /// Answers 200 with the request options as JSON and starts the ceremony. Not a redirect and
     /// not a 401: the caller is a script on a page of ours, asking for a challenge, and there is
     /// nowhere to send it. 404 when passkeys are withheld here - no relying-party id, or a host it does
     /// not cover - because the browser would refuse the ceremony anyway and a refusal now says why.
@@ -156,19 +140,7 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
 
         PasskeyRequestOptionsResult requestOptions = await _engine.MakeRequestOptionsAsync(user, Context);
 
-        DateTimeOffset now = TimeProvider.GetUtcNow();
-        AuthenticationProperties state = new()
-        {
-            IssuedUtc = now,
-            ExpiresUtc = now.Add(Options.CeremonyLifetime),
-        };
-        state.Items[StateProperty] = requestOptions.AssertionState;
-        state.Items[CeremonyIdProperty] = _ledger.Begin(now, state.ExpiresUtc.Value);
-
-        CookieOptions cookie = CeremonyCookieOptions();
-        cookie.Expires = state.ExpiresUtc;
-
-        Response.Cookies.Append(Options.CeremonyCookie.Name!, StateFormat.Protect(state), cookie);
+        _ceremonies.Begin(Context, PasskeyCeremonies.Assertion, requestOptions.AssertionState!);
 
         Response.StatusCode = StatusCodes.Status200OK;
         Response.ContentType = "application/json; charset=utf-8";
@@ -199,50 +171,20 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
             return AuthenticateResult.Fail("Passkeys are not available on this host.");
         }
 
-        string? protectedState = Request.Cookies[Options.CeremonyCookie.Name!];
+        PasskeyCeremonies.Outcome ceremony = _ceremonies.Take(Context, PasskeyCeremonies.Assertion);
 
-        if (string.IsNullOrEmpty(protectedState))
+        if (!ceremony.Succeeded)
         {
-            Logger.LogInformation("Passkey assertion refused: no ceremony is underway.");
+            Logger.LogInformation("Passkey assertion refused: {Reason}.", ceremony.Reason);
 
-            return AuthenticateResult.Fail("No passkey ceremony is underway.");
-        }
-
-        // Spent the moment it is read, on every path below. A ceremony is answered once: a second
-        // answer to the same challenge is a replay, whatever it carries.
-        Response.Cookies.Delete(Options.CeremonyCookie.Name!, CeremonyCookieOptions());
-
-        AuthenticationProperties? state = StateFormat.Unprotect(protectedState);
-
-        if (state is null || !state.Items.TryGetValue(StateProperty, out string? assertionState) || assertionState is null)
-        {
-            Logger.LogWarning("Passkey assertion refused: the ceremony cookie could not be read.");
-
-            return AuthenticateResult.Fail("The passkey ceremony could not be read.");
-        }
-
-        if (state.ExpiresUtc is null || state.ExpiresUtc <= TimeProvider.GetUtcNow())
-        {
-            Logger.LogInformation("Passkey assertion refused: the ceremony expired at {ExpiresUtc}.", state.ExpiresUtc);
-
-            return AuthenticateResult.Fail("The passkey ceremony has expired.");
-        }
-
-        // Spent server-side as well as in the browser: a copy of this request taken before the cookie
-        // was deleted is otherwise a complete answer that still verifies, since most authenticators
-        // never advance the sign count that would otherwise notice a repeat.
-        if (!state.Items.TryGetValue(CeremonyIdProperty, out string? ceremonyId) || ceremonyId is null || !_ledger.TrySpend(ceremonyId))
-        {
-            Logger.LogWarning("Passkey assertion refused: the ceremony was already answered, or was not issued by this server.");
-
-            return AuthenticateResult.Fail("The passkey ceremony was already answered.");
+            return AuthenticateResult.Fail($"The passkey ceremony could not be completed: {ceremony.Reason}.");
         }
 
         PasskeyAssertionResult<HSUser> result = await _engine.PerformAssertionAsync(new PasskeyAssertionContext
         {
             HttpContext = Context,
             CredentialJson = credential,
-            AssertionState = assertionState,
+            AssertionState = ceremony.EngineState,
         });
 
         if (!result.Succeeded)
@@ -305,22 +247,6 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
         string? credential = values.Count == 1 ? values[0] : null;
 
         return string.IsNullOrWhiteSpace(credential) ? null : credential;
-    }
-
-    /// <summary>
-    /// The cookie options, built the same way for writing and for deleting, since a delete that
-    /// names a different path leaves the cookie standing.
-    /// </summary>
-    private CookieOptions CeremonyCookieOptions()
-    {
-        CookieOptions options = Options.CeremonyCookie.Build(Context);
-
-        // The challenge and the assertion are both same-origin requests from one page, so the cookie
-        // never needs to travel further than that page. Build() has already defaulted the path to the
-        // site root, which is why the page's path is put back explicitly rather than filled in.
-        options.Path = Options.CeremonyCookie.Path ?? Request.PathBase.Add(Request.Path).Value ?? "/";
-
-        return options;
     }
 
     /// <inheritdoc/>

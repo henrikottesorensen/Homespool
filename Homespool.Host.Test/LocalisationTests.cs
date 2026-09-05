@@ -440,6 +440,11 @@ public sealed class LocalisationTests
             // what is being removed is never in question at the point of pressing.
             "Remove",
 
+            // Files_Rename renames a file; Passkeys_Rename renames a passkey, in the row of the thing
+            // it names, beside its own Remove. The same species as "Remove" directly above: one verb
+            // doing one job in two places, and "Omdøb" in Danish for both.
+            "Rename",
+
             // The two authenticator-code gates - printer removal and disabling two-factor - refuse a
             // wrong code and announce a backoff in the same words today. Separate keys because the
             // pages may want to diverge (the disable page could reasonably say what is being

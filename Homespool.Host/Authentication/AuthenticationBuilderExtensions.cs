@@ -42,8 +42,11 @@ public static class AuthenticationBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        // One per process: the ceremonies this server has issued and not yet seen answered.
+        // One per process: the ceremonies this server has issued and not yet seen answered, and the
+        // cookie that carries each one between its two requests. Both ceremonies - the sign-in the
+        // scheme runs and the registration the Manage page runs - go through the same pair.
         builder.Services.AddSingleton<PasskeyCeremonyLedger>();
+        builder.Services.AddSingleton<PasskeyCeremonies>();
 
         builder.Services.AddOptions<PasskeyAuthenticationOptions>(Schemes.Passkey)
                .Configure<IOptions<Middleware.SecurityOptions>>((options, security) =>

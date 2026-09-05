@@ -161,10 +161,10 @@ public class PasskeysModel : PageModel
         {
             // Written as escapes on purpose: these are invisible characters, and a source file holding
             // them literally is unreadable in a diff and carries the very hazard this rejects.
-            if (char.IsControl(character)
-                || character is '\u200B' or '\u200C' or '\u200D' or '\uFEFF'
-                || character is >= '\u202A' and <= '\u202E'
-                || character is >= '\u2066' and <= '\u2069')
+            if (char.IsControl(character) ||
+                character is '\u200B' or '\u200C' or '\u200D' or '\uFEFF' ||
+                character is >= '\u202A' and <= '\u202E' || 
+                character is >= '\u2066' and <= '\u2069')
             {
                 return false;
             }
@@ -210,6 +210,19 @@ public class PasskeysModel : PageModel
             if (!proof.Succeeded)
             {
                 _logger.LogInformation("Passkey registration refused for user {UserId}: {Reason}.", user.Id, proof.Reason);
+
+                return Refusal(StatusCodes.Status401Unauthorized, _localiser["Passkeys_ProviderNotConfirmed"]);
+            }
+
+            // The proof names the subject the provider vouched for, and it must be one THIS account
+            // signs in with. The cookie is bound to the browser, not to the account: a proof earned
+            // for one account and then presented with another account's session cookie is not that
+            // account's proof.
+            IList<UserLoginInfo> logins = await _users.GetLoginsAsync(user);
+
+            if (logins.All(login => !string.Equals(login.ProviderKey, proof.EngineState, StringComparison.Ordinal)))
+            {
+                _logger.LogWarning("Passkey registration refused for user {UserId}: the provider proof was for another account.", user.Id);
 
                 return Refusal(StatusCodes.Status401Unauthorized, _localiser["Passkeys_ProviderNotConfirmed"]);
             }

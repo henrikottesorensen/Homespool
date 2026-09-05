@@ -32,7 +32,7 @@ internal static class IdentityTestHarness
     /// backing them so the test can set <c>HttpContext.User</c> before calling into the model.
     /// </summary>
     public static (UserManager<HSUser> users, SignInManager<HSUser> signIn, DefaultHttpContext httpContext, IServiceProvider
-        provider) BuildIdentityServices(HomespoolDbContext context)
+        provider) BuildIdentityServices(HomespoolDbContext context, Action<IServiceCollection>? configure = null)
     {
         DefaultHttpContext httpContext = new();
 
@@ -57,7 +57,8 @@ internal static class IdentityTestHarness
                     options.DefaultChallengeScheme = IdentityConstants.ApplicationScheme;
                     options.DefaultSignInScheme = IdentityConstants.ExternalScheme;
                 })
-                .AddIdentityCookieSchemes();
+                .AddIdentityCookieSchemes()
+                .AddPasskeyAuthentication();
 
         // The options come from the application's own configuration rather than being restated here,
         // so a test cannot create an account the real thing would refuse - see IdentityConfiguration.
@@ -66,6 +67,12 @@ internal static class IdentityTestHarness
         services.AddHomespoolIdentity(IdentityConfiguration.Configure)
                 .AddHomespoolStores()
                 .AddHomespoolTokenProviders();
+
+        services.Configure<IdentityPasskeyOptions>(IdentityConfiguration.ConfigurePasskeys);
+
+        // A test that needs a deployment choice - a relying-party id, say - makes it here, after the
+        // application's registrations and before the container is built, the way Program would.
+        configure?.Invoke(services);
 
         ServiceProvider provider = services.BuildServiceProvider();
         httpContext.RequestServices = provider;

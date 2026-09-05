@@ -2331,6 +2331,9 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Settings_Label_Security_RequireTwoFactor" xml:space="preserve">
     <value>Påkræv at alle kontoer logger ind med en tofaktorapp</value>
   </data>
+  <data name="Settings_Label_Security_PasskeyServerDomain" xml:space="preserve">
+    <value>Værtsnavn som adgangsnøgler er bundet til (tomt slår adgangsnøgler fra)</value>
+  </data>
   <data name="Settings_Label_AttemptLimits_MaxFailedAttempts" xml:space="preserve">
     <value>Antal tilladte mislykkede loginforsøg før kontoen låses</value>
   </data>

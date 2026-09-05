@@ -49,4 +49,40 @@ public static class IdentityConfiguration
         // arbitrarily.
         options.User.RequireUniqueEmail = true;
     }
+
+    /// <summary>
+    /// The passkey engine's fixed policy: what a credential must prove, and what this deployment does
+    /// not ask of it. The two deployment-bound values, the relying-party id and the ceremony length,
+    /// come from the scheme's own options instead - see
+    /// <c>AuthenticationBuilderExtensions.AddPasskeyAuthentication</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>User verification is required, and pinned rather than inherited.</b> It is already the
+    /// framework's default, but it is the control that matters: with attestation unverified, Face ID,
+    /// Touch ID or a device passcode is the one thing standing between a synced credential and
+    /// whoever else can reach the account it is synced through. A default is not a promise.
+    /// </para>
+    /// <para>
+    /// <b>Attestation is not verified, by decision.</b> What it would buy is knowing which make of
+    /// authenticator holds the key - a policy over people's own hardware, not a defence against an
+    /// attacker. Everything that makes a passkey worth having is checked without it, and synced
+    /// credentials are wanted here, which is precisely what an attestation policy would refuse. So the
+    /// browser is told not to bother collecting one, and <c>VerifyAttestationStatement</c> stays unset.
+    /// </para>
+    /// <para>
+    /// <b>A resident key is required</b> because sign-in starts from the passkey: the challenge names
+    /// no account, the browser offers whatever it holds for the relying-party id, and the assertion's
+    /// user handle says whose it was. A credential the authenticator cannot find on its own cannot do
+    /// that.
+    /// </para>
+    /// </remarks>
+    public static void ConfigurePasskeys(IdentityPasskeyOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        options.UserVerificationRequirement = "required";
+        options.ResidentKeyRequirement = "required";
+        options.AttestationConveyancePreference = "none";
+    }
 }

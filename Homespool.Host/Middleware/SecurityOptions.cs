@@ -33,4 +33,29 @@ public class SecurityOptions
     /// </para>
     /// </remarks>
     public bool RequireTwoFactor { get; set; }
+
+    /// <summary>
+    /// The hostname passkeys are bound to - the WebAuthn relying-party id. <b>Empty by default, which
+    /// withholds passkeys</b>: there is no honest guess for a deployment that has not named itself.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>It must be the name in the browser's address bar, or a parent of it.</b> A credential is
+    /// minted against this value and answers only from a page served under it, so a household reaching
+    /// the box by one name at home and another from outside gets passkeys on one of them. An IP
+    /// address can never be a relying-party id, <c>localhost</c> is its own, and a name no public
+    /// certificate authority issues for works only where the browser already trusts the certificate.
+    /// </para>
+    /// <para>
+    /// <b>Changing it strands every passkey already enrolled</b>, which is why it is restart-graded
+    /// and why the settings page asks before moving off a value in use. Nothing is deleted: putting
+    /// the old name back brings the old credentials back with it.
+    /// </para>
+    /// <para>
+    /// <b>What it is not: a rule about which hosts serve the application.</b> That is
+    /// <c>AllowedHosts</c>. This names one of them as the one a passkey belongs to; a request on any
+    /// other is served as before, with the passkey affordance withheld.
+    /// </para>
+    /// </remarks>
+    public string? PasskeyServerDomain { get; set; }
 }

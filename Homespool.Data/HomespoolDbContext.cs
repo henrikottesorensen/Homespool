@@ -147,6 +147,40 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             entity.Ignore(e => e.PhoneNumberConfirmed);
         });
 
+        builder.Entity<IdentityUserPasskey<long>>(entity =>
+        {
+            // The framework maps this entity only when IdentityOptions.Stores.SchemaVersion says so,
+            // and it reads that option from the APPLICATION'S service provider while the model is
+            // being built - so a context constructed without one, which is every unit test and the
+            // design-time tool, would come out without the table and nothing would say so. Mapped
+            // here explicitly instead, as the framework's own block would have mapped it, so the
+            // model is the same however the context was constructed. The base class's Ignore of the
+            // type is undone by naming it again.
+            entity.ToTable("AspNetUserPasskeys");
+            entity.HasKey(e => e.CredentialId);
+
+            // WebAuthn bounds a credential id at 1023 bytes; the framework's own limit.
+            entity.Property(e => e.CredentialId)
+                  .HasMaxLength(1024);
+
+            // One JSON column for everything about the credential: public key, sign count, name, the
+            // backup flags, and the raw attestation object and client data from enrolment. Nothing
+            // inside it is queryable, and at one-to-tens-of-users nothing needs to be - the two
+            // screens that list passkeys read them in memory. A WHERE on any of it is a schema change.
+            entity.OwnsOne(e => e.Data, data => data.ToJson());
+
+            // A deleted account takes its passkeys with it, as it takes its API tokens: a credential
+            // pointing at a user id that no longer resolves guards nothing. The index serves the one
+            // read there is, "this account's passkeys".
+            entity.HasOne<HSUser>()
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .IsRequired()
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.UserId);
+        });
+
         builder.Entity<Printer>(entity =>
         {
             // The public identifier used in URLs, so it is looked up on every such request and

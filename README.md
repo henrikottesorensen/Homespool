@@ -129,7 +129,7 @@ Configuration lives in two places, deliberately:
 |---|---|
 | `USER_HOSTS` | The names people browse to, semicolon-separated. Both nginx and the app refuse any other `Host`, and every name goes into the self-signed browser certificate. |
 | `PRINTER_HOST` | The address printers use to reach this machine — its own LAN name or address, not a proxy's. Required before **Add printer** will produce a provisioning snippet. |
-| `PORT` / `HTTPS_PORT` | Where the proxy publishes HTTP and HTTPS for people. HTTP redirects to HTTPS. |
+| `PORT` / `HTTPS_PORT` | Where the proxy publishes HTTP and HTTPS for people. HTTP redirects to HTTPS. IPv4 only, as is every port the stack publishes; `compose.yaml` says why. |
 | `PRINTER_PORT` | The TLS port printers connect to (default 15443). Written into every provisioning bundle, typed by no one. |
 | `TRANSFER_PORT` | Port for file downloads on the pre-WebSocket transport. Plain HTTP by design — the file body is already encrypted, but its integrity isn't verified, so don't expose this port beyond your LAN. |
 | `TZ` | The IANA timezone timestamps are rendered in. Containers default to UTC, which is rarely right for a machine in a house. |

@@ -1,5 +1,3 @@
-using System;
-using System.IO;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -29,14 +27,14 @@ namespace Homespool.Host.E2ETest;
 /// binding included.
 /// </para>
 /// </remarks>
-public sealed class PasswordHasherOptionsGuardTests : IAsyncLifetime, IDisposable
+public sealed class PasswordHasherOptionsGuardTests : IAsyncLifetime
 {
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-hashopt-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("hashopt");
     private HomespoolFactory _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}");
+        _factory = new HomespoolFactory(_scratch);
         _ = _factory.Server;
 
         return ValueTask.CompletedTask;
@@ -45,17 +43,8 @@ public sealed class PasswordHasherOptionsGuardTests : IAsyncLifetime, IDisposabl
     public async ValueTask DisposeAsync()
     {
         await _factory.DisposeAsync();
-    }
 
-    public void Dispose()
-    {
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
+        _scratch.Dispose();
     }
 
     [Fact]

@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -38,17 +36,17 @@ namespace Homespool.Host.E2ETest;
 /// already live, and the unit test for the scheme check is in <c>Homespool.Host.Test</c>.
 /// </para>
 /// </remarks>
-public sealed class RequiredTwoFactorTests : IAsyncLifetime, IDisposable
+public sealed class RequiredTwoFactorTests : IAsyncLifetime
 {
     private const string Password = "Correct-Horse-Battery-Staple-1!"; // betterleaks:allow
     private const string Address = "no-authenticator@example.com";
 
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-require2fa-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("require2fa");
     private HomespoolFactory _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}");
+        _factory = new HomespoolFactory(_scratch);
         _factory.ConfigurationOverrides["Security:RequireTwoFactor"] = "true";
 
         _ = _factory.Server;
@@ -141,7 +139,7 @@ public sealed class RequiredTwoFactorTests : IAsyncLifetime, IDisposable
     {
         string token = await MintTokenAsync();
 
-        using HomespoolFactory permissive = new($"Data Source={_databasePath}");
+        using HomespoolFactory permissive = new(_scratch);
 
         using IServiceScope scope = permissive.Services.CreateScope();
         scope.ServiceProvider.GetRequiredService<SetupState>().MarkComplete();
@@ -216,26 +214,10 @@ public sealed class RequiredTwoFactorTests : IAsyncLifetime, IDisposable
         return user;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
-        _factory.Dispose();
-
-        try
-        {
-            if (File.Exists(_databasePath))
-            {
-                File.Delete(_databasePath);
-            }
-        }
-        catch (IOException)
-        {
-        }
+        _scratch.Dispose();
     }
 }

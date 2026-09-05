@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -34,14 +33,14 @@ namespace Homespool.Host.E2ETest;
 // configuration can silently clobber another's mid-startup. [Collection] groups every such class
 // under one name so xUnit runs them sequentially against each other rather than in parallel; other
 // collections are unaffected.
-public sealed class EndToEndEnrolmentTests : IAsyncLifetime, IDisposable
+public sealed class EndToEndEnrolmentTests : IAsyncLifetime
 {
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-e2e-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("e2e");
     private HomespoolFactory _factory = null!;
 
     public async ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}");
+        _factory = new HomespoolFactory(_scratch);
 
         // Force the host to actually start (migrations + AdminBootstrap run at that point) before any
         // test touches it, rather than lazily on the first HttpClient call.
@@ -55,28 +54,16 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime, IDisposable
         scope.ServiceProvider.GetRequiredService<SetupState>().MarkComplete();
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
+        _scratch.Dispose();
     }
 
     // CA1001 wants IDisposable on a type owning a disposable field even though xUnit's IAsyncLifetime
     // already drives cleanup via DisposeAsync above; WebApplicationFactory.Dispose is idempotent, so
     // this is a safe, redundant satisfier rather than a second real teardown path.
-    public void Dispose()
-    {
-        _factory.Dispose();
-
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
 
     /// <summary>
     /// The whole loop, in order: a printer registers itself and receives a code; before anyone
@@ -214,9 +201,9 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime, IDisposable
     {
         // Arrange - a second, not-yet-set-up instance; the shared _factory already completed setup
         // in InitializeAsync, so this one deliberately doesn't call MarkComplete.
-        string databasePath = Path.Combine(Path.GetTempPath(), $"ps-e2e-presetup-{Guid.NewGuid():N}.db");
+        ScratchDirectory scratch = ScratchDirectory.Create("e2e-presetup");
 
-        await using HomespoolFactory presetupFactory = new($"Data Source={databasePath}");
+        await using HomespoolFactory presetupFactory = new(scratch);
         using HttpClient client =
             presetupFactory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
@@ -231,13 +218,7 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime, IDisposable
         }
         finally
         {
-            foreach (string path in new[] { databasePath, databasePath + "-wal", databasePath + "-shm" })
-            {
-                if (File.Exists(path))
-                {
-                    File.Delete(path);
-                }
-            }
+        scratch.Dispose();
         }
     }
 }

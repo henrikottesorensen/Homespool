@@ -1,5 +1,3 @@
-using System;
-using System.IO;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 
@@ -51,9 +49,9 @@ public sealed class SharedPrinterCertificateTests
     public async Task ASecondHostIsHandedTheAuthorityInsteadOfMintingOne()
     {
         // Arrange - the donor, which may or may not be the run's first host and may therefore mint.
-        string donorDatabase = Path.Combine(Path.GetTempPath(), $"hs-shared-donor-{Guid.NewGuid():N}.db");
-        string heirDatabase = Path.Combine(Path.GetTempPath(), $"hs-shared-heir-{Guid.NewGuid():N}.db");
-        string siblingDatabase = Path.Combine(Path.GetTempPath(), $"hs-shared-sibling-{Guid.NewGuid():N}.db");
+        ScratchDirectory donorScratch = ScratchDirectory.Create("shared-donor");
+        ScratchDirectory heirScratch = ScratchDirectory.Create("shared-heir");
+        ScratchDirectory siblingScratch = ScratchDirectory.Create("shared-sibling");
 
         try
         {
@@ -61,7 +59,7 @@ public sealed class SharedPrinterCertificateTests
             // Deliberately not asserted against: whether *this* one is the donor is a race the suite
             // runs in parallel, and another class may have captured the template first - in which case
             // this host holds an authority nobody inherits, which is correct and uninteresting.
-            await using (HomespoolFactory first = new($"Data Source={donorDatabase}"))
+            await using (HomespoolFactory first = new(donorScratch))
             {
                 _ = first.Server;
             }
@@ -70,8 +68,8 @@ public sealed class SharedPrinterCertificateTests
             // after the first capture, so these two must agree with each other however the race went.
             CapturingSink logs = new();
 
-            await using HomespoolFactory heir = new($"Data Source={heirDatabase}", extraSinks: [logs]);
-            await using HomespoolFactory sibling = new($"Data Source={siblingDatabase}");
+            await using HomespoolFactory heir = new(heirScratch, extraSinks: [logs]);
+            await using HomespoolFactory sibling = new(siblingScratch);
 
             _ = heir.Server;
             _ = sibling.Server;
@@ -93,15 +91,9 @@ public sealed class SharedPrinterCertificateTests
         }
         finally
         {
-            foreach (string database in new[] { donorDatabase, heirDatabase, siblingDatabase })
+            foreach (ScratchDirectory scratch in new[] { donorScratch, heirScratch, siblingScratch })
             {
-                foreach (string path in new[] { database, database + "-wal", database + "-shm" })
-                {
-                    if (File.Exists(path))
-                    {
-                        File.Delete(path);
-                    }
-                }
+                scratch.Dispose();
             }
         }
     }

@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
@@ -45,7 +43,7 @@ namespace Homespool.Host.E2ETest;
 /// <c>SecurityStampValidator</c> revalidates on an interval rather than per request.
 /// </para>
 /// </remarks>
-public sealed class ExternalAccountPasswordTests : IAsyncLifetime, IDisposable
+public sealed class ExternalAccountPasswordTests : IAsyncLifetime
 {
     /// <summary>
     /// The fixture password, spelled the same way <see cref="LoginFlowTests"/> and
@@ -61,13 +59,13 @@ public sealed class ExternalAccountPasswordTests : IAsyncLifetime, IDisposable
     private const string Password = "Correct-Horse-Battery-Staple-1!"; // betterleaks:allow
     private const string Address = "provider-user@example.com";
 
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-extpwd-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("extpwd");
     private readonly CapturingSink _logs = new();
     private HomespoolFactory _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}", extraSinks: [_logs]);
+        _factory = new HomespoolFactory(_scratch, extraSinks: [_logs]);
 
         _ = _factory.Server;
 
@@ -270,26 +268,10 @@ public sealed class ExternalAccountPasswordTests : IAsyncLifetime, IDisposable
         return await userManager.HasPasswordAsync((await userManager.FindByEmailAsync(Address))!);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
-        _factory.Dispose();
-
-        try
-        {
-            if (File.Exists(_databasePath))
-            {
-                File.Delete(_databasePath);
-            }
-        }
-        catch (IOException)
-        {
-        }
+        _scratch.Dispose();
     }
 }

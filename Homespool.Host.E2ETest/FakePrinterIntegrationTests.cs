@@ -45,9 +45,9 @@ namespace Homespool.Host.E2ETest;
 /// JSON from firmware source, not our DTOs), so every green assertion here is a genuine
 /// cross-check of two independent readings of the protocol.
 /// </remarks>
-public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
+public sealed class FakePrinterIntegrationTests : IAsyncLifetime
 {
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-e2e-fake-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("e2e-fake");
     private readonly CapturingSink _logs = new();
     private readonly List<string> _offerDirectories = [];
     private HomespoolFactory _root = null!;
@@ -55,7 +55,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
 
     public ValueTask InitializeAsync()
     {
-        _root = new HomespoolFactory($"Data Source={_databasePath}", null, _logs);
+        _root = new HomespoolFactory(_scratch, null, _logs);
         _factory = _root.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
                                                                                          services
                                                                                              .PostConfigure<
@@ -72,26 +72,11 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
-        _factory.Dispose();
         _root.Dispose();
-
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-
         foreach (string directory in _offerDirectories)
         {
             if (Directory.Exists(directory))
@@ -99,6 +84,8 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime, IDisposable
                 Directory.Delete(directory, recursive: true);
             }
         }
+
+        _scratch.Dispose();
     }
 
     /// <summary>

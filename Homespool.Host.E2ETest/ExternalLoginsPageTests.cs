@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
@@ -37,7 +35,7 @@ namespace Homespool.Host.E2ETest;
 /// has no part in.
 /// </para>
 /// </remarks>
-public sealed class ExternalLoginsPageTests : IAsyncLifetime, IDisposable
+public sealed class ExternalLoginsPageTests : IAsyncLifetime
 {
     /// <summary>Spelled as the sibling suites spell it; see <c>ExternalAccountPasswordTests</c>.</summary>
     private const string Password = "Correct-Horse-Battery-Staple-1!"; // betterleaks:allow
@@ -46,12 +44,12 @@ public sealed class ExternalLoginsPageTests : IAsyncLifetime, IDisposable
     private const string Address = "linked@example.com";
     private const string Provider = "oidc";
 
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-extlogins-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("extlogins");
     private HomespoolFactory _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}");
+        _factory = new HomespoolFactory(_scratch);
 
         _ = _factory.Server;
 
@@ -235,26 +233,10 @@ public sealed class ExternalLoginsPageTests : IAsyncLifetime, IDisposable
         return (await userManager.GetLoginsAsync((await userManager.FindByEmailAsync(Address))!)).Count;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
-        _factory.Dispose();
-
-        try
-        {
-            if (File.Exists(_databasePath))
-            {
-                File.Delete(_databasePath);
-            }
-        }
-        catch (IOException)
-        {
-        }
+        _scratch.Dispose();
     }
 }

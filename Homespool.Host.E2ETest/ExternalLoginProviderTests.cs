@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -27,14 +25,14 @@ namespace Homespool.Host.E2ETest;
 /// and what it used to get was a 500 from <c>ChallengeResult</c> on an unregistered scheme.
 /// </para>
 /// </remarks>
-public sealed class ExternalLoginProviderTests : IAsyncLifetime, IDisposable
+public sealed class ExternalLoginProviderTests : IAsyncLifetime
 {
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-extlogin-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("extlogin");
     private HomespoolFactory _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}");
+        _factory = new HomespoolFactory(_scratch);
 
         _ = _factory.Server;
 
@@ -76,7 +74,8 @@ public sealed class ExternalLoginProviderTests : IAsyncLifetime, IDisposable
         withoutProvider.Should().NotContain("external-login-section",
                                             "this factory registers no provider, so there is nothing to offer");
 
-        using HomespoolFactory configured = new($"Data Source={_databasePath}-oidc");
+        using ScratchDirectory oidcScratch = ScratchDirectory.Create("extlogin-oidc");
+        using HomespoolFactory configured = new(oidcScratch);
 
         configured.ConfigurationOverrides["Oidc:Authority"] = "https://example.invalid/idp";
         configured.ConfigurationOverrides["Oidc:ClientId"] = "homespool";
@@ -138,23 +137,10 @@ public sealed class ExternalLoginProviderTests : IAsyncLifetime, IDisposable
                                  "GetExternalAuthenticationSchemesAsync is empty, so there is nothing to offer");
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
-        _factory.Dispose();
-
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
+        _scratch.Dispose();
     }
 }

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -32,14 +31,14 @@ namespace Homespool.Host.E2ETest;
 /// exactly the asymmetry that let a control strip vanish on refresh once.
 /// </para>
 /// </remarks>
-public sealed class FrontPageTests : IAsyncLifetime, IDisposable
+public sealed class FrontPageTests : IAsyncLifetime
 {
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-frontpage-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("frontpage");
     private HomespoolFactory _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}");
+        _factory = new HomespoolFactory(_scratch);
 
         _ = _factory.Server;
 
@@ -49,26 +48,13 @@ public sealed class FrontPageTests : IAsyncLifetime, IDisposable
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
         _factory?.Dispose();
 
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-
-        GC.SuppressFinalize(this);
+        _scratch.Dispose();
     }
 
     /// <summary>

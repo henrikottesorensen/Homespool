@@ -54,15 +54,15 @@ namespace Homespool.Host.E2ETest;
 /// loop itself reads.
 /// </para>
 /// </remarks>
-public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
+public sealed class QueueLoopTests : IAsyncLifetime
 {
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-queueloop-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("queueloop");
     private HomespoolFactory _root = null!;
     private WebApplicationFactory<PrinterAppController> _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _root = new HomespoolFactory($"Data Source={_databasePath}");
+        _root = new HomespoolFactory(_scratch);
         _factory = _root.WithWebHostBuilder(_ => { });
 
         _ = _factory.Server;
@@ -73,25 +73,13 @@ public sealed class QueueLoopTests : IAsyncLifetime, IDisposable
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
-        _factory.Dispose();
         _root.Dispose();
 
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
+        _scratch.Dispose();
     }
 
     /// <summary>

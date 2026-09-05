@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
@@ -25,11 +24,11 @@ namespace Homespool.Host.E2ETest;
 /// (contrast <c>RegisterModelTests</c> in <c>Homespool.Host.Test</c>, which calls
 /// <c>RegisterModel.OnPostAsync</c> directly).
 /// </summary>
-public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
+public sealed class LoginFlowTests : IAsyncLifetime
 {
     private const string Password = "Correct-Horse-Battery-Staple-1!";
 
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-login-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("login");
     private HomespoolFactory _factory = null!;
 
     /// <summary>
@@ -48,7 +47,7 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}");
+        _factory = new HomespoolFactory(_scratch);
         _ = _factory.Server;
 
         // This suite isn't testing the setup gate - open it so /Account/Login is reachable, matching
@@ -59,28 +58,16 @@ public sealed class LoginFlowTests : IAsyncLifetime, IDisposable
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
+        _scratch.Dispose();
     }
 
     // CA1001 wants IDisposable on a type owning a disposable field even though xUnit's IAsyncLifetime
     // already drives cleanup via DisposeAsync above; WebApplicationFactory.Dispose is idempotent, so
     // this is a safe, redundant satisfier rather than a second real teardown path.
-    public void Dispose()
-    {
-        _factory.Dispose();
-
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
 
     /// <summary>
     /// Seeds an account directly via <see cref="UserManager{TUser}"/>, bypassing Register's own

@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -47,18 +45,18 @@ namespace Homespool.Host.E2ETest;
 /// to its wording on purpose for want of anything else that separates them.
 /// </para>
 /// </remarks>
-public sealed class OrphanedAccountReactivationTests : IAsyncLifetime, IDisposable
+public sealed class OrphanedAccountReactivationTests : IAsyncLifetime
 {
     private const string Password = "Correct-Horse-Battery-Staple-1!"; // betterleaks:allow
     private const string Address = "orphan@example.com";
     private const string Provider = "oidc";
 
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-reactivate-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("reactivate");
     private HomespoolFactory _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}");
+        _factory = new HomespoolFactory(_scratch);
 
         _ = _factory.Server;
 
@@ -258,26 +256,10 @@ public sealed class OrphanedAccountReactivationTests : IAsyncLifetime, IDisposab
             TestContext.Current.CancellationToken);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
-        _factory.Dispose();
-
-        try
-        {
-            if (File.Exists(_databasePath))
-            {
-                File.Delete(_databasePath);
-            }
-        }
-        catch (IOException)
-        {
-        }
+        _scratch.Dispose();
     }
 }

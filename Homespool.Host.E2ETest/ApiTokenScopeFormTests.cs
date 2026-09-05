@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -26,15 +25,15 @@ namespace Homespool.Host.E2ETest;
 /// of those leaves the page-model tests green - a mistake made twice here already, by audits that
 /// could not see what they were looking for.
 /// </remarks>
-public sealed class ApiTokenScopeFormTests : IAsyncLifetime, IDisposable
+public sealed class ApiTokenScopeFormTests : IAsyncLifetime
 {
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-scopeform-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("scopeform");
 
     private HomespoolFactory _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}");
+        _factory = new HomespoolFactory(_scratch);
 
         _ = _factory.Server;
 
@@ -46,22 +45,11 @@ public sealed class ApiTokenScopeFormTests : IAsyncLifetime, IDisposable
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        _factory.Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
+        _scratch.Dispose();
     }
 
     /// <summary>

@@ -35,16 +35,16 @@ namespace Homespool.Host.E2ETest;
 /// offer, a key, a GET.
 /// </para>
 /// </remarks>
-public sealed class EncryptedTransferEndpointTests : IAsyncLifetime, IDisposable
+public sealed class EncryptedTransferEndpointTests : IAsyncLifetime
 {
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-e2e-enc-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("e2e-enc");
     private readonly CapturingSink _logs = new();
     private HomespoolFactory _factory = null!;
     private string? _offerDirectory;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}", null, _logs);
+        _factory = new HomespoolFactory(_scratch, null, _logs);
         _ = _factory.Server;
 
         using IServiceScope scope = _factory.Services.CreateScope();
@@ -53,29 +53,17 @@ public sealed class EncryptedTransferEndpointTests : IAsyncLifetime, IDisposable
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
         _factory?.Dispose();
-
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-
         if (_offerDirectory is not null && Directory.Exists(_offerDirectory))
         {
             Directory.Delete(_offerDirectory, recursive: true);
         }
+
+        _scratch.Dispose();
     }
 
     /// <summary>

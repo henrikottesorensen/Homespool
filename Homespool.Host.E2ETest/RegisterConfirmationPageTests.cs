@@ -1,5 +1,3 @@
-using System;
-using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text.RegularExpressions;
@@ -24,16 +22,16 @@ namespace Homespool.Host.E2ETest;
 /// account-existence oracle, defeating the enumeration defences on the login and forgot-password
 /// flows.
 /// </summary>
-public sealed class RegisterConfirmationPageTests : IAsyncLifetime, IDisposable
+public sealed class RegisterConfirmationPageTests : IAsyncLifetime
 {
     private const string Password = "Correct-Horse-Battery-Staple-1!";
 
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-regconf-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("regconf");
     private HomespoolFactory _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}");
+        _factory = new HomespoolFactory(_scratch);
         _ = _factory.Server;
 
         // This suite isn't testing the setup gate - open it so the Account pages are reachable.
@@ -43,28 +41,16 @@ public sealed class RegisterConfirmationPageTests : IAsyncLifetime, IDisposable
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
+        _scratch.Dispose();
     }
 
     // CA1001 wants IDisposable on a type owning a disposable field even though xUnit's IAsyncLifetime
     // already drives cleanup via DisposeAsync above; WebApplicationFactory.Dispose is idempotent, so
     // this is a safe, redundant satisfier rather than a second real teardown path.
-    public void Dispose()
-    {
-        _factory.Dispose();
-
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
 
     /// <summary>
     /// Seeds an account directly via <see cref="UserManager{TUser}"/>; this suite verifies the

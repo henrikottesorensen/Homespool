@@ -205,7 +205,8 @@ public sealed class ProvisioningBundleUnreachableNameTests : IDisposable
         return new(Options.Create(new CertificateOptions { Directory = "certs", AuthorityPassphrase = "unit test passphrase" }),
                    new HostEnvironmentAccessor(_root),
                    TimeProvider.System,
-                   NullLogger<PrinterCertificateAuthority>.Instance);
+                   NullLogger<PrinterCertificateAuthority>.Instance,
+                   new PrinterLeafChangeToken());
     }
 
     public void Dispose()

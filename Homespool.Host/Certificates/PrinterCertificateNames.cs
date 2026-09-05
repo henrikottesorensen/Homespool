@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -105,6 +106,52 @@ public static class PrinterCertificateNames
             }
         }
 
-        return [.. names.Distinct(System.StringComparer.OrdinalIgnoreCase)];
+        return [.. names.Distinct(StringComparer.OrdinalIgnoreCase)];
+    }
+
+    /// <summary>
+    /// Whether a name resolved from inside this process points at nothing but this process's own
+    /// machine — an answer, but one nothing outside can use.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The case, precisely:</b> Debian and Raspberry Pi OS write <c>127.0.1.1 &lt;hostname&gt;</c>
+    /// into <c>/etc/hosts</c>. When the hostname is the same name the operator configured as the
+    /// printer host, Docker's embedded DNS forwards the container's lookup to the host's resolver,
+    /// which answers from that file — so from in here the configured name is loopback, while the
+    /// router answers the LAN address to every printer and browser. Every filter here correctly drops
+    /// loopback, and the detected set collapses to the configured name alone: the reissue page then
+    /// calls every other name on the certificate one this machine "no longer answers on", and live
+    /// view has no address. Both are false, and neither says why.
+    /// </para>
+    /// <para>
+    /// <b>Only loopback, not "includes loopback".</b> A name that resolves to loopback and a LAN
+    /// address is unusual but fine — the LAN address is used. The problem is the answer being
+    /// loopback and nothing else, which is what the hosts-file line produces.
+    /// </para>
+    /// </remarks>
+    /// <param name="resolved">What the resolver answered; empty means it answered nothing.</param>
+    public static bool ResolvesOnlyToLoopback(IReadOnlyList<IPAddress> resolved)
+    {
+        ArgumentNullException.ThrowIfNull(resolved);
+
+        return resolved.Count > 0 && resolved.All(IPAddress.IsLoopback);
+    }
+
+    /// <summary>
+    /// <see cref="ResolvesOnlyToLoopback"/> for the configured printer host; false when none is set.
+    /// </summary>
+    public static async Task<bool> ConfiguredHostResolvesOnlyToLoopbackAsync(PrusaConnectOptions connect,
+                                                                             IHostAddressResolver resolver,
+                                                                             CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(resolver);
+
+        if (connect?.IsPrinterAddressConfigured != true)
+        {
+            return false;
+        }
+
+        return ResolvesOnlyToLoopback(await resolver.ResolveAsync(connect.PrinterHost.Trim(), cancellationToken));
     }
 }

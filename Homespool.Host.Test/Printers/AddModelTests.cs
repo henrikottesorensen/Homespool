@@ -73,7 +73,8 @@ public sealed class AddModelTests : IDisposable
             Options.Create(new CertificateOptions { Directory = "certs", AuthorityPassphrase = "unit test passphrase" }),
             new HostEnvironmentAccessor(_certificateRoot),
             TimeProvider.System,
-            NullLogger<PrinterCertificateAuthority>.Instance);
+            NullLogger<PrinterCertificateAuthority>.Instance,
+            new PrinterLeafChangeToken());
 
         if (options.PrinterTls && options.IsPrinterAddressConfigured)
         {

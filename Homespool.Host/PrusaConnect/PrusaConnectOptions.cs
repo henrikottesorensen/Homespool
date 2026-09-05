@@ -11,6 +11,30 @@ public class PrusaConnectOptions
     public const string SectionName = "PrusaConnect";
 
     /// <summary>
+    /// The longest <see cref="PrinterHost"/> a printer can hold: 20 characters.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Firmware truncates silently, and the truncated name is dialled.</b> Buddy stores the
+    /// Connect hostname in a fixed field of <c>connect_host_size</c> = 20 characters
+    /// (<c>src/persistent_stores/store_instances/config_store/constants.hpp</c>), and the store's
+    /// <c>set</c> is a <c>strlcpy</c> into it. The ini handler length-checks <c>token</c> and
+    /// <c>proxy_hostname</c> against their fields and refuses; <c>hostname</c> alone goes through
+    /// <c>compress_host</c> into a 36-byte runtime buffer instead, passes, and is cut to 20 on its way
+    /// into the store. The ini loads "OK" and the printer dials a name that does not exist — a
+    /// 21-character name lost its last letter on both printers of one deployment. Read at
+    /// <c>v6.8.1</c>.
+    /// </para>
+    /// <para>
+    /// The sibling limit is <see cref="Commands.SetToken.MaxTokenLength"/>, for the same reason.
+    /// Nothing here shortens a name to fit: a truncated name is exactly the failure, so a long one is
+    /// refused where a person can still choose another — at startup, in the wizard, and at the
+    /// bundle.
+    /// </para>
+    /// </remarks>
+    public const int PrinterHostMaxLength = 20;
+
+    /// <summary>
     /// How long a temporary registration code stays valid, in minutes. Default 30.
     /// </summary>
     /// <remarks>

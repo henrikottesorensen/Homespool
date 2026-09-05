@@ -76,6 +76,17 @@ public sealed class CameraLiveAvailability
     public string Candidate { get; set; } = string.Empty;
 
     /// <summary>
+    /// Whether the configured printer host resolved to nothing but loopback when the candidate was
+    /// worked out — the one cause of an empty <see cref="Candidate"/> that has a named fix.
+    /// </summary>
+    /// <remarks>
+    /// Written beside <see cref="Candidate"/> by the same configurer, so the health check can say
+    /// what happened rather than re-resolving and possibly reaching a different answer.
+    /// <see cref="Certificates.PrinterCertificateNames.ResolvesOnlyToLoopback"/> describes the case.
+    /// </remarks>
+    public bool ConfiguredHostResolvesOnlyToLoopback { get; set; }
+
+    /// <summary>
     /// Whether WebRTC live view may be offered at all.
     /// </summary>
     /// <remarks>

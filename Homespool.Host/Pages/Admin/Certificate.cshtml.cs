@@ -114,6 +114,38 @@ public class CertificateModel : PageModel
         [.. Current.Where(name => !Covered.Contains(name, StringComparer.OrdinalIgnoreCase))];
 
     /// <summary>
+    /// Whether the configured host resolves to nothing but loopback from inside this container — the
+    /// case in which <see cref="Current"/> collapses to the configured name and everything below it
+    /// is read wrongly.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="PrinterCertificateNames.ResolvesOnlyToLoopback"/> has the mechanism. It is shown on
+    /// this page because this page is where the consequence lands: every other name on the
+    /// certificate would be listed as one to drop.
+    /// </remarks>
+    public bool ConfiguredHostResolvesOnlyToLoopback { get; private set; }
+
+    /// <summary>
+    /// Of <see cref="Dropping"/>, the names that resolve to an address a printer could use — which
+    /// from inside a container is all the evidence there is either way.
+    /// </summary>
+    /// <remarks>
+    /// <b>Split by evidence, because detection here cannot say "no longer answers".</b> Inside a
+    /// container the only interface is the bridge, so a name is either found through the configured
+    /// host or not found at all; "not found" and "gone" look identical from here, and the page used to
+    /// call both gone. A name that still resolves to a usable address is most likely this machine's
+    /// under a name detection did not try - the bare address of a machine whose configured name is
+    /// what detection walks from - and is what an operator will most often want to keep.
+    /// </remarks>
+    public IReadOnlyList<string> DroppingUnconfirmed { get; private set; } = [];
+
+    /// <summary>
+    /// Of <see cref="Dropping"/>, the names that resolve to nothing a printer could use — a moved
+    /// lease, a retired name. The only ones that earn "resolves to nothing".
+    /// </summary>
+    public IReadOnlyList<string> DroppingUnresolvable { get; private set; } = [];
+
+    /// <summary>
     /// Names the certificate vouches for today that a reissue would <b>not</b> carry over — drift read
     /// in the direction that costs something.
     /// </summary>
@@ -206,8 +238,8 @@ public class CertificateModel : PageModel
         if (kept.Length > 0)
         {
             _logger.LogInformation("The reissued printer certificate keeps {Kept} at the administrator's request, "
-                                   + "although this machine no longer answers on those names. Printers already connected to "
-                                   + "them keep working; nothing else does.", string.Join(", ", kept));
+                                   + "although detection from inside this container did not find them. Printers "
+                                   + "connecting to them keep working.", string.Join(", ", kept));
         }
 
         if (dropped.Length > 0)
@@ -215,8 +247,8 @@ public class CertificateModel : PageModel
             _logger.LogWarning("The reissued printer certificate NO LONGER covers {Dropped}, which the previous one "
                                + "did. Any printer whose ini tells it to use one of those names will fail its "
                                + "handshake once the proxy is reloaded, reporting a bare TLS error, and needs a USB "
-                               + "visit to repoint it. They were dropped because this machine no longer answers on "
-                               + "them and were not ticked to keep.", string.Join(", ", dropped));
+                               + "visit to repoint it. They were dropped because detection from inside this container "
+                               + "did not find them and they were not ticked to keep.", string.Join(", ", dropped));
         }
 
         _logger.LogWarning("The printer certificate was reissued for {Names} by {User}. It is served once the proxy "
@@ -253,6 +285,9 @@ public class CertificateModel : PageModel
         Current = await PrinterCertificateNames.ForThisMachineAsync(
             _connect, _certificates.ParsedContainerNetworks, _resolver, cancellationToken);
 
+        ConfiguredHostResolvesOnlyToLoopback =
+            await PrinterCertificateNames.ConfiguredHostResolvesOnlyToLoopbackAsync(_connect, _resolver, cancellationToken);
+
         if (!TlsEnabled)
         {
             return;
@@ -266,7 +301,40 @@ public class CertificateModel : PageModel
             LeafExpires = leaf.NotAfter.ToUniversalTime();
         }
 
+        await ClassifyDroppingAsync(cancellationToken);
+
         using X509Certificate2 authority = _authority.EnsureAuthority();
         AuthorityExpires = authority.NotAfter.ToUniversalTime();
+    }
+
+    /// <summary>
+    /// Sorts <see cref="Dropping"/> into the two groups by what each name resolves to.
+    /// </summary>
+    /// <remarks>
+    /// The same resolver and the same reachability rule the leaf was issued under, so "resolves to
+    /// something usable" here means exactly what it meant at issuance. The lookups are bounded by the
+    /// resolver, and there are as many as there are names about to be dropped - normally none.
+    /// </remarks>
+    private async Task ClassifyDroppingAsync(CancellationToken cancellationToken)
+    {
+        List<string> unconfirmed = [];
+        List<string> unresolvable = [];
+
+        foreach (string name in Dropping)
+        {
+            IReadOnlyList<System.Net.IPAddress> resolved = await _resolver.ResolveAsync(name, cancellationToken);
+
+            if (resolved.Any(address => ProvisioningBundleBuilder.CouldReachAPrinter(address, _certificates.ParsedContainerNetworks)))
+            {
+                unconfirmed.Add(name);
+            }
+            else
+            {
+                unresolvable.Add(name);
+            }
+        }
+
+        DroppingUnconfirmed = unconfirmed;
+        DroppingUnresolvable = unresolvable;
     }
 }

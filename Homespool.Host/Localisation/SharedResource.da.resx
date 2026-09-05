@@ -1465,7 +1465,7 @@
     <value>Denne maskine har adresser, som certifikatet ikke dækker. Det er kun et problem for printere, der får besked på at bruge en af dem - de printere, der bruger en dækket adresse, er upåvirkede.</value>
   </data>
   <data name="Cert_DroppingExplanation" xml:space="preserve">
-    <value>Disse navne er dækket i dag, og maskinen svarer ikke længere på dem, så de ville ikke blive ført med over. Det er som regel rigtigt - et certifikat bør kun indestå for det, en printer kan nå. Men</value>
+    <value>Disse navne er dækket i dag, og detektionen inde fra denne container fandt dem ikke, så de ville ikke blive ført med over. Det er som regel rigtigt - et certifikat bør kun indestå for det, en printer kan nå. Men</value>
   </data>
   <data name="Cert_DroppingConsequence" xml:space="preserve">
     <value>så snart det nye certifikat serveres, med en nøgen TLS-fejl der ikke nævner noget, og at få det tilbage kræver et USB-besøg for at pege printeren om.</value>
@@ -2576,5 +2576,20 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   </data>
   <data name="ByteUnit_GiB" xml:space="preserve">
     <value>GiB</value>
+  </data>
+  <data name="Cert_LoopbackOnly" xml:space="preserve">
+    <value>Set inde fra denne container opløses {0} kun til en loopback-adresse - maskinens egen hosts-fil-linje for dens eget værtsnavn ({1} på Debian og Raspberry Pi OS), ikke det printerne vil se. Indtil det er rettet, kan Homespool ikke afgøre hvilke af maskinens adresser der svarer, og ville tilbyde at fjerne navne der virker. Fjern navnet fra {1}-linjen i {2} på værten, og genstart stakken.</value>
+  </data>
+  <data name="Cert_DroppingUnconfirmed" xml:space="preserve">
+    <value>Disse adresser er sandsynligvis stadig gode, men Homespool kan ikke bekræfte det inde fra sin container.</value>
+  </data>
+  <data name="Cert_DroppingUnresolvable" xml:space="preserve">
+    <value>Disse peger ikke længere på noget en printer kan nå.</value>
+  </data>
+  <data name="Cert_CannotConfirm" xml:space="preserve">
+    <value>sandsynligvis god, ubekræftet</value>
+  </data>
+  <data name="Cert_ResolvesToNothing" xml:space="preserve">
+    <value>Slåes ikke op til noget en printer kunne bruge</value>
   </data>
 </root>

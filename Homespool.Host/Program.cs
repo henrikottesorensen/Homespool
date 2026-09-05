@@ -215,6 +215,11 @@ public static class Program
                             .ValidateDataAnnotations()
                             .ValidateOnStart();
 
+            // A printer host longer than the printer's field is refused here, at the boot after it
+            // was set, rather than discovered at a printer that dials a truncated name.
+            builder.Services.AddSingleton<Microsoft.Extensions.Options.IValidateOptions<PrusaConnect.PrusaConnectOptions>,
+                PrusaConnect.PrinterHostLengthValidator>();
+
             builder.Services.AddOptions<Accounts.AttemptLimitOptions>()
                             .Bind(builder.Configuration.GetSection(Accounts.AttemptLimitOptions.SectionName))
                             .ValidateDataAnnotations()
@@ -245,6 +250,10 @@ public static class Program
             // Singleton: it owns files on disk and its whole contract is that the authority is minted
             // once and never again. Nothing about it is per-request.
             builder.Services.AddSingleton<Certificates.PrinterCertificateAuthority>();
+
+            // Raised by the authority whenever it issues a leaf, so a list derived from the leaf's
+            // names - the host filter's - follows a reissue without a restart.
+            builder.Services.AddSingleton<Certificates.PrinterLeafChangeToken>();
 
             // Singleton alongside the authority it reads: it holds bound options and a path, and
             // reaches the filesystem only when a bundle is actually asked for.

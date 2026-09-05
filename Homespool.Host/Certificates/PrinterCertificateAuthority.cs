@@ -123,11 +123,13 @@ public class PrinterCertificateAuthority
     private readonly CertificateOptions _options;
     private readonly TimeProvider _time;
     private readonly ILogger<PrinterCertificateAuthority> _logger;
+    private readonly PrinterLeafChangeToken _leafChanged;
 
     public PrinterCertificateAuthority(IOptions<CertificateOptions> options,
                                        IHostEnvironmentAccessor environment,
                                        TimeProvider time,
-                                       ILogger<PrinterCertificateAuthority> logger)
+                                       ILogger<PrinterCertificateAuthority> logger,
+                                       PrinterLeafChangeToken leafChanged)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(environment);
@@ -135,6 +137,7 @@ public class PrinterCertificateAuthority
         _options = options.Value;
         _time = time;
         _logger = logger;
+        _leafChanged = leafChanged;
         _directory = Path.IsPathRooted(_options.Directory) ?
             _options.Directory :
             Path.Combine(environment.ContentRootPath, _options.Directory);
@@ -504,6 +507,12 @@ public class PrinterCertificateAuthority
 
         _logger.LogInformation("Issued a printer certificate for {Names}, valid until {NotAfter:o}.",
                                string.Join(", ", distinct), issued.NotAfter);
+
+        // After the files, so anything that re-reads the leaf on this signal finds the new one. Here
+        // rather than at the call sites because every path that issues comes through here, and the
+        // one that forgot to notify would be a name the certificate covers and the host filter
+        // refuses until the next restart.
+        _leafChanged.NotifyIssued();
 
         return issued;
     }

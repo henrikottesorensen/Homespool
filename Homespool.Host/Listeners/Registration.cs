@@ -1,6 +1,7 @@
 using System;
 
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.HostFiltering;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -57,6 +58,18 @@ public static class Registration
         // Factory-activated (IMiddleware) like the setup gate, so it is resolved from the container.
         // Singleton: it holds the bound options and nothing per-request.
         builder.Services.AddSingleton<ListenerSegregationMiddleware>();
+
+        // The host filter allows every name on the printer certificate, on top of what compose
+        // composed. One instance under both interfaces: the post-configure that appends the names,
+        // and the change-token source that has them appended again after a reissue. This has to be
+        // registered after WebApplication.CreateBuilder's own post-configure, which fills the list
+        // from configuration only while it is empty - registered ahead of it, the configured names
+        // would never be read. PrinterHostFiltering's remarks carry the rule.
+        builder.Services.AddSingleton<PrinterHostFiltering>();
+        builder.Services.AddSingleton<IPostConfigureOptions<HostFilteringOptions>>(
+            provider => provider.GetRequiredService<PrinterHostFiltering>());
+        builder.Services.AddSingleton<IOptionsChangeTokenSource<HostFilteringOptions>>(
+            provider => provider.GetRequiredService<PrinterHostFiltering>());
 
         // Pinned rather than left to be discovered. It guarded against a measured failure: the printer
         // listener used to be this process's only HTTPS endpoint, so the redirection middleware found

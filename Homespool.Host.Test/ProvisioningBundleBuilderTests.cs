@@ -61,7 +61,8 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
         return new(Options.Create(new CertificateOptions { Directory = "certs", AuthorityPassphrase = "unit test passphrase" }),
                    new HostEnvironmentAccessor(_root),
                    TimeProvider.System,
-                   NullLogger<PrinterCertificateAuthority>.Instance);
+                   NullLogger<PrinterCertificateAuthority>.Instance,
+                   new PrinterLeafChangeToken());
     }
 
     private ProvisioningBundleBuilder NewBuilder(PrinterCertificateAuthority authority,
@@ -324,6 +325,79 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
     public async Task WithNoCertificateThereAreNoNamesToOfferAsync()
     {
         (await NewBuilder(NewAuthority()).AvailableNamesAsync(CancellationToken.None)).Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// A name of 21 characters is refused before the certificate is consulted: the printer would
+    /// dial the first 20, and the certificate cannot help with that.
+    /// </summary>
+    /// <remarks>
+    /// With TLS off, so that the only thing standing between the name and the ini is this rule. The
+    /// name is the shape of the one that took two printers offline, one character over the field.
+    /// </remarks>
+    [Fact]
+    public async Task ATwentyOneCharacterNameIsRefusedWhateverTheCertificateSaysAsync()
+    {
+        // Arrange
+        ProvisioningBundleBuilder builder = NewBuilder(NewAuthority(), tls: false, host: "homespool.example.net");
+
+        // Act
+        Func<Task> act = async () => await builder.BuildAsync("homespool.example.net", Token, "Bench printer", CancellationToken.None);
+
+        // Assert
+        (await act.Should().ThrowAsync<ArgumentException>())
+            .Which.Message.Should().Contain("20-character")
+            .And.Contain("homespool.example.ne", "it has to say what the printer would dial");
+    }
+
+    /// <summary>Twenty characters is the limit itself, and a bundle is written for it.</summary>
+    [Fact]
+    public async Task ATwentyCharacterNameIsWrittenAsync()
+    {
+        // Arrange
+        PrinterCertificateAuthority authority = NewAuthority();
+        authority.EnsureLeaf(["printers.example.net"]).Dispose();
+
+        // Act
+        string ini = IniOf(await NewBuilder(authority, host: "printers.example.net")
+                               .BuildAsync("printers.example.net", Token, "Bench printer", CancellationToken.None));
+
+        // Assert
+        ini.Should().Contain("hostname = printers.example.net");
+    }
+
+    /// <summary>
+    /// The container-range filter with the two ranges the shipped stack now configures, against the
+    /// answer a Docker host's own name gives: the LAN address, the proxy bridge, docker0, and a bridge
+    /// compose created for a service on no network.
+    /// </summary>
+    /// <remarks>
+    /// The second case documents the known miss rather than hiding it: a bridge this deployment did
+    /// not create is not in any configured range, and nothing here guesses at "172.x.0.1" - somebody's
+    /// router matches that.
+    /// </remarks>
+    [Theory]
+    [InlineData(new[] { "172.28.0.0/16", "172.17.0.0/16" }, new[] { "172.18.0.1", "192.168.13.108" })]
+    [InlineData(new[] { "172.28.0.0/16" }, new[] { "172.17.0.1", "172.18.0.1", "192.168.13.108" })]
+    public void OnlyTheLanAddressPassesTheConfiguredRanges(string[] ranges, string[] expected)
+    {
+        // Arrange - what the appliance's name resolved to from inside the container on 2026-09-05.
+        IPAddress[] resolved =
+        [
+            IPAddress.Parse("127.0.1.1"),
+            IPAddress.Parse("172.17.0.1"),
+            IPAddress.Parse("172.18.0.1"),
+            IPAddress.Parse("172.28.0.1"),
+            IPAddress.Parse("192.168.13.108"),
+        ];
+
+        IReadOnlyList<IPNetwork> networks = [.. ranges.Select(IPNetwork.Parse)];
+
+        // Act
+        string[] usable = [.. resolved.Where(address => ProvisioningBundleBuilder.CouldReachAPrinter(address, networks)).Select(a => a.ToString())];
+
+        // Assert
+        usable.Should().Equal(expected);
     }
 
     public void Dispose()

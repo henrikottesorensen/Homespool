@@ -830,6 +830,15 @@ validate_printer_host() {
         return 1
     fi
 
+    # No "use it anyway": there is no network on which a truncated name works. The limit is the
+    # printer's - Prusa firmware keeps the Connect hostname in a 20-character field and cuts a longer
+    # one silently, so the ini loads, the panel reports a connection error, and nothing names the
+    # cause. The server refuses to start on one too; this is the same rule where the value is typed.
+    if [ "${#host}" -gt 20 ]; then
+        warn $"$host is ${#host} characters, and Prusa firmware stores the Connect hostname in a 20-character field - silently truncated, so a printer given this name would dial ${host:0:20} and never connect. Use a shorter name, or the address."
+        return 1
+    fi
+
     case "$host" in
         localhost|127.*|0.0.0.0)
             warn $"$host is this machine talking to itself - no printer can reach it."
@@ -1139,6 +1148,10 @@ name_candidate_one() {
     case "$name" in
         *.local) resolves_in_dns "$name" || return 0 ;;
     esac
+
+    # Longer than the printer's 20-character field is not offered at all - validate_printer_host
+    # would refuse it a moment later, and a list should not lead with a choice it then rejects.
+    [ "${#name}" -le 20 ] || return 0
 
     resolved="$(resolve_host "$name")"
     [ -n "$resolved" ] || return 0

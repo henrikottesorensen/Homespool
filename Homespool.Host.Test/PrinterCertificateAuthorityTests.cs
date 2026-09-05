@@ -41,7 +41,8 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
         return new(Options.Create(new CertificateOptions { Directory = "certs", AuthorityPassphrase = passphrase }),
                    new HostEnvironmentAccessor(_root),
                    TimeProvider.System,
-                   NullLogger<PrinterCertificateAuthority>.Instance);
+                   NullLogger<PrinterCertificateAuthority>.Instance,
+                   new PrinterLeafChangeToken());
     }
 
     /// <summary>

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -38,13 +40,32 @@ public sealed class PrinterCertificateHealthCheckTests : IDisposable
         return check.CheckHealthAsync(new HealthCheckContext(), CancellationToken.None);
     }
 
-    private static PrinterCertificateHealthCheck NewCheck(PrinterCertificateAuthority authority, string host, bool tls = true)
+    private static PrinterCertificateHealthCheck NewCheck(PrinterCertificateAuthority authority,
+                                                          string host,
+                                                          bool tls = true,
+                                                          IHostAddressResolver? resolver = null)
     {
         return new(authority,
                    TestOptions.Monitor(new PrusaConnectOptions { PrinterHost = host, PrinterTls = tls }),
                    Options.Create(new CertificateOptions()),
-                   new DnsHostAddressResolver(),
+                   resolver ?? new DnsHostAddressResolver(),
                    TimeProvider.System);
+    }
+
+    /// <summary>A resolver that answers from a table, for the one case the real one cannot be asked to produce.</summary>
+    private sealed class TableResolver : IHostAddressResolver
+    {
+        private readonly Dictionary<string, IPAddress[]> _answers;
+
+        public TableResolver(Dictionary<string, IPAddress[]> answers)
+        {
+            _answers = answers;
+        }
+
+        public Task<IReadOnlyList<IPAddress>> ResolveAsync(string name, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<IPAddress>>(_answers.TryGetValue(name, out IPAddress[]? found) ? found : []);
+        }
     }
 
     private PrinterCertificateAuthority NewAuthority(int authorityDays = 5475, int leafDays = 730)
@@ -58,7 +79,8 @@ public sealed class PrinterCertificateHealthCheckTests : IDisposable
                    }),
                    new HostEnvironmentAccessor(_root),
                    TimeProvider.System,
-                   NullLogger<PrinterCertificateAuthority>.Instance);
+                   NullLogger<PrinterCertificateAuthority>.Instance,
+                   new PrinterLeafChangeToken());
     }
 
     /// <summary>
@@ -183,6 +205,54 @@ public sealed class PrinterCertificateHealthCheckTests : IDisposable
         // Assert
         result.Status.Should().Be(HealthStatus.Healthy);
         result.Description.Should().Contain("plain HTTP");
+    }
+
+    /// <summary>
+    /// The hosts-file case, end to end through the check: the configured name resolves to 127.0.1.1
+    /// and nothing else, and the banner says so and names the line to fix.
+    /// </summary>
+    /// <remarks>
+    /// On the appliance this surfaced as a certificate page offering to drop the machine's own
+    /// address and a camera check blaming "container networks". The resolver is faked because no
+    /// machine can be asked to produce this answer on demand without editing its hosts file.
+    /// </remarks>
+    [Fact]
+    public async Task AConfiguredHostResolvingOnlyToLoopbackIsDegradedAndNamed()
+    {
+        // Arrange
+        PrinterCertificateAuthority authority = NewAuthority();
+        authority.EnsureLeaf(["homespool.lan", "192.168.13.108"]);
+
+        TableResolver resolver = new(new Dictionary<string, IPAddress[]>
+        {
+            ["homespool.lan"] = [IPAddress.Parse("127.0.1.1")],
+        });
+
+        // Act
+        HealthCheckResult result = await RunAsync(NewCheck(authority, "homespool.lan", resolver: resolver));
+
+        // Assert
+        result.Status.Should().Be(HealthStatus.Degraded);
+        result.Description.Should().Contain("homespool.lan").And.Contain("127.0.1.1").And.Contain("/etc/hosts");
+    }
+
+    /// <summary>
+    /// A deployment started before the length validation existed still hears about a host the
+    /// printer truncates, on the surface an operator actually looks at.
+    /// </summary>
+    [Fact]
+    public async Task AConfiguredHostOverTwentyCharactersIsDegraded()
+    {
+        // Arrange - the certificate covers it; that is not the problem.
+        PrinterCertificateAuthority authority = NewAuthority();
+        authority.EnsureLeaf(["homespool.example.net"]);
+
+        // Act
+        HealthCheckResult result = await RunAsync(NewCheck(authority, "homespool.example.net"));
+
+        // Assert
+        result.Status.Should().Be(HealthStatus.Degraded);
+        result.Description.Should().Contain("20-character").And.Contain("homespool.example.ne");
     }
 
     public void Dispose()

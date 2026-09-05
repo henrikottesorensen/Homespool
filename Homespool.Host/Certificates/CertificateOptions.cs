@@ -121,6 +121,24 @@ public class CertificateOptions
     public int AuthorityValidityDays { get; set; } = 5475;
 
     /// <summary>
+    /// Directory holding the Data Protection certificate and its key. Null - the default - means
+    /// <see cref="Directory"/>, beside the authority. Relative paths resolve against the content root.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Separate from <see cref="Directory"/> for one reason, and it is not a deployment's: this
+    /// certificate is the one file resolved <i>before the container exists</i>. Data Protection has
+    /// to be handed the certificate at registration, so the directory is resolved against the host
+    /// builder's content root rather than through <c>IHostEnvironmentAccessor</c> like every other
+    /// file this application keeps. Under a test host that builder root is the real project folder,
+    /// so without a setting of its own every test host - and a developer's own server - shared one
+    /// certificate written into the source tree. The test factory sets this absolute, inside its
+    /// content root, the way it does the settings file. A deployment leaves it unset.
+    /// </para>
+    /// </remarks>
+    public string? KeyProtectionDirectory { get; set; }
+
+    /// <summary>
     /// How long the Data Protection key-protection certificate is valid, in days. Default fifteen
     /// years, matching the authority.
     /// </summary>

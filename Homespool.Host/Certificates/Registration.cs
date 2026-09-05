@@ -51,9 +51,14 @@ public static class Registration
         CertificateOptions options = configuration.GetSection(CertificateOptions.SectionName)
                                                   .Get<CertificateOptions>() ?? new CertificateOptions();
 
-        string directory = Path.IsPathRooted(options.Directory) ?
-            options.Directory :
-            Path.Combine(environment.ContentRootPath, options.Directory);
+        // KeyProtectionDirectory exists for the test host, which cannot redirect this resolution
+        // any other way - the option's remarks say why. Unset, the certificate sits beside the
+        // authority.
+        string configured = options.KeyProtectionDirectory ?? options.Directory;
+
+        string directory = Path.IsPathRooted(configured) ?
+            configured :
+            Path.Combine(environment.ContentRootPath, configured);
 
         // Under the authority's passphrase, deliberately - the two keys share every case in which a
         // passphrase helps, so a second secret would be one more thing to lose for no change in what

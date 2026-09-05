@@ -54,6 +54,14 @@ public static class EditableSettings
             SettingGrade.Live,
             ConfirmOnEnableKey: "Settings_Confirm_Security_RequireTwoFactor"),
 
+        // Read once, when the passkey scheme's options are first built - see
+        // AuthenticationBuilderExtensions.AddPasskeyAuthentication. Beside RequireTwoFactor because
+        // that is what it interacts with: a passkey is a sign-in of its own.
+        new(typeof(SecurityOptions),
+            SecurityOptions.SectionName,
+            nameof(SecurityOptions.PasskeyServerDomain),
+            SettingGrade.Restart),
+
         // Attempt limits - read per check at AttemptLimiter:121,130.
         // Only the count. The two timing knobs are deliberately absent - see AttemptLimitOptions.
         // Shown under the account heading rather than its own: it is bound from a different class,

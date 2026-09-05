@@ -25,4 +25,12 @@ public static class Schemes
     /// signs into <c>IdentityConstants.ExternalScheme</c> and hands off to <c>Account/ExternalLogin</c>.
     /// </summary>
     public const string ExternalOidc = "oidc";
+
+    /// <summary>
+    /// A WebAuthn assertion from a passkey an account enrolled, verified by
+    /// <see cref="PasskeyAuthenticationHandler"/>. A person's sign-in, like <see cref="ExternalOidc"/>,
+    /// and like it never a default scheme: the login page asks for it by name and decides what a
+    /// verified assertion is worth.
+    /// </summary>
+    public const string Passkey = "Passkey";
 }

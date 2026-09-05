@@ -62,6 +62,7 @@ public sealed class ManageFolderAuthorizationTests : IAsyncLifetime
     [InlineData("/Account/Manage/ExternalLogins")]
     [InlineData("/Account/Manage/GenerateRecoveryCodes")]
     [InlineData("/Account/Manage/Language")]
+    [InlineData("/Account/Manage/Passkeys")]
     [InlineData("/Account/Manage/ResetAuthenticator")]
     [InlineData("/Account/Manage/ShowRecoveryCodes")]
     [InlineData("/Account/Manage/TwoFactorAuthentication")]

@@ -6,12 +6,69 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 
 namespace Homespool.Host.Authentication;
 
 public static class AuthenticationBuilderExtensions
 {
+    /// <summary>
+    /// Registers the passkey scheme: a WebAuthn assertion verified by
+    /// <see cref="PasskeyAuthenticationHandler"/>, reachable only by name.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Always registered, whether or not a relying-party id is configured.</b> Unlike the OpenID
+    /// Connect scheme, nothing enumerates this one to decide what to offer - the login page asks
+    /// <see cref="PasskeyAuthenticationOptions.Covers"/> per request, which is the check that also
+    /// sees a host the id does not cover. An unconfigured scheme answers every challenge 404 and
+    /// every assertion with a refusal, which is the behaviour a deployment without a name should get.
+    /// </para>
+    /// <para>
+    /// <b>The relying-party id is read once</b>, from <c>Security:PasskeyServerDomain</c>, when the
+    /// scheme's options are first built. It is a restart-graded setting on the settings page for the
+    /// reason the page gives: every credential already enrolled is bound to the old value.
+    /// </para>
+    /// <para>
+    /// <b>The engine's options are filled from this scheme's.</b> <see cref="IdentityPasskeyOptions"/>
+    /// is what <see cref="IPasskeyHandler{TUser}"/> reads, and it would otherwise derive the
+    /// relying-party id from the request host, minting credentials that work on one name and fail
+    /// silently on another. The fixed policy on the same options type is
+    /// <c>IdentityConfiguration.ConfigurePasskeys</c>, registered beside the rest of Identity's.
+    /// </para>
+    /// </remarks>
+    public static AuthenticationBuilder AddPasskeyAuthentication(this AuthenticationBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        // One per process: the ceremonies this server has issued and not yet seen answered, and the
+        // cookie that carries each one between its two requests. Both ceremonies - the sign-in the
+        // scheme runs and the registration the Manage page runs - go through the same pair.
+        builder.Services.AddSingleton<PasskeyCeremonyLedger>();
+        builder.Services.AddSingleton<PasskeyCeremonies>();
+
+        builder.Services.AddOptions<PasskeyAuthenticationOptions>(Schemes.Passkey)
+               .Configure<IOptions<Middleware.SecurityOptions>>((options, security) =>
+               {
+                   options.ServerDomain = security.Value.PasskeyServerDomain;
+               });
+
+        builder.Services.AddOptions<IdentityPasskeyOptions>()
+               .Configure<IOptionsMonitor<PasskeyAuthenticationOptions>>((engine, schemes) =>
+               {
+                   PasskeyAuthenticationOptions scheme = schemes.Get(Schemes.Passkey);
+
+                   engine.ServerDomain = scheme.IsConfigured ? scheme.ServerDomain!.Trim() : null;
+                   engine.AuthenticatorTimeout = scheme.CeremonyLifetime;
+               });
+
+        builder.AddScheme<PasskeyAuthenticationOptions, PasskeyAuthenticationHandler>(Schemes.Passkey,
+                                                                                      options => { });
+
+        return builder;
+    }
+
     public static AuthenticationBuilder AddPrusaConnectPrinterAuthentication(this AuthenticationBuilder builder)
     {
         builder.AddScheme<PrusaConnectAuthenticationSchemeOptions, PrusaConnectPrinterAuthenticationHandler>(
@@ -27,9 +84,7 @@ public static class AuthenticationBuilderExtensions
     /// </summary>
     public static AuthenticationBuilder AddApiTokenAuthentication(this AuthenticationBuilder builder)
     {
-        builder.AddScheme<ApiTokenAuthenticationSchemeOptions, ApiTokenAuthenticationHandler>(
-            Schemes.ApiToken,
-            options => { });
+        builder.AddScheme<ApiTokenAuthenticationSchemeOptions, ApiTokenAuthenticationHandler>(Schemes.ApiToken, options => { });
 
         return builder;
     }
@@ -41,9 +96,7 @@ public static class AuthenticationBuilderExtensions
     /// </summary>
     public static AuthenticationBuilder AddXApiKeyAuthentication(this AuthenticationBuilder builder)
     {
-        builder.AddScheme<ApiTokenAuthenticationSchemeOptions, XApiKeyAuthenticationHandler>(
-            Schemes.XApiKey,
-            options => { });
+        builder.AddScheme<ApiTokenAuthenticationSchemeOptions, XApiKeyAuthenticationHandler>(Schemes.XApiKey, options => { });
 
         return builder;
     }

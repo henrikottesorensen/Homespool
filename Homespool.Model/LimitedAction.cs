@@ -69,4 +69,11 @@ public enum LimitedAction
     /// separate: a flood of one kind of mail must not stop the other kind reaching its owner.
     /// </remarks>
     SendConfirmationEmail = 5,
+
+    /// <summary>
+    /// Proving the current password before a passkey may be added. A password check on an
+    /// authenticated path, so it needs a backoff of its own: a hijacked session must not get
+    /// unlimited guesses at the one thing standing between it and a durable sign-in.
+    /// </summary>
+    AddPasskey = 6,
 }

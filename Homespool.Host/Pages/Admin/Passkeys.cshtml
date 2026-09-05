@@ -1,0 +1,53 @@
+@page
+@model Homespool.Host.Pages.Admin.PasskeysModel
+@{
+    ViewData["Title"] = Localiser["Nav_AdminPasskeys"].Value;
+}
+
+<h1>@ViewData["Title"]</h1>
+
+@* Inline rather than the _StatusMessage partial, which lives under Account/Manage and is not on
+   this folder's search path. *@
+@if (!string.IsNullOrEmpty(Model.StatusMessage))
+{
+    <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
+}
+
+<p class="text-muted">@Localiser["AdminPasskeys_Explanation"]</p>
+
+@if (Model.Rows.Count == 0)
+{
+    <p>@Localiser["AdminPasskeys_None"]</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th scope="col">@Localiser["AdminPasskeys_Owner"]</th>
+                <th scope="col">@Localiser["Common_Name"]</th>
+                <th scope="col">@Localiser["Common_Created"]</th>
+                <th scope="col">@Localiser["Passkeys_KindColumn"]</th>
+                <th scope="col"></th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var row in Model.Rows)
+        {
+            <tr>
+                <td class="typed-name">@row.UserName</td>
+                <td class="typed-name">@row.Name</td>
+                <td>@row.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
+                <td class="small">@(row.Synced ? Localiser["Passkeys_Synced"] : Localiser["Passkeys_DeviceBound"])</td>
+                <td class="text-end">
+                    <form method="post" asp-page-handler="Revoke">
+                        <input type="hidden" name="userId" value="@row.UserId" />
+                        <input type="hidden" name="id" value="@row.Id" />
+                        <button type="submit" class="btn btn-sm btn-outline-danger">@Localiser["AdminPasskeys_Revoke"]</button>
+                    </form>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}

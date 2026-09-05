@@ -31,6 +31,39 @@ public class SecurityOptions
     /// password and no authenticator, so with this on, first run lands on the enrolment page before
     /// anything else. That is the intended reading of "all accounts" rather than an oversight.
     /// </para>
+    /// <para>
+    /// <b>What it does not reach either: a passkey sign-in.</b> A passkey with user verification is
+    /// possession plus a face, a finger or a device passcode, a multi-factor authenticator in its own
+    /// right, so signing in with one never asks for the code, floor or no floor. This setting says
+    /// what an account must <i>hold</i>, and a passkey account under the floor still holds an
+    /// authenticator; it does not say how a session was made. The residual an operator accepts with
+    /// it: a synced passkey is as strong as the Apple or Google account it syncs through.
+    /// </para>
     /// </remarks>
     public bool RequireTwoFactor { get; set; }
+
+    /// <summary>
+    /// The hostname passkeys are bound to - the WebAuthn relying-party id. <b>Empty by default, which
+    /// withholds passkeys</b>: there is no honest guess for a deployment that has not named itself.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>It must be the name in the browser's address bar, or a parent of it.</b> A credential is
+    /// minted against this value and answers only from a page served under it, so a household reaching
+    /// the box by one name at home and another from outside gets passkeys on one of them. An IP
+    /// address can never be a relying-party id, <c>localhost</c> is its own, and a name no public
+    /// certificate authority issues for works only where the browser already trusts the certificate.
+    /// </para>
+    /// <para>
+    /// <b>Changing it strands every passkey already enrolled</b>, which is why it is restart-graded
+    /// and why the settings page asks before moving off a value in use. Nothing is deleted: putting
+    /// the old name back brings the old credentials back with it.
+    /// </para>
+    /// <para>
+    /// <b>What it is not: a rule about which hosts serve the application.</b> That is
+    /// <c>AllowedHosts</c>. This names one of them as the one a passkey belongs to; a request on any
+    /// other is served as before, with the passkey affordance withheld.
+    /// </para>
+    /// </remarks>
+    public string? PasskeyServerDomain { get; set; }
 }

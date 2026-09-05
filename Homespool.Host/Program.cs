@@ -107,6 +107,7 @@ public static class Program
                                 options.DefaultSignInScheme = IdentityConstants.ExternalScheme;
                             })
                             .AddIdentityCookieSchemes()
+                            .AddPasskeyAuthentication()
                             .AddPrusaConnectPrinterAuthentication()
                             .AddApiTokenAuthentication()
                             .AddXApiKeyAuthentication()
@@ -121,6 +122,10 @@ public static class Program
                             .AddHomespoolStores()
                             .AddErrorDescriber<Accounts.HSIdentityErrorDescriber>()
                             .AddHomespoolTokenProviders();
+
+            // The passkey engine's fixed policy. Its two deployment-bound values come from the scheme
+            // registered in the chain above.
+            builder.Services.Configure<IdentityPasskeyOptions>(Accounts.IdentityConfiguration.ConfigurePasskeys);
 
             builder.Services.ConfigureApplicationCookie(options =>
             {

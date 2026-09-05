@@ -593,6 +593,114 @@
   <data name="Account_OrSignInWith" xml:space="preserve">
     <value>Eller log ind med</value>
   </data>
+  <data name="Account_SignInWithPasskey" xml:space="preserve">
+    <value>Log ind med adgangsnøgle</value>
+  </data>
+  <data name="Account_PasskeyCancelled" xml:space="preserve">
+    <value>Login med adgangsnøgle blev afbrudt eller udløb. Prøv igen, eller brug din adgangskode.</value>
+  </data>
+  <data name="Manage_Passkeys" xml:space="preserve">
+    <value>Adgangsnøgler</value>
+  </data>
+  <data name="Nav_AdminPasskeys" xml:space="preserve">
+    <value>Alles adgangsnøgler</value>
+  </data>
+  <data name="Passkeys_Explanation" xml:space="preserve">
+    <value>En adgangsnøgle logger dig ind med dit ansigt, dit fingeraftryk eller din enheds kode i stedet for en adgangskode. En, der synkroniserer, følger din Apple- eller Google-konto til alle enheder, der er logget ind på den; en, der ikke gør, bliver på den enhed, du lavede den på.</value>
+  </data>
+  <data name="Passkeys_NotConfigured" xml:space="preserve">
+    <value>Homespool har ikke fået angivet et værtsnavn til adgangsnøgler, så adgangsnøgler er ikke tilgængelige.</value>
+  </data>
+  <data name="Passkeys_Unavailable" xml:space="preserve">
+    <value>Adgangsnøgler er bundet til {0}. Åbn denne side på den adresse for at tilføje en.</value>
+  </data>
+  <data name="Passkeys_NameLabel" xml:space="preserve">
+    <value>Navn på adgangsnøgle</value>
+  </data>
+  <data name="Passkeys_NamePlaceholder" xml:space="preserve">
+    <value>Denne enhed</value>
+  </data>
+  <data name="Passkeys_PasswordLabel" xml:space="preserve">
+    <value>Din adgangskode</value>
+  </data>
+  <data name="Passkeys_PasswordWhy" xml:space="preserve">
+    <value>Spørges om, så en session, som en anden har fået fat i, ikke kan tilføje et login, der overlever den.</value>
+  </data>
+  <data name="Passkeys_PasswordWrong" xml:space="preserve">
+    <value>Det er ikke din adgangskode.</value>
+  </data>
+  <data name="Passkeys_PasswordLockedOut" xml:space="preserve">
+    <value>For mange forkerte adgangskoder. Prøv igen om {0}.</value>
+  </data>
+  <data name="Manage_PasswordChangedPasskeys" xml:space="preserve">
+    <value>Dine {0} adgangsnøgle(r) logger dig stadig ind. Hvis du skiftede adgangskode, fordi en anden kendte den, så se efter en adgangsnøgle, du ikke selv har tilføjet, på siden Adgangsnøgler.</value>
+  </data>
+  <data name="Account_ReviewPasskeysAfterReset" xml:space="preserve">
+    <value>Adgangsnøgler påvirkes ikke af en nulstilling. Hvis en anden havde din adgangskode, så se efter en adgangsnøgle, du ikke selv har tilføjet, under {0}.</value>
+  </data>
+  <data name="Passkeys_NameInvalid" xml:space="preserve">
+    <value>Et navn på en adgangsnøgle må højst være 64 tegn.</value>
+  </data>
+  <data name="Passkeys_DefaultName" xml:space="preserve">
+    <value>Adgangsnøgle tilføjet {0}</value>
+  </data>
+  <data name="Passkeys_Add" xml:space="preserve">
+    <value>Tilføj en adgangsnøgle</value>
+  </data>
+  <data name="Passkeys_Cancelled" xml:space="preserve">
+    <value>Tilføjelsen af adgangsnøglen blev afbrudt eller udløb. Prøv igen.</value>
+  </data>
+  <data name="Passkeys_RegistrationFailed" xml:space="preserve">
+    <value>Adgangsnøglen kunne ikke tilføjes. Prøv igen.</value>
+  </data>
+  <data name="Passkeys_Yours" xml:space="preserve">
+    <value>Dine adgangsnøgler</value>
+  </data>
+  <data name="Passkeys_None" xml:space="preserve">
+    <value>Du har ingen adgangsnøgler endnu.</value>
+  </data>
+  <data name="Passkeys_KindColumn" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="Passkeys_Synced" xml:space="preserve">
+    <value>Synkroniseret mellem dine enheder</value>
+  </data>
+  <data name="Passkeys_DeviceBound" xml:space="preserve">
+    <value>Kun på én enhed</value>
+  </data>
+  <data name="Passkeys_Rename" xml:space="preserve">
+    <value>Omdøb</value>
+  </data>
+  <data name="Passkeys_Remove" xml:space="preserve">
+    <value>Fjern</value>
+  </data>
+  <data name="Passkeys_Added" xml:space="preserve">
+    <value>Adgangsnøgle tilføjet.</value>
+  </data>
+  <data name="Passkeys_Renamed" xml:space="preserve">
+    <value>Adgangsnøgle omdøbt.</value>
+  </data>
+  <data name="Passkeys_Removed" xml:space="preserve">
+    <value>Adgangsnøgle fjernet.</value>
+  </data>
+  <data name="Passkeys_Gone" xml:space="preserve">
+    <value>Den adgangsnøgle var allerede væk.</value>
+  </data>
+  <data name="AdminPasskeys_Explanation" xml:space="preserve">
+    <value>Alle adgangsnøgler tilmeldt i Homespool. Tilbagekald en, hvis ejeren har mistet den enhed, den ligger på; de kan stadig logge ind med deres adgangskode og tilføje en ny.</value>
+  </data>
+  <data name="AdminPasskeys_None" xml:space="preserve">
+    <value>Der er ikke tilmeldt nogen adgangsnøgler.</value>
+  </data>
+  <data name="AdminPasskeys_Owner" xml:space="preserve">
+    <value>Konto</value>
+  </data>
+  <data name="AdminPasskeys_Revoke" xml:space="preserve">
+    <value>Tilbagekald adgangsnøgle</value>
+  </data>
+  <data name="AdminPasskeys_Revoked" xml:space="preserve">
+    <value>Adgangsnøgle tilbagekaldt.</value>
+  </data>
   <data name="Account_SignInWithProviderTitle" xml:space="preserve">
     <value>Log ind med {0}</value>
   </data>
@@ -2331,6 +2439,9 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Settings_Label_Security_RequireTwoFactor" xml:space="preserve">
     <value>Påkræv at alle kontoer logger ind med en tofaktorapp</value>
   </data>
+  <data name="Settings_Label_Security_PasskeyServerDomain" xml:space="preserve">
+    <value>Værtsnavn som adgangsnøgler er bundet til (tomt slår adgangsnøgler fra)</value>
+  </data>
   <data name="Settings_Label_AttemptLimits_MaxFailedAttempts" xml:space="preserve">
     <value>Antal tilladte mislykkede loginforsøg før kontoen låses</value>
   </data>
@@ -2425,7 +2536,7 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>Lad det være</value>
   </data>
   <data name="Settings_Confirm_Security_RequireTwoFactor" xml:space="preserve">
-    <value>Alle konti uden en tofaktorapp bliver sendt til opsætning, før de kan foretage sig noget. Personlige adgangstokens, der tilhører sådan en konto, holder op med at virke med det samme og fejler med en 401, der intet forklarer, så integrationer går i stykker, før deres ejere ved hvorfor.</value>
+    <value>Alle konti uden en tofaktorapp bliver sendt til opsætning, før de kan foretage sig noget. Personlige adgangstokens, der tilhører sådan en konto, holder op med at virke med det samme og fejler med en 401, der intet forklarer, så integrationer går i stykker, før deres ejere ved hvorfor. Login med adgangsnøgle spørger aldrig om koden: en adgangsnøgle er et fuldstændigt login i sig selv, og denne indstilling kræver kun, at kontoen har en tofaktorapp.</value>
   </data>
   <data name="Settings_Refuse_Security_RequireTwoFactor" xml:space="preserve">
     <value>Opsæt først en tofaktorapp på din egen konto. Kravet gælder konti og ikke sessioner, så hvis du slår det til uden en, bliver du sendt til opsætning og kan hverken nå denne side eller fortryde det.</value>

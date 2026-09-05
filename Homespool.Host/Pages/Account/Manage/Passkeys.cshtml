@@ -1,0 +1,107 @@
+@page
+@model PasskeysModel
+@using Homespool.Host.Authentication
+@{
+    ViewData["Title"] = Localiser["Manage_Passkeys"].Value;
+}
+
+<h1>@ViewData["Title"]</h1>
+<partial name="_StatusMessage" for="StatusMessage" />
+
+<p class="text-muted">@Localiser["Passkeys_Explanation"]</p>
+
+@if (!Model.PasskeysAvailable)
+{
+    @* The reason, not just the absence: a credential is bound to one name, and the person can act on
+       knowing which one. *@
+    <div class="alert alert-warning" role="alert">
+        @(Model.ServerDomain is null ? Localiser["Passkeys_NotConfigured"] : Localiser["Passkeys_Unavailable", Model.ServerDomain])
+    </div>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-6">
+            @* The button stays hidden until passkeys.js finds a browser that can run the ceremony;
+               there is no no-script path for WebAuthn. The form posts the attestation the script
+               fills in, so the antiforgery token guards both the challenge and the answer. *@
+            <form id="passkey-register-form" method="post" asp-page-handler="Register"
+                  data-passkey-options="@Url.Page("./Passkeys", "BeginRegistration")"
+                  data-passkey-cancelled="@Localiser["Passkeys_Cancelled"]">
+                <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
+                <div class="form-floating mb-3">
+                    <input asp-for="Input.Name" class="form-control" autocomplete="off" maxlength="@PasskeysModel.NameMaxLength" placeholder="@Localiser["Passkeys_NamePlaceholder"]" />
+                    <label asp-for="Input.Name" class="form-label"></label>
+                    <span asp-validation-for="Input.Name" class="text-danger"></span>
+                </div>
+                @if (Model.HasPassword)
+                {
+                    @* The password unlocks the ceremony: a session alone must not be able to add a
+                       sign-in that outlives it. An account from an external provider has none to give. *@
+                    <div class="form-floating mb-1">
+                        <input asp-for="Input.Password" class="form-control" autocomplete="current-password" placeholder="@Localiser["Common_PasswordPlaceholder"]" />
+                        <label asp-for="Input.Password" class="form-label"></label>
+                    </div>
+                    <p class="form-text mb-3">@Localiser["Passkeys_PasswordWhy"]</p>
+                }
+                <input type="hidden" name="@PasskeyAuthenticationOptions.CredentialFormField" value="" />
+                <button id="passkey-add" type="submit" class="w-100 btn btn-lg btn-primary" hidden>@Localiser["Passkeys_Add"]</button>
+                <p id="passkey-error" class="text-danger mt-2" role="alert" hidden></p>
+            </form>
+        </div>
+    </div>
+}
+
+<h2 class="mt-4">@Localiser["Passkeys_Yours"]</h2>
+
+@if (Model.Passkeys.Count == 0)
+{
+    <p class="text-muted">@Localiser["Passkeys_None"]</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th scope="col">@Localiser["Common_Name"]</th>
+                <th scope="col">@Localiser["Common_Created"]</th>
+                <th scope="col">@Localiser["Passkeys_KindColumn"]</th>
+                <th scope="col"></th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var passkey in Model.Passkeys)
+        {
+            var id = PasskeysModel.IdOf(passkey);
+            <tr>
+                <td>
+                    @* Rename in place: one field, one button, in the row of the thing it names. *@
+                    <form method="post" asp-page-handler="Rename" class="d-flex gap-2">
+                        <input type="hidden" name="id" value="@id" />
+                        <input class="form-control form-control-sm typed-name" name="name" value="@passkey.Name" maxlength="@PasskeysModel.NameMaxLength" aria-label="@Localiser["Passkeys_NameLabel"]" />
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">@Localiser["Passkeys_Rename"]</button>
+                    </form>
+                </td>
+                <td>@passkey.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
+                @* Honest information rather than a policy: a synced credential lives wherever the
+                   platform account does, and the person is the one who decides whether that is fine. *@
+                <td class="small">@(passkey.IsBackupEligible ? Localiser["Passkeys_Synced"] : Localiser["Passkeys_DeviceBound"])</td>
+                <td class="text-end">
+                    <form method="post" asp-page-handler="Remove">
+                        <input type="hidden" name="id" value="@id" />
+                        <button type="submit" class="btn btn-sm btn-outline-danger">@Localiser["Passkeys_Remove"]</button>
+                    </form>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    @if (Model.PasskeysAvailable)
+    {
+        <script src="~/js/passkeys.js" asp-append-version="true"></script>
+    }
+}

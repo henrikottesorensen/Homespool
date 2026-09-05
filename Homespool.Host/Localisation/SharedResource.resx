@@ -621,6 +621,114 @@
   <data name="Account_OrSignInWith" xml:space="preserve">
     <value>Or sign in with</value>
   </data>
+  <data name="Account_SignInWithPasskey" xml:space="preserve">
+    <value>Sign in with a passkey</value>
+  </data>
+  <data name="Account_PasskeyCancelled" xml:space="preserve">
+    <value>The passkey sign-in was cancelled or timed out. Try again, or use your password.</value>
+  </data>
+  <data name="Manage_Passkeys" xml:space="preserve">
+    <value>Passkeys</value>
+  </data>
+  <data name="Nav_AdminPasskeys" xml:space="preserve">
+    <value>Everyone's passkeys</value>
+  </data>
+  <data name="Passkeys_Explanation" xml:space="preserve">
+    <value>A passkey signs you in with your face, fingerprint or device passcode instead of a password. One that syncs follows your Apple or Google account to every device signed into it; one that does not stays on the device you made it on.</value>
+  </data>
+  <data name="Passkeys_NotConfigured" xml:space="preserve">
+    <value>Homespool has not been given a hostname for passkeys, so passkeys are not enabled.</value>
+  </data>
+  <data name="Passkeys_Unavailable" xml:space="preserve">
+    <value>Passkeys are bound to {0}. Open this page at that address to add one.</value>
+  </data>
+  <data name="Passkeys_NameLabel" xml:space="preserve">
+    <value>Passkey name</value>
+  </data>
+  <data name="Passkeys_NamePlaceholder" xml:space="preserve">
+    <value>This device</value>
+  </data>
+  <data name="Passkeys_PasswordLabel" xml:space="preserve">
+    <value>Your password</value>
+  </data>
+  <data name="Passkeys_PasswordWhy" xml:space="preserve">
+    <value>Asked for so that a session somebody else got hold of cannot add a sign-in that outlives it.</value>
+  </data>
+  <data name="Passkeys_PasswordWrong" xml:space="preserve">
+    <value>That is not your password.</value>
+  </data>
+  <data name="Passkeys_PasswordLockedOut" xml:space="preserve">
+    <value>Too many wrong passwords. Try again in {0}.</value>
+  </data>
+  <data name="Manage_PasswordChangedPasskeys" xml:space="preserve">
+    <value>Your {0} passkey(s) still sign you in. If you changed your password because somebody else knew it, check the Passkeys page for one you did not add.</value>
+  </data>
+  <data name="Account_ReviewPasskeysAfterReset" xml:space="preserve">
+    <value>Passkeys are not affected by a reset. If somebody else had your password, check {0} for a passkey you did not add.</value>
+  </data>
+  <data name="Passkeys_NameInvalid" xml:space="preserve">
+    <value>A passkey name is up to 64 characters.</value>
+  </data>
+  <data name="Passkeys_DefaultName" xml:space="preserve">
+    <value>Passkey added {0}</value>
+  </data>
+  <data name="Passkeys_Add" xml:space="preserve">
+    <value>Add a passkey</value>
+  </data>
+  <data name="Passkeys_Cancelled" xml:space="preserve">
+    <value>Adding the passkey was cancelled or timed out. Try again.</value>
+  </data>
+  <data name="Passkeys_RegistrationFailed" xml:space="preserve">
+    <value>The passkey could not be added. Try again.</value>
+  </data>
+  <data name="Passkeys_Yours" xml:space="preserve">
+    <value>Your passkeys</value>
+  </data>
+  <data name="Passkeys_None" xml:space="preserve">
+    <value>You have no passkeys yet.</value>
+  </data>
+  <data name="Passkeys_KindColumn" xml:space="preserve">
+    <value>Kind</value>
+  </data>
+  <data name="Passkeys_Synced" xml:space="preserve">
+    <value>Synced across your devices</value>
+  </data>
+  <data name="Passkeys_DeviceBound" xml:space="preserve">
+    <value>On one device only</value>
+  </data>
+  <data name="Passkeys_Rename" xml:space="preserve">
+    <value>Rename</value>
+  </data>
+  <data name="Passkeys_Remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="Passkeys_Added" xml:space="preserve">
+    <value>Passkey added.</value>
+  </data>
+  <data name="Passkeys_Renamed" xml:space="preserve">
+    <value>Passkey renamed.</value>
+  </data>
+  <data name="Passkeys_Removed" xml:space="preserve">
+    <value>Passkey removed.</value>
+  </data>
+  <data name="Passkeys_Gone" xml:space="preserve">
+    <value>That passkey was already gone.</value>
+  </data>
+  <data name="AdminPasskeys_Explanation" xml:space="preserve">
+    <value>Every passkey enrolled in Homespool. Revoke one if its owner has lost the device it lives on; they can still sign in with their password and add another.</value>
+  </data>
+  <data name="AdminPasskeys_None" xml:space="preserve">
+    <value>No passkeys have been enrolled.</value>
+  </data>
+  <data name="AdminPasskeys_Owner" xml:space="preserve">
+    <value>Account</value>
+  </data>
+  <data name="AdminPasskeys_Revoke" xml:space="preserve">
+    <value>Revoke passkey</value>
+  </data>
+  <data name="AdminPasskeys_Revoked" xml:space="preserve">
+    <value>Passkey revoked.</value>
+  </data>
   <data name="Account_SignInWithProviderTitle" xml:space="preserve">
     <value>Sign in with {0}</value>
   </data>
@@ -2426,6 +2534,9 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Settings_Label_Security_RequireTwoFactor" xml:space="preserve">
     <value>Require an authenticator on every account</value>
   </data>
+  <data name="Settings_Label_Security_PasskeyServerDomain" xml:space="preserve">
+    <value>Hostname passkeys are bound to (empty turns passkeys off)</value>
+  </data>
   <data name="Settings_Label_AttemptLimits_MaxFailedAttempts" xml:space="preserve">
     <value>Failed sign-ins before the account is locked</value>
   </data>
@@ -2520,7 +2631,7 @@ A stick that already works with your printer is the right stick. If you are form
     <value>Leave it as it is</value>
   </data>
   <data name="Settings_Confirm_Security_RequireTwoFactor" xml:space="preserve">
-    <value>Every account without an authenticator is sent to enrol before it can do anything else. Any personal access token belonging to such an account stops working immediately, and fails as a 401 that explains nothing - so integrations break before their owners know why.</value>
+    <value>Every account without an authenticator is sent to enrol before it can do anything else. Any personal access token belonging to such an account stops working immediately, and fails as a 401 that explains nothing - so integrations break before their owners know why. Signing in with a passkey never asks for the code: a passkey is a complete sign-in on its own, and this setting only requires that the account holds an authenticator.</value>
   </data>
   <data name="Settings_Refuse_Security_RequireTwoFactor" xml:space="preserve">
     <value>Set up an authenticator on your own account first. The requirement applies to accounts rather than sessions, so turning it on without one would send you to enrol and leave you unable to reach this page - or to undo it.</value>

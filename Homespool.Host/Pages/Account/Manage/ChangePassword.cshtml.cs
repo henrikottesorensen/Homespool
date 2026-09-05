@@ -156,6 +156,7 @@ public class ChangePasswordModel : PageModel
         }
 
         int revoked;
+        int passkeys;
 
         // The password change and the revocation are one step, deliberately. The state to make
         // unreachable is "new password, old tokens still live" - which is exactly what someone
@@ -179,6 +180,13 @@ public class ChangePasswordModel : PageModel
 
             revoked = await _apiTokens.RevokeAllForUserAsync(user.Id, cancellationToken);
 
+            // Counted, not revoked. A passkey is the person's daily sign-in, and losing it on every
+            // password change would mean re-enrolling every device every time; and nothing can add
+            // one without this password, so a hijacked session cannot have planted one. What a
+            // change cannot rule out is a passkey added by somebody who KNEW the password, so the
+            // person is told to look, with the list one click away.
+            passkeys = (await _userManager.GetPasskeysAsync(user)).Count;
+
             await transaction.CommitAsync(cancellationToken);
         }
 
@@ -190,12 +198,19 @@ public class ChangePasswordModel : PageModel
 
         // Silent breakage is the real cost of revoking here, so it is reported - but only when there
         // was something to report. Most accounts hold no tokens and do not need telling so.
-        StatusMessage = revoked switch
+        string message = revoked switch
         {
             0 => _localiser["Manage_PasswordChanged"],
             1 => _localiser["Manage_PasswordChangedOneToken"],
             _ => _localiser["Manage_PasswordChangedTokens", revoked],
         };
+
+        if (passkeys > 0)
+        {
+            message += " " + _localiser["Manage_PasswordChangedPasskeys", passkeys];
+        }
+
+        StatusMessage = message;
 
         return RedirectToPage();
     }

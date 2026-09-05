@@ -98,6 +98,10 @@ public static class IdentityServices
         services.TryAddScoped<ITwoFactorSecurityStampValidator, TwoFactorSecurityStampValidator<HSUser>>();
         services.TryAddScoped<IUserClaimsPrincipalFactory<HSUser>, UserClaimsPrincipalFactory<HSUser, IdentityRole<long>>>();
         services.TryAddScoped<IUserConfirmation<HSUser>, DefaultUserConfirmation<HSUser>>();
+
+        // The WebAuthn engine behind the Passkey scheme, which drives it directly. SignInManager
+        // resolves it too and would hold a ceremony's state in the two-factor cookie; nothing here
+        // asks it to, and a test pins that nothing does.
         services.TryAddScoped<IPasskeyHandler<HSUser>, PasskeyHandler<HSUser>>();
         services.TryAddScoped<UserManager<HSUser>>();
         services.TryAddScoped<SignInManager<HSUser>>();

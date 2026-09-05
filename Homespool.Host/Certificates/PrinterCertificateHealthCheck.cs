@@ -67,10 +67,14 @@ public sealed class PrinterCertificateHealthCheck : IHealthCheck
 
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
+        string? configuredHost = _connect.IsPrinterAddressConfigured ? _connect.PrinterHost : null;
+
         if (!_connect.PrinterTls)
         {
+            // The configured host still goes in: a name the printer truncates fails on plain HTTP
+            // too, and that is the one thing the evaluation checks ahead of the TLS switch.
             return Result(PrinterCertificateDrift.Evaluate(
-                              tlsEnabled: false, null, [], [], null, null, _time.GetUtcNow()));
+                              tlsEnabled: false, configuredHost, [], [], null, null, _time.GetUtcNow()));
         }
 
         // The certificate alone, never EnsureAuthority: this only wants the expiry date, which is
@@ -84,12 +88,13 @@ public sealed class PrinterCertificateHealthCheck : IHealthCheck
 
         PrinterCertificateVerdict verdict = PrinterCertificateDrift.Evaluate(
             tlsEnabled: true,
-            _connect.IsPrinterAddressConfigured ? _connect.PrinterHost : null,
+            configuredHost,
             covered,
             current,
             leaf?.NotAfter.ToUniversalTime(),
             authority?.NotAfter.ToUniversalTime(),
-            _time.GetUtcNow());
+            _time.GetUtcNow(),
+            await PrinterCertificateNames.ConfiguredHostResolvesOnlyToLoopbackAsync(_connect, _resolver, cancellationToken));
 
         return Result(verdict, new Dictionary<string, object>(StringComparer.Ordinal)
         {

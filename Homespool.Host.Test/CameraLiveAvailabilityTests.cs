@@ -255,6 +255,23 @@ public sealed class CameraLiveAvailabilityTests : IDisposable
     }
 
     /// <summary>
+    /// The one cause with a named fix: the host resolved to loopback and nothing else, which is the
+    /// machine's own hosts-file line for its hostname. "Container networks" points nobody at that.
+    /// </summary>
+    [Fact]
+    public async Task TheHealthCheckNamesTheHostsFileLineWhenTheHostResolvesOnlyToLoopback()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddCameraAsync(context);
+
+        HealthCheckResult result = await CheckAsync(context, candidate: string.Empty, printerHost: "homespool.lan", loopbackOnly: true);
+
+        result.Status.Should().Be(HealthStatus.Degraded);
+        result.Description.Should().Contain("homespool.lan").And.Contain("127.0.1.1").And.Contain("/etc/hosts")
+              .And.Contain("WEBRTC_CANDIDATE", "the override is still the other way out");
+    }
+
+    /// <summary>
     /// An override that was set and could not be used. A different fault with a different fix, and
     /// the sentence has to say so rather than send them back to <c>PRINTER_HOST</c>.
     /// </summary>
@@ -277,9 +294,14 @@ public sealed class CameraLiveAvailabilityTests : IDisposable
     private static async Task<HealthCheckResult> CheckAsync(HomespoolDbContext context,
                                                             string candidate,
                                                             string printerHost = "",
-                                                            string configured = "")
+                                                            string configured = "",
+                                                            bool loopbackOnly = false)
     {
-        CameraLiveAvailability availability = new(Substitute.For<ICameraCodecProbe>()) { Candidate = candidate };
+        CameraLiveAvailability availability = new(Substitute.For<ICameraCodecProbe>())
+        {
+            Candidate = candidate,
+            ConfiguredHostResolvesOnlyToLoopback = loopbackOnly,
+        };
 
         WebRtcCandidateHealthCheck check = new(
             availability,

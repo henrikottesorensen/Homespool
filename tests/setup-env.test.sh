@@ -1049,6 +1049,32 @@ ANSWERS
     then passed=$((passed + 1)); else fail "refused an answer the operator insisted on"; fi
 fi
 
+if test_case "a name over 20 characters is refused outright, because firmware truncates it"; then
+    # Prusa firmware keeps the Connect hostname in a 20-character field and cuts a longer one
+    # silently: the ini loads, the printer dials the first 20 characters, and the panel says
+    # "connection error" about a name that does not exist. Unlike every other warning here there is
+    # no "use it anyway" - no network exists on which the truncated name works.
+    sandbox_path linux docker-collision
+    use_temp_env "PRINTER_HOST="
+    out="$( (validate_printer_host "homespool.example.net") 2>&1 )"
+    status=$?
+    assert_eq "1" "$status" "refused, with no question asked"
+    assert_says "$out" "20-character" "and says whose limit it is"
+    assert_says "$out" "homespool.example.ne" "naming what the printer would actually dial"
+
+    # Twenty is the limit itself. A name, so it is asked about resolving; the answer is yes.
+    if validate_printer_host "printers.example.net" >/dev/null 2>&1 <<< "y"
+    then passed=$((passed + 1)); else fail "a 20-character name was refused"; fi
+
+    # And the offered list does not lead with a name the next line would refuse.
+    HOMESPOOL_HOSTNAME=homespool.example.net
+    export HOMESPOOL_HOSTNAME
+    resolve_host() { echo "192.168.13.238"; }
+    assert_eq "" "$(name_candidate "$(lan_addresses)")" "a long name is not offered, however well it resolves"
+    unset -f resolve_host
+    unset HOMESPOOL_HOSTNAME
+fi
+
 if test_case "one machine gets one name"; then
     # PRINTER_HOST offered homespool.lan while USER_HOSTS suggested homespool.local - two names for
     # one box on one screen, because only the first was allowed to ask the network.

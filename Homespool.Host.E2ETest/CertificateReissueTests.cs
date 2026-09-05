@@ -136,6 +136,13 @@ public sealed class CertificateReissueTests : IAsyncLifetime
         page.Should().Contain("an-old-address.lan", "and the warning has to name which names go");
         page.Should().ContainEquivalentOf("USB visit",
                                           "the cost of getting it wrong is what makes the warning worth reading");
+
+        // By evidence, not by inference: a name that resolves to nothing is the only kind the page may
+        // call gone. From inside a container "not detected" and "gone" are otherwise the same thing.
+        page.Should().ContainEquivalentOf("resolves to nothing a printer could use",
+                                          "an unresolvable name is what this page can honestly say about it");
+        page.Should().NotContainEquivalentOf("no longer answers on",
+                                             "detection inside a container cannot make that claim about any name");
     }
 
     /// <summary>

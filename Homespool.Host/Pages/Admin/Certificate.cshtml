@@ -123,6 +123,13 @@
     </div>
 </div>
 
+@if (Model.ConfiguredHostResolvesOnlyToLoopback)
+{
+    <div class="alert alert-warning" role="alert">
+        @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Cert_LoopbackOnly"].Value, $"<code>{Model.ConfiguredHost}</code>", "<code>127.0.1.1</code>", "<code>/etc/hosts</code>"))
+    </div>
+}
+
 @if (Model.ConfiguredHostUncovered)
 {
     <div class="alert alert-danger" role="alert">
@@ -144,15 +151,35 @@ else if (Model.Uncovered.Count > 0)
             <strong>@Localiser["Cert_WouldStopConnecting"]</strong>
             @Localiser["Cert_DroppingConsequence"]
             <p class="mt-2 mb-1">@Localiser["Cert_KeepTicked"]</p>
-            @foreach (string name in Model.Dropping)
+            @if (Model.DroppingUnconfirmed.Count > 0)
             {
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" name="KeepNames" value="@name"
-                           id="keep-@name" />
-                    <label class="form-check-label" for="keep-@name">
-                        @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Cert_Keep"].Value, $"<code>{name}</code>"))
-                    </label>
-                </div>
+                <p class="mb-1"><em>@Localiser["Cert_DroppingUnconfirmed"]</em></p>
+                @foreach (string name in Model.DroppingUnconfirmed)
+                {
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="KeepNames" value="@name"
+                               id="keep-@name" />
+                        <label class="form-check-label" for="keep-@name">
+                            @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Cert_Keep"].Value, $"<code>{name}</code>"))
+                            <span class="badge text-bg-secondary ms-1">@Localiser["Cert_CannotConfirm"]</span>
+                        </label>
+                    </div>
+                }
+            }
+            @if (Model.DroppingUnresolvable.Count > 0)
+            {
+                <p class="mt-2 mb-1"><em>@Localiser["Cert_DroppingUnresolvable"]</em></p>
+                @foreach (string name in Model.DroppingUnresolvable)
+                {
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="KeepNames" value="@name"
+                               id="keep-@name" />
+                        <label class="form-check-label" for="keep-@name">
+                            @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Cert_Keep"].Value, $"<code>{name}</code>"))
+                            <span class="badge text-bg-secondary ms-1">@Localiser["Cert_ResolvesToNothing"]</span>
+                        </label>
+                    </div>
+                }
             }
         </div>
     }

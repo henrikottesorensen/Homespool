@@ -49,16 +49,31 @@ public static class PrinterCertificateDrift
     /// <param name="leafExpires">When the leaf expires, or null if there is none.</param>
     /// <param name="authorityExpires">When the authority expires, or null if there is none.</param>
     /// <param name="now">The clock.</param>
+    /// <param name="configuredHostResolvesOnlyToLoopback">
+    /// Whether the configured host, resolved from where this process runs, answers with nothing but
+    /// loopback — the hosts-file case <see cref="PrinterCertificateNames.ResolvesOnlyToLoopback"/> describes.
+    /// </param>
     public static PrinterCertificateVerdict Evaluate(bool tlsEnabled,
                                                      string? configuredHost,
                                                      IReadOnlyList<string> covered,
                                                      IReadOnlyList<string> current,
                                                      DateTimeOffset? leafExpires,
                                                      DateTimeOffset? authorityExpires,
-                                                     DateTimeOffset now)
+                                                     DateTimeOffset now,
+                                                     bool configuredHostResolvesOnlyToLoopback = false)
     {
         ArgumentNullException.ThrowIfNull(covered);
         ArgumentNullException.ThrowIfNull(current);
+
+        // First, and ahead of the TLS switch: a name the printer truncates fails on the plaintext rig
+        // too, and it fails whatever the certificate says. Startup refuses it now; this is for a
+        // deployment that was started before it did.
+        if (PrusaConnect.PrinterHostLengthValidator.Refusal(configuredHost) is string tooLong)
+        {
+            return new(PrinterCertificateState.ConfiguredAddressTooLong,
+                       $"{tooLong} Every provisioning bundle written from it produces a printer that cannot connect. "
+                       + "Change PRINTER_HOST, then reissue the certificate for the new name: Admin -> Printer certificate.");
+        }
 
         if (!tlsEnabled)
         {
@@ -81,6 +96,20 @@ public static class PrinterCertificateDrift
                        $"The printer certificate does not cover {configuredHost.Trim()}, which is the address printers are "
                        + $"told to use. It covers {Describe(covered)}. No provisioning bundle can be produced for that "
                        + "address until the certificate is reissued: Admin -> Printer certificate.");
+        }
+
+        // After the uncovered case, which stops provisioning today; this one misleads rather than
+        // breaks. Printers use the router's answer for the name and are unaffected. What is affected
+        // is everything decided from inside the container: the reissue page reads every other name
+        // on the certificate as one this machine no longer answers on, and live view has no address.
+        if (configuredHostResolvesOnlyToLoopback && !string.IsNullOrWhiteSpace(configuredHost))
+        {
+            return new(PrinterCertificateState.ConfiguredAddressResolvesToLoopback,
+                       $"{configuredHost.Trim()} resolves only to a loopback address from inside this container - the "
+                       + "machine's own hosts-file entry for its hostname (127.0.1.1 on Debian and Raspberry Pi OS), not what "
+                       + "printers see. Until it is fixed, this deployment cannot tell which of its addresses answer, so the "
+                       + "certificate page will offer to drop names that work and live camera view has no address. Remove "
+                       + "the name from the 127.0.1.1 line in /etc/hosts on the host, and restart the stack.");
         }
 
         // Only when nothing is configured, and that is not a shortcut. A configured name the

@@ -203,6 +203,14 @@ public sealed class ProvisioningBundleBuilder
 
         string name = hostname.Trim();
 
+        // Before the certificate check, and independent of it: the bundle page can address a bundle
+        // to a kept name that never went through the options validation, and a name the printer
+        // truncates fails whether or not the certificate covers it.
+        if (PrinterHostLengthValidator.Refusal(name) is string tooLong)
+        {
+            throw new ArgumentException(tooLong, nameof(hostname));
+        }
+
         if (_options.PrinterTls
             && !(await AvailableNamesAsync(cancellationToken))
                 .Any(suggestion => suggestion.Value.Equals(name, StringComparison.OrdinalIgnoreCase)))

@@ -83,13 +83,23 @@ public sealed class WebRtcCandidateHealthCheck : IHealthCheck
         // an operator who set nothing needs to know a name is missing, and one who set a name that
         // resolves to nothing useful would otherwise read the same sentence and check the same
         // setting twice.
+        // Three different faults with three different fixes, and the loopback one is named because
+        // it is the only one of them an operator cannot work out from the generic sentence: the name
+        // resolves perfectly from their own machine, and nothing about "container networks" points at
+        // a line in /etc/hosts.
         string remedy = _cameras.CurrentValue.WebRtcCandidate.Length > 0
             ? "WEBRTC_CANDIDATE is set but was not usable - it should be an address and port a browser can reach, "
               + "such as 192.168.1.10:8555, with no scheme."
             : _connect.CurrentValue.IsPrinterAddressConfigured
-                ? $"PRINTER_HOST is set to '{_connect.CurrentValue.PrinterHost.Trim()}' but does not resolve to an address "
-                  + "outside this deployment's own container networks. Set WEBRTC_CANDIDATE to the address and port "
-                  + "a browser should use."
+                ? _availability.ConfiguredHostResolvesOnlyToLoopback
+                    ? $"PRINTER_HOST is set to '{_connect.CurrentValue.PrinterHost.Trim()}' but resolves only to a loopback "
+                      + "address from inside this container - the machine's own hosts-file entry for its hostname "
+                      + "(127.0.1.1 on Debian and Raspberry Pi OS), not what a browser sees. Remove the name from the "
+                      + "127.0.1.1 line in /etc/hosts on the host and restart the stack, or set WEBRTC_CANDIDATE to the "
+                      + "address and port a browser should use."
+                    : $"PRINTER_HOST is set to '{_connect.CurrentValue.PrinterHost.Trim()}' but does not resolve to an address "
+                      + "outside this deployment's own container networks. Set WEBRTC_CANDIDATE to the address and port "
+                      + "a browser should use."
                 : "Set PRINTER_HOST to a name this machine answers to, which is what the address is worked out from, "
                   + "or set WEBRTC_CANDIDATE to the address and port a browser should use.";
 

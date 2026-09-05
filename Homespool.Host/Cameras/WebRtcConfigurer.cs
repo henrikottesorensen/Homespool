@@ -207,15 +207,28 @@ public sealed class WebRtcConfigurer : IHostedService
             cameras.WebRtcCandidate, cameras.WebRtcPort, resolved, _certificates.Value.ParsedContainerNetworks);
 
         _availability.Candidate = candidate;
+        _availability.ConfiguredHostResolvesOnlyToLoopback = PrinterCertificateNames.ResolvesOnlyToLoopback(resolved);
 
         if (candidate.Length == 0)
         {
             // Said once, at Information, because it is a real capability being absent rather than a
             // fault: everything except live view works, and the administrator's banner carries the
             // same news somewhere they will see it.
-            _logger.LogInformation(
-                "No WebRTC address could be worked out, so live camera view is off. Set PRINTER_HOST to a name "
-                + "this machine answers to, or WEBRTC_CANDIDATE to the address and port a browser should use.");
+            if (_availability.ConfiguredHostResolvesOnlyToLoopback)
+            {
+                _logger.LogInformation(
+                    "No WebRTC address could be worked out, so live camera view is off: PRINTER_HOST resolves only to "
+                    + "loopback from inside this container, which is the machine's own hosts-file entry for its hostname "
+                    + "(127.0.1.1 on Debian and Raspberry Pi OS) rather than what a browser sees. Remove the name from the "
+                    + "127.0.1.1 line in /etc/hosts on the host, or set WEBRTC_CANDIDATE to the address and port a browser "
+                    + "should use.");
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "No WebRTC address could be worked out, so live camera view is off. Set PRINTER_HOST to a name "
+                    + "this machine answers to, or WEBRTC_CANDIDATE to the address and port a browser should use.");
+            }
 
             return;
         }

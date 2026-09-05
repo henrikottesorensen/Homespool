@@ -137,4 +137,41 @@ public class PrinterCertificateNamesTests
              .And.NotContain("169.254.4.9").And.NotContain("fdc2:74d8:1010::cd4",
                                                            "covering an address no printer can reach hedges nothing and advertises the internal network");
     }
+
+    /// <summary>
+    /// The hosts-file answer: the configured name resolves to 127.0.1.1 and nothing else, which the
+    /// filters correctly drop and which then reads as "this machine has no address but its name".
+    /// </summary>
+    [Fact]
+    public void AnAnswerOfOnlyLoopbackIsTheHostsFileCase()
+    {
+        PrinterCertificateNames.ResolvesOnlyToLoopback([IPAddress.Parse("127.0.1.1")]).Should().BeTrue();
+    }
+
+    /// <summary>No answer is not the loopback case; that is a name this container cannot resolve, which is ordinary.</summary>
+    [Fact]
+    public void NoAnswerIsNotTheLoopbackCase()
+    {
+        PrinterCertificateNames.ResolvesOnlyToLoopback([]).Should().BeFalse();
+    }
+
+    /// <summary>Loopback beside a usable address is fine — the usable one is used.</summary>
+    [Fact]
+    public void LoopbackBesideAUsableAddressIsNotTheLoopbackCase()
+    {
+        PrinterCertificateNames.ResolvesOnlyToLoopback([IPAddress.Parse("127.0.1.1"), IPAddress.Parse("192.168.13.108")])
+                               .Should().BeFalse();
+    }
+
+    /// <summary>The configured-host form asks the resolver about the configured name, and says no when none is set.</summary>
+    [Fact]
+    public async Task TheConfiguredHostFormResolvesTheConfiguredNameAsync()
+    {
+        Resolver resolver = new(new Dictionary<string, IPAddress[]> { ["homespool.lan"] = [IPAddress.Parse("127.0.1.1")] });
+
+        (await PrinterCertificateNames.ConfiguredHostResolvesOnlyToLoopbackAsync(
+             new PrusaConnectOptions { PrinterHost = "homespool.lan" }, resolver, CancellationToken.None)).Should().BeTrue();
+        (await PrinterCertificateNames.ConfiguredHostResolvesOnlyToLoopbackAsync(
+             new PrusaConnectOptions(), resolver, CancellationToken.None)).Should().BeFalse("nothing is configured");
+    }
 }

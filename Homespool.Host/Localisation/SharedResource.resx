@@ -1392,7 +1392,7 @@
     <value>This machine has addresses the certificate does not cover. That is only a problem for printers told to use one of them - the ones using a covered address are unaffected.</value>
   </data>
   <data name="Cert_DroppingExplanation" xml:space="preserve">
-    <value>These names are covered today and this machine no longer answers on them, so they would not be carried over. That is usually right - a certificate should only vouch for what a printer can reach. But</value>
+    <value>These names are covered today and detection from inside this container did not find them, so they would not be carried over. That is usually right - a certificate should only vouch for what a printer can reach. But</value>
   </data>
   <data name="Cert_DroppingConsequence" xml:space="preserve">
     <value>once the new certificate is served, reporting a bare TLS error that names nothing, and putting it back means a USB visit to repoint it.</value>
@@ -2560,5 +2560,20 @@ A stick that already works with your printer is the right stick. If you are form
   </data>
   <data name="ByteUnit_GiB" xml:space="preserve">
     <value>GiB</value>
+  </data>
+  <data name="Cert_LoopbackOnly" xml:space="preserve">
+    <value>From inside this container, {0} resolves only to a loopback address - the machine's own hosts-file entry for its hostname ({1} on Debian and Raspberry Pi OS), not what printers see. Until that is fixed this page cannot tell which of the machine's addresses answer, and would offer to drop names that work. Remove the name from the {1} line in {2} on the host, then restart the stack.</value>
+  </data>
+  <data name="Cert_DroppingUnconfirmed" xml:space="preserve">
+    <value>These addresses are probably still good, but Homespool cannot confirm it from inside its container.</value>
+  </data>
+  <data name="Cert_DroppingUnresolvable" xml:space="preserve">
+    <value>These no longer point anywhere a printer could reach.</value>
+  </data>
+  <data name="Cert_CannotConfirm" xml:space="preserve">
+    <value>probably good, unconfirmed</value>
+  </data>
+  <data name="Cert_ResolvesToNothing" xml:space="preserve">
+    <value>resolves to nothing a printer could use</value>
   </data>
 </root>

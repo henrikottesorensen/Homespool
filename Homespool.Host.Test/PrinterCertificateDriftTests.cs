@@ -30,7 +30,8 @@ public class PrinterCertificateDriftTests
                                                       IReadOnlyList<string> current,
                                                       string? configuredHost = null,
                                                       int leafDays = 400,
-                                                      int authorityDays = 5000)
+                                                      int authorityDays = 5000,
+                                                      bool loopbackOnly = false)
     {
         return PrinterCertificateDrift.Evaluate(
             tlsEnabled: true,
@@ -39,7 +40,8 @@ public class PrinterCertificateDriftTests
             current,
             Now.AddDays(leafDays),
             Now.AddDays(authorityDays),
-            Now);
+            Now,
+            loopbackOnly);
     }
 
     /// <summary>
@@ -153,5 +155,79 @@ public class PrinterCertificateDriftTests
 
         verdict.State.Should().Be(PrinterCertificateState.NotInUse);
         verdict.IsProblem.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// A configured host of 21 characters is the first thing reported, even when the certificate
+    /// covers it — the printer dials the first 20 and never connects.
+    /// </summary>
+    /// <remarks>
+    /// The fixture is the shape of the name that took two printers offline: 21 characters, one over
+    /// the firmware's field. The message has to name what the printer would actually dial, because
+    /// that is the only thing that makes "connection error" on the panel make sense.
+    /// </remarks>
+    [Fact]
+    public void ATwentyOneCharacterHostIsRefusedAheadOfEverythingElse()
+    {
+        PrinterCertificateVerdict verdict = Evaluate(
+            covered: ["homespool.example.net"], current: ["homespool.example.net"], configuredHost: "homespool.example.net");
+
+        verdict.State.Should().Be(PrinterCertificateState.ConfiguredAddressTooLong);
+        verdict.IsProblem.Should().BeTrue();
+        verdict.Description.Should().Contain("20-character")
+               .And.Contain("homespool.example.ne", "it has to say what the printer would dial")
+               .And.Contain("PRINTER_HOST");
+    }
+
+    /// <summary>Twenty characters is the limit, not one under it.</summary>
+    [Fact]
+    public void ATwentyCharacterHostIsAccepted()
+    {
+        PrinterCertificateVerdict verdict = Evaluate(
+            covered: ["printers.example.net"], current: ["printers.example.net"], configuredHost: "printers.example.net");
+
+        verdict.State.Should().Be(PrinterCertificateState.Ok);
+    }
+
+    /// <summary>
+    /// The length rule bites on plain HTTP too, where every other rule stands down: the field is the
+    /// printer's, and it truncates whatever the transport.
+    /// </summary>
+    [Fact]
+    public void ATooLongHostIsReportedEvenOnPlaintext()
+    {
+        PrinterCertificateVerdict verdict = PrinterCertificateDrift.Evaluate(
+            tlsEnabled: false, "homespool.example.net", [], [], null, null, Now);
+
+        verdict.State.Should().Be(PrinterCertificateState.ConfiguredAddressTooLong);
+    }
+
+    /// <summary>
+    /// A configured host that resolves only to loopback from inside the container is named as such,
+    /// with the line to fix — rather than surfacing as a page that offers to drop working names.
+    /// </summary>
+    [Fact]
+    public void AConfiguredHostResolvingOnlyToLoopbackIsNamed()
+    {
+        PrinterCertificateVerdict verdict = Evaluate(
+            covered: ["homespool.lan", "192.168.13.108"], current: ["homespool.lan"], configuredHost: "homespool.lan",
+            loopbackOnly: true);
+
+        verdict.State.Should().Be(PrinterCertificateState.ConfiguredAddressResolvesToLoopback);
+        verdict.IsProblem.Should().BeTrue();
+        verdict.Description.Should().Contain("homespool.lan").And.Contain("127.0.1.1").And.Contain("/etc/hosts");
+    }
+
+    /// <summary>
+    /// An uncovered configured address still comes first: it stops provisioning today, while the
+    /// loopback answer only misleads.
+    /// </summary>
+    [Fact]
+    public void AnUncoveredAddressOutranksTheLoopbackAnswer()
+    {
+        PrinterCertificateVerdict verdict = Evaluate(
+            covered: ["192.168.13.108"], current: ["homespool.lan"], configuredHost: "homespool.lan", loopbackOnly: true);
+
+        verdict.State.Should().Be(PrinterCertificateState.ConfiguredAddressUncovered);
     }
 }

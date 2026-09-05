@@ -241,6 +241,10 @@ public static class Program
             // once and never again. Nothing about it is per-request.
             builder.Services.AddSingleton<Certificates.PrinterCertificateAuthority>();
 
+            // Raised by the authority whenever it issues a leaf, so a list derived from the leaf's
+            // names - the host filter's - follows a reissue without a restart.
+            builder.Services.AddSingleton<Certificates.PrinterLeafChangeToken>();
+
             // Singleton alongside the authority it reads: it holds bound options and a path, and
             // reaches the filesystem only when a bundle is actually asked for.
             builder.Services.AddSingleton<PrusaConnect.ProvisioningBundleBuilder>();

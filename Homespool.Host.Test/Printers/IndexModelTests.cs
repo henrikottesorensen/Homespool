@@ -119,7 +119,8 @@ public sealed class IndexModelTests : IDisposable
             Options.Create(new CertificateOptions { Directory = "certs", AuthorityPassphrase = "unit test passphrase" }),
             new HostEnvironmentAccessor(_certificateRoot),
             TimeProvider.System,
-            NullLogger<PrinterCertificateAuthority>.Instance);
+            NullLogger<PrinterCertificateAuthority>.Instance,
+            new PrinterLeafChangeToken());
 
         // A leaf covering the configured address, since that is what decides which names the reissue
         // may offer - and whether it can offer a bundle at all.

@@ -58,7 +58,8 @@ public sealed class PrinterCertificateHealthCheckTests : IDisposable
                    }),
                    new HostEnvironmentAccessor(_root),
                    TimeProvider.System,
-                   NullLogger<PrinterCertificateAuthority>.Instance);
+                   NullLogger<PrinterCertificateAuthority>.Instance,
+                   new PrinterLeafChangeToken());
     }
 
     /// <summary>

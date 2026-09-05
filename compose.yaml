@@ -104,17 +104,23 @@ services:
 
       # Which Host headers this process answers at all - the proxy refuses an unknown Host, and this
       # is the same rule inside the application, because a proxy is not the only way to reach it.
-      # Composed from the addresses this deployment already knows:
+      # Composed from the names this deployment already knows, and it is the floor rather than the
+      # whole list:
       #
       #   USER_HOSTS    what people browse to - itself a list, which is why this composes cleanly
-      #   PRINTER_HOST  what printers connect to - their Host header reaches this process too, so
-      #                 leaving it out answers every printer 400 while the pages look fine
+      #   PRINTER_HOST  what printers are told to connect to
       #   localhost     the container health check, which curls itself
       #
+      # The printer side is not maintained here. The application appends every name on the printer
+      # certificate, at startup and again whenever it is reissued: a printer can only complete a
+      # handshake against a name the leaf covers, so the leaf's names are exactly the Host values a
+      # printer can present, and the two cannot drift. A bundle addressed to this machine's bare
+      # address works without that address appearing in either variable.
+      #
       # SEMICOLONS, not commas - the framework's separator, and the reason USER_HOSTS uses one too:
-      # its names need no conversion to be spliced in here. The match ignores the port. A name in
-      # neither variable is refused with 400 before anything else runs, so add it to USER_HOSTS
-      # rather than here - this line is composed, not maintained.
+      # its names need no conversion to be spliced in here. The match ignores the port. A name
+      # people browse to that is in neither variable is refused with 400 before anything else runs,
+      # so add it to USER_HOSTS rather than here - this line is composed, not maintained.
       AllowedHosts: "${USER_HOSTS:-localhost};${PRINTER_HOST:-localhost};localhost"
 
       # PrinterHost is what a printer is told to use: required for USB-key provisioning - the Add

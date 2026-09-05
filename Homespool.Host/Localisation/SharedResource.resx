@@ -666,6 +666,30 @@
   <data name="Account_ReviewPasskeysAfterReset" xml:space="preserve">
     <value>Passkeys are not affected by a reset. If somebody else had your password, check {0} for a passkey you did not add.</value>
   </data>
+  <data name="Passkeys_ProviderWhy" xml:space="preserve">
+    <value>This account signs in through {0}, so {0} has to confirm it is you before a passkey can be added. The confirmation is good for five minutes.</value>
+  </data>
+  <data name="Passkeys_YourProvider" xml:space="preserve">
+    <value>your provider</value>
+  </data>
+  <data name="Passkeys_ProviderConfirm" xml:space="preserve">
+    <value>Confirm with {0}</value>
+  </data>
+  <data name="Passkeys_ProviderConfirmed" xml:space="preserve">
+    <value>{0} confirmed you. Add your passkey within five minutes.</value>
+  </data>
+  <data name="Passkeys_ProviderNotConfirmed" xml:space="preserve">
+    <value>Confirm with your provider first.</value>
+  </data>
+  <data name="Passkeys_ProviderFailed" xml:space="preserve">
+    <value>The confirmation did not complete. Try again.</value>
+  </data>
+  <data name="Passkeys_ProviderMismatch" xml:space="preserve">
+    <value>That was a different {0} account from the one this account signs in with.</value>
+  </data>
+  <data name="Passkeys_ProviderStale" xml:space="preserve">
+    <value>{0} did not ask you to sign in again just now. Try again.</value>
+  </data>
   <data name="Passkeys_NameInvalid" xml:space="preserve">
     <value>A passkey name is up to 64 characters.</value>
   </data>

@@ -145,6 +145,34 @@ public class PasskeysModel : PageModel
         public string? Password { get; set; }
     }
 
+    /// <summary>
+    /// Whether <paramref name="name"/> may be a passkey's name: something to show, within the length,
+    /// with no control characters and none of the invisible marks that would let a name render
+    /// deceptively in the table - the rule the file store's directory name already applies.
+    /// </summary>
+    public static bool IsAcceptableName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.Length > NameMaxLength)
+        {
+            return false;
+        }
+
+        foreach (char character in name)
+        {
+            // Written as escapes on purpose: these are invisible characters, and a source file holding
+            // them literally is unreadable in a diff and carries the very hazard this rejects.
+            if (char.IsControl(character)
+                || character is '\u200B' or '\u200C' or '\u200D' or '\uFEFF'
+                || character is >= '\u202A' and <= '\u202E'
+                || character is >= '\u2066' and <= '\u2069')
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     /// <summary>The credential id as the page and the forms spell it: base64url.</summary>
     public static string IdOf(UserPasskeyInfo passkey)
     {
@@ -376,6 +404,13 @@ public class PasskeysModel : PageModel
 
         await LoadAsync();
 
+        // The length attribute is the browser's half; this is the character rule, which no attribute
+        // states. An empty name is fine here and gets the dated default below.
+        if (!string.IsNullOrWhiteSpace(Input.Name) && !IsAcceptableName(Input.Name))
+        {
+            ModelState.AddModelError("Input.Name", _localiser["Passkeys_NameInvalid"]);
+        }
+
         if (!ModelState.IsValid)
         {
             return Page();
@@ -454,7 +489,7 @@ public class PasskeysModel : PageModel
 
         string trimmed = name?.Trim() ?? string.Empty;
 
-        if (trimmed.Length is 0 or > NameMaxLength)
+        if (!IsAcceptableName(trimmed))
         {
             await LoadAsync();
             ModelState.AddModelError(string.Empty, _localiser["Passkeys_NameInvalid"]);

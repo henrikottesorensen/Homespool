@@ -391,6 +391,39 @@ public sealed class PasskeysPageTests : IDisposable
         (await rig.Users.GetPasskeyAsync(user, passkey.CredentialId))!.Name.Should().Be("new");
     }
 
+    /// <summary>
+    /// A name with a control character or an invisible mark is refused on both verbs, the rule the
+    /// file store's directory name applies: the name is rendered in a table, and logged.
+    /// </summary>
+    [Theory]
+    [InlineData("phone\u0000")]
+    [InlineData("pho\nne")]
+    [InlineData("phone\u202E")]
+    [InlineData("\u200Bphone")]
+    public async Task ANameWithAnInvisibleCharacterIsRefused(string name)
+    {
+        // Arrange
+        await using Rig rig = await Rig.CreateAsync(this);
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        UserPasskeyInfo passkey = await rig.SeedPasskeyAsync(user, "old");
+        using FakeAuthenticator authenticator = new();
+
+        (PasskeysModel begin, DefaultHttpContext beginRequest) = rig.NewModel(user);
+        ContentResult options = (await begin.OnPostBeginRegistrationAsync(CancellationToken.None)).Should().BeOfType<ContentResult>().Subject;
+        (PasskeysModel register, _) = rig.NewModel(user, cookie: Rig.CookieOf(beginRequest));
+        register.Input.Name = name;
+        (PasskeysModel rename, _) = rig.NewModel(user);
+
+        // Act
+        IActionResult registered = await register.OnPostRegisterAsync(authenticator.Attest(options.Content!));
+        IActionResult renamed = await rename.OnPostRenameAsync(PasskeysModel.IdOf(passkey), name);
+
+        // Assert
+        registered.Should().BeOfType<PageResult>();
+        renamed.Should().BeOfType<PageResult>();
+        (await rig.Users.GetPasskeysAsync(user)).Should().ContainSingle().Which.Name.Should().Be("old");
+    }
+
     [Fact]
     public async Task RenamingToNothingIsRefused()
     {

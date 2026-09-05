@@ -345,7 +345,7 @@ public sealed class PasskeySignInTests : IAsyncLifetime
         using FormUrlEncodedContent body = new(new Dictionary<string, string>
         {
             ["__RequestVerificationToken"] = antiforgeryToken,
-            [PasskeyAuthenticationOptions.CredentialFormField] = credential,
+            [PasskeyCredential.FormField] = credential,
             ["rememberMe"] = "false",
         });
 

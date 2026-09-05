@@ -30,6 +30,7 @@
              analyzer catches the main footgun, substituting a non-virtual member and silently
              getting nothing. -->
         <PackageReference Include="NSubstitute" Version="6.2.0"/>
+        <PackageReference Include="Otp.NET" Version="1.4.1"/>
         <PackageReference Include="NSubstitute.Analyzers.CSharp" Version="1.0.17">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

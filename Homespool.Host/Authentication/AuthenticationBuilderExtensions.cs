@@ -75,6 +75,38 @@ public static class AuthenticationBuilderExtensions
         return builder;
     }
 
+    /// <summary>
+    /// Registers the local credential schemes: a username or address with a password, an authenticator
+    /// code and a recovery code - each a scheme a page presents a bound credential to
+    /// (<see cref="CredentialAuthentication"/>) and composes into a sign-in or a step-up itself.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>These replace <c>SignInManager</c>'s sign-in methods</b>, whose password and code checks
+    /// they transcribe. What they leave to the page is what the manager kept for itself: which cookie
+    /// a verified credential becomes, whether a second factor is still owed, and whether this browser
+    /// is remembered. A page reads like the flow it implements, and <see cref="LocalSignInRules"/>
+    /// holds the shared rules those decisions rest on.
+    /// </para>
+    /// <para>
+    /// <b>None is a default scheme and none redirects.</b> Each answers a challenge with 401 so that
+    /// nothing routes to it by mistake; the login page is where a credential is asked for, and the
+    /// application cookie's challenge already sends people there.
+    /// </para>
+    /// </remarks>
+    public static AuthenticationBuilder AddLocalAuthentication(this AuthenticationBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.Services.AddScoped<LocalSignInRules>();
+
+        builder.AddScheme<AuthenticationSchemeOptions, UserPasswordAuthenticationHandler>(Schemes.UserPassword, options => { });
+        builder.AddScheme<AuthenticationSchemeOptions, TotpAuthenticationHandler>(Schemes.Totp, options => { });
+        builder.AddScheme<AuthenticationSchemeOptions, RecoveryCodeAuthenticationHandler>(Schemes.RecoveryCode, options => { });
+
+        return builder;
+    }
+
     public static AuthenticationBuilder AddPrusaConnectPrinterAuthentication(this AuthenticationBuilder builder)
     {
         builder.AddScheme<PrusaConnectAuthenticationSchemeOptions, PrusaConnectPrinterAuthenticationHandler>(

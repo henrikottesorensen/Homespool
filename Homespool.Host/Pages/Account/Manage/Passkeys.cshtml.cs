@@ -163,7 +163,7 @@ public class PasskeysModel : PageModel
             // them literally is unreadable in a diff and carries the very hazard this rejects.
             if (char.IsControl(character) ||
                 character is '\u200B' or '\u200C' or '\u200D' or '\uFEFF' ||
-                character is >= '\u202A' and <= '\u202E' || 
+                character is >= '\u202A' and <= '\u202E' ||
                 character is >= '\u2066' and <= '\u2069')
             {
                 return false;

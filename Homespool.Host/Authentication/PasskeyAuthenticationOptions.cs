@@ -33,12 +33,6 @@ public class PasskeyAuthenticationOptions : AuthenticationSchemeOptions
     public const string DefaultCeremonyCookieName = $"{PasskeyAuthenticationHandler.PasskeyPrefix}.Ceremony";
 
     /// <summary>
-    /// The form field an assertion is posted in: the <c>PublicKeyCredential</c> the browser returned,
-    /// serialised with <c>toJSON()</c>. The scheme's one wire contract with the page that drives it.
-    /// </summary>
-    public const string CredentialFormField = "credential";
-
-    /// <summary>
     /// The relying-party id: the hostname every passkey of this deployment is bound to. Null or empty
     /// withholds passkeys altogether.
     /// </summary>

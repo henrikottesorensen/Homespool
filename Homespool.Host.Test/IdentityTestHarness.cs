@@ -58,6 +58,7 @@ internal static class IdentityTestHarness
                     options.DefaultSignInScheme = IdentityConstants.ExternalScheme;
                 })
                 .AddIdentityCookieSchemes()
+                .AddLocalAuthentication()
                 .AddPasskeyAuthentication();
 
         // The options come from the application's own configuration rather than being restated here,

@@ -122,7 +122,7 @@ public sealed class PasskeyManageTests : IAsyncLifetime
             {
                 ["__RequestVerificationToken"] = token,
                 ["Input.Name"] = "MacBook",
-                [PasskeyAuthenticationOptions.CredentialFormField] = authenticator.Attest(creationOptions),
+                [PasskeyCredential.FormField] = authenticator.Attest(creationOptions),
             });
 
             // Act
@@ -150,7 +150,7 @@ public sealed class PasskeyManageTests : IAsyncLifetime
         using FormUrlEncodedContent assertionBody = new(new Dictionary<string, string>
         {
             ["__RequestVerificationToken"] = loginToken,
-            [PasskeyAuthenticationOptions.CredentialFormField] = authenticator.Assert(requestOptions, user.Id.ToString(CultureInfo.InvariantCulture)),
+            [PasskeyCredential.FormField] = authenticator.Assert(requestOptions, user.Id.ToString(CultureInfo.InvariantCulture)),
             ["rememberMe"] = "false",
         });
 

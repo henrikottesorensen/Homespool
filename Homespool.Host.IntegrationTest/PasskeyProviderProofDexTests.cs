@@ -73,7 +73,7 @@ public sealed class PasskeyProviderProofDexTests
         {
             ["__RequestVerificationToken"] = token,
             ["Input.Name"] = "Phone",
-            [PasskeyAuthenticationOptions.CredentialFormField] = authenticator.Attest(creationOptions),
+            [PasskeyCredential.FormField] = authenticator.Attest(creationOptions),
         });
 
         using HttpResponseMessage registered = await client.PostAsync("/Account/Manage/Passkeys?handler=Register", registerBody, TestContext.Current.CancellationToken);

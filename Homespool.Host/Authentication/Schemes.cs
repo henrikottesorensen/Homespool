@@ -33,4 +33,26 @@ public static class Schemes
     /// verified assertion is worth.
     /// </summary>
     public const string Passkey = "Passkey";
+
+    /// <summary>
+    /// A username or address and a password, posted in a form and verified by
+    /// <see cref="UserPasswordAuthenticationHandler"/>. The one scheme that names its own account:
+    /// the login field says who, the password says it is them.
+    /// </summary>
+    public const string UserPassword = "UserPassword"; // betterleaks:allow - a scheme name, not a password
+
+    /// <summary>
+    /// An authenticator code, verified by <see cref="TotpAuthenticationHandler"/> for an account some
+    /// other scheme has already named - the pending two-factor cookie on the login path, or the
+    /// signed-in session on a step-up. A code alone identifies nobody, so this scheme alone signs
+    /// nobody in.
+    /// </summary>
+    public const string Totp = "Totp";
+
+    /// <summary>
+    /// A recovery code, redeemed by <see cref="RecoveryCodeAuthenticationHandler"/> for the account the
+    /// pending two-factor cookie names. Only ever a second factor, and never on a step-up: a recovery
+    /// code is for getting back into an account, not for confirming a routine act.
+    /// </summary>
+    public const string RecoveryCode = "RecoveryCode";
 }

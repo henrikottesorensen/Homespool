@@ -153,7 +153,7 @@ public class LoginModel : PageModel
     /// form is no more of an oracle for passkeys than it is for passwords.
     /// </para>
     /// </remarks>
-    public async Task<IActionResult> OnPostPasskeyAsync(bool rememberMe = false, string returnUrl = null)
+    public async Task<IActionResult> OnPostPasskeyAsync(string credential = null, bool rememberMe = false, string returnUrl = null)
     {
         returnUrl ??= Url.Content("~/");
 
@@ -174,7 +174,7 @@ public class LoginModel : PageModel
             return Page();
         }
 
-        AuthenticateResult assertion = await HttpContext.AuthenticateAsync(Schemes.Passkey);
+        AuthenticateResult assertion = await HttpContext.AuthenticateWithAsync(Schemes.Passkey, new PasskeyCredential(credential));
 
         if (!assertion.Succeeded)
         {

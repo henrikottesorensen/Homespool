@@ -9,7 +9,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Primitives;
 
 using Homespool.Model.Entities;
 
@@ -164,7 +163,12 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
     /// <inheritdoc/>
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        string? credential = await ReadCredentialAsync();
+        string? credential = Context.Features.Get<PasskeyCredential>()?.Json;
+
+        if (string.IsNullOrWhiteSpace(credential))
+        {
+            credential = null;
+        }
 
         // No assertion posted, so this scheme has nothing to say about the request.
         if (credential is null)
@@ -234,29 +238,6 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
         Logger.LogInformation("Passkey {PasskeyName} authenticated user {UserId}.", passkey.Name ?? "(unnamed)", user.Id);
 
         return AuthenticateResult.Success(new AuthenticationTicket(principal, properties, Scheme.Name));
-    }
-
-    /// <summary>
-    /// The assertion this request carries, or <see langword="null"/> when it carries none: the
-    /// <see cref="PasskeyAuthenticationOptions.CredentialFormField"/> of a posted form.
-    /// </summary>
-    private async Task<string?> ReadCredentialAsync()
-    {
-        if (!HttpMethods.IsPost(Request.Method) || !Request.HasFormContentType)
-        {
-            return null;
-        }
-
-        IFormCollection form = await Request.ReadFormAsync(Context.RequestAborted);
-
-        if (!form.TryGetValue(PasskeyAuthenticationOptions.CredentialFormField, out StringValues values))
-        {
-            return null;
-        }
-
-        string? credential = values.Count == 1 ? values[0] : null;
-
-        return string.IsNullOrWhiteSpace(credential) ? null : credential;
     }
 
     /// <inheritdoc/>

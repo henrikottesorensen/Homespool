@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -15,7 +14,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Primitives;
 using Microsoft.Extensions.Time.Testing;
 
 using Homespool.Data;
@@ -549,11 +547,7 @@ public sealed class PasskeyAuthenticationHandlerTests : IDisposable
             if (credential is not null)
             {
                 request.Request.Method = HttpMethods.Post;
-                request.Request.ContentType = "application/x-www-form-urlencoded";
-                request.Request.Form = new FormCollection(new Dictionary<string, StringValues>
-                {
-                    [PasskeyAuthenticationOptions.CredentialFormField] = credential,
-                });
+                request.Features.Set(new PasskeyCredential(credential));
             }
 
             if (cookie is not null)

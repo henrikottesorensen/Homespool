@@ -112,6 +112,15 @@ public sealed class ContentRootIsolationTests : IAsyncLifetime, IDisposable
         authority.LeafCertificatePemPath.Should().StartWith(contentRoot);
         authority.LeafKeyPemPath.Should().StartWith(contentRoot);
 
+        // The one file resolved before the container exists, so it cannot go through the accessor
+        // and is redirected by the factory instead - which is exactly the kind of bypass that lets
+        // a file escape: this pair spent months in Homespool.Host/data, shared by every host in a
+        // run and the developer's own server, unnoticed while the key was passwordless.
+        File.Exists(Path.Combine(contentRoot, "data", "certificates", "dataprotection.key.pem"))
+            .Should().BeTrue("the Data Protection key must be written inside this host's own content root");
+        File.Exists(Path.Combine(contentRoot, "data", "certificates", "dataprotection.crt.pem"))
+            .Should().BeTrue();
+
         Path.IsPathRooted(files.Directory).Should().BeFalse(
             "the point of this test is that a relative default is safe, so a test that quietly configured "
             + "an absolute one would be asserting nothing");

@@ -112,6 +112,15 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
         // too. This is the narrow hole the content-root remarks above describe, and this closes it.
         ConfigurationOverrides["Settings:File"] = Path.Combine(_contentRoot, "data", "settings.json");
 
+        // The other path resolved before the container exists, for the same reason: Data Protection
+        // is handed its certificate at registration. Left alone, every host in a run - and a
+        // developer's own server - shared one certificate written into Homespool.Host/data, which
+        // went unnoticed while the file was passwordless and became a refusal to start the moment
+        // two hosts with different passphrases met it. Under the same relative location the
+        // authority uses, so SharedPrinterCertificates donates the pair along with the authority and
+        // later hosts open it rather than mint it.
+        ConfigurationOverrides["Certificates:KeyProtectionDirectory"] = Path.Combine(_contentRoot, "data", "certificates");
+
         // Mandatory since the CA key became encrypted-only - a host without one refuses to start,
         // which is the production behaviour and not what a test host should die of. Set here rather
         // than relied on from appsettings.Development.json so it holds whatever environment a test

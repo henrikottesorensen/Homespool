@@ -62,17 +62,20 @@ public class CertificateOptions
     public string ProxyDirectory { get; set; } = "data/proxy-certificates";
 
     /// <summary>
-    /// Passphrase encrypting the authority's private key at rest. Required: the key is never
-    /// minted, loaded or migrated without one — startup refuses instead — so there is no
-    /// plaintext-at-rest mode to fall into by accident.
+    /// Passphrase encrypting the authority's private key at rest, and the Data Protection
+    /// certificate beside it. Required: neither key is minted, loaded or migrated without one —
+    /// startup refuses instead — so there is no plaintext-at-rest mode to fall into by accident.
     /// </summary>
     /// <remarks>
     /// <para>
     /// <b>What this defends is a copied <c>data/</c> volume</b> — a backup that wanders, a
-    /// <c>docker cp</c>, a file-read bug — which is the realistic way this key leaks. The passphrase
-    /// lives in the environment (<c>.env</c> on the shipped stack), outside the volume, so a copy of
-    /// the data no longer carries the key that every provisioned printer trusts. It does not defend a
-    /// compromised host, which holds both halves; nothing at this layer can.
+    /// <c>docker cp</c>, a file-read bug — which is the realistic way either key leaks. The
+    /// passphrase lives in the environment (<c>.env</c> on the shipped stack), outside the volume,
+    /// so a copy of the data carries neither the key every provisioned printer trusts nor the one
+    /// that forges a session for any account. It does not defend a compromised host, which holds
+    /// both halves; nothing at this layer can. One passphrase for both keys, because they share
+    /// every case in which a passphrase helps — <see cref="DataProtectionCertificate"/> carries the
+    /// argument.
     /// </para>
     /// <para>
     /// <b>Losing it is losing the authority.</b> There is no recovery path and deliberately no
@@ -116,6 +119,24 @@ public class CertificateOptions
     /// </para>
     /// </remarks>
     public int AuthorityValidityDays { get; set; } = 5475;
+
+    /// <summary>
+    /// Directory holding the Data Protection certificate and its key. Null - the default - means
+    /// <see cref="Directory"/>, beside the authority. Relative paths resolve against the content root.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Separate from <see cref="Directory"/> for one reason, and it is not a deployment's: this
+    /// certificate is the one file resolved <i>before the container exists</i>. Data Protection has
+    /// to be handed the certificate at registration, so the directory is resolved against the host
+    /// builder's content root rather than through <c>IHostEnvironmentAccessor</c> like every other
+    /// file this application keeps. Under a test host that builder root is the real project folder,
+    /// so without a setting of its own every test host - and a developer's own server - shared one
+    /// certificate written into the source tree. The test factory sets this absolute, inside its
+    /// content root, the way it does the settings file. A deployment leaves it unset.
+    /// </para>
+    /// </remarks>
+    public string? KeyProtectionDirectory { get; set; }
 
     /// <summary>
     /// How long the Data Protection key-protection certificate is valid, in days. Default fifteen

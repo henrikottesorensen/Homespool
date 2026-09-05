@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -34,15 +32,15 @@ namespace Homespool.Host.E2ETest;
 // See EndToEndEnrolmentTests' [Collection] remarks: every WebApplicationFactory-hosted test class
 // needs the same collection name so xUnit never races their concurrent Program.Main startups against
 // Serilog's shared static Log.Logger.
-public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
+public sealed class SetupFlowTests : IAsyncLifetime
 {
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-setup-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("setup");
     private readonly CapturingSink _logs = new();
     private HomespoolFactory _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}", extraSinks: [_logs]);
+        _factory = new HomespoolFactory(_scratch, extraSinks: [_logs]);
 
         // Forces the host to actually start - migrations and AdminBootstrap run at that point, which
         // is what mints and logs the bootstrap token this suite needs. Deliberately does *not* call
@@ -53,28 +51,16 @@ public sealed class SetupFlowTests : IAsyncLifetime, IDisposable
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
+        _scratch.Dispose();
     }
 
     // CA1001 wants IDisposable on a type owning a disposable field even though xUnit's IAsyncLifetime
     // already drives cleanup via DisposeAsync above; WebApplicationFactory.Dispose is idempotent, so
     // this is a safe, redundant satisfier rather than a second real teardown path.
-    public void Dispose()
-    {
-        _factory.Dispose();
-
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
 
     /// <summary>
     /// The one-time token <c>AdminBootstrap</c> logged at startup - read back the same way an

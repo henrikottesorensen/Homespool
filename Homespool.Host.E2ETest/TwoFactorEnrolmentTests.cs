@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -41,14 +40,14 @@ namespace Homespool.Host.E2ETest;
 /// token and all, rather than the manager underneath them.
 /// </para>
 /// </remarks>
-public sealed class TwoFactorEnrolmentTests : IAsyncLifetime, IDisposable
+public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
 {
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-2fa-enrol-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("2fa-enrol");
     private HomespoolFactory _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}");
+        _factory = new HomespoolFactory(_scratch);
 
         _ = _factory.Server;
 
@@ -375,23 +374,11 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime, IDisposable
         return count;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        _factory.Dispose();
-        return ValueTask.CompletedTask;
-    }
+        await _factory.DisposeAsync();
 
-    public void Dispose()
-    {
-        _factory.Dispose();
-
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
+        _scratch.Dispose();
     }
 
     /// <summary>

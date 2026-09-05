@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -43,7 +41,7 @@ namespace Homespool.Host.E2ETest;
 /// mistake while the runtime is quietly covering for it.
 /// </para>
 /// </remarks>
-public sealed class RouteListenerSegregationTests : IAsyncLifetime, IDisposable
+public sealed class RouteListenerSegregationTests : IAsyncLifetime
 {
     /// <summary>
     /// <c>MapStaticAssets</c>' own file fallback, which it adds outside the convention builder it
@@ -51,7 +49,7 @@ public sealed class RouteListenerSegregationTests : IAsyncLifetime, IDisposable
     /// </summary>
     private const string StaticAssetFallbackPattern = "{**path:file}";
 
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-listeners-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("listeners");
     private readonly ITestOutputHelper _output;
     private HomespoolFactory _factory = null!;
 
@@ -62,31 +60,18 @@ public sealed class RouteListenerSegregationTests : IAsyncLifetime, IDisposable
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}");
+        _factory = new HomespoolFactory(_scratch);
 
         _ = _factory.Server;
 
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
-        _factory.Dispose();
-
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
+        _scratch.Dispose();
     }
 
     /// <summary>

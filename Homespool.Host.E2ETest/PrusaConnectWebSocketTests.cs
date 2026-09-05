@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
@@ -28,16 +27,16 @@ namespace Homespool.Host.E2ETest;
 /// the gate itself rejects a bad handshake or that a good one actually resolves the claimed printer's
 /// id and threads it through to the handler.
 /// </remarks>
-public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
+public sealed class PrusaConnectWebSocketTests : IAsyncLifetime
 {
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-e2e-ws-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("e2e-ws");
     private readonly CapturingMessageDispatcher _dispatcher = new();
     private readonly CapturingSink _logs = new();
     private HomespoolFactory _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}", _dispatcher, _logs);
+        _factory = new HomespoolFactory(_scratch, _dispatcher, _logs);
 
         // Force the host to actually start (migrations + AdminBootstrap run at that point) before any
         // test touches it, rather than lazily on the first HttpClient call.
@@ -49,24 +48,11 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime, IDisposable
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
-        _factory.Dispose();
-
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
+        _scratch.Dispose();
     }
 
     /// <summary>

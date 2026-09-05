@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -36,14 +35,14 @@ namespace Homespool.Host.E2ETest;
 /// registration whose dependencies are not yet in the graph.
 /// </para>
 /// </remarks>
-public sealed class ServiceResolutionTests : IAsyncLifetime, IDisposable
+public sealed class ServiceResolutionTests : IAsyncLifetime
 {
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-resolve-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("resolve");
     private HomespoolFactory _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}");
+        _factory = new HomespoolFactory(_scratch);
         _ = _factory.Server;
 
         return ValueTask.CompletedTask;
@@ -114,23 +113,12 @@ public sealed class ServiceResolutionTests : IAsyncLifetime, IDisposable
             + "thing that exercises it");
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
         _factory?.Dispose();
 
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
+        _scratch.Dispose();
     }
 }

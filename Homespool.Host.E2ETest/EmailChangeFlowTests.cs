@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -26,15 +25,15 @@ namespace Homespool.Host.E2ETest;
 /// change however far a user got. Almost certainly missed when the Identity.UI package was removed
 /// and its pages were reimplemented locally.
 /// </remarks>
-public sealed class EmailChangeFlowTests : IAsyncLifetime, IDisposable
+public sealed class EmailChangeFlowTests : IAsyncLifetime
 {
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-emailchange-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("emailchange");
     private readonly CapturingSink _logs = new();
     private HomespoolFactory _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}", extraSinks: [_logs]);
+        _factory = new HomespoolFactory(_scratch, extraSinks: [_logs]);
 
         _ = _factory.Server;
 
@@ -44,24 +43,11 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime, IDisposable
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
-        _factory.Dispose();
-
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
+        _scratch.Dispose();
     }
 
     /// <summary>

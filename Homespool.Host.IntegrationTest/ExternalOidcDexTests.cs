@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -173,7 +172,7 @@ public sealed class ExternalOidcDexTests
     /// </summary>
     private sealed class Fixture : IDisposable
     {
-        private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-oidc-{Guid.NewGuid():N}.db");
+        private readonly ScratchDirectory _scratch = ScratchDirectory.Create("oidc-dex");
         private readonly HomespoolFactory _factory;
         private readonly HttpClient _app;
         private readonly HttpClientHandler _dexHandler;
@@ -181,7 +180,7 @@ public sealed class ExternalOidcDexTests
 
         public Fixture(bool allowInviteMatchByEmail)
         {
-            _factory = new HomespoolFactory($"Data Source={_databasePath}");
+            _factory = new HomespoolFactory(_scratch);
 
             _factory.ConfigurationOverrides["Oidc:Authority"] = DexFixture.Issuer;
             _factory.ConfigurationOverrides["Oidc:ClientId"] = DexFixture.ClientId;
@@ -357,16 +356,7 @@ public sealed class ExternalOidcDexTests
             _dexHandler.Dispose();
             _factory.Dispose();
 
-            try
-            {
-                if (File.Exists(_databasePath))
-                {
-                    File.Delete(_databasePath);
-                }
-            }
-            catch (IOException)
-            {
-            }
+            _scratch.Dispose();
         }
     }
 }

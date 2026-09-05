@@ -1,5 +1,3 @@
-using System;
-using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -29,17 +27,17 @@ namespace Homespool.Host.E2ETest;
 /// the exception rather than the status somebody actually receives.
 /// </para>
 /// </remarks>
-public sealed class MalformedEmailedCodeTests : IAsyncLifetime, IDisposable
+public sealed class MalformedEmailedCodeTests : IAsyncLifetime
 {
     /// <summary>Not valid base64url - '!' is outside the alphabet, so the decoder throws on it.</summary>
     private const string NotACode = "!!!not-base64url!!!";
 
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-badcode-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("badcode");
     private HomespoolFactory _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}");
+        _factory = new HomespoolFactory(_scratch);
 
         _ = _factory.Server;
 
@@ -52,14 +50,8 @@ public sealed class MalformedEmailedCodeTests : IAsyncLifetime, IDisposable
     public async ValueTask DisposeAsync()
     {
         await _factory.DisposeAsync();
-    }
 
-    public void Dispose()
-    {
-        if (File.Exists(_databasePath))
-        {
-            File.Delete(_databasePath);
-        }
+        _scratch.Dispose();
     }
 
     [Fact]

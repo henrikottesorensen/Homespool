@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -28,7 +27,7 @@ namespace Homespool.Host.E2ETest;
 /// generator's interpretation of them was the surprise. Only reading the document found it, so
 /// reading the document is now a test.
 /// </remarks>
-public sealed class OpenApiDocumentTests : IAsyncLifetime, IDisposable
+public sealed class OpenApiDocumentTests : IAsyncLifetime
 {
     private const string StoragePath = "/api/v1/printers/{uuid}/storage/usb/{path}";
 
@@ -44,12 +43,12 @@ public sealed class OpenApiDocumentTests : IAsyncLifetime, IDisposable
         throw new InvalidOperationException($"{statusCode} is documented with no content at all.");
     }
 
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-openapi-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("openapi");
     private HomespoolFactory _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}");
+        _factory = new HomespoolFactory(_scratch);
 
         _ = _factory.Server;
 
@@ -59,24 +58,11 @@ public sealed class OpenApiDocumentTests : IAsyncLifetime, IDisposable
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
-        _factory.Dispose();
-
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
+        _scratch.Dispose();
     }
 
     private async Task<JsonElement> DocumentAsync()

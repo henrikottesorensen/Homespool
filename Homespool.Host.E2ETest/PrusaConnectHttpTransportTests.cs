@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -43,11 +42,11 @@ namespace Homespool.Host.E2ETest;
 /// endpoints add beyond the actor's own - actually executes.
 /// </para>
 /// </remarks>
-public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime, IDisposable
+public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
 {
     private const string TelemetryBody = """{"state":"IDLE","temp_nozzle":27.1,"temp_bed":27.1}""";
 
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-e2e-http-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("e2e-http");
     private readonly CapturingSink _logs = new();
     private CapturingMessageDispatcher? _dispatcher;
     private HomespoolFactory _factory = null!;
@@ -57,24 +56,13 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime, IDisposable
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
         _factory?.Dispose();
 
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
+        _scratch.Dispose();
     }
 
     /// <summary>
@@ -732,7 +720,7 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime, IDisposable
 
     private void Start(CapturingMessageDispatcher? dispatcher)
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}", dispatcher, _logs);
+        _factory = new HomespoolFactory(_scratch, dispatcher, _logs);
 
         // Force startup - migrations and AdminBootstrap - before a test touches the server, rather
         // than lazily on the first request.

@@ -92,14 +92,19 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
     /// <c>ContentRootIsIsolatedTests</c> is what notices if this override is removed.
     /// </para>
     /// </remarks>
-    private readonly string _contentRoot =
-        Path.Combine(Path.GetTempPath(), $"hs-content-{Guid.NewGuid():N}");
+    private readonly string _contentRoot;
 
-    public HomespoolFactory(string connectionString,
+    public HomespoolFactory(ScratchDirectory scratch,
                             MessageDispatcher? messageDispatcher = null,
                             params IReadOnlyList<ILogEventSink> extraSinks)
     {
-        _connectionString = connectionString;
+        ArgumentNullException.ThrowIfNull(scratch);
+
+        // Inside the scratch directory rather than beside it: the test owns one directory, and deleting it
+        // takes the content root and the database together. Two sibling paths is what let the
+        // database's -wal and -shm outlive seven classes' cleanup.
+        _contentRoot = Path.Combine(scratch.Path, "content");
+        _connectionString = scratch.ConnectionString;
         _messageDispatcher = messageDispatcher;
         _extraSinks = extraSinks;
 

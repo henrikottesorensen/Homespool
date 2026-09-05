@@ -34,15 +34,15 @@ namespace Homespool.Host.E2ETest;
 /// posting the right field name is half of what is being asserted.
 /// </para>
 /// </remarks>
-public sealed class ReprintFromHistoryTests : IAsyncLifetime, IDisposable
+public sealed class ReprintFromHistoryTests : IAsyncLifetime
 {
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-reprint-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("reprint");
 
     private HomespoolFactory _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}");
+        _factory = new HomespoolFactory(_scratch);
         _ = _factory.Server;
 
         using IServiceScope scope = _factory.Services.CreateScope();
@@ -51,24 +51,11 @@ public sealed class ReprintFromHistoryTests : IAsyncLifetime, IDisposable
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
-        _factory.Dispose();
-
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
+        _scratch.Dispose();
     }
 
     /// <summary>A finished print offers the button, and pressing it puts the file back in the queue.</summary>

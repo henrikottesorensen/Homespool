@@ -1,5 +1,3 @@
-using System;
-using System.IO;
 using System.Net.Http;
 using System.Threading.Tasks;
 
@@ -30,14 +28,14 @@ namespace Homespool.Host.E2ETest;
 /// which is the half that cannot be checked without rendering a page as two different callers.
 /// </para>
 /// </remarks>
-public sealed class FooterBuildStampTests : IAsyncLifetime, IDisposable
+public sealed class FooterBuildStampTests : IAsyncLifetime
 {
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-footer-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("footer");
     private HomespoolFactory _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}");
+        _factory = new HomespoolFactory(_scratch);
 
         _ = _factory.Server;
 
@@ -72,20 +70,12 @@ public sealed class FooterBuildStampTests : IAsyncLifetime, IDisposable
         }
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Dispose();
+        await _factory.DisposeAsync();
 
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
         _factory?.Dispose();
 
-        if (File.Exists(_databasePath))
-        {
-            File.Delete(_databasePath);
-        }
+        _scratch.Dispose();
     }
 }

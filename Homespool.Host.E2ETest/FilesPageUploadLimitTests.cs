@@ -1,4 +1,3 @@
-using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
@@ -32,16 +31,16 @@ namespace Homespool.Host.E2ETest;
 /// kilobytes instead of the 512 MiB the shipped default would need.
 /// </para>
 /// </remarks>
-public sealed class FilesPageUploadLimitTests : IAsyncLifetime, IDisposable
+public sealed class FilesPageUploadLimitTests : IAsyncLifetime
 {
     private const int CapBytes = 4096;
 
-    private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-uploadcap-{Guid.NewGuid():N}.db");
+    private readonly ScratchDirectory _scratch = ScratchDirectory.Create("uploadcap");
     private HomespoolFactory _factory = null!;
 
     public ValueTask InitializeAsync()
     {
-        _factory = new HomespoolFactory($"Data Source={_databasePath}");
+        _factory = new HomespoolFactory(_scratch);
         _factory.ConfigurationOverrides["PrintFiles:MaxUploadBytes"] =
             CapBytes.ToString(CultureInfo.InvariantCulture);
 
@@ -57,14 +56,8 @@ public sealed class FilesPageUploadLimitTests : IAsyncLifetime, IDisposable
     public async ValueTask DisposeAsync()
     {
         await _factory.DisposeAsync();
-    }
 
-    public void Dispose()
-    {
-        if (File.Exists(_databasePath))
-        {
-            File.Delete(_databasePath);
-        }
+        _scratch.Dispose();
     }
 
     [Fact]

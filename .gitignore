@@ -96,3 +96,8 @@ pi/work/
 # Test results. Written by every test run (see Directory.Build.props) and pruned to the three
 # most recent per project, so this holds recent evidence rather than an archive.
 TestResults/
+
+# Python bytecode caches. tools/error-codes/generate.py writes one, and a compiled file embeds the
+# absolute path it was built at, so a tracked one carries a username into a public repository.
+__pycache__/
+*.pyc

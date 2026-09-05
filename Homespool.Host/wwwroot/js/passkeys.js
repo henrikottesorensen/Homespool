@@ -113,7 +113,13 @@
                 }
 
                 if (!response.ok) {
-                    throw new Error("challenge " + response.status);
+                    // A wrong password or a backoff answers with the sentence to show; anything
+                    // else gets the generic one.
+                    return response.json().then(function (body) {
+                        throw new Error(body && body.message ? body.message : "");
+                    }, function () {
+                        throw new Error("");
+                    });
                 }
 
                 return response.json();
@@ -128,6 +134,11 @@
 
                 form.elements.credential.value = toCredentialJson(credential);
 
+                // The password was proved when the ceremony began; it has no business in the answer.
+                if (form.elements["Input.Password"]) {
+                    form.elements["Input.Password"].value = "";
+                }
+
                 // A native submit from here on: the server answers with a redirect or the page with
                 // its message.
                 HTMLFormElement.prototype.submit.call(form);
@@ -138,8 +149,9 @@
                 }
 
                 // NotAllowedError is cancelled or timed out; InvalidStateError is "this authenticator
-                // already holds a passkey for this account", which the exclude list asks it to say.
-                showError(form.dataset.passkeyCancelled);
+                // already holds a passkey for this account", which the exclude list asks it to say. A
+                // server refusal carries its own sentence.
+                showError(reason && reason.message ? reason.message : form.dataset.passkeyCancelled);
             });
     });
 })();

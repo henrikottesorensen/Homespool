@@ -620,6 +620,24 @@
   <data name="Passkeys_NamePlaceholder" xml:space="preserve">
     <value>Denne enhed</value>
   </data>
+  <data name="Passkeys_PasswordLabel" xml:space="preserve">
+    <value>Din adgangskode</value>
+  </data>
+  <data name="Passkeys_PasswordWhy" xml:space="preserve">
+    <value>Spørges om, så en session, som en anden har fået fat i, ikke kan tilføje et login, der overlever den.</value>
+  </data>
+  <data name="Passkeys_PasswordWrong" xml:space="preserve">
+    <value>Det er ikke din adgangskode.</value>
+  </data>
+  <data name="Passkeys_PasswordLockedOut" xml:space="preserve">
+    <value>For mange forkerte adgangskoder. Prøv igen om {0}.</value>
+  </data>
+  <data name="Manage_PasswordChangedPasskeys" xml:space="preserve">
+    <value>Dine {0} adgangsnøgle(r) logger dig stadig ind. Hvis du skiftede adgangskode, fordi en anden kendte den, så se efter en adgangsnøgle, du ikke selv har tilføjet, på siden Adgangsnøgler.</value>
+  </data>
+  <data name="Account_ReviewPasskeysAfterReset" xml:space="preserve">
+    <value>Adgangsnøgler påvirkes ikke af en nulstilling. Hvis en anden havde din adgangskode, så se efter en adgangsnøgle, du ikke selv har tilføjet, under {0}.</value>
+  </data>
   <data name="Passkeys_NameInvalid" xml:space="preserve">
     <value>Et navn på en adgangsnøgle må højst være 64 tegn.</value>
   </data>

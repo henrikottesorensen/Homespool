@@ -119,9 +119,13 @@ public sealed class PasskeyManageTests : IAsyncLifetime, IDisposable
             HttpResponseMessage page = await client.GetAsync(ManagePath, TestContext.Current.CancellationToken);
             string token = AntiforgeryTestHelper.ExtractToken(await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
-            using FormUrlEncodedContent beginBody = new(new Dictionary<string, string> { ["__RequestVerificationToken"] = token });
+            using FormUrlEncodedContent beginBody = new(new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = token,
+                ["Input.Password"] = "Correct-Horse-Battery-Staple-1!", // betterleaks:allow
+            });
             HttpResponseMessage begin = await client.PostAsync($"{ManagePath}?handler=BeginRegistration", beginBody, TestContext.Current.CancellationToken);
-            begin.StatusCode.Should().Be(HttpStatusCode.OK);
+            begin.StatusCode.Should().Be(HttpStatusCode.OK, "the current password unlocks the ceremony");
             string creationOptions = await begin.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
             using JsonDocument options = JsonDocument.Parse(creationOptions);

@@ -648,6 +648,24 @@
   <data name="Passkeys_NamePlaceholder" xml:space="preserve">
     <value>This device</value>
   </data>
+  <data name="Passkeys_PasswordLabel" xml:space="preserve">
+    <value>Your password</value>
+  </data>
+  <data name="Passkeys_PasswordWhy" xml:space="preserve">
+    <value>Asked for so that a session somebody else got hold of cannot add a sign-in that outlives it.</value>
+  </data>
+  <data name="Passkeys_PasswordWrong" xml:space="preserve">
+    <value>That is not your password.</value>
+  </data>
+  <data name="Passkeys_PasswordLockedOut" xml:space="preserve">
+    <value>Too many wrong passwords. Try again in {0}.</value>
+  </data>
+  <data name="Manage_PasswordChangedPasskeys" xml:space="preserve">
+    <value>Your {0} passkey(s) still sign you in. If you changed your password because somebody else knew it, check the Passkeys page for one you did not add.</value>
+  </data>
+  <data name="Account_ReviewPasskeysAfterReset" xml:space="preserve">
+    <value>Passkeys are not affected by a reset. If somebody else had your password, check {0} for a passkey you did not add.</value>
+  </data>
   <data name="Passkeys_NameInvalid" xml:space="preserve">
     <value>A passkey name is up to 64 characters.</value>
   </data>

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -18,8 +19,10 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.Pages.Account.Manage;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -38,6 +41,7 @@ public sealed class PasskeysPageTests : IDisposable
 {
     private const string RelyingPartyId = "homespool.test";
     private const string PagePath = "/Account/Manage/Passkeys";
+    private const string Password = "Correct horse battery staple 1"; // betterleaks:allow
 
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-passkeypage-{Guid.NewGuid():N}.db");
 
@@ -62,7 +66,7 @@ public sealed class PasskeysPageTests : IDisposable
         using FakeAuthenticator authenticator = new() { BackedUp = true };
 
         (PasskeysModel begin, DefaultHttpContext beginRequest) = rig.NewModel(user);
-        ContentResult options = (await begin.OnPostBeginRegistrationAsync()).Should().BeOfType<ContentResult>().Subject;
+        ContentResult options = (await begin.OnPostBeginRegistrationAsync(CancellationToken.None)).Should().BeOfType<ContentResult>().Subject;
 
         (PasskeysModel register, _) = rig.NewModel(user, cookie: Rig.CookieOf(beginRequest));
         register.Input.Name = "MacBook";
@@ -90,7 +94,7 @@ public sealed class PasskeysPageTests : IDisposable
         using FakeAuthenticator authenticator = new();
 
         (PasskeysModel begin, DefaultHttpContext beginRequest) = rig.NewModel(user);
-        ContentResult options = (await begin.OnPostBeginRegistrationAsync()).Should().BeOfType<ContentResult>().Subject;
+        ContentResult options = (await begin.OnPostBeginRegistrationAsync(CancellationToken.None)).Should().BeOfType<ContentResult>().Subject;
         (PasskeysModel register, _) = rig.NewModel(user, cookie: Rig.CookieOf(beginRequest));
         register.Input.Name = "   ";
 
@@ -115,7 +119,7 @@ public sealed class PasskeysPageTests : IDisposable
         using FakeAuthenticator authenticator = new();
 
         (PasskeysModel begin, DefaultHttpContext beginRequest) = rig.NewModel(user);
-        ContentResult options = (await begin.OnPostBeginRegistrationAsync()).Should().BeOfType<ContentResult>().Subject;
+        ContentResult options = (await begin.OnPostBeginRegistrationAsync(CancellationToken.None)).Should().BeOfType<ContentResult>().Subject;
         (PasskeysModel register, _) = rig.NewModel(user, cookie: Rig.CookieOf(beginRequest));
         register.Input.Name = new string('x', PasskeysModel.NameMaxLength + 1);
         register.ModelState.AddModelError("Input.Name", "too long");
@@ -138,7 +142,7 @@ public sealed class PasskeysPageTests : IDisposable
 
         // Act
         IActionResult page = await model.OnGetAsync();
-        IActionResult begin = await model.OnPostBeginRegistrationAsync();
+        IActionResult begin = await model.OnPostBeginRegistrationAsync(CancellationToken.None);
 
         // Assert
         page.Should().BeOfType<PageResult>();
@@ -156,9 +160,9 @@ public sealed class PasskeysPageTests : IDisposable
         using FakeAuthenticator authenticator = new();
 
         (PasskeysModel first, DefaultHttpContext firstRequest) = rig.NewModel(user);
-        await first.OnPostBeginRegistrationAsync();
+        await first.OnPostBeginRegistrationAsync(CancellationToken.None);
         (PasskeysModel second, _) = rig.NewModel(user);
-        ContentResult secondOptions = (await second.OnPostBeginRegistrationAsync()).Should().BeOfType<ContentResult>().Subject;
+        ContentResult secondOptions = (await second.OnPostBeginRegistrationAsync(CancellationToken.None)).Should().BeOfType<ContentResult>().Subject;
 
         // The second ceremony's answer, with the first ceremony's cookie.
         (PasskeysModel register, _) = rig.NewModel(user, cookie: Rig.CookieOf(firstRequest));
@@ -199,6 +203,70 @@ public sealed class PasskeysPageTests : IDisposable
         // Assert
         result.Should().BeOfType<PageResult>();
         (await rig.Users.GetPasskeysAsync(user)).Should().BeEmpty("a ceremony is spent for the operation it was started for");
+    }
+
+    // ---------- the password gate ----------
+    [Fact]
+    public async Task AWrongPasswordRefusesToStartACeremony()
+    {
+        // Arrange
+        await using Rig rig = await Rig.CreateAsync(this);
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        (PasskeysModel model, DefaultHttpContext request) = rig.NewModel(user, password: "not it"); // betterleaks:allow
+
+        // Act
+        IActionResult result = await model.OnPostBeginRegistrationAsync(CancellationToken.None);
+
+        // Assert
+        JsonResult refusal = result.Should().BeOfType<JsonResult>().Subject;
+        refusal.StatusCode.Should().Be(401);
+        request.Response.Headers.SetCookie.ToString().Should().BeEmpty("no ceremony starts on a wrong password");
+    }
+
+    [Fact]
+    public async Task RepeatedWrongPasswordsBackOff()
+    {
+        // Arrange
+        await using Rig rig = await Rig.CreateAsync(this);
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        int threshold = new AttemptLimitOptions().MaxFailedAttempts;
+
+        for (int i = 0; i <= threshold; i += 1)
+        {
+            (PasskeysModel wrong, _) = rig.NewModel(user, password: "not it"); // betterleaks:allow
+            await wrong.OnPostBeginRegistrationAsync(CancellationToken.None);
+        }
+
+        // Even the right password is refused while backed off, and the refusal says so.
+        (PasskeysModel model, _) = rig.NewModel(user);
+
+        // Act
+        IActionResult result = await model.OnPostBeginRegistrationAsync(CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<JsonResult>().Which.StatusCode.Should().Be(429);
+        (await rig.Limiter.RemainingLockoutAsync(user.Id, LimitedAction.AddPasskey, DateTimeOffset.UtcNow, CancellationToken.None))
+            .Should().NotBeNull();
+    }
+
+    /// <summary>An account made through a provider has no password to prove, and is not asked for one.</summary>
+    [Fact]
+    public async Task AnAccountWithoutAPasswordAddsWithoutOne()
+    {
+        // Arrange
+        await using Rig rig = await Rig.CreateAsync(this);
+        HSUser user = new("provider-only") { Email = "provider@example.com", EmailConfirmed = true };
+        (await rig.Users.CreateAsync(user)).Succeeded.Should().BeTrue();
+        (PasskeysModel model, _) = rig.NewModel(user, password: null);
+
+        // Act
+        IActionResult page = await model.OnGetAsync();
+        IActionResult begin = await model.OnPostBeginRegistrationAsync(CancellationToken.None);
+
+        // Assert
+        page.Should().BeOfType<PageResult>();
+        model.HasPassword.Should().BeFalse();
+        begin.Should().BeOfType<ContentResult>();
     }
 
     // ---------- renaming and removing ----------
@@ -312,6 +380,8 @@ public sealed class PasskeysPageTests : IDisposable
 
         public PasskeyCeremonies Ceremonies => _provider.GetRequiredService<PasskeyCeremonies>();
 
+        public AttemptLimiter Limiter => new(_context, TestOptions.Snapshot(new AttemptLimitOptions()), NullLogger<AttemptLimiter>.Instance);
+
         public static async Task<Rig> CreateAsync(PasskeysPageTests owner)
         {
             DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
@@ -328,8 +398,11 @@ public sealed class PasskeysPageTests : IDisposable
             return new Rig(context, provider);
         }
 
-        /// <summary>The page model over a request from <paramref name="user"/>, signed in, on <paramref name="host"/>.</summary>
-        public (PasskeysModel model, DefaultHttpContext request) NewModel(HSUser user, string? cookie = null, string host = RelyingPartyId)
+        /// <summary>
+        /// The page model over a request from <paramref name="user"/>, signed in, on <paramref name="host"/>,
+        /// with <paramref name="password"/> typed into the add form - the right one unless a test says otherwise.
+        /// </summary>
+        public (PasskeysModel model, DefaultHttpContext request) NewModel(HSUser user, string? cookie = null, string host = RelyingPartyId, string? password = Password)
         {
             DefaultHttpContext request = new() { RequestServices = _provider };
             request.Request.Scheme = "https";
@@ -349,10 +422,13 @@ public sealed class PasskeysPageTests : IDisposable
                                       Engine,
                                       Ceremonies,
                                       _provider.GetRequiredService<IOptionsMonitor<PasskeyAuthenticationOptions>>(),
+                                      Limiter,
+                                      TimeProvider.System,
                                       TestLocaliser.Shared(),
                                       NullLogger<PasskeysModel>.Instance)
             {
                 PageContext = IdentityTestHarness.NewPageContext(request),
+                Input = new PasskeysModel.InputModel { Password = password },
             };
 
             return (model, request);
@@ -366,7 +442,7 @@ public sealed class PasskeysPageTests : IDisposable
                 EmailConfirmed = true,
             };
 
-            IdentityResult created = await Users.CreateAsync(user, "Correct horse battery staple 1");
+            IdentityResult created = await Users.CreateAsync(user, Password);
             created.Succeeded.Should().BeTrue(string.Join("; ", created.Errors.Select(e => e.Description)));
 
             return user;

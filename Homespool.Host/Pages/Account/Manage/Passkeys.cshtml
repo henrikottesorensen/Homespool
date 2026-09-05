@@ -34,6 +34,16 @@ else
                     <label asp-for="Input.Name" class="form-label"></label>
                     <span asp-validation-for="Input.Name" class="text-danger"></span>
                 </div>
+                @if (Model.HasPassword)
+                {
+                    @* The password unlocks the ceremony: a session alone must not be able to add a
+                       sign-in that outlives it. An account from an external provider has none to give. *@
+                    <div class="form-floating mb-1">
+                        <input asp-for="Input.Password" class="form-control" autocomplete="current-password" placeholder="@Localiser["Common_PasswordPlaceholder"]" />
+                        <label asp-for="Input.Password" class="form-label"></label>
+                    </div>
+                    <p class="form-text mb-3">@Localiser["Passkeys_PasswordWhy"]</p>
+                }
                 <input type="hidden" name="@PasskeyAuthenticationOptions.CredentialFormField" value="" />
                 <button id="passkey-add" type="submit" class="w-100 btn btn-lg btn-primary" hidden>@Localiser["Passkeys_Add"]</button>
                 <p id="passkey-error" class="text-danger mt-2" role="alert" hidden></p>

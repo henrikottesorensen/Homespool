@@ -45,6 +45,37 @@ public static class QueueRules
         return status == PrinterStatus.Ready;
     }
 
+    /// <summary>
+    /// Whether a person could offer this printer up for work from where it stands - firmware's own
+    /// <c>remote_print_ready</c> (printer_state.cpp:561-577), which answers true for exactly
+    /// <c>Idle</c>, <c>Ready</c>, <c>Stopped</c> and <c>Finished</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This decides what a waiting queue tells a reader, never whether it advances.</b>
+    /// <see cref="IsAvailable"/> is the gate; this is the vocabulary. Keeping them apart matters
+    /// because they disagree on purpose: firmware accepts work in three states this loop refuses to
+    /// use, and collapsing the two would hand the queue firmware's laxer rule.
+    /// </para>
+    /// <para>
+    /// <b>Taken from firmware rather than reasoned out</b>, because the question it answers is
+    /// literally "would the printer accept the press" - <c>set_printer_ready</c> gates on this same
+    /// call (marlin_printer.cpp:579-582). Any list of our own would be a guess at somebody else's
+    /// switch statement, and a wrong guess puts a button on the page that does nothing.
+    /// </para>
+    /// <para>
+    /// <b>The preview arm is deliberately absent.</b> The real predicate takes a
+    /// <c>preview_only</c> flag and answers true during the two print-preview states; nothing on the
+    /// wire tells us we are in one, so it cannot be honoured here. It fails toward saying less,
+    /// which is the safe direction for a sentence.
+    /// </para>
+    /// </remarks>
+    public static bool CanBeOfferedWork(PrinterStatus status)
+    {
+        return status is PrinterStatus.Idle or PrinterStatus.Ready
+                      or PrinterStatus.Stopped or PrinterStatus.Finished;
+    }
+
     /// <summary>Decides the next action for one printer.</summary>
     /// <param name="situation">Everything the decision depends on, gathered by the caller.</param>
     public static QueueAction Decide(QueueSnapshot situation)
@@ -119,9 +150,18 @@ public static class QueueRules
 
         if (!IsAvailable(situation.Status))
         {
-            // Includes Finished and Stopped, where the printer would accept the command. Paused and
-            // Attention are stalls a person clears; the loop never resumes and never cancels.
-            return QueueAction.Wait(QueueWaitReason.PrinterNotAvailable);
+            // Two different waits, and the difference is not the queue's - it is whether a person
+            // pressing "set ready" would achieve anything. Firmware takes the flag from exactly the
+            // states CanBeOfferedWork names, so that predicate decides which of these a reader is
+            // told, and the page hangs its button off the answer.
+            //
+            // Finished and Stopped stay on the loud side: the printer would accept a print in both,
+            // and only our own gate stops the queue starting one onto the part still on the bed.
+            // Paused and Attention are stalls a person clears at the machine; the loop never resumes
+            // and never cancels, and it has nothing to suggest while it waits.
+            return QueueAction.Wait(CanBeOfferedWork(situation.Status) ?
+                                        QueueWaitReason.PrinterNotAvailable :
+                                        QueueWaitReason.PrinterBusy);
         }
 
         return QueueAction.Print(head);

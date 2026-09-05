@@ -985,9 +985,21 @@ public class DetailModel : PageModel
                 return (_localiser["Printers_ReadyNotAllowed"].Value, false);
             }
 
-            await _commands.SendCommandAsync(printer.Id, new SetPrinterReady(), caller, cancellationToken);
+            SetPrinterReady intent = new();
+            CommandOutcome? outcome =
+                await _commands.SendCommandAsync(printer.Id, intent, caller, cancellationToken);
 
-            return (_localiser["Printers_ReadySent"].Value, true);
+            // The printer's verdict, not ours. Firmware takes the flag only from the states
+            // remote_print_ready names and answers "Can't set ready now" otherwise, which is what a
+            // busy machine says - and this handler used to report that as success, telling somebody
+            // their printer was ready for the next job while it declined to be. The same shape as
+            // SendIntentAsync, which every other button on this page already goes through.
+            return outcome?.EventType switch
+            {
+                PrinterEventType.Rejected or PrinterEventType.Failed =>
+                    (_localiser["Printers_CommandRejected", _intents.For(intent), outcome!.Reason ?? string.Empty].Value, false),
+                _ => (_localiser["Printers_ReadySent"].Value, true),
+            };
         }, cancellationToken);
     }
 

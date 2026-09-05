@@ -51,7 +51,9 @@ public static class QueueWaitDescription
             QueueWaitReason.PrinterNotAvailable => MessageKey.For("Queue_WaitPrinterNotReady"),
 
             // InsufficientSpace has its own banner, carrying the two numbers; PrintStarting is already
-            // on the page as the active print. Both would be a second voice saying the same thing.
+            // on the page as the active print; PrinterBusy is the status card itself, showing a
+            // progress bar, an attention reason or an error. All of them would be a second voice
+            // saying the same thing.
             _ => null,
         };
     }
@@ -70,6 +72,13 @@ public static class QueueWaitDescription
     /// <b>InsufficientSpace also needs a person and is deliberately false</b> - it is not a case this
     /// predicate covers, because <see cref="For"/> gives it no sentence at all. Its own banner carries
     /// the two numbers, and answering true here would put a second voice beside it.
+    /// </para>
+    /// <para>
+    /// <b><see cref="QueueWaitReason.PrinterBusy"/> is false because no person can help</b>, which is
+    /// the opposite reason and worth separating. A printing or attending machine refuses
+    /// <c>SET_PRINTER_READY</c> outright, so the button this predicate summons would name a remedy
+    /// the printer declines - which it did, on a page showing a live progress bar, before that
+    /// reason was split out of <see cref="QueueWaitReason.PrinterNotAvailable"/>.
     /// </para>
     /// <para>
     /// <b>Written after somebody sat wondering why a queued print had not started</b> (Henrik,

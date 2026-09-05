@@ -95,6 +95,7 @@ public class IndexModel : PageModel
     private readonly PrinterCommandService _commands;
     private readonly PrinterConnectionRegistry _connections;
     private readonly PrinterStatusText _statusText;
+    private readonly PrinterIntentText _intents;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ErrorText _errors;
     private readonly UserManager<HSUser> _userManager;
@@ -110,6 +111,7 @@ public class IndexModel : PageModel
                       PrinterCommandService commands,
                       PrinterConnectionRegistry connections,
                       PrinterStatusText statusText,
+                      PrinterIntentText intents,
                       IStringLocalizer<SharedResource> localiser,
                       ErrorText errors,
                       UserManager<HSUser> userManager,
@@ -125,6 +127,7 @@ public class IndexModel : PageModel
         _commands = commands;
         _connections = connections;
         _statusText = statusText;
+        _intents = intents;
         _localiser = localiser;
         _errors = errors;
         _userManager = userManager;
@@ -349,11 +352,27 @@ public class IndexModel : PageModel
         {
             try
             {
-                await _commands.SendCommandAsync(row.Printer.Id, new SetPrinterReady(), caller, cancellationToken);
+                SetPrinterReady intent = new();
+                CommandOutcome? outcome =
+                    await _commands.SendCommandAsync(row.Printer.Id, intent, caller, cancellationToken);
 
-                // The printer page's own words for this, unchanged: the queue line above already
-                // named the printer, so repeating it here would be a second voice.
-                report.Add(_localiser["Printers_ReadySent"].Value);
+                if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
+                {
+                    // A refusal is an answer, not an exception, so it does not reach the catch below
+                    // and used to be reported as success - on a drop whose whole point is that the
+                    // file starts printing. Firmware declines the flag from anything busy, which is
+                    // exactly when somebody drops a file onto a printer already working.
+                    report.Add(_localiser["Printers_CommandRejected",
+                                          _intents.For(intent),
+                                          outcome!.Reason ?? string.Empty].Value);
+                    refused = true;
+                }
+                else
+                {
+                    // The printer page's own words for this, unchanged: the queue line above already
+                    // named the printer, so repeating it here would be a second voice.
+                    report.Add(_localiser["Printers_ReadySent"].Value);
+                }
             }
             catch (Exception e) when (e is ILocalisableError)
             {

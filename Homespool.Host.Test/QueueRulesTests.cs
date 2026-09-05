@@ -71,8 +71,66 @@ public class QueueRulesTests
         {
             action.Kind.Should().Be(QueueActionKind.Wait,
                                     "only Ready means a person has offered the printer up for work");
-            action.Reason.Should().Be(QueueWaitReason.PrinterNotAvailable);
+
+            // Written out rather than asked of CanBeOfferedWork, which is the thing under test here:
+            // an expectation computed from the predicate would agree with it however wrong it got.
+            bool clearableByAPerson =
+                status is PrinterStatus.Idle or PrinterStatus.Stopped or PrinterStatus.Finished;
+
+            action.Reason.Should().Be(clearableByAPerson ?
+                                          QueueWaitReason.PrinterNotAvailable :
+                                          QueueWaitReason.PrinterBusy,
+                                      "the wait is the same and the remedy is not");
         }
+    }
+
+    /// <summary>
+    /// <b>Firmware's <c>remote_print_ready</c> set, held down member by member.</b> It decides
+    /// which of the two waits a reader is told about, and the page hangs a <c>Set ready</c> button
+    /// off that - so a state drifting to the wrong side puts a button on the page that the printer
+    /// refuses to honour.
+    /// </summary>
+    /// <remarks>
+    /// Exhaustive over the enum for the same reason the print theory is: the answer is a fact about
+    /// somebody else's switch statement (printer_state.cpp:561-577), so a state added here later must
+    /// be placed deliberately rather than inheriting a default.
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(AllStates))]
+    public void OnlyFirmwaresOwnStatesCanBeOfferedWork(PrinterStatus status)
+    {
+        bool expected = status is PrinterStatus.Idle or PrinterStatus.Ready
+                               or PrinterStatus.Stopped or PrinterStatus.Finished;
+
+        QueueRules.CanBeOfferedWork(status).Should().Be(expected);
+    }
+
+    /// <summary>
+    /// <b>A printer working on something that is not ours is a wait with no remedy</b>, and the page
+    /// must offer none: firmware answers <c>"Can't set ready now"</c> from every one of these.
+    /// </summary>
+    /// <remarks>
+    /// The defect, on hardware: a file queued behind a panel-started print at 82% produced
+    /// <i>"Waiting for the printer to be made ready."</i> and a button, because no <c>PrintJob</c>
+    /// row of ours was open and <c>PrinterNotAvailable</c> was the only reason left. Pressing it
+    /// reached the printer and was declined.
+    /// </remarks>
+    [Theory]
+    [InlineData(PrinterStatus.Printing)]
+    [InlineData(PrinterStatus.Paused)]
+    [InlineData(PrinterStatus.Attention)]
+    [InlineData(PrinterStatus.Busy)]
+    [InlineData(PrinterStatus.Error)]
+    [InlineData(PrinterStatus.Manipulating)]
+    public void ABusyPrinterIsWaitedOutRatherThanAskedOfAnybody(PrinterStatus status)
+    {
+        QueueAction action = QueueRules.Decide(Situation(status, arrived: true, path: "/usb/A~1.BGC"));
+
+        action.Kind.Should().Be(QueueActionKind.Wait);
+        action.Reason.Should().Be(QueueWaitReason.PrinterBusy);
+
+        QueueWaitDescription.NeedsAPerson(action.Reason).Should().BeFalse("nobody can clear this by looking at the sheet");
+        QueueWaitDescription.For(action, "benchy.bgcode").Should().BeNull("the status card already shows what it is doing");
     }
 
     /// <summary>
@@ -89,6 +147,11 @@ public class QueueRulesTests
 
         action.Kind.Should().Be(QueueActionKind.Wait,
                                 "there is a part on the bed in Finished and Stopped, and nobody has offered the printer in Idle");
+
+        // These three are the loud wait, and that is the whole difference from a busy machine: the
+        // printer would take the flag, so telling somebody to press it is worth doing.
+        action.Reason.Should().Be(QueueWaitReason.PrinterNotAvailable);
+        QueueWaitDescription.NeedsAPerson(action.Reason).Should().BeTrue();
     }
 
     /// <summary>
@@ -283,15 +346,19 @@ public class QueueRulesTests
     /// The page stays quiet where something else already speaks: an active print announces itself, and
     /// the space banner carries its own numbers.
     /// </summary>
+    /// <remarks>
+    /// <b>Driven from the enum rather than a written-out list</b>, for the reason the predicate
+    /// theory below already gives: a list of six went on passing while a seventh reason was added
+    /// beside it, and silence is a decision here rather than a default.
+    /// </remarks>
     [Theory]
-    [InlineData(QueueWaitReason.Transferring, true)]
-    [InlineData(QueueWaitReason.AwaitingPrinterPath, true)]
-    [InlineData(QueueWaitReason.PrinterNotAvailable, true)]
-    [InlineData(QueueWaitReason.InsufficientSpace, false)]
-    [InlineData(QueueWaitReason.PrintStarting, false)]
-    [InlineData(QueueWaitReason.PrintStartUnresolved, false)]
-    public void OnlyTheReasonsNothingElseCoversGetASentence(QueueWaitReason reason, bool expected)
+    [MemberData(nameof(AllWaitReasons))]
+    public void OnlyTheReasonsNothingElseCoversGetASentence(QueueWaitReason reason)
     {
+        bool expected = reason is QueueWaitReason.Transferring
+                               or QueueWaitReason.AwaitingPrinterPath
+                               or QueueWaitReason.PrinterNotAvailable;
+
         MessageKey? sentence = QueueWaitDescription.For(QueueAction.Wait(reason), "benchy.bgcode");
 
         (sentence is not null).Should().Be(expected);

@@ -593,6 +593,12 @@
   <data name="Account_OrSignInWith" xml:space="preserve">
     <value>Eller log ind med</value>
   </data>
+  <data name="Account_SignInWithPasskey" xml:space="preserve">
+    <value>Log ind med adgangsnøgle</value>
+  </data>
+  <data name="Account_PasskeyCancelled" xml:space="preserve">
+    <value>Login med adgangsnøgle blev afbrudt eller udløb. Prøv igen, eller brug din adgangskode.</value>
+  </data>
   <data name="Account_SignInWithProviderTitle" xml:space="preserve">
     <value>Log ind med {0}</value>
   </data>

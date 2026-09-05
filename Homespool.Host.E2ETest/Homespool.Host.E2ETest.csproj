@@ -40,6 +40,10 @@
     <ItemGroup>
       <ProjectReference Include="..\Homespool.FakePrinter\Homespool.FakePrinter.csproj" />
       <ProjectReference Include="..\Homespool.Host\Homespool.Host.csproj" />
+
+      <!-- The fake WebAuthn authenticator the unit tests drive the passkey scheme with, linked rather
+           than copied so the two suites answer a ceremony the same way. -->
+      <Compile Include="..\Homespool.Host.Test\FakeAuthenticator.cs" Link="FakeAuthenticator.cs" />
     </ItemGroup>
 
     <ItemGroup>

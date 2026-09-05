@@ -621,6 +621,12 @@
   <data name="Account_OrSignInWith" xml:space="preserve">
     <value>Or sign in with</value>
   </data>
+  <data name="Account_SignInWithPasskey" xml:space="preserve">
+    <value>Sign in with a passkey</value>
+  </data>
+  <data name="Account_PasskeyCancelled" xml:space="preserve">
+    <value>The passkey sign-in was cancelled or timed out. Try again, or use your password.</value>
+  </data>
   <data name="Account_SignInWithProviderTitle" xml:space="preserve">
     <value>Sign in with {0}</value>
   </data>

@@ -9,7 +9,7 @@
 <hr />
 
 <p id="external-login-description" class="text-info">
-    @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Account_ExternalAuthenticated"].Value, $"<strong>{Model.ProviderDisplayName}</strong>"))
+    @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Account_ExternalAuthenticated"].Value, $"<strong>{Html.Encode(Model.ProviderDisplayName)}</strong>"))
 </p>
 
 <div class="row">

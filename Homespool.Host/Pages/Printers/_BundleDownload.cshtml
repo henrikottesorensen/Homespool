@@ -107,7 +107,7 @@
         <details class="mb-0">
             <summary>@Localiser["Bundle_ReadIniInstead"]</summary>
             <p class="mt-2 mb-1">
-                @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Bundle_WhatFileContains"].Value, $"<code>{Model.PreferredName}</code>", "<code>hostname</code>"))
+                @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Bundle_WhatFileContains"].Value, $"<code>{Html.Encode(Model.PreferredName)}</code>", "<code>hostname</code>"))
             </p>
             <textarea class="form-control font-monospace" rows="7" readonly onclick="this.select()">@Model.Snippet</textarea>
         </details>

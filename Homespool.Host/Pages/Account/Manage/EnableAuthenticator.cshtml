@@ -15,7 +15,7 @@
             </p>
         </li>
         <li>
-            <p>@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["TwoFactor_ScanKeyInto"].Value, $"<kbd>{Model.SharedKey}</kbd>"))</p>
+            <p>@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["TwoFactor_ScanKeyInto"].Value, $"<kbd>{Html.Encode(Model.SharedKey)}</kbd>"))</p>
             <div class="alert alert-info">@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["TwoFactor_LearnQr"].Value, $"<a href=\"https://go.microsoft.com/fwlink/?Linkid=852423\">{Localiser["TwoFactor_EnableQrLink"].Value}</a>"))</div>
             <div id="qrCode"></div>
             <div id="qrCodeData" data-url="@Model.AuthenticatorUri"></div>

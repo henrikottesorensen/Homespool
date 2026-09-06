@@ -8,8 +8,10 @@ using AwesomeAssertions;
 
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Localization;
 
 using Homespool.Host.Accounts;
+using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.E2ETest;
@@ -27,6 +29,8 @@ namespace Homespool.Host.E2ETest;
 /// </remarks>
 public sealed class EmailChangeFlowTests : IAsyncLifetime
 {
+    private const string Password = "Correct-Horse-Battery-Staple-1!"; // betterleaks:allow
+
     private readonly ScratchDirectory _scratch = ScratchDirectory.Create("emailchange");
     private readonly CapturingSink _logs = new();
     private HomespoolFactory _factory = null!;
@@ -81,6 +85,7 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime
             using FormUrlEncodedContent body = new(new Dictionary<string, string>
             {
                 ["Input.NewEmail"] = "changed@example.com",
+                ["Input.Password"] = Password,
                 ["__RequestVerificationToken"] = token,
             });
 
@@ -90,6 +95,12 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime
             // Assert
             response.StatusCode.Should().Be(HttpStatusCode.Redirect,
                                             "a successful request redirects back to the page with a status message");
+
+            string after = await client.GetStringAsync("/Account/Manage/Email", TestContext.Current.CancellationToken);
+
+            after.Should().NotContain(Localised("StepUp_PasswordWrong"),
+                                      "a refused step-up redirects to this same page, so a test that only checks the "
+                                      + "redirect would pass without the change ever being requested");
 
             _logs.Failures.Should().BeEmpty("building the confirmation link must not throw");
         }
@@ -112,6 +123,7 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime
             using FormUrlEncodedContent body = new(new Dictionary<string, string>
             {
                 ["Input.NewEmail"] = "after@example.com",
+                ["Input.Password"] = Password,
                 ["__RequestVerificationToken"] = token,
             });
 
@@ -167,6 +179,56 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime
             response.StatusCode.Should().Be(HttpStatusCode.OK);
             _logs.Failures.Should().BeEmpty($"{path} should render without anything failing behind it");
         }
+    }
+
+    /// <summary>
+    /// The address is where a forgotten password is sent, so a session alone must not be able to move
+    /// it: the wrong password gets no confirmation link, and the account keeps the address it had.
+    /// </summary>
+    [Fact]
+    public async Task ChangingTheAddressIsRefusedWithoutThePassword()
+    {
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "stay@example.com");
+
+        using (client)
+        {
+            string page = await client.GetStringAsync("/Account/Manage/Email", TestContext.Current.CancellationToken);
+            string token = AntiforgeryTestHelper.ExtractToken(page);
+
+            using FormUrlEncodedContent body = new(new Dictionary<string, string>
+            {
+                ["Input.NewEmail"] = "attacker@example.com",
+                ["Input.Password"] = "not the password",
+                ["__RequestVerificationToken"] = token,
+            });
+
+            // Act
+            HttpResponseMessage response =
+                await client.PostAsync("/Account/Manage/Email?handler=ChangeEmail", body, TestContext.Current.CancellationToken);
+
+            // Assert
+            response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+
+            string after = await client.GetStringAsync("/Account/Manage/Email", TestContext.Current.CancellationToken);
+
+            after.Should().Contain(Localised("StepUp_PasswordWrong"), "the refusal is what the reader is told");
+
+            using IServiceScope scope = _factory.Services.CreateScope();
+            UserManager<HSUser> users = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+            HSUser fresh = await users.FindByIdAsync(user.Id.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                           ?? throw new InvalidOperationException("the account should still exist");
+
+            (await users.GetEmailAsync(fresh)).Should().Be("stay@example.com");
+        }
+    }
+
+    /// <summary>The application's own wording for <paramref name="key"/>, so this does not pin English.</summary>
+    private string Localised(string key)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        return scope.ServiceProvider.GetRequiredService<IStringLocalizer<SharedResource>>()[key].Value;
     }
 
     private async Task<string> BuildConfirmUrlAsync(long userId, string newEmail)

@@ -3,15 +3,18 @@
 
 #nullable disable
 
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 
+using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Host.Mail;
 using Homespool.Model.Entities;
 
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -21,21 +24,46 @@ using Microsoft.Extensions.Localization;
 
 namespace Homespool.Host.Pages.Account.Manage;
 
+/// <summary>
+/// The account's address, and changing it - against the account's password, not just a live session.
+/// </summary>
+/// <remarks>
+/// <b>The address is where a forgotten password is sent, so moving it is the last step of a
+/// takeover.</b> The confirmation link goes to the new address alone, which is the attacker's if they
+/// chose it, and the old address is told nothing; a session somebody else got hold of must therefore
+/// not be able to start the change. <see cref="StepUpGate"/> holds the reasoning and the provider
+/// round trip that answers for an account with no password.
+/// </remarks>
 [Authorize]
 public class EmailModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly IEmailSender _emailSender;
+    private readonly StepUpGate _stepUp;
+    private readonly StepUpText _stepUpText;
+    private readonly ExternalSignIn _externalSignIn;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public EmailModel(UserManager<HSUser> userManager,
                       IEmailSender emailSender,
+                      StepUpGate stepUp,
+                      StepUpText stepUpText,
+                      ExternalSignIn externalSignIn,
                       IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
         _emailSender = emailSender;
+        _stepUp = stepUp;
+        _stepUpText = stepUpText;
+        _externalSignIn = externalSignIn;
         _localiser = localiser;
     }
+
+    /// <summary>Whether this account proves itself with a password rather than at its provider.</summary>
+    public bool UsesPassword { get; private set; }
+
+    /// <summary>The providers a password-less account can be sent to, for the button that sends it.</summary>
+    public IReadOnlyList<AuthenticationScheme> Providers { get; private set; } = [];
 
     /// <summary>
     ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
@@ -77,6 +105,14 @@ public class EmailModel : PageModel
         [EmailAddress]
         [Display(Name = "Manage_NewEmail")]
         public string NewEmail { get; set; }
+
+        /// <summary>
+        /// The account's password, confirming the change. Not <c>[Required]</c>, because an account
+        /// that signs in through a provider has none and proves itself there instead.
+        /// </summary>
+        [DataType(DataType.Password)]
+        [Display(Name = "Account_Password")]
+        public string Password { get; set; }
     }
 
     private async Task LoadAsync(HSUser user)
@@ -90,6 +126,8 @@ public class EmailModel : PageModel
         };
 
         IsEmailConfirmed = await _userManager.IsEmailConfirmedAsync(user);
+        UsesPassword = await _stepUp.UsesPasswordAsync(user);
+        Providers = UsesPassword ? [] : await _externalSignIn.ProvidersAsync();
     }
 
     public async Task<IActionResult> OnGetAsync()
@@ -121,6 +159,15 @@ public class EmailModel : PageModel
         string email = await _userManager.GetEmailAsync(user);
         if (Input.NewEmail != email)
         {
+            StepUpResult proof = await _stepUp.ProveAsync(HttpContext, user, Input.Password);
+
+            if (!proof.Succeeded)
+            {
+                StatusMessage = await _stepUpText.DescribeAsync(proof, user);
+
+                return RedirectToPage();
+            }
+
             string userId = await _userManager.GetUserIdAsync(user);
             string code = await _userManager.GenerateChangeEmailTokenAsync(user, Input.NewEmail);
             code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
@@ -179,6 +226,41 @@ public class EmailModel : PageModel
         StatusMessage = sendResult == EmailSendResult.Failed ?
             _localiser["Manage_VerificationSendFailed"] :
             _localiser["Account_VerificationSent"];
+        return RedirectToPage();
+    }
+
+    /// <summary>
+    /// Sends a password-less account to its provider to re-authenticate, coming back to
+    /// <see cref="OnGetReauthenticatedAsync"/> on this page - so the proof it earns is scoped here and
+    /// cannot be spent on another page.
+    /// </summary>
+    public async Task<IActionResult> OnPostReauthenticateAsync(string provider)
+    {
+        HSUser user = await _userManager.GetUserAsync(User);
+        if (user == null)
+        {
+            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+        }
+
+        await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
+
+        string redirectUrl = Url.Page("/Account/Manage/Email", pageHandler: "Reauthenticated");
+        AuthenticationProperties challenge = await _stepUp.ProviderChallengeAsync(user, provider, redirectUrl);
+
+        return challenge is null ? NotFound() : new ChallengeResult(provider, challenge);
+    }
+
+    /// <summary>The provider's answer, which becomes the proof the change above spends.</summary>
+    public async Task<IActionResult> OnGetReauthenticatedAsync()
+    {
+        HSUser user = await _userManager.GetUserAsync(User);
+        if (user == null)
+        {
+            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+        }
+
+        StatusMessage = _stepUpText.Describe(await _stepUp.RecordProviderProofAsync(HttpContext, user));
+
         return RedirectToPage();
     }
 }

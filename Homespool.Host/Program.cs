@@ -197,7 +197,10 @@ public static class Program
 
             builder.Services.AddControllers(options =>
             {
-                options.Conventions.Add(new ApiExplorerVisibilityConvention());
+                // Nothing here has to make controllers visible to ApiExplorer: every controller in
+                // this application carries [ApiController], which opts it in. A controller without one
+                // would be absent from the OpenAPI document, and OpenApiDocumentTests reads the real
+                // document rather than the attributes, so it says so.
 
                 // A credential scope refusing an action is a 403, not a fault - and mapping it here
                 // rather than per action is what keeps a new file endpoint from answering 500.

@@ -249,12 +249,9 @@ public class PrinterCommandService
         IPrinterLink link = await RequireLinkAsync(printerId, caller, capability, cancellationToken);
 
         // Two ways to know nothing about the client - a link that is not a Prusa Connect actor, and
-        // an actor that reports no observation at all - and both answer the same way: like firmware.
-        // The plaintext download is for a client that positively identifies itself, so anything
-        // unidentified keeps the path this transport was built for.
-        // Two ways to know nothing about the client - a link that is not a Prusa Connect actor, and
         // an actor reporting no dialect at all - and both answer the same way: like firmware. The
-        // plaintext download is for a client that positively identifies itself.
+        // plaintext download is for a client that positively identifies itself, so anything
+        // unidentified keeps the path this transport was built for.
         if (link is not IPrinterConnectionActor actor)
         {
             return true;

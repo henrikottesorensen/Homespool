@@ -1,19 +1,18 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
-using Duende.IdentityModel;
-
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 using OtpNet;
 
@@ -121,46 +120,77 @@ internal sealed class LocalSchemeRig : IAsyncDisposable
         return request.AuthenticateWithAsync(scheme, credentials);
     }
 
-    /// <summary>
-    /// The cookie a sign-in wrote on <paramref name="request"/>, as a browser would send it back: the
-    /// first Set-Cookie's name and value.
-    /// </summary>
-    public static string CookieOf(DefaultHttpContext request)
+    /// <summary>The sign-in writer, from the request's own scope.</summary>
+    public static LocalSignIn SignInOf(DefaultHttpContext request)
     {
-        string header = request.Response.Headers.SetCookie.ToString();
-        header.Should().NotBeNullOrEmpty("the request should have set a cookie");
+        return request.RequestServices.GetRequiredService<LocalSignIn>();
+    }
 
-        return header[..header.IndexOf(';', StringComparison.Ordinal)];
+    /// <summary>The rules, from the request's own scope.</summary>
+    public static LocalSignInRules RulesOf(DefaultHttpContext request)
+    {
+        return request.RequestServices.GetRequiredService<LocalSignInRules>();
+    }
+
+    /// <summary>The name of the cookie <paramref name="scheme"/> writes.</summary>
+    public string CookieNameOf(string scheme)
+    {
+        return _provider.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(scheme).Cookie.Name!;
+    }
+
+    /// <summary>
+    /// The cookie <paramref name="scheme"/> set on <paramref name="request"/>, as a browser would send
+    /// it back: name and value.
+    /// </summary>
+    public string CookieOf(DefaultHttpContext request, string scheme)
+    {
+        string name = CookieNameOf(scheme);
+        string? header = request.Response.Headers.SetCookie
+                                .FirstOrDefault(value => value is not null && value.StartsWith(name + "=", StringComparison.Ordinal) && !value.StartsWith(name + "=;", StringComparison.Ordinal));
+        header.Should().NotBeNull($"the request should have set the {scheme} cookie");
+
+        return header![..header.IndexOf(';', StringComparison.Ordinal)];
+    }
+
+    /// <summary>Whether <paramref name="request"/> told the browser to drop the cookie <paramref name="scheme"/> writes.</summary>
+    public bool Cleared(DefaultHttpContext request, string scheme)
+    {
+        string name = CookieNameOf(scheme);
+
+        return request.Response.Headers.SetCookie.Any(value => value is not null && value.StartsWith(name + "=;", StringComparison.Ordinal));
     }
 
     /// <summary>The pending-two-factor cookie for <paramref name="user"/>, as the password step writes it.</summary>
-    public async Task<string> PendingTwoFactorCookieAsync(HSUser user)
+    public async Task<string> PendingTwoFactorCookieAsync(HSUser user, string? loginProvider = null)
     {
         DefaultHttpContext request = NewRequest();
-        await request.SignInAsync(IdentityConstants.TwoFactorUserIdScheme, LocalSignInRules.PendingTwoFactor(user));
+        await SignInOf(request).BeginSecondFactorAsync(request, user, loginProvider);
 
-        return CookieOf(request);
+        return CookieOf(request, IdentityConstants.TwoFactorUserIdScheme);
     }
 
     /// <summary>The application cookie for <paramref name="user"/>, as a completed sign-in writes it.</summary>
     public async Task<string> SessionCookieAsync(HSUser user)
     {
         DefaultHttpContext request = NewRequest();
-        ClaimsPrincipal principal = await _provider.GetRequiredService<IUserClaimsPrincipalFactory<HSUser>>().CreateAsync(user);
-        await request.SignInAsync(IdentityConstants.ApplicationScheme, principal, new AuthenticationProperties { IssuedUtc = DateTimeOffset.UtcNow });
+        await SignInOf(request).SignInAsync(request, await PrincipalOf(user), isPersistent: false);
 
-        return CookieOf(request);
+        return CookieOf(request, IdentityConstants.ApplicationScheme);
     }
 
     /// <summary>The remembered-machine cookie for <paramref name="user"/>, as a second factor with "remember" writes it.</summary>
     public async Task<string> RememberedMachineCookieAsync(HSUser user)
     {
         DefaultHttpContext request = NewRequest();
-        ClaimsIdentity identity = new(IdentityConstants.TwoFactorRememberMeScheme);
-        identity.AddClaim(new Claim(JwtClaimTypes.Subject, user.Id.ToString(CultureInfo.InvariantCulture)));
-        await request.SignInAsync(IdentityConstants.TwoFactorRememberMeScheme, new ClaimsPrincipal(identity));
+        await SignInOf(request).RememberClientAsync(request, user);
 
-        return CookieOf(request);
+        return CookieOf(request, IdentityConstants.TwoFactorRememberMeScheme);
+    }
+
+    /// <summary>The principal the claims factory builds for <paramref name="user"/>, as a scheme would hand it over.</summary>
+    public Task<ClaimsPrincipal> PrincipalOf(HSUser user)
+    {
+        return _provider.GetRequiredService<IUserClaimsPrincipalFactory<HSUser>>().CreateAsync(user);
     }
 
     public async ValueTask DisposeAsync()

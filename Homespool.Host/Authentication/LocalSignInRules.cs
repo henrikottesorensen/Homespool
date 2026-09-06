@@ -29,8 +29,8 @@ namespace Homespool.Host.Authentication;
 /// <para>
 /// <b>The pending and remembered cookies carry the account as <see cref="JwtClaimTypes.Subject"/></b>
 /// and the pending one its provider as <see cref="JwtClaimTypes.IdentityProvider"/>, the house's JWT
-/// spelling rather than the framework's <c>ClaimTypes.Name</c>. A cookie the framework wrote before
-/// this reads as absent, which costs one more code on a remembered browser.
+/// spelling rather than the framework's <c>ClaimTypes.Name</c>. <see cref="LocalSignIn"/> writes both,
+/// so nothing reads a cookie the other side wrote.
 /// </para>
 /// </remarks>
 public sealed class LocalSignInRules
@@ -112,7 +112,7 @@ public sealed class LocalSignInRules
 
     /// <summary>
     /// The principal the pending two-factor cookie carries: the account that passed its first factor
-    /// and owes its second.
+    /// and owes its second, and the provider that factor came through when it was not a password.
     /// </summary>
     public static ClaimsPrincipal PendingTwoFactor(HSUser user, string? loginProvider = null)
     {
@@ -137,6 +137,17 @@ public sealed class LocalSignInRules
         string? userId = pending.Principal?.FindFirstValue(JwtClaimTypes.Subject);
 
         return userId is null ? null : await _users.FindByIdAsync(userId);
+    }
+
+    /// <summary>
+    /// The provider the pending account's first factor came through, or <see langword="null"/> when it
+    /// was a password or nothing is pending.
+    /// </summary>
+    public async Task<string?> PendingLoginProviderAsync(HttpContext context)
+    {
+        AuthenticateResult pending = await context.AuthenticateAsync(IdentityConstants.TwoFactorUserIdScheme);
+
+        return pending.Principal?.FindFirstValue(JwtClaimTypes.IdentityProvider);
     }
 
     /// <summary>

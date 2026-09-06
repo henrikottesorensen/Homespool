@@ -8,7 +8,6 @@ using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
 
-using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
@@ -31,22 +30,25 @@ public class LoginModel : PageModel
     private readonly UserManager<HSUser> _userManager;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<LoginModel> _logger;
-    private readonly IPasswordHasher<HSUser> _passwordHasher;
     private readonly IOptionsMonitor<PasskeyAuthenticationOptions> _passkeys;
+    private readonly LocalSignInRules _rules;
+    private readonly LocalSignIn _signIn;
 
     public LoginModel(SignInManager<HSUser> signInManager,
                       UserManager<HSUser> userManager,
                       ILogger<LoginModel> logger,
                       IStringLocalizer<SharedResource> localiser,
-                      IPasswordHasher<HSUser> passwordHasher,
-                      IOptionsMonitor<PasskeyAuthenticationOptions> passkeys)
+                      IOptionsMonitor<PasskeyAuthenticationOptions> passkeys,
+                      LocalSignInRules rules,
+                      LocalSignIn signIn)
     {
         _signInManager = signInManager;
         _userManager = userManager;
         _localiser = localiser;
         _logger = logger;
-        _passwordHasher = passwordHasher;
         _passkeys = passkeys;
+        _rules = rules;
+        _signIn = signIn;
     }
 
     [BindProperty]
@@ -193,22 +195,21 @@ public class LoginModel : PageModel
             return Page();
         }
 
-        if (await _userManager.IsLockedOutAsync(user))
+        switch (await _rules.PreSignInCheckAsync(user))
         {
-            _logger.LogWarning("User account locked out.");
+            case SignInRefusal.LockedOut:
+                _logger.LogWarning("User account locked out.");
 
-            return RedirectToPage("./Lockout");
-        }
+                return RedirectToPage("./Lockout");
 
-        if (!await _signInManager.CanSignInAsync(user))
-        {
-            ModelState.AddModelError(string.Empty, _localiser["Account_InvalidLogin"]);
+            case SignInRefusal.NotAllowed:
+                ModelState.AddModelError(string.Empty, _localiser["Account_InvalidLogin"]);
 
-            return Page();
+                return Page();
         }
 
         await _userManager.ResetAccessFailedCountAsync(user);
-        await _signInManager.SignInAsync(user, rememberMe, PasskeyAuthenticationHandler.AuthenticationMethod);
+        await _signIn.SignInAsync(HttpContext, assertion.Principal, rememberMe);
 
         _logger.LogInformation("User logged in with a passkey.");
 
@@ -222,71 +223,50 @@ public class LoginModel : PageModel
         ExternalLogins = (await _signInManager.GetExternalAuthenticationSchemesAsync()).ToList();
         PasskeysAvailable = _passkeys.Get(Schemes.Passkey).Covers(Request.Host);
 
-        if (ModelState.IsValid)
+        if (!ModelState.IsValid)
         {
-            // lockoutOnFailure: true, changed from the scaffold's default of false (whose comment
-            // said "To enable password failures to trigger account lockout, set lockoutOnFailure:
-            // true"). Without it a wrong password costs an attacker nothing, and this application has
-            // no rate limiting on the login form - so an internet-reachable deployment offered
-            // unlimited password guessing against a known account, forever. People do expose
-            // self-hosted printer servers to the internet whatever the advice says (OctoPrint's mass
-            // exposure is the precedent), so that is the threat model to design for.
-            //
-            // Identity's defaults apply: 5 failures, then a 5-minute lockout. The tradeoff accepted
-            // deliberately is that someone who knows an account's email can keep it locked out; a
-            // self-healing five-minute lockout is much the lesser evil, and it is the same tradeoff
-            // already live on the 2FA path, which has always counted toward lockout.
-            // Resolved by hand because sign-in accepts either identifier, and PasswordSignInAsync's
-            // string overload only ever looks at the username. The two namespaces cannot overlap - a
-            // username may not contain '@' (UsernameValidator) - so this order settles
-            // nothing that could be ambiguous; it is just the cheaper lookup first.
-            HSUser user = await _userManager.FindByNameAsync(Input.Login)
-                          ?? await _userManager.FindByEmailAsync(Input.Login);
+            return Page();
+        }
 
-            if (user is null)
-            {
-                // Verified against a decoy before answering, so this branch costs what the branch
-                // below costs. The same message and the same page were already deliberate - telling
-                // an anonymous caller which addresses and usernames exist is the enumeration this
-                // form is exposed enough to care about - but sameness that stops at the wording
-                // leaves the timing to answer the question instead: a miss returned after two
-                // indexed lookups where a hit runs a full PBKDF2 verification first.
-                PasswordVerificationDecoy.Verify(_passwordHasher, Input.Password);
+        // The password scheme does the checking - lookup by either identifier, the decoy verification
+        // for an identifier nobody holds, the pre-sign-in check, and a wrong password counted toward
+        // the lockout. Counting matters because this form has no rate limiting of its own and people
+        // do expose self-hosted printer servers to the internet whatever the advice says; Identity's
+        // defaults apply, five failures then five minutes, and the accepted cost is that someone who
+        // knows an account's address can keep it locked out for those five minutes.
+        AuthenticateResult password = await HttpContext.AuthenticateWithAsync(Schemes.UserPassword,
+                                                                              new UserPasswordCredential(Input.Login, Input.Password));
 
-                ModelState.AddModelError(string.Empty, _localiser["Account_InvalidLogin"]);
-
-                return Page();
-            }
-
-            Microsoft.AspNetCore.Identity.SignInResult result = await _signInManager.PasswordSignInAsync(user,
-                Input.Password,
-                Input.RememberMe,
-                lockoutOnFailure: true);
-            if (result.Succeeded)
-            {
-                _logger.LogInformation("User logged in.");
-
-                return LocalRedirect(returnUrl);
-            }
-
-            if (result.RequiresTwoFactor)
-            {
-                return RedirectToPage("./LoginWith2fa", new { ReturnUrl = returnUrl, Input.RememberMe });
-            }
-
-            if (result.IsLockedOut)
+        if (!password.Succeeded)
+        {
+            if (password.Refusal() == SignInRefusal.LockedOut)
             {
                 _logger.LogWarning("User account locked out.");
 
                 return RedirectToPage("./Lockout");
             }
 
+            // One message for a wrong password, an unknown identifier and an account that may not
+            // sign in: telling an anonymous caller which of those it was is the enumeration this form
+            // is exposed enough to care about.
             ModelState.AddModelError(string.Empty, _localiser["Account_InvalidLogin"]);
 
             return Page();
         }
 
-        // Something failed, redisplay form.
-        return Page();
+        HSUser user = await _userManager.GetUserAsync(password.Principal);
+
+        if (await _signIn.OwesSecondFactorAsync(HttpContext, user))
+        {
+            await _signIn.BeginSecondFactorAsync(HttpContext, user);
+
+            return RedirectToPage("./LoginWith2fa", new { ReturnUrl = returnUrl, Input.RememberMe });
+        }
+
+        await _signIn.SignInAsync(HttpContext, password.Principal, Input.RememberMe);
+
+        _logger.LogInformation("User logged in.");
+
+        return LocalRedirect(returnUrl);
     }
 }

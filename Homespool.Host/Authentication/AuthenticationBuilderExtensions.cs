@@ -99,6 +99,7 @@ public static class AuthenticationBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
 
         builder.Services.AddScoped<LocalSignInRules>();
+        builder.Services.AddScoped<LocalSignIn>();
 
         builder.AddScheme<AuthenticationSchemeOptions, UserPasswordAuthenticationHandler>(Schemes.UserPassword, options => { });
         builder.AddScheme<AuthenticationSchemeOptions, TotpAuthenticationHandler>(Schemes.Totp, options => { });

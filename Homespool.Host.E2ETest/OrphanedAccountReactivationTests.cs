@@ -92,6 +92,43 @@ public sealed class OrphanedAccountReactivationTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// The account existed before it was orphaned and may still hold an authenticator; reactivating
+    /// it is a proved password, not a way past the second factor.
+    /// </summary>
+    [Fact]
+    public async Task ReactivatingAnAccountWithAnAuthenticatorStillAsksForTheCode()
+    {
+        await CreateOrphanedAccountAsync(withAuthenticator: true);
+        (int inviteId, string code) = await CreateInviteAsync(Address);
+
+        using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        using HttpResponseMessage response = await AcceptAsync(client, inviteId, code, username: null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        response.Headers.Location!.OriginalString.Should().StartWith("/Account/LoginWith2fa", "the code is still owed");
+        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, response).Should().BeFalse("no session until the code is answered");
+        (await HasPasswordAsync()).Should().BeTrue("the reactivation itself went through");
+    }
+
+    /// <summary>An unconfirmed orphan is reactivated and then held at confirmation, as a new account is.</summary>
+    [Fact]
+    public async Task ReactivatingAnUnconfirmedAccountHoldsItAtConfirmation()
+    {
+        await CreateOrphanedAccountAsync(confirmed: false);
+        (int inviteId, string code) = await CreateInviteAsync(Address);
+
+        using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        using HttpResponseMessage response = await AcceptAsync(client, inviteId, code, username: null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        response.Headers.Location!.OriginalString.Should().StartWith("/Account/RegisterConfirmation", "the address has not answered its mail");
+        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, response).Should().BeFalse();
+        (await HasPasswordAsync()).Should().BeTrue("the reactivation itself went through");
+    }
+
+    /// <summary>
     /// An invite aimed at an address whose account still works is refused — and, more importantly,
     /// changes nothing about it.
     /// </summary>
@@ -179,7 +216,7 @@ public sealed class OrphanedAccountReactivationTests : IAsyncLifetime
     }
 
     /// <summary>An account as <c>ExternalLogin</c> creates one: no password, one provider link.</summary>
-    private async Task<long> CreateOrphanedAccountAsync()
+    private async Task<long> CreateOrphanedAccountAsync(bool confirmed = true, bool withAuthenticator = false)
     {
         using IServiceScope scope = _factory.Services.CreateScope();
 
@@ -189,10 +226,16 @@ public sealed class OrphanedAccountReactivationTests : IAsyncLifetime
         HSUser user = new();
         await store.SetUserNameAsync(user, "orphan", CancellationToken.None);
         await ((IUserEmailStore<HSUser>)store).SetEmailAsync(user, Address, CancellationToken.None);
-        user.EmailConfirmed = true;
+        user.EmailConfirmed = confirmed;
 
         (await users.CreateAsync(user)).Succeeded.Should().BeTrue();
         (await users.AddLoginAsync(user, new UserLoginInfo(Provider, "dead-subject", Provider))).Succeeded.Should().BeTrue();
+
+        if (withAuthenticator)
+        {
+            (await users.ResetAuthenticatorKeyAsync(user)).Succeeded.Should().BeTrue();
+            (await users.SetTwoFactorEnabledAsync(user, true)).Succeeded.Should().BeTrue();
+        }
 
         return user.Id;
     }

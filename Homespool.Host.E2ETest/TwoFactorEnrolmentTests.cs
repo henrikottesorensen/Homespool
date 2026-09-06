@@ -40,6 +40,8 @@ namespace Homespool.Host.E2ETest;
 /// </remarks>
 public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
 {
+    private const string SeededPassword = "Correct-Horse-Battery-Staple-1!"; // betterleaks:allow
+
     private readonly ScratchDirectory _scratch = ScratchDirectory.Create("2fa-enrol");
     private HomespoolFactory _factory = null!;
 
@@ -107,6 +109,7 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
 
         using HttpResponseMessage post = await PostAsync(client, jar, "/Account/Manage/ResetAuthenticator", new()
         {
+            ["Input.Password"] = SeededPassword,
             ["__RequestVerificationToken"] = token,
         });
 
@@ -264,6 +267,43 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
     /// An account with its cookie already in a jar, optionally with an authenticator configured and
     /// two-factor on.
     /// </summary>
+    /// <summary>
+    /// The reset is what <c>Disable2fa</c>'s code requirement would otherwise be worth nothing
+    /// against: both end with two-factor off, so a session alone must not be able to take either.
+    /// </summary>
+    [Fact]
+    public async Task ResettingTheAuthenticatorKeyIsRefusedWithoutThePassword()
+    {
+        (HSUser user, CookieJar jar) = await SeedAsync("reset-unproved@example.com", withTwoFactor: true);
+
+        string keyBefore = await AuthenticatorKeyAsync(user.Id);
+
+        using HttpClient client = CreateClient();
+
+        string token = await GetAntiforgeryTokenAsync(client, jar, "/Account/Manage/ResetAuthenticator");
+
+        using HttpResponseMessage post = await PostAsync(client, jar, "/Account/Manage/ResetAuthenticator", new()
+        {
+            ["Input.Password"] = "not the password",
+            ["__RequestVerificationToken"] = token,
+        });
+
+        post.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        post.Headers.Location!.OriginalString
+            .Should().NotContain("/Account/Manage/EnableAuthenticator",
+                                 "a refused reset goes back to the page it was refused on, not on to the next step");
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+        UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+        HSUser after = await userManager.FindByIdAsync(user.Id.ToString(CultureInfo.InvariantCulture))
+                       ?? throw new InvalidOperationException("the account should still exist");
+
+        (await userManager.GetAuthenticatorKeyAsync(after))
+            .Should().Be(keyBefore, "an unproved reset must not move the key");
+        (await userManager.GetTwoFactorEnabledAsync(after))
+            .Should().BeTrue("an unproved reset must not clear the second factor either");
+    }
+
     private async Task<(HSUser user, CookieJar jar)> SeedAsync(string email, bool withTwoFactor = false)
     {
         (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, email);
